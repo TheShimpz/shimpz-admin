@@ -1,0 +1,6 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cloudflare R2">
+  <rect width="48" height="48" rx="11" fill="#1F1305"/>
+  <ellipse cx="24" cy="15.5" rx="10" ry="3.6" fill="#F6821F"/>
+  <path d="M14 15.5v17c0 2 4.5 3.6 10 3.6s10-1.6 10-3.6v-17c0 2-4.5 3.6-10 3.6s-10-1.6-10-3.6z" fill="#FBAD41"/>
+  <path d="M14 24c0 2 4.5 3.6 10 3.6s10-1.6 10-3.6" fill="none" stroke="#1F1305" stroke-width="1.4"/>
+</svg>

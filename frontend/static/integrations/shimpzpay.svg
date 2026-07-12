@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="ShimpzPay">
+  <defs>
+    <linearGradient id="sp" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="9" width="42" height="30" rx="7" fill="url(#sp)"/>
+  <rect x="3" y="16" width="42" height="6" fill="#0a0b10" opacity="0.85"/>
+  <path d="M24 27h9" stroke="#0a0b10" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+  <circle cx="15" cy="27.5" r="3.4" fill="#0a0b10" opacity="0.85"/>
+</svg>

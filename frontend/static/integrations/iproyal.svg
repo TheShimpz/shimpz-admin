@@ -1,0 +1,6 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="IPRoyal proxy">
+  <rect width="48" height="48" rx="11" fill="#16123A"/>
+  <path d="M24 9l12 4.5v9c0 8-5.2 13.2-12 16.5-6.8-3.3-12-8.5-12-16.5v-9L24 9z" fill="#6C4BF4"/>
+  <circle cx="24" cy="22" r="4.2" fill="#fff"/>
+  <path d="M24 26.2c-3.6 0-6.5 1.7-7.4 4.1a12.7 12.7 0 0 0 14.8 0c-.9-2.4-3.8-4.1-7.4-4.1z" fill="#fff"/>
+</svg>
