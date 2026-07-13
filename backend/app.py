@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adminstore
 import auth
 import brainlogin
+import capsules
 import catalog
 import envfile
 import integrations
@@ -172,9 +172,7 @@ def _configured(fields, values, defaults):
     fixes the IPRoyal/proxy card wrongly reading configured on a fresh install.
     """
     return any(
-        not f["generated"]
-        and (v := values.get(f["key"], "").strip())
-        and v != defaults.get(f["key"], "").strip()
+        not f["generated"] and (v := values.get(f["key"], "").strip()) and v != defaults.get(f["key"], "").strip()
         for f in fields
     )
 
@@ -334,8 +332,52 @@ async def apply(payload: dict):
     return {"applied": True, "results": results, "generated": generated}
 
 
+# ── Capsules: the authenticated control plane for capsule-driver. Session-gated by the middleware
+# (under /api/, not in OPEN_API); the panel holds no docker.sock — it POSTs to capsule-driver, which
+# provisions the isolated brain. This is the "create a Capsule, then configure it here" surface. ──
+@app.get("/api/capsules")
+async def capsules_list():
+    ok, body = capsules.list_capsules()
+    if not ok:
+        raise HTTPException(status_code=502, detail=body.get("error", "capsule-driver unreachable"))
+    return body
+
+
+@app.post("/api/capsules")
+async def capsules_create(payload: dict):
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="capsule name required")
+    cid = capsules.to_cid(name)
+    if not cid:
+        raise HTTPException(status_code=400, detail="capsule name has no usable characters")
+    ok, body = capsules.create(cid, name)
+    if not ok:
+        raise HTTPException(status_code=502, detail=body.get("error", "capsule create failed"))
+    log.info("capsule created: %s", cid)
+    return body
+
+
+@app.delete("/api/capsules/{cid}")
+async def capsules_destroy(cid: str):
+    ok, body = capsules.destroy(capsules.to_cid(cid))
+    if not ok:
+        raise HTTPException(status_code=502, detail=body.get("error", "capsule destroy failed"))
+    return body
+
+
 if UI_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
+    # SPA serve: return a real asset if the path maps to one, else fall back to index.html so a
+    # client-routed view (e.g. /capsules) works on a direct load / refresh — not just via in-app nav
+    # (StaticFiles(html=True) 404s nested routes). The /api/* routes above are more specific and win;
+    # this catch-all only ever handles non-/api GETs.
+    @app.get("/{path:path}")
+    async def spa(path: str):
+        if ".." not in path.split("/"):
+            candidate = UI_DIR / path
+            if path and candidate.is_file():
+                return FileResponse(candidate)
+        return FileResponse(UI_DIR / "index.html")
 else:
 
     @app.get("/")

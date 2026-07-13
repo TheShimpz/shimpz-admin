@@ -49,7 +49,7 @@ RUN uv venv /opt/venv && \
     uv pip install --python /opt/venv/bin/python --no-cache-dir 'fastapi==0.139.0' 'uvicorn[standard]==0.51.0'
 
 WORKDIR /app/backend
-COPY backend/app.py backend/adminstore.py backend/auth.py backend/brainlogin.py backend/catalog.py backend/envfile.py \
+COPY backend/app.py backend/adminstore.py backend/auth.py backend/brainlogin.py backend/capsules.py backend/catalog.py backend/envfile.py \
      backend/integrations.py backend/keyset.py backend/validate_live.py ./
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --from=ui /w/build /app/frontend/build
