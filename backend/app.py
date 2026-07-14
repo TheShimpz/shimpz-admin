@@ -340,11 +340,20 @@ async def capsules_destroy(cid: str):
     return body
 
 
+@app.api_route(
+    "/api/{path:path}",
+    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def unknown_api(path: str):
+    """Keep unknown API paths out of the SPA fallback and fail honestly."""
+    raise HTTPException(status_code=404, detail=f"unknown API endpoint: /api/{path}")
+
+
 if UI_DIR.is_dir():
     # SPA serve: return a real asset if the path maps to one, else fall back to index.html so a
     # client-routed view (e.g. /capsules) works on a direct load / refresh — not just via in-app nav
-    # (StaticFiles(html=True) 404s nested routes). The /api/* routes above are more specific and win;
-    # this catch-all only ever handles non-/api GETs.
+    # (StaticFiles(html=True) 404s nested routes). The explicit /api/* fallback above prevents API
+    # typos or retired endpoints from being answered with the SPA shell.
     @app.get("/{path:path}")
     async def spa(path: str):
         if ".." not in path.split("/"):
