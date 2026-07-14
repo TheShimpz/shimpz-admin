@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+# check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_DRIVER_TOKEN_GID is a numeric group id, never a credential
 #
 # shimpz-admin — the persistent admin panel (config keyset editor + login). Runs as a compose service
 # on 127.0.0.1 only. Holds NO docker.sock and NO master secrets beyond the `.env` it edits: it
