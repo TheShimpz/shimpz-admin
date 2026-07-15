@@ -29,6 +29,7 @@ import adminstore
 import auth
 import capsules
 import catalog
+import driver_proxy
 import envfile
 import integrations
 import keyset
@@ -338,6 +339,42 @@ async def capsules_destroy(cid: str):
     if not ok:
         raise HTTPException(status_code=502, detail=body.get("error", "capsule destroy failed"))
     return body
+
+
+def _driver_proxy_response(operation):
+    """Return only bounded JSON received from capsule-driver; normalize local validation failures."""
+    try:
+        response = operation()
+    except driver_proxy.ProxyRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return JSONResponse(status_code=response.status, content=response.body)
+
+
+# Driver configuration stays out of `.env`/keyset: these session-gated routes are a stateless,
+# JSON-only pass-through to capsule-driver's per-Capsule control plane.
+@app.get("/api/capsules/{cid}/drivers/{driver_id}")
+def capsule_driver_get(cid: str, driver_id: str):
+    return _driver_proxy_response(lambda: driver_proxy.get_driver(cid, driver_id))
+
+
+@app.post("/api/capsules/{cid}/drivers/{driver_id}/credentials")
+def capsule_driver_credential_create(cid: str, driver_id: str, payload: dict):
+    return _driver_proxy_response(lambda: driver_proxy.create_credential(cid, driver_id, payload))
+
+
+@app.put("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}")
+def capsule_driver_credential_replace(cid: str, driver_id: str, credential_id: str, payload: dict):
+    return _driver_proxy_response(lambda: driver_proxy.replace_credential(cid, driver_id, credential_id, payload))
+
+
+@app.delete("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}")
+def capsule_driver_credential_delete(cid: str, driver_id: str, credential_id: str, payload: dict | None = None):
+    return _driver_proxy_response(lambda: driver_proxy.delete_credential(cid, driver_id, credential_id, payload))
+
+
+@app.post("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}/verify")
+def capsule_driver_credential_verify(cid: str, driver_id: str, credential_id: str, payload: dict | None = None):
+    return _driver_proxy_response(lambda: driver_proxy.verify_credential(cid, driver_id, credential_id, payload or {}))
 
 
 @app.api_route(
