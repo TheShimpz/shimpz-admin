@@ -98,9 +98,8 @@ class DriverProxyTest(unittest.TestCase):
         self.assertEqual(request["headers"]["accept"], "application/json")
         self.assertEqual(request["headers"]["authorization"], "Bearer test-bearer")
 
-    def test_get_and_delete_send_no_body_or_content_type(self):
+    def test_get_sends_no_body_or_content_type(self):
         driver_proxy.get_driver("capsule_1", "cloudflare-r2")
-        driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "primary-1")
 
         for request in _LocalDriverHandler.requests:
             self.assertEqual(request["body"], b"")
@@ -140,8 +139,8 @@ class DriverProxyTest(unittest.TestCase):
             lambda: driver_proxy.get_driver("capsule/1", "cloudflare-r2"),
             lambda: driver_proxy.get_driver("capsule_1", "Cloudflare-R2"),
             lambda: driver_proxy.get_driver("capsule_1", "cloudflare--r2"),
-            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "../primary"),
-            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "primary_1"),
+            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "../primary", {}),
+            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "primary_1", {}),
         )
         for operation in invalid:
             with self.subTest(operation=operation), self.assertRaises(driver_proxy.ProxyRequestError):

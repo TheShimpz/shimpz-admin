@@ -191,9 +191,7 @@ def replace_credential(capsule_id: object, driver_id: object, credential_id: obj
     return _call("PUT", _credential_path(capsule_id, driver_id, credential_id), payload=payload)
 
 
-def delete_credential(
-    capsule_id: object, driver_id: object, credential_id: object, payload: object | None = None
-) -> ProxyResponse:
+def delete_credential(capsule_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
     return _call("DELETE", _credential_path(capsule_id, driver_id, credential_id), payload=payload)
 
 

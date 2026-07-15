@@ -368,7 +368,7 @@ def capsule_driver_credential_replace(cid: str, driver_id: str, credential_id: s
 
 
 @app.delete("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}")
-def capsule_driver_credential_delete(cid: str, driver_id: str, credential_id: str, payload: dict | None = None):
+def capsule_driver_credential_delete(cid: str, driver_id: str, credential_id: str, payload: dict):
     return _driver_proxy_response(lambda: driver_proxy.delete_credential(cid, driver_id, credential_id, payload))
 
 

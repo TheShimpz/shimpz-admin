@@ -43,6 +43,13 @@ class DriverRouteTest(unittest.TestCase):
             ("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}/verify", "POST"),
         }
         self.assertTrue(expected.issubset(routes))
+        delete_route = next(
+            route
+            for route in self.admin_app.app.routes
+            if route.path == "/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}"
+            and "DELETE" in route.methods
+        )
+        self.assertTrue(delete_route.body_field.field_info.is_required())
 
     def test_driver_routes_are_not_in_open_api_and_reject_anonymous_requests(self):
         concrete_path = "/api/capsules/capsule_1/drivers/cloudflare-r2"

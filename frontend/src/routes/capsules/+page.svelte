@@ -1,4 +1,5 @@
 <script>
+  import DriverCredentialPanel from "$lib/DriverCredentialPanel.svelte";
   import { onMount } from "svelte";
 
   let phase = $state("checking"); // checking | needauth | ready
@@ -119,12 +120,15 @@
       {:else}
         <ul>
           {#each capsules as c (c.id)}
-            <li>
-              <span class="dot" class:running={c.status === "running"}></span>
-              <span class="cap-name">{c.name || c.id}</span>
-              <span class="cap-id">{c.id}</span>
-              <span class="cap-status">{c.status}</span>
-              <button class="danger" onclick={() => destroy(c.id)} disabled={busy}>Destroy</button>
+            <li class="capsule-card">
+              <div class="capsule-row">
+                <span class="dot" class:running={c.status === "running"}></span>
+                <span class="cap-name">{c.name || c.id}</span>
+                <span class="cap-id">{c.id}</span>
+                <span class="cap-status">{c.status}</span>
+                <button class="danger" onclick={() => destroy(c.id)} disabled={busy}>Destroy</button>
+              </div>
+              <DriverCredentialPanel capsuleId={c.id} driverId="r2" />
             </li>
           {/each}
         </ul>
@@ -234,15 +238,17 @@
     flex-direction: column;
     gap: 0.5rem;
   }
-  li {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  .capsule-card {
     padding: 0.6rem 0.2rem;
     border-top: 1px solid #2c2e33;
   }
-  li:first-child {
+  .capsule-card:first-child {
     border-top: 0;
+  }
+  .capsule-row {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
   }
   .dot {
     width: 8px;
@@ -266,5 +272,14 @@
     margin-left: auto;
     color: #9aa0a6;
     font-size: 0.85rem;
+  }
+  @media (max-width: 640px) {
+    .capsule-row {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .cap-status {
+      margin-left: 0;
+    }
   }
 </style>
