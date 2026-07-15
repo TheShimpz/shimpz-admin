@@ -1,11 +1,12 @@
 <script>
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
+  import { t } from '$lib/i18n.js';
 
   let { active = '', authenticated = false, actions, children } = $props();
 
   const navigation = [
-    { id: 'integrations', label: 'Integrations', href: '/' },
-    { id: 'capsules', label: 'Capsules', href: '/capsules/' },
+    { id: 'integrations', label: 'workspace.title', href: '/' },
+    { id: 'capsules', label: 'workspace.capsulesKicker', href: '/capsules/' },
   ];
 </script>
 
@@ -19,7 +20,7 @@
       <nav aria-label="Admin">
         {#each navigation as item (item.id)}
           <a href={item.href} class:active={active === item.id} aria-current={active === item.id ? 'page' : undefined}>
-            {item.label}
+            {$t(item.label)}
           </a>
         {/each}
       </nav>

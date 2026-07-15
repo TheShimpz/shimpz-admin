@@ -1,114 +1,158 @@
 <script>
-  import { t, locale, setLocale, LOCALES, fieldContent } from '$lib/i18n.js';
+  import { onMount } from 'svelte';
+  import AdminShell from '$lib/AdminShell.svelte';
+  import AuthScreen from '$lib/AuthScreen.svelte';
+  import IntegrationDrawer from '$lib/IntegrationDrawer.svelte';
+  import LocaleMenu from '$lib/LocaleMenu.svelte';
+  import { t, locale, fieldContent } from '$lib/i18n.js';
 
-  // ── auth gate ─────────────────────────────────────────────────────────────────────────────
   let authPhase = $state('checking'); // checking | setup | login | ready
   let pw = $state('');
   let pw2 = $state('');
   let authError = $state('');
   let authBusy = $state(false);
-  // ── marketplace state ─────────────────────────────────────────────────────────────────────
-  let integrations = $state([]); // from GET /api/integrations
+
+  let integrations = $state([]);
   let categories = $state([]);
   let activeCat = $state('CHANNEL');
-  let drawer = $state(null); // the integration whose config drawer is open, or null
-  let values = $state({}); // field inputs, keyed by field key
-  let results = $state({}); // live-validate results, keyed by field key
-  let busy = $state({}); // per-field validate spinner
+  let drawer = $state(null);
+  let values = $state({});
+  let results = $state({});
+  let busy = $state({});
   let loadError = $state('');
-  let langOpen = $state(false);
-  // ── per-integration save ──────────────────────────────────────────────────────────────────
-  let saveBusy = $state(false);
-  let saveMsg = $state(''); // '' | 'ok' | 'error'
-  let saveNote = $state(''); // recreate note (ok) or error detail
-  let generated = $state([]);
-  let currentLocale = $derived($locale);
-  let shown = $derived(integrations.filter((i) => i.category === activeCat));
 
-  function badgeLabel(i) {
-    if (!i.reconfigurable) return $t('integration.managed');
-    return i.configured ? $t('integration.configured') : $t('integration.notSet');
+  let saveBusy = $state(false);
+  let saveMsg = $state('');
+  let saveNote = $state('');
+  let generated = $state([]);
+
+  let currentLocale = $derived($locale);
+  let shown = $derived(integrations.filter((integration) => integration.category === activeCat));
+
+  function badgeLabel(integration) {
+    if (!integration.reconfigurable) return $t('integration.managed');
+    return integration.configured ? $t('integration.configured') : $t('integration.notSet');
   }
 
-  // Merge localized content (i18n) over the backend field's English help/guide.
-  function content(f) {
-    const loc = fieldContent(currentLocale, f.key);
+  function content(field) {
+    const localized = fieldContent(currentLocale, field.key);
     return {
-      help: loc.help ?? f.help,
-      steps: loc.steps ?? f.guide?.steps ?? null,
-      link: f.guide?.link ?? null,
-      linkLabel: loc.linkLabel ?? f.guide?.link_label ?? null,
+      help: localized.help ?? field.help,
+      steps: localized.steps ?? field.guide?.steps ?? null,
+      link: field.guide?.link ?? null,
+      linkLabel: localized.linkLabel ?? field.guide?.link_label ?? null,
     };
   }
 
   async function load() {
-    const r = await fetch('/api/integrations');
-    if (!r.ok) {
-      loadError = `integrations failed: HTTP ${r.status}`;
-      return;
+    loadError = '';
+    try {
+      const response = await fetch('/api/integrations');
+      if (response.status === 401) {
+        authPhase = 'login';
+        return;
+      }
+      if (!response.ok) {
+        loadError = `Integrations failed: HTTP ${response.status}`;
+        return;
+      }
+
+      const state = await response.json();
+      integrations = state.integrations ?? [];
+      categories = state.categories ?? [];
+      if (!categories.includes(activeCat)) activeCat = categories[0] ?? '';
+      if (drawer) drawer = integrations.find((integration) => integration.group === drawer.group) ?? null;
+    } catch {
+      loadError = $t('auth.unreachable');
     }
-    const s = await r.json();
-    integrations = s.integrations;
-    categories = s.categories;
-    if (drawer) drawer = integrations.find((i) => i.group === drawer.group) ?? null; // refresh the open drawer
   }
 
-  // ── auth: which screen to show, then login / create-password / logout ─────────────────────
   async function checkSession() {
+    authPhase = 'checking';
+    authError = '';
+    loadError = '';
     try {
-      const s = await (await fetch('/api/session')).json();
-      if (!s.initialized) authPhase = 'setup';
-      else if (!s.authenticated) authPhase = 'login';
+      const response = await fetch('/api/session', { cache: 'no-store' });
+      if (!response.ok) throw new Error('session unavailable');
+      const session = await response.json();
+      if (!session.initialized) authPhase = 'setup';
+      else if (!session.authenticated) authPhase = 'login';
       else {
         authPhase = 'ready';
         await load();
       }
     } catch {
-      loadError = 'cannot reach the admin API';
+      loadError = $t('auth.unreachable');
     }
   }
+
   async function doSetup() {
+    if (authBusy) return;
     authError = '';
-    if (pw.length < 12) return (authError = $t('auth.tooShort'));
-    if (pw !== pw2) return (authError = $t('auth.mismatch'));
+    if (pw.length < 12) {
+      authError = $t('auth.tooShort');
+      return;
+    }
+    if (pw !== pw2) {
+      authError = $t('auth.mismatch');
+      return;
+    }
+
     authBusy = true;
     try {
       const bootstrap_token = new URLSearchParams(location.search).get('token') ?? '';
-      const r = await fetch('/api/admin/setup', {
+      const response = await fetch('/api/admin/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw, bootstrap_token }),
       });
-      if (!r.ok) return (authError = (await r.json().catch(() => ({}))).detail ?? `HTTP ${r.status}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        authError = body.detail ?? `HTTP ${response.status}`;
+        return;
+      }
       pw = pw2 = '';
       authPhase = 'ready';
       await load();
+    } catch {
+      authError = $t('auth.unreachable');
     } finally {
       authBusy = false;
     }
   }
+
   async function doLogin() {
+    if (authBusy) return;
     authError = '';
     authBusy = true;
     try {
-      const r = await fetch('/api/login', {
+      const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw }),
       });
-      if (!r.ok) return (authError = $t('auth.badPassword'));
+      if (!response.ok) {
+        authError = response.status === 401 ? $t('auth.badPassword') : `HTTP ${response.status}`;
+        return;
+      }
       pw = '';
       authPhase = 'ready';
       await load();
+    } catch {
+      authError = $t('auth.unreachable');
     } finally {
       authBusy = false;
     }
   }
+
   async function doLogout() {
-    await fetch('/api/logout', { method: 'POST' });
-    pw = pw2 = '';
-    drawer = null;
-    authPhase = 'login';
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } finally {
+      pw = pw2 = '';
+      drawer = null;
+      authPhase = 'login';
+    }
   }
 
   async function validateField(key) {
@@ -117,48 +161,56 @@
       delete results[key];
       return;
     }
+
     busy[key] = true;
     try {
-      const r = await fetch('/api/validate', {
+      const response = await fetch('/api/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value }),
       });
-      results[key] = r.ok ? await r.json() : { ok: false, detail: `HTTP ${r.status}` };
+      results[key] = response.ok
+        ? await response.json()
+        : { ok: false, detail: `HTTP ${response.status}` };
+    } catch {
+      results[key] = { ok: false, detail: $t('auth.unreachable') };
     } finally {
       busy[key] = false;
     }
   }
 
-  function openDrawer(integ) {
-    if (!integ.reconfigurable) return;
-    drawer = integ;
+  function openDrawer(integration) {
+    if (!integration.reconfigurable) return;
+    drawer = integration;
     values = {};
     results = {};
     generated = [];
     saveMsg = saveNote = '';
   }
+
   function closeDrawer() {
     drawer = null;
   }
 
-  // Save one integration's credentials → .env (+ generated internals). The recreate to make it
-  // take effect live arrives in C2; C1 reports the deferral (body.recreate.note).
   async function saveIntegration() {
-    if (!drawer) return;
+    if (!drawer || saveBusy) return;
     saveBusy = true;
     saveMsg = saveNote = '';
     try {
       const payload = {};
-      for (const [k, v] of Object.entries(values)) if ((v ?? '').trim()) payload[k] = v.trim();
-      const r = await fetch(`/api/integrations/${drawer.group}`, {
+      for (const [key, value] of Object.entries(values)) {
+        if ((value ?? '').trim()) payload[key] = value.trim();
+      }
+      const response = await fetch(`/api/integrations/${drawer.group}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: payload }),
       });
-      const body = await r.json().catch(() => ({}));
-      if (body.results) for (const [k, res] of Object.entries(body.results)) results[k] = { key: k, ...res };
-      if (!r.ok || !body.applied) {
+      const body = await response.json().catch(() => ({}));
+      if (body.results) {
+        for (const [key, result] of Object.entries(body.results)) results[key] = { key, ...result };
+      }
+      if (!response.ok || !body.applied) {
         saveMsg = 'error';
         saveNote = body.detail ?? $t('integration.saveFailed');
         return;
@@ -168,835 +220,442 @@
       saveNote = recreateNote(body.recreate);
       values = {};
       await load();
+    } catch {
+      saveMsg = 'error';
+      saveNote = $t('auth.unreachable');
     } finally {
       saveBusy = false;
     }
   }
 
-  // Turn the backend's recreate result into a human line: live-applied, apply-failed, or "on restart".
-  function recreateNote(rec) {
-    if (!rec) return '';
-    if (!rec.target) return rec.note ?? '';
-    return rec.ok
-      ? `${$t('integration.liveOk')} (${rec.target})`
-      : `${$t('integration.applyFailed')}: ${rec.detail ?? ''}`;
+  function recreateNote(recreate) {
+    if (!recreate) return '';
+    if (!recreate.target) return recreate.note ?? '';
+    return recreate.ok
+      ? `${$t('integration.liveOk')} (${recreate.target})`
+      : `${$t('integration.applyFailed')}: ${recreate.detail ?? ''}`;
   }
 
-  // Enable/disable an integration → recreate its sidecar (inert when disabled). Auto-apply groups only.
   async function doToggle(enabled) {
-    if (!drawer) return;
+    if (!drawer || saveBusy) return;
     saveBusy = true;
     saveMsg = saveNote = '';
     try {
-      const r = await fetch(`/api/integrations/${drawer.group}/toggle`, {
+      const response = await fetch(`/api/integrations/${drawer.group}/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
-      const body = await r.json().catch(() => ({}));
-      saveMsg = r.ok ? 'ok' : 'error';
-      saveNote = r.ok ? recreateNote(body.recreate) : (body.detail ?? '');
+      const body = await response.json().catch(() => ({}));
+      saveMsg = response.ok ? 'ok' : 'error';
+      saveNote = response.ok ? recreateNote(body.recreate) : (body.detail ?? `HTTP ${response.status}`);
       await load();
+    } catch {
+      saveMsg = 'error';
+      saveNote = $t('auth.unreachable');
     } finally {
       saveBusy = false;
     }
   }
 
-  function pickLang(code) {
-    setLocale(code);
-    langOpen = false;
-  }
-
-  checkSession();
+  onMount(checkSession);
 </script>
 
-<div class="shell">
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">◇</span> {$t('app.title')} <span class="brand-sub">{$t('app.subtitle')}</span>
-    </div>
-    <div class="topright">
-      {#if authPhase === 'ready'}
-        <button class="langbtn" onclick={doLogout}>⇥ {$t('auth.logout')}</button>
-      {/if}
-      <div class="langwrap">
-      <button class="langbtn" onclick={() => (langOpen = !langOpen)} aria-haspopup="listbox">
-        🌐 {LOCALES.find((l) => l.code === currentLocale)?.name}
-        <span class="chev">▾</span>
-      </button>
-      {#if langOpen}
-        <ul class="langmenu" role="listbox">
-          {#each LOCALES as l (l.code)}
-            <li>
-              <button class:active={l.code === currentLocale} onclick={() => pickLang(l.code)}>{l.name}</button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-    </div>
-  </header>
+<svelte:head>
+  <title>Shimpz Capsule Admin</title>
+  <meta
+    name="description"
+    content="Manage Shimpz Capsules, Space-wide Drivers, and integrations from your local control plane."
+  />
+</svelte:head>
 
+<AdminShell active="integrations" authenticated={authPhase === 'ready'} actions={shellActions}>
   {#if authPhase !== 'ready'}
-    <main class="card">
-      {#if loadError}<div class="banner err">{loadError}</div>{/if}
-      {#if authPhase === 'setup' || authPhase === 'login'}
-        <div class="pane">
-          <h1>{authPhase === 'setup' ? $t('auth.setupTitle') : $t('auth.loginTitle')}</h1>
-          <p class="lead">{authPhase === 'setup' ? $t('auth.setupLead') : $t('auth.loginLead')}</p>
-          <div class="authform">
-            <input
-              type="password"
-              placeholder={$t('auth.password')}
-              bind:value={pw}
-              autocomplete={authPhase === 'setup' ? 'new-password' : 'current-password'}
-              onkeydown={(e) => e.key === 'Enter' && (authPhase === 'setup' ? doSetup() : doLogin())}
-            />
-            {#if authPhase === 'setup'}
-              <input
-                type="password"
-                placeholder={$t('auth.confirm')}
-                bind:value={pw2}
-                autocomplete="new-password"
-                onkeydown={(e) => e.key === 'Enter' && doSetup()}
-              />
-            {/if}
-            {#if authError}<div class="banner err">{authError}</div>{/if}
-            <button class="btn primary" onclick={authPhase === 'setup' ? doSetup : doLogin} disabled={authBusy}>
-              {authPhase === 'setup' ? $t('auth.create') : $t('auth.signIn')}
-            </button>
-          </div>
-        </div>
-      {:else}
-        <div class="pane">
-          <div class="verdict working"><span class="spinner"></span><div><h1>{$t('auth.checking')}</h1></div></div>
-        </div>
-      {/if}
-    </main>
+    <AuthScreen
+      phase={authPhase}
+      bind:password={pw}
+      bind:confirmation={pw2}
+      error={authError || loadError}
+      busy={authBusy}
+      onSubmit={authPhase === 'setup' ? doSetup : doLogin}
+      onRetry={checkSession}
+    />
   {:else}
-    {#if loadError}<div class="banner err">{loadError}</div>{/if}
+    <section class="workspace-header" aria-labelledby="workspace-title">
+      <div>
+        <p class="kicker">{$t('workspace.kicker')}</p>
+        <h1 id="workspace-title">{$t('workspace.title')}</h1>
+        <p class="workspace-lead">{$t('workspace.lead')}</p>
+      </div>
 
-    <nav class="tabs" aria-label="categories">
-      {#each categories as cat (cat)}
-        <button class="tab" class:active={cat === activeCat} onclick={() => (activeCat = cat)}>
-          {$t(`category.${cat}`)}
+      <a class="capsule-link" href="/capsules/">
+        <span class="capsule-kicker">{$t('workspace.capsulesKicker')}</span>
+        <strong>{$t('workspace.capsulesTitle')}</strong>
+        <span>{$t('workspace.capsulesLead')}</span>
+        <b>{$t('workspace.openCapsules')} <span aria-hidden="true">→</span></b>
+      </a>
+    </section>
+
+    {#if loadError}<div class="page-message error" role="alert">{loadError}</div>{/if}
+
+    <nav class="category-tabs" aria-label="Integration categories">
+      {#each categories as category (category)}
+        <button
+          type="button"
+          class:active={category === activeCat}
+          aria-pressed={category === activeCat}
+          onclick={() => (activeCat = category)}
+        >
+          {$t(`category.${category}`)}
         </button>
       {/each}
     </nav>
 
-    <div class="grid">
-      {#each shown as integ (integ.group)}
-        <button class="intcard" disabled={!integ.reconfigurable} onclick={() => openDrawer(integ)}>
-          <img class="intlogo" src={`/integrations/${integ.logo}`} alt={integ.public_name} width="40" height="40" />
-          <div class="intbody">
-            <div class="intname">{integ.public_name}</div>
-            <div class="intblurb">{integ.blurb}</div>
-          </div>
-          <span
-            class="intbadge"
-            class:on={integ.configured && integ.reconfigurable}
-            class:managed={!integ.reconfigurable}
-          >{badgeLabel(integ)}</span>
-        </button>
-      {/each}
-    </div>
+    {#if shown.length}
+      <div class="integration-grid">
+        {#each shown as integration (integration.group)}
+          <button
+            class="integration-card"
+            type="button"
+            disabled={!integration.reconfigurable}
+            onclick={() => openDrawer(integration)}
+          >
+            <img src={`/integrations/${integration.logo}`} alt="" width="44" height="44" />
+            <span class="integration-copy">
+              <strong>{integration.public_name}</strong>
+              <span>{integration.blurb}</span>
+            </span>
+            <span
+              class="badge"
+              class:configured={integration.configured && integration.reconfigurable}
+              class:managed={!integration.reconfigurable}
+            >{badgeLabel(integration)}</span>
+            {#if integration.reconfigurable}<span class="arrow" aria-hidden="true">↗</span>{/if}
+          </button>
+        {/each}
+      </div>
+    {:else if !loadError}
+      <div class="empty-state">{$t('workspace.empty')}</div>
+    {/if}
   {/if}
-</div>
+</AdminShell>
 
 {#if drawer}
-  <div class="drawer-backdrop" onclick={closeDrawer} role="presentation"></div>
-  <aside class="drawer">
-    <header class="drawer-head">
-      <img class="intlogo" src={`/integrations/${drawer.logo}`} alt={drawer.public_name} width="32" height="32" />
-      <div class="drawer-title">
-        <h2>{drawer.public_name}</h2>
-        <p class="drawer-blurb">{drawer.blurb}</p>
-      </div>
-      <button class="closebtn" onclick={closeDrawer} aria-label={$t('integration.close')}>✕</button>
-    </header>
-    <div class="drawer-body">
-      {#if drawer.auto_apply}
-        <div class="drawer-toggle">
-          <span class="tstatus" class:on={drawer.enabled}>
-            {drawer.enabled ? $t('integration.configured') : $t('integration.notSet')}
-          </span>
-          <button class="btn small" onclick={() => doToggle(!drawer.enabled)} disabled={saveBusy}>
-            {drawer.enabled ? $t('integration.disable') : $t('integration.enable')}
-          </button>
-        </div>
-      {/if}
-      {#each drawer.fields.filter((f) => !f.generated) as f (f.key)}
-        {@render fieldRow(f)}
-      {/each}
-    </div>
-    <footer class="drawer-foot">
-      {#if saveMsg === 'ok'}<div class="banner ok">✅ {$t('integration.saved')}{saveNote ? ` — ${saveNote}` : ''}</div>{/if}
-      {#if saveMsg === 'error'}<div class="banner err">⚠️ {saveNote}</div>{/if}
-      {#if generated.length}<p class="note">🔒 {$t('review.generatedNote')}</p>{/if}
-      <button class="btn primary" onclick={saveIntegration} disabled={saveBusy}>
-        {saveBusy ? $t('integration.saving') : $t('integration.save')}
-      </button>
-    </footer>
-  </aside>
+  <IntegrationDrawer
+    integration={drawer}
+    bind:values
+    {results}
+    {busy}
+    {saveBusy}
+    {saveMsg}
+    {saveNote}
+    {generated}
+    contentFor={content}
+    onClose={closeDrawer}
+    onValidate={validateField}
+    onSave={saveIntegration}
+    onToggle={doToggle}
+  />
 {/if}
 
-{#snippet fieldRow(f)}
-  {@const c = content(f)}
-  <div class="field">
-    <div class="head">
-      <label for={f.key}><code>{f.key}</code></label>
-      {#if f.required}<span class="tag req">{$t('field.required')}</span>{:else}<span class="tag opt">{$t('field.optional')}</span>{/if}
-      {#if f.set}<span class="setmark">{$t('field.saved')} {f.masked}</span>{/if}
-      {#if results[f.key]}
-        <span class={results[f.key].ok ? 'res ok' : 'res err'}>
-          {results[f.key].ok ? '✓' : '✗'} {results[f.key].detail}
-        </span>
-      {/if}
-    </div>
-    {#if c.help}<p class="help">{c.help}</p>{/if}
-    <div class="row">
-      <input
-        id={f.key}
-        type={f.secret ? 'password' : 'text'}
-        placeholder={f.set ? $t('field.replace') : ''}
-        bind:value={values[f.key]}
-        onblur={() => validateField(f.key)}
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button class="btn small" onclick={() => validateField(f.key)} disabled={busy[f.key] || !(values[f.key] ?? '').trim()}>
-        {busy[f.key] ? $t('field.testing') : f.live ? $t('field.test') : $t('field.check')}
-      </button>
-    </div>
-    {#if c.steps}
-      <div class="steps">
-        <ol>{#each c.steps as s, i (i)}<li>{s}</li>{/each}</ol>
-        {#if c.link}
-          <a class="steps-link" href={c.link} target="_blank" rel="noopener noreferrer">{c.linkLabel ?? $t('field.open')} ↗</a>
-        {/if}
-      </div>
-    {/if}
-  </div>
+{#snippet shellActions()}
+  <LocaleMenu compact={authPhase !== 'ready'} />
+  {#if authPhase === 'ready'}
+    <button class="logout" type="button" onclick={doLogout}>
+      <span class="logout-text">{$t('auth.logout')}</span><span aria-hidden="true">↪</span>
+    </button>
+  {/if}
 {/snippet}
 
 <style>
-  .shell {
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 1.5rem 1.1rem 4rem;
+  .logout {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.45rem;
+    border: 0;
+    padding: 0 0.8rem;
+    background: var(--surface-1);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
-  .topbar {
+
+  .logout:hover {
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .workspace-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(19rem, 25rem);
+    align-items: end;
+    gap: clamp(2rem, 7vw, 6rem);
+    margin-bottom: clamp(2rem, 5vw, 3.5rem);
+  }
+
+  .kicker,
+  .capsule-kicker {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .kicker {
+    margin: 0 0 0.9rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.98;
+    letter-spacing: -0.075em;
+  }
+
+  .workspace-lead {
+    max-width: 55ch;
+    margin: 1.1rem 0 0;
+    color: var(--text-dim);
+    font-size: 1.02rem;
+    line-height: 1.7;
+  }
+
+  .capsule-link {
+    position: relative;
+    display: grid;
+    gap: 0.35rem;
+    padding: 1.35rem;
+    background: linear-gradient(145deg, var(--surface-2), var(--surface-1));
+    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    color: var(--text);
+    text-decoration: none;
+    transition: transform 0.15s var(--ease), filter 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+
+  .capsule-link::before {
+    position: absolute;
+    top: 0;
+    right: var(--cut);
+    left: var(--cut);
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+    content: '';
+  }
+
+  .capsule-link:hover {
+    box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.6);
+    filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.16));
+    transform: translateY(-2px);
+  }
+
+  .capsule-link strong {
+    font-family: var(--font-mono);
+    font-size: 1.08rem;
+    letter-spacing: -0.025em;
+  }
+
+  .capsule-link > span:not(.capsule-kicker) {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .capsule-link b {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.4rem;
-  }
-  .brand {
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-  }
-  .logo {
+    margin-top: 0.65rem;
     color: var(--accent);
-  }
-  .brand-sub {
-    color: var(--text-dim);
-    font-weight: 400;
-  }
-  .langwrap {
-    position: relative;
-  }
-  .langbtn {
-    background: var(--surface-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    padding: 0.4rem 0.7rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-  .chev {
-    color: var(--text-faint);
-  }
-  .langmenu {
-    position: absolute;
-    inset-inline-end: 0;
-    top: calc(100% + 6px);
-    margin: 0;
-    padding: 0.3rem;
-    list-style: none;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow);
-    z-index: 20;
-    min-width: 150px;
-  }
-  .langmenu button {
-    display: block;
-    width: 100%;
-    text-align: start;
-    background: none;
-    border: none;
-    color: var(--text);
-    padding: 0.45rem 0.6rem;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-  .langmenu button:hover {
-    background: var(--surface-3);
-  }
-  .langmenu button.active {
-    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
-  .stepper {
+  .page-message {
+    padding: 0.8rem 1rem;
+    margin: 0 0 1.25rem;
+    border-inline-start: 2px solid currentColor;
+    background: var(--surface-1);
+    font-size: 0.85rem;
+  }
+
+  .error {
+    color: var(--danger);
+  }
+
+  .category-tabs {
     display: flex;
-    gap: 0.4rem;
-    margin-bottom: 1rem;
+    gap: 0.35rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
     overflow-x: auto;
-    padding-bottom: 0.2rem;
+    scrollbar-width: thin;
   }
-  .node {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    color: var(--text-faint);
+
+  .category-tabs button {
+    min-height: 2.55rem;
     flex: none;
+    border: 1px solid var(--border-strong);
+    padding: 0 0.85rem;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
   }
-  .node .dot {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
+
+  .category-tabs button:hover {
+    border-color: var(--text-faint);
+    color: var(--text);
+  }
+
+  .category-tabs button.active {
+    border-color: transparent;
+    background: linear-gradient(100deg, var(--accent), var(--accent-alt));
+    color: var(--accent-ink);
+  }
+
+  .integration-grid {
     display: grid;
-    place-items: center;
-    font-size: 0.75rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
   }
-  .node .lbl {
+
+  .integration-card {
+    position: relative;
+    display: grid;
+    min-height: 7.5rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.9rem;
+    border: 0;
+    padding: 1.15rem;
+    background: linear-gradient(145deg, var(--surface-2), var(--surface-1));
+    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text);
+    cursor: pointer;
+    text-align: start;
+    transition: transform 0.12s var(--ease), box-shadow 0.15s var(--ease), filter 0.15s var(--ease);
+  }
+
+  .integration-card:hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.55);
+    filter: drop-shadow(0 0 9px rgba(0, 240, 255, 0.13));
+    transform: translateY(-2px);
+  }
+
+  .integration-card:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .integration-card img {
+    object-fit: contain;
+  }
+
+  .integration-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.25rem;
+  }
+
+  .integration-copy strong {
+    font-family: var(--font-mono);
+    font-size: 0.94rem;
+    letter-spacing: -0.02em;
+  }
+
+  .integration-copy > span {
+    color: var(--text-dim);
     font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .badge {
+    padding: 0.16rem 0.42rem;
+    border: 1px solid var(--border-strong);
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
-  .node.cur .dot {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border-color: var(--accent);
-  }
-  .node.cur .lbl {
-    color: var(--text);
-    font-weight: 600;
-  }
-  .node.done .dot {
-    background: var(--accent-strong);
-    color: #fff;
-    border-color: var(--accent-strong);
+
+  .badge.configured {
+    border-color: rgba(5, 255, 161, 0.4);
+    color: var(--success);
   }
 
-  .card {
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow);
-    padding: 1.6rem 1.5rem 1.2rem;
-  }
-  .pane h1 {
-    font-size: 1.35rem;
-    margin: 0 0 0.4rem;
-  }
-  .lead {
-    color: var(--text-dim);
-    margin: 0 0 1.2rem;
-  }
-  .needs {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    padding: 1rem 1.1rem;
-  }
-  .needs-title {
-    font-weight: 600;
-    margin-bottom: 0.4rem;
-  }
-  .needs ul {
-    margin: 0.2rem 0 0.6rem;
-    padding-inline-start: 1.2rem;
-    color: var(--text-dim);
-  }
-  .note {
-    color: var(--text-dim);
-    font-size: 0.85rem;
-    margin: 0.4rem 0 0;
+  .badge.managed {
+    color: var(--text-faint);
   }
 
-  .field {
-    padding: 0.9rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .field:last-child {
-    border-bottom: none;
-  }
-  .head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .head code {
+  .arrow {
+    position: absolute;
+    right: 1rem;
+    bottom: 0.8rem;
+    color: var(--accent);
+    font-family: var(--font-mono);
     font-size: 0.9rem;
   }
-  .tag {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 0.05rem 0.4rem;
-    border-radius: 999px;
-  }
-  .tag.req {
-    background: rgba(240, 104, 95, 0.14);
-    color: var(--danger);
-  }
-  .tag.opt {
-    background: var(--surface-3);
+
+  .empty-state {
+    padding: 3rem 1.25rem;
+    border: 1px dashed var(--border-strong);
     color: var(--text-faint);
-  }
-  .setmark {
-    color: var(--accent);
-    font-size: 0.78rem;
-  }
-  .res {
-    font-size: 0.8rem;
-  }
-  .res.ok {
-    color: var(--accent);
-  }
-  .res.err {
-    color: var(--danger);
-  }
-  .help {
-    color: var(--text-dim);
-    font-size: 0.86rem;
-    margin: 0.35rem 0 0.5rem;
-  }
-  .row {
-    display: flex;
-    gap: 0.5rem;
-  }
-  input {
-    flex: 1;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: var(--r-sm);
-    padding: 0.6rem 0.8rem;
-    font-family: ui-monospace, Menlo, monospace;
-    font-size: 0.86rem;
-    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
-  }
-  input:focus {
-    outline: none;
-    border-color: var(--accent-strong);
-    box-shadow: var(--ring);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-align: center;
   }
 
-  .btn {
-    border-radius: var(--r-sm);
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text);
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: transform 0.05s var(--ease), background 0.15s var(--ease), opacity 0.15s;
-  }
-  .btn:active {
-    transform: translateY(1px);
-  }
-  .btn:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .btn.small {
-    padding: 0.55rem 0.8rem;
-    font-size: 0.82rem;
-    flex: none;
-  }
-  .btn.ghost {
-    background: transparent;
-  }
-  .btn.primary {
-    background: var(--accent-strong);
-    border-color: var(--accent-strong);
-    color: #fff;
-    font-weight: 600;
-  }
-  .btn.accent {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
-    font-weight: 700;
-  }
+  @media (max-width: 850px) {
+    .workspace-header {
+      grid-template-columns: 1fr;
+      align-items: start;
+      gap: 2rem;
+    }
 
-  .nav {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-  }
-  .spacer {
-    flex: 1;
-  }
-  .hint {
-    color: var(--text-faint);
-    font-size: 0.82rem;
-    margin: 0.5rem 0 0;
-  }
-
-  .steps {
-    margin-top: 0.5rem;
-    border-inline-start: 2px solid var(--border-strong);
-    padding-inline-start: 0.85rem;
-  }
-  .steps ol {
-    margin: 0.2rem 0;
-    padding-inline-start: 1.1rem;
-    font-size: 0.84rem;
-    color: var(--text-dim);
-  }
-  .steps li {
-    margin: 0.3rem 0;
-  }
-  .steps li::marker {
-    color: var(--text-faint);
-  }
-  .steps-link {
-    display: inline-block;
-    margin-top: 0.35rem;
-    font-size: 0.84rem;
-    text-decoration: none;
-  }
-  .steps-link:hover {
-    text-decoration: underline;
-  }
-
-  .actions {
-    display: flex;
-    gap: 0.7rem;
-    margin-top: 1rem;
-  }
-  .verdict {
-    display: flex;
-    align-items: center;
-    gap: 0.9rem;
-    padding: 0.4rem 0 0.6rem;
-  }
-  .verdict h1 {
-    margin: 0;
-    font-size: 1.25rem;
-  }
-  .verdict .lead {
-    margin: 0.2rem 0 0;
-  }
-  .verdict.ok .vicon,
-  .verdict.bad .vicon {
-    font-size: 1.9rem;
-    line-height: 1;
-  }
-  .spinner {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    border: 3px solid var(--surface-3);
-    border-top-color: var(--accent);
-    animation: spin 0.8s linear infinite;
-    flex: none;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
+    .capsule-link {
+      width: min(100%, 31rem);
     }
   }
 
-  .banner {
-    border-radius: var(--r-md);
-    padding: 0.7rem 1rem;
-    margin: 0.75rem 0;
-    border: 1px solid var(--border);
-    font-size: 0.9rem;
-  }
-  .banner.ok {
-    border-color: var(--accent-strong);
-    color: var(--accent);
-  }
-  .banner.err {
-    border-color: var(--danger);
-    color: var(--danger);
-  }
-  .banner.big {
-    font-size: 1rem;
-  }
-  .banner pre {
-    white-space: pre-wrap;
-    color: var(--text);
-    font-size: 0.75rem;
-    margin: 0;
+  @media (max-width: 680px) {
+    .integration-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
-  .stack {
-    margin-top: 1.2rem;
-  }
-  .stack-title {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-  .svclist {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 0.35rem;
-  }
-  .svclist li {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    padding: 0.4rem 0.65rem;
-    font-size: 0.85rem;
-  }
-  .sdot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--text-faint);
-    flex: none;
-  }
-  .sdot.up {
-    background: var(--accent);
-  }
-  .sdot.pending {
-    background: var(--warn);
-  }
-  .sdot.down {
-    background: var(--danger);
-  }
-  .muted {
-    color: var(--text-faint);
-    font-size: 0.78rem;
-  }
+  @media (max-width: 520px) {
+    .logout-text {
+      display: none;
+    }
 
-  .topright {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .authform {
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-    max-width: 360px;
-    margin-top: 0.4rem;
-  }
-  .authform input {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: var(--r-sm);
-    padding: 0.6rem 0.8rem;
-    font-size: 0.9rem;
-    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
-  }
-  .authform input:focus {
-    outline: none;
-    border-color: var(--accent-strong);
-    box-shadow: var(--ring);
-  }
-  .authform .btn {
-    align-self: flex-start;
-  }
+    .integration-card {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
 
-  /* ── marketplace ─────────────────────────────────────────────────────────────────────── */
-  .tabs {
-    display: flex;
-    gap: 0.3rem;
-    margin-bottom: 1.1rem;
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-  }
-  .tab {
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-dim);
-    padding: 0.55rem 0.85rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-    margin-bottom: -1px;
-    white-space: nowrap;
-  }
-  .tab:hover {
-    color: var(--text);
-  }
-  .tab.active {
-    color: var(--text);
-    border-bottom-color: var(--accent);
-    font-weight: 600;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 0.8rem;
-  }
-  .intcard {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.8rem;
-    text-align: start;
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    padding: 1rem;
-    cursor: pointer;
-    color: var(--text);
-    transition: border-color 0.15s var(--ease), transform 0.05s var(--ease), background 0.15s var(--ease);
-  }
-  .intcard:hover:not(:disabled) {
-    border-color: var(--border-strong);
-    background: var(--surface-2);
-  }
-  .intcard:active:not(:disabled) {
-    transform: translateY(1px);
-  }
-  .intcard:disabled {
-    cursor: default;
-    opacity: 0.72;
-  }
-  .intlogo {
-    border-radius: var(--r-md);
-    flex: none;
-    display: block;
-  }
-  .intbody {
-    flex: 1;
-    min-width: 0;
-  }
-  .intname {
-    font-weight: 600;
-    font-size: 1rem;
-    margin-bottom: 0.15rem;
-  }
-  .intblurb {
-    color: var(--text-dim);
-    font-size: 0.82rem;
-    line-height: 1.35;
-  }
-  .intbadge {
-    flex: none;
-    font-size: 0.64rem;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 0.12rem 0.5rem;
-    border-radius: 999px;
-    background: var(--surface-3);
-    color: var(--text-faint);
-    white-space: nowrap;
-  }
-  .intbadge.on {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-  }
-
-  /* ── config drawer ───────────────────────────────────────────────────────────────────── */
-  .drawer-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 40;
-  }
-  .drawer {
-    position: fixed;
-    inset-block: 0;
-    inset-inline-end: 0;
-    width: min(560px, 100%);
-    background: var(--surface-1);
-    border-inline-start: 1px solid var(--border-strong);
-    box-shadow: var(--shadow);
-    z-index: 50;
-    display: flex;
-    flex-direction: column;
-  }
-  .drawer-head {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 1.1rem 1.3rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .drawer-title {
-    flex: 1;
-    min-width: 0;
-  }
-  .drawer-head h2 {
-    margin: 0;
-    font-size: 1.15rem;
-  }
-  .drawer-blurb {
-    margin: 0.15rem 0 0;
-    color: var(--text-dim);
-    font-size: 0.82rem;
-  }
-  .closebtn {
-    background: none;
-    border: none;
-    color: var(--text-faint);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 0.3rem;
-    flex: none;
-  }
-  .closebtn:hover {
-    color: var(--text);
-  }
-  .drawer-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0.3rem 1.3rem;
-  }
-  .drawer-foot {
-    padding: 1rem 1.3rem;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  .drawer-foot .btn {
-    align-self: flex-start;
-  }
-  .drawer-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.7rem;
-    padding: 0.6rem 0.8rem;
-    margin: 0.5rem 0 0.3rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-  }
-  .tstatus {
-    font-size: 0.85rem;
-    color: var(--text-faint);
-  }
-  .tstatus.on {
-    color: var(--accent);
+    .badge {
+      grid-column: 2;
+      justify-self: start;
+    }
   }
 </style>
