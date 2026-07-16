@@ -100,6 +100,10 @@ test('installed inventory errors and malformed records fail honestly instead of 
       { assistant: 'hello-pulse', status: 'running' },
       { assistant: 'hello-pulse', status: 'running' },
     ],
+    Array.from({ length: 129 }, (_value, index) => ({
+      assistant: `assistant-${index}`,
+      status: 'running',
+    })),
   ]) {
     await assert.rejects(
       listInstalledAssistants(async () => response(200, { assistants }), 'capsule_1'),

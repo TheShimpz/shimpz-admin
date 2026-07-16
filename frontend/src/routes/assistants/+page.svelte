@@ -8,6 +8,8 @@
     STORE_FRAME_MIN_HEIGHT,
     acknowledgeStoreFrame,
     acknowledgeStoreInstallIntent,
+    acknowledgeStoreUninstallIntent,
+    postStoreAssistantState,
   } from '$lib/assistantIntent.js';
   import { evaluateHelloPulse, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
@@ -135,6 +137,8 @@
   let frameHeight = $state(420);
   let frameReload = $state(0);
   let frameTimeout;
+  let storeSnapshotStatus = 'loading';
+  let storeSnapshotInstalled = [];
 
   let currentLocale = $derived($locale);
   let copy = $derived(LOCAL_COPY[currentLocale] ?? LOCAL_COPY.en);
@@ -200,28 +204,46 @@
     return output;
   }
 
+  function publishStoreSnapshot(
+    status = storeSnapshotStatus,
+    installed = storeSnapshotInstalled,
+  ) {
+    storeSnapshotStatus = status;
+    storeSnapshotInstalled = status === 'ready' ? [...installed] : [];
+    postStoreAssistantState(
+      iframeElement?.contentWindow,
+      storeSnapshotStatus,
+      storeSnapshotInstalled,
+    );
+  }
+
   async function loadInstalled(capsuleId = activeCapsule) {
     const attempt = ++inventoryAttempt;
     installedAssistants = [];
     inventoryError = '';
+    inventoryPhase = 'loading';
+    publishStoreSnapshot('loading', []);
     if (!capsuleId) {
       inventoryPhase = 'idle';
+      publishStoreSnapshot('ready', []);
       return;
     }
-    inventoryPhase = 'loading';
     try {
       const inventory = await listInstalledAssistants(fetch, capsuleId);
       if (attempt !== inventoryAttempt || capsuleId !== activeCapsule) return;
       installedAssistants = inventory;
       inventoryPhase = 'ready';
+      publishStoreSnapshot('ready', inventory.map((entry) => entry.assistant));
     } catch (error) {
       if (attempt !== inventoryAttempt || capsuleId !== activeCapsule) return;
       inventoryError = error instanceof Error ? error.message : copy.loadFailed;
       inventoryPhase = 'error';
+      publishStoreSnapshot('error', []);
     }
   }
 
   async function selectCapsule(event) {
+    publishStoreSnapshot('loading', []);
     activeCapsule = event.currentTarget.value;
     const url = new URL(location.href);
     url.searchParams.set('capsule', activeCapsule);
@@ -233,6 +255,7 @@
   async function loadLocalData() {
     localDataPhase = 'loading';
     localError = '';
+    publishStoreSnapshot('loading', []);
     try {
       const [capsuleResponse, catalogResponse] = await Promise.all([
         fetch('/api/capsules', { cache: 'no-store', headers: { Accept: 'application/json' } }),
@@ -241,6 +264,7 @@
       if (capsuleResponse.status === 401 || catalogResponse.status === 401) {
         phase = 'needauth';
         localDataPhase = 'error';
+        publishStoreSnapshot('error', []);
         return;
       }
       const [capsuleBody, catalogBody] = await Promise.all([
@@ -264,6 +288,7 @@
       localError = error instanceof Error ? error.message : copy.loadFailed;
       catalog = [];
       localDataPhase = 'error';
+      publishStoreSnapshot('error', []);
     }
   }
 
@@ -362,10 +387,16 @@
       frameHeight = Math.min(STORE_FRAME_MAX_HEIGHT, Math.max(STORE_FRAME_MIN_HEIGHT, measuredHeight));
       framePhase = 'ready';
       clearFrameTimeout();
+      publishStoreSnapshot();
       return;
     }
-    if (!acknowledgeStoreInstallIntent(event, iframeElement?.contentWindow)) return;
-    void beginInstall(event.data.assistant);
+    if (acknowledgeStoreInstallIntent(event, iframeElement?.contentWindow)) {
+      void beginInstall(event.data.assistant);
+      return;
+    }
+    if (acknowledgeStoreUninstallIntent(event, iframeElement?.contentWindow)) {
+      void beginStoreUninstall(event.data.assistant);
+    }
   }
 
   async function confirmInstall() {
@@ -388,7 +419,10 @@
       activeCapsule = capsule.id;
       await loadInstalled(capsule.id);
     } catch (error) {
-      dialogError = error instanceof Error ? error.message : copy.genericFailure;
+      const actionError = error instanceof Error ? error.message : copy.genericFailure;
+      activeCapsule = capsule.id;
+      await loadInstalled(capsule.id);
+      dialogError = actionError;
       dialogMode = 'error';
     } finally {
       busy = false;
@@ -398,6 +432,7 @@
   function closeInstallDialog() {
     dialogAttempt += 1;
     confirmDialog?.close();
+    publishStoreSnapshot();
   }
 
   async function runHello() {
@@ -422,7 +457,10 @@
       assistant: assistant.assistant,
       capsule: activeCapsuleRecord.name,
     });
-    if (!window.confirm(question)) return;
+    if (!window.confirm(question)) {
+      publishStoreSnapshot();
+      return;
+    }
     busy = true;
     localError = '';
     try {
@@ -442,10 +480,23 @@
       };
       await loadInstalled(activeCapsuleRecord.id);
     } catch (error) {
-      localError = error instanceof Error ? error.message : copy.genericFailure;
+      const actionError = error instanceof Error ? error.message : copy.genericFailure;
+      await loadInstalled(activeCapsuleRecord.id);
+      localError = actionError;
     } finally {
       busy = false;
     }
+  }
+
+  async function beginStoreUninstall(assistantId) {
+    const installed = inventoryPhase === 'ready'
+      ? installedAssistants.find((entry) => entry.assistant === assistantId)
+      : null;
+    if (!activeCapsuleRecord || !installed || busy) {
+      publishStoreSnapshot();
+      return;
+    }
+    await uninstallInstalled(installed);
   }
 
   async function logout() {

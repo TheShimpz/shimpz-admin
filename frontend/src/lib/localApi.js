@@ -2,6 +2,7 @@ const CAPSULE_ID_RE = /^[a-z0-9_]{1,40}$/;
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9-]{0,79}$/;
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const HELLO_ID = 'hello-pulse';
+const MAX_INSTALLED_ASSISTANTS = 128;
 
 export class LocalApiError extends Error {
   constructor(message, status = 0) {
@@ -38,7 +39,7 @@ export async function listInstalledAssistants(fetcher, capsuleId) {
       response.status,
     );
   }
-  if (!Array.isArray(body.assistants)) {
+  if (!Array.isArray(body.assistants) || body.assistants.length > MAX_INSTALLED_ASSISTANTS) {
     throw new LocalApiError('The installed Assistant inventory is invalid.', response.status);
   }
 

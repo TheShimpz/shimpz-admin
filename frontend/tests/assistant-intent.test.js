@@ -9,9 +9,16 @@ import {
   STORE_FRAME_MIN_HEIGHT,
   STORE_FRAME_TYPE,
   STORE_ORIGIN,
+  STORE_STATE_MAX_ASSISTANTS,
+  STORE_STATE_TYPE,
+  UNINSTALL_ACK_TYPE,
+  UNINSTALL_INTENT,
   acknowledgeStoreFrame,
   acknowledgeStoreInstallIntent,
+  acknowledgeStoreUninstallIntent,
   acceptsStoreInstallIntent,
+  acceptsStoreUninstallIntent,
+  postStoreAssistantState,
   storeFrameHeight,
 } from '../src/lib/assistantIntent.js';
 
@@ -82,6 +89,41 @@ test('never acknowledges a rejected Store message', () => {
   assert.deepEqual(acknowledgements, []);
 });
 
+test('accepts and acknowledges only the exact Hello Pulse uninstall intent', () => {
+  const acknowledgements = [];
+  const iframeWindow = {
+    postMessage(message, targetOrigin) { acknowledgements.push({ message, targetOrigin }); },
+  };
+  const exact = { origin: STORE_ORIGIN, source: iframeWindow, data: { ...UNINSTALL_INTENT } };
+
+  assert.equal(acceptsStoreUninstallIntent(exact, iframeWindow), true);
+  assert.equal(acknowledgeStoreUninstallIntent(exact, iframeWindow), true);
+  assert.deepEqual(acknowledgements, [{
+    message: {
+      type: UNINSTALL_ACK_TYPE,
+      version: 1,
+      assistant: 'hello-pulse',
+      accepted: true,
+    },
+    targetOrigin: STORE_ORIGIN,
+  }]);
+
+  const rejected = [
+    { ...exact, origin: 'https://www.shimpz.com' },
+    { ...exact, source: {} },
+    { ...exact, data: { ...UNINSTALL_INTENT, type: INSTALL_INTENT.type } },
+    { ...exact, data: { ...UNINSTALL_INTENT, version: 2 } },
+    { ...exact, data: { ...UNINSTALL_INTENT, assistant: 'salesnator' } },
+    { ...exact, data: { ...UNINSTALL_INTENT, capsule: 'capsule_1' } },
+    { ...exact, data: null },
+  ];
+  for (const candidate of rejected) {
+    assert.equal(acceptsStoreUninstallIntent(candidate, iframeWindow), false);
+    assert.equal(acknowledgeStoreUninstallIntent(candidate, iframeWindow), false);
+  }
+  assert.equal(acknowledgements.length, 1);
+});
+
 test('accepts only exact bounded integer Store frame measurements', () => {
   const iframeWindow = {};
   const exact = {
@@ -135,4 +177,71 @@ test('acknowledges each valid Store frame without exposing local context', () =>
     null,
   );
   assert.equal(acknowledgements.length, 1);
+});
+
+test('posts only exact bounded Assistant Store state to the canonical iframe origin', () => {
+  const messages = [];
+  const iframeWindow = {
+    postMessage(message, targetOrigin) { messages.push({ message, targetOrigin }); },
+  };
+
+  assert.equal(postStoreAssistantState(iframeWindow, 'loading', []), true);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['hello-pulse', 'salesnator']), true);
+  assert.equal(postStoreAssistantState(iframeWindow, 'error', []), true);
+  assert.deepEqual(messages, [
+    {
+      message: { type: STORE_STATE_TYPE, version: 1, status: 'loading', installed: [] },
+      targetOrigin: STORE_ORIGIN,
+    },
+    {
+      message: {
+        type: STORE_STATE_TYPE,
+        version: 1,
+        status: 'ready',
+        installed: ['hello-pulse', 'salesnator'],
+      },
+      targetOrigin: STORE_ORIGIN,
+    },
+    {
+      message: { type: STORE_STATE_TYPE, version: 1, status: 'error', installed: [] },
+      targetOrigin: STORE_ORIGIN,
+    },
+  ]);
+  for (const { message } of messages) {
+    assert.deepEqual(Object.keys(message).sort(), ['installed', 'status', 'type', 'version']);
+    assert.equal('capsule' in message, false);
+    assert.equal('token' in message, false);
+    assert.equal('credentials' in message, false);
+  }
+});
+
+test('rejects malformed, ambiguous, and oversized Assistant Store state', () => {
+  const messages = [];
+  const iframeWindow = {
+    postMessage(message, targetOrigin) { messages.push({ message, targetOrigin }); },
+  };
+  const tooMany = Array.from(
+    { length: STORE_STATE_MAX_ASSISTANTS + 1 },
+    (_value, index) => `assistant-${index}`,
+  );
+
+  const cases = [
+    [null, 'ready', []],
+    [{}, 'ready', []],
+    [iframeWindow, 'unknown', []],
+    [iframeWindow, 'loading', ['hello-pulse']],
+    [iframeWindow, 'error', ['hello-pulse']],
+    [iframeWindow, 'ready', null],
+    [iframeWindow, 'ready', ['Hello-Pulse']],
+    [iframeWindow, 'ready', ['hello-pulse', 'hello-pulse']],
+    [iframeWindow, 'ready', tooMany],
+  ];
+  for (const [target, status, installed] of cases) {
+    assert.equal(postStoreAssistantState(target, status, installed), false);
+  }
+  assert.deepEqual(messages, []);
+
+  const maximum = tooMany.slice(0, STORE_STATE_MAX_ASSISTANTS);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', maximum), true);
+  assert.equal(messages[0].message.installed.length, STORE_STATE_MAX_ASSISTANTS);
 });

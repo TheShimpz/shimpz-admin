@@ -4,14 +4,25 @@ export const INSTALL_INTENT = Object.freeze({
   version: 1,
   assistant: 'hello-pulse',
 });
+export const UNINSTALL_INTENT = Object.freeze({
+  type: 'shimpz:assistant-uninstall',
+  version: 1,
+  assistant: 'hello-pulse',
+});
 export const INSTALL_ACK_TYPE = 'shimpz:assistant-install-ack';
+export const UNINSTALL_ACK_TYPE = 'shimpz:assistant-uninstall-ack';
 export const STORE_FRAME_TYPE = 'shimpz:assistant-store-frame';
 export const STORE_CONTEXT_TYPE = 'shimpz:assistant-store-context';
+export const STORE_STATE_TYPE = 'shimpz:assistant-store-state';
 export const STORE_FRAME_MIN_HEIGHT = 320;
 export const STORE_FRAME_MAX_HEIGHT = 5000;
+export const STORE_STATE_MAX_ASSISTANTS = 128;
 
 const INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
 const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
+const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
+const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
+const ASSISTANT_ID_RE = /^[a-z][a-z0-9-]{0,79}$/;
 
 function hasExactKeys(value, expected) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -25,19 +36,37 @@ function isTrustedStoreEvent(event, iframeWindow) {
   return Boolean(event && event.origin === STORE_ORIGIN && event.source === iframeWindow && iframeWindow);
 }
 
+function acceptsStoreIntent(event, iframeWindow, expected) {
+  if (!isTrustedStoreEvent(event, iframeWindow)) return false;
+  const data = event.data;
+  if (!hasExactKeys(data, INTENT_KEYS)) return false;
+  return (
+    data.type === expected.type &&
+    data.version === expected.version &&
+    data.assistant === expected.assistant
+  );
+}
+
+function acknowledgeStoreIntent(event, iframeWindow, expected, acknowledgementType) {
+  if (!acceptsStoreIntent(event, iframeWindow, expected)) return false;
+  event.source.postMessage(
+    {
+      type: acknowledgementType,
+      version: expected.version,
+      assistant: expected.assistant,
+      accepted: true,
+    },
+    event.origin,
+  );
+  return true;
+}
+
 /**
  * Accept one inert Store intent. The Store can nominate the released Assistant, but it never gets
  * a local token, Capsule id, or authority to install; the Captain must select and confirm locally.
  */
 export function acceptsStoreInstallIntent(event, iframeWindow) {
-  if (!isTrustedStoreEvent(event, iframeWindow)) return false;
-  const data = event.data;
-  if (!hasExactKeys(data, INTENT_KEYS)) return false;
-  return (
-    data.type === INSTALL_INTENT.type &&
-    data.version === INSTALL_INTENT.version &&
-    data.assistant === INSTALL_INTENT.assistant
-  );
+  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT);
 }
 
 /**
@@ -45,17 +74,17 @@ export function acceptsStoreInstallIntent(event, iframeWindow) {
  * inventory, token, runtime, or installation state; local admission remains entirely in the Admin.
  */
 export function acknowledgeStoreInstallIntent(event, iframeWindow) {
-  if (!acceptsStoreInstallIntent(event, iframeWindow)) return false;
-  event.source.postMessage(
-    {
-      type: INSTALL_ACK_TYPE,
-      version: INSTALL_INTENT.version,
-      assistant: INSTALL_INTENT.assistant,
-      accepted: true,
-    },
-    event.origin,
-  );
-  return true;
+  return acknowledgeStoreIntent(event, iframeWindow, INSTALL_INTENT, INSTALL_ACK_TYPE);
+}
+
+/** Accept only the exact inert uninstall request; the Store still receives no local authority. */
+export function acceptsStoreUninstallIntent(event, iframeWindow) {
+  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT);
+}
+
+/** Acknowledge receipt without revealing whether, where, or how an Assistant is installed. */
+export function acknowledgeStoreUninstallIntent(event, iframeWindow) {
+  return acknowledgeStoreIntent(event, iframeWindow, UNINSTALL_INTENT, UNINSTALL_ACK_TYPE);
 }
 
 /**
@@ -85,4 +114,33 @@ export function acknowledgeStoreFrame(event, iframeWindow) {
     STORE_ORIGIN,
   );
   return height;
+}
+
+/**
+ * Publish only the bounded installed-id projection needed to render the embedded Store. Capsule
+ * identity, runtime metadata, credentials, and local authority never cross this boundary.
+ */
+export function postStoreAssistantState(iframeWindow, status, installed) {
+  if (!iframeWindow || typeof iframeWindow.postMessage !== 'function') return false;
+  if (!STATE_STATUSES.has(status) || !Array.isArray(installed)) return false;
+  if (installed.length > STORE_STATE_MAX_ASSISTANTS) return false;
+  if (status !== 'ready' && installed.length !== 0) return false;
+
+  const seen = new Set();
+  for (const assistant of installed) {
+    if (typeof assistant !== 'string' || !ASSISTANT_ID_RE.test(assistant) || seen.has(assistant)) {
+      return false;
+    }
+    seen.add(assistant);
+  }
+
+  const message = {
+    type: STORE_STATE_TYPE,
+    version: INSTALL_INTENT.version,
+    status,
+    installed: [...installed],
+  };
+  if (!hasExactKeys(message, STATE_KEYS)) return false;
+  iframeWindow.postMessage(message, STORE_ORIGIN);
+  return true;
 }
