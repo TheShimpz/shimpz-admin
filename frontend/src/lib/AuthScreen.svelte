@@ -21,29 +21,20 @@
     <ShimpzBrand variant="hero" />
     <div class="welcome-copy">
       <h2>{$t('auth.heroTitle')}</h2>
-      <p>{$t('auth.heroLead')}</p>
     </div>
-    <ul aria-label="Shimpz principles">
-      <li><i aria-hidden="true"></i>{$t('auth.localControl')}</li>
-      <li><i aria-hidden="true"></i>{$t('auth.capsuleIsolation')}</li>
-      <li><i aria-hidden="true"></i>{$t('auth.driverReady')}</li>
-    </ul>
   </div>
 
   <div class="auth-panel">
     {#if phase === 'checking'}
       <div class="checking" aria-live="polite">
         <div class="scanner" aria-hidden="true"><span></span></div>
-        <p class="eyebrow">Space // handshake</p>
         <h1 id="auth-title">{$t('auth.checking')}</h1>
-        <p>Loading the local control plane and checking your session.</p>
         {#if error}
           <p class="message error" role="alert">{error}</p>
           <button class="secondary" type="button" onclick={onRetry}>{$t('auth.retry')}</button>
         {/if}
       </div>
     {:else}
-      <p class="eyebrow">{setup ? $t('auth.firstRun') : $t('auth.returning')}</p>
       <h1 id="auth-title">{setup ? $t('auth.setupTitle') : $t('auth.loginTitle')}</h1>
       <p class="lead">{setup ? $t('auth.setupLead') : $t('auth.loginLead')}</p>
 
@@ -81,8 +72,6 @@
           <span aria-hidden="true">→</span>
         </button>
       </form>
-
-      <p class="privacy"><span aria-hidden="true">◆</span> Local-first administration. No cloud account required.</p>
     {/if}
   </div>
 </section>
@@ -90,10 +79,10 @@
 <style>
   .auth-stage {
     display: grid;
-    min-height: min(42rem, calc(100vh - 13rem));
+    min-height: min(34rem, calc(100vh - 13rem));
     grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
     align-items: center;
-    gap: clamp(2rem, 7vw, 7rem);
+    gap: clamp(2rem, 6vw, 5rem);
   }
 
   .welcome {
@@ -112,8 +101,7 @@
     content: '';
   }
 
-  .kicker,
-  .eyebrow {
+  .kicker {
     margin: 0 0 1.2rem;
     color: var(--accent);
     font-family: var(--font-mono);
@@ -125,7 +113,7 @@
 
   .welcome-copy {
     max-width: 38rem;
-    margin-top: clamp(1.7rem, 4vw, 3rem);
+    margin-top: clamp(1.25rem, 3vw, 2rem);
   }
 
   .welcome-copy h2 {
@@ -137,46 +125,9 @@
     text-wrap: balance;
   }
 
-  .welcome-copy p,
-  .lead,
-  .checking > p:not(.eyebrow):not(.message) {
+  .lead {
     color: var(--text-dim);
     line-height: 1.7;
-  }
-
-  .welcome-copy p {
-    max-width: 57ch;
-    margin: 1rem 0 0;
-    font-size: 1rem;
-  }
-
-  ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem 1.2rem;
-    padding: 1.5rem 0 0;
-    margin: 1.5rem 0 0;
-    border-top: 1px solid var(--border);
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.64rem;
-    letter-spacing: 0.08em;
-    list-style: none;
-    text-transform: uppercase;
-  }
-
-  li {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-  }
-
-  li i {
-    width: 0.35rem;
-    height: 0.35rem;
-    background: var(--success);
-    border-radius: 50%;
-    box-shadow: 0 0 7px rgba(5, 255, 161, 0.55);
   }
 
   .auth-panel {
@@ -309,22 +260,6 @@
 
   .error {
     color: var(--danger);
-  }
-
-  .privacy {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    margin: 1.25rem 0 0;
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    line-height: 1.5;
-    text-transform: uppercase;
-  }
-
-  .privacy span {
-    color: var(--success);
   }
 
   .checking {

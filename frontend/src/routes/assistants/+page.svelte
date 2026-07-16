@@ -159,6 +159,9 @@
 
   async function selectCapsule(event) {
     activeCapsule = event.currentTarget.value;
+    const url = new URL(location.href);
+    url.searchParams.set('capsule', activeCapsule);
+    history.replaceState(history.state, '', url);
     evaluation = null;
     await loadInstalled(activeCapsule);
   }
@@ -182,6 +185,10 @@
       if (!catalogResponse.ok) throw new Error(safeApiError(catalogBody, copy.loadFailed));
       capsules = normalizeCapsules(capsuleBody);
       catalog = normalizeCatalog(catalogBody);
+      const requestedCapsule = new URL(location.href).searchParams.get('capsule') ?? '';
+      if (capsules.some((capsule) => capsule.id === requestedCapsule && capsule.status === 'running')) {
+        activeCapsule = requestedCapsule;
+      }
       if (!capsules.some((capsule) => capsule.id === activeCapsule && capsule.status === 'running')) {
         activeCapsule = capsules.find((capsule) => capsule.status === 'running')?.id ?? '';
       }

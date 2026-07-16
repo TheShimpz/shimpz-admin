@@ -12,25 +12,12 @@
       <i aria-hidden="true"></i>
       <span>{capsule.status}</span>
     </div>
-    <span class="isolation">Isolated</span>
+    <code>{capsule.id}</code>
   </header>
 
   <div class="identity">
-    <p>Capsule</p>
     <h2>{capsule.name || capsule.id}</h2>
-    <code>{capsule.id}</code>
   </div>
-
-  <dl>
-    <div>
-      <dt>{$t('capsules.status')}</dt>
-      <dd>{capsule.status}</dd>
-    </div>
-    <div>
-      <dt>{$t('capsules.identifier')}</dt>
-      <dd title={capsule.id}>{capsule.id}</dd>
-    </div>
-  </dl>
 
   {#if showCredentials}
     <section class="drivers" aria-label={$t('capsules.drivers')}>
@@ -46,7 +33,7 @@
   {/if}
 
   <footer>
-    <span>Capsule boundary // {capsule.id.slice(0, 8)}</span>
+    <a href={`/assistants/?capsule=${encodeURIComponent(capsule.id)}`}>{$t('store.nav')} <span aria-hidden="true">→</span></a>
     <button type="button" onclick={() => onDelete(capsule)} disabled={busy}>
       {$t('capsules.destroy')}
     </button>
@@ -110,22 +97,10 @@
     box-shadow: 0 0 8px rgba(5, 255, 161, 0.55);
   }
 
-  .isolation {
-    color: var(--accent);
-  }
+  .capsule-card > header code { max-width: 55%; overflow: hidden; color: var(--text-faint); font-size: 0.58rem; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
 
   .identity {
     padding: 1.35rem 1.1rem 1.15rem;
-  }
-
-  .identity p {
-    margin: 0 0 0.35rem;
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.61rem;
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
   }
 
   h2 {
@@ -134,50 +109,6 @@
     font-size: clamp(1.25rem, 2.4vw, 1.6rem);
     line-height: 1.25;
     letter-spacing: -0.04em;
-  }
-
-  .identity code {
-    display: block;
-    margin-top: 0.5rem;
-    overflow: hidden;
-    color: var(--text-faint);
-    font-size: 0.67rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: 0.7fr 1.3fr;
-    margin: 0 1.1rem;
-    border: 1px solid var(--border);
-  }
-
-  dl > div {
-    min-width: 0;
-    padding: 0.7rem 0.8rem;
-  }
-
-  dl > div + div {
-    border-inline-start: 1px solid var(--border);
-  }
-
-  dt {
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.55rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  dd {
-    margin: 0.28rem 0 0;
-    overflow: hidden;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .drivers {
@@ -244,6 +175,20 @@
     text-transform: uppercase;
   }
 
+  footer a {
+    display: inline-flex;
+    min-height: 2.35rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.65rem;
+    border: 1px solid var(--border-strong);
+    color: var(--accent);
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+  }
+
   footer button:hover:not(:disabled) {
     border-color: var(--danger);
     background: rgba(255, 96, 125, 0.06);
@@ -254,14 +199,4 @@
     opacity: 0.45;
   }
 
-  @media (max-width: 420px) {
-    dl {
-      grid-template-columns: 1fr;
-    }
-
-    dl > div + div {
-      border-top: 1px solid var(--border);
-      border-inline-start: 0;
-    }
-  }
 </style>

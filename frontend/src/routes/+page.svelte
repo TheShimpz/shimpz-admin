@@ -265,7 +265,7 @@
   <title>Shimpz Capsule Admin</title>
   <meta
     name="description"
-    content="Manage Shimpz Capsules, Space-wide Drivers, and integrations from your local control plane."
+    content="Manage Shimpz Capsules, Space-wide Services, and integrations from your local control plane."
   />
 </svelte:head>
 
@@ -287,13 +287,6 @@
         <h1 id="workspace-title">{$t('workspace.title')}</h1>
         <p class="workspace-lead">{$t('workspace.lead')}</p>
       </div>
-
-      <a class="capsule-link" href="/capsules/">
-        <span class="capsule-kicker">{$t('workspace.capsulesKicker')}</span>
-        <strong>{$t('workspace.capsulesTitle')}</strong>
-        <span>{$t('workspace.capsulesLead')}</span>
-        <b>{$t('workspace.openCapsules')} <span aria-hidden="true">→</span></b>
-      </a>
     </section>
 
     {#if loadError}<div class="page-message error" role="alert">{loadError}</div>{/if}
@@ -393,15 +386,10 @@
   }
 
   .workspace-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(19rem, 25rem);
-    align-items: end;
-    gap: clamp(2rem, 7vw, 6rem);
-    margin-bottom: clamp(2rem, 5vw, 3.5rem);
+    margin-bottom: clamp(1.5rem, 4vw, 2.5rem);
   }
 
-  .kicker,
-  .capsule-kicker {
+  .kicker {
     color: var(--accent);
     font-family: var(--font-mono);
     font-size: 0.68rem;
@@ -416,7 +404,7 @@
 
   h1 {
     margin: 0;
-    font-size: clamp(2.5rem, 7vw, 5rem);
+    font-size: clamp(2.25rem, 6vw, 4rem);
     line-height: 0.98;
     letter-spacing: -0.075em;
   }
@@ -429,58 +417,6 @@
     line-height: 1.7;
   }
 
-  .capsule-link {
-    position: relative;
-    display: grid;
-    gap: 0.35rem;
-    padding: 1.35rem;
-    background: linear-gradient(145deg, var(--surface-2), var(--surface-1));
-    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-    color: var(--text);
-    text-decoration: none;
-    transition: transform 0.15s var(--ease), filter 0.15s var(--ease), box-shadow 0.15s var(--ease);
-  }
-
-  .capsule-link::before {
-    position: absolute;
-    top: 0;
-    right: var(--cut);
-    left: var(--cut);
-    height: 1px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-    content: '';
-  }
-
-  .capsule-link:hover {
-    box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.6);
-    filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.16));
-    transform: translateY(-2px);
-  }
-
-  .capsule-link strong {
-    font-family: var(--font-mono);
-    font-size: 1.08rem;
-    letter-spacing: -0.025em;
-  }
-
-  .capsule-link > span:not(.capsule-kicker) {
-    color: var(--text-dim);
-    font-size: 0.8rem;
-    line-height: 1.5;
-  }
-
-  .capsule-link b {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 0.65rem;
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
 
   .page-message {
     padding: 0.8rem 1rem;
@@ -624,18 +560,6 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
     text-align: center;
-  }
-
-  @media (max-width: 850px) {
-    .workspace-header {
-      grid-template-columns: 1fr;
-      align-items: start;
-      gap: 2rem;
-    }
-
-    .capsule-link {
-      width: min(100%, 31rem);
-    }
   }
 
   @media (max-width: 680px) {

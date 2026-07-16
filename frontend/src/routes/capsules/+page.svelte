@@ -158,15 +158,9 @@
       </button>
     </section>
 
-    <section class="runtime-bar" aria-label="Capsule runtime summary">
-      <div>
-        <span>{$t('capsules.count', { count: capsules.length })}</span>
-        <strong>{$t('capsules.running', { count: runningCount })}</strong>
-      </div>
-      <p class:offline={error}>
-        <i aria-hidden="true"></i>
-        {error ? 'Capsule Driver unavailable' : 'Space control plane connected'}
-      </p>
+    <section class:offline={error} class="runtime-bar" aria-label="Capsule runtime summary">
+      <i aria-hidden="true"></i>
+      <strong>{runningCount}</strong><span>/ {capsules.length} running</span>
     </section>
 
     {#if error}
@@ -363,10 +357,9 @@
 
   .runtime-bar {
     display: flex;
-    min-height: 3.8rem;
+    min-height: 2.8rem;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    gap: 0.35rem;
     padding: 0.65rem 1rem;
     margin-bottom: 1rem;
     border: 1px solid var(--border);
@@ -377,21 +370,11 @@
     text-transform: uppercase;
   }
 
-  .runtime-bar > div {
-    display: flex;
-    gap: 1.2rem;
-    color: var(--text-faint);
-  }
-
   .runtime-bar strong {
     color: var(--text);
   }
 
-  .runtime-bar p {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0;
+  .runtime-bar span {
     color: var(--text-faint);
   }
 
@@ -403,11 +386,11 @@
     box-shadow: 0 0 8px rgba(5, 255, 161, 0.55);
   }
 
-  .runtime-bar .offline {
+  .runtime-bar.offline {
     color: var(--danger);
   }
 
-  .runtime-bar .offline i {
+  .runtime-bar.offline i {
     background: var(--danger);
     box-shadow: 0 0 8px rgba(255, 96, 125, 0.45);
   }

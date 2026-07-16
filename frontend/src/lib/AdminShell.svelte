@@ -37,8 +37,7 @@
   </main>
 
   <footer>
-    <span><i aria-hidden="true"></i> local control plane</span>
-    <span>Shimpz // Capsule Admin</span>
+    <span><i aria-hidden="true"></i> Local Space</span>
   </footer>
 </div>
 
@@ -127,14 +126,13 @@
 
   main {
     min-height: calc(100vh - 9.2rem);
-    padding: clamp(2rem, 5vw, 4.5rem) 0;
+    padding: clamp(1.75rem, 4vw, 3.25rem) 0;
   }
 
   footer {
     display: flex;
     min-height: 3.75rem;
     align-items: center;
-    justify-content: space-between;
     gap: 1rem;
     border-top: 1px solid var(--border);
     color: var(--text-faint);
@@ -183,11 +181,6 @@
       width: min(100% - 1.25rem, 1180px);
     }
 
-    footer {
-      align-items: flex-start;
-      flex-direction: column;
-      justify-content: center;
-      padding: 1rem 0;
-    }
+    footer { padding: 1rem 0; }
   }
 </style>
