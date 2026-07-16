@@ -1,12 +1,12 @@
-"""Functional and security contracts for the local Assistant control-plane bridge."""
+"""Live functional and security contracts for the local Assistant control plane."""
 
 from __future__ import annotations
 
 import ast
 import asyncio
-import importlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,10 +14,6 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
-from unittest import mock
-
-from fastapi import HTTPException
-from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -59,35 +55,9 @@ class _DriverHandler(BaseHTTPRequestHandler):
     do_DELETE = _handle  # noqa: N815
 
 
-def _request(path: str, body: bytes = b"", content_type: str = "application/json") -> Request:
-    sent = False
+class _LiveDriverCase(unittest.TestCase):
+    """Give each contract a real loopback driver and real bearer file."""
 
-    async def receive():
-        nonlocal sent
-        if sent:
-            return {"type": "http.request", "body": b"", "more_body": False}
-        sent = True
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    headers = [(b"content-type", content_type.encode()), (b"content-length", str(len(body)).encode())]
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": headers,
-        "client": ("127.0.0.1", 1234),
-        "server": ("testserver", 80),
-    }
-    return Request(scope, receive)
-
-
-class CapsuleAssistantBridgeTest(unittest.TestCase):
     def setUp(self):
         _DriverHandler.requests = []
         _DriverHandler.response_status = 200
@@ -102,20 +72,59 @@ class CapsuleAssistantBridgeTest(unittest.TestCase):
 
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
-        token_file = Path(self.tempdir.name) / "token"
-        token_file.write_text("internal-test-bearer\n", encoding="utf-8")
-        self.patches = (
-            mock.patch.object(capsules, "TOKEN_FILE", str(token_file)),
-            mock.patch.object(capsules, "URL", f"http://127.0.0.1:{self.server.server_port}"),
-        )
-        for patcher in self.patches:
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.root = Path(self.tempdir.name)
+        self.token_file = self.root / "capsule-driver.token"
+        self.token_file.write_text("internal-test-bearer\n", encoding="utf-8")
+        self.driver_url = f"http://127.0.0.1:{self.server.server_port}"
 
     def _stop_server(self):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+
+    def _run_asgi_probe(self, scenario: str) -> dict[str, object]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "PYTHONPATH": str(ROOT / "backend"),
+                "SHIMPZ_REPO": str(self.root),
+                "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
+                "SHIMPZ_CAPSULEDRIVER_URL": self.driver_url,
+                "SHIMPZ_CAPSULEDRIVER_TOKEN_FILE": str(self.token_file),
+                "SHIMPZ_SETUP_TOKEN": "",
+            }
+        )
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--asgi-probe", scenario],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if result.returncode != 0:
+            self.fail(f"ASGI probe {scenario!r} failed:\n{result.stdout}\n{result.stderr}")
+        try:
+            document = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            self.fail(f"ASGI probe {scenario!r} returned invalid JSON:\n{result.stdout}\n{result.stderr}")
+        self.assertIsInstance(document, dict)
+        return document
+
+
+class CapsuleAssistantBridgeTest(_LiveDriverCase):
+    def setUp(self):
+        super().setUp()
+        self.original_token_file = capsules.TOKEN_FILE
+        self.original_url = capsules.URL
+        capsules.TOKEN_FILE = str(self.token_file)
+        capsules.URL = self.driver_url
+        self.addCleanup(self._restore_bridge_config)
+
+    def _restore_bridge_config(self):
+        capsules.TOKEN_FILE = self.original_token_file
+        capsules.URL = self.original_url
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         capsules.list_assistants()
@@ -204,21 +213,91 @@ class CapsuleAssistantBridgeTest(unittest.TestCase):
         self.assertTrue({"docker", "subprocess"}.isdisjoint(imports))
 
 
-class CapsuleAssistantRouteTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {"SHIMPZ_REPO": str(root), "SHIMPZ_ADMIN_STORE": str(root / "admin.json")},
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-
+class CapsuleAssistantRouteTest(_LiveDriverCase):
     def test_exposes_only_session_gated_assistant_routes(self):
-        routes = {(route.path, method) for route in self.admin_app.app.routes for method in (route.methods or set())}
+        document = self._run_asgi_probe("routes")
+
+        self.assertTrue(document["routes_ok"])
+        self.assertTrue(document["closed_api_ok"])
+        self.assertEqual(document["anonymous_status"], 401)
+        self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
+        self.assertEqual(_DriverHandler.requests, [])
+
+    def test_install_route_preserves_conflict_and_forwards_exact_body(self):
+        _DriverHandler.response_status = 409
+        _DriverHandler.response_body = b'{"detail":"already installed"}'
+
+        document = self._run_asgi_probe("install-conflict")
+
+        self.assertEqual(document["status"], 409)
+        self.assertEqual(document["body"], {"detail": "already installed"})
+        self.assertEqual(len(_DriverHandler.requests), 1)
+        request = _DriverHandler.requests[0]
+        self.assertEqual(request["method"], "POST")
+        self.assertEqual(request["path"], "/v1/capsules/capsule_1/assistants")
+        self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
+        self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
+
+    def test_operation_body_is_bounded_before_driver_call(self):
+        document = self._run_asgi_probe("oversized-operation")
+
+        self.assertEqual(document["status"], 413)
+        self.assertEqual(document["body"], {"detail": "request body too large"})
+        self.assertEqual(_DriverHandler.requests, [])
+
+
+async def _asgi_request(admin_app, method: str, path: str, body: bytes = b"", *, token: str = ""):
+    """Drive the real FastAPI ASGI stack without an in-process route substitute."""
+    headers = [(b"accept", b"application/json"), (b"content-length", str(len(body)).encode())]
+    if body:
+        headers.append((b"content-type", b"application/json"))
+    if token:
+        headers.append((b"cookie", f"{admin_app.COOKIE}={token}".encode()))
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.5"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": headers,
+        "client": ("127.0.0.1", 1234),
+        "server": ("testserver", 80),
+    }
+    first_receive = True
+
+    async def receive():
+        nonlocal first_receive
+        if first_receive:
+            first_receive = False
+            return {"type": "http.request", "body": body, "more_body": False}
+        await asyncio.Event().wait()
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await asyncio.wait_for(admin_app.app(scope, receive, send), timeout=5)
+    start = next(message for message in messages if message["type"] == "http.response.start")
+    raw_body = b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body")
+    return start["status"], json.loads(raw_body or b"{}")
+
+
+def _run_asgi_probe(scenario: str) -> None:
+    """Fresh-process route probe: real env, store, session, ASGI middleware and HTTP bridge."""
+    import adminstore
+    import app as admin_app
+    import auth
+
+    adminstore.set_password("test-admin-password")
+    token = auth.issue_session(adminstore.get()["session_secret"])
+
+    if scenario == "routes":
+        routes = {(route.path, method) for route in admin_app.app.routes for method in (route.methods or set())}
         expected = {
             ("/api/assistants", "GET"),
             ("/api/capsules/{cid}/assistants", "GET"),
@@ -226,48 +305,44 @@ class CapsuleAssistantRouteTest(unittest.TestCase):
             ("/api/capsules/{cid}/assistants/{assistant_id}/operations/{operation}", "POST"),
             ("/api/capsules/{cid}/assistants/{assistant_id}", "DELETE"),
         }
-        self.assertTrue(expected.issubset(routes))
-        self.assertTrue(all(path not in self.admin_app.OPEN_API for path, _method in expected))
-
-        request = _request("/api/assistants")
-
-        async def should_not_run(_request):
-            self.fail("anonymous request reached the Assistant catalog")
-
-        response = asyncio.run(self.admin_app._gate(request, should_not_run))
-        self.assertEqual(response.status_code, 401)
-
-    def test_install_route_preserves_conflict_and_forwards_exact_body(self):
-        request = _request(
-            "/api/capsules/capsule_1/assistants",
-            json.dumps({"assistant": "hello-pulse"}).encode(),
+        status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
+        output = {
+            "routes_ok": expected.issubset(routes),
+            "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
+            "anonymous_status": status,
+            "anonymous_body": body,
+        }
+    elif scenario == "install-conflict":
+        payload = json.dumps({"assistant": "hello-pulse"}, separators=(",", ":")).encode()
+        status, body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/capsules/capsule_1/assistants",
+                payload,
+                token=token,
+            )
         )
-        with mock.patch.object(
-            self.admin_app.capsules,
-            "install_assistant",
-            return_value=capsules.DriverResponse(409, {"detail": "already installed"}),
-        ) as install:
-            response = asyncio.run(self.admin_app.capsule_assistant_install("capsule_1", request))
-
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(json.loads(response.body), {"detail": "already installed"})
-        install.assert_called_once_with("capsule_1", {"assistant": "hello-pulse"})
-
-    def test_operation_body_is_bounded_before_driver_call(self):
-        request = _request(
-            "/api/capsules/capsule_1/assistants/hello-pulse/operations/hello",
-            b'{' + b'"name":"' + b"x" * capsules.MAX_JSON_BODY_BYTES + b'"}',
+        output = {"status": status, "body": body}
+    elif scenario == "oversized-operation":
+        payload = b'{"name":"' + b"x" * capsules.MAX_JSON_BODY_BYTES + b'"}'
+        status, body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/capsules/capsule_1/assistants/hello-pulse/operations/hello",
+                payload,
+                token=token,
+            )
         )
-        with mock.patch.object(self.admin_app.capsules, "invoke_assistant_operation") as invoke:
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(
-                    self.admin_app.capsule_assistant_operation(
-                        "capsule_1", "hello-pulse", "hello", request
-                    )
-                )
-        self.assertEqual(raised.exception.status_code, 413)
-        invoke.assert_not_called()
+        output = {"status": status, "body": body}
+    else:
+        raise SystemExit(f"unknown ASGI probe: {scenario}")
+    print(json.dumps(output, separators=(",", ":")))
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--asgi-probe":
+        _run_asgi_probe(sys.argv[2])
+    else:
+        unittest.main()
