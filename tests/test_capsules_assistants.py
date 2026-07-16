@@ -54,9 +54,9 @@ class _DriverHandler(BaseHTTPRequestHandler):
         if self.__class__.response_body:
             self.wfile.write(self.__class__.response_body)
 
-    do_GET = _handle  # noqa: N815
-    do_POST = _handle  # noqa: N815
-    do_DELETE = _handle  # noqa: N815
+    do_GET = _handle
+    do_POST = _handle
+    do_DELETE = _handle
 
 
 class _LiveDriverCase(unittest.TestCase):
@@ -69,9 +69,7 @@ class _LiveDriverCase(unittest.TestCase):
         _DriverHandler.response_headers = {"Content-Type": "application/json"}
         _DriverHandler.response_delay_seconds = 0.0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), _DriverHandler)
-        self.thread = threading.Thread(
-            target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-        )
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_server)
 
@@ -177,9 +175,7 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
             lambda: capsules.invoke_assistant_operation(
                 "capsule_1", "hello-pulse", "hello", {"name": "Captain", "command": "whoami"}
             ),
-            lambda: capsules.invoke_assistant_operation(
-                "capsule_1", "hello-pulse", "hello", {"name": "x" * 81}
-            ),
+            lambda: capsules.invoke_assistant_operation("capsule_1", "hello-pulse", "hello", {"name": "x" * 81}),
         )
         for operation in invalid:
             with self.subTest(operation=operation), self.assertRaises(capsules.CapsuleRequestError):
@@ -292,6 +288,7 @@ async def _asgi_request(admin_app, method: str, path: str, body: bytes = b"", *,
             first_receive = False
             return {"type": "http.request", "body": body, "more_body": False}
         await asyncio.Event().wait()
+        raise AssertionError("unreachable receive state")
 
     messages = []
 
@@ -354,6 +351,7 @@ def _run_asgi_probe(scenario: str) -> None:
         )
         output = {"status": status, "body": body}
     elif scenario == "concurrent-session":
+
         async def concurrent_requests():
             payload = json.dumps({"assistant": "hello-pulse"}, separators=(",", ":")).encode()
             started = time.monotonic()

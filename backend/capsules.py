@@ -156,7 +156,7 @@ def _call(
         if not 200 <= response.status <= 599:
             raise OSError("invalid capsule-driver status")
         result = DriverResponse(response.status, _decode_response(response))
-    except (OSError, UnicodeError, http.client.HTTPException):
+    except OSError, UnicodeError, http.client.HTTPException:
         # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
         log.warning("capsule-driver request failed (%s)", method)
         return DriverResponse(502, {"detail": "capsule-driver unavailable"})

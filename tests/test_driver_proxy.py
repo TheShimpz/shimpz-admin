@@ -48,10 +48,10 @@ class _LocalDriverHandler(BaseHTTPRequestHandler):
         if self.__class__.response_body:
             self.wfile.write(self.__class__.response_body)
 
-    do_GET = _handle  # noqa: N815 - BaseHTTPRequestHandler dispatch contract
-    do_POST = _handle  # noqa: N815 - BaseHTTPRequestHandler dispatch contract
-    do_PUT = _handle  # noqa: N815 - BaseHTTPRequestHandler dispatch contract
-    do_DELETE = _handle  # noqa: N815 - BaseHTTPRequestHandler dispatch contract
+    do_GET = _handle
+    do_POST = _handle
+    do_PUT = _handle
+    do_DELETE = _handle
 
 
 class DriverProxyTest(unittest.TestCase):
@@ -174,18 +174,18 @@ class DriverProxyTest(unittest.TestCase):
                 self.assertEqual(result, driver_proxy.ProxyResponse(502, {"detail": "capsule-driver unavailable"}))
 
     def test_transport_log_never_contains_payload_token_or_exception_text(self):
-        secret = "payload-secret-marker"
+        payload_marker = "payload-secret-marker"
         self.token_file.write_text("bearer-secret-marker", encoding="utf-8")
         with (
             mock.patch.object(driver_proxy, "_endpoint", side_effect=OSError("exception-secret-marker")),
             self.assertLogs("shimpz-admin", level="WARNING") as captured,
         ):
             result = driver_proxy.create_credential(
-                "capsule_1", "cloudflare-r2", {"values": {"secret_access_key": secret}}
+                "capsule_1", "cloudflare-r2", {"values": {"secret_access_key": payload_marker}}
             )
         rendered = "\n".join(captured.output)
         self.assertEqual(result.status, 502)
-        self.assertNotIn(secret, rendered)
+        self.assertNotIn(payload_marker, rendered)
         self.assertNotIn("bearer-secret-marker", rendered)
         self.assertNotIn("exception-secret-marker", rendered)
 

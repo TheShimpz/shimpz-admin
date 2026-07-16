@@ -339,7 +339,7 @@ async def _bounded_json_object(request: Request) -> dict:
             raise HTTPException(status_code=413, detail="request body too large")
     try:
         payload = json.loads(body)
-    except (json.JSONDecodeError, UnicodeError, RecursionError):
+    except json.JSONDecodeError, UnicodeError, RecursionError:
         raise HTTPException(status_code=400, detail="request body must be valid JSON") from None
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
