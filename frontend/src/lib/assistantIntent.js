@@ -23,6 +23,8 @@ const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
 const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const RELEASED_STORE_ASSISTANT_IDS = Object.freeze([INSTALL_INTENT.assistant]);
+const RELEASED_STORE_ASSISTANTS = new Set(RELEASED_STORE_ASSISTANT_IDS);
 
 function hasExactKeys(value, expected) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -116,6 +118,17 @@ export function acknowledgeStoreFrame(event, iframeWindow) {
   return height;
 }
 
+/** Project the private local inventory onto the intentionally public Store catalog. */
+export function projectReleasedStoreAssistantIds(installedAssistants) {
+  if (!Array.isArray(installedAssistants)) return [];
+  const installed = new Set(
+    installedAssistants
+      .filter((entry) => entry && typeof entry === 'object' && typeof entry.assistant === 'string')
+      .map((entry) => entry.assistant),
+  );
+  return RELEASED_STORE_ASSISTANT_IDS.filter((assistant) => installed.has(assistant));
+}
+
 /**
  * Publish only the bounded installed-id projection needed to render the embedded Store. Capsule
  * identity, runtime metadata, credentials, and local authority never cross this boundary.
@@ -132,6 +145,7 @@ export function postStoreAssistantState(iframeWindow, status, installed) {
       typeof assistant !== 'string' ||
       assistant.length > 80 ||
       !ASSISTANT_ID_RE.test(assistant) ||
+      !RELEASED_STORE_ASSISTANTS.has(assistant) ||
       seen.has(assistant)
     ) {
       return false;

@@ -10,6 +10,7 @@
     acknowledgeStoreInstallIntent,
     acknowledgeStoreUninstallIntent,
     postStoreAssistantState,
+    projectReleasedStoreAssistantIds,
   } from '$lib/assistantIntent.js';
   import { evaluateHelloPulse, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
@@ -233,7 +234,7 @@
       if (attempt !== inventoryAttempt || capsuleId !== activeCapsule) return;
       installedAssistants = inventory;
       inventoryPhase = 'ready';
-      publishStoreSnapshot('ready', inventory.map((entry) => entry.assistant));
+      publishStoreSnapshot('ready', projectReleasedStoreAssistantIds(inventory));
     } catch (error) {
       if (attempt !== inventoryAttempt || capsuleId !== activeCapsule) return;
       inventoryError = error instanceof Error ? error.message : copy.loadFailed;

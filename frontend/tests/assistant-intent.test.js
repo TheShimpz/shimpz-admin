@@ -19,6 +19,7 @@ import {
   acceptsStoreInstallIntent,
   acceptsStoreUninstallIntent,
   postStoreAssistantState,
+  projectReleasedStoreAssistantIds,
   storeFrameHeight,
 } from '../src/lib/assistantIntent.js';
 
@@ -186,7 +187,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
   };
 
   assert.equal(postStoreAssistantState(iframeWindow, 'loading', []), true);
-  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['hello-pulse', 'salesnator']), true);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['hello-pulse']), true);
   assert.equal(postStoreAssistantState(iframeWindow, 'error', []), true);
   assert.deepEqual(messages, [
     {
@@ -198,7 +199,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
         type: STORE_STATE_TYPE,
         version: 1,
         status: 'ready',
-        installed: ['hello-pulse', 'salesnator'],
+        installed: ['hello-pulse'],
       },
       targetOrigin: STORE_ORIGIN,
     },
@@ -241,9 +242,8 @@ test('rejects malformed, ambiguous, and oversized Assistant Store state', () => 
   }
   assert.deepEqual(messages, []);
 
-  const maximum = tooMany.slice(0, STORE_STATE_MAX_ASSISTANTS);
-  assert.equal(postStoreAssistantState(iframeWindow, 'ready', maximum), true);
-  assert.equal(messages[0].message.installed.length, STORE_STATE_MAX_ASSISTANTS);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['private-assistant']), false);
+  assert.deepEqual(messages, []);
 });
 
 test('rejects consecutive and trailing hyphens in Assistant Store state ids', () => {
@@ -251,4 +251,19 @@ test('rejects consecutive and trailing hyphens in Assistant Store state ids', ()
 
   assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['hello--pulse']), false);
   assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['hello-pulse-']), false);
+});
+
+test('projects only released Store Assistants from private local inventory', () => {
+  const inventory = [
+    { assistant: 'private-captain-tool', status: 'running' },
+    { assistant: 'hello-pulse', status: 'running' },
+    { assistant: 'custom-customer-agent', status: 'created' },
+  ];
+
+  assert.deepEqual(projectReleasedStoreAssistantIds(inventory), ['hello-pulse']);
+  assert.deepEqual(
+    projectReleasedStoreAssistantIds(inventory.filter((entry) => entry.assistant !== 'hello-pulse')),
+    [],
+  );
+  assert.deepEqual(projectReleasedStoreAssistantIds(null), []);
 });
