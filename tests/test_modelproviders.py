@@ -26,7 +26,7 @@ class ModelProviderTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_status_masks_key_and_internal_resolver_is_backend_only(self) -> None:
-        secret = "sk-test-0123456789abcdef"  # noqa: S105 -- synthetic contract fixture
+        secret = "sk-test-0123456789abcdef"
         configured = modelproviders.configure("OpenAI", secret)
 
         self.assertEqual(configured["masked"], "••••cdef")
