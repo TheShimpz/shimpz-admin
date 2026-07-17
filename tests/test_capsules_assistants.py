@@ -133,7 +133,7 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
         capsules.list_assistants()
         capsules.list_installed_assistants("capsule_1")
         capsules.install_assistant("capsule_1", {"assistant": "hello-pulse"})
-        capsules.invoke_assistant_operation("capsule_1", "hello-pulse", "hello", {"name": "Captain"})
+        capsules.invoke_assistant_power("capsule_1", "hello-pulse", "hello", {"name": "Captain"})
         capsules.uninstall_assistant("capsule_1", "hello-pulse")
 
         self.assertEqual(
@@ -142,7 +142,7 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/capsules/capsule_1/assistants"),
                 ("POST", "/v1/capsules/capsule_1/assistants"),
-                ("POST", "/v1/capsules/capsule_1/assistants/hello-pulse/operations/hello"),
+                ("POST", "/v1/capsules/capsule_1/assistants/hello-pulse/powers/hello"),
                 ("DELETE", "/v1/capsules/capsule_1/assistants/hello-pulse"),
             ],
         )
@@ -164,22 +164,123 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
             capsules.DriverResponse(409, {"detail": "assistant already installed"}),
         )
 
-    def test_rejects_unknown_paths_operations_and_input_before_network_access(self):
+    def test_storage_bridge_forwards_only_opaque_metadata_and_fixed_routes(self):
+        content = b"Capsule private data"
+        file_id = "b" * 32
+        metadata = {
+            "id": file_id,
+            "name": "brief.txt",
+            "media_type": "text/plain",
+            "size": len(content),
+            "sha256": "a" * 64,
+            "created_at": 1_700_000_000,
+        }
+        usage = {
+            "used_bytes": len(content),
+            "limit_bytes": 100 * 1024 * 1024,
+            "remaining_bytes": 100 * 1024 * 1024 - len(content),
+        }
+        _DriverHandler.response_body = json.dumps(
+            {
+                "capsule": "capsule_1",
+                "file": {**metadata, **usage, "path": "/private/never-expose"},
+                "path": "/private/never-expose",
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        uploaded = capsules.upload_file("capsule_1", "brief.txt", "text/plain", content)
+
+        self.assertEqual(
+            uploaded,
+            capsules.DriverResponse(200, {"capsule": "capsule_1", "file": {**metadata, **usage}}),
+        )
+        upload_request = _DriverHandler.requests[-1]
+        self.assertEqual(
+            (upload_request["method"], upload_request["path"]),
+            ("POST", "/v1/capsules/capsule_1/files"),
+        )
+        self.assertEqual(
+            json.loads(upload_request["body"]),
+            {
+                "filename": "brief.txt",
+                "media_type": "text/plain",
+                "content_b64": "Q2Fwc3VsZSBwcml2YXRlIGRhdGE=",
+            },
+        )
+
+        _DriverHandler.response_body = json.dumps(
+            {"capsule": "capsule_1", "files": [{**metadata, "path": "/private/no"}], **usage},
+            separators=(",", ":"),
+        ).encode()
+        listed = capsules.list_files("capsule_1")
+        self.assertEqual(
+            listed,
+            capsules.DriverResponse(200, {"capsule": "capsule_1", "files": [metadata], **usage}),
+        )
+
+        _DriverHandler.response_body = json.dumps(
+            {"capsule": "capsule_1", "id": file_id, "deleted": True, **usage},
+            separators=(",", ":"),
+        ).encode()
+        deleted = capsules.delete_file("capsule_1", file_id)
+        self.assertEqual(
+            deleted,
+            capsules.DriverResponse(
+                200,
+                {"capsule": "capsule_1", "id": file_id, "deleted": True, **usage},
+            ),
+        )
+
+        self.assertEqual(
+            [(request["method"], request["path"]) for request in _DriverHandler.requests],
+            [
+                ("POST", "/v1/capsules/capsule_1/files"),
+                ("GET", "/v1/capsules/capsule_1/files"),
+                ("DELETE", f"/v1/capsules/capsule_1/files/{file_id}"),
+            ],
+        )
+        for request in _DriverHandler.requests:
+            self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
+
+    def test_storage_bridge_rejects_paths_and_non_opaque_ids_before_network_access(self):
+        invalid = (
+            lambda: capsules.upload_file("capsule_1", "../brief.txt", "text/plain", b"data"),
+            lambda: capsules.upload_file("capsule_1", "brief.txt", "text/plain", b""),
+            lambda: capsules.delete_file("capsule_1", "../not-an-id"),
+        )
+        for action in invalid:
+            with self.subTest(action=action), self.assertRaises(capsules.CapsuleRequestError):
+                action()
+        self.assertEqual(_DriverHandler.requests, [])
+
+    def test_storage_bridge_preserves_safe_error_status_without_internal_fields(self):
+        _DriverHandler.response_status = 507
+        _DriverHandler.response_body = b'{"detail":"Capsule storage quota exceeded","path":"/private/no"}'
+
+        response = capsules.upload_file("capsule_1", "brief.txt", "text/plain", b"data")
+
+        self.assertEqual(
+            response,
+            capsules.DriverResponse(507, {"detail": "Capsule storage quota exceeded"}),
+        )
+
+    def test_rejects_unknown_paths_powers_and_input_before_network_access(self):
         invalid = (
             lambda: capsules.list_installed_assistants("Capsule_1"),
             lambda: capsules.install_assistant("capsule_1", {"assistant": "../hello-pulse"}),
             lambda: capsules.install_assistant("capsule_1", {"assistant": "hello-pulse", "extra": True}),
-            lambda: capsules.invoke_assistant_operation(
+            lambda: capsules.invoke_assistant_power(
                 "capsule_1", "hello-pulse", "delete-everything", {"name": "Captain"}
             ),
-            lambda: capsules.invoke_assistant_operation(
+            lambda: capsules.invoke_assistant_power(
                 "capsule_1", "hello-pulse", "hello", {"name": "Captain", "command": "whoami"}
             ),
-            lambda: capsules.invoke_assistant_operation("capsule_1", "hello-pulse", "hello", {"name": "x" * 81}),
+            lambda: capsules.invoke_assistant_power("capsule_1", "hello-pulse", "hello", {"name": "x" * 81}),
         )
-        for operation in invalid:
-            with self.subTest(operation=operation), self.assertRaises(capsules.CapsuleRequestError):
-                operation()
+        for action in invalid:
+            with self.subTest(action=action), self.assertRaises(capsules.CapsuleRequestError):
+                action()
         self.assertEqual(_DriverHandler.requests, [])
 
     def test_invalid_or_oversized_driver_json_fails_closed(self):
@@ -220,6 +321,7 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
 
         self.assertTrue(document["routes_ok"])
         self.assertTrue(document["closed_api_ok"])
+        self.assertTrue(document["legacy_operations_absent"])
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
         self.assertEqual(_DriverHandler.requests, [])
@@ -239,11 +341,60 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
-    def test_operation_body_is_bounded_before_driver_call(self):
-        document = self._run_asgi_probe("oversized-operation")
+    def test_power_body_is_bounded_before_driver_call(self):
+        document = self._run_asgi_probe("oversized-power")
 
         self.assertEqual(document["status"], 413)
         self.assertEqual(document["body"], {"detail": "request body too large"})
+        self.assertEqual(_DriverHandler.requests, [])
+
+    def test_multipart_upload_is_bounded_and_forwarded_as_json_without_a_path(self):
+        content = b"Capsule private data"
+        file_id = "b" * 32
+        usage = {
+            "used_bytes": len(content),
+            "limit_bytes": 100 * 1024 * 1024,
+            "remaining_bytes": 100 * 1024 * 1024 - len(content),
+        }
+        _DriverHandler.response_body = json.dumps(
+            {
+                "capsule": "capsule_1",
+                "file": {
+                    "id": file_id,
+                    "name": "brief.txt",
+                    "media_type": "text/plain",
+                    "size": len(content),
+                    "sha256": "a" * 64,
+                    "created_at": 1_700_000_000,
+                    **usage,
+                    "path": "/private/never-expose",
+                },
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        document = self._run_asgi_probe("file-upload")
+
+        self.assertEqual(document["status"], 200)
+        self.assertNotIn("path", document["body"])
+        self.assertNotIn("path", document["body"]["file"])
+        self.assertEqual(len(_DriverHandler.requests), 1)
+        request = _DriverHandler.requests[0]
+        self.assertEqual((request["method"], request["path"]), ("POST", "/v1/capsules/capsule_1/files"))
+        self.assertEqual(
+            json.loads(request["body"]),
+            {
+                "filename": "brief.txt",
+                "media_type": "text/plain",
+                "content_b64": "Q2Fwc3VsZSBwcml2YXRlIGRhdGE=",
+            },
+        )
+
+    def test_multipart_envelope_over_the_limit_stops_before_driver_call(self):
+        document = self._run_asgi_probe("oversized-file")
+
+        self.assertEqual(document["status"], 413)
+        self.assertEqual(document["body"], {"detail": "file upload too large"})
         self.assertEqual(_DriverHandler.requests, [])
 
     def test_session_responds_while_real_driver_holds_install(self):
@@ -259,10 +410,22 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(len(_DriverHandler.requests), 1)
 
 
-async def _asgi_request(admin_app, method: str, path: str, body: bytes = b"", *, token: str = ""):
+async def _asgi_request(
+    admin_app,
+    method: str,
+    path: str,
+    body: bytes = b"",
+    *,
+    token: str = "",
+    content_type: str | None = None,
+    content_length: int | None = None,
+):
     """Drive the real FastAPI ASGI stack without an in-process route substitute."""
-    headers = [(b"accept", b"application/json"), (b"content-length", str(len(body)).encode())]
-    if body:
+    declared_length = len(body) if content_length is None else content_length
+    headers = [(b"accept", b"application/json"), (b"content-length", str(declared_length).encode())]
+    if content_type is not None:
+        headers.append((b"content-type", content_type.encode()))
+    elif body:
         headers.append((b"content-type", b"application/json"))
     if token:
         headers.append((b"cookie", f"{admin_app.COOKIE}={token}".encode()))
@@ -301,6 +464,19 @@ async def _asgi_request(admin_app, method: str, path: str, body: bytes = b"", *,
     return start["status"], json.loads(raw_body or b"{}")
 
 
+def _multipart_file_body(boundary: str, content: bytes) -> bytes:
+    return (
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="brief.txt"\r\n'
+            "Content-Type: text/plain\r\n"
+            "\r\n"
+        ).encode()
+        + content
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
+
 def _run_asgi_probe(scenario: str) -> None:
     """Fresh-process route probe: real env, store, session, ASGI middleware and HTTP bridge."""
     import adminstore
@@ -316,13 +492,17 @@ def _run_asgi_probe(scenario: str) -> None:
             ("/api/assistants", "GET"),
             ("/api/capsules/{cid}/assistants", "GET"),
             ("/api/capsules/{cid}/assistants", "POST"),
-            ("/api/capsules/{cid}/assistants/{assistant_id}/operations/{operation}", "POST"),
+            ("/api/capsules/{cid}/assistants/{assistant_id}/powers/{power}", "POST"),
             ("/api/capsules/{cid}/assistants/{assistant_id}", "DELETE"),
+            ("/api/capsules/{cid}/files", "GET"),
+            ("/api/capsules/{cid}/files", "POST"),
+            ("/api/capsules/{cid}/files/{file_id}", "DELETE"),
         }
         status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
         output = {
             "routes_ok": expected.issubset(routes),
             "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
+            "legacy_operations_absent": not any("/operations/" in path for path, _method in routes),
             "anonymous_status": status,
             "anonymous_body": body,
         }
@@ -338,15 +518,44 @@ def _run_asgi_probe(scenario: str) -> None:
             )
         )
         output = {"status": status, "body": body}
-    elif scenario == "oversized-operation":
+    elif scenario == "oversized-power":
         payload = b'{"name":"' + b"x" * capsules.MAX_JSON_BODY_BYTES + b'"}'
         status, body = asyncio.run(
             _asgi_request(
                 admin_app,
                 "POST",
-                "/api/capsules/capsule_1/assistants/hello-pulse/operations/hello",
+                "/api/capsules/capsule_1/assistants/hello-pulse/powers/hello",
                 payload,
                 token=token,
+            )
+        )
+        output = {"status": status, "body": body}
+    elif scenario == "file-upload":
+        boundary = "shimpz-admin-upload-boundary"
+        payload = _multipart_file_body(boundary, b"Capsule private data")
+        status, body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/capsules/capsule_1/files",
+                payload,
+                token=token,
+                content_type=f"multipart/form-data; boundary={boundary}",
+            )
+        )
+        output = {"status": status, "body": body}
+    elif scenario == "oversized-file":
+        boundary = "shimpz-admin-upload-boundary"
+        payload = _multipart_file_body(boundary, b"small")
+        status, body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/capsules/capsule_1/files",
+                payload,
+                token=token,
+                content_type=f"multipart/form-data; boundary={boundary}",
+                content_length=admin_app.MAX_MULTIPART_BODY_BYTES + 1,
             )
         )
         output = {"status": status, "body": body}

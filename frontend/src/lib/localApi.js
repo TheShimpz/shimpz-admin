@@ -63,7 +63,7 @@ export async function listInstalledAssistants(fetcher, capsuleId) {
   });
 }
 
-/** Always let the idempotent install endpoint reconcile runtime state before invoking hello. */
+/** Always let the idempotent install endpoint reconcile runtime state before invoking the hello Power. */
 export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
   if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
     throw new LocalApiError('Invalid local Assistant request.');
@@ -80,7 +80,7 @@ export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
     body: JSON.stringify({ assistant: HELLO_ID }),
   });
   const installBody = await jsonObject(installResponse);
-  // 409 remains safe for a concurrent installer; both paths still prove readiness through hello.
+  // 409 remains safe for a concurrent installer; both paths still prove readiness through the Power.
   if (!installResponse.ok && installResponse.status !== 409) {
     throw new LocalApiError(
       safeApiError(installBody, 'The local evaluation could not be completed.'),
@@ -88,7 +88,7 @@ export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
     );
   }
 
-  const helloResponse = await fetcher(`${base}/${HELLO_ID}/operations/hello`, {
+  const helloResponse = await fetcher(`${base}/${HELLO_ID}/powers/hello`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ name: name.trim() }),

@@ -25,6 +25,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adminstore
@@ -317,16 +319,16 @@ async def apply(payload: dict):
 # ── Capsules + Assistants: authenticated control plane for capsule-driver. Every route stays under
 # /api/ and outside OPEN_API, so the signed local Admin session is required before the private bearer
 # bridge can run. The Admin has no Docker socket and preserves bounded driver JSON/status exactly. ──
-def _capsule_driver_response(operation):
+def _capsule_driver_response(action):
     try:
-        response = operation()
+        response = action()
     except capsules.CapsuleRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return JSONResponse(status_code=response.status, content=response.body)
 
 
 async def _bounded_json_object(request: Request) -> dict:
-    """Read one JSON object without allowing an operation request to grow without bound."""
+    """Read one JSON object without allowing a Power request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise HTTPException(status_code=415, detail="content type must be application/json")
@@ -349,6 +351,71 @@ async def _bounded_json_object(request: Request) -> dict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
     return payload
+
+
+MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+MAX_MULTIPART_BODY_BYTES = capsules.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
+
+
+class _MultipartBodyTooLargeError(OSError):
+    pass
+
+
+async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
+    """Accept exactly one bounded file part and return no filesystem path."""
+    content_types = request.headers.getlist("content-type")
+    if len(content_types) != 1 or content_types[0].partition(";")[0].strip().lower() != "multipart/form-data":
+        raise HTTPException(status_code=415, detail="content type must be multipart/form-data")
+
+    content_lengths = request.headers.getlist("content-length")
+    if len(content_lengths) > 1:
+        raise HTTPException(status_code=400, detail="invalid content length")
+    if content_lengths:
+        raw_length = content_lengths[0]
+        if not raw_length.isascii() or not raw_length.isdigit():
+            raise HTTPException(status_code=400, detail="invalid content length")
+        if int(raw_length) > MAX_MULTIPART_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="file upload too large")
+
+    async def bounded_stream():
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > MAX_MULTIPART_BODY_BYTES:
+                raise _MultipartBodyTooLargeError
+            yield chunk
+
+    try:
+        form = await MultiPartParser(
+            request.headers,
+            bounded_stream(),
+            max_files=1,
+            max_fields=0,
+            max_part_size=1024,
+        ).parse()
+    except _MultipartBodyTooLargeError:
+        raise HTTPException(status_code=413, detail="file upload too large") from None
+    except MultiPartException:
+        raise HTTPException(status_code=400, detail="invalid multipart body") from None
+
+    try:
+        items = form.multi_items()
+        if len(items) != 1 or items[0][0] != "file" or not isinstance(items[0][1], UploadFile):
+            raise HTTPException(status_code=400, detail="multipart body must contain only one file field")
+        upload = items[0][1]
+        try:
+            filename = capsules.canonical_filename(upload.filename)
+            media_type = capsules.canonical_media_type(upload.content_type)
+        except capsules.CapsuleRequestError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        content = await upload.read(capsules.MAX_FILE_UPLOAD_BYTES + 1)
+        if not content:
+            raise HTTPException(status_code=400, detail="file must contain bytes")
+        if len(content) > capsules.MAX_FILE_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="file upload too large")
+        return filename, media_type, content
+    finally:
+        await form.close()
 
 
 @app.get("/api/capsules")
@@ -394,12 +461,12 @@ async def capsule_assistant_install(cid: str, request: Request):
     )
 
 
-@app.post("/api/capsules/{cid}/assistants/{assistant_id}/operations/{operation}")
-async def capsule_assistant_operation(cid: str, assistant_id: str, operation: str, request: Request):
+@app.post("/api/capsules/{cid}/assistants/{assistant_id}/powers/{power}")
+async def capsule_assistant_power(cid: str, assistant_id: str, power: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
         _capsule_driver_response,
-        lambda: capsules.invoke_assistant_operation(cid, assistant_id, operation, payload),
+        lambda: capsules.invoke_assistant_power(cid, assistant_id, power, payload),
     )
 
 
@@ -408,10 +475,29 @@ def capsule_assistant_uninstall(cid: str, assistant_id: str):
     return _capsule_driver_response(lambda: capsules.uninstall_assistant(cid, assistant_id))
 
 
-def _driver_proxy_response(operation):
+@app.get("/api/capsules/{cid}/files")
+def capsule_files_list(cid: str):
+    return _capsule_driver_response(lambda: capsules.list_files(cid))
+
+
+@app.post("/api/capsules/{cid}/files")
+async def capsule_file_upload(cid: str, request: Request):
+    filename, media_type, content = await _bounded_multipart_file(request)
+    return await run_in_threadpool(
+        _capsule_driver_response,
+        lambda: capsules.upload_file(cid, filename, media_type, content),
+    )
+
+
+@app.delete("/api/capsules/{cid}/files/{file_id}")
+def capsule_file_delete(cid: str, file_id: str):
+    return _capsule_driver_response(lambda: capsules.delete_file(cid, file_id))
+
+
+def _driver_proxy_response(action):
     """Return only bounded JSON received from capsule-driver; normalize local validation failures."""
     try:
-        response = operation()
+        response = action()
     except driver_proxy.ProxyRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return JSONResponse(status_code=response.status, content=response.body)

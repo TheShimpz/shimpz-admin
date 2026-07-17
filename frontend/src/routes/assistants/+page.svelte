@@ -22,7 +22,7 @@
   const FRAME_READY_TIMEOUT_MS = 8000;
   const LOCAL_COPY = {
     en: {
-      runHello: 'Run hello',
+      runHello: 'Run hello Power',
       installedTitle: 'Installed in this Capsule',
       installedEmpty: 'No Assistants installed in this Capsule.',
       inventoryLoading: 'Reading installed Assistants…',
@@ -36,13 +36,13 @@
       checkingTitle: 'Preparing the local action…',
       checkingLead: 'The Admin is checking the selected Capsule and its installed Assistants.',
       alreadyTitle: 'Hello Pulse is already installed.',
-      alreadyLead: 'Nothing was installed twice. You can run its hello operation now.',
+      alreadyLead: 'Nothing was installed twice. You can run its hello Power now.',
       noCapsuleTitle: 'Installation needs a running Capsule.',
       noCapsuleLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
       unavailableTitle: 'Hello Pulse is unavailable right now.',
       unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
       successTitle: 'Hello Pulse is ready.',
-      successLead: 'The Assistant is installed in the selected Capsule and its declared hello operation responded.',
+      successLead: 'The Assistant is installed in the selected Capsule and its declared hello Power responded.',
       failureTitle: 'The local action did not finish.',
       failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
       capsuleLabel: 'Destination Capsule',
@@ -51,7 +51,7 @@
       close: 'Close',
       preparing: 'Checking…',
       confirm: 'Confirm install',
-      runInstalled: 'Run hello',
+      runInstalled: 'Run hello Power',
       retryAction: 'Try again',
       working: 'Installing and running…',
       result: 'Hello result',
@@ -68,7 +68,7 @@
       openStore: 'Open Store',
     },
     pt: {
-      runHello: 'Executar hello',
+      runHello: 'Executar Power hello',
       installedTitle: 'Instalados nesta Cápsula',
       installedEmpty: 'Nenhum Assistant instalado nesta Cápsula.',
       inventoryLoading: 'Lendo Assistants instalados…',
@@ -82,13 +82,13 @@
       checkingTitle: 'Preparando a ação local…',
       checkingLead: 'O Admin está verificando a Cápsula selecionada e seus Assistants instalados.',
       alreadyTitle: 'O Hello Pulse já está instalado.',
-      alreadyLead: 'Nada foi instalado duas vezes. Você pode executar a operação hello agora.',
+      alreadyLead: 'Nada foi instalado duas vezes. Você pode executar a Power hello agora.',
       noCapsuleTitle: 'A instalação precisa de uma Cápsula em execução.',
       noCapsuleLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
       unavailableTitle: 'O Hello Pulse está indisponível agora.',
       unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
       successTitle: 'O Hello Pulse está pronto.',
-      successLead: 'O Assistant está instalado na Cápsula selecionada e sua operação hello declarada respondeu.',
+      successLead: 'O Assistant está instalado na Cápsula selecionada e sua Power hello declarada respondeu.',
       failureTitle: 'A ação local não foi concluída.',
       failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
       capsuleLabel: 'Cápsula de destino',
@@ -97,7 +97,7 @@
       close: 'Fechar',
       preparing: 'Verificando…',
       confirm: 'Confirmar instalação',
-      runInstalled: 'Executar hello',
+      runInstalled: 'Executar Power hello',
       retryAction: 'Tentar novamente',
       working: 'Instalando e executando…',
       result: 'Resultado do hello',
@@ -177,10 +177,10 @@
   }[dialogMode] ?? copy.confirmLead);
 
   function declaresHello(entry) {
-    if (Array.isArray(entry?.operations)) {
-      return entry.operations.some((operation) => operation === 'hello' || operation?.id === 'hello');
+    if (Array.isArray(entry?.powers)) {
+      return entry.powers.some((power) => power === 'hello' || power?.id === 'hello');
     }
-    return Boolean(entry?.operations && typeof entry.operations === 'object' && entry.operations.hello);
+    return Boolean(entry?.powers && typeof entry.powers === 'object' && entry.powers.hello);
   }
 
   function normalizeCapsules(document) {

@@ -8,6 +8,7 @@ safe 400/404/409 is not flattened into an ambiguous gateway error.
 
 from __future__ import annotations
 
+import base64
 import http.client
 import json
 import logging
@@ -24,13 +25,18 @@ TOKEN_FILE = os.environ.get("SHIMPZ_CAPSULEDRIVER_TOKEN_FILE", "/run/shimpz-caps
 
 MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
+MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_FILE_JSON_BODY_BYTES = 4 * ((MAX_FILE_UPLOAD_BYTES + 2) // 3) + 8192
 CONTROL_TIMEOUT_SECONDS = 180
-OPERATION_TIMEOUT_SECONDS = 30
+POWER_TIMEOUT_SECONDS = 30
 
 _CAPSULE_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _ASSISTANT_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_OPERATION_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_ALLOWED_OPERATIONS = frozenset({"hello"})
+_POWER_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+_FILE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+\-]*/[a-z0-9][a-z0-9!#$&^_.+\-]*$")
+_ALLOWED_POWERS = frozenset({"hello"})
 
 
 class CapsuleRequestError(ValueError):
@@ -62,14 +68,41 @@ def canonical_assistant_id(value: object) -> str:
     return _canonical_id(value, field="assistant id", pattern=_ASSISTANT_ID_RE, maximum=80)
 
 
-def canonical_operation_id(value: object) -> str:
-    operation = _canonical_id(value, field="operation id", pattern=_OPERATION_ID_RE, maximum=80)
-    if operation not in _ALLOWED_OPERATIONS:
-        raise CapsuleRequestError("only the declared hello operation is available")
-    return operation
+def canonical_power_id(value: object) -> str:
+    power = _canonical_id(value, field="power id", pattern=_POWER_ID_RE, maximum=80)
+    if power not in _ALLOWED_POWERS:
+        raise CapsuleRequestError("only the declared hello Power is available")
+    return power
 
 
-def _encode_payload(payload: object | None) -> bytes | None:
+def canonical_filename(value: object) -> str:
+    if not isinstance(value, str) or not value or value.strip() != value:
+        raise CapsuleRequestError("filename must be non-empty and trimmed")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError as exc:
+        raise CapsuleRequestError("filename must be valid UTF-8") from exc
+    if len(encoded) > 255:
+        raise CapsuleRequestError("filename is too long")
+    if value in {".", ".."} or "/" in value or "\\" in value:
+        raise CapsuleRequestError("filename must not contain a path")
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise CapsuleRequestError("filename contains control characters")
+    return value
+
+
+def canonical_media_type(value: object) -> str:
+    if value is None or value == "":
+        return "application/octet-stream"
+    if not isinstance(value, str) or len(value) > 127:
+        raise CapsuleRequestError("invalid media type")
+    media_type = value.lower()
+    if _MEDIA_TYPE_RE.fullmatch(media_type) is None:
+        raise CapsuleRequestError("invalid media type")
+    return media_type
+
+
+def _encode_payload(payload: object | None, *, max_bytes: int = MAX_JSON_BODY_BYTES) -> bytes | None:
     if payload is None:
         return None
     if not isinstance(payload, dict):
@@ -78,8 +111,8 @@ def _encode_payload(payload: object | None) -> bytes | None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
     except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
         raise CapsuleRequestError("request body must be valid JSON") from exc
-    if len(body) > MAX_JSON_BODY_BYTES:
-        raise CapsuleRequestError(f"request body exceeds {MAX_JSON_BODY_BYTES} bytes")
+    if len(body) > max_bytes:
+        raise CapsuleRequestError(f"request body exceeds {max_bytes} bytes")
     return body
 
 
@@ -139,8 +172,9 @@ def _call(
     payload: object | None = None,
     *,
     timeout: int = CONTROL_TIMEOUT_SECONDS,
+    max_body_bytes: int = MAX_JSON_BODY_BYTES,
 ) -> DriverResponse:
-    body = _encode_payload(payload)
+    body = _encode_payload(payload, max_bytes=max_body_bytes)
     connection = None
     try:
         host, port = _endpoint()
@@ -209,21 +243,140 @@ def install_assistant(capsule_id: object, payload: object) -> DriverResponse:
     return _call("POST", _assistant_path(capsule_id), {"assistant": assistant_id})
 
 
-def invoke_assistant_operation(
+def invoke_assistant_power(
     capsule_id: object,
     assistant_id: object,
-    operation_id: object,
+    power_id: object,
     payload: object,
 ) -> DriverResponse:
-    operation = canonical_operation_id(operation_id)
+    power = canonical_power_id(power_id)
     if not isinstance(payload, dict) or set(payload) - {"name"}:
         raise CapsuleRequestError("hello input must be an object containing only name")
     name = payload.get("name", "Shimpz")
     if not isinstance(name, str) or not name.strip() or len(name) > 80 or "\n" in name or "\r" in name:
         raise CapsuleRequestError("name must be a non-empty single-line string up to 80 characters")
-    path = f"{_assistant_path(capsule_id, assistant_id)}/operations/{operation}"
-    return _call("POST", path, {"name": name.strip()}, timeout=OPERATION_TIMEOUT_SECONDS)
+    path = f"{_assistant_path(capsule_id, assistant_id)}/powers/{power}"
+    return _call("POST", path, {"name": name.strip()}, timeout=POWER_TIMEOUT_SECONDS)
 
 
 def uninstall_assistant(capsule_id: object, assistant_id: object) -> DriverResponse:
     return _call("DELETE", _assistant_path(capsule_id, assistant_id))
+
+
+def _files_path(capsule_id: object, file_id: object | None = None) -> str:
+    cid = canonical_capsule_id(capsule_id)
+    base = f"/v1/capsules/{cid}/files"
+    if file_id is None:
+        return base
+    return f"{base}/{_canonical_id(file_id, field='file id', pattern=_FILE_ID_RE, maximum=32)}"
+
+
+def _integer(value: object, *, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError("invalid integer")
+    return value
+
+
+def _usage(document: dict[str, object]) -> dict[str, int]:
+    used = _integer(document.get("used_bytes"))
+    limit = _integer(document.get("limit_bytes"), minimum=1)
+    remaining = _integer(document.get("remaining_bytes"))
+    if used > limit or remaining != limit - used:
+        raise ValueError("invalid storage usage")
+    return {"used_bytes": used, "limit_bytes": limit, "remaining_bytes": remaining}
+
+
+def _file_metadata(document: object, *, include_usage: bool) -> dict[str, object]:
+    if not isinstance(document, dict):
+        raise ValueError("invalid file metadata")
+    file_id = document.get("id")
+    sha256 = document.get("sha256")
+    if not isinstance(file_id, str) or _FILE_ID_RE.fullmatch(file_id) is None:
+        raise ValueError("invalid file id")
+    if not isinstance(sha256, str) or _SHA256_RE.fullmatch(sha256) is None:
+        raise ValueError("invalid file digest")
+    metadata: dict[str, object] = {
+        "id": file_id,
+        "name": canonical_filename(document.get("name")),
+        "media_type": canonical_media_type(document.get("media_type")),
+        "size": _integer(document.get("size"), minimum=1),
+        "sha256": sha256,
+        "created_at": _integer(document.get("created_at"), minimum=1),
+    }
+    if metadata["size"] > MAX_FILE_UPLOAD_BYTES:
+        raise ValueError("invalid file size")
+    if include_usage:
+        metadata.update(_usage(document))
+    return metadata
+
+
+def _project_storage_response(response: DriverResponse, *, capsule_id: str, kind: str) -> DriverResponse:
+    if not 200 <= response.status < 300:
+        error_body = {
+            key: value
+            for key in ("detail", "error", "code")
+            if isinstance((value := response.body.get(key)), str) and 0 < len(value) <= 500
+        }
+        if not error_body:
+            error_body = {"detail": "capsule-driver request failed"}
+        return DriverResponse(response.status, error_body)
+    try:
+        if response.body.get("capsule") != capsule_id:
+            raise ValueError("invalid Capsule identity")
+        if kind == "upload":
+            body: dict[str, object] = {
+                "capsule": capsule_id,
+                "file": _file_metadata(response.body.get("file"), include_usage=True),
+            }
+        elif kind == "list":
+            files = response.body.get("files")
+            if not isinstance(files, list) or len(files) > 256:
+                raise ValueError("invalid file inventory")
+            body = {
+                "capsule": capsule_id,
+                "files": [_file_metadata(item, include_usage=False) for item in files],
+                **_usage(response.body),
+            }
+        elif kind == "delete":
+            file_id = response.body.get("id")
+            deleted = response.body.get("deleted")
+            if not isinstance(file_id, str) or _FILE_ID_RE.fullmatch(file_id) is None:
+                raise ValueError("invalid file id")
+            if not isinstance(deleted, bool):
+                raise ValueError("invalid deletion result")
+            body = {"capsule": capsule_id, "id": file_id, "deleted": deleted, **_usage(response.body)}
+        else:
+            raise ValueError("invalid storage response kind")
+    except CapsuleRequestError, TypeError, ValueError:
+        log.warning("capsule-driver returned an invalid storage response (%s)", kind)
+        return DriverResponse(502, {"detail": "capsule-driver unavailable"})
+    return DriverResponse(response.status, body)
+
+
+def upload_file(capsule_id: object, filename: object, media_type: object, content: object) -> DriverResponse:
+    cid = canonical_capsule_id(capsule_id)
+    safe_filename = canonical_filename(filename)
+    safe_media_type = canonical_media_type(media_type)
+    if not isinstance(content, bytes) or not content:
+        raise CapsuleRequestError("file must contain bytes")
+    if len(content) > MAX_FILE_UPLOAD_BYTES:
+        raise CapsuleRequestError(f"file exceeds {MAX_FILE_UPLOAD_BYTES} bytes")
+    payload = {
+        "filename": safe_filename,
+        "media_type": safe_media_type,
+        "content_b64": base64.b64encode(content).decode("ascii"),
+    }
+    response = _call("POST", _files_path(cid), payload, max_body_bytes=MAX_FILE_JSON_BODY_BYTES)
+    return _project_storage_response(response, capsule_id=cid, kind="upload")
+
+
+def list_files(capsule_id: object) -> DriverResponse:
+    cid = canonical_capsule_id(capsule_id)
+    response = _call("GET", _files_path(cid))
+    return _project_storage_response(response, capsule_id=cid, kind="list")
+
+
+def delete_file(capsule_id: object, file_id: object) -> DriverResponse:
+    cid = canonical_capsule_id(capsule_id)
+    response = _call("DELETE", _files_path(cid, file_id))
+    return _project_storage_response(response, capsule_id=cid, kind="delete")

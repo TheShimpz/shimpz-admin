@@ -30,7 +30,7 @@ test('always posts idempotent install before hello without an inventory prefligh
     calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
     [
       ['POST', '/api/capsules/capsule_1/assistants', { assistant: 'hello-pulse' }],
-      ['POST', '/api/capsules/capsule_1/assistants/hello-pulse/operations/hello', { name: 'Captain' }],
+      ['POST', '/api/capsules/capsule_1/assistants/hello-pulse/powers/hello', { name: 'Captain' }],
     ],
   );
 });
