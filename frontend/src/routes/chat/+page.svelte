@@ -4,7 +4,14 @@
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import { locale, t } from '$lib/i18n.js';
   import { safeApiError } from '$lib/localApi.js';
-  import { listCapsuleFiles, sendChat, stopChat } from '$lib/localChat.js';
+  import {
+    CHAT_WS_PROTOCOL,
+    chatSocketUrl,
+    createChatFrame,
+    createStopFrame,
+    listCapsuleFiles,
+    parseChatTerminalEvent,
+  } from '$lib/localChat.js';
 
   const CID_RE = /^[a-z0-9_]{1,40}$/;
   const CONTROL_RE = /[\u0000-\u001f\u007f]/;
@@ -17,6 +24,8 @@
       stop: 'Stop', stopped: 'The active turn was stopped.', emptyTeams: 'Create a running Team first.',
       openTeams: 'Open Teams',
       loadFailed: 'Local chat data is unavailable.', needAuth: 'Sign in to use local chat.', signIn: 'Open sign-in',
+      connecting: 'Connecting…', disconnected: 'The secure chat connection was interrupted. Reconnecting…',
+      protocolError: 'The secure chat response was invalid.',
     },
     pt: {
       kicker: 'Time // Chat', title: 'Seu Time',
@@ -26,6 +35,8 @@
       stop: 'Parar', stopped: 'O turno ativo foi interrompido.', emptyTeams: 'Crie primeiro um Time em execução.',
       openTeams: 'Abrir Times',
       loadFailed: 'Os dados do chat local estão indisponíveis.', needAuth: 'Entre para usar o chat local.', signIn: 'Abrir login',
+      connecting: 'Conectando…', disconnected: 'A conexão segura do chat foi interrompida. Reconectando…',
+      protocolError: 'A resposta segura do chat era inválida.',
     },
   };
 
@@ -39,6 +50,10 @@
   let busy = $state(false);
   let stopping = $state(false);
   let error = $state('');
+  let socket = $state(null);
+  let socketReady = $state(false);
+  let reconnectTimer;
+  let reconnectAttempt = 0;
 
   let copy = $derived(COPY[$locale] ?? COPY.en);
   let runningCapsules = $derived(capsules.filter((entry) => entry.status === 'running'));
@@ -46,6 +61,84 @@
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived(copy.placeholder.replace('{team}', teamName));
   let thinking = $derived(copy.sending.replace('{team}', teamName));
+
+  function closeSocket() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+    }
+    const current = socket;
+    socket = null;
+    socketReady = false;
+    current?.close(1000, 'Team changed');
+  }
+
+  function scheduleReconnect(expectedCapsule) {
+    if (reconnectTimer || phase !== 'ready' || capsuleId !== expectedCapsule) return;
+    const delay = Math.min(400 * (2 ** reconnectAttempt), 5000);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined;
+      if (phase === 'ready' && capsuleId === expectedCapsule) connectSocket(expectedCapsule);
+    }, delay);
+  }
+
+  function connectSocket(expectedCapsule = capsuleId) {
+    closeSocket();
+    if (!expectedCapsule || phase !== 'ready' || capsuleId !== expectedCapsule) return;
+    const active = new WebSocket(chatSocketUrl(location, expectedCapsule), CHAT_WS_PROTOCOL);
+    socket = active;
+
+    active.onopen = () => {
+      if (socket !== active || capsuleId !== expectedCapsule) return;
+      if (active.protocol !== CHAT_WS_PROTOCOL) {
+        socket = null;
+        active.close(1002, 'Protocol required');
+        error = copy.protocolError;
+        return;
+      }
+      reconnectAttempt = 0;
+      socketReady = true;
+      if (error === copy.disconnected) error = '';
+    };
+    active.onmessage = (event) => {
+      if (socket !== active || capsuleId !== expectedCapsule) return;
+      let terminal;
+      try {
+        if (typeof event.data !== 'string' || (!busy && !stopping)) throw new Error('unexpected frame');
+        terminal = parseChatTerminalEvent(JSON.parse(event.data), teamName);
+      } catch {
+        socket = null;
+        socketReady = false;
+        busy = false;
+        stopping = false;
+        error = copy.protocolError;
+        active.close(1002, 'Invalid terminal event');
+        return;
+      }
+
+      busy = false;
+      stopping = false;
+      if (terminal.type === 'done') {
+        capsules = capsules.map((entry) => entry.id === expectedCapsule ? { ...entry, name: terminal.team } : entry);
+        turns = [...turns, { role: 'assistant', text: terminal.reply, author: terminal.team }];
+        error = '';
+      } else if (terminal.type === 'stopped') {
+        error = copy.stopped;
+      } else {
+        error = terminal.detail;
+      }
+    };
+    active.onclose = () => {
+      if (socket !== active || capsuleId !== expectedCapsule) return;
+      socket = null;
+      socketReady = false;
+      stopping = false;
+      if (busy) busy = false;
+      error = copy.disconnected;
+      scheduleReconnect(expectedCapsule);
+    };
+  }
 
   function normalizeCapsules(document) {
     if (!Array.isArray(document?.capsules)) return [];
@@ -98,6 +191,7 @@
         : (runningCapsules[0]?.id ?? '');
       phase = 'ready';
       await loadTeamData();
+      connectSocket(capsuleId);
     } catch (reason) {
       error = reason instanceof Error ? reason.message : copy.loadFailed;
       phase = 'ready';
@@ -105,11 +199,13 @@
   }
 
   async function selectTeam(event) {
+    closeSocket();
     capsuleId = event.currentTarget.value;
     const url = new URL(location.href);
     url.searchParams.set('capsule', capsuleId);
     history.replaceState(history.state, '', url);
     await loadTeamData();
+    connectSocket(capsuleId);
   }
 
   function toggleFile(fileId) {
@@ -118,36 +214,40 @@
       : selectedFiles.length < 8 ? [...selectedFiles, fileId] : selectedFiles;
   }
 
-  async function send(event) {
+  function send(event) {
     event.preventDefault();
-    if (busy || !capsuleId || !draft.trim()) return;
+    if (busy || !capsuleId || !draft.trim() || !socketReady || !socket) return;
     const message = draft.trim();
+    let frame;
+    try {
+      frame = createChatFrame(capsuleId, { message, files: selectedFiles });
+    } catch (reason) {
+      error = reason instanceof Error ? reason.message : copy.loadFailed;
+      return;
+    }
     busy = true;
     error = '';
     turns = [...turns, { role: 'user', text: message }];
+    draft = '';
     try {
-      const response = await sendChat(fetch, capsuleId, { message, files: selectedFiles });
-      capsules = capsules.map((entry) => entry.id === capsuleId ? { ...entry, name: response.team } : entry);
-      turns = [...turns, { role: 'assistant', text: response.reply, author: response.team }];
-      draft = '';
+      socket.send(JSON.stringify(frame));
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : copy.loadFailed;
-    } finally {
       busy = false;
+      error = reason instanceof Error ? reason.message : copy.loadFailed;
+      socket.close();
     }
   }
 
-  async function stop() {
-    if (!busy || stopping || !capsuleId) return;
+  function stop() {
+    if (!busy || stopping || !capsuleId || !socketReady || !socket) return;
     stopping = true;
     error = '';
     try {
-      await stopChat(fetch, capsuleId);
-      error = copy.stopped;
+      socket.send(JSON.stringify(createStopFrame(capsuleId)));
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : copy.loadFailed;
-    } finally {
       stopping = false;
+      error = reason instanceof Error ? reason.message : copy.loadFailed;
+      socket.close();
     }
   }
 
@@ -155,7 +255,10 @@
     try { await fetch('/api/logout', { method: 'POST' }); } finally { location.assign('/'); }
   }
 
-  onMount(load);
+  onMount(() => {
+    void load();
+    return closeSocket;
+  });
 </script>
 
 <svelte:head><title>{teamName} — Shimpz Admin</title></svelte:head>
@@ -196,7 +299,9 @@
             <textarea bind:value={draft} maxlength="16000" rows="3" placeholder={placeholder} disabled={busy}></textarea>
             <div>
               {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
-              <button class="send" type="submit" disabled={busy || !draft.trim()}>{busy ? thinking : copy.send}</button>
+              <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
+                {busy ? thinking : socketReady ? copy.send : copy.connecting}
+              </button>
             </div>
           </form>
         </section>
