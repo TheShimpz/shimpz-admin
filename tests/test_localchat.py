@@ -15,9 +15,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import teams
 import localchat
 import modelproviders
+import teams
 
 TRACE_ID = "a" * 32
 
@@ -35,11 +35,7 @@ class _ControllerHandler(BaseHTTPRequestHandler):
             "headers": {key.lower(): value for key, value in self.headers.items()},
             "body": self.rfile.read(length),
         }
-        body = (
-            b'{"team_id":"team_1","team_name":"Marketing","reply":"Hello!","trace_id":"'
-            + TRACE_ID.encode()
-            + b'"}'
-        )
+        body = b'{"team_id":"team_1","team_name":"Marketing","reply":"Hello!","trace_id":"' + TRACE_ID.encode() + b'"}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

@@ -18,8 +18,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-import teams
 import localchat
+import teams
 from fastapi import WebSocket, WebSocketDisconnect
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v1"

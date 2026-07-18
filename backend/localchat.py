@@ -13,8 +13,8 @@ from __future__ import annotations
 import re
 from http import HTTPStatus
 
-import teams
 import modelproviders
+import teams
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
 MAX_REPLY_CHARS = 64 * 1024

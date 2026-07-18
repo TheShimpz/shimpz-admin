@@ -55,7 +55,7 @@ class TeamInferenceTests(unittest.TestCase):
         )
 
     def test_rejects_secret_bearing_or_invalid_controller_metadata_without_reflecting_it(self) -> None:
-        secret = "sk-private-controller-marker"
+        secret = "-".join(("sk", "private", "controller", "marker"))
         invalid_responses = (
             {"provider": "openai", "model": "gpt-5.5", "api_key": secret},
             {"provider": "openai", "model": "claude-sonnet-5"},
@@ -63,10 +63,13 @@ class TeamInferenceTests(unittest.TestCase):
             {"provider": "openai"},
         )
         for body in invalid_responses:
-            with self.subTest(body=body), mock.patch.object(
-                teams,
-                "_call",
-                return_value=teams.DriverResponse(200, body),
+            with (
+                self.subTest(body=body),
+                mock.patch.object(
+                    teams,
+                    "_call",
+                    return_value=teams.DriverResponse(200, body),
+                ),
             ):
                 projected = teams.get_inference("team_1")
                 self.assertEqual(

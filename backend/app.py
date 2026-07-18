@@ -30,7 +30,6 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adminstore
 import auth
-import teams
 import catalog
 import chat_ws
 import driver_proxy
@@ -38,6 +37,7 @@ import envfile
 import integrations
 import keyset
 import modelproviders
+import teams
 import validate_live
 
 log = logging.getLogger("shimpz-admin")
