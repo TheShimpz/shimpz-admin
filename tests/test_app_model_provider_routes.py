@@ -42,16 +42,16 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/model-providers", "GET"),
                 ("/api/model-providers/{provider}", "PUT"),
                 ("/api/model-providers/{provider}", "DELETE"),
-                ("/api/capsules/{cid}/inference", "GET"),
-                ("/api/capsules/{cid}/inference", "PUT"),
+                ("/api/teams/{team_id}/inference", "GET"),
+                ("/api/teams/{team_id}/inference", "PUT"),
             }.issubset(routes)
         )
         websocket_paths = {
             route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }
-        self.assertIn("/api/capsules/{cid}/chat/ws", websocket_paths)
-        self.assertNotIn(("/api/capsules/{cid}/chat", "POST"), routes)
-        self.assertNotIn(("/api/capsules/{cid}/chat/stop", "POST"), routes)
+        self.assertIn("/api/teams/{team_id}/chat/ws", websocket_paths)
+        self.assertNotIn(("/api/teams/{team_id}/chat", "POST"), routes)
+        self.assertNotIn(("/api/teams/{team_id}/chat/stop", "POST"), routes)
         self.assertFalse(any("resolve" in path or "secret" in path for path, _method in routes))
 
     def test_model_provider_routes_require_the_local_admin_session(self) -> None:

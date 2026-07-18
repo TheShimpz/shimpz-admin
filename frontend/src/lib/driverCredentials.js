@@ -1,7 +1,7 @@
 const PROFILE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const FIELD_ID = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const DRIVER_ID = PROFILE_ID;
-const CAPSULE_ID = /^[a-z0-9_]{1,40}$/;
+const TEAM_ID = /^[a-z0-9_]{1,40}$/;
 const CREDENTIAL_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const OPTION_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
 const OAUTH_SCOPE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/;
@@ -208,7 +208,7 @@ export function normalizeCredentialForm(raw) {
   const form = closedRecord(raw, ["schema_version", "owner_scope", "cardinality", "profiles"]);
   if (
     form.schema_version !== 1 ||
-    form.owner_scope !== "capsule" ||
+    form.owner_scope !== "team" ||
     !["one", "many"].includes(form.cardinality) ||
     !Array.isArray(form.profiles) ||
     form.profiles.length < 1 ||
@@ -229,7 +229,7 @@ export function normalizeCredentialForm(raw) {
   });
   return {
     schema_version: 1,
-    owner_scope: "capsule",
+    owner_scope: "team",
     cardinality: form.cardinality,
     profiles,
   };
@@ -371,9 +371,9 @@ export function sendCredentialMutation(
   if (typeof fetcher !== "function" || typeof baseUrl !== "string" || !isRecord(payload)) {
     reject("invalid-request");
   }
-  const baseParts = /^\/api\/capsules\/([^/]+)\/drivers\/([^/]+)$/.exec(baseUrl);
+  const baseParts = /^\/api\/teams\/([^/]+)\/drivers\/([^/]+)$/.exec(baseUrl);
   if (!baseParts) reject("invalid-request");
-  identifier(baseParts[1], CAPSULE_ID, 40);
+  identifier(baseParts[1], TEAM_ID, 40);
   identifier(baseParts[2], DRIVER_ID, 80);
   let method;
   let url;

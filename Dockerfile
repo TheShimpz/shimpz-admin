@@ -76,7 +76,7 @@ RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-install-project --no-
     rm -rf /root/.cache/uv
 
 WORKDIR /app/backend
-COPY backend/app.py backend/adminstore.py backend/auth.py backend/capsules.py backend/catalog.py \
+COPY backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/catalog.py \
      backend/chat_ws.py backend/driver_proxy.py backend/envfile.py backend/integrations.py backend/keyset.py \
      backend/localchat.py backend/modelproviders.py \
      backend/validate_live.py ./

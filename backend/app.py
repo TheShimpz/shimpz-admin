@@ -30,7 +30,7 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adminstore
 import auth
-import capsules
+import teams
 import catalog
 import chat_ws
 import driver_proxy
@@ -43,7 +43,7 @@ import validate_live
 log = logging.getLogger("shimpz-admin")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-CAPSULE_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_CAPSULE_CREDENTIALS_ENABLED", "1").strip() == "1"
+TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 
 REPO = Path(os.environ.get("SHIMPZ_REPO") or Path(__file__).resolve().parents[3])
 ENV_PATH = REPO / ".env"
@@ -98,7 +98,7 @@ async def session(request: Request):
     return {
         "authenticated": _session_ok(request.cookies),
         "initialized": adminstore.is_initialized(),
-        "features": {"capsuleCredentials": CAPSULE_CREDENTIALS_ENABLED},
+        "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
     }
 
 
@@ -300,18 +300,18 @@ async def apply(payload: dict):
     return {"applied": True, "results": results, "generated": generated}
 
 
-# ── Capsules + Assistants: authenticated control plane for capsule-driver. Every route stays under
+# ── Teams + Assistants: authenticated control plane for team-driver. Every route stays under
 # /api/ and outside OPEN_API, so the signed local Admin session is required before the private bearer
 # bridge can run. The Admin has no Docker socket and preserves bounded driver JSON/status exactly. ──
-def _capsule_driver_response(action):
+def _team_driver_response(action):
     try:
         response = action()
-    except capsules.CapsuleRequestError as exc:
+    except teams.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return JSONResponse(status_code=response.status, content=response.body)
 
 
-async def _bounded_json_object(request: Request, max_bytes: int = capsules.MAX_JSON_BODY_BYTES) -> dict:
+async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON_BODY_BYTES) -> dict:
     """Read one JSON object without allowing a Power request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
@@ -365,7 +365,7 @@ def model_provider_delete(provider: str):
 
 
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
-MAX_MULTIPART_BODY_BYTES = capsules.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
+MAX_MULTIPART_BODY_BYTES = teams.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
 
 
 class _MultipartBodyTooLargeError(OSError):
@@ -415,109 +415,111 @@ async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
             raise HTTPException(status_code=400, detail="multipart body must contain only one file field")
         upload = items[0][1]
         try:
-            filename = capsules.canonical_filename(upload.filename)
-            media_type = capsules.canonical_media_type(upload.content_type)
-        except capsules.CapsuleRequestError as exc:
+            filename = teams.canonical_filename(upload.filename)
+            media_type = teams.canonical_media_type(upload.content_type)
+        except teams.TeamRequestError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
-        content = await upload.read(capsules.MAX_FILE_UPLOAD_BYTES + 1)
+        content = await upload.read(teams.MAX_FILE_UPLOAD_BYTES + 1)
         if not content:
             raise HTTPException(status_code=400, detail="file must contain bytes")
-        if len(content) > capsules.MAX_FILE_UPLOAD_BYTES:
+        if len(content) > teams.MAX_FILE_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="file upload too large")
         return filename, media_type, content
     finally:
         await form.close()
 
 
-@app.get("/api/capsules")
-def capsules_list():
-    return _capsule_driver_response(capsules.list_capsules)
+@app.get("/api/teams")
+def teams_list():
+    return _team_driver_response(teams.list_teams)
 
 
-@app.post("/api/capsules")
-def capsules_create(payload: dict):
-    name = str(payload.get("name", "")).strip()
-    if not name:
+@app.post("/api/teams")
+def teams_create(payload: dict):
+    if set(payload) != {"team_name"}:
+        raise HTTPException(status_code=400, detail="request body must contain only team_name")
+    team_name = str(payload["team_name"]).strip()
+    if not team_name:
         raise HTTPException(status_code=400, detail="team name required")
-    cid = capsules.to_cid(name)
-    if not cid:
+    team_id = teams.to_team_id(team_name)
+    if not team_id:
         raise HTTPException(status_code=400, detail="team name has no usable characters")
-    response = _capsule_driver_response(lambda: capsules.create(cid, name))
+    response = _team_driver_response(lambda: teams.create(team_id, team_name))
     if 200 <= response.status_code < 300:
-        log.info("capsule created: %s", cid)
+        log.info("team created: %s", team_id)
     return response
 
 
-@app.delete("/api/capsules/{cid}")
-def capsules_destroy(cid: str):
-    return _capsule_driver_response(lambda: capsules.destroy(cid))
+@app.delete("/api/teams/{team_id}")
+def teams_destroy(team_id: str):
+    return _team_driver_response(lambda: teams.destroy(team_id))
 
 
-@app.get("/api/capsules/{cid}/inference")
-def capsule_inference_status(cid: str):
-    """Return only the Capsule's provider/model selection; credentials remain in this backend."""
-    return _capsule_driver_response(lambda: capsules.get_inference(cid))
+@app.get("/api/teams/{team_id}/inference")
+def team_inference_status(team_id: str):
+    """Return only the Team's provider/model selection; credentials remain in this backend."""
+    return _team_driver_response(lambda: teams.get_inference(team_id))
 
 
-@app.put("/api/capsules/{cid}/inference")
-async def capsule_inference_configure(cid: str, request: Request):
+@app.put("/api/teams/{team_id}/inference")
+async def team_inference_configure(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
-        _capsule_driver_response,
-        lambda: capsules.configure_inference(cid, payload),
+        _team_driver_response,
+        lambda: teams.configure_inference(team_id, payload),
     )
 
 
-@app.websocket("/api/capsules/{cid}/chat/ws")
-async def capsule_chat_ws(websocket: WebSocket, cid: str):
-    await chat_ws.serve(websocket, cid, session_ok=_session_ok)
+@app.websocket("/api/teams/{team_id}/chat/ws")
+async def team_chat_ws(websocket: WebSocket, team_id: str):
+    await chat_ws.serve(websocket, team_id, session_ok=_session_ok)
 
 
 @app.get("/api/assistants")
 def assistants_list():
-    return _capsule_driver_response(capsules.list_assistants)
+    return _team_driver_response(teams.list_assistants)
 
 
-@app.get("/api/capsules/{cid}/assistants")
-def capsule_assistants_list(cid: str):
-    return _capsule_driver_response(lambda: capsules.list_installed_assistants(cid))
+@app.get("/api/teams/{team_id}/assistants")
+def team_assistants_list(team_id: str):
+    return _team_driver_response(lambda: teams.list_installed_assistants(team_id))
 
 
-@app.post("/api/capsules/{cid}/assistants")
-async def capsule_assistant_install(cid: str, request: Request):
+@app.post("/api/teams/{team_id}/assistants")
+async def team_assistant_install(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
-        _capsule_driver_response,
-        lambda: capsules.install_assistant(cid, payload),
+        _team_driver_response,
+        lambda: teams.install_assistant(team_id, payload),
     )
 
 
-@app.delete("/api/capsules/{cid}/assistants/{assistant_id}")
-def capsule_assistant_uninstall(cid: str, assistant_id: str):
-    return _capsule_driver_response(lambda: capsules.uninstall_assistant(cid, assistant_id))
+@app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
+def team_assistant_uninstall(team_id: str, assistant_id: str):
+    return _team_driver_response(lambda: teams.uninstall_assistant(team_id, assistant_id))
 
 
-@app.get("/api/capsules/{cid}/files")
-def capsule_files_list(cid: str):
-    return _capsule_driver_response(lambda: capsules.list_files(cid))
+@app.get("/api/teams/{team_id}/files")
+def team_files_list(team_id: str):
+    return _team_driver_response(lambda: teams.list_files(team_id))
 
 
-@app.post("/api/capsules/{cid}/files")
-async def capsule_file_upload(cid: str, request: Request):
+@app.post("/api/teams/{team_id}/files")
+async def team_file_upload(team_id: str, request: Request):
     filename, media_type, content = await _bounded_multipart_file(request)
     return await run_in_threadpool(
-        _capsule_driver_response,
-        lambda: capsules.upload_file(cid, filename, media_type, content),
+        _team_driver_response,
+        lambda: teams.upload_file(team_id, filename, media_type, content),
     )
 
 
-@app.delete("/api/capsules/{cid}/files/{file_id}")
-def capsule_file_delete(cid: str, file_id: str):
-    return _capsule_driver_response(lambda: capsules.delete_file(cid, file_id))
+@app.delete("/api/teams/{team_id}/files/{file_id}")
+def team_file_delete(team_id: str, file_id: str):
+    return _team_driver_response(lambda: teams.delete_file(team_id, file_id))
 
 
 def _driver_proxy_response(action):
-    """Return only bounded JSON received from capsule-driver; normalize local validation failures."""
+    """Return only bounded JSON received from team-driver; normalize local validation failures."""
     try:
         response = action()
     except driver_proxy.ProxyRequestError as exc:
@@ -526,30 +528,32 @@ def _driver_proxy_response(action):
 
 
 # Driver configuration stays out of `.env`/keyset: these session-gated routes are a stateless,
-# JSON-only pass-through to capsule-driver's per-Capsule control plane.
-@app.get("/api/capsules/{cid}/drivers/{driver_id}")
-def capsule_driver_get(cid: str, driver_id: str):
-    return _driver_proxy_response(lambda: driver_proxy.get_driver(cid, driver_id))
+# JSON-only pass-through to team-driver's per-Team control plane.
+@app.get("/api/teams/{team_id}/drivers/{driver_id}")
+def team_driver_get(team_id: str, driver_id: str):
+    return _driver_proxy_response(lambda: driver_proxy.get_driver(team_id, driver_id))
 
 
-@app.post("/api/capsules/{cid}/drivers/{driver_id}/credentials")
-def capsule_driver_credential_create(cid: str, driver_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.create_credential(cid, driver_id, payload))
+@app.post("/api/teams/{team_id}/drivers/{driver_id}/credentials")
+def team_driver_credential_create(team_id: str, driver_id: str, payload: dict):
+    return _driver_proxy_response(lambda: driver_proxy.create_credential(team_id, driver_id, payload))
 
 
-@app.put("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}")
-def capsule_driver_credential_replace(cid: str, driver_id: str, credential_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.replace_credential(cid, driver_id, credential_id, payload))
+@app.put("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}")
+def team_driver_credential_replace(team_id: str, driver_id: str, credential_id: str, payload: dict):
+    return _driver_proxy_response(lambda: driver_proxy.replace_credential(team_id, driver_id, credential_id, payload))
 
 
-@app.delete("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}")
-def capsule_driver_credential_delete(cid: str, driver_id: str, credential_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.delete_credential(cid, driver_id, credential_id, payload))
+@app.delete("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}")
+def team_driver_credential_delete(team_id: str, driver_id: str, credential_id: str, payload: dict):
+    return _driver_proxy_response(lambda: driver_proxy.delete_credential(team_id, driver_id, credential_id, payload))
 
 
-@app.post("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}/verify")
-def capsule_driver_credential_verify(cid: str, driver_id: str, credential_id: str, payload: dict | None = None):
-    return _driver_proxy_response(lambda: driver_proxy.verify_credential(cid, driver_id, credential_id, payload or {}))
+@app.post("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}/verify")
+def team_driver_credential_verify(team_id: str, driver_id: str, credential_id: str, payload: dict | None = None):
+    return _driver_proxy_response(
+        lambda: driver_proxy.verify_credential(team_id, driver_id, credential_id, payload or {})
+    )
 
 
 @app.api_route(
@@ -563,7 +567,7 @@ async def unknown_api(path: str):
 
 if UI_DIR.is_dir():
     # SPA serve: return a real asset if the path maps to one, else fall back to index.html so a
-    # client-routed view (e.g. /capsules) works on a direct load / refresh — not just via in-app nav
+    # client-routed view (e.g. /teams) works on a direct load / refresh — not just via in-app nav
     # (StaticFiles(html=True) 404s nested routes). The explicit /api/* fallback above prevents API
     # typos or retired endpoints from being answered with the SPA shell.
     @app.get("/{path:path}")

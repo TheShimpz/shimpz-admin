@@ -91,14 +91,14 @@ function acknowledgeStoreIntent(event, iframeWindow, expected, acknowledgementTy
 
 /**
  * Accept one inert Store intent. The Store can nominate the released Assistant, but it never gets
- * a local token, Capsule id, or authority to install; the Captain must select and confirm locally.
+ * a local token, Team id, or authority to install; the Captain must select and confirm locally.
  */
 export function acceptsStoreInstallIntent(event, iframeWindow) {
   return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT);
 }
 
 /**
- * Acknowledge only the exact inert Store intent. The response deliberately contains no Capsule,
+ * Acknowledge only the exact inert Store intent. The response deliberately contains no Team,
  * inventory, token, runtime, or installation state; local admission remains entirely in the Admin.
  */
 export function acknowledgeStoreInstallIntent(event, iframeWindow) {
@@ -156,7 +156,7 @@ export function projectReleasedStoreAssistantIds(installedAssistants) {
 }
 
 /**
- * Publish only the bounded installed-id projection needed to render the embedded Store. Capsule
+ * Publish only the bounded installed-id projection needed to render the embedded Store. Team
  * identity, runtime metadata, credentials, and local authority never cross this boundary.
  */
 export function postStoreAssistantState(iframeWindow, status, installed) {

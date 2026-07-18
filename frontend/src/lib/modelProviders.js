@@ -1,6 +1,6 @@
 import { LocalApiError, safeApiError } from './localApi.js';
 
-const CAPSULE_ID_RE = /^[a-z0-9_]{1,40}$/;
+const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const EXPECTED_CATALOG = Object.freeze({
   openai: Object.freeze({
     title: 'OpenAI',
@@ -89,35 +89,35 @@ export async function listModelProviders(fetcher) {
   return body.providers;
 }
 
-/** Read only provider/model metadata from one Capsule. HTTP 409 means it has no selection yet. */
-export async function loadInference(fetcher, capsuleId) {
-  if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
-    throw new LocalApiError('Invalid Capsule inference request.');
+/** Read only provider/model metadata from one Team. HTTP 409 means it has no selection yet. */
+export async function loadInference(fetcher, teamId) {
+  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
+    throw new LocalApiError('Invalid Team inference request.');
   }
-  const response = await fetcher(`/api/capsules/${encodeURIComponent(capsuleId)}/inference`, {
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   });
   const body = await jsonObject(response);
   if (response.status === 409) return null;
   if (!response.ok) {
-    throw new LocalApiError(safeApiError(body, 'Capsule inference settings are unavailable.'), response.status);
+    throw new LocalApiError(safeApiError(body, 'Team inference settings are unavailable.'), response.status);
   }
   if (
-    !exactKeys(body, ['capsule', 'model', 'provider']) ||
-    body.capsule !== capsuleId ||
+    !exactKeys(body, ['team_id', 'model', 'provider']) ||
+    body.team_id !== teamId ||
     !validSelection(body.provider, body.model)
   ) {
-    throw new LocalApiError('Capsule inference settings are invalid.', response.status);
+    throw new LocalApiError('Team inference settings are invalid.', response.status);
   }
   return { provider: body.provider, model: body.model };
 }
 
-/** Save a key to the backend first, then send only provider/model to the Capsule controller. */
-export async function saveModelSetup(fetcher, capsuleId, setup, providers) {
+/** Save a key to the backend first, then send only provider/model to the Team controller. */
+export async function saveModelSetup(fetcher, teamId, setup, providers) {
   if (
     typeof fetcher !== 'function' ||
-    !CAPSULE_ID_RE.test(capsuleId) ||
+    !TEAM_ID_RE.test(teamId) ||
     !validSelection(setup?.provider, setup?.model) ||
     !Array.isArray(providers) ||
     providers.length !== MAX_PROVIDERS ||
@@ -150,7 +150,7 @@ export async function saveModelSetup(fetcher, capsuleId, setup, providers) {
     throw new LocalApiError('Add an API key for the selected provider.');
   }
 
-  const inferenceResponse = await fetcher(`/api/capsules/${encodeURIComponent(capsuleId)}/inference`, {
+  const inferenceResponse = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
     method: 'PUT',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider: setup.provider, model: setup.model }),
@@ -158,17 +158,17 @@ export async function saveModelSetup(fetcher, capsuleId, setup, providers) {
   const inferenceBody = await jsonObject(inferenceResponse);
   if (!inferenceResponse.ok) {
     throw new LocalApiError(
-      safeApiError(inferenceBody, 'The Capsule model selection could not be saved.'),
+      safeApiError(inferenceBody, 'The Team model selection could not be saved.'),
       inferenceResponse.status,
     );
   }
   if (
-    !exactKeys(inferenceBody, ['capsule', 'model', 'provider']) ||
-    inferenceBody.capsule !== capsuleId ||
+    !exactKeys(inferenceBody, ['team_id', 'model', 'provider']) ||
+    inferenceBody.team_id !== teamId ||
     inferenceBody.provider !== setup.provider ||
     inferenceBody.model !== setup.model
   ) {
-    throw new LocalApiError('The Capsule inference response is invalid.', inferenceResponse.status);
+    throw new LocalApiError('The Team inference response is invalid.', inferenceResponse.status);
   }
   return { providerState, inference: { provider: setup.provider, model: setup.model } };
 }

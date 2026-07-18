@@ -1,7 +1,7 @@
-"""Narrow, stateless Admin -> capsule-driver proxy for per-Capsule Driver credentials.
+"""Narrow, stateless Admin -> team-driver proxy for per-Team Driver credentials.
 
 The Admin is only the authenticated UI boundary. It must never persist Driver credentials, merge
-them into the Space ``.env``, or handle the Driver keyset. The capsule-driver owns that control
+them into the Space ``.env``, or handle the Driver keyset. The team-driver owns that control
 plane; this client forwards one bounded JSON request over its existing private bearer-authenticated
 hop and returns one bounded JSON object.
 
@@ -26,14 +26,14 @@ from urllib.parse import urlparse
 
 log = logging.getLogger("shimpz-admin")
 
-URL = os.environ.get("SHIMPZ_CAPSULEDRIVER_URL", "http://capsule-driver:7077")
-TOKEN_FILE = os.environ.get("SHIMPZ_CAPSULEDRIVER_TOKEN_FILE", "/run/shimpz-capsuledriver/token")
+URL = os.environ.get("SHIMPZ_TEAMDRIVER_URL", "http://team-driver:7077")
+TOKEN_FILE = os.environ.get("SHIMPZ_TEAMDRIVER_TOKEN_FILE", "/run/shimpz-teamdriver/token")
 
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 TIMEOUT_SECONDS = 30
 
-_CAPSULE_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+_TEAM_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _DRIVER_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 # Opaque, server-generated ids: lowercase path-safe bytes only; the Admin assigns no semantics.
 _CREDENTIAL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -55,8 +55,8 @@ def _canonical_id(value: object, *, field: str, pattern: re.Pattern[str], maximu
     return value
 
 
-def canonical_capsule_id(value: object) -> str:
-    return _canonical_id(value, field="capsule id", pattern=_CAPSULE_ID_RE, maximum=40)
+def canonical_team_id(value: object) -> str:
+    return _canonical_id(value, field="team id", pattern=_TEAM_ID_RE, maximum=40)
 
 
 def canonical_driver_id(value: object) -> str:
@@ -85,7 +85,7 @@ def _endpoint() -> tuple[str, int]:
     try:
         parsed = urlparse(URL)
     except ValueError as exc:
-        raise OSError("invalid capsule-driver endpoint") from exc
+        raise OSError("invalid team-driver endpoint") from exc
     if (
         parsed.scheme != "http"
         or not parsed.hostname
@@ -96,38 +96,38 @@ def _endpoint() -> tuple[str, int]:
         or parsed.query
         or parsed.fragment
     ):
-        raise OSError("invalid capsule-driver endpoint")
+        raise OSError("invalid team-driver endpoint")
     try:
         return parsed.hostname, parsed.port or 7077
     except ValueError as exc:
-        raise OSError("invalid capsule-driver endpoint") from exc
+        raise OSError("invalid team-driver endpoint") from exc
 
 
 def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if content_type != "application/json":
-        raise OSError("invalid capsule-driver response")
+        raise OSError("invalid team-driver response")
 
     raw_length = response.getheader("Content-Length")
     if raw_length is not None:
         try:
             length = int(raw_length)
         except ValueError as exc:
-            raise OSError("invalid capsule-driver response") from exc
+            raise OSError("invalid team-driver response") from exc
         if length < 0 or length > MAX_JSON_RESPONSE_BYTES:
-            raise OSError("invalid capsule-driver response")
+            raise OSError("invalid team-driver response")
 
     raw = response.read(MAX_JSON_RESPONSE_BYTES + 1)
     if len(raw) > MAX_JSON_RESPONSE_BYTES:
-        raise OSError("invalid capsule-driver response")
+        raise OSError("invalid team-driver response")
     if not raw:
         return {}
     try:
         body = json.loads(raw)
     except (json.JSONDecodeError, UnicodeError, RecursionError) as exc:
-        raise OSError("invalid capsule-driver response") from exc
+        raise OSError("invalid team-driver response") from exc
     if not isinstance(body, dict):
-        raise OSError("invalid capsule-driver response")
+        raise OSError("invalid team-driver response")
     return body
 
 
@@ -138,7 +138,7 @@ def _call(method: str, path: str, *, payload: object | None = None) -> ProxyResp
         host, port = _endpoint()
         token = Path(TOKEN_FILE).read_text(encoding="utf-8").strip()
         if not token:
-            raise OSError("empty capsule-driver bearer")
+            raise OSError("empty team-driver bearer")
 
         headers = {
             "Accept": "application/json",
@@ -154,47 +154,47 @@ def _call(method: str, path: str, *, payload: object | None = None) -> ProxyResp
     except OSError, UnicodeError, http.client.HTTPException:
         # Deliberately omit exception text: it can include endpoint internals. Bodies and the bearer
         # are never passed to logging at all.
-        log.warning("capsule-driver credential proxy request failed (%s)", method)
-        return ProxyResponse(502, {"detail": "capsule-driver unavailable"})
+        log.warning("team-driver credential proxy request failed (%s)", method)
+        return ProxyResponse(502, {"detail": "team-driver unavailable"})
     finally:
         if connection is not None:
             try:
                 connection.close()
             except OSError:
-                log.warning("capsule-driver credential proxy close failed (%s)", method)
+                log.warning("team-driver credential proxy close failed (%s)", method)
 
-    log.info("capsule-driver credential proxy %s -> HTTP %s", method, result.status)
+    log.info("team-driver credential proxy %s -> HTTP %s", method, result.status)
     return result
 
 
-def _driver_path(capsule_id: object, driver_id: object) -> str:
-    cid = canonical_capsule_id(capsule_id)
+def _driver_path(team_id: object, driver_id: object) -> str:
+    canonical_id = canonical_team_id(team_id)
     did = canonical_driver_id(driver_id)
-    return f"/v1/capsules/{cid}/drivers/{did}"
+    return f"/v1/teams/{canonical_id}/drivers/{did}"
 
 
-def _credential_path(capsule_id: object, driver_id: object, credential_id: object) -> str:
-    base = _driver_path(capsule_id, driver_id)
+def _credential_path(team_id: object, driver_id: object, credential_id: object) -> str:
+    base = _driver_path(team_id, driver_id)
     crid = canonical_credential_id(credential_id)
     return f"{base}/credentials/{crid}"
 
 
-def get_driver(capsule_id: object, driver_id: object) -> ProxyResponse:
-    return _call("GET", _driver_path(capsule_id, driver_id))
+def get_driver(team_id: object, driver_id: object) -> ProxyResponse:
+    return _call("GET", _driver_path(team_id, driver_id))
 
 
-def create_credential(capsule_id: object, driver_id: object, payload: object) -> ProxyResponse:
-    return _call("POST", f"{_driver_path(capsule_id, driver_id)}/credentials", payload=payload)
+def create_credential(team_id: object, driver_id: object, payload: object) -> ProxyResponse:
+    return _call("POST", f"{_driver_path(team_id, driver_id)}/credentials", payload=payload)
 
 
-def replace_credential(capsule_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
-    return _call("PUT", _credential_path(capsule_id, driver_id, credential_id), payload=payload)
+def replace_credential(team_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
+    return _call("PUT", _credential_path(team_id, driver_id, credential_id), payload=payload)
 
 
-def delete_credential(capsule_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
-    return _call("DELETE", _credential_path(capsule_id, driver_id, credential_id), payload=payload)
+def delete_credential(team_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
+    return _call("DELETE", _credential_path(team_id, driver_id, credential_id), payload=payload)
 
 
-def verify_credential(capsule_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
-    path = f"{_credential_path(capsule_id, driver_id, credential_id)}/verify"
+def verify_credential(team_id: object, driver_id: object, credential_id: object, payload: object) -> ProxyResponse:
+    path = f"{_credential_path(team_id, driver_id, credential_id)}/verify"
     return _call("POST", path, payload=payload)

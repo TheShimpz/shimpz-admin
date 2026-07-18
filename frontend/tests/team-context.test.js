@@ -33,9 +33,9 @@ function response(status, body) {
 function fixtureFetcher(overrides = {}) {
   return async (url, options = {}) => {
     if (overrides[url]) return overrides[url](options);
-    if (url === '/api/capsules') {
+    if (url === '/api/teams') {
       return response(200, {
-        capsules: [
+        teams: [
           { id: 'marketing', name: 'Marketing', status: 'running' },
           { id: 'support', name: 'Support', status: 'running' },
         ],
@@ -49,16 +49,16 @@ function fixtureFetcher(overrides = {}) {
         ],
       });
     }
-    if (url === '/api/capsules/marketing/assistants') {
+    if (url === '/api/teams/marketing/assistants') {
       return response(200, { assistants: [{ assistant: 'salesnator', status: 'running' }] });
     }
-    if (url === '/api/capsules/support/assistants') {
+    if (url === '/api/teams/support/assistants') {
       return response(200, { assistants: [{ assistant: 'hello-pulse', status: 'running' }] });
     }
-    if (url === '/api/capsules/marketing/files') {
+    if (url === '/api/teams/marketing/files') {
       return response(200, { files: [{ id: FILE_A, name: 'brief.pdf', size: 42 }] });
     }
-    if (url === '/api/capsules/support/files') {
+    if (url === '/api/teams/support/files') {
       return response(200, { files: [{ id: FILE_B, name: 'ticket.txt', size: 12 }] });
     }
     throw new Error(`Unexpected request: ${options.method ?? 'GET'} ${url}`);
@@ -97,7 +97,7 @@ test('switching Teams immediately selects the URL authority and clears stale inv
   let releaseAssistants;
   const assistants = new Promise((resolve) => { releaseAssistants = resolve; });
   const fetcher = fixtureFetcher({
-    '/api/capsules/support/assistants': async () => assistants,
+    '/api/teams/support/assistants': async () => assistants,
   });
   const pending = selectTeam(fetcher, 'support');
 
@@ -116,7 +116,7 @@ test('a failed Team switch keeps the last verified Team selected', async () => {
 
   await assert.rejects(
     selectTeam(fixtureFetcher({
-      '/api/capsules/support/assistants': async () => response(503, {}),
+      '/api/teams/support/assistants': async () => response(503, {}),
     }), 'support'),
     (error) => error instanceof LocalApiError,
   );
@@ -134,7 +134,7 @@ test('file selection accepts only current files and enforces the chat limit', as
     size: index + 1,
   }));
   await loadTeamContext(fixtureFetcher({
-    '/api/capsules/marketing/files': async () => response(200, { files }),
+    '/api/teams/marketing/files': async () => response(200, { files }),
   }), 'marketing');
 
   for (const file of files.slice(0, 8)) assert.equal(toggleTeamFile(file.id), true);
@@ -148,7 +148,7 @@ test('file selection accepts only current files and enforces the chat limit', as
 test('a confirmed empty inventory is ready while malformed Team data fails closed', async () => {
   let catalogRequests = 0;
   await loadTeamContext(fixtureFetcher({
-    '/api/capsules': async () => response(200, { capsules: [] }),
+    '/api/teams': async () => response(200, { teams: [] }),
     '/api/assistants': async () => {
       catalogRequests += 1;
       return response(503, { error: 'catalog unavailable' });
@@ -168,8 +168,8 @@ test('a confirmed empty inventory is ready while malformed Team data fails close
 
   await assert.rejects(
     loadTeamContext(fixtureFetcher({
-      '/api/capsules': async () => response(200, {
-        capsules: [{ id: '../escape', name: 'Unsafe', status: 'running' }],
+      '/api/teams': async () => response(200, {
+        teams: [{ id: '../escape', name: 'Unsafe', status: 'running' }],
       }),
     })),
     (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
@@ -181,21 +181,21 @@ test('a confirmed empty inventory is ready while malformed Team data fails close
 
 test('accepts only the backend trace identifier as optional Team envelope metadata', async () => {
   await loadTeamContext(fixtureFetcher({
-    '/api/capsules': async () => response(200, {
-      capsules: [],
+    '/api/teams': async () => response(200, {
+      teams: [],
       trace_id: 'a'.repeat(32),
     }),
   }));
   assert.equal(get(teamContext).phase, 'ready');
 
   for (const document of [
-    { capsules: [], trace_id: '../invalid' },
-    { capsules: [], debug: true },
+    { teams: [], trace_id: '../invalid' },
+    { teams: [], debug: true },
   ]) {
     clearTeamContext();
     await assert.rejects(
       loadTeamContext(fixtureFetcher({
-        '/api/capsules': async () => response(200, document),
+        '/api/teams': async () => response(200, document),
       })),
       (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
     );
@@ -205,7 +205,7 @@ test('accepts only the backend trace identifier as optional Team envelope metada
 test('refresh clears an invalid installed Assistant instead of presenting it as trusted', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
   const invalidFetcher = fixtureFetcher({
-    '/api/capsules/marketing/assistants': async () => response(200, {
+    '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [{ assistant: 'not-in-catalog', status: 'running' }],
     }),
   });
@@ -222,7 +222,7 @@ test('refresh clears an invalid installed Assistant instead of presenting it as 
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {
   const calls = [];
   const fetcher = fixtureFetcher({
-    '/api/capsules': async (options) => {
+    '/api/teams': async (options) => {
       calls.push(options);
       if (options.method === 'POST') {
         return response(201, {
@@ -233,10 +233,10 @@ test('creates a Team with the exact payload, validates the response, and refresh
           trace_id: 'b'.repeat(32),
         });
       }
-      return response(200, { capsules: [{ id: 'growth', name: 'Growth', status: 'running' }] });
+      return response(200, { teams: [{ id: 'growth', name: 'Growth', status: 'running' }] });
     },
-    '/api/capsules/growth/assistants': async () => response(200, { assistants: [] }),
-    '/api/capsules/growth/files': async () => response(200, { files: [] }),
+    '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+    '/api/teams/growth/files': async () => response(200, { files: [] }),
   });
 
   const created = await createTeam(fetcher, '  Growth  ');
@@ -255,12 +255,12 @@ test('creates a Team with the exact payload, validates the response, and refresh
 test('keeps a confirmed Team creation successful when its follow-up context refresh fails', async () => {
   let postRequests = 0;
   const fetcher = fixtureFetcher({
-    '/api/capsules': async (options) => {
+    '/api/teams': async (options) => {
       if (options.method === 'POST') {
         postRequests += 1;
         return response(201, { created: true, id: 'growth', name: 'Growth', status: 'running' });
       }
-      return response(200, { capsules: [{ id: 'growth', name: 'Growth', status: 'running' }] });
+      return response(200, { teams: [{ id: 'growth', name: 'Growth', status: 'running' }] });
     },
     '/api/assistants': async () => response(503, {}),
   });
@@ -300,10 +300,10 @@ test('clear invalidates a late context response', async () => {
   let releaseTeams;
   const teams = new Promise((resolve) => { releaseTeams = resolve; });
   const pending = loadTeamContext(fixtureFetcher({
-    '/api/capsules': async () => teams,
+    '/api/teams': async () => teams,
   }));
   clearTeamContext();
-  releaseTeams(response(200, { capsules: [] }));
+  releaseTeams(response(200, { teams: [] }));
   await pending;
   assert.deepEqual(get(teamContext), {
     phase: 'idle',
@@ -367,12 +367,12 @@ test('Team sidebar owns one combined Brain selection below the Team picker', () 
   assert.match(brainSection, /\{:else if \$modelContext\.ready\}[\s\S]*\{copy\.modelReady\}/);
 });
 
-test('Team sidebar follows client-side capsule deep links without owning another loader', () => {
+test('Team sidebar follows client-side team deep links without owning another loader', () => {
   assert.match(sidebarSource, /import \{ goto \} from '\$app\/navigation';/);
   assert.match(sidebarSource, /import \{ page \} from '\$app\/state';/);
   assert.match(
     sidebarSource,
-    /let requestedTeamId = \$derived\.by\(\(\) => \{\s*const candidate = page\.url\.searchParams\.get\('capsule'\) \?\? '';/,
+    /let requestedTeamId = \$derived\.by\(\(\) => \{\s*const candidate = page\.url\.searchParams\.get\('team'\) \?\? '';/,
   );
   assert.match(
     sidebarSource,
@@ -416,7 +416,7 @@ test('Team sidebar keeps Store links canonical and file controls scoped to Chat'
 test('Team creation can navigate only to the fixed local Assistants route', () => {
   assert.match(
     sidebarSource,
-    /window\.location\.assign\(`\/assistants\/\?capsule=\$\{encodeURIComponent\(created\.id\)\}`\)/,
+    /window\.location\.assign\(`\/assistants\/\?team=\$\{encodeURIComponent\(created\.id\)\}`\)/,
   );
   assert.doesNotMatch(sidebarSource, /window\.location\.assign\([^`]/);
 });

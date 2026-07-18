@@ -30,7 +30,7 @@ class _Socket:
         token: str = "",
         origin: str = "http://localhost:7777",
         protocols: list[str] | None = None,
-        capsule_id: str = "capsule_1",
+        team_id: str = "team_1",
     ) -> None:
         offered = ["shimpz.chat.v1"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
@@ -38,7 +38,7 @@ class _Socket:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
         if token:
             headers.append((b"cookie", f"shimpz_admin={token}".encode("ascii")))
-        path = f"/api/capsules/{capsule_id}/chat/ws"
+        path = f"/api/teams/{team_id}/chat/ws"
         self._scope = {
             "type": "websocket",
             "asgi": {"version": "3.0", "spec_version": "2.5"},
@@ -116,7 +116,7 @@ class ChatWebSocketTests(unittest.TestCase):
         ):
             cls.admin_app = importlib.import_module("app")
         cls.chat_ws = importlib.import_module("chat_ws")
-        cls.capsules = importlib.import_module("capsules")
+        cls.teams = importlib.import_module("teams")
         previous_store = cls.admin_app.adminstore.STORE_PATH
         previous_origins = cls.chat_ws.ALLOWED_ORIGINS
         cls.admin_app.adminstore.STORE_PATH = cls.root / "admin.json"
@@ -255,11 +255,11 @@ class ChatWebSocketTests(unittest.TestCase):
                     self.fail("Uvicorn did not start")
                 await asyncio.sleep(0.01)
 
-            uri = f"ws://127.0.0.1:{port}/api/capsules/capsule_1/chat/ws"
+            uri = f"ws://127.0.0.1:{port}/api/teams/team_1/chat/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
-            response = self.capsules.DriverResponse(
+            response = self.teams.DriverResponse(
                 200,
-                {"capsule": "capsule_1", "team": "Marketing", "reply": "hello from the Team"},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "hello from the Team"},
             )
             try:
                 with self.assertRaises(InvalidStatus):
@@ -279,7 +279,7 @@ class ChatWebSocketTests(unittest.TestCase):
                         await websocket.send('{"type":"chat","message":"hello","files":[]}')
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
-                            {"type": "done", "reply": "hello from the Team", "team": "Marketing"},
+                            {"type": "done", "reply": "hello from the Team", "team_name": "Marketing"},
                         )
                         with self.assertRaises(TimeoutError):
                             await asyncio.wait_for(websocket.recv(), timeout=0.05)
@@ -295,15 +295,15 @@ class ChatWebSocketTests(unittest.TestCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_capsule_id, _payload):
+            def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.capsules.DriverResponse(
+                return self.teams.DriverResponse(
                     200,
-                    {"capsule": "capsule_1", "team": "Marketing", "reply": "late reply"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
                 )
 
-            stopped = self.capsules.DriverResponse(200, {"capsule": "capsule_1", "stopped": True})
+            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn) as turn_mock,
                 mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
@@ -337,15 +337,15 @@ class ChatWebSocketTests(unittest.TestCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_capsule_id, _payload):
+            def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.capsules.DriverResponse(
+                return self.teams.DriverResponse(
                     200,
-                    {"capsule": "capsule_1", "team": "Marketing", "reply": "discard me"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
                 )
 
-            stopped = self.capsules.DriverResponse(200, {"capsule": "capsule_1", "stopped": True})
+            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn),
                 mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
@@ -374,7 +374,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
         async def scenario() -> None:
             concrete_error = await response_for(
-                self.capsules.DriverResponse(
+                self.teams.DriverResponse(
                     409,
                     {"code": "team-has-no-active-assistants"},
                 )
@@ -392,7 +392,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
             sensitive_marker = "sk-private-must-never-cross-the-websocket"
             upstream_error = await response_for(
-                self.capsules.DriverResponse(
+                self.teams.DriverResponse(
                     502,
                     {"code": "brain-runtime-failed", "debug": sensitive_marker},
                 )
@@ -404,7 +404,7 @@ class ChatWebSocketTests(unittest.TestCase):
             self.assertNotIn(sensitive_marker, json.dumps(upstream_error))
 
             unknown_code = await response_for(
-                self.capsules.DriverResponse(409, {"code": "private-controller-diagnostic"})
+                self.teams.DriverResponse(409, {"code": "private-controller-diagnostic"})
             )
             self.assertEqual(
                 unknown_code,
@@ -412,11 +412,11 @@ class ChatWebSocketTests(unittest.TestCase):
             )
 
             augmented_success = await response_for(
-                self.capsules.DriverResponse(
+                self.teams.DriverResponse(
                     200,
                     {
-                        "capsule": "capsule_1",
-                        "team": "Marketing",
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
                         "reply": "hello",
                         "debug": sensitive_marker,
                     },

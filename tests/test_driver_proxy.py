@@ -1,4 +1,4 @@
-"""Focused contracts for the stateless per-Capsule Driver credential proxy."""
+"""Focused contracts for the stateless per-Team Driver credential proxy."""
 
 from __future__ import annotations
 
@@ -86,20 +86,20 @@ class DriverProxyTest(unittest.TestCase):
 
     def test_forwards_only_json_with_existing_bearer_and_timeout(self):
         payload = {"label": "primary", "values": {"secret_access_key": "do-not-log"}}
-        result = driver_proxy.create_credential("capsule_1", "cloudflare-r2", payload)
+        result = driver_proxy.create_credential("team_1", "cloudflare-r2", payload)
 
         self.assertEqual(result, driver_proxy.ProxyResponse(200, {"ok": True}))
         request = _LocalDriverHandler.requests[-1]
         self.assertEqual(driver_proxy.TIMEOUT_SECONDS, 30)
         self.assertEqual(request["method"], "POST")
-        self.assertEqual(request["path"], "/v1/capsules/capsule_1/drivers/cloudflare-r2/credentials")
+        self.assertEqual(request["path"], "/v1/teams/team_1/drivers/cloudflare-r2/credentials")
         self.assertEqual(json.loads(request["body"]), payload)
         self.assertEqual(request["headers"]["content-type"], "application/json")
         self.assertEqual(request["headers"]["accept"], "application/json")
         self.assertEqual(request["headers"]["authorization"], "Bearer test-bearer")
 
     def test_get_sends_no_body_or_content_type(self):
-        driver_proxy.get_driver("capsule_1", "cloudflare-r2")
+        driver_proxy.get_driver("team_1", "cloudflare-r2")
 
         for request in _LocalDriverHandler.requests:
             self.assertEqual(request["body"], b"")
@@ -107,7 +107,7 @@ class DriverProxyTest(unittest.TestCase):
 
     def test_delete_can_forward_json_generation_guard(self):
         payload = {"expected_generation": 7}
-        driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "9a-primary", payload)
+        driver_proxy.delete_credential("team_1", "cloudflare-r2", "9a-primary", payload)
 
         request = _LocalDriverHandler.requests[-1]
         self.assertEqual(request["method"], "DELETE")
@@ -115,8 +115,8 @@ class DriverProxyTest(unittest.TestCase):
         self.assertEqual(request["headers"]["content-type"], "application/json")
 
     def test_all_operations_use_fixed_canonical_paths(self):
-        driver_proxy.replace_credential("capsule_1", "cloudflare-r2", "primary-1", {"values": {}})
-        driver_proxy.verify_credential("capsule_1", "cloudflare-r2", "primary-1", {})
+        driver_proxy.replace_credential("team_1", "cloudflare-r2", "primary-1", {"values": {}})
+        driver_proxy.verify_credential("team_1", "cloudflare-r2", "primary-1", {})
 
         requests = [(request["method"], request["path"]) for request in _LocalDriverHandler.requests]
         self.assertEqual(
@@ -124,23 +124,23 @@ class DriverProxyTest(unittest.TestCase):
             [
                 (
                     "PUT",
-                    "/v1/capsules/capsule_1/drivers/cloudflare-r2/credentials/primary-1",
+                    "/v1/teams/team_1/drivers/cloudflare-r2/credentials/primary-1",
                 ),
                 (
                     "POST",
-                    "/v1/capsules/capsule_1/drivers/cloudflare-r2/credentials/primary-1/verify",
+                    "/v1/teams/team_1/drivers/cloudflare-r2/credentials/primary-1/verify",
                 ),
             ],
         )
 
     def test_rejects_noncanonical_resource_ids_before_network_access(self):
         invalid = (
-            lambda: driver_proxy.get_driver("Capsule_1", "cloudflare-r2"),
-            lambda: driver_proxy.get_driver("capsule/1", "cloudflare-r2"),
-            lambda: driver_proxy.get_driver("capsule_1", "Cloudflare-R2"),
-            lambda: driver_proxy.get_driver("capsule_1", "cloudflare--r2"),
-            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "../primary", {}),
-            lambda: driver_proxy.delete_credential("capsule_1", "cloudflare-r2", "primary_1", {}),
+            lambda: driver_proxy.get_driver("Team_1", "cloudflare-r2"),
+            lambda: driver_proxy.get_driver("team/1", "cloudflare-r2"),
+            lambda: driver_proxy.get_driver("team_1", "Cloudflare-R2"),
+            lambda: driver_proxy.get_driver("team_1", "cloudflare--r2"),
+            lambda: driver_proxy.delete_credential("team_1", "cloudflare-r2", "../primary", {}),
+            lambda: driver_proxy.delete_credential("team_1", "cloudflare-r2", "primary_1", {}),
         )
         for operation in invalid:
             with self.subTest(operation=operation), self.assertRaises(driver_proxy.ProxyRequestError):
@@ -151,7 +151,7 @@ class DriverProxyTest(unittest.TestCase):
         invalid = [[], {"number": float("nan")}, {"secret": "x" * driver_proxy.MAX_JSON_BODY_BYTES}]
         for payload in invalid:
             with self.subTest(payload_type=type(payload).__name__), self.assertRaises(driver_proxy.ProxyRequestError):
-                driver_proxy.create_credential("capsule_1", "cloudflare-r2", payload)
+                driver_proxy.create_credential("team_1", "cloudflare-r2", payload)
         self.assertEqual(_LocalDriverHandler.requests, [])
 
     def test_rejects_invalid_or_oversized_upstream_json(self):
@@ -170,8 +170,8 @@ class DriverProxyTest(unittest.TestCase):
             with self.subTest(headers=headers):
                 _LocalDriverHandler.response_body = body
                 _LocalDriverHandler.response_headers = headers
-                result = driver_proxy.get_driver("capsule_1", "cloudflare-r2")
-                self.assertEqual(result, driver_proxy.ProxyResponse(502, {"detail": "capsule-driver unavailable"}))
+                result = driver_proxy.get_driver("team_1", "cloudflare-r2")
+                self.assertEqual(result, driver_proxy.ProxyResponse(502, {"detail": "team-driver unavailable"}))
 
     def test_transport_log_never_contains_payload_token_or_exception_text(self):
         payload_marker = "payload-secret-marker"
@@ -181,7 +181,7 @@ class DriverProxyTest(unittest.TestCase):
             self.assertLogs("shimpz-admin", level="WARNING") as captured,
         ):
             result = driver_proxy.create_credential(
-                "capsule_1", "cloudflare-r2", {"values": {"secret_access_key": payload_marker}}
+                "team_1", "cloudflare-r2", {"values": {"secret_access_key": payload_marker}}
             )
         rendered = "\n".join(captured.output)
         self.assertEqual(result.status, 502)

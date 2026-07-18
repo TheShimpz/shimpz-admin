@@ -1,4 +1,4 @@
-"""Fast contracts for secret-free Capsule inference metadata."""
+"""Fast contracts for secret-free Team inference metadata."""
 
 from __future__ import annotations
 
@@ -10,17 +10,17 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import capsules
+import teams
 
 
-class CapsuleInferenceTests(unittest.TestCase):
+class TeamInferenceTests(unittest.TestCase):
     def test_forwards_only_provider_and_model_to_fixed_routes(self) -> None:
-        response = capsules.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
-        with mock.patch.object(capsules, "_call", return_value=response) as call:
-            self.assertIs(capsules.get_inference("capsule_1"), response)
+        response = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        with mock.patch.object(teams, "_call", return_value=response) as call:
+            self.assertIs(teams.get_inference("team_1"), response)
             self.assertIs(
-                capsules.configure_inference(
-                    "capsule_1",
+                teams.configure_inference(
+                    "team_1",
                     {"provider": "anthropic", "model": "claude-sonnet-5"},
                 ),
                 response,
@@ -29,10 +29,10 @@ class CapsuleInferenceTests(unittest.TestCase):
         self.assertEqual(
             call.call_args_list,
             [
-                mock.call("GET", "/v1/capsules/capsule_1/inference"),
+                mock.call("GET", "/v1/teams/team_1/inference"),
                 mock.call(
                     "PUT",
-                    "/v1/capsules/capsule_1/inference",
+                    "/v1/teams/team_1/inference",
                     {"provider": "anthropic", "model": "claude-sonnet-5"},
                 ),
             ],
@@ -49,10 +49,10 @@ class CapsuleInferenceTests(unittest.TestCase):
             {"provider": "openai", "model": "gpt-5.7"},
             {"provider": "OpenAI", "model": "gpt-5.6-terra"},
         )
-        with mock.patch.object(capsules, "_call") as call:
+        with mock.patch.object(teams, "_call") as call:
             for payload in payloads:
-                with self.subTest(payload=payload), self.assertRaises(capsules.CapsuleRequestError):
-                    capsules.configure_inference("capsule_1", payload)
+                with self.subTest(payload=payload), self.assertRaises(teams.TeamRequestError):
+                    teams.configure_inference("team_1", payload)
         call.assert_not_called()
 
 

@@ -34,7 +34,7 @@ test('places the Admin brand in the Team rail and keeps only locale controls in 
   assert.match(brand, /ariaLabel = 'Shimpz Admin home'/);
   assert.doesNotMatch(brand, /Team Admin/);
   assert.doesNotMatch(shell, /id: 'integrations'/);
-  assert.doesNotMatch(shell, /id: 'capsules'|href: '\/capsules\/'/);
+  assert.doesNotMatch(shell, /id: 'teams'|href: '\/teams\/'/);
   assert.doesNotMatch(shell, /Local Space|local-status/);
   assert.doesNotMatch(shell, /<footer>/);
   assert.doesNotMatch(shell, /const navigation\s*=|<nav class="primary-nav"|class="logout"|onLogout/);

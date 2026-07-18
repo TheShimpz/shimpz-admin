@@ -30,16 +30,16 @@
       checkingLead: 'The Admin is checking the selected Team and its installed Assistants.',
       alreadyTitle: 'Hello Pulse is already installed.',
       alreadyLead: 'Nothing was installed twice. The Assistant remains ready for your Team.',
-      noCapsuleTitle: 'Installation needs a running Team.',
-      noCapsuleLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
+      noTeamTitle: 'Installation needs a running Team.',
+      noTeamLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
       unavailableTitle: 'Hello Pulse is unavailable right now.',
       unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
       successTitle: 'Hello Pulse is ready.',
       successLead: 'The Assistant was installed without running any Power or routine.',
       failureTitle: 'The local action did not finish.',
       failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
-      capsuleLabel: 'Destination Team',
-      capsulePlaceholder: 'Select a Team',
+      teamLabel: 'Destination Team',
+      teamPlaceholder: 'Select a Team',
       cancel: 'Cancel',
       close: 'Close',
       preparing: 'Checking…',
@@ -47,8 +47,8 @@
       retryAction: 'Try again',
       working: 'Installing…',
       uninstall: 'Uninstall from Team',
-      uninstallConfirm: 'Uninstall {assistant} from {capsule}?',
-      removed: '{assistant} was uninstalled from {capsule}.',
+      uninstallConfirm: 'Uninstall {assistant} from {team}?',
+      removed: '{assistant} was uninstalled from {team}.',
       genericFailure: 'The local evaluation could not be completed.',
       frameLoading: 'Loading the Assistant Store…',
       frameFailureTitle: 'The Store did not finish loading.',
@@ -66,16 +66,16 @@
       checkingLead: 'O Admin está verificando o Time selecionado e seus Assistants instalados.',
       alreadyTitle: 'O Hello Pulse já está instalado.',
       alreadyLead: 'Nada foi instalado duas vezes. O Assistant continua pronto para o seu Time.',
-      noCapsuleTitle: 'A instalação precisa de um Time em execução.',
-      noCapsuleLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
+      noTeamTitle: 'A instalação precisa de um Time em execução.',
+      noTeamLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
       unavailableTitle: 'O Hello Pulse está indisponível agora.',
       unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
       successTitle: 'O Hello Pulse está pronto.',
       successLead: 'O Assistant foi instalado sem executar nenhuma Power ou rotina.',
       failureTitle: 'A ação local não foi concluída.',
       failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
-      capsuleLabel: 'Time de destino',
-      capsulePlaceholder: 'Selecione um Time',
+      teamLabel: 'Time de destino',
+      teamPlaceholder: 'Selecione um Time',
       cancel: 'Cancelar',
       close: 'Fechar',
       preparing: 'Verificando…',
@@ -83,8 +83,8 @@
       retryAction: 'Tentar novamente',
       working: 'Instalando…',
       uninstall: 'Desinstalar do Time',
-      uninstallConfirm: 'Desinstalar {assistant} de {capsule}?',
-      removed: '{assistant} foi desinstalado de {capsule}.',
+      uninstallConfirm: 'Desinstalar {assistant} de {team}?',
+      removed: '{assistant} foi desinstalado de {team}.',
       genericFailure: 'Não foi possível concluir a avaliação local.',
       frameLoading: 'Carregando a Store de Assistants…',
       frameFailureTitle: 'A Store não terminou de carregar.',
@@ -96,7 +96,7 @@
 
   let dialogError = $state('');
   let busy = $state(false);
-  let selectedCapsule = $state('');
+  let selectedTeam = $state('');
   let pendingAssistant = $state('');
   let iframeElement = $state();
   let confirmDialog = $state();
@@ -118,17 +118,17 @@
   let storeUrl = $derived(
     `${storePageUrl}/embed?store-protocol=${STORE_LIFECYCLE_PROTOCOL_VERSION}&admin-frame=${frameReload}`,
   );
-  let runningCapsules = $derived($teamContext.teams.filter((capsule) => capsule.status === 'running'));
+  let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let helloAvailable = $derived($teamContext.catalog.some((entry) => entry.id === HELLO_ID));
-  let activeCapsuleRecord = $derived(
-    runningCapsules.find((capsule) => capsule.id === $teamContext.selectedTeamId) ?? null,
+  let activeTeamRecord = $derived(
+    runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
   );
-  let selectedCapsuleRecord = $derived(runningCapsules.find((capsule) => capsule.id === selectedCapsule) ?? null);
+  let selectedTeamRecord = $derived(runningTeams.find((team) => team.id === selectedTeam) ?? null);
   let dialogTitle = $derived({
     checking: copy.checkingTitle,
     install: copy.confirmTitle,
     installed: copy.alreadyTitle,
-    'no-capsule': copy.noCapsuleTitle,
+    'no-team': copy.noTeamTitle,
     unavailable: copy.unavailableTitle,
     success: copy.successTitle,
     error: copy.failureTitle,
@@ -137,7 +137,7 @@
     checking: copy.checkingLead,
     install: copy.confirmLead,
     installed: copy.alreadyLead,
-    'no-capsule': copy.noCapsuleLead,
+    'no-team': copy.noTeamLead,
     unavailable: copy.unavailableLead,
     success: copy.successLead,
     error: copy.failureLead,
@@ -192,8 +192,8 @@
     });
   }
 
-  async function refreshInstalled(capsuleId) {
-    if (!capsuleId || $teamContext.selectedTeamId !== capsuleId) {
+  async function refreshInstalled(teamId) {
+    if (!teamId || $teamContext.selectedTeamId !== teamId) {
       const status = $teamContext.phase === 'ready'
         ? 'ready'
         : $teamContext.phase === 'error'
@@ -225,7 +225,7 @@
   async function beginInstall(assistantId) {
     const attempt = ++dialogAttempt;
     pendingAssistant = assistantId;
-    selectedCapsule = activeCapsuleRecord?.id ?? '';
+    selectedTeam = activeTeamRecord?.id ?? '';
     dialogError = '';
     dialogResult = null;
     dialogMode = 'checking';
@@ -238,14 +238,14 @@
     await waitForTeamContext();
     if (attempt !== dialogAttempt) return;
 
-    const capsule = activeCapsuleRecord;
-    selectedCapsule = capsule?.id ?? '';
+    const team = activeTeamRecord;
+    selectedTeam = team?.id ?? '';
     if ($teamContext.phase === 'error') {
       dialogMode = 'unavailable';
       return;
     }
-    if (!capsule) {
-      dialogMode = 'no-capsule';
+    if (!team) {
+      dialogMode = 'no-team';
       return;
     }
     if (!helloAvailable) {
@@ -313,20 +313,20 @@
       !helloAvailable ||
       !['install', 'error'].includes(dialogMode)
     ) return;
-    const capsule = runningCapsules.find((item) => item.id === selectedCapsule);
-    if (!capsule) return;
+    const team = runningTeams.find((item) => item.id === selectedTeam);
+    if (!team) return;
 
     busy = true;
     dialogError = '';
     dialogResult = null;
     try {
-      const { installed } = await installAssistant(fetch, capsule.id, HELLO_ID);
+      const { installed } = await installAssistant(fetch, team.id, HELLO_ID);
       dialogResult = { note: installed ? copy.installedNow : copy.alreadyInstalled };
       dialogMode = 'success';
-      await refreshInstalled(capsule.id);
+      await refreshInstalled(team.id);
     } catch (error) {
       const failure = error instanceof Error ? error.message : copy.genericFailure;
-      await refreshInstalled(capsule.id);
+      await refreshInstalled(team.id);
       dialogError = failure;
       dialogMode = 'error';
     } finally {
@@ -363,11 +363,11 @@
   }
 
   async function uninstallInstalled(assistant) {
-    if (busy || !activeCapsuleRecord) return;
-    const capsule = activeCapsuleRecord;
+    if (busy || !activeTeamRecord) return;
+    const team = activeTeamRecord;
     const question = format(copy.uninstallConfirm, {
       assistant: assistant.assistant,
-      capsule: capsule.name,
+      team: team.name,
     });
     if (!window.confirm(question)) {
       publishStoreSnapshot();
@@ -376,23 +376,23 @@
     busy = true;
     try {
       const response = await fetch(
-        `/api/capsules/${encodeURIComponent(capsule.id)}/assistants/${encodeURIComponent(assistant.assistant)}`,
+        `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistant.assistant)}`,
         { method: 'DELETE', headers: { Accept: 'application/json' } },
       );
       const body = await jsonObject(response);
       if (!response.ok) throw new Error(safeApiError(body, copy.genericFailure));
-      await refreshInstalled(capsule.id);
+      await refreshInstalled(team.id);
       showAdminNotice({
         tone: 'success',
         label: copy.uninstall,
         message: format(copy.removed, {
           assistant: assistant.assistant,
-          capsule: capsule.name,
+          team: team.name,
         }),
       });
     } catch (error) {
       const failure = error instanceof Error ? error.message : copy.genericFailure;
-      await refreshInstalled(capsule.id);
+      await refreshInstalled(team.id);
       showAdminNotice({
         tone: 'error',
         label: copy.failureTitle,
@@ -407,7 +407,7 @@
     const installed = $teamContext.phase === 'ready'
       ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId)
       : null;
-    if (!activeCapsuleRecord || !installed || busy) {
+    if (!activeTeamRecord || !installed || busy) {
       publishStoreSnapshot();
       return;
     }
@@ -482,16 +482,16 @@
       <h2 id="assistant-confirm-title">{dialogTitle}</h2>
       <p>{dialogLead}</p>
     </header>
-    {#if selectedCapsuleRecord}
+    {#if selectedTeamRecord}
       <div class="dialog-target">
-        <span>{copy.capsuleLabel}</span>
-        <strong>{selectedCapsuleRecord.name}</strong>
-        <code>{selectedCapsuleRecord.id}</code>
+        <span>{copy.teamLabel}</span>
+        <strong>{selectedTeamRecord.name}</strong>
+        <code>{selectedTeamRecord.id}</code>
       </div>
     {/if}
     {#if dialogMode === 'checking'}
       <p class="dialog-progress" role="status">{copy.preparing}</p>
-    {:else if dialogMode === 'no-capsule'}
+    {:else if dialogMode === 'no-team'}
       <p class="dialog-route-hint">{copy.createFromSidebar}</p>
     {/if}
     {#if dialogError}<p class="dialog-error" role="alert">{dialogError}</p>{/if}
@@ -506,7 +506,7 @@
         {dialogMode === 'install' ? copy.cancel : copy.close}
       </button>
       {#if ['install', 'error'].includes(dialogMode)}
-        <button type="submit" class="dialog-primary" disabled={busy || !selectedCapsule || !helloAvailable}>
+        <button type="submit" class="dialog-primary" disabled={busy || !selectedTeam || !helloAvailable}>
           {busy
             ? copy.working
             : dialogMode === 'error'

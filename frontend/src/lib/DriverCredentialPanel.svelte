@@ -11,7 +11,7 @@
     sendCredentialMutation,
   } from "$lib/driverCredentials.js";
 
-  let { capsuleId, driverId } = $props();
+  let { teamId, driverId } = $props();
 
   let credentialData = $state(null);
   let loaded = $state(false);
@@ -39,7 +39,7 @@
       (credentialData.credential_form.cardinality === "many" || credentialData.credentials.length === 0),
   );
   let baseUrl = $derived(
-    `/api/capsules/${encodeURIComponent(capsuleId)}/drivers/${encodeURIComponent(driverId)}`,
+    `/api/teams/${encodeURIComponent(teamId)}/drivers/${encodeURIComponent(driverId)}`,
   );
 
   function safeFailure(action, status = 0) {

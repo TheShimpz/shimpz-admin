@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from http import HTTPStatus
 
-import capsules
+import teams
 import modelproviders
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -21,27 +21,27 @@ MAX_REPLY_CHARS = 64 * 1024
 MAX_TEAM_NAME_CHARS = 80
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_TURN_RESPONSE_FIELDS = frozenset({"capsule", "team", "reply", "trace_id"})
-_STOP_RESPONSE_FIELDS = frozenset({"capsule", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
+_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
+_STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 
 
-def _unavailable() -> capsules.DriverResponse:
-    return capsules.DriverResponse(
+def _unavailable() -> teams.DriverResponse:
+    return teams.DriverResponse(
         HTTPStatus.SERVICE_UNAVAILABLE,
         {"code": "runtime-unavailable"},
     )
 
 
-def _safe_error(response: capsules.DriverResponse) -> capsules.DriverResponse:
+def _safe_error(response: teams.DriverResponse) -> teams.DriverResponse:
     """Reduce one authenticated controller failure to a bounded, non-secret machine code."""
     code = response.body.get("code")
     if not isinstance(code, str) or len(code) > 80 or _ERROR_CODE_RE.fullmatch(code) is None:
         code = "chat-request-failed"
-    return capsules.DriverResponse(response.status, {"code": code})
+    return teams.DriverResponse(response.status, {"code": code})
 
 
-def _inference(capsule_id: str) -> tuple[str, str] | capsules.DriverResponse:
-    response = capsules.get_inference(capsule_id)
+def _inference(team_id: str) -> tuple[str, str] | teams.DriverResponse:
+    response = teams.get_inference(team_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:
@@ -52,50 +52,53 @@ def _inference(capsule_id: str) -> tuple[str, str] | capsules.DriverResponse:
         selected_provider = modelproviders.canonical_provider(provider)
         selected_model = modelproviders.canonical_model(selected_provider, model)
     except modelproviders.ModelProviderError:
-        return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     if provider != selected_provider:
-        return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     return selected_provider, selected_model
 
 
-def turn(capsule_id: object, payload: object) -> capsules.DriverResponse:
-    cid = capsules.canonical_capsule_id(capsule_id)
-    body = capsules.canonical_chat_payload(payload)
-    inference = _inference(cid)
-    if isinstance(inference, capsules.DriverResponse):
+def turn(team_id: object, payload: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    body = teams.canonical_chat_payload(payload)
+    inference = _inference(canonical_id)
+    if isinstance(inference, teams.DriverResponse):
         return inference
     provider, _model = inference
     try:
         api_key = modelproviders.resolve_api_key(provider)
     except modelproviders.ModelProviderError:
-        return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
     if api_key is None:
-        return capsules.DriverResponse(
+        return teams.DriverResponse(
             HTTPStatus.CONFLICT,
             {"code": "model-credential-missing"},
         )
 
-    response = capsules.chat(cid, body, provider=provider, api_key=api_key)
+    response = teams.chat(canonical_id, body, provider=provider, api_key=api_key)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
-    capsule = response.body.get("capsule")
-    team = response.body.get("team")
+    response_team_id = response.body.get("team_id")
+    team_name = response.body.get("team_name")
     reply = response.body.get("reply")
     if (
         set(response.body) != _TURN_RESPONSE_FIELDS
-        or capsule != cid
+        or response_team_id != canonical_id
         or not _valid_trace_id(response.body.get("trace_id"))
-        or not _valid_team_name(team)
+        or not _valid_team_name(team_name)
         or not isinstance(reply, str)
         or not 0 < len(reply) <= MAX_REPLY_CHARS
-        or api_key in team
+        or api_key in team_name
         or api_key in reply
     ):
-        return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    return capsules.DriverResponse(response.status, {"capsule": cid, "team": team, "reply": reply})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    return teams.DriverResponse(
+        response.status,
+        {"team_id": canonical_id, "team_name": team_name, "reply": reply},
+    )
 
 
 def _valid_team_name(value: object) -> bool:
@@ -111,27 +114,27 @@ def _valid_trace_id(value: object) -> bool:
     return isinstance(value, str) and _TRACE_ID_RE.fullmatch(value) is not None
 
 
-def stop(capsule_id: object) -> capsules.DriverResponse:
-    cid = capsules.canonical_capsule_id(capsule_id)
-    response = capsules.stop_chat(cid)
+def stop(team_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    response = teams.stop_chat(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:
         return _safe_error(response)
-    capsule = response.body.get("capsule")
+    response_team_id = response.body.get("team_id")
     requested = response.body.get("requested")
     accepted = response.body.get("accepted")
     confirmed = response.body.get("confirmed")
     forced_restart = response.body.get("forced_restart")
     if (
         set(response.body) != _STOP_RESPONSE_FIELDS
-        or capsule != cid
+        or response_team_id != canonical_id
         or not _valid_trace_id(response.body.get("trace_id"))
         or not all(isinstance(value, bool) for value in (requested, accepted, confirmed, forced_restart))
         or requested != accepted
         or ((confirmed or forced_restart) and not accepted)
     ):
-        return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
     # ``accepted`` means the active turn token was cancelled and any late provider reply will be
     # discarded. ``confirmed`` describes only a Power subprocess, not the whole turn.
-    return capsules.DriverResponse(response.status, {"capsule": cid, "stopped": accepted})
+    return teams.DriverResponse(response.status, {"team_id": canonical_id, "stopped": accepted})

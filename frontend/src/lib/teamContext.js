@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
-import { listCapsuleFiles } from './localChat.js';
+import { listTeamFiles } from './localChat.js';
 
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const TRACE_ID_RE = /^[0-9a-f]{32}$/;
@@ -80,7 +80,7 @@ function canonicalTeamName(value, message = 'The local Team inventory is invalid
 
 async function listTeams(fetcher) {
   requireFetcher(fetcher);
-  const response = await fetcher('/api/capsules', {
+  const response = await fetcher('/api/teams', {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   });
@@ -89,15 +89,15 @@ async function listTeams(fetcher) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
   }
   if (
-    !hasExactEnvelopeKeys(body, ['capsules']) ||
-    !Array.isArray(body.capsules) ||
-    body.capsules.length > MAX_TEAMS
+    !hasExactEnvelopeKeys(body, ['teams']) ||
+    !Array.isArray(body.teams) ||
+    body.teams.length > MAX_TEAMS
   ) {
     throw new LocalApiError('The local Team inventory is invalid.', response.status);
   }
 
   const seen = new Set();
-  return body.capsules.map((team) => {
+  return body.teams.map((team) => {
     if (
       !hasExactKeys(team, ['id', 'name', 'status']) ||
       typeof team.id !== 'string' ||
@@ -123,7 +123,7 @@ async function inventorySnapshot(fetcher, teamId, catalog) {
   if (!teamId) return { installedAssistants: [], files: [] };
   const [installedAssistants, files] = await Promise.all([
     listInstalledAssistants(fetcher, teamId),
-    listCapsuleFiles(fetcher, teamId),
+    listTeamFiles(fetcher, teamId),
   ]);
   const catalogIds = new Set(catalog.map((assistant) => assistant.id));
   if (installedAssistants.some((entry) => !catalogIds.has(entry.assistant))) {
@@ -334,7 +334,7 @@ export async function createTeam(fetcher, name) {
   teamContext.set({ ...current, phase: 'loading', error: '', selectedFileIds: [] });
   let created;
   try {
-    const response = await fetcher('/api/capsules', {
+    const response = await fetcher('/api/teams', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: canonicalName }),

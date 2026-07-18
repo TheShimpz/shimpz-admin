@@ -18,14 +18,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-import capsules
+import teams
 import localchat
 from fastapi import WebSocket, WebSocketDisconnect
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v1"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_REPLY_CHARS = 60_000
-MAX_PUBLIC_TEAM_CHARS = 80
+MAX_PUBLIC_TEAM_NAME_CHARS = 80
 MAX_PUBLIC_ERROR_CHARS = 800
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -169,11 +169,11 @@ async def receive_bounded_json(websocket: WebSocket) -> dict[str, object]:
     return value
 
 
-def _valid_team(value: object) -> bool:
+def _valid_team_name(value: object) -> bool:
     return (
         isinstance(value, str)
         and value == value.strip()
-        and 0 < len(value) <= MAX_PUBLIC_TEAM_CHARS
+        and 0 < len(value) <= MAX_PUBLIC_TEAM_NAME_CHARS
         and _CONTROL_RE.search(value) is None
     )
 
@@ -200,20 +200,20 @@ def _error_terminal(status: object, detail: str = "local chat request failed") -
     return {"type": "error", "status": _safe_status(status), "detail": safe_detail}
 
 
-def turn_terminal(response: object, capsule_id: str) -> dict[str, object]:
+def turn_terminal(response: object, team_id: str) -> dict[str, object]:
     """Project a secret-safe localchat response onto the public v1 terminal contract."""
-    if not isinstance(response, capsules.DriverResponse):
+    if not isinstance(response, teams.DriverResponse):
         return _error_terminal(502)
     if isinstance(response.status, int) and not isinstance(response.status, bool) and 200 <= response.status < 300:
         body = response.body
         if (
             isinstance(body, dict)
-            and set(body) == {"capsule", "team", "reply"}
-            and body.get("capsule") == capsule_id
-            and _valid_team(body.get("team"))
+            and set(body) == {"team_id", "team_name", "reply"}
+            and body.get("team_id") == team_id
+            and _valid_team_name(body.get("team_name"))
             and _valid_reply(body.get("reply"))
         ):
-            return {"type": "done", "reply": body["reply"], "team": body["team"]}
+            return {"type": "done", "reply": body["reply"], "team_name": body["team_name"]}
         return _error_terminal(502, "local chat returned an invalid response")
 
     # ``localchat`` reduces controller/provider failures to one bounded machine code. Map only this
@@ -235,16 +235,16 @@ def turn_terminal(response: object, capsule_id: str) -> dict[str, object]:
     return _error_terminal(status, f"{code}: {_CHAT_ERROR_DETAILS[code]}")
 
 
-def _stop_accepted(response: object, capsule_id: str) -> bool | None:
+def _stop_accepted(response: object, team_id: str) -> bool | None:
     if (
-        not isinstance(response, capsules.DriverResponse)
+        not isinstance(response, teams.DriverResponse)
         or not isinstance(response.status, int)
         or isinstance(response.status, bool)
         or not 200 <= response.status < 300
         or not isinstance(response.body, dict)
     ):
         return None
-    if set(response.body) != {"capsule", "stopped"} or response.body.get("capsule") != capsule_id:
+    if set(response.body) != {"team_id", "stopped"} or response.body.get("team_id") != team_id:
         return None
     stopped = response.body.get("stopped")
     return stopped if isinstance(stopped, bool) else None
@@ -288,9 +288,9 @@ async def _send_terminal_once(
     return True
 
 
-async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, capsule_id: str) -> None:
+async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
-        response = capsules.DriverResponse(502, {})
+        response = teams.DriverResponse(502, {})
         # A provider callback may raise any ordinary exception. This process boundary must fail
         # closed while cancellation and process-control BaseExceptions continue to propagate.
         with contextlib.suppress(Exception):
@@ -298,9 +298,9 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 response = await asyncio.wrap_future(turn.future)
             except asyncio.CancelledError:
                 raise
-            except capsules.CapsuleRequestError:
-                response = capsules.DriverResponse(400, {})
-        await _send_terminal_once(websocket, connection, turn, turn_terminal(response, capsule_id))
+            except teams.TeamRequestError:
+                response = teams.DriverResponse(400, {})
+        await _send_terminal_once(websocket, connection, turn, turn_terminal(response, team_id))
     finally:
         if connection.active is turn:
             connection.active = None
@@ -310,25 +310,25 @@ async def _run_stop(
     websocket: WebSocket,
     connection: _Connection,
     turn: _Turn,
-    capsule_id: str,
+    team_id: str,
     *,
     emit: bool,
 ) -> None:
     try:
-        response = capsules.DriverResponse(502, {})
+        response = teams.DriverResponse(502, {})
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
-                response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(localchat.stop, capsule_id))
+                response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(localchat.stop, team_id))
             except ExecutorSaturatedError:
-                response = capsules.DriverResponse(429, {})
-        accepted = _stop_accepted(response, capsule_id)
+                response = teams.DriverResponse(429, {})
+        accepted = _stop_accepted(response, team_id)
         if not emit or connection.closed or turn.terminal_sent:
             return
         if accepted is True:
             await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
         elif accepted is None:
-            status = response.status if isinstance(response, capsules.DriverResponse) else 502
+            status = response.status if isinstance(response, teams.DriverResponse) else 502
             await _send_terminal_once(
                 websocket,
                 connection,
@@ -344,7 +344,7 @@ def _request_stop(
     websocket: WebSocket,
     connection: _Connection,
     turn: _Turn,
-    capsule_id: str,
+    team_id: str,
     *,
     emit: bool,
 ) -> asyncio.Task | None:
@@ -355,38 +355,38 @@ def _request_stop(
         if emit and not connection.closed:
             turn.stop_task = asyncio.create_task(_send_terminal_once(websocket, connection, turn, {"type": "stopped"}))
         return turn.stop_task
-    turn.stop_task = asyncio.create_task(_run_stop(websocket, connection, turn, capsule_id, emit=emit))
+    turn.stop_task = asyncio.create_task(_run_stop(websocket, connection, turn, team_id, emit=emit))
     return turn.stop_task
 
 
-async def _dispatch(websocket: WebSocket, connection: _Connection, capsule_id: str, frame: dict[str, object]) -> None:
+async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str, frame: dict[str, object]) -> None:
     if frame.get("type") == "chat":
         if set(frame) not in ({"type", "message"}, {"type", "message", "files"}):
             await _send_event(websocket, _error_terminal(400, "chat frame accepts only message and files"))
             return
         try:
-            payload = capsules.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
-        except capsules.CapsuleRequestError:
+            payload = teams.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
+        except teams.TeamRequestError:
             await _send_event(websocket, _error_terminal(400, "invalid chat request"))
             return
         if connection.active is not None:
             await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
             return
         try:
-            future = _TURN_EXECUTOR.submit(localchat.turn, capsule_id, payload)
+            future = _TURN_EXECUTOR.submit(localchat.turn, team_id, payload)
         except ExecutorSaturatedError:
             await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
             return
         turn = _Turn(future=future)
         connection.active = turn
-        turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, capsule_id))
+        turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
         return
 
     if frame.get("type") == "stop" and set(frame) == {"type"}:
         if connection.active is None:
             await _send_event(websocket, _error_terminal(409, "no active chat turn"))
             return
-        _request_stop(websocket, connection, connection.active, capsule_id, emit=True)
+        _request_stop(websocket, connection, connection.active, team_id, emit=True)
         return
 
     await _send_event(websocket, _error_terminal(400, "unsupported chat frame"))
@@ -406,7 +406,7 @@ def _session_valid(session_ok: Callable[[Mapping[str, str]], bool], cookies: Map
 
 async def serve(
     websocket: WebSocket,
-    capsule_id: object,
+    team_id: object,
     *,
     session_ok: Callable[[Mapping[str, str]], bool],
 ) -> None:
@@ -419,8 +419,8 @@ async def serve(
         await websocket.close(code=4406)
         return
     try:
-        cid = capsules.canonical_capsule_id(capsule_id)
-    except capsules.CapsuleRequestError:
+        canonical_id = teams.canonical_team_id(team_id)
+    except teams.TeamRequestError:
         await websocket.close(code=4400)
         return
     if not _session_valid(session_ok, websocket.cookies):
@@ -444,14 +444,14 @@ async def serve(
                 connection.closed = True
                 await websocket.close(code=4401)
                 return
-            await _dispatch(websocket, connection, cid, frame)
+            await _dispatch(websocket, connection, canonical_id, frame)
     except WebSocketDisconnect, RuntimeError, OSError:
         connection.closed = True
     finally:
         connection.closed = True
         active = connection.active
         if active is not None:
-            stop_task = _request_stop(websocket, connection, active, cid, emit=False)
+            stop_task = _request_stop(websocket, connection, active, canonical_id, emit=False)
             if stop_task is not None:
                 with contextlib.suppress(asyncio.CancelledError, TimeoutError):
                     await asyncio.wait_for(asyncio.shield(stop_task), timeout=15)

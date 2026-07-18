@@ -1,6 +1,6 @@
 import { LocalApiError, safeApiError } from './localApi.js';
 
-const CAPSULE_ID_RE = /^[a-z0-9_]{1,40}$/;
+const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const FILE_ID_RE = /^[0-9a-f]{32}$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const MAX_MESSAGE_CHARS = 16_000;
@@ -16,8 +16,8 @@ async function jsonObject(response) {
   return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
 }
 
-function requireCapsule(capsuleId) {
-  if (!CAPSULE_ID_RE.test(capsuleId)) throw new LocalApiError('Invalid local chat request.');
+function requireTeam(teamId) {
+  if (!TEAM_ID_RE.test(teamId)) throw new LocalApiError('Invalid local chat request.');
 }
 
 function exactKeys(value, keys) {
@@ -38,10 +38,10 @@ function canonicalTeam(value) {
   return value;
 }
 
-export async function listCapsuleFiles(fetcher, capsuleId) {
+export async function listTeamFiles(fetcher, teamId) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local file request.');
-  requireCapsule(capsuleId);
-  const response = await fetcher(`/api/capsules/${encodeURIComponent(capsuleId)}/files`, {
+  requireTeam(teamId);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/files`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   });
@@ -68,8 +68,8 @@ export async function listCapsuleFiles(fetcher, capsuleId) {
 }
 
 /** Build the only chat frame accepted by shimpz.chat.v1. Provider/model/keys remain server-owned. */
-export function createChatFrame(capsuleId, turn) {
-  requireCapsule(capsuleId);
+export function createChatFrame(teamId, turn) {
+  requireTeam(teamId);
   if (!turn || typeof turn !== 'object' || Object.keys(turn).sort().join(',') !== 'files,message') {
     throw new LocalApiError('Chat accepts only message and files.');
   }
@@ -87,29 +87,31 @@ export function createChatFrame(capsuleId, turn) {
   return { type: 'chat', message, files: [...turn.files] };
 }
 
-export function createStopFrame(capsuleId) {
-  requireCapsule(capsuleId);
+export function createStopFrame(teamId) {
+  requireTeam(teamId);
   return { type: 'stop' };
 }
 
-export function chatSocketUrl(locationValue, capsuleId) {
-  requireCapsule(capsuleId);
+export function chatSocketUrl(locationValue, teamId) {
+  requireTeam(teamId);
   if (!locationValue || typeof locationValue.host !== 'string') {
     throw new LocalApiError('Invalid local chat request.');
   }
   const scheme = locationValue.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${scheme}//${locationValue.host}/api/capsules/${capsuleId}/chat/ws`;
+  return `${scheme}//${locationValue.host}/api/teams/${teamId}/chat/ws`;
 }
 
 /** Parse one terminal frame. Raw provider events and extra fields fail closed. */
-export function parseChatTerminalEvent(value, expectedTeam) {
+export function parseChatTerminalEvent(value, expectedTeamId, expectedTeamName) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   if (value.type === 'done') {
     if (
-      !exactKeys(value, ['type', 'reply', 'team']) ||
-      canonicalTeam(value.team) !== canonicalTeam(expectedTeam) ||
+      !exactKeys(value, ['type', 'team_id', 'team_name', 'reply']) ||
+      !TEAM_ID_RE.test(value.team_id) ||
+      value.team_id !== expectedTeamId ||
+      canonicalTeam(value.team_name) !== canonicalTeam(expectedTeamName) ||
       typeof value.reply !== 'string' ||
       !value.reply.trim() ||
       value.reply.length > MAX_REPLY_CHARS ||
@@ -117,7 +119,12 @@ export function parseChatTerminalEvent(value, expectedTeam) {
     ) {
       throw new LocalApiError('The local chat response is invalid.');
     }
-    return { type: 'done', team: value.team, reply: value.reply };
+    return {
+      type: 'done',
+      team_id: value.team_id,
+      team_name: value.team_name,
+      reply: value.reply,
+    };
   }
   if (value.type === 'error') {
     if (

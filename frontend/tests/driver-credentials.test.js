@@ -20,11 +20,11 @@ function documentFixture({ cardinality = "many" } = {}) {
     driver: {
       id: "r2",
       title: "Cloudflare R2",
-      summary: "Capsule-scoped object storage.",
+      summary: "Team-scoped object storage.",
     },
     credential_form: {
       schema_version: 1,
-      owner_scope: "capsule",
+      owner_scope: "team",
       cardinality,
       profiles: [
         {
@@ -252,7 +252,7 @@ test("uses the fixed JSON lifecycle methods and paths", async () => {
     calls.push({ url, options });
     return { ok: true, status: 200 };
   };
-  const baseUrl = "/api/capsules/capsule_1/drivers/r2";
+  const baseUrl = "/api/teams/team_1/drivers/r2";
 
   await sendCredentialMutation(fetcher, baseUrl, "create", { payload: { idempotency_key: UUID } });
   await sendCredentialMutation(fetcher, baseUrl, "rotate", {

@@ -24,12 +24,12 @@ test('install is passive and never invokes an Assistant Power', async () => {
     return response(200, { assistant: 'hello-pulse', installed: true });
   };
 
-  const result = await installAssistant(fetcher, 'capsule_1', 'hello-pulse');
+  const result = await installAssistant(fetcher, 'team_1', 'hello-pulse');
 
   assert.deepEqual(result, { assistant: 'hello-pulse', installed: true });
   assert.deepEqual(
     calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
-    [['POST', '/api/capsules/capsule_1/assistants', { assistant: 'hello-pulse' }]],
+    [['POST', '/api/teams/team_1/assistants', { assistant: 'hello-pulse' }]],
   );
   assert.equal(calls.some(({ url }) => url.includes('/powers/')), false);
 });
@@ -42,7 +42,7 @@ test('idempotent install reports an existing Assistant without executing it', as
   };
 
   assert.deepEqual(
-    await installAssistant(fetcher, 'capsule_1', 'hello-pulse'),
+    await installAssistant(fetcher, 'team_1', 'hello-pulse'),
     { assistant: 'hello-pulse', installed: false },
   );
   assert.equal(calls, 1);
@@ -56,7 +56,7 @@ test('safe install errors stop after one request and prefer error over detail', 
   };
 
   await assert.rejects(
-    installAssistant(fetcher, 'capsule_1', 'hello-pulse'),
+    installAssistant(fetcher, 'team_1', 'hello-pulse'),
     (error) => error instanceof LocalApiError && error.status === 503 && error.message === 'runtime recovery failed',
   );
   assert.equal(calls.length, 1);
@@ -73,7 +73,7 @@ test('invalid install responses fail closed without invoking anything else', asy
       installAssistant(async () => {
         calls += 1;
         return response(200, body);
-      }, 'capsule_1', 'hello-pulse'),
+      }, 'team_1', 'hello-pulse'),
       (error) => error instanceof LocalApiError && error.message.includes('invalid response'),
     );
     assert.equal(calls, 1);
@@ -92,12 +92,12 @@ test('loads the controller-owned installed Assistant inventory without weakening
     });
   };
 
-  assert.deepEqual(await listInstalledAssistants(fetcher, 'capsule_1'), [
+  assert.deepEqual(await listInstalledAssistants(fetcher, 'team_1'), [
     { assistant: 'hello-pulse', status: 'running' },
     { assistant: 'salesnator', status: 'created' },
   ]);
   assert.deepEqual(calls, [{
-    url: '/api/capsules/capsule_1/assistants',
+    url: '/api/teams/team_1/assistants',
     options: { cache: 'no-store', headers: { Accept: 'application/json' } },
   }]);
 });
@@ -137,7 +137,7 @@ test('rejects malformed or ambiguous Assistant catalog identities', async () => 
 
 test('installed inventory errors and malformed records fail honestly instead of looking empty', async () => {
   await assert.rejects(
-    listInstalledAssistants(async () => response(503, { detail: 'controller unavailable' }), 'capsule_1'),
+    listInstalledAssistants(async () => response(503, { detail: 'controller unavailable' }), 'team_1'),
     (error) => error instanceof LocalApiError && error.status === 503 && error.message === 'controller unavailable',
   );
 
@@ -155,7 +155,7 @@ test('installed inventory errors and malformed records fail honestly instead of 
     })),
   ]) {
     await assert.rejects(
-      listInstalledAssistants(async () => response(200, { assistants }), 'capsule_1'),
+      listInstalledAssistants(async () => response(200, { assistants }), 'team_1'),
       (error) => error instanceof LocalApiError && error.message === 'The installed Assistant inventory is invalid.',
     );
   }
@@ -166,7 +166,7 @@ test('rejects consecutive and trailing hyphens in installed Assistant ids', asyn
     await assert.rejects(
       listInstalledAssistants(
         async () => response(200, { assistants: [{ assistant, status: 'running' }] }),
-        'capsule_1',
+        'team_1',
       ),
       (error) => (
         error instanceof LocalApiError &&

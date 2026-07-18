@@ -68,12 +68,12 @@ test('saves the key only to Admin and provider/model only to inference', async (
     calls.push({ url, options });
     return calls.length === 1
       ? response(200, { ...providers[0], configured: true, masked: '••••test' })
-      : response(200, { capsule: 'capsule_1', provider: 'openai', model: 'gpt-5.5' });
+      : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-5.5' });
   };
 
   await saveModelSetup(
     fetcher,
-    'capsule_1',
+    'team_1',
     { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-test-0123456789' },
     providers,
   );
@@ -88,21 +88,21 @@ test('reuses a configured key without a credential write', async () => {
   await saveModelSetup(
     async (url, options) => {
       calls.push({ url, options });
-      return response(200, { capsule: 'capsule_1', provider: 'anthropic', model: 'claude-sonnet-5' });
+      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5' });
     },
-    'capsule_1',
+    'team_1',
     { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: '' },
     providers,
   );
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, '/api/capsules/capsule_1/inference');
+  assert.equal(calls[0].url, '/api/teams/team_1/inference');
 });
 
 test('rejects inference models outside the provider catalog before saving', async () => {
   await assert.rejects(
     loadInference(
-      async () => response(200, { capsule: 'capsule_1', provider: 'openai', model: 'claude-sonnet-5' }),
-      'capsule_1',
+      async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5' }),
+      'team_1',
     ),
     /invalid/,
   );
@@ -111,7 +111,7 @@ test('rejects inference models outside the provider catalog before saving', asyn
   await assert.rejects(
     saveModelSetup(
       async () => { called = true; },
-      'capsule_1',
+      'team_1',
       { provider: 'openai', model: 'gpt-5.7', apiKey: 'sk-test-0123456789' },
       providers,
     ),
@@ -121,7 +121,7 @@ test('rejects inference models outside the provider catalog before saving', asyn
 });
 
 test('treats unconfigured inference as empty and removes keys through the fixed route', async () => {
-  assert.equal(await loadInference(async () => response(409, { detail: 'not configured' }), 'capsule_1'), null);
+  assert.equal(await loadInference(async () => response(409, { detail: 'not configured' }), 'team_1'), null);
   const removed = await removeModelKey(
     async (url, options) => {
       assert.equal(url, '/api/model-providers/openai');

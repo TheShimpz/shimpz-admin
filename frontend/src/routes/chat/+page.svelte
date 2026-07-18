@@ -150,7 +150,11 @@
       let terminal;
       try {
         if (typeof event.data !== 'string' || (!busy && !stopping)) throw new Error('unexpected frame');
-        terminal = parseChatTerminalEvent(JSON.parse(event.data), expectedTeam.name);
+        terminal = parseChatTerminalEvent(
+          JSON.parse(event.data),
+          expectedTeam.id,
+          expectedTeam.name,
+        );
       } catch {
         socket = null;
         socketReady = false;
@@ -164,7 +168,7 @@
       busy = false;
       stopping = false;
       if (terminal.type === 'done') {
-        turns = [...turns, { role: 'assistant', text: terminal.reply, author: terminal.team }];
+        turns = [...turns, { role: 'assistant', text: terminal.reply, author: terminal.team_name }];
         clearError();
       } else if (terminal.type === 'stopped') {
         setError(copy.stopped);

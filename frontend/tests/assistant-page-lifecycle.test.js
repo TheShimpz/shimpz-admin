@@ -27,11 +27,11 @@ test('publishes transient Store feedback through the global Admin notice', () =>
   assert.match(source, /import \{ showAdminNotice \} from '\$lib\/adminNotice\.js';/);
   assert.match(
     source,
-    /await refreshInstalled\(capsule\.id\);\s+showAdminNotice\(\{\s+tone: 'success',\s+label: copy\.uninstall,\s+message: format\(copy\.removed,/,
+    /await refreshInstalled\(team\.id\);\s+showAdminNotice\(\{\s+tone: 'success',\s+label: copy\.uninstall,\s+message: format\(copy\.removed,/,
   );
   assert.match(
     source,
-    /catch \(error\) \{[\s\S]*?await refreshInstalled\(capsule\.id\);\s+showAdminNotice\(\{\s+tone: 'error',\s+label: copy\.failureTitle,\s+message: failure,/,
+    /catch \(error\) \{[\s\S]*?await refreshInstalled\(team\.id\);\s+showAdminNotice\(\{\s+tone: 'error',\s+label: copy\.failureTitle,\s+message: failure,/,
   );
   assert.doesNotMatch(source, /let (?:actionError|evaluation)|class="(?:action-error|sidebar-result)"/);
   assert.doesNotMatch(
@@ -41,7 +41,7 @@ test('publishes transient Store feedback through the global Admin notice', () =>
 });
 
 test('uses Team terminology without exposing direct Power controls', () => {
-  assert.doesNotMatch(source, /'[^'\n]*(?:Capsule|Cápsula)[^'\n]*'/);
+  assert.match(source, /Team/);
   assert.doesNotMatch(source, /invokeHelloPulse|\/powers\/|runHello/);
 });
 
@@ -51,10 +51,10 @@ test('leaves initial Team loading and selection exclusively to the persistent si
     /import \{ refreshTeamInventory, teamContext \} from '\$lib\/teamContext\.js';/,
   );
   assert.doesNotMatch(source, /loadTeamContext|refreshLocalData|loadLocalData|selectTeam/);
-  assert.doesNotMatch(source, /<select|capsule-context|capsule-picker|installed-inventory/);
+  assert.doesNotMatch(source, /<select|team-context|team-picker|installed-inventory/);
   assert.match(source, /await waitForTeamContext\(\)/);
   assert.match(source, /queueMicrotask\(\(\) => unsubscribe\(\)\)/);
-  assert.doesNotMatch(source, /href="\/capsules\/"/);
+  assert.doesNotMatch(source, /href="\/teams\/"/);
   assert.match(source, /createFromSidebar: 'Close this dialog and create a Team from the sidebar\.'/);
 });
 

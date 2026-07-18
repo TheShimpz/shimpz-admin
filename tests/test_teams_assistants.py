@@ -19,7 +19,7 @@ from typing import ClassVar
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import capsules
+import teams
 
 
 class _DriverHandler(BaseHTTPRequestHandler):
@@ -76,7 +76,7 @@ class _LiveDriverCase(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
-        self.token_file = self.root / "capsule-driver.token"
+        self.token_file = self.root / "team-driver.token"
         self.token_file.write_text("internal-test-bearer\n", encoding="utf-8")
         self.driver_url = f"http://127.0.0.1:{self.server.server_port}"
 
@@ -92,8 +92,8 @@ class _LiveDriverCase(unittest.TestCase):
                 "PYTHONPATH": str(ROOT / "backend"),
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
-                "SHIMPZ_CAPSULEDRIVER_URL": self.driver_url,
-                "SHIMPZ_CAPSULEDRIVER_TOKEN_FILE": str(self.token_file),
+                "SHIMPZ_TEAMDRIVER_URL": self.driver_url,
+                "SHIMPZ_TEAMDRIVER_TOKEN_FILE": str(self.token_file),
             }
         )
         result = subprocess.run(
@@ -115,32 +115,32 @@ class _LiveDriverCase(unittest.TestCase):
         return document
 
 
-class CapsuleAssistantBridgeTest(_LiveDriverCase):
+class TeamAssistantBridgeTest(_LiveDriverCase):
     def setUp(self):
         super().setUp()
-        self.original_token_file = capsules.TOKEN_FILE
-        self.original_url = capsules.URL
-        capsules.TOKEN_FILE = str(self.token_file)
-        capsules.URL = self.driver_url
+        self.original_token_file = teams.TOKEN_FILE
+        self.original_url = teams.URL
+        teams.TOKEN_FILE = str(self.token_file)
+        teams.URL = self.driver_url
         self.addCleanup(self._restore_bridge_config)
 
     def _restore_bridge_config(self):
-        capsules.TOKEN_FILE = self.original_token_file
-        capsules.URL = self.original_url
+        teams.TOKEN_FILE = self.original_token_file
+        teams.URL = self.original_url
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
-        capsules.list_assistants()
-        capsules.list_installed_assistants("capsule_1")
-        capsules.install_assistant("capsule_1", {"assistant": "hello-pulse"})
-        capsules.uninstall_assistant("capsule_1", "hello-pulse")
+        teams.list_assistants()
+        teams.list_installed_assistants("team_1")
+        teams.install_assistant("team_1", {"assistant": "hello-pulse"})
+        teams.uninstall_assistant("team_1", "hello-pulse")
 
         self.assertEqual(
             [(item["method"], item["path"]) for item in _DriverHandler.requests],
             [
                 ("GET", "/v1/assistants"),
-                ("GET", "/v1/capsules/capsule_1/assistants"),
-                ("POST", "/v1/capsules/capsule_1/assistants"),
-                ("DELETE", "/v1/capsules/capsule_1/assistants/hello-pulse"),
+                ("GET", "/v1/teams/team_1/assistants"),
+                ("POST", "/v1/teams/team_1/assistants"),
+                ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
             ],
         )
         self.assertEqual(json.loads(_DriverHandler.requests[2]["body"]), {"assistant": "hello-pulse"})
@@ -153,15 +153,15 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
         _DriverHandler.response_status = 409
         _DriverHandler.response_body = b'{"detail":"assistant already installed"}'
 
-        response = capsules.install_assistant("capsule_1", {"assistant": "hello-pulse"})
+        response = teams.install_assistant("team_1", {"assistant": "hello-pulse"})
 
         self.assertEqual(
             response,
-            capsules.DriverResponse(409, {"detail": "assistant already installed"}),
+            teams.DriverResponse(409, {"detail": "assistant already installed"}),
         )
 
     def test_storage_bridge_forwards_only_opaque_metadata_and_fixed_routes(self):
-        content = b"Capsule private data"
+        content = b"Team private data"
         file_id = "b" * 32
         metadata = {
             "id": file_id,
@@ -178,62 +178,62 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
         }
         _DriverHandler.response_body = json.dumps(
             {
-                "capsule": "capsule_1",
+                "team_id": "team_1",
                 "file": {**metadata, **usage, "path": "/private/never-expose"},
                 "path": "/private/never-expose",
             },
             separators=(",", ":"),
         ).encode()
 
-        uploaded = capsules.upload_file("capsule_1", "brief.txt", "text/plain", content)
+        uploaded = teams.upload_file("team_1", "brief.txt", "text/plain", content)
 
         self.assertEqual(
             uploaded,
-            capsules.DriverResponse(200, {"capsule": "capsule_1", "file": {**metadata, **usage}}),
+            teams.DriverResponse(200, {"team_id": "team_1", "file": {**metadata, **usage}}),
         )
         upload_request = _DriverHandler.requests[-1]
         self.assertEqual(
             (upload_request["method"], upload_request["path"]),
-            ("POST", "/v1/capsules/capsule_1/files"),
+            ("POST", "/v1/teams/team_1/files"),
         )
         self.assertEqual(
             json.loads(upload_request["body"]),
             {
                 "filename": "brief.txt",
                 "media_type": "text/plain",
-                "content_b64": "Q2Fwc3VsZSBwcml2YXRlIGRhdGE=",
+                "content_b64": "VGVhbSBwcml2YXRlIGRhdGE=",
             },
         )
 
         _DriverHandler.response_body = json.dumps(
-            {"capsule": "capsule_1", "files": [{**metadata, "path": "/private/no"}], **usage},
+            {"team_id": "team_1", "files": [{**metadata, "path": "/private/no"}], **usage},
             separators=(",", ":"),
         ).encode()
-        listed = capsules.list_files("capsule_1")
+        listed = teams.list_files("team_1")
         self.assertEqual(
             listed,
-            capsules.DriverResponse(200, {"capsule": "capsule_1", "files": [metadata], **usage}),
+            teams.DriverResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
         )
 
         _DriverHandler.response_body = json.dumps(
-            {"capsule": "capsule_1", "id": file_id, "deleted": True, **usage},
+            {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             separators=(",", ":"),
         ).encode()
-        deleted = capsules.delete_file("capsule_1", file_id)
+        deleted = teams.delete_file("team_1", file_id)
         self.assertEqual(
             deleted,
-            capsules.DriverResponse(
+            teams.DriverResponse(
                 200,
-                {"capsule": "capsule_1", "id": file_id, "deleted": True, **usage},
+                {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             ),
         )
 
         self.assertEqual(
             [(request["method"], request["path"]) for request in _DriverHandler.requests],
             [
-                ("POST", "/v1/capsules/capsule_1/files"),
-                ("GET", "/v1/capsules/capsule_1/files"),
-                ("DELETE", f"/v1/capsules/capsule_1/files/{file_id}"),
+                ("POST", "/v1/teams/team_1/files"),
+                ("GET", "/v1/teams/team_1/files"),
+                ("DELETE", f"/v1/teams/team_1/files/{file_id}"),
             ],
         )
         for request in _DriverHandler.requests:
@@ -241,35 +241,35 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
 
     def test_storage_bridge_rejects_paths_and_non_opaque_ids_before_network_access(self):
         invalid = (
-            lambda: capsules.upload_file("capsule_1", "../brief.txt", "text/plain", b"data"),
-            lambda: capsules.upload_file("capsule_1", "brief.txt", "text/plain", b""),
-            lambda: capsules.delete_file("capsule_1", "../not-an-id"),
+            lambda: teams.upload_file("team_1", "../brief.txt", "text/plain", b"data"),
+            lambda: teams.upload_file("team_1", "brief.txt", "text/plain", b""),
+            lambda: teams.delete_file("team_1", "../not-an-id"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(capsules.CapsuleRequestError):
+            with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
                 action()
         self.assertEqual(_DriverHandler.requests, [])
 
     def test_storage_bridge_preserves_safe_error_status_without_internal_fields(self):
         _DriverHandler.response_status = 507
-        _DriverHandler.response_body = b'{"detail":"Capsule storage quota exceeded","path":"/private/no"}'
+        _DriverHandler.response_body = b'{"detail":"Team storage quota exceeded","path":"/private/no"}'
 
-        response = capsules.upload_file("capsule_1", "brief.txt", "text/plain", b"data")
+        response = teams.upload_file("team_1", "brief.txt", "text/plain", b"data")
 
         self.assertEqual(
             response,
-            capsules.DriverResponse(507, {"detail": "Capsule storage quota exceeded"}),
+            teams.DriverResponse(507, {"detail": "Team storage quota exceeded"}),
         )
 
     def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
         invalid = (
-            lambda: capsules.list_installed_assistants("Capsule_1"),
-            lambda: capsules.install_assistant("capsule_1", {"assistant": "../hello-pulse"}),
-            lambda: capsules.install_assistant("capsule_1", {"assistant": "hello-pulse", "extra": True}),
-            lambda: capsules.uninstall_assistant("capsule_1", "../hello-pulse"),
+            lambda: teams.list_installed_assistants("Team_1"),
+            lambda: teams.install_assistant("team_1", {"assistant": "../hello-pulse"}),
+            lambda: teams.install_assistant("team_1", {"assistant": "hello-pulse", "extra": True}),
+            lambda: teams.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(capsules.CapsuleRequestError):
+            with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
                 action()
         self.assertEqual(_DriverHandler.requests, [])
 
@@ -281,7 +281,7 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
                 b"",
                 {
                     "Content-Type": "application/json",
-                    "Content-Length": str(capsules.MAX_JSON_RESPONSE_BYTES + 1),
+                    "Content-Length": str(teams.MAX_JSON_RESPONSE_BYTES + 1),
                 },
             ),
         )
@@ -290,12 +290,12 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
                 _DriverHandler.response_body = body
                 _DriverHandler.response_headers = headers
                 self.assertEqual(
-                    capsules.list_assistants(),
-                    capsules.DriverResponse(502, {"detail": "capsule-driver unavailable"}),
+                    teams.list_assistants(),
+                    teams.DriverResponse(502, {"detail": "team-driver unavailable"}),
                 )
 
     def test_bridge_has_no_docker_or_process_execution_dependency(self):
-        tree = ast.parse((ROOT / "backend" / "capsules.py").read_text(encoding="utf-8"))
+        tree = ast.parse((ROOT / "backend" / "teams.py").read_text(encoding="utf-8"))
         imports = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -305,7 +305,7 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
         self.assertTrue({"docker", "subprocess"}.isdisjoint(imports))
 
 
-class CapsuleAssistantRouteTest(_LiveDriverCase):
+class TeamAssistantRouteTest(_LiveDriverCase):
     def test_exposes_only_session_gated_assistant_routes(self):
         document = self._run_asgi_probe("routes")
 
@@ -329,12 +329,12 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(len(_DriverHandler.requests), 1)
         request = _DriverHandler.requests[0]
         self.assertEqual(request["method"], "POST")
-        self.assertEqual(request["path"], "/v1/capsules/capsule_1/assistants")
+        self.assertEqual(request["path"], "/v1/teams/team_1/assistants")
         self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_multipart_upload_is_bounded_and_forwarded_as_json_without_a_path(self):
-        content = b"Capsule private data"
+        content = b"Team private data"
         file_id = "b" * 32
         usage = {
             "used_bytes": len(content),
@@ -343,7 +343,7 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         }
         _DriverHandler.response_body = json.dumps(
             {
-                "capsule": "capsule_1",
+                "team_id": "team_1",
                 "file": {
                     "id": file_id,
                     "name": "brief.txt",
@@ -365,13 +365,13 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertNotIn("path", document["body"]["file"])
         self.assertEqual(len(_DriverHandler.requests), 1)
         request = _DriverHandler.requests[0]
-        self.assertEqual((request["method"], request["path"]), ("POST", "/v1/capsules/capsule_1/files"))
+        self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/team_1/files"))
         self.assertEqual(
             json.loads(request["body"]),
             {
                 "filename": "brief.txt",
                 "media_type": "text/plain",
-                "content_b64": "Q2Fwc3VsZSBwcml2YXRlIGRhdGE=",
+                "content_b64": "VGVhbSBwcml2YXRlIGRhdGE=",
             },
         )
 
@@ -479,19 +479,19 @@ def _run_asgi_probe(scenario: str) -> None:
         }
         expected = {
             ("/api/assistants", "GET"),
-            ("/api/capsules/{cid}/assistants", "GET"),
-            ("/api/capsules/{cid}/assistants", "POST"),
-            ("/api/capsules/{cid}/assistants/{assistant_id}", "DELETE"),
-            ("/api/capsules/{cid}/files", "GET"),
-            ("/api/capsules/{cid}/files", "POST"),
-            ("/api/capsules/{cid}/files/{file_id}", "DELETE"),
+            ("/api/teams/{team_id}/assistants", "GET"),
+            ("/api/teams/{team_id}/assistants", "POST"),
+            ("/api/teams/{team_id}/assistants/{assistant_id}", "DELETE"),
+            ("/api/teams/{team_id}/files", "GET"),
+            ("/api/teams/{team_id}/files", "POST"),
+            ("/api/teams/{team_id}/files/{file_id}", "DELETE"),
         }
         status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
         power_status, _power_body = asyncio.run(
             _asgi_request(
                 admin_app,
                 "POST",
-                "/api/capsules/capsule_1/assistants/hello-pulse/powers/hello",
+                "/api/teams/team_1/assistants/hello-pulse/powers/hello",
                 b'{"name":"Captain"}',
                 token=token,
             )
@@ -511,7 +511,7 @@ def _run_asgi_probe(scenario: str) -> None:
             _asgi_request(
                 admin_app,
                 "POST",
-                "/api/capsules/capsule_1/assistants",
+                "/api/teams/team_1/assistants",
                 payload,
                 token=token,
             )
@@ -519,12 +519,12 @@ def _run_asgi_probe(scenario: str) -> None:
         output = {"status": status, "body": body}
     elif scenario == "file-upload":
         boundary = "shimpz-admin-upload-boundary"
-        payload = _multipart_file_body(boundary, b"Capsule private data")
+        payload = _multipart_file_body(boundary, b"Team private data")
         status, body = asyncio.run(
             _asgi_request(
                 admin_app,
                 "POST",
-                "/api/capsules/capsule_1/files",
+                "/api/teams/team_1/files",
                 payload,
                 token=token,
                 content_type=f"multipart/form-data; boundary={boundary}",
@@ -538,7 +538,7 @@ def _run_asgi_probe(scenario: str) -> None:
             _asgi_request(
                 admin_app,
                 "POST",
-                "/api/capsules/capsule_1/files",
+                "/api/teams/team_1/files",
                 payload,
                 token=token,
                 content_type=f"multipart/form-data; boundary={boundary}",
@@ -555,7 +555,7 @@ def _run_asgi_probe(scenario: str) -> None:
                 _asgi_request(
                     admin_app,
                     "POST",
-                    "/api/capsules/capsule_1/assistants",
+                    "/api/teams/team_1/assistants",
                     payload,
                     token=token,
                 )

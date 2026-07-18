@@ -88,7 +88,7 @@ SCHEMA = (
         "secret": True,
         "validator": "live_openai",
         "help": "Optional freshly rotated platform media key: powers transcription, speech, and image generation in "
-        "openai-driver; never copy a legacy root OPENAI_API_KEY and never inject it into Brains or Capsules.",
+        "openai-driver; never copy a legacy root OPENAI_API_KEY and never inject it into Brains or Teams.",
     },
     {
         "key": "VOICE_TOOLS_OPENAI_KEY",
@@ -174,22 +174,22 @@ SCHEMA = (
         "help": "Host docker group id (must match `stat -c '%g' /var/run/docker.sock`; default 989).",
     },
     {
-        "key": "SHIMPZ_CAPSULE_MAX_HTTP_CONCURRENCY",
+        "key": "SHIMPZ_TEAM_MAX_HTTP_CONCURRENCY",
         "group": "advanced",
         "required": False,
         "generate": False,
         "secret": False,
         "validator": "re:[1-9][0-9]*",
-        "help": "Maximum simultaneous Capsule control-plane requests (default 64; must be positive).",
+        "help": "Maximum simultaneous Team control-plane requests (default 64; must be positive).",
     },
     {
-        "key": "SHIMPZ_CAPSULE_HTTP_CONNECTION_TIMEOUT_SECONDS",
+        "key": "SHIMPZ_TEAM_HTTP_CONNECTION_TIMEOUT_SECONDS",
         "group": "advanced",
         "required": False,
         "generate": False,
         "secret": False,
         "validator": "re:[1-9][0-9]*",
-        "help": "Capsule control-plane socket timeout in seconds (default 30; must be positive).",
+        "help": "Team control-plane socket timeout in seconds (default 30; must be positive).",
     },
     {
         "key": "SHIMPZ_SUFFIX",

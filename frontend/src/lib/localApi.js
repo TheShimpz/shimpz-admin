@@ -1,4 +1,4 @@
-const CAPSULE_ID_RE = /^[a-z0-9_]{1,40}$/;
+const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
@@ -63,13 +63,13 @@ export async function listAssistantCatalog(fetcher) {
 }
 
 /** Read the controller-owned runtime inventory; never turn an invalid response into an empty list. */
-export async function listInstalledAssistants(fetcher, capsuleId) {
-  if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
+export async function listInstalledAssistants(fetcher, teamId) {
+  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
   const response = await fetcher(
-    `/api/capsules/${encodeURIComponent(capsuleId)}/assistants`,
+    `/api/teams/${encodeURIComponent(teamId)}/assistants`,
     { cache: 'no-store', headers: { Accept: 'application/json' } },
   );
   const body = await jsonObject(response);
@@ -104,15 +104,15 @@ export async function listInstalledAssistants(fetcher, capsuleId) {
 }
 
 /** Install or reconcile one allowlisted Assistant without invoking a Power or starting a chat turn. */
-export async function installAssistant(fetcher, capsuleId, assistantId) {
-  if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
+export async function installAssistant(fetcher, teamId, assistantId) {
+  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
   if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
-  const base = `/api/capsules/${encodeURIComponent(capsuleId)}/assistants`;
+  const base = `/api/teams/${encodeURIComponent(teamId)}/assistants`;
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
   const installResponse = await fetcher(base, {
     method: 'POST',

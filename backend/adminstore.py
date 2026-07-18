@@ -1,7 +1,7 @@
 """The Admin's private store — `admin.json` (0600), separate from the `.env` keyset.
 
 It holds the password record, session-signing secret, and local model API keys. Model keys stay in
-this backend-owned `/data` volume: they are never seeded into a Brain/Capsule environment, returned
+this backend-owned `/data` volume: they are never seeded into a Brain/Team environment, returned
 to the browser, or mixed with the platform media key in `.env`.
 
 Fail-loud on corruption: a damaged admin.json RAISES rather than reading as "no password set" —

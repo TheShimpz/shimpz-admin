@@ -64,7 +64,7 @@ test('rejects every untrusted origin, source, type, version, id, and extra field
     { ...exact, data: { ...INSTALL_INTENT, version: '1' } },
     { ...exact, data: { ...INSTALL_INTENT, version: 2 } },
     { ...exact, data: { ...INSTALL_INTENT, assistant: 'salesnator' } },
-    { ...exact, data: { ...INSTALL_INTENT, capsule: 'capsule_1' } },
+    { ...exact, data: { ...INSTALL_INTENT, team: 'team_1' } },
     { ...exact, data: null },
     { ...exact, data: ['shimpz:assistant-install', 1, 'hello-pulse'] },
   ];
@@ -152,7 +152,7 @@ test('accepts and acknowledges only the exact Hello Pulse uninstall intent', () 
     { ...exact, data: { ...UNINSTALL_INTENT, type: INSTALL_INTENT.type } },
     { ...exact, data: { ...UNINSTALL_INTENT, version: 2 } },
     { ...exact, data: { ...UNINSTALL_INTENT, assistant: 'salesnator' } },
-    { ...exact, data: { ...UNINSTALL_INTENT, capsule: 'capsule_1' } },
+    { ...exact, data: { ...UNINSTALL_INTENT, team: 'team_1' } },
     { ...exact, data: null },
   ];
   for (const candidate of rejected) {
@@ -183,7 +183,7 @@ test('accepts only exact bounded integer Store frame measurements', () => {
     { ...exact, data: { ...exact.data, height: STORE_FRAME_MAX_HEIGHT + 1 } },
     { ...exact, data: { ...exact.data, height: 640.5 } },
     { ...exact, data: { ...exact.data, height: '640' } },
-    { ...exact, data: { ...exact.data, capsule: 'private_capsule' } },
+    { ...exact, data: { ...exact.data, team: 'private_team' } },
     { ...exact, data: null },
     { ...exact, data: [STORE_FRAME_TYPE, 1, 640] },
   ];
@@ -247,7 +247,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
   ]);
   for (const { message } of messages) {
     assert.deepEqual(Object.keys(message).sort(), ['installed', 'status', 'type', 'version']);
-    assert.equal('capsule' in message, false);
+    assert.equal('team' in message, false);
     assert.equal('token' in message, false);
     assert.equal('credentials' in message, false);
   }

@@ -46,13 +46,13 @@ function fixtureFetcher(
 ) {
   return async (url, options = {}) => {
     if (url === '/api/model-providers') return response(200, { providers: providerCatalog });
-    if (url === `/api/capsules/${teamId}/inference` && !options.method) {
+    if (url === `/api/teams/${teamId}/inference` && !options.method) {
       return inference
-        ? response(200, { capsule: teamId, ...inference })
+        ? response(200, { team_id: teamId, ...inference })
         : response(409, { detail: 'not configured' });
     }
-    if (url === `/api/capsules/${teamId}/inference` && options.method === 'PUT') {
-      return response(200, { capsule: teamId, ...JSON.parse(options.body) });
+    if (url === `/api/teams/${teamId}/inference` && options.method === 'PUT') {
+      return response(200, { team_id: teamId, ...JSON.parse(options.body) });
     }
     throw new Error(`Unexpected request: ${options.method ?? 'GET'} ${url}`);
   };
@@ -87,7 +87,7 @@ test('persists one atomic Brain change when its provider key is verified', async
   await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-5.5');
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, '/api/capsules/marketing/inference');
+  assert.equal(calls[0].url, '/api/teams/marketing/inference');
   assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-5.5' });
   assert.equal(get(modelContext).model, 'gpt-5.5');
   assert.equal(get(modelContext).ready, true);
@@ -124,7 +124,7 @@ test('validated credential is saved before inference and unlocks the Team', asyn
 
   assert.deepEqual(calls.map((entry) => entry.url), [
     '/api/model-providers/anthropic',
-    '/api/capsules/marketing/inference',
+    '/api/teams/marketing/inference',
   ]);
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     provider: 'anthropic',
@@ -139,7 +139,7 @@ test('rejected credential never reaches the Team inference endpoint', async () =
   const base = fixtureFetcher();
   const fetcher = async (url, options = {}) => {
     if (url === '/api/model-providers/anthropic') return response(400, { detail: 'API key was rejected by Anthropic' });
-    if (url === '/api/capsules/marketing/inference' && options.method === 'PUT') inferenceWrites += 1;
+    if (url === '/api/teams/marketing/inference' && options.method === 'PUT') inferenceWrites += 1;
     return base(url, options);
   };
   await loadModelContext(fetcher, 'marketing');
@@ -170,7 +170,7 @@ test('switching to another verified provider writes only the selected Brain once
   await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-fable-5');
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, '/api/capsules/marketing/inference');
+  assert.equal(calls[0].url, '/api/teams/marketing/inference');
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     provider: 'anthropic',
     model: 'claude-fable-5',
@@ -199,7 +199,7 @@ test('late model responses from the previous Team cannot replace current authori
   const delayed = new Promise((resolve) => { releaseOld = resolve; });
   const oldFetcher = async (url) => {
     if (url === '/api/model-providers') return delayed;
-    return response(200, { capsule: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' });
+    return response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' });
   };
   const oldLoad = loadModelContext(oldFetcher, 'marketing');
   await loadModelContext(fixtureFetcher('support'), 'support');

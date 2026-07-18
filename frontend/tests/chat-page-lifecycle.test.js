@@ -14,8 +14,8 @@ test('consumes the shared Team context without duplicating the persistent shell 
   assert.match(source, /\$teamContext\.selectedFileIds/);
 
   assert.doesNotMatch(source, /AdminShell|LocaleMenu|AssistantIcon/);
-  assert.doesNotMatch(source, /listAssistantCatalog|listInstalledAssistants|listCapsuleFiles|safeApiError/);
-  assert.doesNotMatch(source, /\/api\/session|\/api\/capsules['"`]/);
+  assert.doesNotMatch(source, /listAssistantCatalog|listInstalledAssistants|listTeamFiles|safeApiError/);
+  assert.doesNotMatch(source, /\/api\/session|\/api\/teams['"`]/);
   assert.doesNotMatch(source, /<aside|class="assistants"|class="files"|<select/);
 });
 
@@ -29,7 +29,7 @@ test('derives loading and bounded context diagnostics without owning the initial
   assert.match(source, /\$teamContext\.error\.length <= 300/);
   assert.match(source, /contextFailed \? copy\.loadFailed : ''/);
   assert.match(source, /error \? errorDetail : contextErrorDetail/);
-  assert.doesNotMatch(source, /new URL\(location\.href\)|searchParams\.get\('capsule'\)/);
+  assert.doesNotMatch(source, /new URL\(location\.href\)|searchParams\.get\('team'\)/);
 });
 
 test('changes Team by closing stale transport and clearing route-scoped conversation state', () => {
@@ -65,7 +65,11 @@ test('keeps versioned WebSocket send, stop, reconnect and selected file contract
     /createChatFrame\(teamId, \{\s+message,\s+files: \$teamContext\.selectedFileIds,\s+\}\)/,
   );
   assert.match(source, /createStopFrame\(teamId\)/);
-  assert.match(source, /parseChatTerminalEvent\(JSON\.parse\(event\.data\), expectedTeam\.name\)/);
+  assert.match(
+    source,
+    /parseChatTerminalEvent\(\s*JSON\.parse\(event\.data\),\s*expectedTeam\.id,\s*expectedTeam\.name,\s*\)/,
+  );
+  assert.match(source, /author: terminal\.team_name/);
 });
 
 test('submits plain Enter while preserving modified newlines and IME composition', () => {

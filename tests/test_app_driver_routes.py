@@ -40,23 +40,23 @@ class DriverRouteTest(unittest.TestCase):
             for method in (getattr(route, "methods", None) or set())
         }
         expected = {
-            ("/api/capsules/{cid}/drivers/{driver_id}", "GET"),
-            ("/api/capsules/{cid}/drivers/{driver_id}/credentials", "POST"),
-            ("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}", "PUT"),
-            ("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}", "DELETE"),
-            ("/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}/verify", "POST"),
+            ("/api/teams/{team_id}/drivers/{driver_id}", "GET"),
+            ("/api/teams/{team_id}/drivers/{driver_id}/credentials", "POST"),
+            ("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}", "PUT"),
+            ("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}", "DELETE"),
+            ("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}/verify", "POST"),
         }
         self.assertTrue(expected.issubset(routes))
         delete_route = next(
             route
             for route in self.admin_app.app.routes
-            if route.path == "/api/capsules/{cid}/drivers/{driver_id}/credentials/{credential_id}"
+            if route.path == "/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}"
             and "DELETE" in (getattr(route, "methods", None) or set())
         )
         self.assertTrue(delete_route.body_field.field_info.is_required())
 
     def test_driver_routes_are_not_in_open_api_and_reject_anonymous_requests(self):
-        concrete_path = "/api/capsules/capsule_1/drivers/cloudflare-r2"
+        concrete_path = "/api/teams/team_1/drivers/cloudflare-r2"
         self.assertNotIn(concrete_path, self.admin_app.OPEN_API)
         scope = {
             "type": "http",

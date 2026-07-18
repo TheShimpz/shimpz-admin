@@ -82,7 +82,7 @@
   let copy = $derived($locale === 'pt' ? COPY.pt : COPY.en);
   let storeLocale = $derived($locale === 'pt' ? 'pt' : 'en');
   let requestedTeamId = $derived.by(() => {
-    const candidate = page.url.searchParams.get('capsule') ?? '';
+    const candidate = page.url.searchParams.get('team') ?? '';
     return TEAM_ID_RE.test(candidate) ? candidate : '';
   });
   let brainOptions = $derived(
@@ -113,7 +113,7 @@
 
   function updateLocationTeam(id) {
     const next = new URL(page.url);
-    next.searchParams.set('capsule', id);
+    next.searchParams.set('team', id);
     return goto(next, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
@@ -153,7 +153,7 @@
     try {
       const created = await createTeam(fetch, teamName);
       createDialog?.close();
-      window.location.assign(`/assistants/?capsule=${encodeURIComponent(created.id)}`);
+      window.location.assign(`/assistants/?team=${encodeURIComponent(created.id)}`);
     } catch (error) {
       dialogError = error instanceof Error ? error.message : 'The Team could not be created.';
     } finally {

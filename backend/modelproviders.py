@@ -2,7 +2,7 @@
 
 Only masked metadata is safe for HTTP responses. The cleartext resolver at the bottom is an
 internal hand-off point for the local chat control plane; it must never be registered as a route,
-placed in Capsule inference metadata, or sent through the Assistant Store iframe.
+placed in Team inference metadata, or sent through the Assistant Store iframe.
 """
 
 from __future__ import annotations
