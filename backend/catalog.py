@@ -1,8 +1,7 @@
-"""The integration marketplace catalog — branding + wiring metadata for each keyset group.
+"""Integration wiring metadata for each keyset group.
 
 One entry per `keyset` group (asserted complete by test-admin-catalog.py, so no field is ever
-orphaned from the UI). Machine facts only; the English `public_name`/`blurb` are i18n-overlaid in the
-frontend exactly like `keyset.GUIDES`. `recreate_target` names the STATELESS sidecar that must be
+orphaned from the configuration API). `recreate_target` names the STATELESS sidecar that must be
 recreated for a saved secret to take effect live (Phase C2) — `None` means "applies on next restart"
 (the brain, stateful datastores, and no-consumer groups). `container_env_for` maps the `.env` key
 names a human types to the ACTUAL env var names the target container reads (mirrors docker-compose.yml).
@@ -13,11 +12,10 @@ import keyset
 CAPABILITY, INFRA = "CAPABILITY", "INFRA"
 CATEGORIES = (CAPABILITY, INFRA)
 
-# group → metadata. `logo` is a file under frontend/static/integrations/.
+# group → configuration and runtime metadata.
 CATALOG = {
     "openai": {
         "public_name": "OpenAI",
-        "logo": "openai.svg",
         "category": CAPABILITY,
         "blurb": "Transcription, speech generation, and image generation.",
         "recreate_target": "openai-driver",
@@ -25,7 +23,6 @@ CATALOG = {
     },
     "storage-r2": {
         "public_name": "Cloudflare R2",
-        "logo": "r2.svg",
         "category": CAPABILITY,
         "blurb": "Object storage for uploads, share links and backups.",
         "recreate_target": "r2-driver",
@@ -33,7 +30,6 @@ CATALOG = {
     },
     "cloudflare": {
         "public_name": "Cloudflare",
-        "logo": "cloudflare.svg",
         "category": CAPABILITY,
         "blurb": "Publish Shimpz's apps on your own domains (DNS, Tunnel, Access).",
         # only the SHIMPZ_CF_TOKEN/SHIMPZ_CF_ACCOUNT subset auto-applies; CF_TUNNEL_TOKEN → cloudflared (restart)
@@ -42,7 +38,6 @@ CATALOG = {
     },
     "internal": {
         "public_name": "Datastores",
-        "logo": "datastores.svg",
         "category": INFRA,
         "blurb": "PostgreSQL + Redpanda — generated and managed for you.",
         "recreate_target": None,  # stateful: rotation is not a clean recreate
@@ -50,7 +45,6 @@ CATALOG = {
     },
     "advanced": {
         "public_name": "Advanced",
-        "logo": "advanced.svg",
         "category": INFRA,
         "blurb": "Host, desktop and multi-instance knobs. Most installs never touch these.",
         "recreate_target": None,

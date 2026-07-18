@@ -235,7 +235,6 @@ async def integrations_list():
             {
                 "group": group,
                 "public_name": meta["public_name"],
-                "logo": meta["logo"],
                 "category": meta["category"],
                 "blurb": meta["blurb"],
                 "reconfigurable": meta["reconfigurable"],
