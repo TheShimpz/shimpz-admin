@@ -5,10 +5,9 @@
   let { active = '', authenticated = false, actions, children } = $props();
 
   const navigation = [
-    { id: 'integrations', label: 'workspace.title', href: '/' },
+    { id: 'chat', label: 'chat.nav', href: '/chat/' },
     { id: 'capsules', label: 'workspace.capsulesKicker', href: '/capsules/' },
     { id: 'assistants', label: 'store.nav', href: '/assistants/' },
-    { id: 'chat', label: 'chat.nav', href: '/chat/' },
   ];
 </script>
 
