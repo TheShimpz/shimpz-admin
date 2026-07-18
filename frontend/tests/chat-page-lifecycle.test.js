@@ -67,8 +67,19 @@ test('fills the main column while keeping turns scrollable and the composer visi
   assert.match(source, /\.chat-route \{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;/);
   assert.match(source, /grid-template-rows: minmax\(0, 1fr\);[\s\S]*?overflow: hidden;/);
   assert.match(source, /\.conversation \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\) auto auto;/);
+  assert.match(
+    source,
+    /\.conversation \{[\s\S]*?border: 0;[\s\S]*?border-inline-end: 1px solid var\(--admin-divider\);[\s\S]*?border-bottom: 1px solid var\(--admin-divider\);/,
+  );
+  assert.match(source, /\.team-header \{[\s\S]*?border-bottom: 1px solid var\(--admin-divider\);/);
   assert.match(source, /\.turns \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
   assert.match(source, /textarea \{[\s\S]*?height: 3\.2rem;[\s\S]*?resize: none;[\s\S]*?overflow-y: auto;/);
+  assert.doesNotMatch(source, /\.composer \{[^}]*border-top:/s);
+  assert.match(source, /\.composer button \{\s*height: 3\.2rem;\s*min-height: 0;/);
+  assert.match(
+    source,
+    /\.empty-state \{[\s\S]*?border: 0;[\s\S]*?border-inline-end: 1px solid var\(--admin-divider\);[\s\S]*?border-bottom: 1px solid var\(--admin-divider\);/,
+  );
   assert.match(source, /\.error \{[\s\S]*?max-height: min\(8rem, 24dvh\);[\s\S]*?overflow-y: auto;/);
   assert.doesNotMatch(source, /class="heading"|max-height: 32rem/);
 });

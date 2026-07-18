@@ -82,6 +82,7 @@
   }
 
   .admin-shell {
+    --admin-divider: var(--border-strong);
     display: grid;
     width: 100%;
     min-width: 0;
@@ -109,7 +110,7 @@
   .topbar {
     min-width: 0;
     grid-area: header;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--admin-divider);
     background: rgba(0, 0, 0, 0.82);
   }
 
@@ -171,7 +172,7 @@
     min-height: 0;
     grid-area: sidebar;
     grid-template-rows: minmax(0, 1fr);
-    border-inline-end: 1px solid var(--border);
+    border-inline-end: 1px solid var(--admin-divider);
     background: rgba(3, 3, 3, 0.76);
     overflow: hidden;
   }
@@ -275,7 +276,7 @@
     .shell-sidebar {
       grid-template-rows: minmax(0, auto);
       border-inline-end: 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--admin-divider);
       overflow: visible;
     }
 
@@ -286,7 +287,7 @@
       display: grid;
       width: 100%;
       padding: 0 0 0.45rem;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid var(--admin-divider);
     }
 
     .primary-nav a {

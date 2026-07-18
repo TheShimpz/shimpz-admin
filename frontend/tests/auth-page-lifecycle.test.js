@@ -45,6 +45,9 @@ test('renders the global navigation and Team context only for authenticated user
 });
 
 test('keeps Chat viewport-bound while normal pages use a constrained responsive workspace', () => {
+  assert.match(shell, /--admin-divider: var\(--border-strong\);/);
+  assert.match(shell, /\.topbar \{[\s\S]*border-bottom: 1px solid var\(--admin-divider\);/);
+  assert.match(shell, /\.shell-sidebar \{[\s\S]*border-inline-end: 1px solid var\(--admin-divider\);/);
   assert.match(shell, /'header header' auto[\s\S]*'sidebar main' minmax\(0, 1fr\)/);
   assert.match(shell, /minmax\(18rem, 20rem\) minmax\(0, 1fr\)/);
   assert.match(shell, /\.admin-shell\.chat-mode \{[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);

@@ -327,7 +327,9 @@
     min-width: 0;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr) auto auto;
-    border: 1px solid var(--border-strong);
+    border: 0;
+    border-inline-end: 1px solid var(--admin-divider);
+    border-bottom: 1px solid var(--admin-divider);
     background: var(--surface-1);
     overflow: hidden;
   }
@@ -337,7 +339,7 @@
     min-height: 3.6rem;
     align-items: center;
     gap: 0.75rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--admin-divider);
     padding: 0.7rem 1rem;
     background: rgba(0, 0, 0, 0.2);
   }
@@ -450,7 +452,6 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     gap: 0.65rem;
-    border-top: 1px solid var(--border);
     padding: 0.8rem;
     background: var(--surface-1);
   }
@@ -472,6 +473,11 @@
   .composer > div {
     display: flex;
     gap: 0.5rem;
+  }
+
+  .composer button {
+    height: 3.2rem;
+    min-height: 0;
   }
 
   button {
@@ -510,7 +516,9 @@
     place-content: center;
     justify-items: center;
     gap: 1rem;
-    border: 1px solid var(--border);
+    border: 0;
+    border-inline-end: 1px solid var(--admin-divider);
+    border-bottom: 1px solid var(--admin-divider);
     color: var(--text-faint);
     text-align: center;
     overflow: auto;

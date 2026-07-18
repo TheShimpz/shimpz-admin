@@ -334,7 +334,7 @@
     min-width: 0;
     gap: 0.75rem;
     padding: 1rem 1.15rem 1.2rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--admin-divider);
   }
 
   .section-heading {
@@ -702,7 +702,7 @@
     }
 
     .team-section {
-      border-inline-end: 1px solid var(--border);
+      border-inline-end: 1px solid var(--admin-divider);
       border-bottom: 0;
     }
 
@@ -718,7 +718,7 @@
 
     .team-section {
       border-inline-end: 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--admin-divider);
     }
   }
 </style>
