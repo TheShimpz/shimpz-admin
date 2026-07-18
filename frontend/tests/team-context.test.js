@@ -36,8 +36,8 @@ function fixtureFetcher(overrides = {}) {
     if (url === '/api/teams') {
       return response(200, {
         teams: [
-          { id: 'marketing', name: 'Marketing', status: 'running' },
-          { id: 'support', name: 'Support', status: 'running' },
+          { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+          { team_id: 'support', team_name: 'Support', status: 'running' },
         ],
       });
     }
@@ -166,14 +166,18 @@ test('a confirmed empty inventory is ready while malformed Team data fails close
   });
   assert.equal(catalogRequests, 0);
 
-  await assert.rejects(
-    loadTeamContext(fixtureFetcher({
-      '/api/teams': async () => response(200, {
-        teams: [{ id: '../escape', name: 'Unsafe', status: 'running' }],
-      }),
-    })),
-    (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
-  );
+  for (const teams of [
+    [{ team_id: '../escape', team_name: 'Unsafe', status: 'running' }],
+    [{ id: 'marketing', name: 'Legacy alias', status: 'running' }],
+  ]) {
+    clearTeamContext();
+    await assert.rejects(
+      loadTeamContext(fixtureFetcher({
+        '/api/teams': async () => response(200, { teams }),
+      })),
+      (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
+    );
+  }
   assert.equal(get(teamContext).phase, 'error');
   assert.deepEqual(get(teamContext).teams, []);
   assert.equal(get(teamContext).selectedTeamId, '');
@@ -227,13 +231,13 @@ test('creates a Team with the exact payload, validates the response, and refresh
       if (options.method === 'POST') {
         return response(201, {
           created: true,
-          id: 'growth',
-          name: 'Growth',
+          team_id: 'growth',
+          team_name: 'Growth',
           status: 'running',
           trace_id: 'b'.repeat(32),
         });
       }
-      return response(200, { teams: [{ id: 'growth', name: 'Growth', status: 'running' }] });
+      return response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] });
     },
     '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
     '/api/teams/growth/files': async () => response(200, { files: [] }),
@@ -245,7 +249,7 @@ test('creates a Team with the exact payload, validates the response, and refresh
   assert.deepEqual(calls[0], {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'Growth' }),
+    body: JSON.stringify({ team_name: 'Growth' }),
   });
   assert.deepEqual(calls[1], { cache: 'no-store', headers: { Accept: 'application/json' } });
   assert.equal(get(teamContext).phase, 'ready');
@@ -258,9 +262,14 @@ test('keeps a confirmed Team creation successful when its follow-up context refr
     '/api/teams': async (options) => {
       if (options.method === 'POST') {
         postRequests += 1;
-        return response(201, { created: true, id: 'growth', name: 'Growth', status: 'running' });
+        return response(201, {
+          created: true,
+          team_id: 'growth',
+          team_name: 'Growth',
+          status: 'running',
+        });
       }
-      return response(200, { teams: [{ id: 'growth', name: 'Growth', status: 'running' }] });
+      return response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] });
     },
     '/api/assistants': async () => response(503, {}),
   });
@@ -280,12 +289,13 @@ test('rejects ambiguous Team creation responses without trusting their identity'
   for (const body of [
     {
       created: true,
-      id: 'growth',
-      name: 'Growth',
+      team_id: 'growth',
+      team_name: 'Growth',
       status: 'running',
       redirect: 'https://example.test',
     },
-    { created: true, id: 123, name: 'Growth', status: 'running' },
+    { created: true, team_id: 123, team_name: 'Growth', status: 'running' },
+    { created: true, id: 'growth', name: 'Growth', status: 'running' },
   ]) {
     clearTeamContext();
     await assert.rejects(

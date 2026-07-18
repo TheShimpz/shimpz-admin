@@ -99,17 +99,17 @@ async function listTeams(fetcher) {
   const seen = new Set();
   return body.teams.map((team) => {
     if (
-      !hasExactKeys(team, ['id', 'name', 'status']) ||
-      typeof team.id !== 'string' ||
-      !TEAM_ID_RE.test(team.id) ||
+      !hasExactKeys(team, ['status', 'team_id', 'team_name']) ||
+      typeof team.team_id !== 'string' ||
+      !TEAM_ID_RE.test(team.team_id) ||
       team.status !== 'running' ||
-      seen.has(team.id)
+      seen.has(team.team_id)
     ) {
       throw new LocalApiError('The local Team inventory is invalid.', response.status);
     }
-    canonicalTeamName(team.name);
-    seen.add(team.id);
-    return { id: team.id, name: team.name, status: team.status };
+    canonicalTeamName(team.team_name);
+    seen.add(team.team_id);
+    return { id: team.team_id, name: team.team_name, status: team.status };
   });
 }
 
@@ -337,24 +337,24 @@ export async function createTeam(fetcher, name) {
     const response = await fetcher('/api/teams', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: canonicalName }),
+      body: JSON.stringify({ team_name: canonicalName }),
     });
     const body = await jsonObject(response);
     if (!response.ok) {
       throw new LocalApiError(safeApiError(body, 'The Team could not be created.'), response.status);
     }
     if (
-      !hasExactEnvelopeKeys(body, ['created', 'id', 'name', 'status']) ||
+      !hasExactEnvelopeKeys(body, ['created', 'status', 'team_id', 'team_name']) ||
       typeof body.created !== 'boolean' ||
-      typeof body.id !== 'string' ||
-      !TEAM_ID_RE.test(body.id) ||
-      body.name !== canonicalName ||
+      typeof body.team_id !== 'string' ||
+      !TEAM_ID_RE.test(body.team_id) ||
+      body.team_name !== canonicalName ||
       body.status !== 'running'
     ) {
       throw new LocalApiError('The Team creation returned an invalid response.', response.status);
     }
-    canonicalTeamName(body.name, 'The Team creation returned an invalid response.');
-    created = { created: body.created, id: body.id, name: body.name, status: body.status };
+    canonicalTeamName(body.team_name, 'The Team creation returned an invalid response.');
+    created = { created: body.created, id: body.team_id, name: body.team_name, status: body.status };
   } catch (error) {
     throw markFailure(attempt, error, 'The Team could not be created.', false);
   }

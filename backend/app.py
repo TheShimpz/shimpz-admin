@@ -438,7 +438,9 @@ def teams_list():
 def teams_create(payload: dict):
     if set(payload) != {"team_name"}:
         raise HTTPException(status_code=400, detail="request body must contain only team_name")
-    team_name = str(payload["team_name"]).strip()
+    if not isinstance(payload["team_name"], str):
+        raise HTTPException(status_code=400, detail="team name must be a string")
+    team_name = payload["team_name"].strip()
     if not team_name:
         raise HTTPException(status_code=400, detail="team name required")
     team_id = teams.to_team_id(team_name)

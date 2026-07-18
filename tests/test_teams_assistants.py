@@ -333,6 +333,32 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
+    def test_create_route_forwards_only_a_typed_team_name(self):
+        expected = {
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "status": "running",
+            "created": True,
+        }
+        _DriverHandler.response_body = json.dumps(expected, separators=(",", ":")).encode()
+
+        document = self._run_asgi_probe("team-create")
+
+        self.assertEqual(document["valid"], {"status": 200, "body": expected})
+        self.assertEqual(
+            document["legacy"],
+            {"status": 400, "body": {"detail": "request body must contain only team_name"}},
+        )
+        self.assertEqual(
+            document["non_string"],
+            {"status": 400, "body": {"detail": "team name must be a string"}},
+        )
+        self.assertEqual(len(_DriverHandler.requests), 1)
+        request = _DriverHandler.requests[0]
+        self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/marketing/create"))
+        self.assertEqual(json.loads(request["body"]), {"team_name": "Marketing"})
+        self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
+
     def test_multipart_upload_is_bounded_and_forwarded_as_json_without_a_path(self):
         content = b"Team private data"
         file_id = "b" * 32
@@ -517,6 +543,26 @@ def _run_asgi_probe(scenario: str) -> None:
             )
         )
         output = {"status": status, "body": body}
+    elif scenario == "team-create":
+
+        async def create_requests():
+            results = {}
+            for key, payload in (
+                ("legacy", {"name": "Marketing"}),
+                ("non_string", {"team_name": 123}),
+                ("valid", {"team_name": "Marketing"}),
+            ):
+                status, body = await _asgi_request(
+                    admin_app,
+                    "POST",
+                    "/api/teams",
+                    json.dumps(payload, separators=(",", ":")).encode(),
+                    token=token,
+                )
+                results[key] = {"status": status, "body": body}
+            return results
+
+        output = asyncio.run(create_requests())
     elif scenario == "file-upload":
         boundary = "shimpz-admin-upload-boundary"
         payload = _multipart_file_body(boundary, b"Team private data")
