@@ -38,3 +38,23 @@ test('uses Team terminology without exposing direct Power controls', () => {
   assert.doesNotMatch(source, /'[^'\n]*(?:Capsule|Cápsula)[^'\n]*'/);
   assert.doesNotMatch(source, /invokeHelloPulse|\/powers\/|runHello/);
 });
+
+test('leaves initial Team loading and selection exclusively to the persistent sidebar', () => {
+  assert.match(
+    source,
+    /import \{ refreshTeamInventory, teamContext \} from '\$lib\/teamContext\.js';/,
+  );
+  assert.doesNotMatch(source, /loadTeamContext|refreshLocalData|loadLocalData|selectTeam/);
+  assert.doesNotMatch(source, /<select|capsule-context|capsule-picker|installed-inventory/);
+  assert.match(source, /await waitForTeamContext\(\)/);
+  assert.match(source, /queueMicrotask\(\(\) => unsubscribe\(\)\)/);
+});
+
+test('refreshes shared inventory after Store mutations without requiring Power metadata', () => {
+  assert.match(source, /await refreshTeamInventory\(fetch\)/);
+  assert.match(
+    source,
+    /helloAvailable = \$derived\(\$teamContext\.catalog\.some\(\(entry\) => entry\.id === HELLO_ID\)\)/,
+  );
+  assert.doesNotMatch(source, /declaresHello/);
+});
