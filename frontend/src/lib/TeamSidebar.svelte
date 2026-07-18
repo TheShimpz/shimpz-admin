@@ -1,5 +1,5 @@
 <script>
-  import { replaceState } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
 
@@ -91,20 +91,13 @@
   function updateLocationTeam(id) {
     const next = new URL(page.url);
     next.searchParams.set('capsule', id);
-    replaceState(next, page.state);
+    return goto(next, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
-  async function changeTeam(event) {
+  function changeTeam(event) {
     const id = event.currentTarget.value;
     if (!id || id === $teamContext.selectedTeamId) return;
-    const previousId = $teamContext.selectedTeamId;
-    updateLocationTeam(id);
-    try {
-      await selectTeam(fetch, id);
-    } catch {
-      if (previousId) updateLocationTeam(previousId);
-      // The store exposes a safe, localized-ready error state next to the selector.
-    }
+    updateLocationTeam(id).catch(() => {});
   }
 
   function openCreateDialog() {
@@ -155,7 +148,10 @@
       preferredId !== $teamContext.selectedTeamId &&
       $teamContext.teams.some((team) => team.id === preferredId)
     ) {
-      selectTeam(fetch, preferredId).catch(() => {});
+      const previousId = $teamContext.selectedTeamId;
+      selectTeam(fetch, preferredId).catch(() => {
+        if (previousId) updateLocationTeam(previousId).catch(() => {});
+      });
     }
   });
 

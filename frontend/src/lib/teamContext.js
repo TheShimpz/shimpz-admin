@@ -225,6 +225,7 @@ export async function selectTeam(fetcher, id) {
   teamContext.set({
     ...current,
     phase: 'loading',
+    selectedTeamId: canonicalId,
     installedAssistants: [],
     files: [],
     selectedFileIds: [],
@@ -244,7 +245,18 @@ export async function selectTeam(fetcher, id) {
     }
     return inventory;
   } catch (error) {
-    throw markFailure(attempt, error, 'The selected Team is unavailable.', false);
+    const safe = publicError(error, 'The selected Team is unavailable.');
+    if (attempt === generation) {
+      teamContext.set({
+        ...current,
+        phase: 'error',
+        installedAssistants: [],
+        files: [],
+        selectedFileIds: [],
+        error: safe.message,
+      });
+    }
+    throw safe;
   }
 }
 
