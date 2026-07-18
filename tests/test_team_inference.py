@@ -14,16 +14,32 @@ import teams
 
 
 class TeamInferenceTests(unittest.TestCase):
-    def test_forwards_only_provider_and_model_to_fixed_routes(self) -> None:
-        response = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
-        with mock.patch.object(teams, "_call", return_value=response) as call:
-            self.assertIs(teams.get_inference("team_1"), response)
-            self.assertIs(
+    def test_forwards_only_provider_and_model_and_adds_browser_team_authority(self) -> None:
+        responses = (
+            teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"}),
+            teams.DriverResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"}),
+        )
+        with mock.patch.object(teams, "_call", side_effect=responses) as call:
+            self.assertEqual(
+                teams.get_inference("team_1"),
+                teams.DriverResponse(
+                    200,
+                    {"team_id": "team_1", "provider": "openai", "model": "gpt-5.5"},
+                ),
+            )
+            self.assertEqual(
                 teams.configure_inference(
                     "team_1",
                     {"provider": "anthropic", "model": "claude-sonnet-5"},
                 ),
-                response,
+                teams.DriverResponse(
+                    200,
+                    {
+                        "team_id": "team_1",
+                        "provider": "anthropic",
+                        "model": "claude-sonnet-5",
+                    },
+                ),
             )
 
         self.assertEqual(
@@ -37,6 +53,32 @@ class TeamInferenceTests(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_rejects_secret_bearing_or_invalid_controller_metadata_without_reflecting_it(self) -> None:
+        secret = "sk-private-controller-marker"
+        invalid_responses = (
+            {"provider": "openai", "model": "gpt-5.5", "api_key": secret},
+            {"provider": "openai", "model": "claude-sonnet-5"},
+            {"provider": "OpenAI", "model": "gpt-5.5"},
+            {"provider": "openai"},
+        )
+        for body in invalid_responses:
+            with self.subTest(body=body), mock.patch.object(
+                teams,
+                "_call",
+                return_value=teams.DriverResponse(200, body),
+            ):
+                projected = teams.get_inference("team_1")
+                self.assertEqual(
+                    projected,
+                    teams.DriverResponse(502, {"detail": "Team inference response is invalid."}),
+                )
+                self.assertNotIn(secret, repr(projected.body))
+
+    def test_preserves_bounded_non_success_controller_status(self) -> None:
+        response = teams.DriverResponse(409, {"detail": "not configured"})
+        with mock.patch.object(teams, "_call", return_value=response):
+            self.assertIs(teams.get_inference("team_1"), response)
 
     def test_rejects_secrets_and_legacy_cli_providers_before_network_io(self) -> None:
         payloads = (

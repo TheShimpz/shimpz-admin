@@ -230,10 +230,41 @@ def destroy(team_id: object) -> DriverResponse:
     return _call("DELETE", f"/v1/teams/{canonical_id}")
 
 
+def _project_inference_response(
+    response: DriverResponse,
+    team_id: str,
+    *,
+    expected: tuple[str, str] | None = None,
+) -> DriverResponse:
+    """Add browser authority only after validating the controller's secret-free metadata."""
+    if not 200 <= response.status < 300:
+        return response
+    try:
+        if set(response.body) != {"provider", "model"}:
+            raise ValueError("unexpected inference fields")
+        provider = response.body["provider"]
+        model = response.body["model"]
+        selected_provider = modelproviders.canonical_provider(provider)
+        selected_model = modelproviders.canonical_model(selected_provider, model)
+        if provider != selected_provider or model != selected_model:
+            raise ValueError("non-canonical inference metadata")
+        if expected is not None and (selected_provider, selected_model) != expected:
+            raise ValueError("mismatched inference metadata")
+    except (KeyError, TypeError, ValueError, modelproviders.ModelProviderError):
+        # Never reflect controller fields: an invalid response could contain credentials or internals.
+        log.warning("team-driver returned an invalid inference response")
+        return DriverResponse(502, {"detail": "Team inference response is invalid."})
+    return DriverResponse(
+        response.status,
+        {"team_id": team_id, "provider": selected_provider, "model": selected_model},
+    )
+
+
 def get_inference(team_id: object) -> DriverResponse:
     """Read provider/model metadata only; the controller response must never contain a key."""
     canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/inference")
+    response = _call("GET", f"/v1/teams/{canonical_id}/inference")
+    return _project_inference_response(response, canonical_id)
 
 
 def configure_inference(team_id: object, payload: object) -> DriverResponse:
@@ -250,10 +281,15 @@ def configure_inference(team_id: object, payload: object) -> DriverResponse:
         raise TeamRequestError(str(exc)) from None
     if provider != selected_provider:
         raise TeamRequestError("model provider must be canonical")
-    return _call(
+    response = _call(
         "PUT",
         f"/v1/teams/{canonical_id}/inference",
         {"provider": selected_provider, "model": selected_model},
+    )
+    return _project_inference_response(
+        response,
+        canonical_id,
+        expected=(selected_provider, selected_model),
     )
 
 
