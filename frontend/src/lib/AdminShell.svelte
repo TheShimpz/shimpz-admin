@@ -1,4 +1,5 @@
 <script>
+  import AdminNotice from '$lib/AdminNotice.svelte';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
@@ -55,8 +56,11 @@
   {/if}
 
   <main id="admin-content" class="workspace">
-    <div class="content-frame">
-      {@render children()}
+    {#if authenticated}<AdminNotice />{/if}
+    <div class="content-stage">
+      <div class="content-frame">
+        {@render children()}
+      </div>
     </div>
   </main>
 </div>
@@ -222,9 +226,18 @@
   }
 
   .workspace {
+    display: grid;
     min-width: 0;
     min-height: 0;
     grid-area: main;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .content-stage {
+    min-width: 0;
+    min-height: 0;
+    grid-row: 2;
     padding: clamp(1.75rem, 4vw, 3.25rem);
     overflow: auto;
   }
@@ -237,6 +250,10 @@
   }
 
   .chat-mode .workspace {
+    overflow: hidden;
+  }
+
+  .chat-mode .content-stage {
     padding: 0;
     overflow: hidden;
   }
@@ -303,7 +320,7 @@
       max-height: 10rem;
     }
 
-    .workspace {
+    .content-stage {
       padding: 1.25rem 0.75rem;
     }
 

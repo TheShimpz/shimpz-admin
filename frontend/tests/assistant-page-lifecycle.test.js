@@ -23,14 +23,20 @@ test('pins Store protocol while preserving the independent reload counter', () =
   );
 });
 
-test('clears a stale sidebar result only after an install is confirmed', () => {
+test('publishes transient Store feedback through the global Admin notice', () => {
+  assert.match(source, /import \{ showAdminNotice \} from '\$lib\/adminNotice\.js';/);
   assert.match(
     source,
-    /async function confirmInstall\(\) \{[\s\S]*?const capsule = runningCapsules\.find\([\s\S]*?if \(!capsule\) return;\s+evaluation = null;\s+busy = true;[\s\S]*?await installAssistant\(fetch, capsule\.id, HELLO_ID\);/,
+    /await refreshInstalled\(capsule\.id\);\s+showAdminNotice\(\{\s+tone: 'success',\s+label: copy\.uninstall,\s+message: format\(copy\.removed,/,
   );
+  assert.match(
+    source,
+    /catch \(error\) \{[\s\S]*?await refreshInstalled\(capsule\.id\);\s+showAdminNotice\(\{\s+tone: 'error',\s+label: copy\.failureTitle,\s+message: failure,/,
+  );
+  assert.doesNotMatch(source, /let (?:actionError|evaluation)|class="(?:action-error|sidebar-result)"/);
   assert.doesNotMatch(
     source,
-    /async function beginInstall\(assistantId\) \{[\s\S]*?evaluation = null;[\s\S]*?async function confirmInstall\(\)/,
+    /async function confirmInstall\(\)[\s\S]*?showAdminNotice\([\s\S]*?async function runStoreInstall/,
   );
 });
 

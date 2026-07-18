@@ -14,8 +14,9 @@ test('owns the complete Admin authentication lifecycle in the persistent root la
   assert.match(layout, /fetch\('\/api\/logout'/);
   assert.match(layout, /import \{ clearTeamContext \} from '\$lib\/teamContext\.js'/);
   assert.match(layout, /import \{ clearModelContext \} from '\$lib\/modelContext\.js'/);
-  assert.match(layout, /async function checkSession\(\) \{\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
-  assert.match(layout, /finally \{\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
+  assert.match(layout, /import \{ clearAdminNotice \} from '\$lib\/adminNotice\.js'/);
+  assert.match(layout, /async function checkSession\(\) \{\s*clearAdminNotice\(\);\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
+  assert.match(layout, /finally \{\s*clearAdminNotice\(\);\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
   assert.match(layout, /goto\('\/chat\/', \{ replaceState: true \}\)/);
   assert.match(layout, /<AdminShell \{active\} authenticated onLogout=\{logout\}>/);
 
@@ -53,11 +54,23 @@ test('keeps Chat viewport-bound while normal pages use a constrained responsive 
   assert.match(shell, /'header header' auto[\s\S]*'sidebar main' minmax\(0, 1fr\)/);
   assert.match(shell, /minmax\(18rem, 20rem\) minmax\(0, 1fr\)/);
   assert.match(shell, /\.admin-shell\.chat-mode \{[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
-  assert.match(shell, /\.chat-mode \.workspace \{[\s\S]*padding: 0;[\s\S]*overflow: hidden;/);
+  assert.match(shell, /\.workspace \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\);[\s\S]*overflow: hidden;/);
+  assert.match(shell, /\.content-stage \{[\s\S]*grid-row: 2;[\s\S]*padding: clamp\(1\.75rem, 4vw, 3\.25rem\);/);
+  assert.match(shell, /\.chat-mode \.content-stage \{[\s\S]*padding: 0;[\s\S]*overflow: hidden;/);
   assert.match(shell, /\.content-frame \{[\s\S]*width: min\(100%, 1180px\);/);
   assert.match(shell, /@media \(max-width: 760px\)[\s\S]*'sidebar' auto[\s\S]*minmax\(0, 1fr\)/);
   assert.match(shell, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(shell, /\.workspace \{[\s\S]*min-width: 0;[\s\S]*min-height: 0;/);
+});
+
+test('mounts global notices above the main content without displacing the Team rail', () => {
+  assert.match(shell, /import AdminNotice from '\$lib\/AdminNotice\.svelte';/);
+  assert.match(shell, /<main id="admin-content" class="workspace">\s*\{#if authenticated\}<AdminNotice \/>\{\/if\}\s*<div class="content-stage">/);
+  const sidebar = shell.indexOf('<aside class="shell-sidebar">');
+  const workspace = shell.indexOf('<main id="admin-content"');
+  const notice = shell.indexOf('<AdminNotice />');
+  const content = shell.indexOf('<div class="content-stage">');
+  assert.ok(sidebar !== -1 && sidebar < workspace && workspace < notice && notice < content);
 });
 
 test('keeps the authenticated header and Chat rail usable on narrow or low-height screens', () => {

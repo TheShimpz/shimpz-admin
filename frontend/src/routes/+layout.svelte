@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import AdminShell from '$lib/AdminShell.svelte';
   import AuthScreen from '$lib/AuthScreen.svelte';
+  import { clearAdminNotice } from '$lib/adminNotice.js';
   import { locale, LOCALES, t } from '$lib/i18n.js';
   import { clearModelContext } from '$lib/modelContext.js';
   import { clearTeamContext } from '$lib/teamContext.js';
@@ -31,6 +32,7 @@
   }
 
   async function checkSession() {
+    clearAdminNotice();
     clearModelContext();
     clearTeamContext();
     phase = 'checking';
@@ -96,6 +98,7 @@
     try {
       await fetch('/api/logout', { method: 'POST' });
     } finally {
+      clearAdminNotice();
       clearModelContext();
       clearTeamContext();
       password = confirmation = '';

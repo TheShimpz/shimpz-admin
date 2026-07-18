@@ -12,6 +12,7 @@
     postStoreAssistantState,
     projectReleasedStoreAssistantIds,
   } from '$lib/assistantIntent.js';
+  import { showAdminNotice } from '$lib/adminNotice.js';
   import { installAssistant, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
   import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
@@ -93,12 +94,10 @@
     },
   };
 
-  let actionError = $state('');
   let dialogError = $state('');
   let busy = $state(false);
   let selectedCapsule = $state('');
   let pendingAssistant = $state('');
-  let evaluation = $state(null);
   let iframeElement = $state();
   let confirmDialog = $state();
   let dialogMode = $state('install');
@@ -227,7 +226,6 @@
     const attempt = ++dialogAttempt;
     pendingAssistant = assistantId;
     selectedCapsule = activeCapsuleRecord?.id ?? '';
-    actionError = '';
     dialogError = '';
     dialogResult = null;
     dialogMode = 'checking';
@@ -318,7 +316,6 @@
     const capsule = runningCapsules.find((item) => item.id === selectedCapsule);
     if (!capsule) return;
 
-    evaluation = null;
     busy = true;
     dialogError = '';
     dialogResult = null;
@@ -377,7 +374,6 @@
       return;
     }
     busy = true;
-    actionError = '';
     try {
       const response = await fetch(
         `/api/capsules/${encodeURIComponent(capsule.id)}/assistants/${encodeURIComponent(assistant.assistant)}`,
@@ -385,19 +381,23 @@
       );
       const body = await jsonObject(response);
       if (!response.ok) throw new Error(safeApiError(body, copy.genericFailure));
-      evaluation = {
-        kind: 'removed',
-        note: copy.uninstall,
+      await refreshInstalled(capsule.id);
+      showAdminNotice({
+        tone: 'success',
+        label: copy.uninstall,
         message: format(copy.removed, {
           assistant: assistant.assistant,
           capsule: capsule.name,
         }),
-      };
-      await refreshInstalled(capsule.id);
+      });
     } catch (error) {
       const failure = error instanceof Error ? error.message : copy.genericFailure;
       await refreshInstalled(capsule.id);
-      actionError = failure;
+      showAdminNotice({
+        tone: 'error',
+        label: copy.failureTitle,
+        message: failure,
+      });
     } finally {
       busy = false;
     }
@@ -440,17 +440,6 @@
 </svelte:head>
 
 <h1 class="sr-only">{$t('store.nav')}</h1>
-
-{#if actionError}
-  <div class="action-error" role="alert">{actionError}</div>
-{/if}
-
-{#if evaluation}
-  <div class:removed={evaluation.kind === 'removed'} class="sidebar-result" role="status">
-    <span>{evaluation.note}</span>
-    <strong>{evaluation.message}</strong>
-  </div>
-{/if}
 
 <section class="store-frame" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
@@ -584,21 +573,6 @@
     cursor: not-allowed;
     opacity: 0.42;
   }
-
-  .action-error {
-    margin-bottom: 0.8rem;
-    border-inline-start: 2px solid var(--danger);
-    padding: 0.65rem 0.7rem;
-    background: rgba(255, 96, 125, 0.04);
-    color: var(--danger);
-    font-size: 0.7rem;
-    line-height: 1.45;
-  }
-
-  .sidebar-result { display: flex; align-items: center; gap: 0.75rem; border-left: 2px solid var(--success); padding: 0.65rem 0.7rem; background: rgba(5, 255, 161, 0.045); }
-  .sidebar-result.removed { border-left-color: var(--accent-alt); background: rgba(255, 61, 242, 0.04); }
-  .sidebar-result span { color: var(--success); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .sidebar-result strong { font-size: 0.72rem; line-height: 1.45; }
 
   .store-frame {
     position: relative;
