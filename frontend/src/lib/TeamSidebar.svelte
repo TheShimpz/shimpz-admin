@@ -264,6 +264,8 @@
 
       {#if $modelContext.phase === 'loading' || $modelContext.phase === 'idle'}
         <p class="model-status">{copy.modelLoading}</p>
+      {:else if $modelContext.phase === 'error' && $modelContext.error}
+        <p class="model-status error" role="alert">{$modelContext.error}</p>
       {:else if $modelContext.ready}
         <p class="model-status ready">
           <span aria-hidden="true">●</span>
@@ -458,6 +460,10 @@
 
   .model-status.ready {
     color: var(--success);
+  }
+
+  .model-status.error {
+    color: var(--danger);
   }
 
   .team-controls {

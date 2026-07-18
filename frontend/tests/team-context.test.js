@@ -363,6 +363,7 @@ test('Team sidebar owns one combined Brain selection below the Team picker', () 
   assert.match(sidebarSource, /selectTeamBrain\(fetch, teamId, brain\.provider, brain\.model\)/);
   assert.doesNotMatch(sidebarSource, /sidebar-provider-select|sidebar-model-select|modelLabel|input_usd_per_million_cents|output_usd_per_million_cents/);
   assert.doesNotMatch(sidebarSource, /API key required|Chave da API necessária|modelRequired/);
+  assert.match(brainSection, /\$modelContext\.phase === 'error' && \$modelContext\.error[\s\S]*role="alert"/);
   assert.match(brainSection, /\{:else if \$modelContext\.ready\}[\s\S]*\{copy\.modelReady\}/);
 });
 
