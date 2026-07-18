@@ -403,9 +403,7 @@ class ChatWebSocketTests(unittest.TestCase):
             )
             self.assertNotIn(sensitive_marker, json.dumps(upstream_error))
 
-            unknown_code = await response_for(
-                self.teams.DriverResponse(409, {"code": "private-controller-diagnostic"})
-            )
+            unknown_code = await response_for(self.teams.DriverResponse(409, {"code": "private-controller-diagnostic"}))
             self.assertEqual(
                 unknown_code,
                 {"type": "error", "status": 409, "detail": "chat turn could not start"},

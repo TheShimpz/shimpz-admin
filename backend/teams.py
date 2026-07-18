@@ -250,7 +250,7 @@ def _project_inference_response(
             raise ValueError("non-canonical inference metadata")
         if expected is not None and (selected_provider, selected_model) != expected:
             raise ValueError("mismatched inference metadata")
-    except (KeyError, TypeError, ValueError, modelproviders.ModelProviderError):
+    except KeyError, TypeError, ValueError, modelproviders.ModelProviderError:
         # Never reflect controller fields: an invalid response could contain credentials or internals.
         log.warning("team-driver returned an invalid inference response")
         return DriverResponse(502, {"detail": "Team inference response is invalid."})
