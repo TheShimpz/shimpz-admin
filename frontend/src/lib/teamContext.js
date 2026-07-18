@@ -303,6 +303,7 @@ export async function createTeam(fetcher, name) {
     if (
       !hasExactKeys(body, ['created', 'id', 'name', 'status']) ||
       typeof body.created !== 'boolean' ||
+      typeof body.id !== 'string' ||
       !TEAM_ID_RE.test(body.id) ||
       body.name !== canonicalName ||
       body.status !== 'running'

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { get } from 'svelte/store';
@@ -16,6 +17,10 @@ import { LocalApiError } from '../src/lib/localApi.js';
 
 const FILE_A = 'a'.repeat(32);
 const FILE_B = 'b'.repeat(32);
+const sidebarSource = readFileSync(
+  new URL('../src/lib/TeamSidebar.svelte', import.meta.url),
+  'utf8',
+);
 
 function response(status, body) {
   return {
@@ -198,17 +203,23 @@ test('creates a Team with the exact payload, validates the response, and refresh
 });
 
 test('rejects ambiguous Team creation responses without trusting their identity', async () => {
-  await assert.rejects(
-    createTeam(async () => response(201, {
+  for (const body of [
+    {
       created: true,
       id: 'growth',
       name: 'Growth',
       status: 'running',
       redirect: 'https://example.test',
-    }), 'Growth'),
-    (error) => error instanceof LocalApiError && error.message === 'The Team creation returned an invalid response.',
-  );
-  assert.equal(get(teamContext).phase, 'error');
+    },
+    { created: true, id: 123, name: 'Growth', status: 'running' },
+  ]) {
+    clearTeamContext();
+    await assert.rejects(
+      createTeam(async () => response(201, body), 'Growth'),
+      (error) => error instanceof LocalApiError && error.message === 'The Team creation returned an invalid response.',
+    );
+    assert.equal(get(teamContext).phase, 'error');
+  }
 });
 
 test('clear invalidates a late context response', async () => {
@@ -230,4 +241,30 @@ test('clear invalidates a late context response', async () => {
     selectedFileIds: [],
     error: '',
   });
+});
+
+test('Team sidebar reveals creation only after a confirmed empty inventory', () => {
+  assert.match(
+    sidebarSource,
+    /\$teamContext\.phase === 'ready' && \$teamContext\.teams\.length === 0/,
+  );
+  assert.match(sidebarSource, /createDialog\?\.showModal\(\)/);
+  assert.match(sidebarSource, /<dialog[^>]+oncancel=\{cancelCreateDialog\}/);
+  assert.match(sidebarSource, /maxlength="80"/);
+  assert.doesNotMatch(sidebarSource, /Local Space/);
+});
+
+test('Team sidebar keeps Store links canonical and file controls scoped to Chat', () => {
+  assert.match(sidebarSource, /assistantStoreHref\(storeLocale, runtime\.assistant\)/);
+  assert.match(sidebarSource, /target="_blank"/);
+  assert.match(sidebarSource, /rel="noopener noreferrer"/);
+  assert.match(sidebarSource, /\{#if active === 'chat'\}[\s\S]*?<input[\s\S]*?type="checkbox"/);
+});
+
+test('Team creation can navigate only to the fixed local Assistants route', () => {
+  assert.match(
+    sidebarSource,
+    /window\.location\.assign\(`\/assistants\/\?capsule=\$\{encodeURIComponent\(created\.id\)\}`\)/,
+  );
+  assert.doesNotMatch(sidebarSource, /window\.location\.assign\([^`]/);
 });
