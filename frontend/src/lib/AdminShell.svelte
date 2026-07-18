@@ -3,14 +3,8 @@
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
-  import { t } from '$lib/i18n.js';
 
-  let { active = '', authenticated = false, onLogout, children } = $props();
-
-  const navigation = [
-    { id: 'chat', label: 'chat.nav', href: '/chat/' },
-    { id: 'assistants', label: 'store.nav', href: '/assistants/' },
-  ];
+  let { active = '', authenticated = false, children } = $props();
 </script>
 
 <a class="skip-link" href="#admin-content">Skip to content</a>
@@ -18,37 +12,20 @@
 <div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
   <header class="topbar">
     <div class="topbar-inner">
-      <ShimpzBrand href={authenticated ? '/chat/' : '/'} />
-
-      {#if authenticated}
-        <nav class="primary-nav" aria-label="Admin">
-          {#each navigation as item (item.id)}
-            <a
-              href={item.href}
-              class:active={active === item.id}
-              aria-current={active === item.id ? 'page' : undefined}
-            >
-              {$t(item.label)}
-            </a>
-          {/each}
-        </nav>
-      {/if}
+      {#if !authenticated}<ShimpzBrand />{/if}
 
       <div class="header-actions">
         <div class="locale-full"><LocaleMenu /></div>
         <div class="locale-compact"><LocaleMenu compact /></div>
-        {#if authenticated}
-          <button class="logout" type="button" onclick={() => onLogout?.()} aria-label={$t('auth.logout')}>
-            <span>{$t('auth.logout')}</span>
-            <b aria-hidden="true">↪</b>
-          </button>
-        {/if}
       </div>
     </div>
   </header>
 
   {#if authenticated}
     <aside class="shell-sidebar">
+      <div class="sidebar-brand">
+        <ShimpzBrand product="Admin" href="/chat/" ariaLabel="Shimpz Admin home" />
+      </div>
       <div class="team-sidebar-region">
         <TeamSidebar {active} />
       </div>
@@ -99,10 +76,13 @@
   }
 
   .admin-shell.authenticated {
+    height: 100vh;
+    height: 100dvh;
     grid-template:
-      'header header' auto
+      'sidebar header' auto
       'sidebar main' minmax(0, 1fr) /
       minmax(18rem, 20rem) minmax(0, 1fr);
+    overflow: hidden;
   }
 
   .admin-shell.chat-mode {
@@ -123,7 +103,7 @@
     width: 100%;
     min-width: 0;
     min-height: 5.25rem;
-    grid-template-columns: minmax(12rem, 1fr) auto minmax(12rem, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 1rem;
     padding: 0 clamp(1rem, 2.4vw, 2rem);
@@ -132,42 +112,15 @@
   .header-actions {
     display: flex;
     min-width: 0;
-    grid-column: 3;
+    grid-column: 2;
     align-items: center;
     justify-content: flex-end;
     gap: 0.55rem;
+    margin-inline-start: auto;
   }
 
   .locale-compact {
     display: none;
-  }
-
-  .logout {
-    display: inline-flex;
-    min-height: 2.75rem;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    border: 0;
-    padding: 0 0.9rem;
-    background: var(--surface-1);
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-    color: var(--text-dim);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-  }
-
-  .logout b {
-    color: var(--accent);
-  }
-
-  .logout:hover {
-    color: var(--accent);
-    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
   .shell-sidebar {
@@ -175,48 +128,19 @@
     min-width: 0;
     min-height: 0;
     grid-area: sidebar;
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     border-inline-end: 1px solid var(--admin-divider);
     background: rgba(3, 3, 3, 0.76);
     overflow: hidden;
   }
 
-  .primary-nav {
+  .sidebar-brand {
     display: flex;
     min-width: 0;
+    min-height: calc(5.25rem + 1px);
     align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-  }
-
-  .primary-nav a {
-    position: relative;
-    min-width: 0;
-    min-height: 2.75rem;
-    padding: 0.8rem 0.9rem;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-decoration: none;
-    text-transform: uppercase;
-  }
-
-  .primary-nav a:hover,
-  .primary-nav a.active {
-    color: var(--text);
-  }
-
-  .primary-nav a.active::after {
-    position: absolute;
-    right: 0.9rem;
-    bottom: 0.35rem;
-    left: 0.9rem;
-    height: 1px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
-    content: '';
+    padding: 0 1.15rem;
+    border-bottom: 1px solid var(--admin-divider);
   }
 
   .team-sidebar-region {
@@ -273,10 +197,6 @@
       padding: 0 0.75rem;
     }
 
-    .logout span {
-      display: none;
-    }
-
     .header-actions {
       grid-row: 1;
       grid-column: 2;
@@ -291,29 +211,10 @@
     }
 
     .shell-sidebar {
-      grid-template-rows: minmax(0, auto);
+      grid-template-rows: auto minmax(0, auto);
       border-inline-end: 0;
       border-bottom: 1px solid var(--admin-divider);
       overflow: visible;
-    }
-
-    .primary-nav {
-      grid-row: 2;
-      grid-column: 1 / -1;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      display: grid;
-      width: 100%;
-      padding: 0 0 0.45rem;
-      border-top: 1px solid var(--admin-divider);
-    }
-
-    .primary-nav a {
-      overflow: hidden;
-      padding-inline: 0.35rem;
-      font-size: 0.65rem;
-      text-align: center;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     .team-sidebar-region {
@@ -331,7 +232,7 @@
 
   @media (max-width: 760px) and (max-height: 600px) {
     .chat-mode .shell-sidebar {
-      grid-template-rows: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .chat-mode .team-sidebar-region {
@@ -352,15 +253,6 @@
   @media (max-width: 420px) {
     .header-actions {
       gap: 0.3rem;
-    }
-
-    .logout {
-      width: 2.75rem;
-      padding: 0;
-    }
-
-    .primary-nav a {
-      letter-spacing: 0.04em;
     }
   }
 </style>

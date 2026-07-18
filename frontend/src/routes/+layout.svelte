@@ -94,20 +94,6 @@
     }
   }
 
-  async function logout() {
-    try {
-      await fetch('/api/logout', { method: 'POST' });
-    } finally {
-      clearAdminNotice();
-      clearModelContext();
-      clearTeamContext();
-      password = confirmation = '';
-      error = '';
-      phase = 'login';
-      await goto('/', { replaceState: true });
-    }
-  }
-
   onMount(() => {
     const unsubscribe = locale.subscribe((code) => {
       const selected = LOCALES.find((item) => item.code === code);
@@ -121,7 +107,7 @@
 </script>
 
 {#if phase === 'ready'}
-  <AdminShell {active} authenticated onLogout={logout}>
+  <AdminShell {active} authenticated>
     {@render children()}
   </AdminShell>
 {:else}
