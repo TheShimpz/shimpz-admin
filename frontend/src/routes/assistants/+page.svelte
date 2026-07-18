@@ -14,7 +14,7 @@
     postStoreAssistantState,
     projectReleasedStoreAssistantIds,
   } from '$lib/assistantIntent.js';
-  import { installAssistant, invokeHelloPulse, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
+  import { installAssistant, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
 
   const HELLO_ID = INSTALL_INTENT.assistant;
@@ -22,22 +22,21 @@
   const FRAME_READY_TIMEOUT_MS = 8000;
   const LOCAL_COPY = {
     en: {
-      runHello: 'Run hello Power',
-      installedTitle: 'Installed in this Capsule',
-      installedEmpty: 'No Assistants installed in this Capsule.',
+      installedTitle: 'Installed in this Team',
+      installedEmpty: 'No Assistants installed in this Team.',
       inventoryLoading: 'Reading installed Assistants…',
       installedNow: 'Installed now',
       alreadyInstalled: 'Already installed',
-      contextLabel: 'Local Capsule',
-      noCapsules: 'No running Capsule yet. Create one before installing an Assistant.',
-      createCapsule: 'Create a Capsule',
+      contextLabel: 'Local Team',
+      noCapsules: 'No running Team yet. Create one before installing an Assistant.',
+      createCapsule: 'Create a Team',
       confirmTitle: 'Install Hello Pulse?',
-      confirmLead: 'Choose the exact Capsule. The Store cannot choose it or install anything for you.',
+      confirmLead: 'Choose the exact Team. The Store cannot choose it or install anything for you.',
       checkingTitle: 'Preparing the local action…',
-      checkingLead: 'The Admin is checking the selected Capsule and its installed Assistants.',
+      checkingLead: 'The Admin is checking the selected Team and its installed Assistants.',
       alreadyTitle: 'Hello Pulse is already installed.',
       alreadyLead: 'Nothing was installed twice. The Assistant remains ready for your Team.',
-      noCapsuleTitle: 'Installation needs a running Capsule.',
+      noCapsuleTitle: 'Installation needs a running Team.',
       noCapsuleLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
       unavailableTitle: 'Hello Pulse is unavailable right now.',
       unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
@@ -45,16 +44,15 @@
       successLead: 'The Assistant was installed without running any Power or routine.',
       failureTitle: 'The local action did not finish.',
       failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
-      capsuleLabel: 'Destination Capsule',
-      capsulePlaceholder: 'Select a Capsule',
+      capsuleLabel: 'Destination Team',
+      capsulePlaceholder: 'Select a Team',
       cancel: 'Cancel',
       close: 'Close',
       preparing: 'Checking…',
       confirm: 'Confirm install',
       retryAction: 'Try again',
       working: 'Installing…',
-      result: 'Hello result',
-      uninstall: 'Uninstall from Capsule',
+      uninstall: 'Uninstall from Team',
       uninstallConfirm: 'Uninstall {assistant} from {capsule}?',
       removed: '{assistant} was uninstalled from {capsule}.',
       loadFailed: 'The local Assistant control plane is unavailable.',
@@ -62,27 +60,26 @@
       genericFailure: 'The local evaluation could not be completed.',
       frameLoading: 'Loading the Assistant Store…',
       frameFailureTitle: 'The Store did not finish loading.',
-      frameFailureLead: 'Your local Capsule is unchanged. Reload the embedded Store or open the canonical page in a new tab.',
+      frameFailureLead: 'Your local Team is unchanged. Reload the embedded Store or open the canonical page in a new tab.',
       retryStore: 'Reload Store',
       openStore: 'Open Store',
     },
     pt: {
-      runHello: 'Executar Power hello',
-      installedTitle: 'Instalados nesta Cápsula',
-      installedEmpty: 'Nenhum Assistant instalado nesta Cápsula.',
+      installedTitle: 'Instalados neste Time',
+      installedEmpty: 'Nenhum Assistant instalado neste Time.',
       inventoryLoading: 'Lendo Assistants instalados…',
       installedNow: 'Instalado agora',
       alreadyInstalled: 'Já estava instalado',
-      contextLabel: 'Cápsula local',
-      noCapsules: 'Ainda não há uma Cápsula em execução. Crie uma antes de instalar um Assistant.',
-      createCapsule: 'Criar uma Cápsula',
+      contextLabel: 'Time local',
+      noCapsules: 'Ainda não há um Time em execução. Crie um antes de instalar um Assistant.',
+      createCapsule: 'Criar um Time',
       confirmTitle: 'Instalar o Hello Pulse?',
-      confirmLead: 'Escolha a Cápsula exata. A Store não pode escolhê-la nem instalar nada por você.',
+      confirmLead: 'Escolha o Time exato. A Store não pode escolhê-lo nem instalar nada por você.',
       checkingTitle: 'Preparando a ação local…',
-      checkingLead: 'O Admin está verificando a Cápsula selecionada e seus Assistants instalados.',
+      checkingLead: 'O Admin está verificando o Time selecionado e seus Assistants instalados.',
       alreadyTitle: 'O Hello Pulse já está instalado.',
       alreadyLead: 'Nada foi instalado duas vezes. O Assistant continua pronto para o seu Time.',
-      noCapsuleTitle: 'A instalação precisa de uma Cápsula em execução.',
+      noCapsuleTitle: 'A instalação precisa de um Time em execução.',
       noCapsuleLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
       unavailableTitle: 'O Hello Pulse está indisponível agora.',
       unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
@@ -90,16 +87,15 @@
       successLead: 'O Assistant foi instalado sem executar nenhuma Power ou rotina.',
       failureTitle: 'A ação local não foi concluída.',
       failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
-      capsuleLabel: 'Cápsula de destino',
-      capsulePlaceholder: 'Selecione uma Cápsula',
+      capsuleLabel: 'Time de destino',
+      capsulePlaceholder: 'Selecione um Time',
       cancel: 'Cancelar',
       close: 'Fechar',
       preparing: 'Verificando…',
       confirm: 'Confirmar instalação',
       retryAction: 'Tentar novamente',
       working: 'Instalando…',
-      result: 'Resultado do hello',
-      uninstall: 'Desinstalar da Cápsula',
+      uninstall: 'Desinstalar do Time',
       uninstallConfirm: 'Desinstalar {assistant} de {capsule}?',
       removed: '{assistant} foi desinstalado de {capsule}.',
       loadFailed: 'O plano de controle local de Assistants está indisponível.',
@@ -107,7 +103,7 @@
       genericFailure: 'Não foi possível concluir a avaliação local.',
       frameLoading: 'Carregando a Store de Assistants…',
       frameFailureTitle: 'A Store não terminou de carregar.',
-      frameFailureLead: 'Sua Cápsula local não foi alterada. Recarregue a Store incorporada ou abra a página oficial em uma nova aba.',
+      frameFailureLead: 'Seu Time local não foi alterado. Recarregue a Store incorporada ou abra a página oficial em uma nova aba.',
       retryStore: 'Recarregar Store',
       openStore: 'Abrir Store',
     },
@@ -154,7 +150,6 @@
   let helloAvailable = $derived(Boolean(helloEntry && declaresHello(helloEntry)));
   let activeCapsuleRecord = $derived(runningCapsules.find((capsule) => capsule.id === activeCapsule) ?? null);
   let selectedCapsuleRecord = $derived(runningCapsules.find((capsule) => capsule.id === selectedCapsule) ?? null);
-  let helloInstalled = $derived(installedAssistants.some((entry) => entry.assistant === HELLO_ID));
   let dialogTitle = $derived({
     checking: copy.checkingTitle,
     install: copy.confirmTitle,
@@ -470,22 +465,6 @@
     closeInstallDialog();
   }
 
-  async function runHello() {
-    if (busy || !activeCapsuleRecord || !helloInstalled) return;
-    busy = true;
-    localError = '';
-    evaluation = null;
-    try {
-      const { message } = await invokeHelloPulse(fetch, activeCapsuleRecord.id);
-      evaluation = { kind: 'success', note: copy.alreadyInstalled, message };
-      await loadInstalled(activeCapsuleRecord.id);
-    } catch (error) {
-      localError = error instanceof Error ? error.message : copy.genericFailure;
-    } finally {
-      busy = false;
-    }
-  }
-
   async function uninstallInstalled(assistant) {
     if (busy || !activeCapsuleRecord) return;
     const question = format(copy.uninstallConfirm, {
@@ -626,9 +605,6 @@
                     <small>{assistant.status}</small>
                   </div>
                   <div class="installed-actions">
-                    {#if assistant.assistant === HELLO_ID}
-                      <button type="button" disabled={busy} onclick={runHello}>{copy.runHello}</button>
-                    {/if}
                     <button class="remove-assistant" type="button" disabled={busy} onclick={() => uninstallInstalled(assistant)}>
                       {copy.uninstall}
                     </button>
@@ -656,7 +632,7 @@
       <div class="context-feedback">
         {#if evaluation}
           <div class:removed={evaluation.kind === 'removed'} class="sidebar-result" role="status">
-            <span>{evaluation.note ?? copy.result}</span>
+            <span>{evaluation.note}</span>
             <strong>{evaluation.message}</strong>
           </div>
         {/if}

@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import {
   installAssistant,
-  invokeHelloPulse,
   LocalApiError,
   listInstalledAssistants,
   safeApiError,
@@ -46,20 +45,6 @@ test('idempotent install reports an existing Assistant without executing it', as
     { assistant: 'hello-pulse', installed: false },
   );
   assert.equal(calls, 1);
-});
-
-test('manual hello invocation is a separate explicit request', async () => {
-  const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
-    return response(200, { message: 'Hello, Captain!' });
-  };
-
-  assert.deepEqual(await invokeHelloPulse(fetcher, 'capsule_1'), { message: 'Hello, Captain!' });
-  assert.deepEqual(
-    calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
-    [['POST', '/api/capsules/capsule_1/assistants/hello-pulse/powers/hello', { name: 'Captain' }]],
-  );
 });
 
 test('safe install errors stop after one request and prefer error over detail', async () => {

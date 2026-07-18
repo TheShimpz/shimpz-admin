@@ -1,7 +1,6 @@
 const CAPSULE_ID_RE = /^[a-z0-9_]{1,40}$/;
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
-const HELLO_ID = 'hello-pulse';
 const MAX_INSTALLED_ASSISTANTS = 128;
 
 export class LocalApiError extends Error {
@@ -90,35 +89,4 @@ export async function installAssistant(fetcher, capsuleId, assistantId) {
     throw new LocalApiError('The local Assistant installation returned an invalid response.', installResponse.status);
   }
   return { assistant: assistantId, installed: installBody.installed };
-}
-
-/** Invoke the Hello Pulse demonstration only after an explicit user action. */
-export async function invokeHelloPulse(fetcher, capsuleId, name = 'Captain') {
-  if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
-    throw new LocalApiError('Invalid local Assistant request.');
-  }
-  if (typeof name !== 'string' || !name.trim() || name.length > 80 || /[\r\n]/.test(name)) {
-    throw new LocalApiError('Invalid hello input.');
-  }
-
-  const helloResponse = await fetcher(
-    `/api/capsules/${encodeURIComponent(capsuleId)}/assistants/${HELLO_ID}/powers/hello`,
-    {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() }),
-    },
-  );
-  const helloBody = await jsonObject(helloResponse);
-  if (!helloResponse.ok) {
-    throw new LocalApiError(
-      safeApiError(helloBody, 'The local evaluation could not be completed.'),
-      helloResponse.status,
-    );
-  }
-  const message = helloBody.message ?? helloBody.result?.message;
-  if (typeof message !== 'string' || !message || message.length > 256) {
-    throw new LocalApiError('The local evaluation could not be completed.', helloResponse.status);
-  }
-  return { message };
 }

@@ -10,6 +10,7 @@ buggy controller can never echo that key or internal execution details back to t
 
 from __future__ import annotations
 
+import re
 from http import HTTPStatus
 
 import capsules
@@ -18,6 +19,9 @@ import modelproviders
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
 MAX_REPLY_CHARS = 64 * 1024
 MAX_TEAM_NAME_CHARS = 80
+_TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_TURN_RESPONSE_FIELDS = frozenset({"capsule", "team", "reply", "trace_id"})
+_STOP_RESPONSE_FIELDS = frozenset({"capsule", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 
 
 def _unavailable() -> capsules.DriverResponse:
@@ -74,16 +78,21 @@ def turn(capsule_id: object, payload: object) -> capsules.DriverResponse:
     if not 200 <= response.status < 300:
         return _safe_error(response, secret=api_key)
 
+    capsule = response.body.get("capsule")
     team = response.body.get("team")
     reply = response.body.get("reply")
     if (
-        not _valid_team_name(team)
+        set(response.body) != _TURN_RESPONSE_FIELDS
+        or capsule != cid
+        or not _valid_trace_id(response.body.get("trace_id"))
+        or not _valid_team_name(team)
         or not isinstance(reply, str)
         or not 0 < len(reply) <= MAX_REPLY_CHARS
+        or api_key in team
         or api_key in reply
     ):
         return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"detail": "local chat response is invalid"})
-    return capsules.DriverResponse(response.status, {"team": team, "reply": reply})
+    return capsules.DriverResponse(response.status, {"capsule": cid, "team": team, "reply": reply})
 
 
 def _valid_team_name(value: object) -> bool:
@@ -95,6 +104,10 @@ def _valid_team_name(value: object) -> bool:
     )
 
 
+def _valid_trace_id(value: object) -> bool:
+    return isinstance(value, str) and _TRACE_ID_RE.fullmatch(value) is not None
+
+
 def stop(capsule_id: object) -> capsules.DriverResponse:
     cid = capsules.canonical_capsule_id(capsule_id)
     response = capsules.stop_chat(cid)
@@ -102,7 +115,20 @@ def stop(capsule_id: object) -> capsules.DriverResponse:
         return _unavailable()
     if not 200 <= response.status < 300:
         return _safe_error(response)
-    stopped = response.body.get("stopped")
-    if not isinstance(stopped, bool):
+    capsule = response.body.get("capsule")
+    requested = response.body.get("requested")
+    accepted = response.body.get("accepted")
+    confirmed = response.body.get("confirmed")
+    forced_restart = response.body.get("forced_restart")
+    if (
+        set(response.body) != _STOP_RESPONSE_FIELDS
+        or capsule != cid
+        or not _valid_trace_id(response.body.get("trace_id"))
+        or not all(isinstance(value, bool) for value in (requested, accepted, confirmed, forced_restart))
+        or requested != accepted
+        or ((confirmed or forced_restart) and not accepted)
+    ):
         return capsules.DriverResponse(HTTPStatus.BAD_GATEWAY, {"detail": "local chat stop response is invalid"})
-    return capsules.DriverResponse(response.status, {"capsule": cid, "stopped": stopped})
+    # ``accepted`` means the active turn token was cancelled and any late provider reply will be
+    # discarded. ``confirmed`` describes only a Power subprocess, not the whole turn.
+    return capsules.DriverResponse(response.status, {"capsule": cid, "stopped": accepted})

@@ -502,15 +502,6 @@ async def capsule_assistant_install(cid: str, request: Request):
     )
 
 
-@app.post("/api/capsules/{cid}/assistants/{assistant_id}/powers/{power}")
-async def capsule_assistant_power(cid: str, assistant_id: str, power: str, request: Request):
-    payload = await _bounded_json_object(request)
-    return await run_in_threadpool(
-        _capsule_driver_response,
-        lambda: capsules.invoke_assistant_power(cid, assistant_id, power, payload),
-    )
-
-
 @app.delete("/api/capsules/{cid}/assistants/{assistant_id}")
 def capsule_assistant_uninstall(cid: str, assistant_id: str):
     return _capsule_driver_response(lambda: capsules.uninstall_assistant(cid, assistant_id))

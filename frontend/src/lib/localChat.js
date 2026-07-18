@@ -72,7 +72,8 @@ export async function sendChat(fetcher, capsuleId, turn) {
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, 'The Team could not answer.'), response.status);
   if (
-    Object.keys(body).sort().join(',') !== 'reply,team' ||
+    Object.keys(body).sort().join(',') !== 'capsule,reply,team' ||
+    body.capsule !== capsuleId ||
     typeof body.team !== 'string' ||
     body.team !== body.team.trim() ||
     !body.team ||
@@ -84,7 +85,7 @@ export async function sendChat(fetcher, capsuleId, turn) {
   ) {
     throw new LocalApiError('The local chat response is invalid.', response.status);
   }
-  return { team: body.team, reply: body.reply };
+  return { capsule: capsuleId, team: body.team, reply: body.reply };
 }
 
 export async function stopChat(fetcher, capsuleId) {
@@ -96,7 +97,11 @@ export async function stopChat(fetcher, capsuleId) {
   });
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, 'The active turn could not be stopped.'), response.status);
-  if (body.capsule !== capsuleId || typeof body.stopped !== 'boolean') {
+  if (
+    Object.keys(body).sort().join(',') !== 'capsule,stopped' ||
+    body.capsule !== capsuleId ||
+    typeof body.stopped !== 'boolean'
+  ) {
     throw new LocalApiError('The local chat stop response is invalid.', response.status);
   }
   return body.stopped;

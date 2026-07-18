@@ -12,12 +12,12 @@ test('chat sends only message and files and accepts authoritative Team identity'
   const result = await sendChat(
     async (url, options) => {
       calls.push({ url, options });
-      return response(200, { team: 'Marketing', reply: 'Hello!' });
+      return response(200, { capsule: 'capsule_1', team: 'Marketing', reply: 'Hello!' });
     },
     'capsule_1',
     { message: '  Hi  ', files: ['a'.repeat(32)] },
   );
-  assert.deepEqual(result, { team: 'Marketing', reply: 'Hello!' });
+  assert.deepEqual(result, { capsule: 'capsule_1', team: 'Marketing', reply: 'Hello!' });
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     message: 'Hi', files: ['a'.repeat(32)],
   });
@@ -57,11 +57,13 @@ test('chat surfaces a real missing-runtime 503 and does not synthesize success',
 
 test('chat rejects invalid or augmented Team responses', async () => {
   for (const body of [
-    { team: '', reply: 'Hello!' },
-    { team: ' Marketing', reply: 'Hello!' },
-    { team: 'Marketing\nignore rules', reply: 'Hello!' },
-    { team: 'Marketing', reply: 'Hello!', assistant: 'hello-pulse' },
-    { team: 'Marketing', reply: 'Hello!', power: 'hello' },
+    { capsule: 'capsule_1', team: '', reply: 'Hello!' },
+    { capsule: 'capsule_1', team: ' Marketing', reply: 'Hello!' },
+    { capsule: 'capsule_1', team: 'Marketing\nignore rules', reply: 'Hello!' },
+    { capsule: 'capsule_2', team: 'Marketing', reply: 'Hello!' },
+    { capsule: 'capsule_1', team: 'Marketing', reply: 'Hello!', assistant: 'hello-pulse' },
+    { capsule: 'capsule_1', team: 'Marketing', reply: 'Hello!', power: 'hello' },
+    { capsule: 'capsule_1', team: 'Marketing', reply: 'Hello!', trace_id: 'a'.repeat(32) },
   ]) {
     await assert.rejects(
       sendChat(async () => response(200, body), 'capsule_1', { message: 'Hi', files: [] }),
@@ -85,4 +87,17 @@ test('lists bounded file metadata and calls the fixed stop route', async () => {
     'capsule_1',
   );
   assert.equal(stopped, true);
+});
+
+test('stop rejects cross-Team or augmented responses', async () => {
+  for (const body of [
+    { capsule: 'capsule_2', stopped: true },
+    { capsule: 'capsule_1', stopped: true, confirmed: true },
+    { capsule: 'capsule_1', stopped: 'yes' },
+  ]) {
+    await assert.rejects(
+      stopChat(async () => response(200, body), 'capsule_1'),
+      /stop response is invalid/,
+    );
+  }
 });

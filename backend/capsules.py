@@ -29,16 +29,13 @@ MAX_JSON_RESPONSE_BYTES = 256 * 1024
 MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_FILE_JSON_BODY_BYTES = 4 * ((MAX_FILE_UPLOAD_BYTES + 2) // 3) + 8192
 CONTROL_TIMEOUT_SECONDS = 180
-POWER_TIMEOUT_SECONDS = 30
 
 _CAPSULE_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _ASSISTANT_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_POWER_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _FILE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+\-]*/[a-z0-9][a-z0-9!#$&^_.+\-]*$")
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
-_ALLOWED_POWERS = frozenset({"hello"})
 _MODEL_PROVIDERS = frozenset({"anthropic", "openai"})
 MAX_CHAT_MESSAGE_CHARS = 16_000
 MAX_CHAT_FILES = 8
@@ -71,13 +68,6 @@ def canonical_capsule_id(value: object) -> str:
 
 def canonical_assistant_id(value: object) -> str:
     return _canonical_id(value, field="assistant id", pattern=_ASSISTANT_ID_RE, maximum=80)
-
-
-def canonical_power_id(value: object) -> str:
-    power = _canonical_id(value, field="power id", pattern=_POWER_ID_RE, maximum=80)
-    if power not in _ALLOWED_POWERS:
-        raise CapsuleRequestError("only the declared hello Power is available")
-    return power
 
 
 def canonical_filename(value: object) -> str:
@@ -323,22 +313,6 @@ def install_assistant(capsule_id: object, payload: object) -> DriverResponse:
         raise CapsuleRequestError("request body must contain only assistant")
     assistant_id = canonical_assistant_id(payload["assistant"])
     return _call("POST", _assistant_path(capsule_id), {"assistant": assistant_id})
-
-
-def invoke_assistant_power(
-    capsule_id: object,
-    assistant_id: object,
-    power_id: object,
-    payload: object,
-) -> DriverResponse:
-    power = canonical_power_id(power_id)
-    if not isinstance(payload, dict) or set(payload) - {"name"}:
-        raise CapsuleRequestError("hello input must be an object containing only name")
-    name = payload.get("name", "Shimpz")
-    if not isinstance(name, str) or not name.strip() or len(name) > 80 or "\n" in name or "\r" in name:
-        raise CapsuleRequestError("name must be a non-empty single-line string up to 80 characters")
-    path = f"{_assistant_path(capsule_id, assistant_id)}/powers/{power}"
-    return _call("POST", path, {"name": name.strip()}, timeout=POWER_TIMEOUT_SECONDS)
 
 
 def uninstall_assistant(capsule_id: object, assistant_id: object) -> DriverResponse:

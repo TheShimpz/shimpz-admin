@@ -132,7 +132,6 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
         capsules.list_assistants()
         capsules.list_installed_assistants("capsule_1")
         capsules.install_assistant("capsule_1", {"assistant": "hello-pulse"})
-        capsules.invoke_assistant_power("capsule_1", "hello-pulse", "hello", {"name": "Captain"})
         capsules.uninstall_assistant("capsule_1", "hello-pulse")
 
         self.assertEqual(
@@ -141,12 +140,10 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/capsules/capsule_1/assistants"),
                 ("POST", "/v1/capsules/capsule_1/assistants"),
-                ("POST", "/v1/capsules/capsule_1/assistants/hello-pulse/powers/hello"),
                 ("DELETE", "/v1/capsules/capsule_1/assistants/hello-pulse"),
             ],
         )
         self.assertEqual(json.loads(_DriverHandler.requests[2]["body"]), {"assistant": "hello-pulse"})
-        self.assertEqual(json.loads(_DriverHandler.requests[3]["body"]), {"name": "Captain"})
         for request in _DriverHandler.requests:
             self.assertEqual(request["headers"]["accept"], "application/json")
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
@@ -264,18 +261,12 @@ class CapsuleAssistantBridgeTest(_LiveDriverCase):
             capsules.DriverResponse(507, {"detail": "Capsule storage quota exceeded"}),
         )
 
-    def test_rejects_unknown_paths_powers_and_input_before_network_access(self):
+    def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
         invalid = (
             lambda: capsules.list_installed_assistants("Capsule_1"),
             lambda: capsules.install_assistant("capsule_1", {"assistant": "../hello-pulse"}),
             lambda: capsules.install_assistant("capsule_1", {"assistant": "hello-pulse", "extra": True}),
-            lambda: capsules.invoke_assistant_power(
-                "capsule_1", "hello-pulse", "delete-everything", {"name": "Captain"}
-            ),
-            lambda: capsules.invoke_assistant_power(
-                "capsule_1", "hello-pulse", "hello", {"name": "Captain", "command": "whoami"}
-            ),
-            lambda: capsules.invoke_assistant_power("capsule_1", "hello-pulse", "hello", {"name": "x" * 81}),
+            lambda: capsules.uninstall_assistant("capsule_1", "../hello-pulse"),
         )
         for action in invalid:
             with self.subTest(action=action), self.assertRaises(capsules.CapsuleRequestError):
@@ -321,6 +312,8 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertTrue(document["routes_ok"])
         self.assertTrue(document["closed_api_ok"])
         self.assertTrue(document["legacy_operations_absent"])
+        self.assertTrue(document["power_routes_absent"])
+        self.assertEqual(document["power_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
         self.assertEqual(_DriverHandler.requests, [])
@@ -339,13 +332,6 @@ class CapsuleAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(request["path"], "/v1/capsules/capsule_1/assistants")
         self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
-
-    def test_power_body_is_bounded_before_driver_call(self):
-        document = self._run_asgi_probe("oversized-power")
-
-        self.assertEqual(document["status"], 413)
-        self.assertEqual(document["body"], {"detail": "request body too large"})
-        self.assertEqual(_DriverHandler.requests, [])
 
     def test_multipart_upload_is_bounded_and_forwarded_as_json_without_a_path(self):
         content = b"Capsule private data"
@@ -491,17 +477,27 @@ def _run_asgi_probe(scenario: str) -> None:
             ("/api/assistants", "GET"),
             ("/api/capsules/{cid}/assistants", "GET"),
             ("/api/capsules/{cid}/assistants", "POST"),
-            ("/api/capsules/{cid}/assistants/{assistant_id}/powers/{power}", "POST"),
             ("/api/capsules/{cid}/assistants/{assistant_id}", "DELETE"),
             ("/api/capsules/{cid}/files", "GET"),
             ("/api/capsules/{cid}/files", "POST"),
             ("/api/capsules/{cid}/files/{file_id}", "DELETE"),
         }
         status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
+        power_status, _power_body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/capsules/capsule_1/assistants/hello-pulse/powers/hello",
+                b'{"name":"Captain"}',
+                token=token,
+            )
+        )
         output = {
             "routes_ok": expected.issubset(routes),
             "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
             "legacy_operations_absent": not any("/operations/" in path for path, _method in routes),
+            "power_routes_absent": not any("/powers/" in path for path, _method in routes),
+            "power_status": power_status,
             "anonymous_status": status,
             "anonymous_body": body,
         }
@@ -512,18 +508,6 @@ def _run_asgi_probe(scenario: str) -> None:
                 admin_app,
                 "POST",
                 "/api/capsules/capsule_1/assistants",
-                payload,
-                token=token,
-            )
-        )
-        output = {"status": status, "body": body}
-    elif scenario == "oversized-power":
-        payload = b'{"name":"' + b"x" * capsules.MAX_JSON_BODY_BYTES + b'"}'
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "POST",
-                "/api/capsules/capsule_1/assistants/hello-pulse/powers/hello",
                 payload,
                 token=token,
             )

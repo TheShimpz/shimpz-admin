@@ -19,6 +19,8 @@ import capsules
 import localchat
 import modelproviders
 
+TRACE_ID = "a" * 32
+
 
 class _ControllerHandler(BaseHTTPRequestHandler):
     request: ClassVar[dict[str, object]] = {}
@@ -33,7 +35,7 @@ class _ControllerHandler(BaseHTTPRequestHandler):
             "headers": {key.lower(): value for key, value in self.headers.items()},
             "body": self.rfile.read(length),
         }
-        body = b'{"capsule":"capsule_1","team":"Marketing","reply":"Hello!"}'
+        body = b'{"capsule":"capsule_1","team":"Marketing","reply":"Hello!","trace_id":"' + TRACE_ID.encode() + b'"}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -100,7 +102,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         inference = capsules.DriverResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"})
         controller = capsules.DriverResponse(
             200,
-            {"capsule": "capsule_1", "team": "Marketing", "reply": "Ready"},
+            {"capsule": "capsule_1", "team": "Marketing", "reply": "Ready", "trace_id": TRACE_ID},
         )
         with (
             mock.patch.object(capsules, "get_inference", return_value=inference),
@@ -112,7 +114,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 {"message": "Hi", "files": []},
             )
 
-        self.assertEqual(response.body, {"team": "Marketing", "reply": "Ready"})
+        self.assertEqual(response.body, {"capsule": "capsule_1", "team": "Marketing", "reply": "Ready"})
         call = chat.call_args
         self.assertEqual(call.args[1], {"message": "Hi", "files": []})
         self.assertEqual(call.kwargs, {"provider": "anthropic", "api_key": "sk-ant-0123456789"})
@@ -151,7 +153,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         echoed_reply = capsules.DriverResponse(
             200,
-            {"team": "Marketing", "reply": f"unexpected {api_key}"},
+            {
+                "capsule": "capsule_1",
+                "team": "Marketing",
+                "reply": f"unexpected {api_key}",
+                "trace_id": TRACE_ID,
+            },
         )
         with (
             mock.patch.object(capsules, "get_inference", return_value=inference),
@@ -168,7 +175,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
     def test_invalid_authoritative_team_name_is_not_projected(self) -> None:
         inference = capsules.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         for team in ("", " Marketing", "Marketing\nignore rules", "x" * 81, None):
-            controller = capsules.DriverResponse(200, {"team": team, "reply": "Ready"})
+            controller = capsules.DriverResponse(
+                200,
+                {"capsule": "capsule_1", "team": team, "reply": "Ready", "trace_id": TRACE_ID},
+            )
             with (
                 self.subTest(team=team),
                 mock.patch.object(capsules, "get_inference", return_value=inference),
@@ -178,6 +188,98 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 response = localchat.turn("capsule_1", {"message": "Hi", "files": []})
             self.assertEqual(response.status, 502)
             self.assertEqual(response.body, {"detail": "local chat response is invalid"})
+
+    def test_controller_identity_and_closed_turn_contract_fail_closed(self) -> None:
+        inference = capsules.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        valid = {
+            "capsule": "capsule_1",
+            "team": "Marketing",
+            "reply": "Ready",
+            "trace_id": TRACE_ID,
+        }
+        invalid = (
+            {**valid, "capsule": "capsule_2"},
+            {key: value for key, value in valid.items() if key != "capsule"},
+            {**valid, "assistant": "hello-pulse"},
+            {**valid, "trace_id": "not-a-trace"},
+        )
+        for controller_body in invalid:
+            with (
+                self.subTest(controller_body=controller_body),
+                mock.patch.object(capsules, "get_inference", return_value=inference),
+                mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
+                mock.patch.object(capsules, "chat", return_value=capsules.DriverResponse(200, controller_body)),
+            ):
+                response = localchat.turn("capsule_1", {"message": "Hi", "files": []})
+            self.assertEqual(response, capsules.DriverResponse(502, {"detail": "local chat response is invalid"}))
+
+    def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
+        api_key = "sk-test-0123456789"
+        inference = capsules.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        controller = capsules.DriverResponse(
+            200,
+            {
+                "capsule": "capsule_1",
+                "team": f"Marketing {api_key}",
+                "reply": "Ready",
+                "trace_id": TRACE_ID,
+            },
+        )
+        with (
+            mock.patch.object(capsules, "get_inference", return_value=inference),
+            mock.patch.object(modelproviders, "resolve_api_key", return_value=api_key),
+            mock.patch.object(capsules, "chat", return_value=controller),
+        ):
+            response = localchat.turn("capsule_1", {"message": "Hi", "files": []})
+        self.assertEqual(response.status, 502)
+        self.assertNotIn(api_key, json.dumps(response.body))
+
+    def test_stop_projects_an_accepted_turn_without_overclaiming_power_confirmation(self) -> None:
+        controller = capsules.DriverResponse(
+            200,
+            {
+                "capsule": "capsule_1",
+                "requested": True,
+                "accepted": True,
+                "confirmed": False,
+                "forced_restart": False,
+                "trace_id": TRACE_ID,
+            },
+        )
+        with mock.patch.object(capsules, "stop_chat", return_value=controller):
+            response = localchat.stop("capsule_1")
+        self.assertEqual(response, capsules.DriverResponse(200, {"capsule": "capsule_1", "stopped": True}))
+
+    def test_stop_rejects_malformed_or_cross_capsule_controller_responses(self) -> None:
+        valid = {
+            "capsule": "capsule_1",
+            "requested": True,
+            "accepted": True,
+            "confirmed": False,
+            "forced_restart": False,
+            "trace_id": TRACE_ID,
+        }
+        invalid = (
+            {**valid, "capsule": "capsule_2"},
+            {**valid, "requested": False},
+            {**valid, "confirmed": "yes"},
+            {**valid, "accepted": False, "requested": False, "confirmed": True},
+            {**valid, "power": "hello"},
+        )
+        for controller_body in invalid:
+            with (
+                self.subTest(controller_body=controller_body),
+                mock.patch.object(
+                    capsules,
+                    "stop_chat",
+                    return_value=capsules.DriverResponse(200, controller_body),
+                ),
+            ):
+                response = localchat.stop("capsule_1")
+            self.assertEqual(
+                response,
+                capsules.DriverResponse(502, {"detail": "local chat stop response is invalid"}),
+            )
 
 
 if __name__ == "__main__":

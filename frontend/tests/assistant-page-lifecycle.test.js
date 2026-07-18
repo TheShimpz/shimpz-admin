@@ -32,8 +32,9 @@ test('clears a stale sidebar result only after an install is confirmed', () => {
     source,
     /async function beginInstall\(assistantId\) \{[\s\S]*?evaluation = null;[\s\S]*?async function confirmInstall\(\)/,
   );
-  assert.doesNotMatch(
-    source,
-    /async function confirmInstall\(\) \{[\s\S]*?invokeHelloPulse\([\s\S]*?async function runStoreInstall/,
-  );
+});
+
+test('uses Team terminology without exposing direct Power controls', () => {
+  assert.doesNotMatch(source, /'[^'\n]*(?:Capsule|Cápsula)[^'\n]*'/);
+  assert.doesNotMatch(source, /invokeHelloPulse|\/powers\/|runHello/);
 });
