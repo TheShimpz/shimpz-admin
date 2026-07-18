@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  installAssistant,
+  invokeHelloPulse,
   LocalApiError,
-  evaluateHelloPulse,
   listInstalledAssistants,
   safeApiError,
 } from '../src/lib/localApi.js';
@@ -16,40 +17,52 @@ function response(status, body) {
   };
 }
 
-test('always posts idempotent install before hello without an inventory preflight', async () => {
+test('install is passive and never invokes an Assistant Power', async () => {
   const calls = [];
   const fetcher = async (url, options) => {
     calls.push({ url, options });
-    return calls.length === 1 ? response(200, { installed: true }) : response(200, { message: 'Hello, Captain!' });
+    return response(200, { assistant: 'hello-pulse', installed: true });
   };
 
-  const result = await evaluateHelloPulse(fetcher, 'capsule_1');
+  const result = await installAssistant(fetcher, 'capsule_1', 'hello-pulse');
 
-  assert.deepEqual(result, { message: 'Hello, Captain!', installed: true });
+  assert.deepEqual(result, { assistant: 'hello-pulse', installed: true });
   assert.deepEqual(
     calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
-    [
-      ['POST', '/api/capsules/capsule_1/assistants', { assistant: 'hello-pulse' }],
-      ['POST', '/api/capsules/capsule_1/assistants/hello-pulse/powers/hello', { name: 'Captain' }],
-    ],
+    [['POST', '/api/capsules/capsule_1/assistants', { assistant: 'hello-pulse' }]],
   );
+  assert.equal(calls.some(({ url }) => url.includes('/powers/')), false);
 });
 
-test('a concurrent install conflict still proceeds to the declared hello proof', async () => {
-  let call = 0;
+test('idempotent install reports an existing Assistant without executing it', async () => {
+  let calls = 0;
   const fetcher = async () => {
-    call += 1;
-    return call === 1 ? response(409, { detail: 'already installed' }) : response(200, { message: 'Ready.' });
+    calls += 1;
+    return response(200, { assistant: 'hello-pulse', installed: false });
   };
 
   assert.deepEqual(
-    await evaluateHelloPulse(fetcher, 'capsule_1'),
-    { message: 'Ready.', installed: false },
+    await installAssistant(fetcher, 'capsule_1', 'hello-pulse'),
+    { assistant: 'hello-pulse', installed: false },
   );
-  assert.equal(call, 2);
+  assert.equal(calls, 1);
 });
 
-test('safe driver errors stop before invoke and prefer error over detail', async () => {
+test('manual hello invocation is a separate explicit request', async () => {
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, options });
+    return response(200, { message: 'Hello, Captain!' });
+  };
+
+  assert.deepEqual(await invokeHelloPulse(fetcher, 'capsule_1'), { message: 'Hello, Captain!' });
+  assert.deepEqual(
+    calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
+    [['POST', '/api/capsules/capsule_1/assistants/hello-pulse/powers/hello', { name: 'Captain' }]],
+  );
+});
+
+test('safe install errors stop after one request and prefer error over detail', async () => {
   const calls = [];
   const fetcher = async (url) => {
     calls.push(url);
@@ -57,11 +70,28 @@ test('safe driver errors stop before invoke and prefer error over detail', async
   };
 
   await assert.rejects(
-    evaluateHelloPulse(fetcher, 'capsule_1'),
+    installAssistant(fetcher, 'capsule_1', 'hello-pulse'),
     (error) => error instanceof LocalApiError && error.status === 503 && error.message === 'runtime recovery failed',
   );
   assert.equal(calls.length, 1);
   assert.equal(safeApiError({ error: 'specific', detail: 'generic' }, 'fallback'), 'specific');
+});
+
+test('invalid install responses fail closed without invoking anything else', async () => {
+  for (const body of [
+    { assistant: 'other', installed: true },
+    { assistant: 'hello-pulse', installed: 'yes' },
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      installAssistant(async () => {
+        calls += 1;
+        return response(200, body);
+      }, 'capsule_1', 'hello-pulse'),
+      (error) => error instanceof LocalApiError && error.message.includes('invalid response'),
+    );
+    assert.equal(calls, 1);
+  }
 });
 
 test('loads the controller-owned installed Assistant inventory without weakening its shape', async () => {

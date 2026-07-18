@@ -14,7 +14,7 @@
     postStoreAssistantState,
     projectReleasedStoreAssistantIds,
   } from '$lib/assistantIntent.js';
-  import { evaluateHelloPulse, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
+  import { installAssistant, invokeHelloPulse, listInstalledAssistants, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
 
   const HELLO_ID = INSTALL_INTENT.assistant;
@@ -36,13 +36,13 @@
       checkingTitle: 'Preparing the local action…',
       checkingLead: 'The Admin is checking the selected Capsule and its installed Assistants.',
       alreadyTitle: 'Hello Pulse is already installed.',
-      alreadyLead: 'Nothing was installed twice. You can run its hello Power now.',
+      alreadyLead: 'Nothing was installed twice. The Assistant remains ready for your Team.',
       noCapsuleTitle: 'Installation needs a running Capsule.',
       noCapsuleLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
       unavailableTitle: 'Hello Pulse is unavailable right now.',
       unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
       successTitle: 'Hello Pulse is ready.',
-      successLead: 'The Assistant is installed in the selected Capsule and its declared hello Power responded.',
+      successLead: 'The Assistant was installed without running any Power or routine.',
       failureTitle: 'The local action did not finish.',
       failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
       capsuleLabel: 'Destination Capsule',
@@ -51,9 +51,8 @@
       close: 'Close',
       preparing: 'Checking…',
       confirm: 'Confirm install',
-      runInstalled: 'Run hello Power',
       retryAction: 'Try again',
-      working: 'Installing and running…',
+      working: 'Installing…',
       result: 'Hello result',
       uninstall: 'Uninstall from Capsule',
       uninstallConfirm: 'Uninstall {assistant} from {capsule}?',
@@ -82,13 +81,13 @@
       checkingTitle: 'Preparando a ação local…',
       checkingLead: 'O Admin está verificando a Cápsula selecionada e seus Assistants instalados.',
       alreadyTitle: 'O Hello Pulse já está instalado.',
-      alreadyLead: 'Nada foi instalado duas vezes. Você pode executar a Power hello agora.',
+      alreadyLead: 'Nada foi instalado duas vezes. O Assistant continua pronto para o seu Time.',
       noCapsuleTitle: 'A instalação precisa de uma Cápsula em execução.',
       noCapsuleLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
       unavailableTitle: 'O Hello Pulse está indisponível agora.',
       unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
       successTitle: 'O Hello Pulse está pronto.',
-      successLead: 'O Assistant está instalado na Cápsula selecionada e sua Power hello declarada respondeu.',
+      successLead: 'O Assistant foi instalado sem executar nenhuma Power ou rotina.',
       failureTitle: 'A ação local não foi concluída.',
       failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
       capsuleLabel: 'Cápsula de destino',
@@ -97,9 +96,8 @@
       close: 'Fechar',
       preparing: 'Verificando…',
       confirm: 'Confirmar instalação',
-      runInstalled: 'Executar Power hello',
       retryAction: 'Tentar novamente',
-      working: 'Instalando e executando…',
+      working: 'Instalando…',
       result: 'Resultado do hello',
       uninstall: 'Desinstalar da Cápsula',
       uninstallConfirm: 'Desinstalar {assistant} de {capsule}?',
@@ -418,7 +416,7 @@
       busy ||
       pendingAssistant !== HELLO_ID ||
       !helloAvailable ||
-      !['install', 'installed', 'error'].includes(dialogMode)
+      !['install', 'error'].includes(dialogMode)
     ) return;
     const capsule = runningCapsules.find((item) => item.id === selectedCapsule);
     if (!capsule) return;
@@ -428,8 +426,8 @@
     dialogError = '';
     dialogResult = null;
     try {
-      const { message, installed } = await evaluateHelloPulse(fetch, capsule.id);
-      dialogResult = { note: installed ? copy.installedNow : copy.alreadyInstalled, message };
+      const { installed } = await installAssistant(fetch, capsule.id, HELLO_ID);
+      dialogResult = { note: installed ? copy.installedNow : copy.alreadyInstalled };
       dialogMode = 'success';
       activeCapsule = capsule.id;
       await loadInstalled(capsule.id);
@@ -478,7 +476,7 @@
     localError = '';
     evaluation = null;
     try {
-      const { message } = await evaluateHelloPulse(fetch, activeCapsuleRecord.id);
+      const { message } = await invokeHelloPulse(fetch, activeCapsuleRecord.id);
       evaluation = { kind: 'success', note: copy.alreadyInstalled, message };
       await loadInstalled(activeCapsuleRecord.id);
     } catch (error) {
@@ -724,20 +722,18 @@
     {#if dialogResult}
       <div class="dialog-result" role="status">
         <span>{dialogResult.note}</span>
-        <strong>{dialogResult.message}</strong>
+        {#if dialogResult.message}<strong>{dialogResult.message}</strong>{/if}
       </div>
     {/if}
     <footer>
       <button type="button" class="dialog-secondary" disabled={busy} onclick={closeInstallDialog}>
         {dialogMode === 'install' ? copy.cancel : copy.close}
       </button>
-      {#if ['install', 'installed', 'error'].includes(dialogMode)}
+      {#if ['install', 'error'].includes(dialogMode)}
         <button type="submit" class="dialog-primary" disabled={busy || !selectedCapsule || !helloAvailable}>
           {busy
             ? copy.working
-            : dialogMode === 'installed'
-              ? copy.runInstalled
-              : dialogMode === 'error'
+            : dialogMode === 'error'
                 ? copy.retryAction
                 : copy.confirm}
         </button>

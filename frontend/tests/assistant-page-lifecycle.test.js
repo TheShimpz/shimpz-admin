@@ -26,10 +26,14 @@ test('pins Store protocol while preserving the independent reload counter', () =
 test('clears a stale sidebar result only after an install is confirmed', () => {
   assert.match(
     source,
-    /async function confirmInstall\(\) \{[\s\S]*?const capsule = runningCapsules\.find\([\s\S]*?if \(!capsule\) return;\s+evaluation = null;\s+busy = true;[\s\S]*?await evaluateHelloPulse\(fetch, capsule\.id\);/,
+    /async function confirmInstall\(\) \{[\s\S]*?const capsule = runningCapsules\.find\([\s\S]*?if \(!capsule\) return;\s+evaluation = null;\s+busy = true;[\s\S]*?await installAssistant\(fetch, capsule\.id, HELLO_ID\);/,
   );
   assert.doesNotMatch(
     source,
     /async function beginInstall\(assistantId\) \{[\s\S]*?evaluation = null;[\s\S]*?async function confirmInstall\(\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /async function confirmInstall\(\) \{[\s\S]*?invokeHelloPulse\([\s\S]*?async function runStoreInstall/,
   );
 });

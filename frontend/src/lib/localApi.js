@@ -63,13 +63,13 @@ export async function listInstalledAssistants(fetcher, capsuleId) {
   });
 }
 
-/** Always let the idempotent install endpoint reconcile runtime state before invoking the hello Power. */
-export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
+/** Install or reconcile one allowlisted Assistant without invoking a Power or starting a chat turn. */
+export async function installAssistant(fetcher, capsuleId, assistantId) {
   if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
-  if (typeof name !== 'string' || !name.trim() || name.length > 80 || /[\r\n]/.test(name)) {
-    throw new LocalApiError('Invalid hello input.');
+  if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
+    throw new LocalApiError('Invalid local Assistant request.');
   }
 
   const base = `/api/capsules/${encodeURIComponent(capsuleId)}/assistants`;
@@ -77,22 +77,38 @@ export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
   const installResponse = await fetcher(base, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ assistant: HELLO_ID }),
+    body: JSON.stringify({ assistant: assistantId }),
   });
   const installBody = await jsonObject(installResponse);
-  // 409 remains safe for a concurrent installer; both paths still prove readiness through the Power.
-  if (!installResponse.ok && installResponse.status !== 409) {
+  if (!installResponse.ok) {
     throw new LocalApiError(
-      safeApiError(installBody, 'The local evaluation could not be completed.'),
+      safeApiError(installBody, 'The local Assistant could not be installed.'),
       installResponse.status,
     );
   }
+  if (installBody.assistant !== assistantId || typeof installBody.installed !== 'boolean') {
+    throw new LocalApiError('The local Assistant installation returned an invalid response.', installResponse.status);
+  }
+  return { assistant: assistantId, installed: installBody.installed };
+}
 
-  const helloResponse = await fetcher(`${base}/${HELLO_ID}/powers/hello`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ name: name.trim() }),
-  });
+/** Invoke the Hello Pulse demonstration only after an explicit user action. */
+export async function invokeHelloPulse(fetcher, capsuleId, name = 'Captain') {
+  if (typeof fetcher !== 'function' || !CAPSULE_ID_RE.test(capsuleId)) {
+    throw new LocalApiError('Invalid local Assistant request.');
+  }
+  if (typeof name !== 'string' || !name.trim() || name.length > 80 || /[\r\n]/.test(name)) {
+    throw new LocalApiError('Invalid hello input.');
+  }
+
+  const helloResponse = await fetcher(
+    `/api/capsules/${encodeURIComponent(capsuleId)}/assistants/${HELLO_ID}/powers/hello`,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    },
+  );
   const helloBody = await jsonObject(helloResponse);
   if (!helloResponse.ok) {
     throw new LocalApiError(
@@ -104,5 +120,5 @@ export async function evaluateHelloPulse(fetcher, capsuleId, name = 'Captain') {
   if (typeof message !== 'string' || !message || message.length > 256) {
     throw new LocalApiError('The local evaluation could not be completed.', helloResponse.status);
   }
-  return { message, installed: installResponse.ok && installBody.installed === true };
+  return { message };
 }
