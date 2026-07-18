@@ -18,7 +18,7 @@
 <div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
   <header class="topbar">
     <div class="topbar-inner">
-      <ShimpzBrand />
+      <ShimpzBrand href={authenticated ? '/chat/' : '/'} />
 
       {#if authenticated}
         <nav class="primary-nav" aria-label="Admin">
@@ -35,7 +35,8 @@
       {/if}
 
       <div class="header-actions">
-        <LocaleMenu />
+        <div class="locale-full"><LocaleMenu /></div>
+        <div class="locale-compact"><LocaleMenu compact /></div>
         {#if authenticated}
           <button class="logout" type="button" onclick={() => onLogout?.()} aria-label={$t('auth.logout')}>
             <span>{$t('auth.logout')}</span>
@@ -136,6 +137,10 @@
     align-items: center;
     justify-content: flex-end;
     gap: 0.55rem;
+  }
+
+  .locale-compact {
+    display: none;
   }
 
   .logout {
@@ -276,6 +281,7 @@
     .topbar-inner {
       min-height: 4.75rem;
       grid-template-columns: minmax(0, 1fr) auto;
+      row-gap: 0;
       padding: 0 0.75rem;
     }
 
@@ -337,6 +343,39 @@
 
     .chat-mode .shell-sidebar {
       overflow: hidden;
+    }
+  }
+
+  @media (max-width: 760px) and (max-height: 600px) {
+    .chat-mode .shell-sidebar {
+      grid-template-rows: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .chat-mode .team-sidebar-region {
+      max-height: 5.25rem;
+      grid-row: 1;
+      grid-column: 1;
+    }
+
+    .chat-mode .local-status {
+      min-height: 0;
+      grid-row: 1;
+      grid-column: 2;
+      padding: 0 0.75rem;
+      border-top: 0;
+      border-inline-start: 1px solid var(--border);
+      white-space: nowrap;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .locale-full {
+      display: none;
+    }
+
+    .locale-compact {
+      display: block;
     }
   }
 
