@@ -221,6 +221,19 @@
     }
   }
 
+  function handleComposerKeydown(event) {
+    if (
+      event.key !== 'Enter' ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.isComposing
+    ) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
   function stop() {
     const teamId = $teamContext.selectedTeamId;
     if (!busy || stopping || !teamId || !socketReady || !socket) return;
@@ -286,7 +299,14 @@
       {/if}
 
       <form class="composer" onsubmit={send}>
-        <textarea bind:value={draft} maxlength="16000" rows="2" placeholder={placeholder} disabled={busy}></textarea>
+        <textarea
+          bind:value={draft}
+          maxlength="16000"
+          rows="2"
+          placeholder={placeholder}
+          disabled={busy}
+          onkeydown={handleComposerKeydown}
+        ></textarea>
         <div>
           {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
           <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>

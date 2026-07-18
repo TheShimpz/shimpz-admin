@@ -59,6 +59,15 @@ test('keeps versioned WebSocket send, stop, reconnect and selected file contract
   assert.match(source, /parseChatTerminalEvent\(JSON\.parse\(event\.data\), expectedTeam\.name\)/);
 });
 
+test('submits plain Enter while preserving modified newlines and IME composition', () => {
+  assert.match(
+    source,
+    /function handleComposerKeydown\(event\) \{[\s\S]*event\.key !== 'Enter'[\s\S]*event\.ctrlKey[\s\S]*event\.metaKey[\s\S]*event\.shiftKey[\s\S]*event\.altKey[\s\S]*event\.isComposing[\s\S]*event\.preventDefault\(\);[\s\S]*event\.currentTarget\.form\?\.requestSubmit\(\);/,
+  );
+  assert.match(source, /<textarea[\s\S]*onkeydown=\{handleComposerKeydown\}[\s\S]*><\/textarea>/);
+  assert.doesNotMatch(source, /onkeydown=\{send\}/);
+});
+
 test('fills the main column while keeping turns scrollable and the composer visible', () => {
   assert.match(source, /<div class="chat-route">/);
   assert.match(source, /<header class="team-header">/);
