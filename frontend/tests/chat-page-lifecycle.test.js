@@ -6,6 +6,8 @@ const source = readFileSync(new URL('../src/routes/chat/+page.svelte', import.me
 
 test('consumes the shared Team context without duplicating the persistent shell or sidebar', () => {
   assert.match(source, /import \{ teamContext \} from '\$lib\/teamContext\.js';/);
+  assert.match(source, /import \{ modelContext \} from '\$lib\/modelContext\.js';/);
+  assert.match(source, /import ProviderSetupGate from '\$lib\/ProviderSetupGate\.svelte';/);
   assert.doesNotMatch(source, /loadTeamContext|refreshTeams|selectTeam/);
   assert.match(source, /\$teamContext\.selectedTeamId/);
   assert.match(source, /\$teamContext\.teams/);
@@ -33,18 +35,25 @@ test('derives loading and bounded context diagnostics without owning the initial
 test('changes Team by closing stale transport and clearing route-scoped conversation state', () => {
   assert.match(
     source,
-    /\$effect\(\(\) => \{\s+const nextTeamId = \$teamContext\.selectedTeamId;\s+if \(!mounted \|\| nextTeamId === socketTeamId\) return;\s+activateTeam\(nextTeamId\);/,
+    /\$effect\(\(\) => \{\s+const nextTeamId = chatTeamId;\s+if \(!mounted \|\| nextTeamId === socketTeamId\) return;\s+activateTeam\(nextTeamId\);/,
   );
   assert.match(
     source,
     /function activateTeam\(nextTeamId\) \{\s+closeSocket\(\);\s+socketTeamId = nextTeamId;[\s\S]*?busy = false;\s+stopping = false;\s+draft = '';\s+turns = \[\];\s+clearError\(\);\s+if \(nextTeamId\) connectSocket\(nextTeamId\);/,
   );
-  assert.match(source, /if \(socket !== active \|\| \$teamContext\.selectedTeamId !== expectedTeamId\) return;/);
+  assert.match(source, /if \(socket !== active \|\| chatTeamId !== expectedTeamId\) return;/);
   assert.match(source, /current\?\.close\(1000, 'Team changed'\)/);
   assert.match(
     source,
-    /onMount\(\(\) => \{\s+mounted = true;\s+const initialTeamId = \$teamContext\.selectedTeamId;\s+if \(initialTeamId !== socketTeamId\) activateTeam\(initialTeamId\);/,
+    /onMount\(\(\) => \{\s+mounted = true;\s+const initialTeamId = chatTeamId;\s+if \(initialTeamId !== socketTeamId\) activateTeam\(initialTeamId\);/,
   );
+});
+
+test('keeps WebSocket and composer unavailable until the selected Team model is verified', () => {
+  assert.match(source, /\$modelContext\.ready && \$modelContext\.teamId === selectedTeamId \? selectedTeamId : ''/);
+  assert.match(source, /if \(!mounted \|\| !expectedTeamId \|\| chatTeamId !== expectedTeamId\) return;/);
+  assert.match(source, /if \(busy \|\| !teamId \|\| chatTeamId !== teamId/);
+  assert.match(source, /\{#if chatTeamId\}[\s\S]*<form class="composer"[\s\S]*\{:else\}[\s\S]*<ProviderSetupGate \/>/);
 });
 
 test('keeps versioned WebSocket send, stop, reconnect and selected file contracts route-scoped', () => {

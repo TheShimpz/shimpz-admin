@@ -6,6 +6,7 @@
   import AdminShell from '$lib/AdminShell.svelte';
   import AuthScreen from '$lib/AuthScreen.svelte';
   import { locale, LOCALES, t } from '$lib/i18n.js';
+  import { clearModelContext } from '$lib/modelContext.js';
   import { clearTeamContext } from '$lib/teamContext.js';
 
   let { children } = $props();
@@ -30,6 +31,7 @@
   }
 
   async function checkSession() {
+    clearModelContext();
     clearTeamContext();
     phase = 'checking';
     error = '';
@@ -94,6 +96,7 @@
     try {
       await fetch('/api/logout', { method: 'POST' });
     } finally {
+      clearModelContext();
       clearTeamContext();
       password = confirmation = '';
       error = '';

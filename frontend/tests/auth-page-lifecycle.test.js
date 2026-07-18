@@ -13,7 +13,9 @@ test('owns the complete Admin authentication lifecycle in the persistent root la
   assert.match(layout, /'\/api\/admin\/setup' : '\/api\/login'/);
   assert.match(layout, /fetch\('\/api\/logout'/);
   assert.match(layout, /import \{ clearTeamContext \} from '\$lib\/teamContext\.js'/);
-  assert.match(layout, /finally \{\s*clearTeamContext\(\);/);
+  assert.match(layout, /import \{ clearModelContext \} from '\$lib\/modelContext\.js'/);
+  assert.match(layout, /async function checkSession\(\) \{\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
+  assert.match(layout, /finally \{\s*clearModelContext\(\);\s*clearTeamContext\(\);/);
   assert.match(layout, /goto\('\/chat\/', \{ replaceState: true \}\)/);
   assert.match(layout, /<AdminShell \{active\} authenticated onLogout=\{logout\}>/);
 

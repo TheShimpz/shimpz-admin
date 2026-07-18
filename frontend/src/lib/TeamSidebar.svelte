@@ -7,6 +7,13 @@
   import { assistantStoreHref } from '$lib/assistantIntent.js';
   import { locale } from '$lib/i18n.js';
   import {
+    clearModelContext,
+    loadModelContext,
+    modelContext,
+    selectModelProvider,
+    selectTeamModel,
+  } from '$lib/modelContext.js';
+  import {
     createTeam,
     loadTeamContext,
     selectTeam,
@@ -23,6 +30,9 @@
       team: 'Team',
       selectTeam: 'Choose a Team',
       loading: 'Loading local Team…',
+      modelProvider: 'Model Provider', model: 'Model', modelLoading: 'Loading model settings…',
+      modelReady: 'Everything is ready', modelRequired: 'API key required',
+      input: 'input', output: 'output',
       assistants: 'Assistants',
       assistantEmpty: 'No Assistants installed.',
       storeDetail: 'Open {name} in the Store',
@@ -45,6 +55,9 @@
       team: 'Time',
       selectTeam: 'Escolha um Time',
       loading: 'Carregando Time local…',
+      modelProvider: 'Model Provider', model: 'Modelo', modelLoading: 'Carregando configuração do modelo…',
+      modelReady: 'Está tudo certo', modelRequired: 'Chave da API necessária',
+      input: 'entrada', output: 'saída',
       assistants: 'Assistants',
       assistantEmpty: 'Nenhum Assistant instalado.',
       storeDetail: 'Abrir {name} na Store',
@@ -75,6 +88,9 @@
     const candidate = page.url.searchParams.get('capsule') ?? '';
     return TEAM_ID_RE.test(candidate) ? candidate : '';
   });
+  let selectedProvider = $derived(
+    $modelContext.providers.find((entry) => entry.id === $modelContext.provider) ?? null,
+  );
   let installed = $derived.by(() => {
     const catalog = new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant]));
     return $teamContext.installedAssistants.map((runtime) => {
@@ -94,10 +110,29 @@
     return goto(next, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
+  function price(cents) {
+    const value = cents / 100;
+    return `US$ ${Number.isInteger(value) ? value : value.toFixed(2)}`;
+  }
+
+  function modelLabel(entry) {
+    return `${entry.title} · ${price(entry.input_usd_per_million_cents)} ${copy.input} / ${price(entry.output_usd_per_million_cents)} ${copy.output}`;
+  }
+
   function changeTeam(event) {
     const id = event.currentTarget.value;
     if (!id || id === $teamContext.selectedTeamId) return;
     updateLocationTeam(id).catch(() => {});
+  }
+
+  function changeProvider(event) {
+    const teamId = $teamContext.selectedTeamId;
+    if (teamId) selectModelProvider(fetch, teamId, event.currentTarget.value).catch(() => {});
+  }
+
+  function changeModel(event) {
+    const teamId = $teamContext.selectedTeamId;
+    if (teamId) selectTeamModel(fetch, teamId, event.currentTarget.value).catch(() => {});
   }
 
   function openCreateDialog() {
@@ -152,6 +187,15 @@
       selectTeam(fetch, preferredId).catch(() => {
         if (previousId) updateLocationTeam(previousId).catch(() => {});
       });
+    }
+  });
+
+  $effect(() => {
+    const teamId = $teamContext.selectedTeamId;
+    if (!teamId) {
+      if ($modelContext.teamId) clearModelContext();
+    } else if ($modelContext.teamId !== teamId || $modelContext.phase === 'idle') {
+      loadModelContext(fetch, teamId).catch(() => {});
     }
   });
 
@@ -211,6 +255,41 @@
   </section>
 
   {#if $teamContext.selectedTeamId}
+    <section class="team-section model-section" aria-labelledby="sidebar-model-provider-title">
+      <label for="sidebar-provider-select" id="sidebar-model-provider-title">{copy.modelProvider}</label>
+      <select
+        id="sidebar-provider-select"
+        value={$modelContext.provider}
+        onchange={changeProvider}
+        disabled={$modelContext.phase === 'idle' || $modelContext.phase === 'loading' || $modelContext.phase === 'saving'}
+      >
+        {#each $modelContext.providers as provider (provider.id)}
+          <option value={provider.id}>{provider.title}</option>
+        {/each}
+      </select>
+
+      <label for="sidebar-model-select">{copy.model}</label>
+      <select
+        id="sidebar-model-select"
+        value={$modelContext.model}
+        onchange={changeModel}
+        disabled={!selectedProvider || $modelContext.phase === 'loading' || $modelContext.phase === 'saving'}
+      >
+        {#each selectedProvider?.models ?? [] as model (model.id)}
+          <option value={model.id}>{modelLabel(model)}</option>
+        {/each}
+      </select>
+
+      {#if $modelContext.phase === 'loading' || $modelContext.phase === 'idle'}
+        <p class="model-status">{copy.modelLoading}</p>
+      {:else}
+        <p class:ready={$modelContext.ready} class="model-status">
+          <span aria-hidden="true">{$modelContext.ready ? '●' : '◇'}</span>
+          {$modelContext.ready ? copy.modelReady : copy.modelRequired}
+        </p>
+      {/if}
+    </section>
+
     <section class="team-section" aria-labelledby="sidebar-assistants-title">
       <div class="section-heading">
         <h2 id="sidebar-assistants-title">{copy.assistants}</h2>
@@ -368,6 +447,35 @@
     color: var(--text);
     font-family: var(--font-mono);
     font-size: 0.7rem;
+  }
+
+  .model-section > label {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .model-section select {
+    font-size: 0.62rem;
+  }
+
+  .model-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 0.53rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .model-status.ready {
+    color: var(--success);
   }
 
   .team-controls {

@@ -349,6 +349,16 @@ test('Team sidebar hides Assistant and file inventory until a Team is selected',
   );
 });
 
+test('Team sidebar owns provider and model selection below the Team picker', () => {
+  assert.match(sidebarSource, /import \{[\s\S]*modelContext[\s\S]*selectModelProvider[\s\S]*selectTeamModel[\s\S]*\} from '\$lib\/modelContext\.js';/);
+  const picker = sidebarSource.indexOf('class="team-section team-picker"');
+  const provider = sidebarSource.indexOf('id="sidebar-provider-select"');
+  const model = sidebarSource.indexOf('id="sidebar-model-select"');
+  const assistants = sidebarSource.indexOf('id="sidebar-assistants-title"');
+  assert.ok(picker !== -1 && picker < provider && provider < model && model < assistants);
+  assert.match(sidebarSource, /class:ready=\{\$modelContext\.ready\} class="model-status"/);
+});
+
 test('Team sidebar follows client-side capsule deep links without owning another loader', () => {
   assert.match(sidebarSource, /import \{ goto \} from '\$app\/navigation';/);
   assert.match(sidebarSource, /import \{ page \} from '\$app\/state';/);

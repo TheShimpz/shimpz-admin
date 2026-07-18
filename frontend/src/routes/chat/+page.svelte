@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { locale } from '$lib/i18n.js';
+  import { modelContext } from '$lib/modelContext.js';
+  import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
   import { teamContext } from '$lib/teamContext.js';
   import {
     CHAT_WS_PROTOCOL,
@@ -55,6 +57,9 @@
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
   );
+  let chatTeamId = $derived(
+    $modelContext.ready && $modelContext.teamId === selectedTeamId ? selectedTeamId : '',
+  );
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived(copy.placeholder.replace('{team}', teamName));
   let thinking = $derived(copy.sending.replace('{team}', teamName));
@@ -103,18 +108,18 @@
   }
 
   function scheduleReconnect(expectedTeamId) {
-    if (reconnectTimer || !mounted || $teamContext.selectedTeamId !== expectedTeamId) return;
+    if (reconnectTimer || !mounted || chatTeamId !== expectedTeamId) return;
     const delay = Math.min(400 * (2 ** reconnectAttempt), 5000);
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
-      if (mounted && $teamContext.selectedTeamId === expectedTeamId) connectSocket(expectedTeamId);
+      if (mounted && chatTeamId === expectedTeamId) connectSocket(expectedTeamId);
     }, delay);
   }
 
   function connectSocket(expectedTeamId) {
     closeSocket();
-    if (!mounted || !expectedTeamId || $teamContext.selectedTeamId !== expectedTeamId) return;
+    if (!mounted || !expectedTeamId || chatTeamId !== expectedTeamId) return;
 
     const expectedTeam = $teamContext.teams.find((entry) => entry.id === expectedTeamId);
     if (!expectedTeam) return;
@@ -129,7 +134,7 @@
     socket = active;
 
     active.onopen = () => {
-      if (socket !== active || $teamContext.selectedTeamId !== expectedTeamId) return;
+      if (socket !== active || chatTeamId !== expectedTeamId) return;
       if (active.protocol !== CHAT_WS_PROTOCOL) {
         socket = null;
         active.close(1002, 'Protocol required');
@@ -141,7 +146,7 @@
       if (error === copy.disconnected) clearError();
     };
     active.onmessage = (event) => {
-      if (socket !== active || $teamContext.selectedTeamId !== expectedTeamId) return;
+      if (socket !== active || chatTeamId !== expectedTeamId) return;
       let terminal;
       try {
         if (typeof event.data !== 'string' || (!busy && !stopping)) throw new Error('unexpected frame');
@@ -171,7 +176,7 @@
       }
     };
     active.onclose = () => {
-      if (socket !== active || $teamContext.selectedTeamId !== expectedTeamId) return;
+      if (socket !== active || chatTeamId !== expectedTeamId) return;
       socket = null;
       socketReady = false;
       stopping = false;
@@ -196,7 +201,7 @@
   function send(event) {
     event.preventDefault();
     const teamId = $teamContext.selectedTeamId;
-    if (busy || !teamId || !draft.trim() || !socketReady || !socket) return;
+    if (busy || !teamId || chatTeamId !== teamId || !draft.trim() || !socketReady || !socket) return;
     const message = draft.trim();
     let frame;
     try {
@@ -249,14 +254,14 @@
   }
 
   $effect(() => {
-    const nextTeamId = $teamContext.selectedTeamId;
+    const nextTeamId = chatTeamId;
     if (!mounted || nextTeamId === socketTeamId) return;
     activateTeam(nextTeamId);
   });
 
   onMount(() => {
     mounted = true;
-    const initialTeamId = $teamContext.selectedTeamId;
+    const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     return () => {
       mounted = false;
@@ -269,52 +274,58 @@
 
 <div class="chat-route">
   {#if activeTeam}
-    <section class="conversation" aria-label={`${copy.kicker}: ${teamName}`}>
-      <header class="team-header">
-        <i aria-hidden="true"></i>
-        <div>
-          <p>{copy.kicker}</p>
-          <h1>{teamName}</h1>
-        </div>
-      </header>
+    {#if chatTeamId}
+      <section class="conversation" aria-label={`${copy.kicker}: ${teamName}`}>
+        <header class="team-header">
+          <i aria-hidden="true"></i>
+          <div>
+            <p>{copy.kicker}</p>
+            <h1>{teamName}</h1>
+          </div>
+        </header>
 
-      <div class="turns" aria-live="polite">
-        {#if turns.length}
-          {#each turns as turn}
-            <article class={turn.role}>
-              <small>{turn.role === 'user' ? copy.you : turn.author}</small>
-              <p>{turn.text}</p>
-            </article>
-          {/each}
-        {:else}
-          <p class="conversation-empty">{placeholder}</p>
+        <div class="turns" aria-live="polite">
+          {#if turns.length}
+            {#each turns as turn}
+              <article class={turn.role}>
+                <small>{turn.role === 'user' ? copy.you : turn.author}</small>
+                <p>{turn.text}</p>
+              </article>
+            {/each}
+          {:else}
+            <p class="conversation-empty">{placeholder}</p>
+          {/if}
+        </div>
+
+        {#if visibleError}
+          <div class="error" role="alert">
+            <strong>{visibleError}</strong>
+            {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
+          </div>
         {/if}
-      </div>
 
-      {#if visibleError}
-        <div class="error" role="alert">
-          <strong>{visibleError}</strong>
-          {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
-        </div>
-      {/if}
-
-      <form class="composer" onsubmit={send}>
-        <textarea
-          bind:value={draft}
-          maxlength="16000"
-          rows="2"
-          placeholder={placeholder}
-          disabled={busy}
-          onkeydown={handleComposerKeydown}
-        ></textarea>
-        <div>
-          {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
-          <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
-            {busy ? thinking : socketReady ? copy.send : copy.connecting}
-          </button>
-        </div>
-      </form>
-    </section>
+        <form class="composer" onsubmit={send}>
+          <textarea
+            bind:value={draft}
+            maxlength="16000"
+            rows="2"
+            placeholder={placeholder}
+            disabled={busy}
+            onkeydown={handleComposerKeydown}
+          ></textarea>
+          <div>
+            {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
+            <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
+              {busy ? thinking : socketReady ? copy.send : copy.connecting}
+            </button>
+          </div>
+        </form>
+      </section>
+    {:else}
+      <section class="provider-setup" aria-live="polite">
+        <ProviderSetupGate />
+      </section>
+    {/if}
   {:else}
     <section class="empty-state" aria-live="polite">
       <div aria-hidden="true"><span></span></div>
@@ -352,6 +363,16 @@
     border-bottom: 1px solid var(--admin-divider);
     background: var(--surface-1);
     overflow: hidden;
+  }
+
+  .provider-setup {
+    display: grid;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    border-inline-end: 1px solid var(--admin-divider);
+    border-bottom: 1px solid var(--admin-divider);
+    overflow: auto;
   }
 
   .team-header {
