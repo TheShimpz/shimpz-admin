@@ -324,7 +324,21 @@ test('Team sidebar reveals creation only after a confirmed empty inventory', () 
   assert.match(sidebarSource, /createDialog\?\.showModal\(\)/);
   assert.match(sidebarSource, /<dialog[^>]+oncancel=\{cancelCreateDialog\}/);
   assert.match(sidebarSource, /maxlength="80"/);
+  assert.match(
+    sidebarSource,
+    /<span class="create-team-label">\{copy\.create\}<\/span>\s*<span class="create-team-symbol" aria-hidden="true">＋<\/span>/,
+  );
+  assert.match(sidebarSource, /\.create-team-label \{\s*grid-column: 2;/);
+  assert.match(sidebarSource, /\.create-team-symbol \{\s*grid-column: 3;\s*justify-self: end;/);
   assert.doesNotMatch(sidebarSource, /Local Space/);
+});
+
+test('Team sidebar keeps Team creation beside the selector after the first Team exists', () => {
+  assert.match(
+    sidebarSource,
+    /<div class="team-controls">[\s\S]*<select[\s\S]*<button\s+class="create-team-icon"[\s\S]*aria-label=\{copy\.create\}[\s\S]*title=\{copy\.create\}/,
+  );
+  assert.match(sidebarSource, /grid-template-columns: minmax\(0, 1fr\) 2\.65rem;/);
 });
 
 test('Team sidebar hides Assistant and file inventory until a Team is selected', () => {

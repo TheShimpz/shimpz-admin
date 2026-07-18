@@ -51,11 +51,6 @@
       <div class="team-sidebar-region">
         <TeamSidebar {active} />
       </div>
-
-      <div class="local-status">
-        <i aria-hidden="true"></i>
-        <span>Local Space</span>
-      </div>
     </aside>
   {/if}
 
@@ -175,7 +170,7 @@
     min-width: 0;
     min-height: 0;
     grid-area: sidebar;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     border-inline-end: 1px solid var(--border);
     background: rgba(3, 3, 3, 0.76);
     overflow: hidden;
@@ -223,30 +218,6 @@
     min-width: 0;
     min-height: 0;
     overflow: auto;
-  }
-
-  .local-status {
-    display: flex;
-    min-width: 0;
-    min-height: 3.75rem;
-    align-items: center;
-    gap: 0.55rem;
-    padding: 0 1.25rem;
-    border-top: 1px solid var(--border);
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .local-status i {
-    width: 0.45rem;
-    height: 0.45rem;
-    flex: none;
-    background: var(--success);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(5, 255, 161, 0.55);
   }
 
   .workspace {
@@ -302,7 +273,7 @@
     }
 
     .shell-sidebar {
-      grid-template-rows: minmax(0, auto) auto;
+      grid-template-rows: minmax(0, auto);
       border-inline-end: 0;
       border-bottom: 1px solid var(--border);
       overflow: visible;
@@ -331,11 +302,6 @@
       max-height: 10rem;
     }
 
-    .local-status {
-      min-height: 2.75rem;
-      padding: 0 0.75rem;
-    }
-
     .workspace {
       padding: 1.25rem 0.75rem;
     }
@@ -348,23 +314,10 @@
   @media (max-width: 760px) and (max-height: 600px) {
     .chat-mode .shell-sidebar {
       grid-template-rows: minmax(0, 1fr);
-      grid-template-columns: minmax(0, 1fr) auto;
     }
 
     .chat-mode .team-sidebar-region {
       max-height: 5.25rem;
-      grid-row: 1;
-      grid-column: 1;
-    }
-
-    .chat-mode .local-status {
-      min-height: 0;
-      grid-row: 1;
-      grid-column: 2;
-      padding: 0 0.75rem;
-      border-top: 0;
-      border-inline-start: 1px solid var(--border);
-      white-space: nowrap;
     }
   }
 

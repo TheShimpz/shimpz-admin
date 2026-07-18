@@ -30,6 +30,7 @@ test('renders the global navigation and Team context only for authenticated user
   assert.match(shell, /<ShimpzBrand href=\{authenticated \? '\/chat\/' : '\/'\} \/>/);
   assert.doesNotMatch(shell, /id: 'integrations'/);
   assert.doesNotMatch(shell, /id: 'capsules'|href: '\/capsules\/'/);
+  assert.doesNotMatch(shell, /Local Space|local-status/);
   assert.doesNotMatch(shell, /<footer>/);
 
   const chat = shell.indexOf("{ id: 'chat'");
@@ -61,5 +62,5 @@ test('keeps the authenticated header and Chat rail usable on narrow or low-heigh
   assert.match(shell, /@media \(max-width: 760px\)[\s\S]*\.topbar-inner \{[\s\S]*row-gap: 0;/);
   assert.match(shell, /@media \(max-width: 760px\) and \(max-height: 600px\)/);
   assert.match(shell, /\.chat-mode \.team-sidebar-region \{\s*max-height: 5\.25rem;/);
-  assert.match(shell, /\.chat-mode \.local-status \{[\s\S]*grid-column: 2;[\s\S]*white-space: nowrap;/);
+  assert.match(shell, /\.chat-mode \.shell-sidebar \{\s*grid-template-rows: minmax\(0, 1fr\);/);
 });

@@ -174,16 +174,27 @@
 
     {#if $teamContext.teams.length > 0}
       <label for="sidebar-team-select" class="visually-hidden">{copy.selectTeam}</label>
-      <select
-        id="sidebar-team-select"
-        value={$teamContext.selectedTeamId}
-        onchange={changeTeam}
-        disabled={$teamContext.phase === 'loading'}
-      >
-        {#each $teamContext.teams as team (team.id)}
-          <option value={team.id}>{team.name}</option>
-        {/each}
-      </select>
+      <div class="team-controls">
+        <select
+          id="sidebar-team-select"
+          value={$teamContext.selectedTeamId}
+          onchange={changeTeam}
+          disabled={$teamContext.phase === 'loading'}
+        >
+          {#each $teamContext.teams as team (team.id)}
+            <option value={team.id}>{team.name}</option>
+          {/each}
+        </select>
+        <button
+          class="create-team-icon"
+          type="button"
+          onclick={openCreateDialog}
+          aria-label={copy.create}
+          title={copy.create}
+        >
+          <span aria-hidden="true">＋</span>
+        </button>
+      </div>
     {:else if $teamContext.phase === 'loading' || $teamContext.phase === 'idle'}
       <p class="muted" role="status">{copy.loading}</p>
     {/if}
@@ -197,8 +208,8 @@
 
     {#if $teamContext.phase === 'ready' && $teamContext.teams.length === 0}
       <button class="create-team" type="button" onclick={openCreateDialog}>
-        <span aria-hidden="true">＋</span>
-        {copy.create}
+        <span class="create-team-label">{copy.create}</span>
+        <span class="create-team-symbol" aria-hidden="true">＋</span>
       </button>
     {/if}
   </section>
@@ -364,6 +375,13 @@
     font-size: 0.7rem;
   }
 
+  .team-controls {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) 2.65rem;
+    gap: 0.55rem;
+  }
+
   select:focus-visible,
   button:focus-visible,
   a:focus-visible,
@@ -400,7 +418,8 @@
   }
 
   .context-error button,
-  .create-team {
+  .create-team,
+  .create-team-icon {
     min-height: 2.35rem;
     border: 1px solid var(--border-strong);
     padding: 0 0.7rem;
@@ -415,13 +434,33 @@
   }
 
   .create-team {
-    display: flex;
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     border-color: var(--accent);
   }
 
+  .create-team-label {
+    grid-column: 2;
+  }
+
+  .create-team-symbol {
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .create-team-icon {
+    display: grid;
+    width: 2.65rem;
+    min-height: 2.65rem;
+    place-items: center;
+    border-color: var(--accent);
+    padding: 0;
+  }
+
   .create-team:hover,
+  .create-team-icon:hover,
   .context-error button:hover {
     background: rgba(0, 240, 255, 0.055);
   }
