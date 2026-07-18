@@ -46,9 +46,7 @@ class ModelProviderRouteTests(unittest.TestCase):
             }.issubset(routes)
         )
         websocket_paths = {
-            route.path
-            for route in self.admin_app.app.routes
-            if route.__class__.__name__ == "APIWebSocketRoute"
+            route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }
         self.assertIn("/api/capsules/{cid}/chat/ws", websocket_paths)
         self.assertNotIn(("/api/capsules/{cid}/chat", "POST"), routes)
