@@ -212,7 +212,19 @@ test('late model responses from the previous Team cannot replace current authori
 test('central provider gate owns key entry without duplicating provider/model selects', () => {
   assert.match(gateSource, /type="password"/);
   assert.match(gateSource, /configureModelContext\(fetch, \$modelContext\.teamId/);
-  assert.match(gateSource, /selected\.configured \? copy\.activate : copy\.validate/);
+  assert.match(gateSource, /title: 'Brain BYOK'/);
+  assert.match(gateSource, /<h2 id="provider-gate-title">\{copy\.title\}<\/h2>\s*<p class="lead">\{copy\.lead\}<\/p>/);
+  assert.match(gateSource, /startChatting: 'Start Chatting'/);
+  assert.match(gateSource, /startChatting: 'Começar a conversar'/);
+  assert.match(gateSource, /startChatting: 'Empezar a chatear'/);
+  assert.match(gateSource, /startChatting: '开始聊天'/);
+  assert.match(gateSource, /startChatting: 'Commencer à discuter'/);
+  assert.match(gateSource, /startChatting: 'Chat starten'/);
+  assert.match(gateSource, /startChatting: 'チャットを開始'/);
+  assert.match(gateSource, /startChatting: 'ابدأ الدردشة'/);
+  assert.match(gateSource, /\? copy\.validating\s*: copy\.startChatting/);
+  const gateStyle = gateSource.slice(gateSource.indexOf('.provider-gate {'), gateSource.indexOf('.gate-mark {'));
+  assert.doesNotMatch(gateStyle, /background:|box-shadow:|border:/);
   assert.doesNotMatch(gateSource, /<select/);
   assert.doesNotMatch(gateSource, /api_key|resolve_api_key/);
 });

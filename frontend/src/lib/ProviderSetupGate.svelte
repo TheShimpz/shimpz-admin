@@ -5,21 +5,75 @@
   const COPY = {
     en: {
       eyebrow: 'Secure model setup',
-      title: 'Connect your Team brain',
-      lead: 'Validate one provider key to unlock this private chat. The key remains sealed inside your local Admin.',
+      title: 'Brain BYOK',
+      lead: 'Bring your own model API key to start this private Team chat. The key stays sealed inside your local Admin.',
       provider: 'Provider', model: 'Model', key: 'API key', keyPlaceholder: 'Paste your API key',
-      verified: 'Verified key ready', required: 'Validation required', validate: 'Validate and unlock chat',
-      activate: 'Use verified key', validating: 'Validating securely…', loading: 'Loading model settings…',
+      verified: 'Verified key ready', required: 'Validation required', startChatting: 'Start Chatting',
+      validating: 'Validating securely…', loading: 'Loading model settings…',
       retry: 'Try again', ready: 'Everything is ready',
     },
     pt: {
       eyebrow: 'Configuração segura do modelo',
-      title: 'Conecte o cérebro do seu Time',
-      lead: 'Valide uma chave de provider para liberar este chat privado. A chave permanece protegida no seu Admin local.',
+      title: 'Brain BYOK',
+      lead: 'Use sua própria chave de API de modelo para iniciar este chat privado do Time. A chave permanece protegida no seu Admin local.',
       provider: 'Provider', model: 'Modelo', key: 'Chave da API', keyPlaceholder: 'Cole sua chave da API',
-      verified: 'Chave validada e pronta', required: 'Validação necessária', validate: 'Validar e liberar o chat',
-      activate: 'Usar chave validada', validating: 'Validando com segurança…', loading: 'Carregando configuração do modelo…',
+      verified: 'Chave validada e pronta', required: 'Validação necessária', startChatting: 'Começar a conversar',
+      validating: 'Validando com segurança…', loading: 'Carregando configuração do modelo…',
       retry: 'Tentar novamente', ready: 'Está tudo certo',
+    },
+    es: {
+      eyebrow: 'Configuración segura del modelo',
+      title: 'Brain BYOK',
+      lead: 'Usa tu propia clave de API de modelo para iniciar este chat privado del Equipo. La clave permanece protegida en tu Admin local.',
+      provider: 'Proveedor', model: 'Modelo', key: 'Clave de API', keyPlaceholder: 'Pega tu clave de API',
+      verified: 'Clave verificada y lista', required: 'Validación necesaria', startChatting: 'Empezar a chatear',
+      validating: 'Validando de forma segura…', loading: 'Cargando ajustes del modelo…',
+      retry: 'Reintentar', ready: 'Todo está listo',
+    },
+    zh: {
+      eyebrow: '安全模型设置',
+      title: 'Brain BYOK',
+      lead: '使用你自己的模型 API 密钥开始此团队的私密聊天。密钥始终密封保存在本地 Admin 中。',
+      provider: '提供商', model: '模型', key: 'API 密钥', keyPlaceholder: '粘贴你的 API 密钥',
+      verified: '已验证的密钥已就绪', required: '需要验证', startChatting: '开始聊天',
+      validating: '正在安全验证…', loading: '正在加载模型设置…',
+      retry: '重试', ready: '一切准备就绪',
+    },
+    fr: {
+      eyebrow: 'Configuration sécurisée du modèle',
+      title: 'Brain BYOK',
+      lead: 'Utilisez votre propre clé d’API de modèle pour démarrer le chat privé de cette Équipe. La clé reste protégée dans votre Admin local.',
+      provider: 'Fournisseur', model: 'Modèle', key: 'Clé API', keyPlaceholder: 'Collez votre clé API',
+      verified: 'Clé vérifiée et prête', required: 'Validation requise', startChatting: 'Commencer à discuter',
+      validating: 'Validation sécurisée…', loading: 'Chargement des paramètres du modèle…',
+      retry: 'Réessayer', ready: 'Tout est prêt',
+    },
+    de: {
+      eyebrow: 'Sichere Modelleinrichtung',
+      title: 'Brain BYOK',
+      lead: 'Verwenden Sie Ihren eigenen Modell-API-Schlüssel, um den privaten Chat dieses Teams zu starten. Der Schlüssel bleibt sicher in Ihrem lokalen Admin.',
+      provider: 'Anbieter', model: 'Modell', key: 'API-Schlüssel', keyPlaceholder: 'API-Schlüssel einfügen',
+      verified: 'Verifizierter Schlüssel bereit', required: 'Validierung erforderlich', startChatting: 'Chat starten',
+      validating: 'Wird sicher validiert…', loading: 'Modelleinstellungen werden geladen…',
+      retry: 'Erneut versuchen', ready: 'Alles ist bereit',
+    },
+    ja: {
+      eyebrow: '安全なモデル設定',
+      title: 'Brain BYOK',
+      lead: '独自のモデル API キーを使って、このチームのプライベートチャットを開始します。キーはローカル Admin 内に安全に保管されます。',
+      provider: 'プロバイダー', model: 'モデル', key: 'API キー', keyPlaceholder: 'API キーを貼り付け',
+      verified: '検証済みのキーを使用できます', required: '検証が必要です', startChatting: 'チャットを開始',
+      validating: '安全に検証中…', loading: 'モデル設定を読み込み中…',
+      retry: '再試行', ready: '準備が整いました',
+    },
+    ar: {
+      eyebrow: 'إعداد آمن للنموذج',
+      title: 'Brain BYOK',
+      lead: 'استخدم مفتاح API الخاص بنموذجك لبدء الدردشة الخاصة بهذا الفريق. يبقى المفتاح محميًا داخل Admin المحلي.',
+      provider: 'المزوّد', model: 'النموذج', key: 'مفتاح API', keyPlaceholder: 'ألصق مفتاح API',
+      verified: 'المفتاح المتحقق منه جاهز', required: 'التحقق مطلوب', startChatting: 'ابدأ الدردشة',
+      validating: 'جارٍ التحقق بأمان…', loading: 'جارٍ تحميل إعدادات النموذج…',
+      retry: 'إعادة المحاولة', ready: 'كل شيء جاهز',
     },
   };
 
@@ -98,7 +152,7 @@
       >
         {submitting || $modelContext.phase === 'saving'
           ? copy.validating
-          : selected.configured ? copy.activate : copy.validate}
+          : copy.startChatting}
       </button>
     </form>
   {/if}
@@ -111,8 +165,6 @@
     justify-items: center;
     margin: auto;
     padding: clamp(1.3rem, 4vw, 2.2rem);
-    background: rgba(5, 7, 8, 0.94);
-    box-shadow: inset 0 0 0 1px var(--admin-divider);
     text-align: center;
   }
   .gate-mark { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; margin-bottom: 0.9rem; border: 1px solid var(--accent); transform: rotate(45deg); }

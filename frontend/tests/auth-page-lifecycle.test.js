@@ -59,7 +59,9 @@ test('keeps Chat viewport-bound while normal pages use a constrained responsive 
   assert.match(shell, /\.admin-shell\.authenticated \{[\s\S]*height: 100dvh;[\s\S]*'sidebar header' auto[\s\S]*'sidebar main' minmax\(0, 1fr\)[\s\S]*overflow: hidden;/);
   assert.match(shell, /minmax\(18rem, 20rem\) minmax\(0, 1fr\)/);
   assert.match(shell, /\.shell-sidebar \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\);/);
-  assert.match(shell, /\.sidebar-brand \{[\s\S]*min-height: calc\(5\.25rem \+ 1px\);[\s\S]*border-bottom: 1px solid var\(--admin-divider\);/);
+  assert.match(shell, /\.sidebar-brand \{[\s\S]*min-height: calc\(5\.25rem \+ 1px\);/);
+  assert.doesNotMatch(shell, /\.sidebar-brand \{[^}]*border-bottom:/s);
+  assert.doesNotMatch(shell, /\.shell-sidebar \{[^}]*border-bottom:/s);
   assert.match(shell, /\.admin-shell\.chat-mode \{[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/);
   assert.match(shell, /\.workspace \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\);[\s\S]*overflow: hidden;/);
   assert.match(shell, /\.content-stage \{[\s\S]*grid-row: 2;[\s\S]*padding: clamp\(1\.75rem, 4vw, 3\.25rem\);/);

@@ -367,6 +367,10 @@ test('Team sidebar owns one combined Brain selection below the Team picker', () 
   assert.match(brainSection, /\{:else if \$modelContext\.ready\}[\s\S]*\{copy\.modelReady\}/);
 });
 
+test('Team sidebar has no horizontal section dividers at any viewport', () => {
+  assert.doesNotMatch(sidebarSource, /border-(?:block-end|bottom|top):/);
+});
+
 test('Team sidebar follows client-side team deep links without owning another loader', () => {
   assert.match(sidebarSource, /import \{ goto \} from '\$app\/navigation';/);
   assert.match(sidebarSource, /import \{ page \} from '\$app\/state';/);

@@ -140,7 +140,6 @@
     min-height: calc(5.25rem + 1px);
     align-items: center;
     padding: 0 1.15rem;
-    border-bottom: 1px solid var(--admin-divider);
   }
 
   .team-sidebar-region {
@@ -213,7 +212,6 @@
     .shell-sidebar {
       grid-template-rows: auto minmax(0, auto);
       border-inline-end: 0;
-      border-bottom: 1px solid var(--admin-divider);
       overflow: visible;
     }
 
