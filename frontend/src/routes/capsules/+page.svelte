@@ -1,10 +1,9 @@
 <script>
   import { onMount } from 'svelte';
-  import AdminShell from '$lib/AdminShell.svelte';
   import CapsuleCard from '$lib/CapsuleCard.svelte';
-  import LocaleMenu from '$lib/LocaleMenu.svelte';
   import { t } from '$lib/i18n.js';
   import { safeApiError } from '$lib/localApi.js';
+  import { refreshTeams } from '$lib/teamContext.js';
 
   let phase = $state('checking'); // checking | needauth | ready
   let capsules = $state([]);
@@ -62,6 +61,14 @@
     createDialog?.showModal();
   }
 
+  async function refreshSharedTeamContext(preferredId = '') {
+    try {
+      await refreshTeams(fetch, preferredId);
+    } catch {
+      // The shared context exposes its own load error; the completed mutation remains successful.
+    }
+  }
+
   async function create() {
     if (!name.trim() || busy) return;
     busy = true;
@@ -77,9 +84,11 @@
         mutationError = safeApiError(body, 'Team creation failed.');
         return;
       }
+      const created = await response.json().catch(() => ({}));
       createDialog?.close();
       name = '';
       await refresh();
+      await refreshSharedTeamContext(typeof created.id === 'string' ? created.id : '');
     } catch {
       mutationError = 'Could not reach the local Admin API.';
     } finally {
@@ -109,18 +118,11 @@
       deleteDialog?.close();
       pendingDelete = null;
       await refresh();
+      await refreshSharedTeamContext();
     } catch {
       mutationError = 'Could not reach the local Admin API.';
     } finally {
       busy = false;
-    }
-  }
-
-  async function logout() {
-    try {
-      await fetch('/api/logout', { method: 'POST' });
-    } finally {
-      location.assign('/');
     }
   }
 
@@ -132,61 +134,59 @@
   <meta name="description" content="Create and manage isolated Shimpz Teams and their scoped Drivers." />
 </svelte:head>
 
-<AdminShell active="capsules" authenticated={phase === 'ready'} actions={shellActions}>
-  {#if phase === 'checking'}
-    <section class="loading-state" aria-live="polite">
-      <div class="pulse" aria-hidden="true"><span></span></div>
-      <p>{$t('capsules.loading')}</p>
-    </section>
-  {:else if phase === 'needauth'}
-    <section class="auth-gate">
-      <p class="kicker">Space // protected route</p>
-      <h1>{$t('capsules.needAuthTitle')}</h1>
-      <p>{$t('capsules.needAuthLead')}</p>
-      <a href="/">{$t('capsules.signIn')} <span aria-hidden="true">→</span></a>
-    </section>
-  {:else}
-    <section class="page-header" aria-labelledby="capsules-title">
-      <div>
-        <p class="kicker">{$t('capsules.kicker')}</p>
-        <h1 id="capsules-title">{$t('capsules.title')}</h1>
-        <p class="lead">{$t('capsules.lead')}</p>
-      </div>
+{#if phase === 'checking'}
+  <section class="loading-state" aria-live="polite">
+    <div class="pulse" aria-hidden="true"><span></span></div>
+    <p>{$t('capsules.loading')}</p>
+  </section>
+{:else if phase === 'needauth'}
+  <section class="auth-gate">
+    <p class="kicker">Space // protected route</p>
+    <h1>{$t('capsules.needAuthTitle')}</h1>
+    <p>{$t('capsules.needAuthLead')}</p>
+    <a href="/">{$t('capsules.signIn')} <span aria-hidden="true">→</span></a>
+  </section>
+{:else}
+  <section class="page-header" aria-labelledby="capsules-title">
+    <div>
+      <p class="kicker">{$t('capsules.kicker')}</p>
+      <h1 id="capsules-title">{$t('capsules.title')}</h1>
+      <p class="lead">{$t('capsules.lead')}</p>
+    </div>
 
-      <button class="create-button" type="button" onclick={openCreate}>
-        <span>{$t('capsules.create')}</span><span aria-hidden="true">＋</span>
-      </button>
-    </section>
+    <button class="create-button" type="button" onclick={openCreate}>
+      <span>{$t('capsules.create')}</span><span aria-hidden="true">＋</span>
+    </button>
+  </section>
 
-    <section class:offline={error} class="runtime-bar" aria-label="Team runtime summary">
-      <i aria-hidden="true"></i>
-      <strong>{runningCount}</strong><span>/ {capsules.length} running</span>
-    </section>
+  <section class:offline={error} class="runtime-bar" aria-label="Team runtime summary">
+    <i aria-hidden="true"></i>
+    <strong>{runningCount}</strong><span>/ {capsules.length} running</span>
+  </section>
 
-    {#if error}
-      <div class="page-error" role="alert">
-        <span>{error}</span>
-        <button type="button" onclick={refresh}>Retry</button>
-      </div>
-    {/if}
-
-    {#if capsules.length}
-      <div class="capsule-grid">
-        {#each capsules as capsule (capsule.id)}
-          <CapsuleCard {capsule} {busy} {showCredentials} onDelete={requestDestroy} />
-        {/each}
-      </div>
-    {:else if !error}
-      <section class="empty-state">
-        <div class="empty-orbit" aria-hidden="true"><span></span></div>
-        <p class="kicker">Team // 000</p>
-        <h2>{$t('capsules.emptyTitle')}</h2>
-        <p>{$t('capsules.emptyLead')}</p>
-        <button type="button" onclick={openCreate}>{$t('capsules.create')} <span aria-hidden="true">→</span></button>
-      </section>
-    {/if}
+  {#if error}
+    <div class="page-error" role="alert">
+      <span>{error}</span>
+      <button type="button" onclick={refresh}>Retry</button>
+    </div>
   {/if}
-</AdminShell>
+
+  {#if capsules.length}
+    <div class="capsule-grid">
+      {#each capsules as capsule (capsule.id)}
+        <CapsuleCard {capsule} {busy} {showCredentials} onDelete={requestDestroy} />
+      {/each}
+    </div>
+  {:else if !error}
+    <section class="empty-state">
+      <div class="empty-orbit" aria-hidden="true"><span></span></div>
+      <p class="kicker">Team // 000</p>
+      <h2>{$t('capsules.emptyTitle')}</h2>
+      <p>{$t('capsules.emptyLead')}</p>
+      <button type="button" onclick={openCreate}>{$t('capsules.create')} <span aria-hidden="true">→</span></button>
+    </section>
+  {/if}
+{/if}
 
 <dialog bind:this={createDialog} onclose={() => (mutationError = '')} aria-labelledby="create-title">
   <form class="dialog-panel" onsubmit={(event) => (event.preventDefault(), create())}>
@@ -258,44 +258,7 @@
   </div>
 </dialog>
 
-{#snippet shellActions()}
-  <LocaleMenu compact={phase !== 'ready'} />
-  {#if phase === 'ready'}
-    <button class="logout" type="button" onclick={logout} aria-label={$t('auth.logout')}>
-      <span>{$t('auth.logout')}</span><b aria-hidden="true">↪</b>
-    </button>
-  {/if}
-{/snippet}
-
 <style>
-  .logout {
-    display: inline-flex;
-    min-height: 2.75rem;
-    align-items: center;
-    gap: 0.45rem;
-    border: 0;
-    padding: 0 0.8rem;
-    background: var(--surface-1);
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-    color: var(--text-dim);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .logout b {
-    color: var(--accent);
-  }
-
-  .logout:hover {
-    color: var(--accent);
-    box-shadow: inset 0 0 0 1px var(--accent);
-  }
-
   .page-header {
     display: flex;
     align-items: end;
@@ -697,10 +660,6 @@
     .runtime-bar {
       align-items: flex-start;
       flex-direction: column;
-    }
-
-    .logout span {
-      display: none;
     }
   }
 </style>
