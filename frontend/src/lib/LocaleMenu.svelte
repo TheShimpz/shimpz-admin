@@ -1,7 +1,7 @@
 <script>
   import { locale, setLocale, LOCALES } from '$lib/i18n.js';
 
-  let { compact = false } = $props();
+  let { compact = false, wide = false } = $props();
   let open = $state(false);
   let currentLocale = $derived($locale);
   let current = $derived(LOCALES.find((item) => item.code === currentLocale) ?? LOCALES[0]);
@@ -18,7 +18,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="locale-menu">
+<div class="locale-menu" class:wide>
   <button
     class="locale-trigger"
     type="button"
@@ -60,6 +60,10 @@
     position: relative;
   }
 
+  .locale-menu.wide {
+    width: 100%;
+  }
+
   button {
     min-height: 2.75rem;
     border: 0;
@@ -82,6 +86,15 @@
   .locale-trigger:hover {
     color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .wide .locale-trigger {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .wide .chevron {
+    margin-inline-start: auto;
   }
 
   svg {
@@ -108,6 +121,11 @@
     background: var(--surface-2);
     box-shadow: var(--shadow);
     list-style: none;
+  }
+
+  .wide ul {
+    inset-inline: 0;
+    min-width: 0;
   }
 
   li button {

@@ -1,5 +1,6 @@
 <script>
   import AdminNotice from '$lib/AdminNotice.svelte';
+  import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
@@ -10,21 +11,39 @@
 <a class="skip-link" href="#admin-content">Skip to content</a>
 
 <div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
-  <header class="topbar">
-    <div class="topbar-inner">
-      {#if !authenticated}<ShimpzBrand />{/if}
+  {#if !authenticated}
+    <header class="topbar">
+      <div class="topbar-inner">
+        <ShimpzBrand />
 
-      <div class="header-actions">
-        <div class="locale-full"><LocaleMenu /></div>
-        <div class="locale-compact"><LocaleMenu compact /></div>
+        <div class="header-actions">
+          <div class="locale-full"><LocaleMenu /></div>
+          <div class="locale-compact"><LocaleMenu compact /></div>
+        </div>
       </div>
-    </div>
-  </header>
+    </header>
+  {/if}
 
   {#if authenticated}
     <aside class="shell-sidebar">
       <div class="sidebar-brand">
         <ShimpzBrand product="Admin" href="/chat/" ariaLabel="Shimpz Admin home" />
+      </div>
+      <div class="sidebar-controls">
+        <LocaleMenu wide />
+        <a
+          class="chat-button"
+          class:active={active === 'chat'}
+          href="/chat/"
+          aria-current={active === 'chat' ? 'page' : undefined}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 5.5h14v10H9l-4 3v-13Z"></path>
+            <path d="M8.5 9h7M8.5 12h4.5"></path>
+          </svg>
+          <span>{$t('chat.nav')}</span>
+          <small aria-hidden="true">// 01</small>
+        </a>
       </div>
       <div class="team-sidebar-region">
         <TeamSidebar {active} />
@@ -79,7 +98,6 @@
     height: 100vh;
     height: 100dvh;
     grid-template:
-      'sidebar header' auto
       'sidebar main' minmax(0, 1fr) /
       minmax(18rem, 20rem) minmax(0, 1fr);
     overflow: hidden;
@@ -96,10 +114,6 @@
     grid-area: header;
     border-bottom: 1px solid var(--admin-divider);
     background: rgba(0, 0, 0, 0.82);
-  }
-
-  .admin-shell.authenticated .topbar {
-    border-bottom: 0;
   }
 
   .topbar-inner {
@@ -132,7 +146,7 @@
     min-width: 0;
     min-height: 0;
     grid-area: sidebar;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     border-inline-end: 1px solid var(--admin-divider);
     background: rgba(3, 3, 3, 0.76);
     overflow: hidden;
@@ -144,6 +158,82 @@
     min-height: 4.5rem;
     align-items: center;
     padding: 0 1.15rem;
+  }
+
+  .sidebar-controls {
+    display: grid;
+    min-width: 0;
+    gap: 0.65rem;
+    padding: 0 1.15rem 1rem;
+  }
+
+  .chat-button {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 3.15rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0 0.8rem;
+    background:
+      linear-gradient(100deg, rgba(0, 240, 255, 0.1), transparent 58%),
+      #050708;
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: color 0.16s ease, filter 0.16s ease;
+  }
+
+  .chat-button::before {
+    position: absolute;
+    inset-block: 0.4rem;
+    inset-inline-start: 0;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    content: '';
+  }
+
+  .chat-button:hover,
+  .chat-button.active {
+    color: var(--accent);
+    filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.2));
+  }
+
+  .chat-button.active {
+    background:
+      linear-gradient(100deg, rgba(0, 240, 255, 0.17), transparent 68%),
+      #050708;
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .chat-button svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-width: 1.6;
+  }
+
+  .chat-button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-button small {
+    color: var(--text-faint);
+    font-size: 0.48rem;
+    letter-spacing: 0.08em;
   }
 
   .team-sidebar-region {
@@ -207,14 +297,13 @@
 
     .admin-shell.authenticated {
       grid-template:
-        'header' auto
         'sidebar' auto
         'main' minmax(0, 1fr) /
         minmax(0, 1fr);
     }
 
     .shell-sidebar {
-      grid-template-rows: auto minmax(0, auto);
+      grid-template-rows: auto auto minmax(0, auto);
       border-inline-end: 0;
       overflow: visible;
     }
@@ -234,7 +323,7 @@
 
   @media (max-width: 760px) and (max-height: 600px) {
     .chat-mode .shell-sidebar {
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
     }
 
     .chat-mode .team-sidebar-region {
@@ -253,8 +342,7 @@
   }
 
   @media (max-width: 420px) {
-    .header-actions {
-      gap: 0.3rem;
-    }
+    .header-actions { gap: 0.3rem; }
+    .sidebar-controls { padding-inline: 0.75rem; }
   }
 </style>
