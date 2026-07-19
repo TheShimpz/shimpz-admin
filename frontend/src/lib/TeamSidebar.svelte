@@ -86,7 +86,7 @@
 </script>
 
 <div class="team-sidebar" role="region" aria-label={copy.sidebar}>
-  {#if $teamContext.phase === 'error'}
+  {#if $teamContext.phase === 'error' && active !== 'chat'}
     <div class="context-error" role="alert">
       <p>{$teamContext.error}</p>
       <button type="button" onclick={retry}>{copy.retry}</button>

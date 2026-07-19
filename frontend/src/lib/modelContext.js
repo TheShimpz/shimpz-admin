@@ -145,6 +145,7 @@ export async function selectTeamBrain(fetcher, teamId, providerId, modelId) {
   ) {
     throw new LocalApiError('Invalid Team model request.');
   }
+  if (current.provider === selected.id && current.model === modelId) return current;
   generation += 1;
   modelContext.set({
     ...current,

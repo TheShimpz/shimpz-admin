@@ -8,6 +8,7 @@ import {
   clearTeamContext,
   createTeam,
   loadTeamContext,
+  MAX_SELECTED_ASSISTANTS,
   refreshTeamInventory,
   selectAllTeamAssistants,
   selectOnlyTeamAssistant,
@@ -376,6 +377,76 @@ test('Assistant inventory refresh intersects a deliberate selection without enab
   assert.deepEqual(get(teamContext).selectedAssistantIds, []);
 });
 
+test('Assistant scope survives reload in session storage but is reconciled to verified running inventory', async () => {
+  const previousStorage = globalThis.sessionStorage;
+  const values = new Map();
+  globalThis.sessionStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  const key = 'shimpz.admin.chat.assistants.v1:marketing';
+  const twoAssistants = fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [
+        { assistant: 'hello-pulse', status: 'running' },
+        { assistant: 'salesnator', status: 'running' },
+      ],
+    }),
+  });
+
+  try {
+    clearTeamContext();
+    await loadTeamContext(twoAssistants, 'marketing');
+    assert.equal(selectOnlyTeamAssistant('salesnator'), true);
+    assert.equal(values.get(key), JSON.stringify(['salesnator']));
+
+    clearTeamContext();
+    await loadTeamContext(twoAssistants, 'marketing');
+    assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+
+    clearTeamContext();
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+
+    values.set(key, JSON.stringify(['not-installed']));
+    clearTeamContext();
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    assert.deepEqual(get(teamContext).selectedAssistantIds, []);
+    assert.equal(values.get(key), '[]');
+
+    values.set(key, JSON.stringify(['../escape']));
+    clearTeamContext();
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+  } finally {
+    clearTeamContext();
+    if (previousStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousStorage;
+  }
+});
+
+test('Assistant scope enforces and exposes the exact protocol limit', async () => {
+  const catalog = Array.from({ length: MAX_SELECTED_ASSISTANTS + 1 }, (_value, index) => ({
+    id: `assistant-${index}`,
+    title: `Assistant ${index}`,
+  }));
+  const installed = catalog.map((entry) => ({ assistant: entry.id, status: 'running' }));
+  await loadTeamContext(fixtureFetcher({
+    '/api/assistants': async () => response(200, { assistants: catalog }),
+    '/api/teams/marketing/assistants': async () => response(200, { assistants: installed }),
+  }), 'marketing');
+
+  assert.equal(get(teamContext).selectedAssistantIds.length, MAX_SELECTED_ASSISTANTS);
+  assert.equal(toggleTeamAssistant(`assistant-${MAX_SELECTED_ASSISTANTS}`), false);
+  assert.equal(unselectAllTeamAssistants(), true);
+  assert.equal(selectAllTeamAssistants(), true);
+  assert.deepEqual(
+    get(teamContext).selectedAssistantIds,
+    installed.slice(0, MAX_SELECTED_ASSISTANTS).map((entry) => entry.assistant),
+  );
+});
+
 test('Team sidebar keeps context authority and exposes only Team files', () => {
   assert.match(sidebarSource, /loadTeamContext\(fetch, requestedTeamId\)/);
   assert.match(sidebarSource, /loadModelContext\(fetch, teamId\)/);
@@ -419,6 +490,7 @@ test('Team sidebar follows client-side team deep links without owning another lo
 
 test('Team sidebar keeps file controls scoped to Chat', () => {
   assert.match(sidebarSource, /\{#if active === 'chat'\}[\s\S]*?<input[\s\S]*?type="checkbox"/);
+  assert.match(sidebarSource, /\{#if \$teamContext\.phase === 'error' && active !== 'chat'\}/);
 });
 
 test('composer context uses separate accessible dialogs instead of selects', () => {
@@ -434,12 +506,32 @@ test('composer context uses separate accessible dialogs instead of selects', () 
 
 test('composer context provides model buttons and complete Assistant scope controls', () => {
   assert.match(contextControlsSource, /selectTeamBrain\(fetch, teamId, brain\.provider, brain\.model\)/);
-  assert.match(contextControlsSource, /role="radiogroup"/);
+  assert.match(contextControlsSource, /brain\.provider === \$modelContext\.provider && brain\.model === \$modelContext\.model/);
+  assert.doesNotMatch(contextControlsSource, /role="radio(?:group)?"|aria-checked/);
+  assert.match(contextControlsSource, /aria-pressed=/);
   assert.match(contextControlsSource, /entry\.status === 'running'/);
   assert.match(contextControlsSource, /type="checkbox"/);
   assert.match(contextControlsSource, /onclick=\{selectAllTeamAssistants\}/);
   assert.match(contextControlsSource, /onclick=\{unselectAllTeamAssistants\}/);
   assert.match(contextControlsSource, /selectOnlyTeamAssistant\(assistant\.id\)/);
+  assert.match(contextControlsSource, /aria-label=\{format\(copy\.onlyThisNamed, \{ name: assistant\.name \}\)\}/);
+  assert.match(contextControlsSource, /selectMaximum/);
+  assert.match(contextControlsSource, /selectedLimited/);
+  assert.match(contextControlsSource, /selectedCount >= MAX_SELECTED_ASSISTANTS/);
   assert.match(contextControlsSource, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(contextControlsSource, /@media \(max-width: 640px\)[\s\S]*overflow-x: auto/);
+  assert.doesNotMatch(contextControlsSource, /overflow-x: auto|grid-auto-flow: column/);
+});
+
+test('composer context localizes every supported Admin locale and removes hard-coded kickers', () => {
+  for (const code of ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']) {
+    assert.match(contextControlsSource, new RegExp(`\\b${code}: \\{`));
+  }
+  assert.match(contextControlsSource, /aria-label=\{copy\.contextAria\}/);
+  assert.match(contextControlsSource, /\{copy\.teamKicker\}/);
+  assert.match(contextControlsSource, /\{copy\.brainKicker\}/);
+  assert.match(contextControlsSource, /\{copy\.assistantKicker\}/);
+  assert.match(contextControlsSource, /\{copy\.createKicker\}/);
+  assert.match(contextControlsSource, /dialogError = copy\.createFailed/);
+  assert.match(contextControlsSource, /\{copy\.modelFailed\}/);
+  assert.doesNotMatch(contextControlsSource, />Team \/\/ context<|>Brain \/\/ context<|>Assistants \/\/ context<|>Team \/\/ initialize</);
 });

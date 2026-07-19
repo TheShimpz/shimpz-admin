@@ -93,6 +93,22 @@ test('persists one atomic Brain change when its provider key is verified', async
   assert.equal(get(modelContext).ready, true);
 });
 
+test('selecting the current Brain is a true no-op that preserves ready authority', async () => {
+  let calls = 0;
+  const base = fixtureFetcher();
+  const fetcher = async (...args) => { calls += 1; return base(...args); };
+  await loadModelContext(fetcher, 'marketing');
+  calls = 0;
+  const before = get(modelContext);
+
+  const result = await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-5.6-terra');
+
+  assert.equal(calls, 0);
+  assert.strictEqual(result, before);
+  assert.strictEqual(get(modelContext), before);
+  assert.equal(get(modelContext).ready, true);
+});
+
 test('selecting an unverified Brain preserves its exact model without writing inference', async () => {
   let calls = 0;
   const base = fixtureFetcher();

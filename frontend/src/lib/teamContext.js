@@ -6,10 +6,13 @@ import { listTeamFiles } from './localChat.js';
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const TRACE_ID_RE = /^[0-9a-f]{32}$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
+const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const MAX_TEAMS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_SELECTED_FILES = 8;
-const MAX_SELECTED_ASSISTANTS = 16;
+const MAX_STORED_SELECTION_BYTES = 4096;
+const ASSISTANT_SELECTION_KEY_PREFIX = 'shimpz.admin.chat.assistants.v1:';
+export const MAX_SELECTED_ASSISTANTS = 16;
 
 function emptyContext() {
   return {
@@ -30,6 +33,52 @@ export const teamContext = writable(emptyContext());
 let generation = 0;
 const assistantSelections = new Map();
 
+function selectionStorage() {
+  try {
+    return typeof globalThis.sessionStorage === 'undefined' ? null : globalThis.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function selectionStorageKey(teamId) {
+  return `${ASSISTANT_SELECTION_KEY_PREFIX}${teamId}`;
+}
+
+function readStoredAssistantSelection(teamId) {
+  const storage = selectionStorage();
+  if (!storage) return undefined;
+  const key = selectionStorageKey(teamId);
+  try {
+    const raw = storage.getItem(key);
+    if (raw === null) return undefined;
+    if (raw.length > MAX_STORED_SELECTION_BYTES) throw new Error('oversized preference');
+    const parsed = JSON.parse(raw);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length > MAX_SELECTED_ASSISTANTS ||
+      parsed.some((id) => typeof id !== 'string' || id.length > 80 || !ASSISTANT_ID_RE.test(id)) ||
+      new Set(parsed).size !== parsed.length
+    ) {
+      throw new Error('invalid preference');
+    }
+    return parsed;
+  } catch {
+    try { storage.removeItem(key); } catch { /* Session preferences are best-effort only. */ }
+    return undefined;
+  }
+}
+
+function writeStoredAssistantSelection(teamId, selected) {
+  const storage = selectionStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(selectionStorageKey(teamId), JSON.stringify(selected));
+  } catch {
+    // Chat scope stays correct in memory when browser session storage is unavailable.
+  }
+}
+
 function runningAssistantIds(installedAssistants) {
   return installedAssistants
     .filter((entry) => entry.status === 'running')
@@ -39,10 +88,14 @@ function runningAssistantIds(installedAssistants) {
 function reconcileAssistantSelection(teamId, installedAssistants) {
   const running = runningAssistantIds(installedAssistants);
   const allowed = new Set(running);
-  const selected = assistantSelections.has(teamId)
-    ? assistantSelections.get(teamId).filter((id) => allowed.has(id))
-    : running.slice(0, MAX_SELECTED_ASSISTANTS);
+  const remembered = assistantSelections.has(teamId)
+    ? assistantSelections.get(teamId)
+    : readStoredAssistantSelection(teamId);
+  const selected = remembered === undefined
+    ? running.slice(0, MAX_SELECTED_ASSISTANTS)
+    : remembered.filter((id) => allowed.has(id));
   assistantSelections.set(teamId, selected);
+  writeStoredAssistantSelection(teamId, selected);
   return [...selected];
 }
 
@@ -376,6 +429,7 @@ function updateAssistantSelection(project) {
       next.every((id, index) => id === state.selectedAssistantIds[index])
     ) return state;
     assistantSelections.set(state.selectedTeamId, [...next]);
+    writeStoredAssistantSelection(state.selectedTeamId, next);
     changed = true;
     return { ...state, selectedAssistantIds: [...next] };
   });
