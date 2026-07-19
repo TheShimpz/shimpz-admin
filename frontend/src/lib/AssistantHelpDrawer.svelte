@@ -106,8 +106,11 @@
   aside {
     display: grid;
     width: min(25rem, 34vw);
+    height: 100vh;
+    height: 100dvh;
     min-width: 18rem;
     min-height: 0;
+    max-height: 100dvh;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 0.8rem;
     border-inline-end: 1px solid var(--admin-divider);
@@ -131,6 +134,6 @@
   .status.error { color: var(--danger); }
 
   @media (max-width: 820px) {
-    aside { position: absolute; z-index: 20; inset-block: 0; inset-inline-end: 0; width: min(90vw, 25rem); min-width: 0; box-shadow: -1rem 0 2rem rgba(0, 0, 0, 0.65); }
+    aside { position: fixed; z-index: 110; inset-block: 0; inset-inline-end: 0; width: min(90vw, 25rem); min-width: 0; box-shadow: -1rem 0 2rem rgba(0, 0, 0, 0.65); }
   }
 </style>

@@ -222,6 +222,17 @@ test('loads Help lazily per installed Assistant with an accessible multilingual 
   }
 });
 
+test('keeps Assistant Help at full viewport height across desktop and narrow layouts', () => {
+  assert.match(
+    drawerSource,
+    /aside \{[\s\S]*height: 100vh;\s*height: 100dvh;[\s\S]*max-height: 100dvh;/,
+  );
+  assert.match(
+    drawerSource,
+    /@media \(max-width: 820px\) \{\s*aside \{ position: fixed; z-index: 110; inset-block: 0; inset-inline-end: 0;/,
+  );
+});
+
 test('renders only closed Svelte Help nodes without an HTML injection escape hatch', () => {
   assert.doesNotMatch(`${drawerSource}\n${markdownSource}\n${inlineSource}`, /\{@html/i);
   for (const element of ['h1', 'h2', 'h3', 'p', 'ul', 'ol', 'pre', 'code', 'strong', 'em']) {
