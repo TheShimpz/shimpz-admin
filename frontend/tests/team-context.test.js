@@ -523,6 +523,21 @@ test('composer context provides model buttons and complete Assistant scope contr
   assert.doesNotMatch(contextControlsSource, /overflow-x: auto|grid-auto-flow: column/);
 });
 
+test('Assistant context hides empty bulk actions and opens the Store for the selected Team', () => {
+  assert.match(
+    contextControlsSource,
+    /\{#if runningAssistants\.length > 0\}\s*<div class="bulk-actions">[\s\S]*onclick=\{selectAllTeamAssistants\}[\s\S]*onclick=\{unselectAllTeamAssistants\}/,
+  );
+  assert.match(
+    contextControlsSource,
+    /async function openAssistantStore\(\) \{\s*const teamId = activeTeam\?\.id;\s*if \(!teamId\) return;\s*assistantDialog\?\.close\(\);\s*await goto\(`\/assistants\/\?team=\$\{encodeURIComponent\(teamId\)\}`\);/,
+  );
+  assert.match(
+    contextControlsSource,
+    /<footer>[\s\S]*onclick=\{openAssistantStore\}>\{copy\.addAssistant\}<\/button>[\s\S]*<\/footer>/,
+  );
+});
+
 test('composer context localizes every supported Admin locale and removes hard-coded kickers', () => {
   for (const code of ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']) {
     assert.match(contextControlsSource, new RegExp(`\\b${code}: \\{`));
