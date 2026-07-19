@@ -7,6 +7,7 @@ import { get } from 'svelte/store';
 import {
   clearTeamContext,
   createTeam,
+  deleteTeam,
   loadTeamContext,
   MAX_SELECTED_ASSISTANTS,
   refreshTeamInventory,
@@ -296,6 +297,131 @@ test('keeps a confirmed Team creation successful when its follow-up context refr
   );
 });
 
+test('deletes a Team with exact credentials, clears its stored scope, and selects a remaining Team', async () => {
+  const previousStorage = globalThis.sessionStorage;
+  const values = new Map();
+  globalThis.sessionStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  const calls = [];
+  let deleted = false;
+  const fetcher = fixtureFetcher({
+    '/api/teams': async () => response(200, {
+      teams: deleted
+        ? [{ team_id: 'support', team_name: 'Support', status: 'running' }]
+        : [
+            { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+            { team_id: 'support', team_name: 'Support', status: 'running' },
+          ],
+    }),
+    '/api/teams/marketing': async (options) => {
+      calls.push(options);
+      deleted = true;
+      return response(200, {
+        team_id: 'marketing',
+        destroyed: true,
+        assistants_removed: 1,
+        storage_removed: false,
+        trace_id: 'c'.repeat(32),
+      });
+    },
+  });
+
+  try {
+    await loadTeamContext(fetcher, 'marketing');
+    const key = 'shimpz.admin.chat.assistants.v1:marketing';
+    assert.equal(values.get(key), JSON.stringify(['salesnator']));
+
+    const result = await deleteTeam(fetcher, 'marketing', 'Marketing', 'correct horse battery staple');
+
+    assert.deepEqual(calls, [{
+      method: 'DELETE',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ team_name: 'Marketing', password: 'correct horse battery staple' }),
+    }]);
+    assert.deepEqual(result, {
+      teamId: 'marketing',
+      destroyed: true,
+      assistantsRemoved: 1,
+      storageRemoved: false,
+    });
+    assert.equal(values.has(key), false);
+    assert.equal(get(teamContext).phase, 'ready');
+    assert.equal(get(teamContext).selectedTeamId, 'support');
+    assert.deepEqual(get(teamContext).teams, [
+      { id: 'support', name: 'Support', status: 'running' },
+    ]);
+  } finally {
+    clearTeamContext();
+    if (previousStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousStorage;
+  }
+});
+
+test('Team deletion fails closed on an inexact name or malformed success envelope', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  let requests = 0;
+  await assert.rejects(
+    deleteTeam(async () => { requests += 1; }, 'marketing', 'marketing', 'secret'),
+    (error) => error instanceof LocalApiError && error.message === 'Enter the exact Team name.',
+  );
+  assert.equal(requests, 0);
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.equal(get(teamContext).selectedTeamId, 'marketing');
+
+  await assert.rejects(
+    deleteTeam(fixtureFetcher({
+      '/api/teams/marketing': async () => response(200, {
+        team_id: 'marketing',
+        destroyed: true,
+        assistants_removed: 1,
+        storage_removed: true,
+        redirect: 'https://example.test',
+      }),
+    }), 'marketing', 'Marketing', 'secret'),
+    (error) => error instanceof LocalApiError && error.message === 'The Team deletion returned an invalid response.',
+  );
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.equal(get(teamContext).selectedTeamId, 'marketing');
+});
+
+test('deleting the last Team rehydrates an authoritative empty context', async () => {
+  let deleted = false;
+  const fetcher = fixtureFetcher({
+    '/api/teams': async () => response(200, {
+      teams: deleted
+        ? []
+        : [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+    }),
+    '/api/teams/marketing': async () => {
+      deleted = true;
+      return response(200, {
+        team_id: 'marketing',
+        destroyed: true,
+        assistants_removed: 1,
+        storage_removed: true,
+      });
+    },
+  });
+
+  await loadTeamContext(fetcher, 'marketing');
+  await deleteTeam(fetcher, 'marketing', 'Marketing', 'secret');
+
+  assert.deepEqual(get(teamContext), {
+    phase: 'ready',
+    teams: [],
+    selectedTeamId: '',
+    catalog: [],
+    installedAssistants: [],
+    selectedAssistantIds: [],
+    files: [],
+    selectedFileIds: [],
+    error: '',
+  });
+});
+
 test('rejects ambiguous Team creation responses without trusting their identity', async () => {
   for (const body of [
     {
@@ -497,11 +623,18 @@ test('composer context uses separate accessible dialogs instead of selects', () 
   assert.match(contextControlsSource, /<dialog bind:this=\{brainDialog\} aria-labelledby="chat-brain-dialog-title"/);
   assert.match(contextControlsSource, /<dialog bind:this=\{assistantDialog\} aria-labelledby="chat-assistant-dialog-title"/);
   assert.match(contextControlsSource, /<dialog bind:this=\{createDialog\} aria-labelledby="chat-create-team-title"/);
+  assert.match(contextControlsSource, /bind:this=\{deleteDialog\}[\s\S]*aria-labelledby="chat-delete-team-title"[\s\S]*aria-describedby="chat-delete-team-lead"/);
   assert.equal(contextControlsSource.match(/<strong>\{team\.name\}<\/strong>/g)?.length, 1);
   assert.doesNotMatch(contextControlsSource, /<select/);
   assert.match(contextControlsSource, /next\.searchParams\.set\('team', id\)/);
   assert.match(contextControlsSource, /goto\(next, \{ replaceState: true, keepFocus: true, noScroll: true \}\)/);
   assert.match(contextControlsSource, /window\.location\.assign\(`\/assistants\/\?team=\$\{encodeURIComponent\(created\.id\)\}`\)/);
+  assert.match(contextControlsSource, /deleteTeam\(fetch, target\.id, deleteName, adminPassword\)/);
+  assert.match(contextControlsSource, /deleteName !== deletingTeam\.name \|\| !adminPassword/);
+  assert.match(contextControlsSource, /autocomplete="current-password"/);
+  assert.match(contextControlsSource, /next\.searchParams\.delete\('team'\)/);
+  assert.match(contextControlsSource, /finally \{\s*deleting = false;\s*resetDeleteForm\(\);/);
+  assert.doesNotMatch(contextControlsSource, /\bconfirm\s*\(/);
 });
 
 test('composer context provides model buttons and complete Assistant scope controls', () => {
@@ -538,6 +671,8 @@ test('composer context localizes every supported Admin locale and removes hard-c
   for (const code of ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']) {
     assert.match(contextControlsSource, new RegExp(`\\b${code}: \\{`));
   }
+  assert.equal(contextControlsSource.match(/deleteKicker:/g)?.length, 8);
+  assert.equal(contextControlsSource.match(/deleteFailed:/g)?.length, 8);
   assert.match(contextControlsSource, /aria-label=\{copy\.contextAria\}/);
   assert.match(contextControlsSource, /\{copy\.teamKicker\}/);
   assert.match(contextControlsSource, /\{copy\.brainKicker\}/);

@@ -9,6 +9,7 @@ const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const MAX_TEAMS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
+const MAX_ADMIN_PASSWORD_CHARS = 4096;
 const MAX_SELECTED_FILES = 8;
 const MAX_STORED_SELECTION_BYTES = 4096;
 const ASSISTANT_SELECTION_KEY_PREFIX = 'shimpz.admin.chat.assistants.v1:';
@@ -76,6 +77,17 @@ function writeStoredAssistantSelection(teamId, selected) {
     storage.setItem(selectionStorageKey(teamId), JSON.stringify(selected));
   } catch {
     // Chat scope stays correct in memory when browser session storage is unavailable.
+  }
+}
+
+function clearStoredAssistantSelection(teamId) {
+  assistantSelections.delete(teamId);
+  const storage = selectionStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(selectionStorageKey(teamId));
+  } catch {
+    // Deletion remains authoritative when browser session storage is unavailable.
   }
 }
 
@@ -512,4 +524,69 @@ export async function createTeam(fetcher, name) {
     markFailure(attempt, error, 'The Team was created, but its local context could not be refreshed.', false);
   }
   return created;
+}
+
+export async function deleteTeam(fetcher, id, name, password) {
+  requireFetcher(fetcher);
+  const canonicalId = preferredTeamId(id);
+  const current = get(teamContext);
+  const target = current.teams.find((team) => team.id === canonicalId);
+  if (!target || current.phase !== 'ready') {
+    throw new LocalApiError('Invalid local Team request.');
+  }
+  if (typeof name !== 'string' || name !== target.name) {
+    throw new LocalApiError('Enter the exact Team name.');
+  }
+  if (typeof password !== 'string' || !password || password.length > MAX_ADMIN_PASSWORD_CHARS) {
+    throw new LocalApiError('Enter the current Admin password.');
+  }
+
+  const attempt = ++generation;
+  teamContext.set({ ...current, phase: 'loading', error: '' });
+  let result;
+  try {
+    const response = await fetcher(`/api/teams/${encodeURIComponent(canonicalId)}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ team_name: name, password }),
+    });
+    const body = await jsonObject(response);
+    if (!response.ok) {
+      throw new LocalApiError(safeApiError(body, 'The Team could not be deleted.'), response.status);
+    }
+    if (
+      !hasExactEnvelopeKeys(body, ['assistants_removed', 'destroyed', 'storage_removed', 'team_id']) ||
+      body.team_id !== canonicalId ||
+      typeof body.destroyed !== 'boolean' ||
+      !Number.isSafeInteger(body.assistants_removed) ||
+      body.assistants_removed < 0 ||
+      typeof body.storage_removed !== 'boolean'
+    ) {
+      throw new LocalApiError('The Team deletion returned an invalid response.', response.status);
+    }
+    result = {
+      teamId: body.team_id,
+      destroyed: body.destroyed,
+      assistantsRemoved: body.assistants_removed,
+      storageRemoved: body.storage_removed,
+    };
+  } catch (error) {
+    const safe = publicError(error, 'The Team could not be deleted.');
+    if (attempt === generation) teamContext.set({ ...current, phase: 'ready', error: '' });
+    throw safe;
+  }
+
+  clearStoredAssistantSelection(canonicalId);
+  const preferredId = current.selectedTeamId === canonicalId ? '' : current.selectedTeamId;
+  try {
+    await hydrate(fetcher, preferredId, attempt, '');
+  } catch (error) {
+    throw markFailure(
+      attempt,
+      error,
+      'The Team was deleted, but the remaining Team context could not be refreshed.',
+      true,
+    );
+  }
+  return result;
 }
