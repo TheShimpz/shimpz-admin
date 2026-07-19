@@ -5,7 +5,8 @@
 
   import { locale } from '$lib/i18n.js';
   import { clearModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
-  import { loadTeamContext, selectTeam, teamContext } from '$lib/teamContext.js';
+  import { ASSISTANT_RUNTIME_UPDATED_EVENT } from '$lib/notifications.js';
+  import { loadTeamContext, refreshTeamInventory, selectTeam, teamContext } from '$lib/teamContext.js';
 
   let { active = '' } = $props();
 
@@ -20,6 +21,7 @@
   };
 
   let copy = $derived($locale === 'pt' ? COPY.pt : COPY.en);
+  let runtimeRefresh = null;
   let requestedTeamId = $derived.by(() => {
     const candidate = page.url.searchParams.get('team') ?? '';
     return TEAM_ID_RE.test(candidate) ? candidate : '';
@@ -37,6 +39,17 @@
     } catch {
       // The shared context owns the visible fail-closed error state.
     }
+  }
+
+  function refreshUpdatedAssistants() {
+    if (runtimeRefresh || !$teamContext.selectedTeamId) return;
+    runtimeRefresh = refreshTeamInventory(fetch)
+      .catch(() => {
+        // The shared context owns its bounded, fail-closed error state.
+      })
+      .finally(() => {
+        runtimeRefresh = null;
+      });
   }
 
   $effect(() => {
@@ -67,6 +80,8 @@
     if ($teamContext.phase === 'idle') {
       loadTeamContext(fetch, requestedTeamId).catch(() => {});
     }
+    window.addEventListener(ASSISTANT_RUNTIME_UPDATED_EVENT, refreshUpdatedAssistants);
+    return () => window.removeEventListener(ASSISTANT_RUNTIME_UPDATED_EVENT, refreshUpdatedAssistants);
   });
 </script>
 

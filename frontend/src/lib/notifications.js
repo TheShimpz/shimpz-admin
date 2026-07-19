@@ -5,6 +5,7 @@ const MAX_NOTIFICATIONS = 256;
 const MAX_ASSISTANT_ID_LENGTH = 80;
 const MAX_HEADLINE_LENGTH = 160;
 const MAX_CHANGELOG_BYTES = 32 * 1024;
+export const ASSISTANT_RUNTIME_UPDATED_EVENT = 'shimpz:assistant-runtime-updated';
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -113,6 +114,13 @@ export function getNotifications(fetchImpl) {
 
 export function syncNotifications(fetchImpl) {
   return requestJson(fetchImpl, '/api/notifications/sync', { method: 'POST' }, parseNotificationSyncEnvelope);
+}
+
+/** Announce a completed local runtime upgrade without exposing Assistant or Team metadata. */
+export function dispatchAssistantRuntimeUpdated(target = globalThis.window) {
+  if (!target || typeof target.dispatchEvent !== 'function') return false;
+  target.dispatchEvent(new Event(ASSISTANT_RUNTIME_UPDATED_EVENT));
+  return true;
 }
 
 export function readNotification(fetchImpl, notificationId) {

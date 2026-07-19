@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  ASSISTANT_RUNTIME_UPDATED_EVENT,
   clearNotifications,
+  dispatchAssistantRuntimeUpdated,
   getNotifications,
   parseNotificationEnvelope,
   parseNotificationSyncEnvelope,
@@ -109,6 +111,18 @@ test('uses the narrow same-origin notification API with the intended methods', a
   assert.throws(() => readNotification(fetchEnvelope, '../session'), /invalid notification id/);
 });
 
+test('dispatches one metadata-free internal event after a runtime upgrade', () => {
+  const target = new EventTarget();
+  const received = [];
+  target.addEventListener(ASSISTANT_RUNTIME_UPDATED_EVENT, (event) => received.push(event));
+
+  assert.equal(dispatchAssistantRuntimeUpdated(target), true);
+  assert.equal(dispatchAssistantRuntimeUpdated(undefined), false);
+  assert.equal(received.length, 1);
+  assert.equal(received[0].type, 'shimpz:assistant-runtime-updated');
+  assert.equal(received[0] instanceof CustomEvent, false);
+});
+
 test('mounts an accessible localized drawer beside the Admin brand and renders closed-AST Markdown', () => {
   const component = readFileSync(new URL('../src/lib/NotificationCenter.svelte', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../src/lib/AdminShell.svelte', import.meta.url), 'utf8');
@@ -124,7 +138,8 @@ test('mounts an accessible localized drawer beside the Admin brand and renders c
   assert.match(component, /height: 100dvh;/);
   assert.match(component, /onMount\(\(\) => \{\s*void initialize\(\);/);
   assert.match(component, /applySnapshot\(await getNotifications\(fetch\)\)/);
-  assert.match(component, /applySnapshot\(await syncNotifications\(fetch\)\)/);
+  assert.match(component, /const snapshot = await syncNotifications\(fetch\);/);
+  assert.match(component, /if \(snapshot\.sync\.updated_assistants > 0\) dispatchAssistantRuntimeUpdated\(\);/);
   assert.match(component, /readNotification\(fetch, notification\.id\)/);
   assert.match(component, /readAllNotifications\(fetch\)/);
   assert.match(component, /clearNotifications\(fetch\)/);

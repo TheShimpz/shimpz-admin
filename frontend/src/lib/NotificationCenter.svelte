@@ -4,6 +4,7 @@
   import { locale } from '$lib/i18n.js';
   import {
     clearNotifications,
+    dispatchAssistantRuntimeUpdated,
     getNotifications,
     readAllNotifications,
     readNotification,
@@ -92,7 +93,9 @@
     }
 
     try {
-      applySnapshot(await syncNotifications(fetch));
+      const snapshot = await syncNotifications(fetch);
+      applySnapshot(snapshot);
+      if (snapshot.sync.updated_assistants > 0) dispatchAssistantRuntimeUpdated();
     } catch {
       // Notification refresh is deliberately best-effort and must never block local Admin access.
     }

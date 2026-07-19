@@ -32,6 +32,20 @@ const contextControlsSource = readFileSync(
   'utf8',
 );
 
+test('refreshes the selected Team inventory after an internal Assistant runtime update', () => {
+  assert.match(sidebarSource, /import \{ ASSISTANT_RUNTIME_UPDATED_EVENT \} from '\$lib\/notifications\.js';/);
+  assert.match(sidebarSource, /refreshTeamInventory\(fetch\)/);
+  assert.match(
+    sidebarSource,
+    /window\.addEventListener\(ASSISTANT_RUNTIME_UPDATED_EVENT, refreshUpdatedAssistants\);/,
+  );
+  assert.match(
+    sidebarSource,
+    /window\.removeEventListener\(ASSISTANT_RUNTIME_UPDATED_EVENT, refreshUpdatedAssistants\);/,
+  );
+  assert.match(sidebarSource, /if \(runtimeRefresh \|\| !\$teamContext\.selectedTeamId\) return;/);
+});
+
 function response(status, body) {
   return {
     ok: status >= 200 && status < 300,
