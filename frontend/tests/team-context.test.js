@@ -498,6 +498,7 @@ test('composer context uses separate accessible dialogs instead of selects', () 
   assert.match(contextControlsSource, /<dialog bind:this=\{brainDialog\} aria-labelledby="chat-brain-dialog-title"/);
   assert.match(contextControlsSource, /<dialog bind:this=\{assistantDialog\} aria-labelledby="chat-assistant-dialog-title"/);
   assert.match(contextControlsSource, /<dialog bind:this=\{createDialog\} aria-labelledby="chat-create-team-title"/);
+  assert.equal(contextControlsSource.match(/<strong>\{team\.name\}<\/strong>/g)?.length, 1);
   assert.doesNotMatch(contextControlsSource, /<select/);
   assert.match(contextControlsSource, /next\.searchParams\.set\('team', id\)/);
   assert.match(contextControlsSource, /goto\(next, \{ replaceState: true, keepFocus: true, noScroll: true \}\)/);
