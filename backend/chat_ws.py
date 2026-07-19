@@ -1,6 +1,6 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
-The browser speaks only ``shimpz.chat.v1``. Provider credentials and the controller contract stay
+The browser speaks only ``shimpz.chat.v2``. Provider credentials and the controller contract stay
 behind :mod:`localchat`; this module admits one turn per socket, keeps Stop responsive on its own
 bounded worker lane, and projects every completed operation onto a small public terminal schema.
 """
@@ -22,7 +22,7 @@ import localchat
 import teams
 from fastapi import WebSocket, WebSocketDisconnect
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v1"
+CHAT_SUBPROTOCOL = "shimpz.chat.v2"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_REPLY_CHARS = 60_000
 MAX_PUBLIC_TEAM_NAME_CHARS = 80
@@ -201,7 +201,7 @@ def _error_terminal(status: object, detail: str = "local chat request failed") -
 
 
 def turn_terminal(response: object, team_id: str) -> dict[str, object]:
-    """Project a secret-safe localchat response onto the public v1 terminal contract."""
+    """Project a secret-safe localchat response onto the public v2 terminal contract."""
     if not isinstance(response, teams.DriverResponse):
         return _error_terminal(502)
     if isinstance(response.status, int) and not isinstance(response.status, bool) and 200 <= response.status < 300:
@@ -366,8 +366,11 @@ def _request_stop(
 
 async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str, frame: dict[str, object]) -> None:
     if frame.get("type") == "chat":
-        if set(frame) not in ({"type", "message"}, {"type", "message", "files"}):
-            await _send_event(websocket, _error_terminal(400, "chat frame accepts only message and files"))
+        if set(frame) != {"type", "message", "files", "assistant_ids"}:
+            await _send_event(
+                websocket,
+                _error_terminal(400, "chat frame requires message, files, and assistant_ids"),
+            )
             return
         try:
             payload = teams.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})

@@ -68,7 +68,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         api_key = "sk-test-0123456789"
         teams.chat(
             "team_1",
-            {"message": "Hello", "files": []},
+            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-assistant"]},
             provider="openai",
             api_key=api_key,
         )
@@ -77,7 +77,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["path"], "/v1/teams/team_1/chat")
         self.assertEqual(
             json.loads(request["body"]),
-            {"message": "Hello", "files": []},
+            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-assistant"]},
         )
         self.assertEqual(request["headers"]["x-shimpz-model-provider"], "openai")
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
@@ -85,12 +85,24 @@ class PrivateChatTransportTests(unittest.TestCase):
 
 
 class LocalChatOrchestrationTests(unittest.TestCase):
-    def test_browser_payload_rejects_assistant_provider_and_credentials(self) -> None:
+    def test_browser_payload_rejects_ambient_authority_and_invalid_scopes(self) -> None:
         payloads = (
-            {"message": "Hi", "files": [], "assistant": "hello-pulse"},
-            {"message": "Hi", "files": [], "provider": "openai"},
-            {"message": "Hi", "files": [], "api_key": "must-not-cross"},
-            {"message": "Hi", "files": ["../escape"]},
+            {"message": "Hi", "files": [], "assistant_ids": [], "assistant": "hello-pulse"},
+            {"message": "Hi", "files": [], "assistant_ids": [], "provider": "openai"},
+            {"message": "Hi", "files": [], "assistant_ids": [], "api_key": "must-not-cross"},
+            {"message": "Hi", "files": ["../escape"], "assistant_ids": []},
+            {"message": "Hi", "files": []},
+            {"message": "Hi", "files": [], "assistant_ids": ["Shimpz-Assistant"]},
+            {
+                "message": "Hi",
+                "files": [],
+                "assistant_ids": ["shimpz-assistant", "shimpz-assistant"],
+            },
+            {
+                "message": "Hi",
+                "files": [],
+                "assistant_ids": [f"assistant-{index}" for index in range(17)],
+            },
         )
         with mock.patch.object(teams, "get_inference") as inference:
             for payload in payloads:
@@ -111,7 +123,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Hi", "files": []},
+                {"message": "Hi", "files": [], "assistant_ids": []},
             )
 
         self.assertEqual(
@@ -119,7 +131,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready"},
         )
         call = chat.call_args
-        self.assertEqual(call.args[1], {"message": "Hi", "files": []})
+        self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": []})
         self.assertEqual(call.kwargs, {"provider": "anthropic", "api_key": "sk-ant-0123456789"})
 
     def test_missing_controller_contract_fails_503_without_mocking_success(self) -> None:
@@ -131,7 +143,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Hi", "files": []},
+                {"message": "Hi", "files": [], "assistant_ids": []},
             )
         self.assertEqual(response.status, 503)
         self.assertEqual(response.body, {"code": "runtime-unavailable"})
@@ -152,7 +164,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(modelproviders, "resolve_api_key") as resolve_key,
                 mock.patch.object(teams, "chat") as chat,
             ):
-                response = localchat.turn("team_1", {"message": "Hi", "files": []})
+                response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
             self.assertEqual(
                 response,
                 teams.DriverResponse(502, {"code": "inference-response-invalid"}),
@@ -167,7 +179,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(modelproviders, "resolve_api_key", return_value=None),
             mock.patch.object(teams, "chat") as chat,
         ):
-            response = localchat.turn("team_1", {"message": "Hi", "files": []})
+            response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
 
         self.assertEqual(response, teams.DriverResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
@@ -190,7 +202,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Hi", "files": []},
+                {"message": "Hi", "files": [], "assistant_ids": []},
             )
         self.assertEqual(response.status, 502)
         self.assertEqual(response.body, {"code": "brain-runtime-failed"})
@@ -212,7 +224,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Hi", "files": []},
+                {"message": "Hi", "files": [], "assistant_ids": []},
             )
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
@@ -230,7 +242,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(teams, "chat", return_value=controller),
             ):
-                response = localchat.turn("team_1", {"message": "Hi", "files": []})
+                response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
             self.assertEqual(response.status, 502)
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
@@ -255,7 +267,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(teams, "chat", return_value=teams.DriverResponse(200, controller_body)),
             ):
-                response = localchat.turn("team_1", {"message": "Hi", "files": []})
+                response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
             self.assertEqual(response, teams.DriverResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
@@ -275,7 +287,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(modelproviders, "resolve_api_key", return_value=api_key),
             mock.patch.object(teams, "chat", return_value=controller),
         ):
-            response = localchat.turn("team_1", {"message": "Hi", "files": []})
+            response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
 

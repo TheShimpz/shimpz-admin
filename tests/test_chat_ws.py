@@ -32,7 +32,7 @@ class _Socket:
         protocols: list[str] | None = None,
         team_id: str = "team_1",
     ) -> None:
-        offered = ["shimpz.chat.v1"] if protocols is None else protocols
+        offered = ["shimpz.chat.v2"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
         if offered:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
@@ -132,7 +132,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v1", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v2", "headers": []}
 
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
@@ -141,7 +141,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 self.assertEqual(await denied.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
                 await denied.finish()
 
-            wrong_protocol = _Socket(self.admin_app.app, token=self.token, protocols=["shimpz.chat.v0"])
+            wrong_protocol = _Socket(self.admin_app.app, token=self.token, protocols=["shimpz.chat.v1"])
             self.assertEqual(
                 await wrong_protocol.start(),
                 {"type": "websocket.close", "code": 4406, "reason": ""},
@@ -151,7 +151,7 @@ class ChatWebSocketTests(unittest.TestCase):
             extra_protocol = _Socket(
                 self.admin_app.app,
                 token=self.token,
-                protocols=["shimpz.chat.v1", "shimpz.chat.v0"],
+                protocols=["shimpz.chat.v2", "shimpz.chat.v1"],
             )
             self.assertEqual(
                 await extra_protocol.start(),
@@ -169,6 +169,47 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_chat_frame_requires_one_exact_bounded_assistant_scope(self) -> None:
+        async def scenario() -> None:
+            websocket = _Socket(self.admin_app.app, token=self.token)
+            self.assertTrue(self._accepted(await websocket.start()))
+            invalid_frames = (
+                {"type": "chat", "message": "missing scope", "files": []},
+                {
+                    "type": "chat",
+                    "message": "extra authority",
+                    "files": [],
+                    "assistant_ids": [],
+                    "provider": "openai",
+                },
+                {
+                    "type": "chat",
+                    "message": "duplicate",
+                    "files": [],
+                    "assistant_ids": ["shimpz-assistant", "shimpz-assistant"],
+                },
+                {
+                    "type": "chat",
+                    "message": "too many",
+                    "files": [],
+                    "assistant_ids": [f"assistant-{index}" for index in range(17)],
+                },
+                {
+                    "type": "chat",
+                    "message": "noncanonical",
+                    "files": [],
+                    "assistant_ids": ["Shimpz-Assistant"],
+                },
+            )
+            with mock.patch.object(self.chat_ws.localchat, "turn") as turn:
+                for frame in invalid_frames:
+                    await websocket.send_json(frame)
+                    self.assertEqual((await websocket.next_json())["status"], 400)
+                turn.assert_not_called()
+            await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_session_is_revalidated_before_every_frame(self) -> None:
         async def scenario() -> None:
             websocket = _Socket(self.admin_app.app, token=self.token)
@@ -177,7 +218,7 @@ class ChatWebSocketTests(unittest.TestCase):
             store["session_secret"] = self.admin_app.auth.new_secret()
             self.admin_app.adminstore._write(store)
             with mock.patch.object(self.chat_ws.localchat, "turn") as turn:
-                await websocket.send_json({"type": "chat", "message": "must not run"})
+                await websocket.send_json({"type": "chat", "message": "must not run", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_message(),
                     {"type": "websocket.close", "code": 4401, "reason": ""},
@@ -230,7 +271,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_real_uvicorn_negotiates_v1_and_delivers_one_public_terminal(self) -> None:
+    def test_real_uvicorn_negotiates_v2_and_delivers_one_public_terminal(self) -> None:
         async def scenario() -> None:
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -272,11 +313,11 @@ class ChatWebSocketTests(unittest.TestCase):
                     async with websockets.connect(
                         uri,
                         origin="http://localhost:7777",
-                        subprotocols=["shimpz.chat.v1"],
+                        subprotocols=["shimpz.chat.v2"],
                         additional_headers=headers,
                     ) as websocket:
-                        self.assertEqual(websocket.subprotocol, "shimpz.chat.v1")
-                        await websocket.send('{"type":"chat","message":"hello","files":[]}')
+                        self.assertEqual(websocket.subprotocol, "shimpz.chat.v2")
+                        await websocket.send('{"type":"chat","message":"hello","files":[],"assistant_ids":[]}')
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
                             {
@@ -315,9 +356,16 @@ class ChatWebSocketTests(unittest.TestCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "chat", "message": "first", "files": []})
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "first",
+                        "files": [],
+                        "assistant_ids": ["shimpz-assistant"],
+                    }
+                )
                 await _wait_for_thread(started)
-                await websocket.send_json({"type": "chat", "message": "second", "files": []})
+                await websocket.send_json({"type": "chat", "message": "second", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_json(),
                     {"type": "error", "status": 409, "detail": "a chat turn is already active"},
@@ -333,6 +381,10 @@ class ChatWebSocketTests(unittest.TestCase):
                     await websocket.next_message(wait_seconds=0.05)
                 await websocket.disconnect()
                 self.assertEqual(turn_mock.call_count, 1)
+                turn_mock.assert_called_once_with(
+                    "team_1",
+                    {"message": "first", "files": [], "assistant_ids": ["shimpz-assistant"]},
+                )
                 self.assertEqual(stop_mock.call_count, 1)
 
         asyncio.run(scenario())
@@ -357,7 +409,7 @@ class ChatWebSocketTests(unittest.TestCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "chat", "message": "running"})
+                await websocket.send_json({"type": "chat", "message": "running", "files": [], "assistant_ids": []})
                 await _wait_for_thread(started)
                 await websocket.disconnect()
                 self.assertEqual(stop_mock.call_count, 1)
@@ -370,7 +422,7 @@ class ChatWebSocketTests(unittest.TestCase):
             with mock.patch.object(self.chat_ws.localchat, "turn", return_value=driver_response):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "chat", "message": "hello"})
+                await websocket.send_json({"type": "chat", "message": "hello", "files": [], "assistant_ids": []})
                 event = await websocket.next_json()
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)

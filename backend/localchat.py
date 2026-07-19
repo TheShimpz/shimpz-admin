@@ -1,7 +1,8 @@
 """Secret-safe local Team chat orchestration for the Admin backend.
 
-The browser contract is always ``message/files``. The controller owns the Team's installed
-Assistants and chooses their declared Powers; neither is selectable from the browser. This backend
+The browser contract is always ``message/files/assistant_ids``. The requested Assistant IDs are
+only a scope: the controller still verifies that every selected Assistant is installed and running.
+An empty scope means Brain-only and is never expanded to all installed Assistants. This backend
 reads controller-owned inference metadata, resolves its API key from ``admin.json`` through the
 non-route ``modelproviders.resolve_api_key``, then delivers it only in fixed private headers on the
 authenticated control network. Successful and failed controller responses are reprojected so a

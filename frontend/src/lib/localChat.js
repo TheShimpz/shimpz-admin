@@ -1,15 +1,17 @@
 import { LocalApiError, safeApiError } from './localApi.js';
 
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
+const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const FILE_ID_RE = /^[0-9a-f]{32}$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
+const MAX_ASSISTANTS = 16;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
 
-export const CHAT_WS_PROTOCOL = 'shimpz.chat.v1';
+export const CHAT_WS_PROTOCOL = 'shimpz.chat.v2';
 
 async function jsonObject(response) {
   const body = await response.json().catch(() => ({}));
@@ -67,11 +69,15 @@ export async function listTeamFiles(fetcher, teamId) {
   });
 }
 
-/** Build the only chat frame accepted by shimpz.chat.v1. Provider/model/keys remain server-owned. */
+/** Build the only chat frame accepted by shimpz.chat.v2. Provider/model/keys remain server-owned. */
 export function createChatFrame(teamId, turn) {
   requireTeam(teamId);
-  if (!turn || typeof turn !== 'object' || Object.keys(turn).sort().join(',') !== 'files,message') {
-    throw new LocalApiError('Chat accepts only message and files.');
+  if (
+    !turn ||
+    typeof turn !== 'object' ||
+    Object.keys(turn).sort().join(',') !== 'assistant_ids,files,message'
+  ) {
+    throw new LocalApiError('Chat accepts only message, files, and assistant_ids.');
   }
   const message = typeof turn.message === 'string' ? turn.message.trim() : '';
   if (
@@ -80,11 +86,24 @@ export function createChatFrame(teamId, turn) {
     !Array.isArray(turn.files) ||
     turn.files.length > MAX_FILES ||
     turn.files.some((fileId) => !FILE_ID_RE.test(fileId)) ||
-    new Set(turn.files).size !== turn.files.length
+    new Set(turn.files).size !== turn.files.length ||
+    !Array.isArray(turn.assistant_ids) ||
+    turn.assistant_ids.length > MAX_ASSISTANTS ||
+    turn.assistant_ids.some((assistantId) => (
+      typeof assistantId !== 'string' ||
+      assistantId.length > 80 ||
+      !ASSISTANT_ID_RE.test(assistantId)
+    )) ||
+    new Set(turn.assistant_ids).size !== turn.assistant_ids.length
   ) {
     throw new LocalApiError('Invalid local chat request.');
   }
-  return { type: 'chat', message, files: [...turn.files] };
+  return {
+    type: 'chat',
+    message,
+    files: [...turn.files],
+    assistant_ids: [...turn.assistant_ids],
+  };
 }
 
 export function createStopFrame(teamId) {

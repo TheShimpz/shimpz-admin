@@ -41,6 +41,7 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+\-]*/[a-z0-9][a-z0-9!#$&^_.+\-]*$")
 MAX_CHAT_MESSAGE_CHARS = 16_000
 MAX_CHAT_FILES = 8
+MAX_CHAT_ASSISTANTS = 16
 
 
 class TeamRequestError(ValueError):
@@ -312,21 +313,31 @@ def configure_inference(team_id: object, payload: object) -> DriverResponse:
 
 
 def canonical_chat_payload(payload: object) -> dict[str, object]:
-    """Validate the Team chat contract without exposing its internal Assistants."""
-    if not isinstance(payload, dict) or set(payload) not in ({"message"}, {"message", "files"}):
-        raise TeamRequestError("chat requires message and optional files")
+    """Validate one explicit Assistant scope without treating an empty scope as all."""
+    if not isinstance(payload, dict) or set(payload) != {"message", "files", "assistant_ids"}:
+        raise TeamRequestError("chat requires message, files, and assistant_ids")
     message = payload["message"]
     if not isinstance(message, str) or not (message := message.strip()):
         raise TeamRequestError("message must be non-empty")
     if len(message) > MAX_CHAT_MESSAGE_CHARS:
         raise TeamRequestError(f"message exceeds {MAX_CHAT_MESSAGE_CHARS} characters")
-    files = payload.get("files", [])
+    files = payload["files"]
     if not isinstance(files, list) or len(files) > MAX_CHAT_FILES:
         raise TeamRequestError(f"files must contain at most {MAX_CHAT_FILES} ids")
     canonical_files = [_canonical_id(item, field="file id", pattern=_FILE_ID_RE, maximum=32) for item in files]
     if len(set(canonical_files)) != len(canonical_files):
         raise TeamRequestError("files must not contain duplicate ids")
-    return {"message": message, "files": canonical_files}
+    assistant_ids = payload["assistant_ids"]
+    if not isinstance(assistant_ids, list) or len(assistant_ids) > MAX_CHAT_ASSISTANTS:
+        raise TeamRequestError(f"assistant_ids must contain at most {MAX_CHAT_ASSISTANTS} ids")
+    canonical_assistant_ids = [canonical_assistant_id(item) for item in assistant_ids]
+    if len(set(canonical_assistant_ids)) != len(canonical_assistant_ids):
+        raise TeamRequestError("assistant_ids must not contain duplicate ids")
+    return {
+        "message": message,
+        "files": canonical_files,
+        "assistant_ids": canonical_assistant_ids,
+    }
 
 
 def chat(

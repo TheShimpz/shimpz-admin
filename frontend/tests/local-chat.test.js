@@ -15,13 +15,20 @@ function response(status, body) {
 }
 
 test('chat builds only the versioned WebSocket contract', () => {
-  const frame = createChatFrame('team_1', { message: '  Hi  ', files: ['a'.repeat(32)] });
-  assert.deepEqual(frame, {
-    type: 'chat', message: 'Hi', files: ['a'.repeat(32)],
+  const frame = createChatFrame('team_1', {
+    message: '  Hi  ',
+    files: ['a'.repeat(32)],
+    assistant_ids: ['shimpz-assistant'],
   });
-  assert.doesNotMatch(JSON.stringify(frame), /assistant|power|provider|model|api_key|credential/);
+  assert.deepEqual(frame, {
+    type: 'chat',
+    message: 'Hi',
+    files: ['a'.repeat(32)],
+    assistant_ids: ['shimpz-assistant'],
+  });
+  assert.doesNotMatch(JSON.stringify(frame), /power|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
-  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v1');
+  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v2');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
     'ws://127.0.0.1:7777/api/teams/team_1/chat/ws',
@@ -32,7 +39,12 @@ test('chat builds only the versioned WebSocket contract', () => {
   );
 });
 
-test('chat rejects Assistant, credential, or provider fields before opening a turn', () => {
+test('chat requires one exact bounded Assistant scope and keeps empty scope Brain-only', () => {
+  assert.deepEqual(
+    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }),
+    { type: 'chat', message: 'Hi', files: [], assistant_ids: [] },
+  );
+
   for (const extra of [
     { assistant: 'hello-pulse' },
     { provider: 'openai' },
@@ -40,8 +52,23 @@ test('chat rejects Assistant, credential, or provider fields before opening a tu
     { model: 'gpt-5.5' },
   ]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], ...extra }),
-      /only message and files/,
+      () => createChatFrame('team_1', {
+        message: 'Hi', files: [], assistant_ids: [], ...extra,
+      }),
+      /only message, files, and assistant_ids/,
+    );
+  }
+
+  for (const assistant_ids of [
+    'shimpz-assistant',
+    ['Shimpz-Assistant'],
+    ['shimpz--assistant'],
+    ['shimpz-assistant', 'shimpz-assistant'],
+    Array.from({ length: 17 }, (_value, index) => `assistant-${index}`),
+  ]) {
+    assert.throws(
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }),
+      /Invalid local chat request/,
     );
   }
 });
