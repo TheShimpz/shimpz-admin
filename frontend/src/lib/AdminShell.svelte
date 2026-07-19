@@ -30,7 +30,9 @@
         <ShimpzBrand product="Admin" href="/chat/" ariaLabel="Shimpz Admin home" />
       </div>
       <div class="sidebar-controls">
-        <LocaleMenu wide />
+        <div class="sidebar-locale">
+          <LocaleMenu wide />
+        </div>
         <div class="sidebar-navigation">
           <a
             class="rail-button"
@@ -177,15 +179,19 @@
   .sidebar-controls {
     display: grid;
     min-width: 0;
-    gap: 0.65rem;
-    padding: 0 1.15rem 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .sidebar-locale {
+    min-width: 0;
+    padding: 0 1.15rem 0.65rem;
   }
 
   .sidebar-navigation {
     display: grid;
     min-width: 0;
     gap: 0.65rem;
-    padding-top: 0.65rem;
+    padding: 0.65rem 1.15rem 0;
     border-top: 1px solid var(--admin-divider);
   }
 

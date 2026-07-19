@@ -105,8 +105,10 @@ test('keeps the unauthenticated header and authenticated Chat rail usable on nar
   assert.match(shell, /@media \(max-width: 380px\)[\s\S]*\.locale-full \{\s*display: none;[\s\S]*\.locale-compact \{\s*display: block;/);
   assert.match(shell, /@media \(max-width: 760px\)[\s\S]*\.topbar-inner \{[\s\S]*row-gap: 0;/);
   assert.match(shell, /\.header-actions \{[\s\S]*grid-column: 2;[\s\S]*justify-content: flex-end;[\s\S]*margin-inline-start: auto;/);
-  assert.match(shell, /\.sidebar-controls \{[\s\S]*padding: 0 1\.15rem 1rem;/);
-  assert.match(shell, /\.sidebar-navigation \{[\s\S]*border-top: 1px solid var\(--admin-divider\);/);
+  assert.match(shell, /<div class="sidebar-locale">\s*<LocaleMenu wide \/>\s*<\/div>/);
+  assert.match(shell, /\.sidebar-controls \{[^}]*padding-bottom: 1rem;[^}]*\}/s);
+  assert.match(shell, /\.sidebar-locale \{[^}]*padding: 0 1\.15rem 0\.65rem;[^}]*\}/s);
+  assert.match(shell, /\.sidebar-navigation \{[^}]*padding: 0\.65rem 1\.15rem 0;[^}]*border-top: 1px solid var\(--admin-divider\);[^}]*\}/s);
   assert.match(shell, /\.rail-button \{[\s\S]*clip-path: polygon\(/);
   assert.match(shell, /@media \(max-width: 760px\) and \(max-height: 600px\)/);
   assert.match(shell, /\.chat-mode \.team-sidebar-region \{\s*max-height: 5\.25rem;/);
