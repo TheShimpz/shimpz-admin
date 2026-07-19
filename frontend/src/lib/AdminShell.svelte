@@ -2,6 +2,7 @@
   import AdminNotice from '$lib/AdminNotice.svelte';
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
+  import NotificationCenter from '$lib/NotificationCenter.svelte';
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
@@ -28,6 +29,7 @@
     <aside class="shell-sidebar">
       <div class="sidebar-brand">
         <ShimpzBrand product="Admin" href="/chat/" ariaLabel="Shimpz Admin home" />
+        <NotificationCenter />
       </div>
       <div class="sidebar-controls">
         <div class="sidebar-locale">
@@ -169,10 +171,12 @@
   }
 
   .sidebar-brand {
-    display: flex;
+    display: grid;
     min-width: 0;
     min-height: 4.5rem;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    gap: 0.75rem;
     padding: 0 1.15rem;
   }
 
