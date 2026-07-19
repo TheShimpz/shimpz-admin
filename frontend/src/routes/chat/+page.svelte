@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
   import { locale } from '$lib/i18n.js';
@@ -64,6 +64,8 @@
   let reconnectAttempt = 0;
   let helpOpen = $state(false);
   let helpButton = $state();
+  let turnsViewport = $state();
+  let scrollRequest = 0;
 
   let copy = $derived({ ...COPY.en, ...(COPY[$locale] ?? {}) });
   let selectedTeamId = $derived($teamContext.selectedTeamId);
@@ -107,6 +109,19 @@
   function setError(message, detail = '') {
     error = message;
     errorDetail = detail;
+  }
+
+  async function revealLatestTurn() {
+    const request = ++scrollRequest;
+    await tick();
+    if (request !== scrollRequest || !turnsViewport) return;
+    const latest = turnsViewport.querySelector('article:last-of-type');
+    if (!latest) return;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    turnsViewport.scrollTo({
+      top: Math.max(0, latest.offsetTop - 16),
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
   }
 
   function friendlyChatError(status) {
@@ -189,6 +204,7 @@
       stopping = false;
       if (terminal.type === 'done') {
         turns = [...turns, { role: 'assistant', text: terminal.reply, author: terminal.team_name }];
+        void revealLatestTurn();
         clearError();
       } else if (terminal.type === 'stopped') {
         setError(copy.stopped);
@@ -218,6 +234,7 @@
     stopping = false;
     draft = '';
     turns = [];
+    scrollRequest += 1;
     helpOpen = false;
     clearError();
     if (nextTeamId) connectSocket(nextTeamId);
@@ -246,6 +263,7 @@
     busy = true;
     clearError();
     turns = [...turns, { role: 'user', text: message }];
+    void revealLatestTurn();
     draft = '';
     try {
       socket.send(JSON.stringify(frame));
@@ -311,7 +329,7 @@
     {#if chatTeamId}
       <div class="chat-workspace" class:help-open={helpOpen}>
         <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
-        <div class="turns" aria-live="polite">
+        <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
             <article
               class={turn.role}
@@ -441,6 +459,7 @@
   }
 
   .turns {
+    position: relative;
     display: flex;
     min-width: 0;
     min-height: 0;
