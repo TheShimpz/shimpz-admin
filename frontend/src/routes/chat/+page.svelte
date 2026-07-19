@@ -308,26 +308,14 @@
   {#if activeTeam}
     {#if chatTeamId}
       <div class="chat-workspace" class:help-open={helpOpen}>
-        <section class="conversation" aria-label={`${copy.kicker}: ${teamName}`}>
-        <header class="team-header">
-          <i aria-hidden="true"></i>
-          <div>
-            <p>{copy.kicker}</p>
-            <h1>{teamName}</h1>
-          </div>
-        </header>
-
+        <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
         <div class="turns" aria-live="polite">
-          {#if turns.length}
-            {#each turns as turn}
-              <article class={turn.role}>
-                <small>{turn.role === 'user' ? copy.you : turn.author}</small>
-                <p>{turn.text}</p>
-              </article>
-            {/each}
-          {:else}
-            <p class="conversation-empty">{placeholder}</p>
-          {/if}
+          {#each turns as turn}
+            <article class={turn.role}>
+              <small>{turn.role === 'user' ? copy.you : turn.author}</small>
+              <p>{turn.text}</p>
+            </article>
+          {/each}
         </div>
 
         {#if visibleError}
@@ -423,7 +411,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: minmax(0, 1fr) auto auto;
     border: 0;
     border-inline-end: 1px solid var(--admin-divider);
     border-bottom: 1px solid var(--admin-divider);
@@ -441,41 +429,6 @@
     overflow: auto;
   }
 
-  .team-header {
-    display: flex;
-    min-height: 3.6rem;
-    align-items: center;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--admin-divider);
-    padding: 0.7rem 1rem;
-    background: rgba(0, 0, 0, 0.2);
-  }
-
-  .team-header > i {
-    width: 0.5rem;
-    height: 0.5rem;
-    flex: 0 0 auto;
-    background: var(--success);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(5, 255, 161, 0.5);
-  }
-
-  .team-header p {
-    margin: 0 0 0.16rem;
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.52rem;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: clamp(1rem, 2vw, 1.3rem);
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-  }
-
   .turns {
     display: flex;
     min-width: 0;
@@ -485,6 +438,10 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 1rem;
+  }
+
+  .empty-conversation .turns {
+    display: none;
   }
 
   article {
@@ -518,12 +475,6 @@
     overflow-wrap: anywhere;
   }
 
-  .conversation-empty {
-    margin: auto;
-    color: var(--text-faint);
-    text-align: center;
-  }
-
   .error,
   .empty-error {
     display: grid;
@@ -535,6 +486,7 @@
   }
 
   .error {
+    grid-row: 2;
     max-height: min(8rem, 24dvh);
     margin: 0 0.9rem;
     overflow-y: auto;
@@ -556,11 +508,19 @@
 
   .composer {
     display: grid;
+    width: min(calc(100% - 1.6rem), 52rem);
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-row: 3;
     align-items: end;
+    justify-self: center;
     gap: 0.65rem;
-    padding: 0.8rem;
+    padding: 0.8rem 0;
     background: var(--surface-1);
+  }
+
+  .empty-conversation .composer {
+    grid-row: 1;
+    align-self: center;
   }
 
   textarea {
@@ -660,7 +620,7 @@
 
   @media (max-width: 640px) {
     article { max-width: 92%; }
-    .composer { gap: 0.45rem; padding: 0.6rem; }
+    .composer { width: min(calc(100% - 1.2rem), 52rem); gap: 0.45rem; padding: 0.6rem 0; }
     .composer > div { gap: 0.3rem; }
     button { padding-inline: 0.65rem; }
   }

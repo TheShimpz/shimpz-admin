@@ -86,18 +86,21 @@ test('submits plain Enter while preserving modified newlines and IME composition
 
 test('fills the main column while keeping turns scrollable and the composer visible', () => {
   assert.match(source, /<div class="chat-route">/);
-  assert.match(source, /<header class="team-header">/);
+  assert.doesNotMatch(source, /team-header|conversation-empty/);
+  assert.match(source, /class:empty-conversation=\{turns\.length === 0\}/);
   assert.match(source, /<div class="turns" aria-live="polite">/);
   assert.match(source, /<form class="composer" onsubmit=\{send\}>/);
   assert.match(source, /\.chat-route \{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;/);
   assert.match(source, /grid-template-rows: minmax\(0, 1fr\);[\s\S]*?overflow: hidden;/);
-  assert.match(source, /\.conversation \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\) auto auto;/);
+  assert.match(source, /\.conversation \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto auto;/);
   assert.match(
     source,
     /\.conversation \{[\s\S]*?border: 0;[\s\S]*?border-inline-end: 1px solid var\(--admin-divider\);[\s\S]*?border-bottom: 1px solid var\(--admin-divider\);/,
   );
-  assert.match(source, /\.team-header \{[\s\S]*?border-bottom: 1px solid var\(--admin-divider\);/);
   assert.match(source, /\.turns \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
+  assert.match(source, /\.empty-conversation \.turns \{\s*display: none;/);
+  assert.match(source, /\.composer \{[\s\S]*?width: min\(calc\(100% - 1\.6rem\), 52rem\);[\s\S]*?grid-row: 3;/);
+  assert.match(source, /\.empty-conversation \.composer \{\s*grid-row: 1;\s*align-self: center;/);
   assert.match(source, /textarea \{[\s\S]*?height: 3\.2rem;[\s\S]*?resize: none;[\s\S]*?overflow-y: auto;/);
   assert.doesNotMatch(source, /\.composer \{[^}]*border-top:/s);
   assert.match(source, /\.composer button \{\s*height: 3\.2rem;\s*min-height: 0;/);
