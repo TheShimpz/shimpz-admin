@@ -78,7 +78,7 @@ RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-install-project --no-
 WORKDIR /app/backend
 COPY backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/catalog.py \
      backend/chat_ws.py backend/driver_proxy.py backend/envfile.py backend/integrations.py backend/keyset.py \
-     backend/localchat.py backend/modelproviders.py \
+     backend/localchat.py backend/modelproviders.py backend/notifications.py \
      backend/validate_live.py ./
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --from=ui /w/build /app/frontend/build
@@ -89,7 +89,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     SHIMPZ_REPO=/repo \
-    SHIMPZ_ADMIN_STORE=/data/admin.json
+    SHIMPZ_ADMIN_STORE=/data/admin.json \
+    SHIMPZ_NOTIFICATION_STORE=/data/notifications.json
 USER 1000:1000
 EXPOSE 4600
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--log-level", "warning"]

@@ -37,6 +37,7 @@ import envfile
 import integrations
 import keyset
 import modelproviders
+import notifications
 import teams
 import validate_live
 
@@ -536,6 +537,35 @@ async def team_assistant_install(team_id: str, request: Request):
 @app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
 def team_assistant_uninstall(team_id: str, assistant_id: str):
     return _team_driver_response(lambda: teams.uninstall_assistant(team_id, assistant_id))
+
+
+@app.get("/api/notifications")
+def notification_list():
+    return notifications.list_notifications()
+
+
+@app.post("/api/notifications/sync")
+async def notification_sync():
+    # Feed I/O plus local controller reconciliation must never block the ASGI event loop.
+    return await run_in_threadpool(notifications.sync)
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def notification_read(notification_id: str):
+    try:
+        return notifications.mark_read(notification_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="notification not found") from None
+
+
+@app.post("/api/notifications/read-all")
+def notifications_read_all():
+    return notifications.mark_all_read()
+
+
+@app.delete("/api/notifications")
+def notifications_clear():
+    return notifications.clear()
 
 
 @app.get("/api/teams/{team_id}/files")
