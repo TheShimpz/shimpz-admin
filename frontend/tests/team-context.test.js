@@ -9,9 +9,13 @@ import {
   createTeam,
   loadTeamContext,
   refreshTeamInventory,
+  selectAllTeamAssistants,
+  selectOnlyTeamAssistant,
   selectTeam,
   teamContext,
+  toggleTeamAssistant,
   toggleTeamFile,
+  unselectAllTeamAssistants,
 } from '../src/lib/teamContext.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
@@ -19,6 +23,10 @@ const FILE_A = 'a'.repeat(32);
 const FILE_B = 'b'.repeat(32);
 const sidebarSource = readFileSync(
   new URL('../src/lib/TeamSidebar.svelte', import.meta.url),
+  'utf8',
+);
+const contextControlsSource = readFileSync(
+  new URL('../src/lib/ChatContextControls.svelte', import.meta.url),
   'utf8',
 );
 
@@ -83,6 +91,7 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
       { id: 'salesnator', name: 'Salesnator' },
     ],
     installedAssistants: [{ assistant: 'hello-pulse', status: 'running' }],
+    selectedAssistantIds: ['hello-pulse'],
     files: [{ id: FILE_B, name: 'ticket.txt', size: 12 }],
     selectedFileIds: [],
     error: '',
@@ -160,6 +169,7 @@ test('a confirmed empty inventory is ready while malformed Team data fails close
     selectedTeamId: '',
     catalog: [],
     installedAssistants: [],
+    selectedAssistantIds: [],
     files: [],
     selectedFileIds: [],
     error: '',
@@ -321,60 +331,60 @@ test('clear invalidates a late context response', async () => {
     selectedTeamId: '',
     catalog: [],
     installedAssistants: [],
+    selectedAssistantIds: [],
     files: [],
     selectedFileIds: [],
     error: '',
   });
 });
 
-test('Team sidebar reveals creation only after a confirmed empty inventory', () => {
-  assert.match(
-    sidebarSource,
-    /\$teamContext\.phase === 'ready' && \$teamContext\.teams\.length === 0/,
-  );
-  assert.match(sidebarSource, /createDialog\?\.showModal\(\)/);
-  assert.match(sidebarSource, /<dialog[^>]+oncancel=\{cancelCreateDialog\}/);
-  assert.match(sidebarSource, /maxlength="80"/);
-  assert.match(
-    sidebarSource,
-    /<span class="create-team-label">\{copy\.create\}<\/span>\s*<span class="create-team-symbol" aria-hidden="true">＋<\/span>/,
-  );
-  assert.match(sidebarSource, /\.create-team-label \{\s*grid-column: 2;/);
-  assert.match(sidebarSource, /\.create-team-symbol \{\s*grid-column: 3;\s*justify-self: end;/);
-  assert.doesNotMatch(sidebarSource, /Local Space/);
+test('Assistant selection is Team-scoped, bounded to running inventory, and empty is valid', async () => {
+  await loadTeamContext(fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [
+        { assistant: 'hello-pulse', status: 'running' },
+        { assistant: 'salesnator', status: 'running' },
+      ],
+    }),
+  }), 'marketing');
+
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse', 'salesnator']);
+  assert.equal(unselectAllTeamAssistants(), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, []);
+  assert.equal(toggleTeamAssistant('salesnator'), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+  assert.equal(selectOnlyTeamAssistant('hello-pulse'), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
+  assert.equal(selectAllTeamAssistants(), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse', 'salesnator']);
+  assert.equal(toggleTeamAssistant('not-installed'), false);
 });
 
-test('Team sidebar keeps Team creation beside the selector after the first Team exists', () => {
-  assert.match(
-    sidebarSource,
-    /<div class="team-controls">[\s\S]*<select[\s\S]*<button\s+class="create-team-icon"[\s\S]*aria-label=\{copy\.create\}[\s\S]*title=\{copy\.create\}/,
-  );
-  assert.match(sidebarSource, /grid-template-columns: minmax\(0, 1fr\) 2\.65rem;/);
+test('Assistant inventory refresh intersects a deliberate selection without enabling new items', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+  assert.equal(unselectAllTeamAssistants(), true);
+
+  await refreshTeamInventory(fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [
+        { assistant: 'hello-pulse', status: 'running' },
+        { assistant: 'salesnator', status: 'running' },
+      ],
+    }),
+  }));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, []);
 });
 
-test('Team sidebar hides Assistant and file inventory until a Team is selected', () => {
-  assert.match(
-    sidebarSource,
-    /\{#if \$teamContext\.selectedTeamId\}[\s\S]*aria-labelledby="sidebar-assistants-title"[\s\S]*aria-labelledby="sidebar-files-title"[\s\S]*\{\/if\}\s*<\/div>/,
-  );
-});
-
-test('Team sidebar owns one combined Brain selection below the Team picker', () => {
-  assert.match(sidebarSource, /import \{[\s\S]*modelContext[\s\S]*selectTeamBrain[\s\S]*\} from '\$lib\/modelContext\.js';/);
-  const picker = sidebarSource.indexOf('class="team-section team-picker"');
-  const brain = sidebarSource.indexOf('id="sidebar-brain-select"');
-  const assistants = sidebarSource.indexOf('id="sidebar-assistants-title"');
-  assert.ok(picker !== -1 && picker < brain && brain < assistants);
-  const brainSection = sidebarSource.slice(sidebarSource.lastIndexOf('<section', brain), assistants);
-  assert.equal(brainSection.match(/<select/g)?.length, 1);
-  assert.match(brainSection, /<label for="sidebar-brain-select"[^>]*>\{copy\.brain\}<\/label>/);
-  assert.match(brainSection, /\{#each brainOptions as brain \(brain\.value\)\}\s*<option value=\{brain\.value\}>\{brain\.title\}<\/option>/);
-  assert.match(sidebarSource, /providers\.flatMap\(\(provider\) => provider\.models\.map/);
-  assert.match(sidebarSource, /selectTeamBrain\(fetch, teamId, brain\.provider, brain\.model\)/);
-  assert.doesNotMatch(sidebarSource, /sidebar-provider-select|sidebar-model-select|modelLabel|input_usd_per_million_cents|output_usd_per_million_cents/);
-  assert.doesNotMatch(sidebarSource, /API key required|Chave da API necessária|modelRequired/);
-  assert.match(brainSection, /\$modelContext\.phase === 'error' && \$modelContext\.error[\s\S]*role="alert"/);
-  assert.match(brainSection, /\{:else if \$modelContext\.ready\}[\s\S]*\{copy\.modelReady\}/);
+test('Team sidebar keeps context authority and exposes only Team files', () => {
+  assert.match(sidebarSource, /loadTeamContext\(fetch, requestedTeamId\)/);
+  assert.match(sidebarSource, /loadModelContext\(fetch, teamId\)/);
+  assert.match(sidebarSource, /selectTeam\(fetch, preferredId\)/);
+  assert.match(sidebarSource, /goto\(next, \{ replaceState: true, keepFocus: true, noScroll: true \}\)/);
+  assert.match(sidebarSource, /aria-labelledby="sidebar-files-title"/);
+  assert.match(sidebarSource, /toggleTeamFile\(file\.id\)/);
+  assert.doesNotMatch(sidebarSource, /<select|<dialog|AssistantIcon|selectTeamBrain|createTeam/);
+  assert.doesNotMatch(sidebarSource, /sidebar-team|sidebar-brain|sidebar-assistants/);
 });
 
 test('Team sidebar has no horizontal section dividers at any viewport', () => {
@@ -398,10 +408,6 @@ test('Team sidebar follows client-side team deep links without owning another lo
   );
   assert.match(
     sidebarSource,
-    /function changeTeam\(event\) \{[\s\S]*updateLocationTeam\(id\)\.catch\(\(\) => \{\}\);/,
-  );
-  assert.match(
-    sidebarSource,
     /const previousId = \$teamContext\.selectedTeamId;\s*selectTeam\(fetch, preferredId\)\.catch\(\(\) => \{\s*if \(previousId\) updateLocationTeam\(previousId\)\.catch/,
   );
   assert.match(
@@ -411,26 +417,29 @@ test('Team sidebar follows client-side team deep links without owning another lo
   assert.doesNotMatch(sidebarSource, /preferredTeamFromLocation|window\.history\.replaceState|replaceState\(next, page\.state\)/);
 });
 
-test('Team sidebar keeps Store links canonical and file controls scoped to Chat', () => {
-  assert.match(sidebarSource, /assistantStoreHref\(storeLocale, runtime\.assistant\)/);
-  assert.match(sidebarSource, /target="_blank"/);
-  assert.match(sidebarSource, /rel="noopener noreferrer"/);
-  assert.doesNotMatch(sidebarSource, /<i aria-hidden="true">↗<\/i>/);
-  assert.match(sidebarSource, /\.assistant-list \{[\s\S]*?margin-inline: -1\.15rem;/);
-  assert.match(
-    sidebarSource,
-    /\.assistant-list a \{[\s\S]*?grid-template-columns: auto minmax\(0, 1fr\);[\s\S]*?padding: 0\.65rem 1\.15rem;/,
-  );
-  assert.match(sidebarSource, /\.assistant-list a:hover,[\s\S]*?background: rgba\(0, 240, 255, 0\.065\);/);
-  assert.match(sidebarSource, /\.assistant-list a:active \{\s*background: rgba\(0, 240, 255, 0\.11\);/);
-  assert.doesNotMatch(sidebarSource, /\.assistant-list a:hover \{[^}]*border/s);
+test('Team sidebar keeps file controls scoped to Chat', () => {
   assert.match(sidebarSource, /\{#if active === 'chat'\}[\s\S]*?<input[\s\S]*?type="checkbox"/);
 });
 
-test('Team creation can navigate only to the fixed local Assistants route', () => {
-  assert.match(
-    sidebarSource,
-    /window\.location\.assign\(`\/assistants\/\?team=\$\{encodeURIComponent\(created\.id\)\}`\)/,
-  );
-  assert.doesNotMatch(sidebarSource, /window\.location\.assign\([^`]/);
+test('composer context uses separate accessible dialogs instead of selects', () => {
+  assert.match(contextControlsSource, /<dialog bind:this=\{teamDialog\} aria-labelledby="chat-team-dialog-title"/);
+  assert.match(contextControlsSource, /<dialog bind:this=\{brainDialog\} aria-labelledby="chat-brain-dialog-title"/);
+  assert.match(contextControlsSource, /<dialog bind:this=\{assistantDialog\} aria-labelledby="chat-assistant-dialog-title"/);
+  assert.match(contextControlsSource, /<dialog bind:this=\{createDialog\} aria-labelledby="chat-create-team-title"/);
+  assert.doesNotMatch(contextControlsSource, /<select/);
+  assert.match(contextControlsSource, /next\.searchParams\.set\('team', id\)/);
+  assert.match(contextControlsSource, /goto\(next, \{ replaceState: true, keepFocus: true, noScroll: true \}\)/);
+  assert.match(contextControlsSource, /window\.location\.assign\(`\/assistants\/\?team=\$\{encodeURIComponent\(created\.id\)\}`\)/);
+});
+
+test('composer context provides model buttons and complete Assistant scope controls', () => {
+  assert.match(contextControlsSource, /selectTeamBrain\(fetch, teamId, brain\.provider, brain\.model\)/);
+  assert.match(contextControlsSource, /role="radiogroup"/);
+  assert.match(contextControlsSource, /entry\.status === 'running'/);
+  assert.match(contextControlsSource, /type="checkbox"/);
+  assert.match(contextControlsSource, /onclick=\{selectAllTeamAssistants\}/);
+  assert.match(contextControlsSource, /onclick=\{unselectAllTeamAssistants\}/);
+  assert.match(contextControlsSource, /selectOnlyTeamAssistant\(assistant\.id\)/);
+  assert.match(contextControlsSource, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(contextControlsSource, /@media \(max-width: 640px\)[\s\S]*overflow-x: auto/);
 });

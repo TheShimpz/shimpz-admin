@@ -9,6 +9,7 @@ const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const MAX_TEAMS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_SELECTED_FILES = 8;
+const MAX_SELECTED_ASSISTANTS = 16;
 
 function emptyContext() {
   return {
@@ -17,6 +18,7 @@ function emptyContext() {
     selectedTeamId: '',
     catalog: [],
     installedAssistants: [],
+    selectedAssistantIds: [],
     files: [],
     selectedFileIds: [],
     error: '',
@@ -26,6 +28,23 @@ function emptyContext() {
 export const teamContext = writable(emptyContext());
 
 let generation = 0;
+const assistantSelections = new Map();
+
+function runningAssistantIds(installedAssistants) {
+  return installedAssistants
+    .filter((entry) => entry.status === 'running')
+    .map((entry) => entry.assistant);
+}
+
+function reconcileAssistantSelection(teamId, installedAssistants) {
+  const running = runningAssistantIds(installedAssistants);
+  const allowed = new Set(running);
+  const selected = assistantSelections.has(teamId)
+    ? assistantSelections.get(teamId).filter((id) => allowed.has(id))
+    : running.slice(0, MAX_SELECTED_ASSISTANTS);
+  assistantSelections.set(teamId, selected);
+  return [...selected];
+}
 
 function hasExactKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -142,6 +161,7 @@ function markFailure(attempt, error, fallback, clearAuthority) {
       ...(clearAuthority ? emptyContext() : state),
       phase: 'error',
       installedAssistants: [],
+      selectedAssistantIds: [],
       files: [],
       selectedFileIds: [],
       error: safe.message,
@@ -159,6 +179,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       selectedTeamId: '',
       catalog: [],
       installedAssistants: [],
+      selectedAssistantIds: [],
       files: [],
     };
     if (attempt === generation) {
@@ -174,6 +195,10 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
 
   const catalog = await listAssistantCatalog(fetcher);
   const inventory = await inventorySnapshot(fetcher, selectedTeamId, catalog);
+  const selectedAssistantIds = reconcileAssistantSelection(
+    selectedTeamId,
+    inventory.installedAssistants,
+  );
   if (attempt === generation) {
     teamContext.set({
       phase: 'ready',
@@ -181,11 +206,12 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       selectedTeamId,
       catalog,
       ...inventory,
+      selectedAssistantIds,
       selectedFileIds: [],
       error: '',
     });
   }
-  return { teams, selectedTeamId, catalog, ...inventory };
+  return { teams, selectedTeamId, catalog, ...inventory, selectedAssistantIds };
 }
 
 export async function loadTeamContext(fetcher, preferredId = '') {
@@ -227,18 +253,24 @@ export async function selectTeam(fetcher, id) {
     phase: 'loading',
     selectedTeamId: canonicalId,
     installedAssistants: [],
+    selectedAssistantIds: [],
     files: [],
     selectedFileIds: [],
     error: '',
   });
   try {
     const inventory = await inventorySnapshot(fetcher, canonicalId, current.catalog);
+    const selectedAssistantIds = reconcileAssistantSelection(
+      canonicalId,
+      inventory.installedAssistants,
+    );
     if (attempt === generation) {
       teamContext.set({
         ...current,
         phase: 'ready',
         selectedTeamId: canonicalId,
         ...inventory,
+        selectedAssistantIds,
         selectedFileIds: [],
         error: '',
       });
@@ -251,6 +283,7 @@ export async function selectTeam(fetcher, id) {
         ...current,
         phase: 'error',
         installedAssistants: [],
+        selectedAssistantIds: [],
         files: [],
         selectedFileIds: [],
         error: safe.message,
@@ -268,6 +301,7 @@ export async function refreshTeamInventory(fetcher) {
       ...current,
       phase: 'ready',
       installedAssistants: [],
+      selectedAssistantIds: [],
       files: [],
       selectedFileIds: [],
       error: '',
@@ -283,17 +317,23 @@ export async function refreshTeamInventory(fetcher) {
     ...current,
     phase: 'loading',
     installedAssistants: [],
+    selectedAssistantIds: [],
     files: [],
     selectedFileIds: [],
     error: '',
   });
   try {
     const inventory = await inventorySnapshot(fetcher, current.selectedTeamId, current.catalog);
+    const selectedAssistantIds = reconcileAssistantSelection(
+      current.selectedTeamId,
+      inventory.installedAssistants,
+    );
     if (attempt === generation) {
       teamContext.set({
         ...current,
         phase: 'ready',
         ...inventory,
+        selectedAssistantIds,
         selectedFileIds: [],
         error: '',
       });
@@ -319,8 +359,55 @@ export function toggleTeamFile(id) {
   return changed;
 }
 
+function updateAssistantSelection(project) {
+  let changed = false;
+  teamContext.update((state) => {
+    if (!state.selectedTeamId || state.phase !== 'ready') return state;
+    const running = runningAssistantIds(state.installedAssistants);
+    const next = project(running, state.selectedAssistantIds);
+    if (
+      !Array.isArray(next) ||
+      next.length > MAX_SELECTED_ASSISTANTS ||
+      next.some((id) => !running.includes(id)) ||
+      new Set(next).size !== next.length
+    ) return state;
+    if (
+      next.length === state.selectedAssistantIds.length &&
+      next.every((id, index) => id === state.selectedAssistantIds[index])
+    ) return state;
+    assistantSelections.set(state.selectedTeamId, [...next]);
+    changed = true;
+    return { ...state, selectedAssistantIds: [...next] };
+  });
+  return changed;
+}
+
+export function toggleTeamAssistant(id) {
+  return updateAssistantSelection((running, selected) => {
+    if (!running.includes(id)) return selected;
+    return selected.includes(id)
+      ? selected.filter((assistantId) => assistantId !== id)
+      : [...selected, id];
+  });
+}
+
+export function selectAllTeamAssistants() {
+  return updateAssistantSelection((running) => running.slice(0, MAX_SELECTED_ASSISTANTS));
+}
+
+export function unselectAllTeamAssistants() {
+  return updateAssistantSelection(() => []);
+}
+
+export function selectOnlyTeamAssistant(id) {
+  return updateAssistantSelection((running, selected) => (
+    running.includes(id) ? [id] : selected
+  ));
+}
+
 export function clearTeamContext() {
   generation += 1;
+  assistantSelections.clear();
   teamContext.set(emptyContext());
 }
 
@@ -331,7 +418,13 @@ export async function createTeam(fetcher, name) {
 
   const attempt = ++generation;
   const current = get(teamContext);
-  teamContext.set({ ...current, phase: 'loading', error: '', selectedFileIds: [] });
+  teamContext.set({
+    ...current,
+    phase: 'loading',
+    error: '',
+    selectedAssistantIds: [],
+    selectedFileIds: [],
+  });
   let created;
   try {
     const response = await fetcher('/api/teams', {

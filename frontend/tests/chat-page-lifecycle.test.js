@@ -16,6 +16,7 @@ test('consumes the shared Team context without duplicating the persistent shell 
   assert.match(source, /\$teamContext\.selectedTeamId/);
   assert.match(source, /\$teamContext\.teams/);
   assert.match(source, /\$teamContext\.selectedFileIds/);
+  assert.match(source, /\$teamContext\.selectedAssistantIds/);
 
   assert.doesNotMatch(source, /AdminShell|LocaleMenu|AssistantIcon/);
   assert.doesNotMatch(source, /listAssistantCatalog|listInstalledAssistants|listTeamFiles|safeApiError/);
@@ -66,7 +67,7 @@ test('keeps versioned WebSocket send, stop, reconnect and selected file contract
   assert.match(source, /scheduleReconnect\(expectedTeamId\)/);
   assert.match(
     source,
-    /createChatFrame\(teamId, \{\s+message,\s+files: \$teamContext\.selectedFileIds,\s+\}\)/,
+    /createChatFrame\(teamId, \{\s+message,\s+files: \$teamContext\.selectedFileIds,\s+assistant_ids: \$teamContext\.selectedAssistantIds,\s+\}\)/,
   );
   assert.match(source, /createStopFrame\(teamId\)/);
   assert.match(
@@ -172,9 +173,23 @@ test('opens installed Assistant Help immediately before Send and clears it on Te
     /<button[\s\S]*class="help"[\s\S]*>\?<\/button>[\s\S]*<button class="send"/,
   );
   assert.match(source, /disabled=\{helpAssistants\.length === 0\}/);
+  assert.match(source, /const selected = new Set\(\$teamContext\.selectedAssistantIds\)/);
+  assert.match(source, /runtime\.status === 'running' && selected\.has\(runtime\.assistant\)/);
   assert.match(source, /function activateTeam\(nextTeamId\)[\s\S]*helpOpen = false;/);
   assert.match(source, /<AssistantHelpDrawer[\s\S]*teamId=\{chatTeamId\}[\s\S]*assistants=\{helpAssistants\}/);
   assert.match(source, /\.chat-workspace\.help-open \{\s*grid-template-columns: minmax\(0, 1fr\) auto;/);
+});
+
+test('keeps Team, Brain, and Assistant context attached to every composer state', () => {
+  assert.match(source, /import ChatContextControls from '\$lib\/ChatContextControls\.svelte';/);
+  assert.match(
+    source,
+    /<form class="composer"[\s\S]*?<ChatContextControls disabled=\{busy \|\| stopping\} \/>[\s\S]*?<div class="composer-input">/,
+  );
+  assert.match(source, /<section class="provider-setup"[\s\S]*?<div class="context-dock"><ChatContextControls \/><\/div>/);
+  assert.match(source, /<section class="empty-state"[\s\S]*?<div class="context-dock"><ChatContextControls \/><\/div>/);
+  assert.match(source, /Create a Team below to start chatting\./);
+  assert.doesNotMatch(source, /from the sidebar|pela barra lateral/);
 });
 
 test('loads Help lazily per installed Assistant with an accessible multilingual drawer', () => {

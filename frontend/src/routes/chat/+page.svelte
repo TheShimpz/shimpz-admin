@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
+  import ChatContextControls from '$lib/ChatContextControls.svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
   import { locale } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
@@ -20,7 +21,7 @@
       kicker: 'Team // Chat', title: 'Your Team',
       placeholder: 'Message {team}…', send: 'Send', sending: '{team} is thinking…', you: 'You',
       stop: 'Stop', stopped: 'The active turn was stopped.',
-      emptyTeams: 'Create a Team from the sidebar to start chatting.',
+      emptyTeams: 'Create a Team below to start chatting.',
       loading: 'Loading your Team…', loadFailed: 'Local chat data is unavailable.',
       connecting: 'Connecting…', disconnected: 'The secure chat connection was interrupted. Reconnecting…',
       protocolError: 'The secure chat response was invalid.',
@@ -33,7 +34,7 @@
       kicker: 'Time // Chat', title: 'Seu Time',
       placeholder: 'Envie uma mensagem para {team}…', send: 'Enviar', sending: '{team} está pensando…', you: 'Você',
       stop: 'Parar', stopped: 'O turno ativo foi interrompido.',
-      emptyTeams: 'Crie um Time pela barra lateral para começar a conversar.',
+      emptyTeams: 'Crie um Time abaixo para começar a conversar.',
       loading: 'Carregando seu Time…', loadFailed: 'Os dados do chat local estão indisponíveis.',
       connecting: 'Conectando…', disconnected: 'A conexão segura do chat foi interrompida. Reconectando…',
       protocolError: 'A resposta segura do chat era inválida.',
@@ -80,10 +81,13 @@
   let thinking = $derived(copy.sending.replace('{team}', teamName));
   let helpAssistants = $derived.by(() => {
     const catalog = new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant]));
-    return $teamContext.installedAssistants.map((runtime) => ({
-      id: runtime.assistant,
-      name: catalog.get(runtime.assistant)?.name ?? runtime.assistant,
-    }));
+    const selected = new Set($teamContext.selectedAssistantIds);
+    return $teamContext.installedAssistants
+      .filter((runtime) => runtime.status === 'running' && selected.has(runtime.assistant))
+      .map((runtime) => ({
+        id: runtime.assistant,
+        name: catalog.get(runtime.assistant)?.name ?? runtime.assistant,
+      }));
   });
   let contextLoading = $derived(
     $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
@@ -255,6 +259,7 @@
       frame = createChatFrame(teamId, {
         message,
         files: $teamContext.selectedFileIds,
+        assistant_ids: $teamContext.selectedAssistantIds,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -353,15 +358,17 @@
         {/if}
 
           <form class="composer" onsubmit={send}>
-          <textarea
-            bind:value={draft}
-            maxlength="16000"
-            rows="2"
-            placeholder={placeholder}
-            disabled={busy}
-            onkeydown={handleComposerKeydown}
-          ></textarea>
-            <div>
+            <ChatContextControls disabled={busy || stopping} />
+            <div class="composer-input">
+              <textarea
+                bind:value={draft}
+                maxlength="16000"
+                rows="2"
+                placeholder={placeholder}
+                disabled={busy}
+                onkeydown={handleComposerKeydown}
+              ></textarea>
+              <div class="composer-actions">
               {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
               <button
                 bind:this={helpButton}
@@ -377,6 +384,7 @@
               <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
                 {busy ? thinking : socketReady ? copy.send : copy.connecting}
               </button>
+              </div>
             </div>
           </form>
         </section>
@@ -390,19 +398,23 @@
     {:else}
       <section class="provider-setup" aria-live="polite">
         <ProviderSetupGate />
+        <div class="context-dock"><ChatContextControls /></div>
       </section>
     {/if}
   {:else}
     <section class="empty-state" aria-live="polite">
-      <div aria-hidden="true"><span></span></div>
-      {#if visibleError}
-        <div class="empty-error" role="alert">
-          <strong>{visibleError}</strong>
-          {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
-        </div>
-      {:else}
-        <p>{contextLoading ? copy.loading : copy.emptyTeams}</p>
-      {/if}
+      <div class="empty-copy">
+        <div class="empty-mark" aria-hidden="true"><span></span></div>
+        {#if visibleError}
+          <div class="empty-error" role="alert">
+            <strong>{visibleError}</strong>
+            {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
+          </div>
+        {:else}
+          <p>{contextLoading ? copy.loading : copy.emptyTeams}</p>
+        {/if}
+      </div>
+      <div class="context-dock"><ChatContextControls /></div>
     </section>
   {/if}
 </div>
@@ -455,6 +467,7 @@
     min-height: 0;
     border-inline-end: 1px solid var(--admin-divider);
     border-bottom: 1px solid var(--admin-divider);
+    grid-template-rows: minmax(0, 1fr) auto;
     overflow: auto;
   }
 
@@ -565,11 +578,11 @@
       calc(100% - (2 * var(--chat-rail-gutter))),
       var(--chat-rail-width)
     );
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     grid-row: 3;
     align-items: end;
     justify-self: center;
-    gap: 0.65rem;
+    gap: 0.45rem;
     padding: 0.8rem 0;
     background: var(--surface-1);
   }
@@ -593,7 +606,15 @@
     overflow-y: auto;
   }
 
-  .composer > div {
+  .composer-input {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0.65rem;
+  }
+
+  .composer-actions {
     display: flex;
     gap: 0.5rem;
   }
@@ -642,18 +663,24 @@
     display: grid;
     height: 100%;
     min-height: 0;
-    place-content: center;
-    justify-items: center;
-    gap: 1rem;
+    grid-template-rows: minmax(0, 1fr) auto;
     border: 0;
     border-inline-end: 1px solid var(--admin-divider);
     border-bottom: 1px solid var(--admin-divider);
     color: var(--text-faint);
-    text-align: center;
     overflow: auto;
   }
 
-  .empty-state > div:first-child {
+  .empty-copy {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .empty-mark {
     display: grid;
     width: 2.7rem;
     height: 2.7rem;
@@ -662,23 +689,30 @@
     transform: rotate(45deg);
   }
 
-  .empty-state > div:first-child span {
+  .empty-mark span {
     width: 0.5rem;
     height: 0.5rem;
     background: var(--accent);
     box-shadow: 0 0 9px rgba(0, 240, 255, 0.55);
   }
 
-  .empty-state > p {
+  .empty-copy > p {
     max-width: 28rem;
     margin: 0;
+  }
+
+  .context-dock {
+    width: min(calc(100% - 1.6rem), 52rem);
+    justify-self: center;
+    padding: 0.8rem 0;
   }
 
   @media (max-width: 640px) {
     article { max-width: 92%; }
     .conversation { --chat-rail-gutter: 0.6rem; }
     .composer { gap: 0.45rem; padding: 0.6rem 0; }
-    .composer > div { gap: 0.3rem; }
+    .composer-input { gap: 0.45rem; }
+    .composer-actions { gap: 0.3rem; }
     button { padding-inline: 0.65rem; }
   }
 </style>
