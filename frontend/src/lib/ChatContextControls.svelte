@@ -25,7 +25,7 @@
       teamName: 'Team name', teamPlaceholder: 'Marketing', create: 'Create Team', creating: 'Creating…', createFailed: 'The Team could not be created.',
       brain: 'Brain', brainKicker: 'Brain // context', brainTitle: 'Choose a Brain', brainLead: 'Select the model that coordinates this Team.', modelLoading: 'Loading model settings…', modelFailed: 'Brain settings could not be updated.',
       assistants: 'Assistants', assistantTitle: 'Choose Assistants', assistantLead: 'Only selected Assistants can lend Powers to the next turns.',
-      assistantKicker: 'Assistants // context', assistantEmpty: 'No running Assistants are available in this Team.', addAssistant: 'Add Assistant', selectAll: 'Select all', selectMaximum: 'Select first {limit}', unselectAll: 'Unselect all', onlyThis: 'Only this', onlyThisNamed: 'Use only {name}',
+      assistantKicker: 'Assistants // context', assistantEmpty: 'No running Assistants are available in this Team.', selectAll: 'Select all', selectMaximum: 'Select first {limit}', unselectAll: 'Unselect all', onlyThis: 'Only this', onlyThisNamed: 'Use only {name}',
       selectionLimit: 'This chat can use up to {limit} Assistants at once.', selected: '{selected} of {total}', selectedLimited: '{selected} of {total} · max {limit}', current: 'Current', close: 'Close', cancel: 'Cancel',
     },
     pt: {
@@ -35,44 +35,44 @@
       teamName: 'Nome do Time', teamPlaceholder: 'Marketing', create: 'Criar Time', creating: 'Criando…', createFailed: 'Não foi possível criar o Time.',
       brain: 'Brain', brainKicker: 'Brain // contexto', brainTitle: 'Escolha um Brain', brainLead: 'Selecione o modelo que coordena este Time.', modelLoading: 'Carregando modelos…', modelFailed: 'Não foi possível atualizar o Brain.',
       assistants: 'Assistants', assistantTitle: 'Escolha os Assistants', assistantLead: 'Somente os Assistants selecionados podem fornecer Powers nos próximos turnos.',
-      assistantKicker: 'Assistants // contexto', assistantEmpty: 'Nenhum Assistant em execução está disponível neste Time.', addAssistant: 'Adicionar Assistant', selectAll: 'Selecionar todos', selectMaximum: 'Selecionar os primeiros {limit}', unselectAll: 'Desmarcar todos', onlyThis: 'Somente este', onlyThisNamed: 'Usar somente {name}',
+      assistantKicker: 'Assistants // contexto', assistantEmpty: 'Nenhum Assistant em execução está disponível neste Time.', selectAll: 'Selecionar todos', selectMaximum: 'Selecionar os primeiros {limit}', unselectAll: 'Desmarcar todos', onlyThis: 'Somente este', onlyThisNamed: 'Usar somente {name}',
       selectionLimit: 'Este chat pode usar até {limit} Assistants por vez.', selected: '{selected} de {total}', selectedLimited: '{selected} de {total} · máximo {limit}', current: 'Atual', close: 'Fechar', cancel: 'Cancelar',
     },
     es: {
       contextAria: 'Contexto del chat', team: 'Equipo', noTeam: 'Crear Equipo', teamKicker: 'Equipo // contexto', teamTitle: 'Elige un Equipo', teamLead: 'Cambia el espacio privado de esta conversación.',
       addTeam: 'Añadir Equipo', createKicker: 'Equipo // iniciar', createTitle: 'Crear un Equipo', createLead: 'Ponle un nombre claro a este espacio local aislado.', teamName: 'Nombre del Equipo', teamPlaceholder: 'Marketing', create: 'Crear Equipo', creating: 'Creando…', createFailed: 'No se pudo crear el Equipo.',
       brain: 'Brain', brainKicker: 'Brain // contexto', brainTitle: 'Elige un Brain', brainLead: 'Selecciona el modelo que coordina este Equipo.', modelLoading: 'Cargando modelos…', modelFailed: 'No se pudo actualizar el Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // contexto', assistantTitle: 'Elige Assistants', assistantLead: 'Solo los Assistants seleccionados pueden aportar Powers en los próximos turnos.', assistantEmpty: 'No hay Assistants en ejecución en este Equipo.', addAssistant: 'Añadir Assistant', selectAll: 'Seleccionar todos', selectMaximum: 'Seleccionar los primeros {limit}', unselectAll: 'Deseleccionar todos', onlyThis: 'Solo este', onlyThisNamed: 'Usar solo {name}', selectionLimit: 'Este chat puede usar hasta {limit} Assistants a la vez.', selected: '{selected} de {total}', selectedLimited: '{selected} de {total} · máximo {limit}', current: 'Actual', close: 'Cerrar', cancel: 'Cancelar',
+      assistants: 'Assistants', assistantKicker: 'Assistants // contexto', assistantTitle: 'Elige Assistants', assistantLead: 'Solo los Assistants seleccionados pueden aportar Powers en los próximos turnos.', assistantEmpty: 'No hay Assistants en ejecución en este Equipo.', selectAll: 'Seleccionar todos', selectMaximum: 'Seleccionar los primeros {limit}', unselectAll: 'Deseleccionar todos', onlyThis: 'Solo este', onlyThisNamed: 'Usar solo {name}', selectionLimit: 'Este chat puede usar hasta {limit} Assistants a la vez.', selected: '{selected} de {total}', selectedLimited: '{selected} de {total} · máximo {limit}', current: 'Actual', close: 'Cerrar', cancel: 'Cancelar',
     },
     zh: {
       contextAria: '聊天上下文', team: '团队', noTeam: '创建团队', teamKicker: '团队 // 上下文', teamTitle: '选择团队', teamLead: '切换此对话的私有工作区。',
       addTeam: '添加团队', createKicker: '团队 // 初始化', createTitle: '创建团队', createLead: '为这个隔离的本地工作区起一个清晰的名称。', teamName: '团队名称', teamPlaceholder: '营销', create: '创建团队', creating: '正在创建…', createFailed: '无法创建团队。',
       brain: 'Brain', brainKicker: 'Brain // 上下文', brainTitle: '选择 Brain', brainLead: '选择协调此团队的模型。', modelLoading: '正在加载模型…', modelFailed: '无法更新 Brain 设置。',
-      assistants: 'Assistants', assistantKicker: 'Assistants // 上下文', assistantTitle: '选择 Assistants', assistantLead: '只有选中的 Assistants 能在后续对话中提供 Powers。', assistantEmpty: '此团队没有正在运行的 Assistant。', addAssistant: '添加 Assistant', selectAll: '全选', selectMaximum: '选择前 {limit} 个', unselectAll: '全部取消', onlyThis: '仅此项', onlyThisNamed: '仅使用 {name}', selectionLimit: '此聊天一次最多可使用 {limit} 个 Assistants。', selected: '已选 {selected}/{total}', selectedLimited: '已选 {selected}/{total} · 上限 {limit}', current: '当前', close: '关闭', cancel: '取消',
+      assistants: 'Assistants', assistantKicker: 'Assistants // 上下文', assistantTitle: '选择 Assistants', assistantLead: '只有选中的 Assistants 能在后续对话中提供 Powers。', assistantEmpty: '此团队没有正在运行的 Assistant。', selectAll: '全选', selectMaximum: '选择前 {limit} 个', unselectAll: '全部取消', onlyThis: '仅此项', onlyThisNamed: '仅使用 {name}', selectionLimit: '此聊天一次最多可使用 {limit} 个 Assistants。', selected: '已选 {selected}/{total}', selectedLimited: '已选 {selected}/{total} · 上限 {limit}', current: '当前', close: '关闭', cancel: '取消',
     },
     fr: {
       contextAria: 'Contexte du chat', team: 'Équipe', noTeam: 'Créer une Équipe', teamKicker: 'Équipe // contexte', teamTitle: 'Choisir une Équipe', teamLead: 'Changez l’espace privé de cette conversation.',
       addTeam: 'Ajouter une Équipe', createKicker: 'Équipe // initialiser', createTitle: 'Créer une Équipe', createLead: 'Donnez un nom clair à cet espace local isolé.', teamName: 'Nom de l’Équipe', teamPlaceholder: 'Marketing', create: 'Créer l’Équipe', creating: 'Création…', createFailed: 'Impossible de créer l’Équipe.',
       brain: 'Brain', brainKicker: 'Brain // contexte', brainTitle: 'Choisir un Brain', brainLead: 'Sélectionnez le modèle qui coordonne cette Équipe.', modelLoading: 'Chargement des modèles…', modelFailed: 'Impossible de mettre à jour le Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // contexte', assistantTitle: 'Choisir les Assistants', assistantLead: 'Seuls les Assistants sélectionnés peuvent fournir des Powers aux prochains tours.', assistantEmpty: 'Aucun Assistant en cours d’exécution dans cette Équipe.', addAssistant: 'Ajouter un Assistant', selectAll: 'Tout sélectionner', selectMaximum: 'Sélectionner les {limit} premiers', unselectAll: 'Tout désélectionner', onlyThis: 'Seulement celui-ci', onlyThisNamed: 'Utiliser uniquement {name}', selectionLimit: 'Ce chat peut utiliser jusqu’à {limit} Assistants à la fois.', selected: '{selected} sur {total}', selectedLimited: '{selected} sur {total} · maximum {limit}', current: 'Actuel', close: 'Fermer', cancel: 'Annuler',
+      assistants: 'Assistants', assistantKicker: 'Assistants // contexte', assistantTitle: 'Choisir les Assistants', assistantLead: 'Seuls les Assistants sélectionnés peuvent fournir des Powers aux prochains tours.', assistantEmpty: 'Aucun Assistant en cours d’exécution dans cette Équipe.', selectAll: 'Tout sélectionner', selectMaximum: 'Sélectionner les {limit} premiers', unselectAll: 'Tout désélectionner', onlyThis: 'Seulement celui-ci', onlyThisNamed: 'Utiliser uniquement {name}', selectionLimit: 'Ce chat peut utiliser jusqu’à {limit} Assistants à la fois.', selected: '{selected} sur {total}', selectedLimited: '{selected} sur {total} · maximum {limit}', current: 'Actuel', close: 'Fermer', cancel: 'Annuler',
     },
     de: {
       contextAria: 'Chat-Kontext', team: 'Team', noTeam: 'Team erstellen', teamKicker: 'Team // Kontext', teamTitle: 'Team auswählen', teamLead: 'Wechsle den privaten Arbeitsbereich für dieses Gespräch.',
       addTeam: 'Team hinzufügen', createKicker: 'Team // initialisieren', createTitle: 'Team erstellen', createLead: 'Gib diesem isolierten lokalen Arbeitsbereich einen eindeutigen Namen.', teamName: 'Teamname', teamPlaceholder: 'Marketing', create: 'Team erstellen', creating: 'Wird erstellt…', createFailed: 'Das Team konnte nicht erstellt werden.',
       brain: 'Brain', brainKicker: 'Brain // Kontext', brainTitle: 'Brain auswählen', brainLead: 'Wähle das Modell, das dieses Team koordiniert.', modelLoading: 'Modelle werden geladen…', modelFailed: 'Das Brain konnte nicht aktualisiert werden.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // Kontext', assistantTitle: 'Assistants auswählen', assistantLead: 'Nur ausgewählte Assistants können in den nächsten Runden Powers bereitstellen.', assistantEmpty: 'In diesem Team sind keine Assistants aktiv.', addAssistant: 'Assistant hinzufügen', selectAll: 'Alle auswählen', selectMaximum: 'Die ersten {limit} auswählen', unselectAll: 'Alle abwählen', onlyThis: 'Nur diesen', onlyThisNamed: 'Nur {name} verwenden', selectionLimit: 'Dieser Chat kann höchstens {limit} Assistants gleichzeitig verwenden.', selected: '{selected} von {total}', selectedLimited: '{selected} von {total} · maximal {limit}', current: 'Aktuell', close: 'Schließen', cancel: 'Abbrechen',
+      assistants: 'Assistants', assistantKicker: 'Assistants // Kontext', assistantTitle: 'Assistants auswählen', assistantLead: 'Nur ausgewählte Assistants können in den nächsten Runden Powers bereitstellen.', assistantEmpty: 'In diesem Team sind keine Assistants aktiv.', selectAll: 'Alle auswählen', selectMaximum: 'Die ersten {limit} auswählen', unselectAll: 'Alle abwählen', onlyThis: 'Nur diesen', onlyThisNamed: 'Nur {name} verwenden', selectionLimit: 'Dieser Chat kann höchstens {limit} Assistants gleichzeitig verwenden.', selected: '{selected} von {total}', selectedLimited: '{selected} von {total} · maximal {limit}', current: 'Aktuell', close: 'Schließen', cancel: 'Abbrechen',
     },
     ja: {
       contextAria: 'チャットのコンテキスト', team: 'チーム', noTeam: 'チームを作成', teamKicker: 'チーム // コンテキスト', teamTitle: 'チームを選択', teamLead: 'この会話のプライベートワークスペースを切り替えます。',
       addTeam: 'チームを追加', createKicker: 'チーム // 初期化', createTitle: 'チームを作成', createLead: 'この分離されたローカルワークスペースに分かりやすい名前を付けます。', teamName: 'チーム名', teamPlaceholder: 'マーケティング', create: 'チームを作成', creating: '作成中…', createFailed: 'チームを作成できませんでした。',
       brain: 'Brain', brainKicker: 'Brain // コンテキスト', brainTitle: 'Brain を選択', brainLead: 'このチームを調整するモデルを選択します。', modelLoading: 'モデルを読み込み中…', modelFailed: 'Brain を更新できませんでした。',
-      assistants: 'Assistants', assistantKicker: 'Assistants // コンテキスト', assistantTitle: 'Assistants を選択', assistantLead: '選択した Assistants だけが次のターンで Powers を提供できます。', assistantEmpty: 'このチームで実行中の Assistant はありません。', addAssistant: 'Assistant を追加', selectAll: 'すべて選択', selectMaximum: '先頭の {limit} 件を選択', unselectAll: 'すべて解除', onlyThis: 'これだけ', onlyThisNamed: '{name} のみ使用', selectionLimit: 'このチャットでは一度に最大 {limit} 個の Assistants を使用できます。', selected: '{total} 件中 {selected} 件', selectedLimited: '{total} 件中 {selected} 件 · 上限 {limit}', current: '現在', close: '閉じる', cancel: 'キャンセル',
+      assistants: 'Assistants', assistantKicker: 'Assistants // コンテキスト', assistantTitle: 'Assistants を選択', assistantLead: '選択した Assistants だけが次のターンで Powers を提供できます。', assistantEmpty: 'このチームで実行中の Assistant はありません。', selectAll: 'すべて選択', selectMaximum: '先頭の {limit} 件を選択', unselectAll: 'すべて解除', onlyThis: 'これだけ', onlyThisNamed: '{name} のみ使用', selectionLimit: 'このチャットでは一度に最大 {limit} 個の Assistants を使用できます。', selected: '{total} 件中 {selected} 件', selectedLimited: '{total} 件中 {selected} 件 · 上限 {limit}', current: '現在', close: '閉じる', cancel: 'キャンセル',
     },
     ar: {
       contextAria: 'سياق المحادثة', team: 'الفريق', noTeam: 'إنشاء فريق', teamKicker: 'الفريق // السياق', teamTitle: 'اختر فريقًا', teamLead: 'غيّر مساحة العمل الخاصة بهذه المحادثة.',
       addTeam: 'إضافة فريق', createKicker: 'الفريق // التهيئة', createTitle: 'إنشاء فريق', createLead: 'امنح مساحة العمل المحلية المعزولة اسمًا واضحًا.', teamName: 'اسم الفريق', teamPlaceholder: 'التسويق', create: 'إنشاء الفريق', creating: 'جارٍ الإنشاء…', createFailed: 'تعذر إنشاء الفريق.',
       brain: 'Brain', brainKicker: 'Brain // السياق', brainTitle: 'اختر Brain', brainLead: 'اختر النموذج الذي ينسّق هذا الفريق.', modelLoading: 'جارٍ تحميل النماذج…', modelFailed: 'تعذر تحديث Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // السياق', assistantTitle: 'اختر Assistants', assistantLead: 'يمكن فقط لـ Assistants المحددين توفير Powers في الأدوار التالية.', assistantEmpty: 'لا يوجد Assistant قيد التشغيل في هذا الفريق.', addAssistant: 'إضافة Assistant', selectAll: 'تحديد الكل', selectMaximum: 'تحديد أول {limit}', unselectAll: 'إلغاء تحديد الكل', onlyThis: 'هذا فقط', onlyThisNamed: 'استخدم {name} فقط', selectionLimit: 'يمكن لهذه المحادثة استخدام ما يصل إلى {limit} من Assistants في الوقت نفسه.', selected: '{selected} من {total}', selectedLimited: '{selected} من {total} · الحد {limit}', current: 'الحالي', close: 'إغلاق', cancel: 'إلغاء',
+      assistants: 'Assistants', assistantKicker: 'Assistants // السياق', assistantTitle: 'اختر Assistants', assistantLead: 'يمكن فقط لـ Assistants المحددين توفير Powers في الأدوار التالية.', assistantEmpty: 'لا يوجد Assistant قيد التشغيل في هذا الفريق.', selectAll: 'تحديد الكل', selectMaximum: 'تحديد أول {limit}', unselectAll: 'إلغاء تحديد الكل', onlyThis: 'هذا فقط', onlyThisNamed: 'استخدم {name} فقط', selectionLimit: 'يمكن لهذه المحادثة استخدام ما يصل إلى {limit} من Assistants في الوقت نفسه.', selected: '{selected} من {total}', selectedLimited: '{selected} من {total} · الحد {limit}', current: 'الحالي', close: 'إغلاق', cancel: 'إلغاء',
     },
   };
 
@@ -204,12 +204,6 @@
     }
   }
 
-  async function openAssistantStore() {
-    const teamId = activeTeam?.id;
-    if (!teamId) return;
-    assistantDialog?.close();
-    await goto(`/assistants/?team=${encodeURIComponent(teamId)}`);
-  }
 </script>
 
 <div class="context-controls" aria-label={copy.contextAria}>
@@ -360,7 +354,6 @@
     {/if}
     <footer>
       <button class="secondary" type="button" onclick={() => close(assistantDialog, assistantTrigger)}>{copy.close}</button>
-      <button class="primary" type="button" onclick={openAssistantStore}>{copy.addAssistant}</button>
     </footer>
   </div>
 </dialog>

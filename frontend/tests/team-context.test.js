@@ -522,18 +522,15 @@ test('composer context provides model buttons and complete Assistant scope contr
   assert.doesNotMatch(contextControlsSource, /overflow-x: auto|grid-auto-flow: column/);
 });
 
-test('Assistant context hides empty bulk actions and opens the Store for the selected Team', () => {
+test('Assistant context hides empty bulk actions and leaves Store navigation to the shell', () => {
   assert.match(
     contextControlsSource,
     /\{#if runningAssistants\.length > 0\}\s*<div class="bulk-actions">[\s\S]*onclick=\{selectAllTeamAssistants\}[\s\S]*onclick=\{unselectAllTeamAssistants\}/,
   );
+  assert.doesNotMatch(contextControlsSource, /openAssistantStore|copy\.addAssistant/);
   assert.match(
     contextControlsSource,
-    /async function openAssistantStore\(\) \{\s*const teamId = activeTeam\?\.id;\s*if \(!teamId\) return;\s*assistantDialog\?\.close\(\);\s*await goto\(`\/assistants\/\?team=\$\{encodeURIComponent\(teamId\)\}`\);/,
-  );
-  assert.match(
-    contextControlsSource,
-    /<footer>[\s\S]*onclick=\{openAssistantStore\}>\{copy\.addAssistant\}<\/button>[\s\S]*<\/footer>/,
+    /onclick=\{\(\) => close\(assistantDialog, assistantTrigger\)\}>\{copy\.close\}<\/button>/,
   );
 });
 
