@@ -279,7 +279,12 @@ class ChatWebSocketTests(unittest.TestCase):
                         await websocket.send('{"type":"chat","message":"hello","files":[]}')
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
-                            {"type": "done", "reply": "hello from the Team", "team_name": "Marketing"},
+                            {
+                                "type": "done",
+                                "team_id": "team_1",
+                                "team_name": "Marketing",
+                                "reply": "hello from the Team",
+                            },
                         )
                         with self.assertRaises(TimeoutError):
                             await asyncio.wait_for(websocket.recv(), timeout=0.05)

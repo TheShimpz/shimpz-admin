@@ -213,7 +213,12 @@ def turn_terminal(response: object, team_id: str) -> dict[str, object]:
             and _valid_team_name(body.get("team_name"))
             and _valid_reply(body.get("reply"))
         ):
-            return {"type": "done", "reply": body["reply"], "team_name": body["team_name"]}
+            return {
+                "type": "done",
+                "team_id": team_id,
+                "team_name": body["team_name"],
+                "reply": body["reply"],
+            }
         return _error_terminal(502, "local chat returned an invalid response")
 
     # ``localchat`` reduces controller/provider failures to one bounded machine code. Map only this
