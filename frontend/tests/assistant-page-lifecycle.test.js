@@ -78,6 +78,20 @@ test('localizes the new Assistant lifecycle feedback in every Admin locale', () 
   }
 });
 
+test('names the selected Team above the Store and localizes its installation destination', () => {
+  assert.match(
+    source,
+    /\{#if activeTeamRecord\}\s*<header class="store-destination"[^>]*>[\s\S]*<h2 id="store-destination-team">\{activeTeamRecord\.name\}<\/h2>[\s\S]*\$t\('store\.destinationLead', \{ team: activeTeamRecord\.name \}\)/,
+  );
+  assert.ok(source.indexOf('class="store-destination"') < source.indexOf('class="store-frame"'));
+  for (const [locale, localeMessages] of Object.entries(messages)) {
+    for (const key of ['destinationKicker', 'destinationLead']) {
+      assert.equal(typeof localeMessages.store[key], 'string', `${locale}.store.${key}`);
+      assert.notEqual(localeMessages.store[key], '', `${locale}.store.${key}`);
+    }
+  }
+});
+
 test('uses Team terminology without exposing direct Power controls', () => {
   assert.match(source, /Team/);
   assert.doesNotMatch(source, /invokeHelloPulse|\/powers\/|runHello/);

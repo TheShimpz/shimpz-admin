@@ -489,6 +489,14 @@
 
 <h1 class="sr-only">{$t('store.nav')}</h1>
 
+{#if activeTeamRecord}
+  <header class="store-destination" aria-labelledby="store-destination-team">
+    <p>{$t('store.destinationKicker')}</p>
+    <h2 id="store-destination-team">{activeTeamRecord.name}</h2>
+    <span>{$t('store.destinationLead', { team: activeTeamRecord.name })}</span>
+  </header>
+{/if}
+
 <section class="store-frame" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
         <iframe
@@ -543,6 +551,52 @@
   oncancel={cancelAssistantDialog} />
 
 <style>
+  .store-destination {
+    position: relative;
+    display: grid;
+    gap: 0.35rem;
+    margin: 0 0 1rem;
+    padding-block: 0.25rem;
+    padding-inline: 1rem 0;
+  }
+
+  .store-destination::before {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 2px;
+    background: linear-gradient(var(--accent), var(--accent-alt));
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.28);
+    content: '';
+  }
+
+  .store-destination p,
+  .store-destination h2,
+  .store-destination span {
+    margin: 0;
+  }
+
+  .store-destination p {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .store-destination h2 {
+    overflow-wrap: anywhere;
+    font-size: clamp(1.35rem, 3vw, 2rem);
+    letter-spacing: -0.04em;
+  }
+
+  .store-destination span {
+    color: var(--text-dim);
+    font-size: 0.76rem;
+    line-height: 1.55;
+  }
+
   .frame-actions a {
     display: inline-flex;
     min-height: 2.5rem;
