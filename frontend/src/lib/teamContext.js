@@ -11,8 +11,10 @@ const MAX_TEAMS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_ADMIN_PASSWORD_CHARS = 4096;
 const MAX_SELECTED_FILES = 8;
-const MAX_STORED_SELECTION_BYTES = 4096;
-const ASSISTANT_SELECTION_KEY_PREFIX = 'shimpz.admin.chat.assistants.v1:';
+const MAX_STORED_INTENT_BYTES = 16 * 1024;
+const MAX_INSTALLED_ASSISTANTS = 128;
+const ASSISTANT_INTENT_VERSION = 2;
+const ASSISTANT_INTENT_KEY_PREFIX = 'shimpz.admin.chat.assistant-intent.v2:';
 export const MAX_SELECTED_ASSISTANTS = 16;
 
 function emptyContext() {
@@ -32,9 +34,9 @@ function emptyContext() {
 export const teamContext = writable(emptyContext());
 
 let generation = 0;
-const assistantSelections = new Map();
+const assistantIntents = new Map();
 
-function selectionStorage() {
+function intentStorage() {
   try {
     return typeof globalThis.sessionStorage === 'undefined' ? null : globalThis.sessionStorage;
   } catch {
@@ -42,50 +44,55 @@ function selectionStorage() {
   }
 }
 
-function selectionStorageKey(teamId) {
-  return `${ASSISTANT_SELECTION_KEY_PREFIX}${teamId}`;
+function intentStorageKey(teamId) {
+  return `${ASSISTANT_INTENT_KEY_PREFIX}${teamId}`;
 }
 
-function readStoredAssistantSelection(teamId) {
-  const storage = selectionStorage();
+function readStoredAssistantIntent(teamId) {
+  const storage = intentStorage();
   if (!storage) return undefined;
-  const key = selectionStorageKey(teamId);
+  const key = intentStorageKey(teamId);
   try {
     const raw = storage.getItem(key);
     if (raw === null) return undefined;
-    if (raw.length > MAX_STORED_SELECTION_BYTES) throw new Error('oversized preference');
+    if (raw.length > MAX_STORED_INTENT_BYTES) throw new Error('oversized preference');
     const parsed = JSON.parse(raw);
     if (
-      !Array.isArray(parsed) ||
-      parsed.length > MAX_SELECTED_ASSISTANTS ||
-      parsed.some((id) => typeof id !== 'string' || id.length > 80 || !ASSISTANT_ID_RE.test(id)) ||
-      new Set(parsed).size !== parsed.length
+      !hasExactKeys(parsed, ['disabled', 'version']) ||
+      parsed.version !== ASSISTANT_INTENT_VERSION ||
+      !Array.isArray(parsed.disabled) ||
+      parsed.disabled.length > MAX_INSTALLED_ASSISTANTS ||
+      parsed.disabled.some((id) => typeof id !== 'string' || id.length > 80 || !ASSISTANT_ID_RE.test(id)) ||
+      new Set(parsed.disabled).size !== parsed.disabled.length
     ) {
       throw new Error('invalid preference');
     }
-    return parsed;
+    return { disabled: [...parsed.disabled] };
   } catch {
     try { storage.removeItem(key); } catch { /* Session preferences are best-effort only. */ }
     return undefined;
   }
 }
 
-function writeStoredAssistantSelection(teamId, selected) {
-  const storage = selectionStorage();
+function writeStoredAssistantIntent(teamId, intent) {
+  const storage = intentStorage();
   if (!storage) return;
   try {
-    storage.setItem(selectionStorageKey(teamId), JSON.stringify(selected));
+    storage.setItem(intentStorageKey(teamId), JSON.stringify({
+      version: ASSISTANT_INTENT_VERSION,
+      disabled: intent.disabled,
+    }));
   } catch {
     // Chat scope stays correct in memory when browser session storage is unavailable.
   }
 }
 
-function clearStoredAssistantSelection(teamId) {
-  assistantSelections.delete(teamId);
-  const storage = selectionStorage();
+function clearStoredAssistantIntent(teamId) {
+  assistantIntents.delete(teamId);
+  const storage = intentStorage();
   if (!storage) return;
   try {
-    storage.removeItem(selectionStorageKey(teamId));
+    storage.removeItem(intentStorageKey(teamId));
   } catch {
     // Deletion remains authoritative when browser session storage is unavailable.
   }
@@ -97,18 +104,26 @@ function runningAssistantIds(installedAssistants) {
     .map((entry) => entry.assistant);
 }
 
-function reconcileAssistantSelection(teamId, installedAssistants) {
-  const running = runningAssistantIds(installedAssistants);
-  const allowed = new Set(running);
-  const remembered = assistantSelections.has(teamId)
-    ? assistantSelections.get(teamId)
-    : readStoredAssistantSelection(teamId);
-  const selected = remembered === undefined
-    ? running.slice(0, MAX_SELECTED_ASSISTANTS)
-    : remembered.filter((id) => allowed.has(id));
-  assistantSelections.set(teamId, selected);
-  writeStoredAssistantSelection(teamId, selected);
-  return [...selected];
+function activeAssistantIds(installedAssistants, disabled) {
+  const blocked = new Set(disabled);
+  return runningAssistantIds(installedAssistants)
+    .filter((id) => !blocked.has(id))
+    .slice(0, MAX_SELECTED_ASSISTANTS);
+}
+
+function reconcileAssistantIntent(teamId, installedAssistants) {
+  const installed = new Set(installedAssistants.map((entry) => entry.assistant));
+  const remembered = assistantIntents.has(teamId)
+    ? assistantIntents.get(teamId)
+    : readStoredAssistantIntent(teamId);
+  // Absence means enabled. This distinguishes explicit user choice from temporary runtime state:
+  // outdated/stopped Assistants remain intended, while a confirmed uninstall removes old intent.
+  const intent = {
+    disabled: (remembered?.disabled ?? []).filter((id) => installed.has(id)),
+  };
+  assistantIntents.set(teamId, intent);
+  writeStoredAssistantIntent(teamId, intent);
+  return activeAssistantIds(installedAssistants, intent.disabled);
 }
 
 function hasExactKeys(value, expected) {
@@ -260,7 +275,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
 
   const catalog = await listAssistantCatalog(fetcher);
   const inventory = await inventorySnapshot(fetcher, selectedTeamId, catalog);
-  const selectedAssistantIds = reconcileAssistantSelection(
+  const selectedAssistantIds = reconcileAssistantIntent(
     selectedTeamId,
     inventory.installedAssistants,
   );
@@ -325,7 +340,7 @@ export async function selectTeam(fetcher, id) {
   });
   try {
     const inventory = await inventorySnapshot(fetcher, canonicalId, current.catalog);
-    const selectedAssistantIds = reconcileAssistantSelection(
+    const selectedAssistantIds = reconcileAssistantIntent(
       canonicalId,
       inventory.installedAssistants,
     );
@@ -389,7 +404,7 @@ export async function refreshTeamInventory(fetcher) {
   });
   try {
     const inventory = await inventorySnapshot(fetcher, current.selectedTeamId, current.catalog);
-    const selectedAssistantIds = reconcileAssistantSelection(
+    const selectedAssistantIds = reconcileAssistantIntent(
       current.selectedTeamId,
       inventory.installedAssistants,
     );
@@ -424,56 +439,70 @@ export function toggleTeamFile(id) {
   return changed;
 }
 
-function updateAssistantSelection(project) {
+function updateAssistantIntent(project) {
   let changed = false;
   teamContext.update((state) => {
     if (!state.selectedTeamId || state.phase !== 'ready') return state;
+    const installed = state.installedAssistants.map((entry) => entry.assistant);
     const running = runningAssistantIds(state.installedAssistants);
-    const next = project(running, state.selectedAssistantIds);
+    const current = assistantIntents.get(state.selectedTeamId) ?? { disabled: [] };
+    const nextDisabled = project(installed, running, current.disabled, state.selectedAssistantIds);
     if (
-      !Array.isArray(next) ||
-      next.length > MAX_SELECTED_ASSISTANTS ||
-      next.some((id) => !running.includes(id)) ||
-      new Set(next).size !== next.length
+      !Array.isArray(nextDisabled) ||
+      nextDisabled.length > MAX_INSTALLED_ASSISTANTS ||
+      nextDisabled.some((id) => !installed.includes(id)) ||
+      new Set(nextDisabled).size !== nextDisabled.length
     ) return state;
-    if (
-      next.length === state.selectedAssistantIds.length &&
-      next.every((id, index) => id === state.selectedAssistantIds[index])
-    ) return state;
-    assistantSelections.set(state.selectedTeamId, [...next]);
-    writeStoredAssistantSelection(state.selectedTeamId, next);
+    const nextIntent = { disabled: [...nextDisabled] };
+    const nextSelected = activeAssistantIds(state.installedAssistants, nextIntent.disabled);
+    const intentChanged = (
+      nextIntent.disabled.length !== current.disabled.length
+      || nextIntent.disabled.some((id, index) => id !== current.disabled[index])
+    );
+    const selectionChanged = (
+      nextSelected.length !== state.selectedAssistantIds.length
+      || nextSelected.some((id, index) => id !== state.selectedAssistantIds[index])
+    );
+    if (!intentChanged && !selectionChanged) return state;
+    assistantIntents.set(state.selectedTeamId, nextIntent);
+    writeStoredAssistantIntent(state.selectedTeamId, nextIntent);
     changed = true;
-    return { ...state, selectedAssistantIds: [...next] };
+    return { ...state, selectedAssistantIds: nextSelected };
   });
   return changed;
 }
 
 export function toggleTeamAssistant(id) {
-  return updateAssistantSelection((running, selected) => {
-    if (!running.includes(id)) return selected;
-    return selected.includes(id)
-      ? selected.filter((assistantId) => assistantId !== id)
-      : [...selected, id];
+  return updateAssistantIntent((_installed, running, disabled, selected) => {
+    if (!running.includes(id)) return disabled;
+    if (disabled.includes(id)) {
+      if (selected.length >= MAX_SELECTED_ASSISTANTS) return disabled;
+      return disabled.filter((assistantId) => assistantId !== id);
+    }
+    return selected.includes(id) ? [...disabled, id] : disabled;
   });
 }
 
 export function selectAllTeamAssistants() {
-  return updateAssistantSelection((running) => running.slice(0, MAX_SELECTED_ASSISTANTS));
+  return updateAssistantIntent((installed, running) => {
+    const enabled = new Set(running.slice(0, MAX_SELECTED_ASSISTANTS));
+    return installed.filter((id) => !enabled.has(id));
+  });
 }
 
 export function unselectAllTeamAssistants() {
-  return updateAssistantSelection(() => []);
+  return updateAssistantIntent((installed) => [...installed]);
 }
 
 export function selectOnlyTeamAssistant(id) {
-  return updateAssistantSelection((running, selected) => (
-    running.includes(id) ? [id] : selected
+  return updateAssistantIntent((installed, running, disabled) => (
+    running.includes(id) ? installed.filter((assistantId) => assistantId !== id) : disabled
   ));
 }
 
 export function clearTeamContext() {
   generation += 1;
-  assistantSelections.clear();
+  assistantIntents.clear();
   teamContext.set(emptyContext());
 }
 
@@ -576,7 +605,7 @@ export async function deleteTeam(fetcher, id, name, password) {
     throw safe;
   }
 
-  clearStoredAssistantSelection(canonicalId);
+  clearStoredAssistantIntent(canonicalId);
   const preferredId = current.selectedTeamId === canonicalId ? '' : current.selectedTeamId;
   try {
     await hydrate(fetcher, preferredId, attempt, '');

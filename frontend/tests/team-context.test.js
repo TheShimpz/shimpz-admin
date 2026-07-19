@@ -345,8 +345,8 @@ test('deletes a Team with exact credentials, clears its stored scope, and select
 
   try {
     await loadTeamContext(fetcher, 'marketing');
-    const key = 'shimpz.admin.chat.assistants.v1:marketing';
-    assert.equal(values.get(key), JSON.stringify(['salesnator']));
+    const key = 'shimpz.admin.chat.assistant-intent.v2:marketing';
+    assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: [] }));
 
     const result = await deleteTeam(fetcher, 'marketing', 'Marketing', 'correct horse battery staple');
 
@@ -501,7 +501,7 @@ test('Assistant selection is Team-scoped, bounded to running inventory, and empt
   assert.equal(toggleTeamAssistant('not-installed'), false);
 });
 
-test('Assistant inventory refresh intersects a deliberate selection without enabling new items', async () => {
+test('a newly installed Assistant becomes active without overriding a manual deselection', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
   assert.equal(unselectAllTeamAssistants(), true);
@@ -514,10 +514,68 @@ test('Assistant inventory refresh intersects a deliberate selection without enab
       ],
     }),
   }));
-  assert.deepEqual(get(teamContext).selectedAssistantIds, []);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
 });
 
-test('Assistant scope survives reload in session storage but is reconciled to verified running inventory', async () => {
+test('selected Assistant intent survives outdated and unavailable runtime states', async () => {
+  const inventory = (status) => fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [
+        { assistant: 'hello-pulse', status },
+        { assistant: 'salesnator', status: 'running' },
+      ],
+    }),
+  });
+  await loadTeamContext(inventory('running'), 'marketing');
+  assert.equal(selectOnlyTeamAssistant('hello-pulse'), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
+
+  await refreshTeamInventory(inventory('outdated'));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, []);
+  await refreshTeamInventory(inventory('exited'));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, []);
+  await refreshTeamInventory(inventory('running'));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
+});
+
+test('a manually deselected Assistant stays deselected across refresh and auto-update', async () => {
+  const inventory = (status) => fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [
+        { assistant: 'hello-pulse', status },
+        { assistant: 'salesnator', status: 'running' },
+      ],
+    }),
+  });
+  await loadTeamContext(inventory('running'), 'marketing');
+  assert.equal(toggleTeamAssistant('hello-pulse'), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+
+  await refreshTeamInventory(inventory('outdated'));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+  await refreshTeamInventory(inventory('running'));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+});
+
+test('a confirmed uninstall removes intent so reinstall defaults active', async () => {
+  const inventory = (assistants) => fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, { assistants }),
+  });
+  const both = [
+    { assistant: 'hello-pulse', status: 'running' },
+    { assistant: 'salesnator', status: 'running' },
+  ];
+  await loadTeamContext(inventory(both), 'marketing');
+  assert.equal(toggleTeamAssistant('hello-pulse'), true);
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+
+  await refreshTeamInventory(inventory([{ assistant: 'salesnator', status: 'running' }]));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+  await refreshTeamInventory(inventory(both));
+  assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse', 'salesnator']);
+});
+
+test('Assistant intent survives reload and rejects malformed stored authority', async () => {
   const previousStorage = globalThis.sessionStorage;
   const values = new Map();
   globalThis.sessionStorage = {
@@ -525,7 +583,7 @@ test('Assistant scope survives reload in session storage but is reconciled to ve
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
   };
-  const key = 'shimpz.admin.chat.assistants.v1:marketing';
+  const key = 'shimpz.admin.chat.assistant-intent.v2:marketing';
   const twoAssistants = fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
@@ -539,7 +597,7 @@ test('Assistant scope survives reload in session storage but is reconciled to ve
     clearTeamContext();
     await loadTeamContext(twoAssistants, 'marketing');
     assert.equal(selectOnlyTeamAssistant('salesnator'), true);
-    assert.equal(values.get(key), JSON.stringify(['salesnator']));
+    assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: ['hello-pulse'] }));
 
     clearTeamContext();
     await loadTeamContext(twoAssistants, 'marketing');
@@ -548,14 +606,15 @@ test('Assistant scope survives reload in session storage but is reconciled to ve
     clearTeamContext();
     await loadTeamContext(fixtureFetcher(), 'marketing');
     assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+    assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: [] }));
 
-    values.set(key, JSON.stringify(['not-installed']));
+    values.set(key, JSON.stringify({ version: 2, disabled: ['not-installed'] }));
     clearTeamContext();
     await loadTeamContext(fixtureFetcher(), 'marketing');
-    assert.deepEqual(get(teamContext).selectedAssistantIds, []);
-    assert.equal(values.get(key), '[]');
+    assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
+    assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: [] }));
 
-    values.set(key, JSON.stringify(['../escape']));
+    values.set(key, JSON.stringify({ version: 2, disabled: ['../escape'] }));
     clearTeamContext();
     await loadTeamContext(fixtureFetcher(), 'marketing');
     assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
