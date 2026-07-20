@@ -332,6 +332,14 @@ def secret_inventory(team_id: object) -> teams.DriverResponse:
     return _project_inventory(teams.list_assistant_secrets(canonical_id), canonical_id)
 
 
+def replace_secrets(team_id: object, payload: object) -> teams.DriverResponse:
+    """Atomically rotate a declared subset, then expose only controller-owned masks."""
+    canonical_id = teams.canonical_team_id(team_id)
+    body = teams.canonical_secret_replacement(payload)
+    response = teams.replace_assistant_secrets(canonical_id, body)
+    return _project_inventory(response, canonical_id)
+
+
 def _valid_team_name(value: object) -> bool:
     return (
         isinstance(value, str)

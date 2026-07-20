@@ -135,6 +135,59 @@ class PrivateChatTransportTests(unittest.TestCase):
 
 
 class LocalChatOrchestrationTests(unittest.TestCase):
+    def test_secret_replacement_is_exact_and_projects_only_masks(self) -> None:
+        payload = {
+            "assistant_id": "shimpz-assistant",
+            "values": [{"secret_id": "x-api-key", "value": "replacement-secret-123"}],
+        }
+        controller = teams.DriverResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "assistants": [
+                    {
+                        "id": "shimpz-assistant",
+                        "name": "Shimpz Assistant",
+                        "secrets": [
+                            {
+                                "id": "x-api-key",
+                                "name": "X API Key",
+                                "summary": "Identifies the application.",
+                                "configured": True,
+                                "mask": "repl…t123",
+                            }
+                        ],
+                    }
+                ],
+                "trace_id": TRACE_ID,
+            },
+        )
+        with mock.patch.object(teams, "replace_assistant_secrets", return_value=controller) as replace:
+            response = localchat.replace_secrets("team_1", payload)
+
+        replace.assert_called_once_with("team_1", payload)
+        self.assertEqual(response.status, 200)
+        self.assertNotIn(payload["values"][0]["value"], json.dumps(response.body))
+        self.assertEqual(response.body["assistants"][0]["secrets"][0]["mask"], "repl…t123")
+
+    def test_secret_replacement_rejects_ambiguous_batches_before_transport(self) -> None:
+        valid = {
+            "assistant_id": "shimpz-assistant",
+            "values": [{"secret_id": "x-api-key", "value": "replacement-secret-123"}],
+        }
+        invalid = (
+            {**valid, "extra": True},
+            {**valid, "values": []},
+            {**valid, "values": [valid["values"][0], valid["values"][0]]},
+            {**valid, "values": [{"secret_id": "x-api-key", "value": " line\nbreak"}]},
+            {**valid, "values": [{**valid["values"][0], "assistant_id": "other"}]},
+        )
+        with mock.patch.object(teams, "replace_assistant_secrets") as replace:
+            for payload in invalid:
+                with self.subTest(payload=payload), self.assertRaises(teams.TeamRequestError):
+                    localchat.replace_secrets("team_1", payload)
+        replace.assert_not_called()
+
     def test_secret_submission_contract_rejects_ambiguity_before_transport(self) -> None:
         valid = {
             "challenge_id": CHALLENGE_ID,

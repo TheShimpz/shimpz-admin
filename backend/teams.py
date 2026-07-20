@@ -433,6 +433,36 @@ def canonical_secret_submission(payload: object) -> dict[str, object]:
     return {"challenge_id": challenge_id, "values": canonical}
 
 
+def canonical_secret_replacement(payload: object) -> dict[str, object]:
+    """Validate one atomic Assistant credential replacement without retaining its values."""
+    if not isinstance(payload, dict) or set(payload) != {"assistant_id", "values"}:
+        raise TeamRequestError("secret replacement requires assistant_id and values")
+    assistant_id = canonical_assistant_id(payload["assistant_id"])
+    values = payload["values"]
+    if not isinstance(values, list) or not 1 <= len(values) <= MAX_SECRET_SUBMISSIONS:
+        raise TeamRequestError("secret values exceed their fixed limit")
+    canonical: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in values:
+        if not isinstance(item, dict) or set(item) != {"secret_id", "value"}:
+            raise TeamRequestError("secret value has an invalid shape")
+        secret_id = canonical_assistant_id(item["secret_id"])
+        value = item["value"]
+        if not isinstance(value, str) or not value or value != value.strip() or not value.isprintable():
+            raise TeamRequestError("secret value is invalid")
+        try:
+            encoded = value.encode("utf-8")
+        except UnicodeError as exc:
+            raise TeamRequestError("secret value is invalid") from exc
+        if len(encoded) > MAX_ASSISTANT_SECRET_BYTES:
+            raise TeamRequestError("secret value exceeds its fixed limit")
+        if secret_id in seen:
+            raise TeamRequestError("secret values must not contain duplicates")
+        seen.add(secret_id)
+        canonical.append({"secret_id": secret_id, "value": value})
+    return {"assistant_id": assistant_id, "values": canonical}
+
+
 def chat(
     team_id: object,
     payload: object,
@@ -485,6 +515,17 @@ def submit_chat_secrets(
 def list_assistant_secrets(team_id: object) -> DriverResponse:
     canonical_id = canonical_team_id(team_id)
     return _call("GET", f"/v1/teams/{canonical_id}/assistant-secrets")
+
+
+def replace_assistant_secrets(team_id: object, payload: object) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    body = canonical_secret_replacement(payload)
+    return _call(
+        "PUT",
+        f"/v1/teams/{canonical_id}/assistant-secrets",
+        body,
+        max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
+    )
 
 
 def list_assistants() -> DriverResponse:
