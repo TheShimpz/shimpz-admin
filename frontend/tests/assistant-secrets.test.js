@@ -94,6 +94,18 @@ test('syncs inventory, pauses for challenges, and submits only through WebSocket
   assert.doesNotMatch(pageSource, /localStorage|sessionStorage|document\.cookie/);
 });
 
+test('cancels the suspended Team turn when the secret dialog is dismissed', () => {
+  assert.match(
+    pageSource,
+    /function closeSecretsDialog\(\) \{\s*secretsDialogOpen = false;\s*secretChallenge = undefined;\s*stop\(\);\s*\}/,
+  );
+  assert.match(pageSource, /socket\.send\(JSON\.stringify\(createStopFrame\(teamId\)\)\);/);
+  assert.match(
+    pageSource,
+    /<AssistantSecretsDialog[\s\S]*onclose=\{closeSecretsDialog\}[\s\S]*onsubmit=\{submitSecrets\}/,
+  );
+});
+
 test('places one minimal secrets trigger beside Help and mounts both closed surfaces', () => {
   assert.match(
     pageSource,

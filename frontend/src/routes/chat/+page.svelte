@@ -620,6 +620,8 @@
 
   function closeSecretsDialog() {
     secretsDialogOpen = false;
+    secretChallenge = undefined;
+    stop();
   }
 
   function openSecretsDialog() {
