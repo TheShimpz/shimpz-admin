@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../src/routes/chat/+page.svelte', import.meta.url), 'utf8');
+const appStyles = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
 const thinkingSource = readFileSync(new URL('../src/lib/ShimpzThinking.svelte', import.meta.url), 'utf8');
 const drawerSource = readFileSync(new URL('../src/lib/AssistantHelpDrawer.svelte', import.meta.url), 'utf8');
 const markdownSource = readFileSync(new URL('../src/lib/HelpMarkdown.svelte', import.meta.url), 'utf8');
@@ -84,6 +85,14 @@ test('submits plain Enter while preserving modified newlines and IME composition
   );
   assert.match(source, /<textarea[\s\S]*onkeydown=\{handleComposerKeydown\}[\s\S]*><\/textarea>/);
   assert.doesNotMatch(source, /onkeydown=\{send\}/);
+});
+
+test('focuses the ready chat composer without drawing field outlines', () => {
+  assert.match(source, /let composerInput = \$state\(\);/);
+  assert.match(source, /async function focusComposer\(\)[\s\S]*await tick\(\);[\s\S]*composerInput\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(source, /mounted && chatTeamId && !busy && !helpOpen[\s\S]*void focusComposer\(\);/);
+  assert.match(source, /<textarea[\s\S]*bind:this=\{composerInput\}[\s\S]*bind:value=\{draft\}/);
+  assert.match(appStyles, /input:focus-visible,\s*select:focus-visible,\s*textarea:focus-visible \{\s*outline: 0;/);
 });
 
 test('reveals each sent and received turn without forcing motion-sensitive users', () => {

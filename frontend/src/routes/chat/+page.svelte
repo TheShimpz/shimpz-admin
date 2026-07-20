@@ -65,6 +65,7 @@
   let reconnectAttempt = 0;
   let helpOpen = $state(false);
   let helpButton = $state();
+  let composerInput = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
 
@@ -113,6 +114,12 @@
   function setError(message, detail = '') {
     error = message;
     errorDetail = detail;
+  }
+
+  async function focusComposer() {
+    await tick();
+    if (!mounted || !chatTeamId || busy || helpOpen || document.querySelector('dialog[open]')) return;
+    composerInput?.focus({ preventScroll: true });
   }
 
   async function revealLatestTurn() {
@@ -316,6 +323,10 @@
     if (helpOpen && helpAssistants.length === 0) helpOpen = false;
   });
 
+  $effect(() => {
+    if (mounted && chatTeamId && !busy && !helpOpen) void focusComposer();
+  });
+
   onMount(() => {
     mounted = true;
     const initialTeamId = chatTeamId;
@@ -361,6 +372,7 @@
             <ChatContextControls disabled={busy || stopping} />
             <div class="composer-input">
               <textarea
+                bind:this={composerInput}
                 bind:value={draft}
                 maxlength="16000"
                 rows="2"
