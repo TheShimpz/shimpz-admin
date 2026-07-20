@@ -84,6 +84,40 @@ class DriverRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.body, b'{"detail":"unauthenticated"}')
 
+    def test_bounded_json_rejects_duplicate_secret_fields(self):
+        body = b'{"assistant_id":"first","assistant_id":"second","values":[]}'
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "PUT",
+            "scheme": "http",
+            "path": "/api/teams/team_1/assistant-secrets",
+            "raw_path": b"/api/teams/team_1/assistant-secrets",
+            "query_string": b"",
+            "root_path": "",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 80),
+        }
+        delivered = False
+
+        async def receive():
+            nonlocal delivered
+            if delivered:
+                return {"type": "http.disconnect"}
+            delivered = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        with self.assertRaises(self.admin_app.HTTPException) as rejected:
+            asyncio.run(self.admin_app._bounded_json_object(Request(scope, receive)))
+
+        self.assertEqual(rejected.exception.status_code, 400)
+        self.assertEqual(rejected.exception.detail, "request body must be valid JSON")
+
 
 if __name__ == "__main__":
     unittest.main()

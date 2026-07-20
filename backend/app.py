@@ -315,6 +315,19 @@ def _team_driver_response(action):
     return JSONResponse(status_code=response.status, content=response.body)
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON field")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError("non-finite JSON number")
+
+
 async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON_BODY_BYTES) -> dict:
     """Read one JSON object without allowing a Power request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
@@ -333,8 +346,12 @@ async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON
         if len(body) > max_bytes:
             raise HTTPException(status_code=413, detail="request body too large")
     try:
-        payload = json.loads(body)
-    except json.JSONDecodeError, UnicodeError, RecursionError:
+        payload = json.loads(
+            body,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, UnicodeError, RecursionError, ValueError):
         raise HTTPException(status_code=400, detail="request body must be valid JSON") from None
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
