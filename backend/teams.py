@@ -511,6 +511,13 @@ def canonical_approval_submission(payload: object) -> dict[str, object]:
     return {"challenge_id": challenge_id, "approved": True}
 
 
+def canonical_connection_resume(payload: object) -> dict[str, str]:
+    """Bind continuation to the one exact controller-owned connection challenge."""
+    if not isinstance(payload, dict) or set(payload) != {"challenge_id"}:
+        raise TeamRequestError("connection continuation requires only challenge_id")
+    return {"challenge_id": canonical_challenge_id(payload["challenge_id"])}
+
+
 def chat(
     team_id: object,
     payload: object,
@@ -544,6 +551,29 @@ def pending_chat_secrets(team_id: object) -> DriverResponse:
 def pending_chat_approval(team_id: object) -> DriverResponse:
     canonical_id = canonical_team_id(team_id)
     return _call("GET", f"/v1/teams/{canonical_id}/chat/approval")
+
+
+def pending_chat_connections(team_id: object) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    return _call("GET", f"/v1/teams/{canonical_id}/chat/connections")
+
+
+def resume_chat_connections(
+    team_id: object,
+    payload: object,
+    *,
+    provider: str,
+    api_key: str,
+) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    body = canonical_connection_resume(payload)
+    return _call(
+        "POST",
+        f"/v1/teams/{canonical_id}/chat/connections",
+        body,
+        timeout=CONTROL_TIMEOUT_SECONDS,
+        model_credential=(provider, api_key),
+    )
 
 
 def submit_chat_secrets(

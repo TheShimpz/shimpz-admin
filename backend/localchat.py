@@ -568,6 +568,41 @@ def pending_secrets(team_id: object) -> teams.DriverResponse:
     return _project_challenge(response, canonical_id)
 
 
+def pending_connections(team_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    response = teams.pending_chat_connections(canonical_id)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    if set(response.body) == {"team_id", "status", "trace_id"}:
+        if (
+            response.body.get("team_id") == canonical_id
+            and response.body.get("status") == "none"
+            and _valid_trace_id(response.body.get("trace_id"))
+        ):
+            return teams.DriverResponse(response.status, {"team_id": canonical_id, "status": "none"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "connection-challenge-response-invalid"})
+    return _project_connection_challenge(response, canonical_id)
+
+
+def resume_connections(team_id: object, challenge_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    body = teams.canonical_connection_resume({"challenge_id": challenge_id})
+    credential = _model_credential(canonical_id)
+    if isinstance(credential, teams.DriverResponse):
+        return credential
+    provider, api_key = credential
+    response = teams.resume_chat_connections(canonical_id, body, provider=provider, api_key=api_key)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
+        return _project_pending_challenge(response, canonical_id)
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+
+
 def submit_approval(team_id: object, payload: object) -> teams.DriverResponse:
     canonical_id = teams.canonical_team_id(team_id)
     body = teams.canonical_approval_submission(payload)
