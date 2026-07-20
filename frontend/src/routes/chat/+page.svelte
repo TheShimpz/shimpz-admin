@@ -1,5 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
+  import AssistantApprovalDialog from '$lib/AssistantApprovalDialog.svelte';
   import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
   import AssistantSecretsDialog from '$lib/AssistantSecretsDialog.svelte';
   import AssistantSecretsDrawer from '$lib/AssistantSecretsDrawer.svelte';
@@ -14,6 +15,7 @@
   import {
     CHAT_WS_PROTOCOL,
     chatSocketUrl,
+    createApprovalSubmitFrame,
     createChatFrame,
     createSecretSubmitFrame,
     createStopFrame,
@@ -74,6 +76,8 @@
   let secretsButton = $state();
   let secretsDialogOpen = $state(false);
   let secretChallenge = $state();
+  let approvalDialogOpen = $state(false);
+  let approvalChallenge = $state();
   let secretInventory = $state([]);
   let secretInventoryReady = $state(false);
   let composerInput = $state();
@@ -203,6 +207,8 @@
     socketReady = false;
     secretChallenge = undefined;
     secretsDialogOpen = false;
+    approvalChallenge = undefined;
+    approvalDialogOpen = false;
     secretInventoryReady = false;
     current?.close(1000, 'Team changed');
   }
@@ -229,6 +235,19 @@
     }
     secretInventory = incoming.assistants;
     secretInventoryReady = true;
+  }
+
+  function acceptApprovalChallenge(incoming) {
+    const selected = new Set($teamContext.selectedAssistantIds);
+    if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
+      throw new Error('unexpected Assistant approval requirement');
+    }
+    approvalChallenge = incoming;
+    approvalDialogOpen = true;
+    helpOpen = false;
+    secretsOpen = false;
+    busy = true;
+    stopping = false;
   }
 
   function scheduleReconnect(expectedTeamId) {
@@ -292,6 +311,10 @@
           acceptSecretChallenge(incoming);
           return;
         }
+        if (incoming.type === 'approval-required') {
+          acceptApprovalChallenge(incoming);
+          return;
+        }
         if (incoming.type === 'secret-inventory') {
           acceptSecretInventory(incoming);
           return;
@@ -304,6 +327,8 @@
         stopping = false;
         secretChallenge = undefined;
         secretsDialogOpen = false;
+        approvalChallenge = undefined;
+        approvalDialogOpen = false;
         secretInventoryReady = false;
         setError(copy.protocolError);
         active.close(1002, 'Invalid chat event');
@@ -314,6 +339,8 @@
       stopping = false;
       secretChallenge = undefined;
       secretsDialogOpen = false;
+      approvalChallenge = undefined;
+      approvalDialogOpen = false;
       if (incoming.type === 'done') {
         turns = [...turns, { role: 'assistant', text: incoming.reply, author: incoming.team_name }];
         void revealLatestTurn();
@@ -335,6 +362,8 @@
       if (busy) busy = false;
       secretChallenge = undefined;
       secretsDialogOpen = false;
+      approvalChallenge = undefined;
+      approvalDialogOpen = false;
       secretInventoryReady = false;
       setError(copy.disconnected);
       scheduleReconnect(expectedTeamId);
@@ -354,6 +383,8 @@
     secretsOpen = false;
     secretsDialogOpen = false;
     secretChallenge = undefined;
+    approvalDialogOpen = false;
+    approvalChallenge = undefined;
     secretInventory = [];
     secretInventoryReady = false;
     clearError();
@@ -405,6 +436,32 @@
     }
     secretChallenge = undefined;
     secretsDialogOpen = false;
+  }
+
+  function submitApproval() {
+    const teamId = $teamContext.selectedTeamId;
+    if (
+      !busy ||
+      !teamId ||
+      chatTeamId !== teamId ||
+      !socketReady ||
+      !socket ||
+      !approvalChallenge
+    ) return;
+    try {
+      socket.send(JSON.stringify(createApprovalSubmitFrame(teamId, approvalChallenge.challenge_id)));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : copy.loadFailed);
+      socket.close();
+    }
+    approvalChallenge = undefined;
+    approvalDialogOpen = false;
+  }
+
+  function cancelApproval() {
+    approvalDialogOpen = false;
+    approvalChallenge = undefined;
+    stop();
   }
 
   function send(event) {
@@ -598,6 +655,12 @@
           challenge={secretChallenge}
           onclose={closeSecretsDialog}
           onsubmit={submitSecrets}
+        />
+        <AssistantApprovalDialog
+          open={approvalDialogOpen}
+          challenge={approvalChallenge}
+          oncancel={cancelApproval}
+          onapprove={submitApproval}
         />
       </div>
     {:else}

@@ -45,7 +45,7 @@ test('changes Team by closing stale transport and clearing route-scoped conversa
   );
   assert.match(
     source,
-    /function activateTeam\(nextTeamId\) \{\s+closeSocket\(\);\s+socketTeamId = nextTeamId;[\s\S]*?busy = false;\s+stopping = false;\s+draft = '';\s+turns = \[\];\s+scrollRequest \+= 1;\s+helpOpen = false;\s+secretsOpen = false;\s+secretsDialogOpen = false;\s+secretChallenge = undefined;\s+secretInventory = \[\];\s+secretInventoryReady = false;\s+clearError\(\);\s+if \(nextTeamId\) connectSocket\(nextTeamId\);/,
+    /function activateTeam\(nextTeamId\) \{\s+closeSocket\(\);\s+socketTeamId = nextTeamId;[\s\S]*?busy = false;\s+stopping = false;\s+draft = '';\s+turns = \[\];\s+scrollRequest \+= 1;\s+helpOpen = false;\s+secretsOpen = false;\s+secretsDialogOpen = false;\s+secretChallenge = undefined;\s+approvalDialogOpen = false;\s+approvalChallenge = undefined;\s+secretInventory = \[\];\s+secretInventoryReady = false;\s+clearError\(\);\s+if \(nextTeamId\) connectSocket\(nextTeamId\);/,
   );
   assert.match(source, /if \(socket !== active \|\| chatTeamId !== expectedTeamId\) return;/);
   assert.match(source, /current\?\.close\(1000, 'Team changed'\)/);
