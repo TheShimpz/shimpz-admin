@@ -51,7 +51,7 @@
     ar: { help: 'مساعدة الـ Assistants' },
   };
 
-  let mounted = false;
+  let mounted = $state(false);
   let socketTeamId = '';
   let draft = $state('');
   let turns = $state([]);

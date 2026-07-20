@@ -88,6 +88,7 @@ test('submits plain Enter while preserving modified newlines and IME composition
 });
 
 test('focuses the ready chat composer without drawing field outlines', () => {
+  assert.match(source, /let mounted = \$state\(false\);/);
   assert.match(source, /let composerInput = \$state\(\);/);
   assert.match(source, /async function focusComposer\(\)[\s\S]*await tick\(\);[\s\S]*composerInput\?\.focus\(\{ preventScroll: true \}\);/);
   assert.match(source, /mounted && chatTeamId && !busy && !helpOpen[\s\S]*void focusComposer\(\);/);
