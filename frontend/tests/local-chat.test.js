@@ -5,10 +5,59 @@ import {
   CHAT_WS_PROTOCOL,
   chatSocketUrl,
   createChatFrame,
+  createSecretSubmitFrame,
   createStopFrame,
+  createSyncFrame,
   listTeamFiles,
-  parseChatTerminalEvent,
+  parseChatEvent,
 } from '../src/lib/localChat.js';
+
+const TURN_ID = 'a'.repeat(32);
+const CHALLENGE_ID = 'b'.repeat(32);
+
+function secretRequirement() {
+  return {
+    assistant_id: 'weather-guide',
+    assistant_name: 'Weather Guide',
+    power_ids: ['current-weather', 'daily-forecast'],
+    secrets: [
+      {
+        id: 'weather-api-token',
+        name: 'Weather API token',
+        summary: 'Authenticates requests to the configured weather provider.',
+      },
+    ],
+  };
+}
+
+function secretInventory() {
+  return {
+    type: 'secret-inventory',
+    team_id: 'team_1',
+    assistants: [
+      {
+        id: 'weather-guide',
+        name: 'Weather Guide',
+        secrets: [
+          {
+            id: 'weather-api-token',
+            name: 'Weather API token',
+            summary: 'Authenticates requests to the configured weather provider.',
+            configured: true,
+            mask: 'sk…89',
+          },
+          {
+            id: 'maps-token',
+            name: 'Maps token',
+            summary: 'Finds a location before the weather lookup.',
+            configured: false,
+            mask: null,
+          },
+        ],
+      },
+    ],
+  };
+}
 
 function response(status, body) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
@@ -28,6 +77,7 @@ test('chat builds only the versioned WebSocket contract', () => {
   });
   assert.doesNotMatch(JSON.stringify(frame), /power|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
+  assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
   assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v2');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
@@ -36,6 +86,43 @@ test('chat builds only the versioned WebSocket contract', () => {
   assert.equal(
     chatSocketUrl({ protocol: 'https:', host: 'shimpz.com' }, 'team_1'),
     'wss://shimpz.com/api/teams/team_1/chat/ws',
+  );
+});
+
+test('chat builds one exact bounded secret submission without retaining caller objects', () => {
+  const values = [
+    { assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'sk-secret-value' },
+  ];
+  const frame = createSecretSubmitFrame('team_1', CHALLENGE_ID, values);
+  assert.deepEqual(frame, {
+    type: 'secret-submit',
+    challenge_id: CHALLENGE_ID,
+    values,
+  });
+  assert.notEqual(frame.values, values);
+  assert.notEqual(frame.values[0], values[0]);
+
+  for (const invalid of [
+    [],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: '' }],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: ' padded' }],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'line\nbreak' }],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: `safe\u202e${'x'.repeat(8)}` }],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'x'.repeat(16_385) }],
+    [
+      { assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'first-value' },
+      { assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'second-value' },
+    ],
+    [{ assistant_id: 'weather-guide', secret_id: 'weather-api-token', value: 'secret', extra: true }],
+  ]) {
+    assert.throws(
+      () => createSecretSubmitFrame('team_1', CHALLENGE_ID, invalid),
+      /secret submission/,
+    );
+  }
+  assert.throws(
+    () => createSecretSubmitFrame('team_1', 'not-a-challenge', values),
+    /secret submission/,
   );
 });
 
@@ -75,7 +162,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
 
 test('chat accepts only exact, bounded terminal events', () => {
   assert.deepEqual(
-    parseChatTerminalEvent(
+    parseChatEvent(
       { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!' },
       'team_1',
       'Marketing',
@@ -83,7 +170,7 @@ test('chat accepts only exact, bounded terminal events', () => {
     { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!' },
   );
   assert.deepEqual(
-    parseChatTerminalEvent(
+    parseChatEvent(
       { type: 'error', status: 503, detail: 'Model provider is unavailable.' },
       'team_1',
       'Marketing',
@@ -91,8 +178,29 @@ test('chat accepts only exact, bounded terminal events', () => {
     { type: 'error', status: 503, detail: 'Model provider is unavailable.' },
   );
   assert.deepEqual(
-    parseChatTerminalEvent({ type: 'stopped' }, 'team_1', 'Marketing'),
+    parseChatEvent({ type: 'stopped' }, 'team_1', 'Marketing'),
     { type: 'stopped' },
+  );
+});
+
+test('chat accepts exact secret challenges and Team-bound inventory snapshots', () => {
+  const challenge = {
+    type: 'secrets-required',
+    turn_id: TURN_ID,
+    challenge_id: CHALLENGE_ID,
+    requirements: [secretRequirement()],
+  };
+  assert.deepEqual(parseChatEvent(challenge, 'team_1', 'Marketing'), challenge);
+  assert.notEqual(
+    parseChatEvent(challenge, 'team_1', 'Marketing').requirements,
+    challenge.requirements,
+  );
+
+  const inventory = secretInventory();
+  assert.deepEqual(parseChatEvent(inventory, 'team_1', 'Marketing'), inventory);
+  assert.notEqual(
+    parseChatEvent(inventory, 'team_1', 'Marketing').assistants,
+    inventory.assistants,
   );
 });
 
@@ -111,7 +219,51 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
     { type: 'stopped', confirmed: true },
   ]) {
     assert.throws(
-      () => parseChatTerminalEvent(body, 'team_1', 'Marketing'),
+      () => parseChatEvent(body, 'team_1', 'Marketing'),
+      /response is invalid/,
+    );
+  }
+});
+
+test('chat rejects augmented, duplicate, malformed, or cross-Team secret events', () => {
+  const requirement = secretRequirement();
+  const inventory = secretInventory();
+  for (const body of [
+    { type: 'secrets-required', turn_id: TURN_ID, challenge_id: CHALLENGE_ID, requirements: [] },
+    { type: 'secrets-required', turn_id: 'turn', challenge_id: CHALLENGE_ID, requirements: [requirement] },
+    { type: 'secrets-required', turn_id: TURN_ID, challenge_id: 'challenge', requirements: [requirement] },
+    {
+      type: 'secrets-required', turn_id: TURN_ID, challenge_id: CHALLENGE_ID,
+      requirements: [requirement, requirement],
+    },
+    {
+      type: 'secrets-required', turn_id: TURN_ID, challenge_id: CHALLENGE_ID,
+      requirements: [{ ...requirement, power_ids: ['current-weather', 'current-weather'] }],
+    },
+    {
+      type: 'secrets-required', turn_id: TURN_ID, challenge_id: CHALLENGE_ID,
+      requirements: [{ ...requirement, secrets: [...requirement.secrets, ...requirement.secrets] }],
+    },
+    { ...inventory, team_id: 'other_team' },
+    { ...inventory, extra: true },
+    { ...inventory, assistants: [...inventory.assistants, ...inventory.assistants] },
+    {
+      ...inventory,
+      assistants: [{
+        ...inventory.assistants[0],
+        secrets: [{ ...inventory.assistants[0].secrets[0], configured: false, mask: 'sk…89' }],
+      }],
+    },
+    {
+      ...inventory,
+      assistants: [{
+        ...inventory.assistants[0],
+        secrets: [{ ...inventory.assistants[0].secrets[0], mask: 'secret-value' }],
+      }],
+    },
+  ]) {
+    assert.throws(
+      () => parseChatEvent(body, 'team_1', 'Marketing'),
       /response is invalid/,
     );
   }

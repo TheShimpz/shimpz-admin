@@ -13,7 +13,7 @@
     chatSocketUrl,
     createChatFrame,
     createStopFrame,
-    parseChatTerminalEvent,
+    parseChatEvent,
   } from '$lib/localChat.js';
 
   const COPY = {
@@ -196,7 +196,7 @@
       let terminal;
       try {
         if (typeof event.data !== 'string' || (!busy && !stopping)) throw new Error('unexpected frame');
-        terminal = parseChatTerminalEvent(
+        terminal = parseChatEvent(
           JSON.parse(event.data),
           expectedTeam.id,
           expectedTeam.name,

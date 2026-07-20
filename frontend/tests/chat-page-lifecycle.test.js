@@ -73,7 +73,7 @@ test('keeps versioned WebSocket send, stop, reconnect and selected file contract
   assert.match(source, /createStopFrame\(teamId\)/);
   assert.match(
     source,
-    /parseChatTerminalEvent\(\s*JSON\.parse\(event\.data\),\s*expectedTeam\.id,\s*expectedTeam\.name,\s*\)/,
+    /parseChatEvent\(\s*JSON\.parse\(event\.data\),\s*expectedTeam\.id,\s*expectedTeam\.name,\s*\)/,
   );
   assert.match(source, /author: terminal\.team_name/);
 });
