@@ -98,16 +98,12 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:7777/api/teams/team_1/assistant-connections/challenges/"
-            + "a" * 32
-            + "/authorize",
+            "http://localhost:7777/api/teams/team_1/assistant-connections/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
         with mock.patch.object(self.admin_app, "_session_ok", return_value=True):
-            response = asyncio.run(
-                self.admin_app.team_assistant_connection_authorize("team_1", "a" * 32, request)
-            )
+            response = asyncio.run(self.admin_app.team_assistant_connection_authorize("team_1", "a" * 32, request))
 
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.body)
@@ -210,9 +206,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             _request(
                 "GET",
-                "http://localhost:7777/api/oauth/x/callback?state="
-                + "a" * 43
-                + "&code=authorization-code-value",
+                "http://localhost:7777/api/oauth/x/callback?state=" + "a" * 43 + "&code=authorization-code-value",
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )
@@ -251,9 +245,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authorize_body_must_be_exactly_empty(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:7777/api/teams/team_1/assistant-connections/challenges/"
-            + "a" * 32
-            + "/authorize",
+            "http://localhost:7777/api/teams/team_1/assistant-connections/challenges/" + "a" * 32 + "/authorize",
             body=b'{"client_id":"must-not-cross"}',
             cookie=f"shimpz_admin={self.session}",
         )

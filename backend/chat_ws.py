@@ -440,8 +440,7 @@ def connection_challenge_event(response: object, team_id: str) -> dict[str, obje
         or isinstance(response.status, bool)
         or (response.status != 428 and not 200 <= response.status < 300)
         or not isinstance(response.body, dict)
-        or set(response.body)
-        != {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements"}
+        or set(response.body) != {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements"}
         or response.body.get("team_id") != team_id
         or response.body.get("status") != "connections-required"
     ):
@@ -689,8 +688,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             response.status == 428
             or (
                 isinstance(response.body, dict)
-                and response.body.get("status")
-                in {"connections-required", "secrets-required", "approval-required"}
+                and response.body.get("status") in {"connections-required", "secrets-required", "approval-required"}
             )
         ):
             event = _error_terminal(502, "the Assistant challenge was invalid")
@@ -819,8 +817,7 @@ async def _deliver_connection_sync(
         resumed_response.status == 428
         or (
             isinstance(resumed_response.body, dict)
-            and resumed_response.body.get("status")
-            in {"connections-required", "secrets-required", "approval-required"}
+            and resumed_response.body.get("status") in {"connections-required", "secrets-required", "approval-required"}
         )
     ):
         event = _error_terminal(502, "the Assistant connection challenge was invalid")

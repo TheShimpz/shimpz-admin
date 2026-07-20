@@ -57,9 +57,7 @@ class ModelProviderRouteTests(unittest.TestCase):
             for path, method in routes
             if path.startswith("/api/model-providers") or path.endswith("/inference")
         }
-        self.assertFalse(
-            any("resolve" in path or "secret" in path for path, _method in model_credential_routes)
-        )
+        self.assertFalse(any("resolve" in path or "secret" in path for path, _method in model_credential_routes))
 
     def test_model_provider_routes_require_the_local_admin_session(self) -> None:
         path = "/api/model-providers"

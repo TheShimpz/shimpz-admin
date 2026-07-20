@@ -56,9 +56,7 @@ _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CODE_RE = re.compile(r"^[A-Za-z0-9._~-]{16,4096}$")
 _OAUTH_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,256}$")
 _OAUTH_SCOPE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-_RFC3339_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$"
-)
+_RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
 _LOCAL_X_CALLBACK = "http://127.0.0.1:7777/api/oauth/x/callback"
 
 
@@ -731,9 +729,7 @@ def _project_connection_inventory(response: DriverResponse, team_id: str) -> Dri
             connections.append(
                 {
                     "assistant_id": assistant_id,
-                    "assistant_name": _public_text(
-                        item["assistant_name"], field="Assistant name", maximum=80
-                    ),
+                    "assistant_name": _public_text(item["assistant_name"], field="Assistant name", maximum=80),
                     "id": connection_id,
                     "provider": canonical_assistant_id(item["provider"]),
                     "name": _public_text(item["name"], field="connection name", maximum=80),

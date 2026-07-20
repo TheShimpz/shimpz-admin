@@ -247,9 +247,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {**valid, "requirements": [{**requirement, "scopes": ["tweet.read", "tweet.read"]}]},
             {
                 **valid,
-                "requirements": [
-                    {**requirement, "powers": [requirement["powers"][0], requirement["powers"][0]]}
-                ],
+                "requirements": [{**requirement, "powers": [requirement["powers"][0], requirement["powers"][0]]}],
             },
             {**valid, "requirements": [{**requirement, "client_secret": "must-not-cross"}]},
         )

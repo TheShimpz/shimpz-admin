@@ -278,8 +278,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 "/v1/oauth/x/callback",
             ): (
                 200,
-                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-assistant",'
-                b'"connection_id":"x-account"}',
+                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-assistant","connection_id":"x-account"}',
             ),
         }
 
