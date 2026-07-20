@@ -3,12 +3,15 @@ import test from 'node:test';
 
 import {
   CHAT_WS_PROTOCOL,
+  authorizeAssistantConnection,
   chatSocketUrl,
   createApprovalSubmitFrame,
   createChatFrame,
   createSecretSubmitFrame,
   createStopFrame,
   createSyncFrame,
+  disconnectAssistantConnection,
+  listAssistantConnections,
   listRememberedApprovals,
   listTeamFiles,
   parseChatEvent,
@@ -71,6 +74,40 @@ function approvalRequirement(approval = 'always') {
     power_summary: 'Publish this exact post on X.',
     input: { text: 'Hello from Shimpz', reply_to: null },
     approval,
+  };
+}
+
+function connectionRequirement() {
+  return {
+    assistant_id: 'social-publisher',
+    assistant_name: 'Social Publisher',
+    connection_id: 'x-account',
+    provider: 'x',
+    name: 'X account',
+    summary: 'Publishes approved posts through your X account.',
+    scopes: ['tweet.read', 'tweet.write', 'users.read'],
+    powers: [
+      { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
+    ],
+  };
+}
+
+function connectionInventory(status = 'connected') {
+  return {
+    connections: [
+      {
+        assistant_id: 'social-publisher',
+        assistant_name: 'Social Publisher',
+        id: 'x-account',
+        provider: 'x',
+        name: 'X account',
+        summary: 'Publishes approved posts through your X account.',
+        scopes: ['tweet.read', 'tweet.write', 'users.read'],
+        status,
+        account: status === 'missing' ? null : { id: '142', name: 'Shimpz', username: 'TheShimpz' },
+        expires_at: status === 'missing' ? null : '2026-07-20T12:34:56.000Z',
+      },
+    ],
   };
 }
 
@@ -254,6 +291,51 @@ test('chat accepts bounded exact Power approvals and preserves repeated operatio
   assert.notEqual(parsed.requirements[0].input, challenge.requirements[0].input);
 });
 
+test('chat accepts only exact bounded public connection requirements', () => {
+  const challenge = {
+    type: 'connections-required',
+    challenge_id: CHALLENGE_ID,
+    expires_in: 300,
+    requirements: [connectionRequirement()],
+  };
+  const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
+  assert.deepEqual(parsed, challenge);
+  assert.notEqual(parsed.requirements, challenge.requirements);
+  assert.notEqual(parsed.requirements[0].powers, challenge.requirements[0].powers);
+  assert.doesNotMatch(JSON.stringify(parsed), /token|code|verifier|client_secret/i);
+});
+
+test('chat rejects augmented, duplicated, and sensitive connection requirements', () => {
+  const base = {
+    type: 'connections-required',
+    challenge_id: CHALLENGE_ID,
+    expires_in: 300,
+    requirements: [connectionRequirement()],
+  };
+  for (const invalid of [
+    { ...base, access_token: 'must-not-cross' },
+    { ...base, challenge_id: 'challenge' },
+    { ...base, expires_in: 0 },
+    { ...base, expires_in: 901 },
+    { ...base, requirements: [] },
+    { ...base, requirements: [connectionRequirement(), connectionRequirement()] },
+    { ...base, requirements: [{ ...connectionRequirement(), client_id: 'must-not-cross' }] },
+    { ...base, requirements: [{ ...connectionRequirement(), scopes: ['tweet.read', 'tweet.read'] }] },
+    {
+      ...base,
+      requirements: [{
+        ...connectionRequirement(),
+        powers: [{ ...connectionRequirement().powers[0], token: 'must-not-cross' }],
+      }],
+    },
+  ]) {
+    assert.throws(
+      () => parseChatEvent(invalid, 'team_1', 'Marketing'),
+      /response is invalid/,
+    );
+  }
+});
+
 test('chat rejects augmented, unsafe, and unbounded approval previews', () => {
   const base = {
     type: 'approval-required',
@@ -338,6 +420,84 @@ test('lists and revokes exact Team-scoped remembered approvals', async () => {
       'team_1',
     ),
     /approvals are invalid/,
+  );
+});
+
+test('lists only bounded status metadata for Team-scoped Assistant connections', async () => {
+  const calls = [];
+  const inventory = connectionInventory();
+  assert.deepEqual(
+    await listAssistantConnections(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, inventory);
+    }, 'team_1'),
+    inventory,
+  );
+  assert.equal(calls[0].url, '/api/teams/team_1/assistant-connections');
+  assert.equal(calls[0].options.cache, 'no-store');
+  assert.doesNotMatch(JSON.stringify(inventory), /token|code|verifier|client_secret/i);
+
+  for (const invalid of [
+    { ...inventory, token: 'must-not-cross' },
+    { connections: [{ ...inventory.connections[0], status: 'refresh-required' }] },
+    { connections: [{ ...inventory.connections[0], account: null }] },
+    { connections: [{ ...connectionInventory('missing').connections[0], account: { id: '1', name: null, username: null } }] },
+    { connections: [{ ...inventory.connections[0], expires_at: 'tomorrow' }] },
+    { connections: [...inventory.connections, ...inventory.connections] },
+  ]) {
+    await assert.rejects(
+      listAssistantConnections(async () => response(200, invalid), 'team_1'),
+      /inventory is invalid/,
+    );
+  }
+});
+
+test('starts only a trusted X authorization and disconnects with an empty 204', async () => {
+  const calls = [];
+  const authorizationUrl = 'https://x.com/i/oauth2/authorize?response_type=code&state=opaque';
+  assert.deepEqual(
+    await authorizeAssistantConnection(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, { authorization_url: authorizationUrl });
+    }, 'team_1', CHALLENGE_ID),
+    { authorization_url: authorizationUrl },
+  );
+  assert.equal(
+    calls[0].url,
+    `/api/teams/team_1/assistant-connections/challenges/${CHALLENGE_ID}/authorize`,
+  );
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.body, '{}');
+
+  for (const body of [
+    { authorization_url: 'http://x.com/i/oauth2/authorize' },
+    { authorization_url: 'https://evil.example/i/oauth2/authorize' },
+    { authorization_url: 'https://x.com.evil.example/i/oauth2/authorize' },
+    { authorization_url: 'https://x.com/settings' },
+    { authorization_url: 'https://user@x.com/i/oauth2/authorize' },
+    { authorization_url: 'https://x.com/i/oauth2/authorize#token=value' },
+    { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
+  ]) {
+    await assert.rejects(
+      authorizeAssistantConnection(async () => response(200, body), 'team_1', CHALLENGE_ID),
+      /authorization response is invalid/,
+    );
+  }
+
+  await disconnectAssistantConnection(
+    async (url, options) => {
+      calls.push({ url, options });
+      return response(204, {});
+    },
+    'team_1',
+    'social-publisher',
+    'x-account',
+  );
+  assert.equal(calls[1].url, '/api/teams/team_1/assistant-connections/social-publisher/x-account');
+  assert.equal(calls[1].options.method, 'DELETE');
+  await assert.rejects(
+    disconnectAssistantConnection(async () => response(200, {}), 'team_1', 'social-publisher', 'x-account'),
+    /disconnection response is invalid/,
   );
 });
 

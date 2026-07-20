@@ -20,6 +20,10 @@ const MAX_APPROVAL_INPUT_TOTAL_BYTES = 128 * 1024;
 const MAX_APPROVAL_JSON_DEPTH = 16;
 const MAX_APPROVAL_JSON_NODES = 1024;
 const MAX_REMEMBERED_APPROVALS = 8192;
+const MAX_CONNECTIONS = 512;
+const MAX_CONNECTIONS_PER_CHALLENGE = 64;
+const MAX_CONNECTION_SCOPES = 32;
+const MAX_CONNECTION_POWERS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
@@ -263,6 +267,196 @@ function canonicalApprovalRequirement(value) {
   };
 }
 
+function canonicalOptionalPublicText(value, maximum) {
+  return value === null ? null : canonicalPublicText(value, maximum);
+}
+
+function canonicalConnectionScopes(values) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_CONNECTION_SCOPES) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const scopes = values.map((value) => canonicalPublicText(value, 128));
+  if (new Set(scopes).size !== scopes.length) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return scopes;
+}
+
+function canonicalConnectionPower(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, ['id', 'name', 'summary'])
+  ) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return {
+    id: canonicalId(value.id),
+    name: canonicalPublicText(value.name, 80),
+    summary: canonicalPublicText(value.summary, 160),
+  };
+}
+
+function canonicalConnectionPowers(values) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_CONNECTION_POWERS) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const powers = values.map(canonicalConnectionPower);
+  if (new Set(powers.map((power) => power.id)).size !== powers.length) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return powers;
+}
+
+function canonicalConnectionRequirement(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, [
+      'assistant_id',
+      'assistant_name',
+      'connection_id',
+      'provider',
+      'name',
+      'summary',
+      'scopes',
+      'powers',
+    ])
+  ) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return {
+    assistant_id: canonicalId(value.assistant_id),
+    assistant_name: canonicalPublicText(value.assistant_name, 80),
+    connection_id: canonicalId(value.connection_id),
+    provider: canonicalId(value.provider),
+    name: canonicalPublicText(value.name, 80),
+    summary: canonicalPublicText(value.summary, 160),
+    scopes: canonicalConnectionScopes(value.scopes),
+    powers: canonicalConnectionPowers(value.powers),
+  };
+}
+
+function canonicalConnectionAccount(value) {
+  if (value === null) return null;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, ['id', 'name', 'username'])
+  ) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  return {
+    id: canonicalPublicText(value.id, 160),
+    name: canonicalOptionalPublicText(value.name, 160),
+    username: canonicalOptionalPublicText(value.username, 160),
+  };
+}
+
+function canonicalConnectionExpiry(value) {
+  if (value === null) return null;
+  const match = typeof value === 'string'
+    ? value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|([+-])(\d{2}):(\d{2}))$/)
+    : null;
+  if (
+    !match ||
+    value.length > 40 ||
+    value !== value.trim() ||
+    CONTROL_RE.test(value)
+  ) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  const [, year, month, day, hour, minute, second, , offsetHour = '00', offsetMinute = '00'] = match;
+  const maximumDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  if (
+    Number(month) < 1 ||
+    Number(month) > 12 ||
+    Number(day) < 1 ||
+    Number(day) > maximumDay ||
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    Number(second) > 59 ||
+    Number(offsetHour) > 23 ||
+    Number(offsetMinute) > 59
+  ) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  return value;
+}
+
+function canonicalConnectionInventoryItem(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, [
+      'assistant_id',
+      'assistant_name',
+      'id',
+      'provider',
+      'name',
+      'summary',
+      'scopes',
+      'status',
+      'account',
+      'expires_at',
+    ]) ||
+    !['missing', 'connected', 'expired', 'reauthorization-required'].includes(value.status)
+  ) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  const account = canonicalConnectionAccount(value.account);
+  if (
+    (value.status === 'missing') !== (account === null) ||
+    (value.status === 'missing' && value.expires_at !== null)
+  ) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.');
+  }
+  return {
+    assistant_id: canonicalId(value.assistant_id, 'The Assistant connection inventory is invalid.'),
+    assistant_name: canonicalPublicText(value.assistant_name, 80),
+    id: canonicalId(value.id, 'The Assistant connection inventory is invalid.'),
+    provider: canonicalId(value.provider, 'The Assistant connection inventory is invalid.'),
+    name: canonicalPublicText(value.name, 80),
+    summary: canonicalPublicText(value.summary, 160),
+    scopes: canonicalConnectionScopes(value.scopes),
+    status: value.status,
+    account,
+    expires_at: canonicalConnectionExpiry(value.expires_at),
+  };
+}
+
+function trustedAuthorizationUrl(value) {
+  if (typeof value !== 'string' || value.length > 4096 || CONTROL_RE.test(value)) {
+    throw new LocalApiError('The Assistant authorization response is invalid.');
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new LocalApiError('The Assistant authorization response is invalid.');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'x.com' ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/i/oauth2/authorize' ||
+    url.hash
+  ) {
+    throw new LocalApiError('The Assistant authorization response is invalid.');
+  }
+  return url.href;
+}
+
 export async function listTeamFiles(fetcher, teamId) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local file request.');
   requireTeam(teamId);
@@ -470,6 +664,75 @@ export async function revokeRememberedApprovals(fetcher, teamId) {
   return { team_id: teamId, revoked: body.revoked };
 }
 
+export async function listAssistantConnections(fetcher, teamId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant connection request.');
+  requireTeam(teamId);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-connections`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Assistant connections are unavailable.'), response.status);
+  }
+  if (!exactKeys(body, ['connections']) || !Array.isArray(body.connections) || body.connections.length > MAX_CONNECTIONS) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.', response.status);
+  }
+  let connections;
+  try {
+    connections = body.connections.map(canonicalConnectionInventoryItem);
+  } catch {
+    throw new LocalApiError('The Assistant connection inventory is invalid.', response.status);
+  }
+  const identities = connections.map((connection) => `${connection.assistant_id}\u0000${connection.id}`);
+  if (new Set(identities).size !== identities.length) {
+    throw new LocalApiError('The Assistant connection inventory is invalid.', response.status);
+  }
+  return { connections };
+}
+
+export async function authorizeAssistantConnection(fetcher, teamId, challengeId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+  requireTeam(teamId);
+  if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
+    throw new LocalApiError('Invalid Assistant authorization request.');
+  }
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-connections/challenges/${challengeId}/authorize`,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Assistant authorization could not start.'), response.status);
+  }
+  if (!exactKeys(body, ['authorization_url'])) {
+    throw new LocalApiError('The Assistant authorization response is invalid.', response.status);
+  }
+  return { authorization_url: trustedAuthorizationUrl(body.authorization_url) };
+}
+
+export async function disconnectAssistantConnection(fetcher, teamId, assistantId, connectionId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant connection request.');
+  requireTeam(teamId);
+  const canonicalAssistant = canonicalId(assistantId, 'Invalid Assistant connection request.');
+  const canonicalConnection = canonicalId(connectionId, 'Invalid Assistant connection request.');
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-connections/${canonicalAssistant}/${canonicalConnection}`,
+    { method: 'DELETE', headers: { Accept: 'application/json' } },
+  );
+  if (!response.ok) {
+    const body = await jsonObject(response);
+    throw new LocalApiError(safeApiError(body, 'Assistant connection could not be disconnected.'), response.status);
+  }
+  if (response.status !== 204) {
+    throw new LocalApiError('The Assistant disconnection response is invalid.', response.status);
+  }
+}
+
 export function chatSocketUrl(locationValue, teamId) {
   requireTeam(teamId);
   if (!locationValue || typeof locationValue.host !== 'string') {
@@ -573,6 +836,34 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       type: 'approval-required',
       turn_id: value.turn_id,
       challenge_id: value.challenge_id,
+      requirements,
+    };
+  }
+  if (value.type === 'connections-required') {
+    if (
+      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||
+      typeof value.challenge_id !== 'string' ||
+      !OPAQUE_ID_RE.test(value.challenge_id) ||
+      !Number.isSafeInteger(value.expires_in) ||
+      value.expires_in < 1 ||
+      value.expires_in > 900 ||
+      !Array.isArray(value.requirements) ||
+      !value.requirements.length ||
+      value.requirements.length > MAX_CONNECTIONS_PER_CHALLENGE
+    ) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    const requirements = value.requirements.map(canonicalConnectionRequirement);
+    const identities = requirements.map((requirement) => (
+      `${requirement.assistant_id}\u0000${requirement.connection_id}`
+    ));
+    if (new Set(identities).size !== identities.length) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    return {
+      type: 'connections-required',
+      challenge_id: value.challenge_id,
+      expires_in: value.expires_in,
       requirements,
     };
   }
