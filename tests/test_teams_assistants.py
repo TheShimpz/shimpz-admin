@@ -168,6 +168,18 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             teams.DriverResponse(409, {"detail": "assistant already installed"}),
         )
 
+    def test_accepts_only_an_empty_no_content_response(self):
+        _DriverHandler.response_by_route = {
+            ("DELETE", "/v1/teams/team_1/assistant-connections/social-publisher/x-account"): (204, b""),
+        }
+
+        response = teams._call(
+            "DELETE",
+            "/v1/teams/team_1/assistant-connections/social-publisher/x-account",
+        )
+
+        self.assertEqual(response, teams.DriverResponse(204, {}))
+
     def test_destroy_requires_the_authoritative_name_and_forwards_no_confirmation_secret(self):
         _DriverHandler.response_by_route = {
             (

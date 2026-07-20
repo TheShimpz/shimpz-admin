@@ -160,6 +160,12 @@ def _endpoint() -> tuple[str, int]:
 
 
 def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
+    if response.status == 204:
+        raw_length = response.getheader("Content-Length")
+        if raw_length not in {None, "0"} or response.read(1):
+            raise OSError("invalid team-driver response")
+        return {}
+
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise OSError("invalid team-driver response")
