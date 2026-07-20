@@ -19,6 +19,7 @@ const MAX_APPROVAL_INPUT_BYTES = 32 * 1024;
 const MAX_APPROVAL_INPUT_TOTAL_BYTES = 128 * 1024;
 const MAX_APPROVAL_JSON_DEPTH = 16;
 const MAX_APPROVAL_JSON_NODES = 1024;
+const MAX_REMEMBERED_APPROVALS = 8192;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
@@ -175,6 +176,35 @@ function canonicalInventoryAssistant(value) {
     name: canonicalPublicText(value.name, 80),
     secrets,
   };
+}
+
+function canonicalInventoryBody(
+  body,
+  teamId,
+  status = 0,
+  message = 'The Assistant secret inventory is invalid.',
+) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    !exactKeys(body, ['team_id', 'assistants']) ||
+    body.team_id !== teamId ||
+    !Array.isArray(body.assistants) ||
+    body.assistants.length > MAX_INSTALLED_ASSISTANTS
+  ) {
+    throw new LocalApiError(message, status);
+  }
+  let assistants;
+  try {
+    assistants = body.assistants.map(canonicalInventoryAssistant);
+  } catch {
+    throw new LocalApiError(message, status);
+  }
+  if (new Set(assistants.map((entry) => entry.id)).size !== assistants.length) {
+    throw new LocalApiError(message, status);
+  }
+  return { team_id: teamId, assistants };
 }
 
 function canonicalApprovalInput(value) {
@@ -357,6 +387,89 @@ export function createApprovalSubmitFrame(teamId, challengeId) {
   return { type: 'approval-submit', challenge_id: challengeId, approved: true };
 }
 
+export async function replaceAssistantSecrets(fetcher, teamId, assistantId, values) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant secret replacement.');
+  requireTeam(teamId);
+  const canonicalAssistant = canonicalId(assistantId, 'Invalid Assistant secret replacement.');
+  if (!Array.isArray(values) || !values.length || values.length > MAX_SECRETS_PER_ASSISTANT) {
+    throw new LocalApiError('Invalid Assistant secret replacement.');
+  }
+  const outgoing = createSecretSubmitFrame(
+    teamId,
+    '0'.repeat(32),
+    values.map((entry) => ({ assistant_id: canonicalAssistant, ...entry })),
+  ).values.map(({ secret_id, value }) => ({ secret_id, value }));
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-secrets`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ assistant_id: canonicalAssistant, values: outgoing }),
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'The Assistant secrets could not be replaced.'), response.status);
+  }
+  return canonicalInventoryBody(body, teamId, response.status);
+}
+
+export async function listRememberedApprovals(fetcher, teamId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant approval request.');
+  requireTeam(teamId);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-approvals`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Remembered approvals are unavailable.'), response.status);
+  }
+  if (
+    !exactKeys(body, ['team_id', 'grants']) ||
+    body.team_id !== teamId ||
+    !Array.isArray(body.grants) ||
+    body.grants.length > MAX_REMEMBERED_APPROVALS
+  ) {
+    throw new LocalApiError('Remembered approvals are invalid.', response.status);
+  }
+  const seen = new Set();
+  const grants = body.grants.map((grant) => {
+    if (!grant || typeof grant !== 'object' || Array.isArray(grant) || !exactKeys(grant, ['assistant_id', 'power_id'])) {
+      throw new LocalApiError('Remembered approvals are invalid.', response.status);
+    }
+    const item = {
+      assistant_id: canonicalId(grant.assistant_id),
+      power_id: canonicalId(grant.power_id),
+    };
+    const identity = `${item.assistant_id}\u0000${item.power_id}`;
+    if (seen.has(identity)) throw new LocalApiError('Remembered approvals are invalid.', response.status);
+    seen.add(identity);
+    return item;
+  });
+  return { team_id: teamId, grants };
+}
+
+export async function revokeRememberedApprovals(fetcher, teamId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant approval request.');
+  requireTeam(teamId);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-approvals`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Remembered approvals could not be revoked.'), response.status);
+  }
+  if (
+    !exactKeys(body, ['team_id', 'revoked']) ||
+    body.team_id !== teamId ||
+    !Number.isSafeInteger(body.revoked) ||
+    body.revoked < 0 ||
+    body.revoked > MAX_REMEMBERED_APPROVALS
+  ) {
+    throw new LocalApiError('Remembered approval response is invalid.', response.status);
+  }
+  return { team_id: teamId, revoked: body.revoked };
+}
+
 export function chatSocketUrl(locationValue, teamId) {
   requireTeam(teamId);
   if (!locationValue || typeof locationValue.host !== 'string') {
@@ -473,11 +586,13 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     ) {
       throw new LocalApiError('The local chat response is invalid.');
     }
-    const assistants = value.assistants.map(canonicalInventoryAssistant);
-    if (new Set(assistants.map((entry) => entry.id)).size !== assistants.length) {
-      throw new LocalApiError('The local chat response is invalid.');
-    }
-    return { type: 'secret-inventory', team_id: value.team_id, assistants };
+    const inventory = canonicalInventoryBody(
+      { team_id: value.team_id, assistants: value.assistants },
+      expectedTeamId,
+      0,
+      'The local chat response is invalid.',
+    );
+    return { type: 'secret-inventory', ...inventory };
   }
   throw new LocalApiError('The local chat response is invalid.');
 }

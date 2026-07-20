@@ -9,8 +9,11 @@ import {
   createSecretSubmitFrame,
   createStopFrame,
   createSyncFrame,
+  listRememberedApprovals,
   listTeamFiles,
   parseChatEvent,
+  replaceAssistantSecrets,
+  revokeRememberedApprovals,
 } from '../src/lib/localChat.js';
 
 const TURN_ID = 'a'.repeat(32);
@@ -271,6 +274,71 @@ test('chat rejects augmented, unsafe, and unbounded approval previews', () => {
       /response is invalid/,
     );
   }
+});
+
+test('rotates only selected write-only Assistant secrets and accepts masks only', async () => {
+  const calls = [];
+  const result = await replaceAssistantSecrets(
+    async (url, options) => {
+      calls.push({ url, options });
+      return response(200, { team_id: 'team_1', assistants: secretInventory().assistants });
+    },
+    'team_1',
+    'weather-guide',
+    [{ secret_id: 'weather-api-token', value: 'replacement-secret-value' }],
+  );
+  assert.deepEqual(result, { team_id: 'team_1', assistants: secretInventory().assistants });
+  assert.equal(calls[0].url, '/api/teams/team_1/assistant-secrets');
+  assert.equal(calls[0].options.method, 'PUT');
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    assistant_id: 'weather-guide',
+    values: [{ secret_id: 'weather-api-token', value: 'replacement-secret-value' }],
+  });
+
+  await assert.rejects(
+    replaceAssistantSecrets(
+      async () => response(200, {
+        team_id: 'team_1',
+        assistants: [{ ...secretInventory().assistants[0], value: 'must-not-cross' }],
+      }),
+      'team_1',
+      'weather-guide',
+      [{ secret_id: 'weather-api-token', value: 'replacement-secret-value' }],
+    ),
+    /inventory is invalid/,
+  );
+});
+
+test('lists and revokes exact Team-scoped remembered approvals', async () => {
+  const grants = [
+    { assistant_id: 'social-publisher', power_id: 'create-post' },
+    { assistant_id: 'social-publisher', power_id: 'delete-post' },
+  ];
+  const calls = [];
+  assert.deepEqual(
+    await listRememberedApprovals(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, { team_id: 'team_1', grants });
+    }, 'team_1'),
+    { team_id: 'team_1', grants },
+  );
+  assert.deepEqual(
+    await revokeRememberedApprovals(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, { team_id: 'team_1', revoked: 2 });
+    }, 'team_1'),
+    { team_id: 'team_1', revoked: 2 },
+  );
+  assert.equal(calls[0].url, '/api/teams/team_1/assistant-approvals');
+  assert.equal(calls[1].options.method, 'DELETE');
+
+  await assert.rejects(
+    listRememberedApprovals(
+      async () => response(200, { team_id: 'team_1', grants: [grants[0], grants[0]] }),
+      'team_1',
+    ),
+    /approvals are invalid/,
+  );
 });
 
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
