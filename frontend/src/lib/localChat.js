@@ -437,15 +437,21 @@ function trustedAuthorizationUrl(value) {
   } catch {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
-  if (
-    url.protocol !== 'https:' ||
-    url.hostname !== 'x.com' ||
-    url.port ||
-    url.username ||
-    url.password ||
-    url.pathname !== '/i/oauth2/authorize' ||
-    url.hash
-  ) {
+  const directProvider = (
+    url.protocol === 'https:' &&
+    url.hostname === 'x.com' &&
+    !url.port &&
+    url.pathname === '/i/oauth2/authorize'
+  );
+  const localHandoff = (
+    url.protocol === 'http:' &&
+    url.hostname === '127.0.0.1' &&
+    url.port === '7777' &&
+    url.pathname === '/api/oauth/x/start' &&
+    [...url.searchParams.keys()].length === 1 &&
+    /^[0-9a-f]{64}$/.test(url.searchParams.get('handoff') ?? '')
+  );
+  if (url.username || url.password || url.hash || (!directProvider && !localHandoff)) {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
   return url.href;

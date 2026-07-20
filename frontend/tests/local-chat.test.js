@@ -469,6 +469,16 @@ test('starts only a trusted X authorization and disconnects with an empty 204', 
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body, '{}');
 
+  const handoffUrl = `http://127.0.0.1:7777/api/oauth/x/start?handoff=${'a'.repeat(64)}`;
+  assert.deepEqual(
+    await authorizeAssistantConnection(
+      async () => response(200, { authorization_url: handoffUrl }),
+      'team_1',
+      CHALLENGE_ID,
+    ),
+    { authorization_url: handoffUrl },
+  );
+
   for (const body of [
     { authorization_url: 'http://x.com/i/oauth2/authorize' },
     { authorization_url: 'https://evil.example/i/oauth2/authorize' },
@@ -476,6 +486,11 @@ test('starts only a trusted X authorization and disconnects with an empty 204', 
     { authorization_url: 'https://x.com/settings' },
     { authorization_url: 'https://user@x.com/i/oauth2/authorize' },
     { authorization_url: 'https://x.com/i/oauth2/authorize#token=value' },
+    { authorization_url: `http://localhost:7777/api/oauth/x/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/x/start?handoff=${'a'.repeat(63)}` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/x/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
+    { authorization_url: `http://user@127.0.0.1:7777/api/oauth/x/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/x/start?handoff=${'a'.repeat(64)}#token=value` },
     { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
