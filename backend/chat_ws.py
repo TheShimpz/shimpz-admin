@@ -34,12 +34,15 @@ MAX_SECRET_VALUES = 64
 MAX_SECRETS_PER_ASSISTANT = 32
 MAX_POWERS_PER_ASSISTANT = 128
 MAX_INSTALLED_ASSISTANTS = 128
+MAX_APPROVAL_REQUIREMENTS = 64
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _OPAQUE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CHAT_ERROR_DETAILS = {
     "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
+    "assistant-approval-challenge-expired": "the Assistant approval expired; retry the message",
+    "assistant-approval-state-unavailable": "remembered Assistant approvals are unavailable",
     "assistant-registry-drift": "an installed Assistant is no longer available",
     "assistant-unavailable": "the Brain requested an unavailable Assistant",
     "brain-runtime-failed": "the Brain runtime could not complete the Team turn",
@@ -62,6 +65,8 @@ _CHAT_ERROR_DETAILS = {
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
     "secret-challenge-response-invalid": "the Assistant secret challenge was invalid",
     "secret-inventory-response-invalid": "the Assistant secret inventory was invalid",
+    "approval-challenge-response-invalid": "the Assistant approval challenge was invalid",
+    "approval-inventory-response-invalid": "the remembered Assistant approvals were invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
 }
@@ -352,6 +357,74 @@ def secret_challenge_event(response: object, team_id: str) -> dict[str, object] 
     }
 
 
+def approval_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
+    """Return an exact, bounded operation preview for explicit human approval."""
+    if (
+        not isinstance(response, teams.DriverResponse)
+        or not isinstance(response.status, int)
+        or isinstance(response.status, bool)
+        or (response.status != 428 and not 200 <= response.status < 300)
+        or not isinstance(response.body, dict)
+        or set(response.body) != {"team_id", "status", "turn_id", "challenge_id", "requirements"}
+        or response.body.get("team_id") != team_id
+        or response.body.get("status") != "approval-required"
+    ):
+        return None
+    turn_id = response.body.get("turn_id")
+    challenge_id = response.body.get("challenge_id")
+    raw_requirements = response.body.get("requirements")
+    if (
+        not isinstance(turn_id, str)
+        or _OPAQUE_ID_RE.fullmatch(turn_id) is None
+        or not isinstance(challenge_id, str)
+        or _OPAQUE_ID_RE.fullmatch(challenge_id) is None
+        or not isinstance(raw_requirements, list)
+        or not 1 <= len(raw_requirements) <= MAX_APPROVAL_REQUIREMENTS
+    ):
+        return None
+    requirements: list[dict[str, object]] = []
+    for raw in raw_requirements:
+        if not isinstance(raw, dict) or set(raw) != {
+            "assistant_id",
+            "assistant_name",
+            "power_id",
+            "power_summary",
+            "input",
+            "approval",
+        }:
+            return None
+        assistant_id = _canonical_assistant_id(raw.get("assistant_id"))
+        power_id = _canonical_assistant_id(raw.get("power_id"))
+        try:
+            power_input = localchat._bounded_approval_input(raw.get("input"))
+        except TypeError, ValueError:
+            return None
+        if (
+            assistant_id is None
+            or power_id is None
+            or not _valid_public_text(raw.get("assistant_name"), MAX_PUBLIC_LABEL_CHARS)
+            or not _valid_public_text(raw.get("power_summary"), MAX_PUBLIC_SUMMARY_CHARS)
+            or raw.get("approval") not in {"always", "once"}
+        ):
+            return None
+        requirements.append(
+            {
+                "assistant_id": assistant_id,
+                "assistant_name": raw["assistant_name"],
+                "power_id": power_id,
+                "power_summary": raw["power_summary"],
+                "input": power_input,
+                "approval": raw["approval"],
+            }
+        )
+    return {
+        "type": "approval-required",
+        "turn_id": turn_id,
+        "challenge_id": challenge_id,
+        "requirements": requirements,
+    }
+
+
 def _valid_secret_mask(value: object) -> bool:
     if value == "••••":
         return True
@@ -446,6 +519,7 @@ class _Turn:
 class _Connection:
     active: _Turn | None = None
     pending_challenge_id: str | None = None
+    pending_challenge_type: str | None = None
     sync_task: asyncio.Task | None = None
     closed: bool = False
 
@@ -489,28 +563,41 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         if connection.closed or turn.stop_requested or turn.terminal_sent:
             return
         challenge = secret_challenge_event(response, team_id)
+        challenge_type = "secret"
+        if challenge is None:
+            challenge = approval_challenge_event(response, team_id)
+            challenge_type = "approval"
         if challenge is not None:
             connection.pending_challenge_id = challenge["challenge_id"]
+            connection.pending_challenge_type = challenge_type
             if not await _send_event(websocket, challenge):
                 connection.closed = True
             return
         if isinstance(response, teams.DriverResponse) and (
             response.status == 428
-            or (isinstance(response.body, dict) and response.body.get("status") == "secrets-required")
+            or (
+                isinstance(response.body, dict)
+                and response.body.get("status") in {"secrets-required", "approval-required"}
+            )
         ):
-            event = _error_terminal(502, "the Assistant secret challenge was invalid")
+            event = _error_terminal(502, "the Assistant challenge was invalid")
         else:
             event = turn_terminal(response, team_id)
         if event.get("type") == "done":
             connection.pending_challenge_id = None
+            connection.pending_challenge_type = None
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
             connection.active = None
 
 
-def _sync_snapshot(team_id: str) -> tuple[object, object]:
-    return localchat.secret_inventory(team_id), localchat.pending_secrets(team_id)
+def _sync_snapshot(team_id: str) -> tuple[object, object, object]:
+    return (
+        localchat.secret_inventory(team_id),
+        localchat.pending_secrets(team_id),
+        localchat.pending_approval(team_id),
+    )
 
 
 def _pending_secret_event(response: object, team_id: str) -> dict[str, object] | None:
@@ -528,10 +615,47 @@ def _pending_secret_event(response: object, team_id: str) -> dict[str, object] |
     return secret_challenge_event(response, team_id)
 
 
+def _pending_approval_event(response: object, team_id: str) -> dict[str, object] | None:
+    if (
+        isinstance(response, teams.DriverResponse)
+        and isinstance(response.status, int)
+        and not isinstance(response.status, bool)
+        and 200 <= response.status < 300
+        and isinstance(response.body, dict)
+        and set(response.body) == {"team_id", "status"}
+        and response.body.get("team_id") == team_id
+        and response.body.get("status") == "none"
+    ):
+        return None
+    return approval_challenge_event(response, team_id)
+
+
+def _is_empty_pending(response: object, team_id: str) -> bool:
+    return (
+        isinstance(response, teams.DriverResponse)
+        and isinstance(response.status, int)
+        and not isinstance(response.status, bool)
+        and 200 <= response.status < 300
+        and isinstance(response.body, dict)
+        and response.body == {"team_id": team_id, "status": "none"}
+    )
+
+
+def _pending_error(response: object, team_id: str, challenge_type: str) -> dict[str, object]:
+    if (
+        isinstance(response, teams.DriverResponse)
+        and isinstance(response.status, int)
+        and not isinstance(response.status, bool)
+        and not 200 <= response.status < 300
+    ):
+        return turn_terminal(response, team_id)
+    return _error_terminal(502, f"the Assistant {challenge_type} challenge was invalid")
+
+
 async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
     task = asyncio.current_task()
     try:
-        snapshot: tuple[object, object] | None = None
+        snapshot: tuple[object, object, object] | None = None
         try:
             future = _SYNC_EXECUTOR.submit(_sync_snapshot, team_id)
         except ExecutorSaturatedError:
@@ -542,7 +666,7 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
         if snapshot is None:
             await _send_event(websocket, _error_terminal(502))
             return
-        inventory_response, pending_response = snapshot
+        inventory_response, pending_response, pending_approval_response = snapshot
         if connection.closed:
             return
 
@@ -564,32 +688,25 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
             return
 
         pending = _pending_secret_event(pending_response, team_id)
-        if pending is None:
-            if (
-                isinstance(pending_response, teams.DriverResponse)
-                and isinstance(pending_response.status, int)
-                and not isinstance(pending_response.status, bool)
-                and 200 <= pending_response.status < 300
-                and isinstance(pending_response.body, dict)
-                and set(pending_response.body) == {"team_id", "status"}
-                and pending_response.body.get("team_id") == team_id
-                and pending_response.body.get("status") == "none"
-            ):
-                connection.pending_challenge_id = None
-                return
-            if (
-                isinstance(pending_response, teams.DriverResponse)
-                and isinstance(pending_response.status, int)
-                and not isinstance(pending_response.status, bool)
-                and not 200 <= pending_response.status < 300
-            ):
-                event = turn_terminal(pending_response, team_id)
-            else:
-                event = _error_terminal(502, "the Assistant secret challenge was invalid")
-            await _send_event(websocket, event)
+        if pending is None and not _is_empty_pending(pending_response, team_id):
+            await _send_event(websocket, _pending_error(pending_response, team_id, "secret"))
             return
-        connection.pending_challenge_id = pending["challenge_id"]
-        if not await _send_event(websocket, pending):
+
+        approval = _pending_approval_event(pending_approval_response, team_id)
+        if approval is None and not _is_empty_pending(pending_approval_response, team_id):
+            await _send_event(websocket, _pending_error(pending_approval_response, team_id, "approval"))
+            return
+        if pending is not None and approval is not None:
+            await _send_event(websocket, _error_terminal(502, "conflicting Assistant challenges"))
+            return
+        challenge = pending or approval
+        if challenge is None:
+            connection.pending_challenge_id = None
+            connection.pending_challenge_type = None
+            return
+        connection.pending_challenge_id = challenge["challenge_id"]
+        connection.pending_challenge_type = "secret" if pending is not None else "approval"
+        if not await _send_event(websocket, challenge):
             connection.closed = True
     finally:
         if connection.sync_task is task:
@@ -617,6 +734,7 @@ async def _run_stop(
             return
         if accepted is True:
             connection.pending_challenge_id = None
+            connection.pending_challenge_type = None
             await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
         elif accepted is None:
             status = response.status if isinstance(response, teams.DriverResponse) else 502
@@ -696,7 +814,10 @@ async def _dispatch_chat(
         await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
         return
     if connection.pending_challenge_id is not None:
-        await _send_event(websocket, _error_terminal(409, "Assistant secrets are required before another turn"))
+        await _send_event(
+            websocket,
+            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
+        )
         return
     try:
         future = _TURN_EXECUTOR.submit(localchat.turn, team_id, payload)
@@ -731,6 +852,9 @@ async def _dispatch_secret_submit(
     if connection.pending_challenge_id is None:
         await _send_event(websocket, _error_terminal(409, "no Assistant secret challenge is pending"))
         return
+    if connection.pending_challenge_type != "secret":
+        await _send_event(websocket, _error_terminal(409, "an Assistant approval is pending"))
+        return
     if payload["challenge_id"] != connection.pending_challenge_id:
         await _send_event(websocket, _error_terminal(409, "the Assistant secret challenge is stale"))
         return
@@ -740,6 +864,42 @@ async def _dispatch_secret_submit(
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
     turn = _Turn(future=future, operation="secret-submit")
+    connection.active = turn
+    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
+
+
+async def _dispatch_approval_submit(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+) -> None:
+    if set(frame) != {"type", "challenge_id", "approved"}:
+        await _send_event(websocket, _error_terminal(400, "approval-submit requires challenge_id and approved"))
+        return
+    try:
+        payload = teams.canonical_approval_submission({key: value for key, value in frame.items() if key != "type"})
+    except teams.TeamRequestError:
+        await _send_event(websocket, _error_terminal(400, "invalid Assistant approval submission"))
+        return
+    if connection.active is not None or connection.sync_task is not None:
+        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
+        return
+    if connection.pending_challenge_id is None:
+        await _send_event(websocket, _error_terminal(409, "no Assistant approval is pending"))
+        return
+    if connection.pending_challenge_type != "approval":
+        await _send_event(websocket, _error_terminal(409, "Assistant secrets are required"))
+        return
+    if payload["challenge_id"] != connection.pending_challenge_id:
+        await _send_event(websocket, _error_terminal(409, "the Assistant approval challenge is stale"))
+        return
+    try:
+        future = _TURN_EXECUTOR.submit(localchat.submit_approval, team_id, payload)
+    except ExecutorSaturatedError:
+        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+        return
+    turn = _Turn(future=future, operation="approval-submit")
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
@@ -761,6 +921,8 @@ async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str,
         await _dispatch_chat(websocket, connection, team_id, frame)
     elif frame_type == "secret-submit":
         await _dispatch_secret_submit(websocket, connection, team_id, frame)
+    elif frame_type == "approval-submit":
+        await _dispatch_approval_submit(websocket, connection, team_id, frame)
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
     else:

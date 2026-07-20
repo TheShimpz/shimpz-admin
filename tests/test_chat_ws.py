@@ -56,6 +56,41 @@ def _challenge(status: int = 428) -> object:
     )
 
 
+def _approval_requirements() -> list[dict[str, object]]:
+    return [
+        {
+            "assistant_id": "social-publisher",
+            "assistant_name": "Social Publisher",
+            "power_id": "create-post",
+            "power_summary": "Publish this exact post on X.",
+            "input": {"text": "Hello from Shimpz", "reply_to": None},
+            "approval": "always",
+        },
+        {
+            "assistant_id": "social-publisher",
+            "assistant_name": "Social Publisher",
+            "power_id": "create-post",
+            "power_summary": "Publish this exact post on X.",
+            "input": {"text": "A second post", "reply_to": "123"},
+            "approval": "once",
+        },
+    ]
+
+
+def _approval_challenge(status: int = 428) -> object:
+    teams_module = importlib.import_module("teams")
+    return teams_module.DriverResponse(
+        status,
+        {
+            "team_id": "team_1",
+            "status": "approval-required",
+            "turn_id": TURN_ID,
+            "challenge_id": CHALLENGE_ID,
+            "requirements": _approval_requirements(),
+        },
+    )
+
+
 def _inventory() -> object:
     teams_module = importlib.import_module("teams")
     return teams_module.DriverResponse(
@@ -300,6 +335,30 @@ class ChatWebSocketTests(unittest.TestCase):
         invalid_mask = _inventory()
         invalid_mask.body["assistants"][0]["secrets"][0]["mask"] = "secret-value"
         self.assertIsNone(self.chat_ws.secret_inventory_event(invalid_mask, "team_1"))
+
+    def test_approval_events_project_exact_inputs_without_internal_authority(self) -> None:
+        expected = {
+            "type": "approval-required",
+            "turn_id": TURN_ID,
+            "challenge_id": CHALLENGE_ID,
+            "requirements": _approval_requirements(),
+        }
+        self.assertEqual(self.chat_ws.approval_challenge_event(_approval_challenge(), "team_1"), expected)
+        self.assertNotIn("api_key", json.dumps(expected))
+        self.assertNotIn("secret_values", json.dumps(expected))
+
+        for mutation in (
+            {"trace_id": "must-not-cross"},
+            {"api_key": "must-not-cross"},
+        ):
+            invalid = _approval_challenge()
+            invalid.body.update(mutation)
+            with self.subTest(mutation=mutation):
+                self.assertIsNone(self.chat_ws.approval_challenge_event(invalid, "team_1"))
+
+        invalid_policy = _approval_challenge()
+        invalid_policy.body["requirements"][0]["approval"] = "each-run"
+        self.assertIsNone(self.chat_ws.approval_challenge_event(invalid_policy, "team_1"))
 
     def test_secret_submission_enforces_exact_shape_count_and_utf8_value_cap(self) -> None:
         async def scenario() -> None:
@@ -604,6 +663,11 @@ class ChatWebSocketTests(unittest.TestCase):
                         return_value=_inventory(),
                     ) as inventory,
                     mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=pending) as pending_mock,
+                    mock.patch.object(
+                        self.chat_ws.localchat,
+                        "pending_approval",
+                        return_value=none_pending,
+                    ),
                 ):
                     second = _Socket(self.admin_app.app, token=self.token)
                     self.assertTrue(self._accepted(await second.start()))
@@ -625,6 +689,11 @@ class ChatWebSocketTests(unittest.TestCase):
                 with (
                     mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                     mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
+                    mock.patch.object(
+                        self.chat_ws.localchat,
+                        "pending_approval",
+                        return_value=none_pending,
+                    ),
                 ):
                     third = _Socket(self.admin_app.app, token=self.token)
                     self.assertTrue(self._accepted(await third.start()))
@@ -633,6 +702,58 @@ class ChatWebSocketTests(unittest.TestCase):
                     with self.assertRaises(TimeoutError):
                         await third.next_message(wait_seconds=0.05)
                     await third.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_explicit_approval_resumes_only_the_exact_pending_challenge(self) -> None:
+        async def scenario() -> None:
+            completed = self.teams.DriverResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Both posts were published."},
+            )
+            with (
+                mock.patch.object(self.chat_ws.localchat, "turn", return_value=_approval_challenge()),
+                mock.patch.object(self.chat_ws.localchat, "submit_approval", return_value=completed) as submit,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "publish both", "files": [], "assistant_ids": ["social-publisher"]}
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "approval-required",
+                        "turn_id": TURN_ID,
+                        "challenge_id": CHALLENGE_ID,
+                        "requirements": _approval_requirements(),
+                    },
+                )
+                invalid = (
+                    {"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": False},
+                    {"type": "approval-submit", "challenge_id": "c" * 32, "approved": True},
+                    {"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": True, "input": {}},
+                )
+                for frame in invalid:
+                    await websocket.send_json(frame)
+                    self.assertIn((await websocket.next_json())["status"], {400, 409})
+                submit.assert_not_called()
+
+                await websocket.send_json({"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": True})
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "done",
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Both posts were published.",
+                    },
+                )
+                submit.assert_called_once_with(
+                    "team_1",
+                    {"challenge_id": CHALLENGE_ID, "approved": True},
+                )
+                await websocket.disconnect()
 
         asyncio.run(scenario())
 

@@ -351,7 +351,7 @@ async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON
             object_pairs_hook=_unique_json_object,
             parse_constant=_reject_json_constant,
         )
-    except (json.JSONDecodeError, UnicodeError, RecursionError, ValueError):
+    except json.JSONDecodeError, UnicodeError, RecursionError, ValueError:
         raise HTTPException(status_code=400, detail="request body must be valid JSON") from None
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
@@ -532,6 +532,19 @@ async def team_assistant_secrets_replace(team_id: str, request: Request):
     return await run_in_threadpool(
         _team_driver_response,
         lambda: localchat.replace_secrets(team_id, payload),
+    )
+
+
+@app.get("/api/teams/{team_id}/assistant-approvals")
+def team_assistant_approvals(team_id: str):
+    return _team_driver_response(lambda: localchat.approval_inventory(team_id))
+
+
+@app.delete("/api/teams/{team_id}/assistant-approvals")
+async def team_assistant_approvals_revoke(team_id: str):
+    return await run_in_threadpool(
+        _team_driver_response,
+        lambda: localchat.revoke_approvals(team_id),
     )
 
 

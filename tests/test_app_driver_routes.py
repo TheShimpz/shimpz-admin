@@ -40,6 +40,8 @@ class DriverRouteTest(unittest.TestCase):
             for method in (getattr(route, "methods", None) or set())
         }
         expected = {
+            ("/api/teams/{team_id}/assistant-approvals", "GET"),
+            ("/api/teams/{team_id}/assistant-approvals", "DELETE"),
             ("/api/teams/{team_id}/assistant-secrets", "PUT"),
             ("/api/teams/{team_id}/drivers/{driver_id}", "GET"),
             ("/api/teams/{team_id}/drivers/{driver_id}/credentials", "POST"),

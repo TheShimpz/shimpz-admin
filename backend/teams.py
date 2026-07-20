@@ -463,6 +463,18 @@ def canonical_secret_replacement(payload: object) -> dict[str, object]:
     return {"assistant_id": assistant_id, "values": canonical}
 
 
+def canonical_approval_submission(payload: object) -> dict[str, object]:
+    """Accept only an explicit approval of one exact pending challenge."""
+    if not isinstance(payload, dict) or set(payload) != {"challenge_id", "approved"}:
+        raise TeamRequestError("approval submission requires challenge_id and approved")
+    challenge_id = payload["challenge_id"]
+    if not isinstance(challenge_id, str) or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None:
+        raise TeamRequestError("approval challenge is invalid")
+    if payload["approved"] is not True:
+        raise TeamRequestError("approval must be explicit")
+    return {"challenge_id": challenge_id, "approved": True}
+
+
 def chat(
     team_id: object,
     payload: object,
@@ -493,6 +505,11 @@ def pending_chat_secrets(team_id: object) -> DriverResponse:
     return _call("GET", f"/v1/teams/{canonical_id}/chat/secrets")
 
 
+def pending_chat_approval(team_id: object) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    return _call("GET", f"/v1/teams/{canonical_id}/chat/approval")
+
+
 def submit_chat_secrets(
     team_id: object,
     payload: object,
@@ -505,6 +522,25 @@ def submit_chat_secrets(
     return _call(
         "POST",
         f"/v1/teams/{canonical_id}/chat/secrets",
+        body,
+        timeout=CONTROL_TIMEOUT_SECONDS,
+        max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
+        model_credential=(provider, api_key),
+    )
+
+
+def submit_chat_approval(
+    team_id: object,
+    payload: object,
+    *,
+    provider: str,
+    api_key: str,
+) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    body = canonical_approval_submission(payload)
+    return _call(
+        "POST",
+        f"/v1/teams/{canonical_id}/chat/approval",
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
@@ -526,6 +562,16 @@ def replace_assistant_secrets(team_id: object, payload: object) -> DriverRespons
         body,
         max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
     )
+
+
+def list_assistant_approvals(team_id: object) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    return _call("GET", f"/v1/teams/{canonical_id}/assistant-approvals")
+
+
+def revoke_assistant_approvals(team_id: object) -> DriverResponse:
+    canonical_id = canonical_team_id(team_id)
+    return _call("DELETE", f"/v1/teams/{canonical_id}/assistant-approvals")
 
 
 def list_assistants() -> DriverResponse:

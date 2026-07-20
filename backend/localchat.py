@@ -11,6 +11,8 @@ buggy controller can never echo that key or internal execution details back to t
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from http import HTTPStatus
 
@@ -32,6 +34,12 @@ MAX_SECRETS_PER_CHALLENGE = 64
 MAX_SECRET_LABEL_CHARS = 80
 MAX_SECRET_SUMMARY_CHARS = 160
 MAX_INSTALLED_ASSISTANTS = 128
+MAX_APPROVAL_REQUIREMENTS = 64
+MAX_APPROVAL_INPUT_BYTES = 32 * 1024
+MAX_APPROVAL_INPUT_TOTAL_BYTES = 128 * 1024
+MAX_APPROVAL_JSON_DEPTH = 16
+MAX_APPROVAL_JSON_NODES = 1024
+MAX_REMEMBERED_APPROVALS = 8192
 
 
 def _unavailable() -> teams.DriverResponse:
@@ -179,6 +187,125 @@ def _project_challenge(response: teams.DriverResponse, team_id: str) -> teams.Dr
     )
 
 
+def _bounded_approval_input(value: object) -> dict[str, object]:
+    budget = [MAX_APPROVAL_JSON_NODES]
+
+    def walk(node: object, depth: int) -> None:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > MAX_APPROVAL_JSON_DEPTH:
+            raise ValueError("approval input exceeds its structure limit")
+        if node is None or isinstance(node, bool | str):
+            return
+        if isinstance(node, int) and not isinstance(node, bool):
+            return
+        if isinstance(node, float):
+            if not math.isfinite(node):
+                raise ValueError("approval input contains a non-finite number")
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1)
+            return
+        if isinstance(node, dict):
+            for key, item in node.items():
+                if not isinstance(key, str) or len(key) > 128:
+                    raise ValueError("approval input key is invalid")
+                walk(item, depth + 1)
+            return
+        raise ValueError("approval input is not JSON")
+
+    if not isinstance(value, dict):
+        raise ValueError("approval input must be an object")
+    walk(value, 0)
+    encoded = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True).encode()
+    if len(encoded) > MAX_APPROVAL_INPUT_BYTES:
+        raise ValueError("approval input exceeds its byte limit")
+    return value
+
+
+def _project_approval_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
+    try:
+        if set(response.body) != _CHALLENGE_RESPONSE_FIELDS:
+            raise ValueError("invalid approval envelope")
+        if (
+            response.body["team_id"] != team_id
+            or response.body["status"] != "approval-required"
+            or not _valid_trace_id(response.body["trace_id"])
+        ):
+            raise ValueError("invalid approval identity")
+        challenge_id = response.body["challenge_id"]
+        turn_id = response.body["turn_id"]
+        raw_requirements = response.body["requirements"]
+        if (
+            not isinstance(challenge_id, str)
+            or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
+            or not isinstance(turn_id, str)
+            or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
+            or not isinstance(raw_requirements, list)
+            or not 1 <= len(raw_requirements) <= MAX_APPROVAL_REQUIREMENTS
+        ):
+            raise ValueError("invalid approval metadata")
+        requirements: list[dict[str, object]] = []
+        total_input_bytes = 0
+        for raw in raw_requirements:
+            if not isinstance(raw, dict) or set(raw) != {
+                "assistant_id",
+                "assistant_name",
+                "power_id",
+                "power_summary",
+                "input",
+                "approval",
+            }:
+                raise ValueError("invalid approval requirement")
+            assistant_id = teams.canonical_assistant_id(raw["assistant_id"])
+            power_id = teams.canonical_assistant_id(raw["power_id"])
+            if raw["approval"] not in {"each-run", "once"}:
+                raise ValueError("invalid approval policy")
+            power_input = _bounded_approval_input(raw["input"])
+            total_input_bytes += len(
+                json.dumps(
+                    power_input,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode()
+            )
+            if total_input_bytes > MAX_APPROVAL_INPUT_TOTAL_BYTES:
+                raise ValueError("approval inputs exceed their aggregate byte limit")
+            requirements.append(
+                {
+                    "assistant_id": assistant_id,
+                    "assistant_name": _clean_public_text(raw["assistant_name"], MAX_SECRET_LABEL_CHARS),
+                    "power_id": power_id,
+                    "power_summary": _clean_public_text(raw["power_summary"], MAX_SECRET_SUMMARY_CHARS),
+                    "input": power_input,
+                    "approval": "always" if raw["approval"] == "each-run" else "once",
+                }
+            )
+    except KeyError, TypeError, ValueError, UnicodeError, teams.TeamRequestError:
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
+    return teams.DriverResponse(
+        response.status,
+        {
+            "team_id": team_id,
+            "status": "approval-required",
+            "turn_id": turn_id,
+            "challenge_id": challenge_id,
+            "requirements": requirements,
+        },
+    )
+
+
+def _project_pending_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
+    status = response.body.get("status")
+    if status == "secrets-required":
+        return _project_challenge(response, team_id)
+    if status == "approval-required":
+        return _project_approval_challenge(response, team_id)
+    return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
+
+
 def _project_inventory(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
@@ -284,7 +411,7 @@ def turn(team_id: object, payload: object) -> teams.DriverResponse:
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_challenge(response, canonical_id)
+        return _project_pending_challenge(response, canonical_id)
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
@@ -302,7 +429,7 @@ def submit_secrets(team_id: object, payload: object) -> teams.DriverResponse:
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_challenge(response, canonical_id)
+        return _project_pending_challenge(response, canonical_id)
     if not 200 <= response.status < 300:
         return _safe_error(response)
     submitted_values = tuple(item["value"] for item in body["values"])
@@ -327,6 +454,41 @@ def pending_secrets(team_id: object) -> teams.DriverResponse:
     return _project_challenge(response, canonical_id)
 
 
+def submit_approval(team_id: object, payload: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    body = teams.canonical_approval_submission(payload)
+    credential = _model_credential(canonical_id)
+    if isinstance(credential, teams.DriverResponse):
+        return credential
+    provider, api_key = credential
+    response = teams.submit_chat_approval(canonical_id, body, provider=provider, api_key=api_key)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
+        return _project_pending_challenge(response, canonical_id)
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+
+
+def pending_approval(team_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    response = teams.pending_chat_approval(canonical_id)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    if set(response.body) == {"team_id", "status", "trace_id"}:
+        if (
+            response.body.get("team_id") == canonical_id
+            and response.body.get("status") == "none"
+            and _valid_trace_id(response.body.get("trace_id"))
+        ):
+            return teams.DriverResponse(response.status, {"team_id": canonical_id, "status": "none"})
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
+    return _project_approval_challenge(response, canonical_id)
+
+
 def secret_inventory(team_id: object) -> teams.DriverResponse:
     canonical_id = teams.canonical_team_id(team_id)
     return _project_inventory(teams.list_assistant_secrets(canonical_id), canonical_id)
@@ -338,6 +500,59 @@ def replace_secrets(team_id: object, payload: object) -> teams.DriverResponse:
     body = teams.canonical_secret_replacement(payload)
     response = teams.replace_assistant_secrets(canonical_id, body)
     return _project_inventory(response, canonical_id)
+
+
+def approval_inventory(team_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    response = teams.list_assistant_approvals(canonical_id)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    try:
+        if set(response.body) != {"team_id", "grants", "trace_id"}:
+            raise ValueError("invalid approval inventory")
+        if response.body["team_id"] != canonical_id or not _valid_trace_id(response.body["trace_id"]):
+            raise ValueError("invalid approval inventory identity")
+        raw_grants = response.body["grants"]
+        if not isinstance(raw_grants, list) or len(raw_grants) > MAX_REMEMBERED_APPROVALS:
+            raise ValueError("invalid approval inventory count")
+        grants: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for raw in raw_grants:
+            if not isinstance(raw, dict) or set(raw) != {"assistant_id", "power_id"}:
+                raise ValueError("invalid approval grant")
+            item = {
+                "assistant_id": teams.canonical_assistant_id(raw["assistant_id"]),
+                "power_id": teams.canonical_assistant_id(raw["power_id"]),
+            }
+            identity = (item["assistant_id"], item["power_id"])
+            if identity in seen:
+                raise ValueError("duplicate approval grant")
+            seen.add(identity)
+            grants.append(item)
+    except KeyError, TypeError, ValueError, teams.TeamRequestError:
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
+    return teams.DriverResponse(response.status, {"team_id": canonical_id, "grants": grants})
+
+
+def revoke_approvals(team_id: object) -> teams.DriverResponse:
+    canonical_id = teams.canonical_team_id(team_id)
+    response = teams.revoke_assistant_approvals(canonical_id)
+    if response.status in _MISSING_RUNTIME_STATUSES:
+        return _unavailable()
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    revoked = response.body.get("revoked")
+    if (
+        set(response.body) != {"team_id", "revoked", "trace_id"}
+        or response.body.get("team_id") != canonical_id
+        or type(revoked) is not int
+        or not 0 <= revoked <= MAX_REMEMBERED_APPROVALS
+        or not _valid_trace_id(response.body.get("trace_id"))
+    ):
+        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
+    return teams.DriverResponse(response.status, {"team_id": canonical_id, "revoked": revoked})
 
 
 def _valid_team_name(value: object) -> bool:

@@ -35,6 +35,27 @@ def secret_requirement() -> dict[str, object]:
     }
 
 
+def approval_requirements() -> list[dict[str, object]]:
+    return [
+        {
+            "assistant_id": "shimpz-assistant",
+            "assistant_name": "Shimpz Assistant",
+            "power_id": "create-post",
+            "power_summary": "Publish this exact post on X.",
+            "input": {"text": "Hello", "reply_to": None},
+            "approval": "each-run",
+        },
+        {
+            "assistant_id": "shimpz-assistant",
+            "assistant_name": "Shimpz Assistant",
+            "power_id": "create-post",
+            "power_summary": "Publish this exact post on X.",
+            "input": {"text": "Second", "reply_to": "123"},
+            "approval": "once",
+        },
+    ]
+
+
 class _ControllerHandler(BaseHTTPRequestHandler):
     request: ClassVar[dict[str, object]] = {}
 
@@ -131,6 +152,21 @@ class PrivateChatTransportTests(unittest.TestCase):
                 ],
             },
         )
+        self.assertNotIn(model_key.encode(), request["body"])
+
+    def test_approval_submission_uses_private_model_header_and_explicit_boolean(self) -> None:
+        model_key = "sk-test-0123456789"
+        teams.submit_chat_approval(
+            "team_1",
+            {"challenge_id": CHALLENGE_ID, "approved": True},
+            provider="openai",
+            api_key=model_key,
+        )
+
+        request = _ControllerHandler.request
+        self.assertEqual(request["path"], "/v1/teams/team_1/chat/approval")
+        self.assertEqual(request["headers"]["x-shimpz-model-api-key"], model_key)
+        self.assertEqual(json.loads(request["body"]), {"challenge_id": CHALLENGE_ID, "approved": True})
         self.assertNotIn(model_key.encode(), request["body"])
 
 
@@ -258,6 +294,85 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             },
         )
         self.assertNotIn("value", json.dumps(response.body))
+
+    def test_power_approvals_project_exact_inputs_and_public_policies(self) -> None:
+        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        controller = teams.DriverResponse(
+            428,
+            {
+                "team_id": "team_1",
+                "status": "approval-required",
+                "turn_id": CHALLENGE_ID,
+                "challenge_id": CHALLENGE_ID,
+                "requirements": approval_requirements(),
+                "trace_id": TRACE_ID,
+            },
+        )
+        with (
+            mock.patch.object(teams, "get_inference", return_value=inference),
+            mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(teams, "chat", return_value=controller),
+        ):
+            response = localchat.turn(
+                "team_1",
+                {"message": "Post both", "files": [], "assistant_ids": ["shimpz-assistant"]},
+            )
+
+        expected = approval_requirements()
+        expected[0]["approval"] = "always"
+        self.assertEqual(response.status, 428)
+        self.assertEqual(response.body["requirements"], expected)
+        self.assertEqual(response.body["requirements"][0]["input"], {"text": "Hello", "reply_to": None})
+        self.assertEqual(response.body["requirements"][1]["power_id"], "create-post")
+        self.assertNotIn("trace_id", response.body)
+        self.assertNotIn("api_key", json.dumps(response.body))
+        self.assertNotIn("secret_values", json.dumps(response.body))
+
+    def test_power_approval_contract_fails_closed_on_ambiguous_or_unbounded_data(self) -> None:
+        valid = {
+            "team_id": "team_1",
+            "status": "approval-required",
+            "turn_id": CHALLENGE_ID,
+            "challenge_id": CHALLENGE_ID,
+            "requirements": approval_requirements(),
+            "trace_id": TRACE_ID,
+        }
+        invalid = (
+            {**valid, "team_id": "other-team"},
+            {**valid, "api_key": "must-not-cross"},
+            {**valid, "requirements": [{**approval_requirements()[0], "approval": "always"}]},
+            {
+                **valid,
+                "requirements": [{**approval_requirements()[0], "input": {"text": "x" * (32 * 1024 + 1)}}],
+            },
+            {
+                **valid,
+                "requirements": [{**approval_requirements()[0], "input": {"temperature": float("nan")}}],
+            },
+        )
+        for body in invalid:
+            with self.subTest(body=body):
+                response = localchat._project_approval_challenge(teams.DriverResponse(428, body), "team_1")
+            self.assertEqual(response, teams.DriverResponse(502, {"code": "approval-challenge-response-invalid"}))
+
+    def test_approval_submission_requires_true_and_exact_shape_before_transport(self) -> None:
+        valid = {"challenge_id": CHALLENGE_ID, "approved": True}
+        invalid = (
+            {**valid, "approved": False},
+            {**valid, "extra": True},
+            {"challenge_id": "short", "approved": True},
+            {"challenge_id": CHALLENGE_ID, "approved": 1},
+        )
+        with mock.patch.object(teams, "_call") as transport:
+            for payload in invalid:
+                with self.subTest(payload=payload), self.assertRaises(teams.TeamRequestError):
+                    teams.submit_chat_approval(
+                        "team_1",
+                        payload,
+                        provider="openai",
+                        api_key="sk-test-0123456789",
+                    )
+        transport.assert_not_called()
 
     def test_secret_challenge_and_inventory_fail_closed_on_extra_or_cross_team_data(self) -> None:
         valid_challenge = {
@@ -568,6 +683,47 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
+
+    def test_remembered_approval_inventory_and_revoke_are_closed_public_documents(self) -> None:
+        inventory = teams.DriverResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "grants": [
+                    {"assistant_id": "shimpz-assistant", "power_id": "create-post"},
+                    {"assistant_id": "shimpz-assistant", "power_id": "delete-post"},
+                ],
+                "trace_id": TRACE_ID,
+            },
+        )
+        revoked = teams.DriverResponse(
+            200,
+            {"team_id": "team_1", "revoked": 2, "trace_id": TRACE_ID},
+        )
+        with (
+            mock.patch.object(teams, "list_assistant_approvals", return_value=inventory),
+            mock.patch.object(teams, "revoke_assistant_approvals", return_value=revoked),
+        ):
+            projected = localchat.approval_inventory("team_1")
+            cleared = localchat.revoke_approvals("team_1")
+
+        self.assertEqual(projected.body, {"team_id": "team_1", "grants": inventory.body["grants"]})
+        self.assertEqual(cleared.body, {"team_id": "team_1", "revoked": 2})
+        self.assertNotIn("trace_id", projected.body)
+
+        duplicate = teams.DriverResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "grants": [inventory.body["grants"][0], inventory.body["grants"][0]],
+                "trace_id": TRACE_ID,
+            },
+        )
+        with mock.patch.object(teams, "list_assistant_approvals", return_value=duplicate):
+            self.assertEqual(
+                localchat.approval_inventory("team_1"),
+                teams.DriverResponse(502, {"code": "approval-inventory-response-invalid"}),
+            )
 
     def test_stop_projects_an_accepted_turn_without_overclaiming_power_confirmation(self) -> None:
         controller = teams.DriverResponse(
