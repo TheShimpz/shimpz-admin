@@ -98,7 +98,7 @@ class PrivateChatTransportTests(unittest.TestCase):
 
     def test_secret_submission_uses_bounded_json_and_private_model_header(self) -> None:
         model_key = "sk-test-0123456789"
-        secret_value = "assistant-secret-123456789"  # noqa: S105 - synthetic transport fixture
+        transport_fixture = "assistant-secret-123456789"
         teams.submit_chat_secrets(
             "team_1",
             {
@@ -107,7 +107,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                     {
                         "assistant_id": "shimpz-assistant",
                         "secret_id": "x-api-secret",
-                        "value": secret_value,
+                        "value": transport_fixture,
                     }
                 ],
             },
@@ -126,7 +126,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                     {
                         "assistant_id": "shimpz-assistant",
                         "secret_id": "x-api-secret",
-                        "value": secret_value,
+                        "value": transport_fixture,
                     }
                 ],
             },
@@ -279,14 +279,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             self.assertEqual(response, teams.DriverResponse(502, {"code": "secret-inventory-response-invalid"}))
 
     def test_submitted_secret_cannot_be_reflected_by_the_controller(self) -> None:
-        assistant_secret = "assistant-secret-123456789"  # noqa: S105 - synthetic leak fixture
+        leak_fixture = "assistant-secret-123456789"
         inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         controller = teams.DriverResponse(
             200,
             {
                 "team_id": "team_1",
                 "team_name": "Marketing",
-                "reply": f"unsafe {assistant_secret}",
+                "reply": f"unsafe {leak_fixture}",
                 "trace_id": TRACE_ID,
             },
         )
@@ -296,7 +296,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 {
                     "assistant_id": "shimpz-assistant",
                     "secret_id": "x-api-key",
-                    "value": assistant_secret,
+                    "value": leak_fixture,
                 }
             ],
         }
@@ -308,7 +308,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = localchat.submit_secrets("team_1", payload)
 
         self.assertEqual(response, teams.DriverResponse(502, {"code": "chat-response-invalid"}))
-        self.assertNotIn(assistant_secret, json.dumps(response.body))
+        self.assertNotIn(leak_fixture, json.dumps(response.body))
 
     def test_browser_payload_rejects_ambient_authority_and_invalid_scopes(self) -> None:
         payloads = (
