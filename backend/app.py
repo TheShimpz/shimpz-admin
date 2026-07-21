@@ -58,7 +58,11 @@ COOKIE = "shimpz_admin"
 OAUTH_COOKIE = "shimpz_oauth_binding"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
-LOCAL_OAUTH_START = "http://127.0.0.1:7777/api/oauth/cloudflare/start"
+OAUTH_START_PATH = "/api/oauth/cloudflare/start"
+OAUTH_ORIGINS = {
+    "loopback": "http://127.0.0.1:7777",
+    "canary": "https://local.shimpz.com",
+}
 MIN_PASSWORD_LEN = 12
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_ADMIN_PASSWORD_CHARS = 4 * 1024
@@ -87,6 +91,21 @@ OAUTH_HANDOFFS = oauth_handoff.OAuthHandoffStore()
 def _is_https(request):
     xfp = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
     return request.url.scheme == "https" or xfp == "https"
+
+
+def _oauth_origin() -> str:
+    mode = os.environ.get("SHIMPZ_OAUTH_CALLBACK_MODE", "loopback").strip()
+    try:
+        return OAUTH_ORIGINS[mode]
+    except KeyError as exc:
+        raise RuntimeError("invalid OAuth callback mode") from exc
+
+
+def _is_oauth_origin(request: Request) -> bool:
+    origin = _oauth_origin()
+    if origin == OAUTH_ORIGINS["loopback"]:
+        return request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == 7777
+    return _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None
 
 
 def _set_session(resp, request, token):
@@ -605,7 +624,7 @@ async def team_assistant_account_authorize(team_id: str, challenge_id: str, requ
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except oauth_handoff.OAuthHandoffError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
-    authorization_url = LOCAL_OAUTH_START + "?" + urlencode({"handoff": handoff})
+    authorization_url = _oauth_origin() + OAUTH_START_PATH + "?" + urlencode({"handoff": handoff})
     return JSONResponse(
         {"authorization_url": authorization_url},
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
@@ -630,7 +649,7 @@ async def team_assistant_account_disconnect(team_id: str, assistant_id: str, acc
 
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
-    if request.url.hostname != "127.0.0.1" or request.url.port != 7777:
+    if not _is_oauth_origin(request):
         return _oauth_chat_redirect()
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
@@ -655,7 +674,7 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
         max_age=OAUTH_COOKIE_TTL,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=_oauth_origin() == OAUTH_ORIGINS["canary"],
         path=OAUTH_COOKIE_PATH,
     )
     response.headers["Cache-Control"] = "no-store"
@@ -666,7 +685,7 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
 @app.get("/api/oauth/cloudflare/callback")
 async def oauth_cloudflare_callback(request: Request):
     response = _oauth_chat_redirect()
-    if request.url.hostname != "127.0.0.1" or request.url.port != 7777:
+    if not _is_oauth_origin(request):
         return response
     pairs = list(request.query_params.multi_items())
     if len(pairs) != 2 or {key for key, _value in pairs} != {"state", "claim"}:

@@ -443,10 +443,12 @@ function trustedAuthorizationUrl(value) {
     !url.port &&
     url.pathname === '/oauth2/auth'
   );
+  const namedHandoffOrigin = (
+    (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === '7777') ||
+    (url.protocol === 'https:' && url.hostname === 'local.shimpz.com' && !url.port)
+  );
   const localHandoff = (
-    url.protocol === 'http:' &&
-    url.hostname === '127.0.0.1' &&
-    url.port === '7777' &&
+    namedHandoffOrigin &&
     url.pathname === '/api/oauth/cloudflare/start' &&
     [...url.searchParams.keys()].length === 1 &&
     /^[0-9a-f]{64}$/.test(url.searchParams.get('handoff') ?? '')

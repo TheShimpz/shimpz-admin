@@ -148,6 +148,68 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.status_code, 303)
         self.assertEqual(replay.headers["location"], "/chat")
 
+    def test_canary_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
+        authorize_request = _request(
+            "POST",
+            "https://local.shimpz.com/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            body=b"{}",
+            cookie=f"shimpz_admin={self.session}",
+        )
+        with (
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.object(self.admin_app, "_session_ok", return_value=True),
+        ):
+            authorized = asyncio.run(
+                self.admin_app.team_assistant_account_authorize("team_1", "a" * 32, authorize_request)
+            )
+        authorization_url = urlsplit(json.loads(authorized.body)["authorization_url"])
+        self.assertEqual(
+            (authorization_url.scheme, authorization_url.netloc, authorization_url.path),
+            ("https", "local.shimpz.com", "/api/oauth/cloudflare/start"),
+        )
+
+        handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
+        start_request = _request("GET", authorization_url.geturl())
+        provider = self.admin_app.teams.DriverResponse(200, {"authorization_url": self._cloudflare_authorization_url()})
+        with (
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.object(self.admin_app.teams, "start_assistant_account_authorization", return_value=provider),
+        ):
+            started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
+        cookie = SimpleCookie()
+        cookie.load(started.headers["set-cookie"])
+        binding = cookie["shimpz_oauth_binding"]
+        self.assertEqual(started.status_code, 303)
+        self.assertTrue(binding["secure"])
+
+        callback = _request(
+            "GET",
+            "https://local.shimpz.com/api/oauth/cloudflare/callback?state=" + "b" * 43 + "&claim=" + "a" * 64,
+            cookie=f"shimpz_oauth_binding={binding.value}",
+        )
+        completed = self.admin_app.teams.DriverResponse(200, {"connected": True})
+        with (
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.object(
+                self.admin_app.teams,
+                "complete_cloudflare_oauth_callback",
+                return_value=completed,
+            ) as complete,
+        ):
+            response = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))
+        self.assertEqual(response.headers["location"], "/chat")
+        complete.assert_called_once_with(
+            state="b" * 43,
+            claim="a" * 64,
+            session_binding=binding.value,
+        )
+
+        for origin in ("http://local.shimpz.com", "https://local.shimpz.com:444"):
+            rejected = _request("GET", origin + "/api/oauth/cloudflare/start?handoff=" + "f" * 64)
+            with mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}):
+                result = asyncio.run(self.admin_app.oauth_cloudflare_start(rejected, "f" * 64))
+            self.assertEqual(result.headers["location"], "/chat")
+
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
         binding = "d" * 43
         state = "b" * 43

@@ -478,6 +478,15 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     ),
     { authorization_url: handoffUrl },
   );
+  const canaryHandoffUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'b'.repeat(64)}`;
+  assert.deepEqual(
+    await authorizeAssistantAccount(
+      async () => response(200, { authorization_url: canaryHandoffUrl }),
+      'team_1',
+      CHALLENGE_ID,
+    ),
+    { authorization_url: canaryHandoffUrl },
+  );
 
   for (const body of [
     { authorization_url: 'http://dash.cloudflare.com/oauth2/auth' },
@@ -487,6 +496,9 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     { authorization_url: 'https://user@dash.cloudflare.com/oauth2/auth' },
     { authorization_url: 'https://dash.cloudflare.com/oauth2/auth#token=value' },
     { authorization_url: `http://localhost:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `https://local.shimpz.com:444/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `https://local.shimpz.com.evil.test/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
     { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
     { authorization_url: `http://user@127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
