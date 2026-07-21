@@ -753,7 +753,7 @@ def list_assistant_accounts(team_id: object) -> DriverResponse:
     )
 
 
-def _trusted_cloudflare_authorization_url(value: object) -> str:
+def _trusted_cloudflare_authorization_url(value: object, callback_mode: str) -> str:
     if not isinstance(value, str) or not 1 <= len(value) <= 4096:
         raise ValueError("invalid OAuth authorization URL")
     try:
@@ -762,7 +762,7 @@ def _trusted_cloudflare_authorization_url(value: object) -> str:
             parsed.query,
             keep_blank_values=True,
             strict_parsing=True,
-            max_num_fields=3,
+            max_num_fields=4,
         )
         port = parsed.port
     except ValueError as exc:
@@ -776,16 +776,17 @@ def _trusted_cloudflare_authorization_url(value: object) -> str:
         or parsed.path != "/api/oauth/cloudflare/start"
         or parsed.params
         or parsed.fragment
-        or len(query) != 3
-        or len({key for key, _value in query}) != 3
+        or len(query) != 4
+        or len({key for key, _value in query}) != 4
     ):
         raise ValueError("invalid OAuth authorization URL")
     fields = dict(query)
-    if set(fields) != {"scope", "state", "code_challenge"}:
+    if set(fields) != {"scope", "state", "code_challenge", "callback"}:
         raise ValueError("invalid OAuth authorization URL")
     if (
         _OAUTH_BINDING_RE.fullmatch(fields["state"]) is None
         or _OAUTH_BINDING_RE.fullmatch(fields["code_challenge"]) is None
+        or fields["callback"] != callback_mode
     ):
         raise ValueError("invalid OAuth authorization URL")
     scopes = fields["scope"].split(" ")
@@ -798,10 +799,13 @@ def start_assistant_account_authorization(
     team_id: object,
     challenge_id: object,
     session_binding: object,
+    callback_mode: object,
 ) -> DriverResponse:
     canonical_id = canonical_team_id(team_id)
     challenge_id = canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
+    if callback_mode not in {"loopback", "canary"}:
+        raise TeamRequestError("OAuth callback mode is invalid.")
     response = _call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-accounts/challenges/{challenge_id}/authorize",
@@ -812,7 +816,7 @@ def start_assistant_account_authorization(
     try:
         if set(response.body) != {"authorization_url"}:
             raise ValueError("invalid OAuth authorization response")
-        authorization_url = _trusted_cloudflare_authorization_url(response.body["authorization_url"])
+        authorization_url = _trusted_cloudflare_authorization_url(response.body["authorization_url"], callback_mode)
     except KeyError, TypeError, ValueError:
         log.warning("team-driver returned an invalid OAuth authorization response")
         return DriverResponse(502, {"detail": "OAuth authorization response is invalid."})

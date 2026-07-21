@@ -459,6 +459,23 @@ function trustedAuthorizationUrl(value) {
   return url.href;
 }
 
+export function oauthReturnFailure(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const pairs = [...url.searchParams.entries()];
+  return (
+    url.pathname === '/chat' &&
+    !url.hash &&
+    pairs.length === 1 &&
+    pairs[0][0] === 'oauth' &&
+    ['start-failed', 'callback-failed'].includes(pairs[0][1])
+  );
+}
+
 export async function listTeamFiles(fetcher, teamId) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local file request.');
   requireTeam(teamId);

@@ -93,12 +93,15 @@ def _is_https(request):
     return request.url.scheme == "https" or xfp == "https"
 
 
-def _oauth_origin() -> str:
+def _oauth_callback_mode() -> str:
     mode = os.environ.get("SHIMPZ_OAUTH_CALLBACK_MODE", "loopback").strip()
-    try:
-        return OAUTH_ORIGINS[mode]
-    except KeyError as exc:
-        raise RuntimeError("invalid OAuth callback mode") from exc
+    if mode not in OAUTH_ORIGINS:
+        raise RuntimeError("invalid OAuth callback mode")
+    return mode
+
+
+def _oauth_origin() -> str:
+    return OAUTH_ORIGINS[_oauth_callback_mode()]
 
 
 def _is_oauth_origin(request: Request) -> bool:
@@ -118,9 +121,12 @@ def _session_ok(cookies):
     return auth.verify_session(adminstore.get().get("session_secret", ""), cookies.get(COOKIE, ""))
 
 
-def _oauth_chat_redirect() -> RedirectResponse:
+def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
     """Leave provider query data behind and return to the token-free SPA URL."""
-    response = RedirectResponse("/chat", status_code=303)
+    if failure not in {"", "start-failed", "callback-failed"}:
+        raise RuntimeError("invalid OAuth redirect failure")
+    location = "/chat" if not failure else f"/chat?oauth={failure}"
+    response = RedirectResponse(location, status_code=303)
     response.delete_cookie(OAUTH_COOKIE, path=OAUTH_COOKIE_PATH)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -650,7 +656,7 @@ async def team_assistant_account_disconnect(team_id: str, assistant_id: str, acc
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     if not _is_oauth_origin(request):
-        return _oauth_chat_redirect()
+        return _oauth_chat_redirect("start-failed")
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
         result = await asyncio.to_thread(
@@ -658,15 +664,16 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
             pending.team_id,
             pending.challenge_id,
             pending.session_binding,
+            _oauth_callback_mode(),
         )
     except oauth_handoff.OAuthHandoffError, teams.TeamRequestError:
-        return _oauth_chat_redirect()
+        return _oauth_chat_redirect("start-failed")
     if result.status != 200:
         log.info("OAuth authorization start rejected (HTTP %s)", result.status)
-        return _oauth_chat_redirect()
+        return _oauth_chat_redirect("start-failed")
     authorization_url = result.body.get("authorization_url")
     if not isinstance(authorization_url, str):
-        return _oauth_chat_redirect()
+        return _oauth_chat_redirect("start-failed")
     response = RedirectResponse(authorization_url, status_code=303)
     response.set_cookie(
         OAUTH_COOKIE,
@@ -684,12 +691,11 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
 
 @app.get("/api/oauth/cloudflare/callback")
 async def oauth_cloudflare_callback(request: Request):
-    response = _oauth_chat_redirect()
     if not _is_oauth_origin(request):
-        return response
+        return _oauth_chat_redirect("callback-failed")
     pairs = list(request.query_params.multi_items())
     if len(pairs) != 2 or {key for key, _value in pairs} != {"state", "claim"}:
-        return response
+        return _oauth_chat_redirect("callback-failed")
     query = dict(pairs)
     binding = request.cookies.get(OAUTH_COOKIE, "")
     try:
@@ -700,10 +706,11 @@ async def oauth_cloudflare_callback(request: Request):
             session_binding=binding,
         )
     except teams.TeamRequestError:
-        return response
+        return _oauth_chat_redirect("callback-failed")
     if result.status != 200:
         log.info("OAuth callback rejected (HTTP %s)", result.status)
-    return response
+        return _oauth_chat_redirect("callback-failed")
+    return _oauth_chat_redirect()
 
 
 @app.get("/api/assistants")

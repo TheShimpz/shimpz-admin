@@ -14,6 +14,7 @@ import {
   listAssistantAccounts,
   listRememberedApprovals,
   listTeamFiles,
+  oauthReturnFailure,
   parseChatEvent,
   replaceAssistantSecrets,
   revokeRememberedApprovals,
@@ -21,6 +22,18 @@ import {
 
 const TURN_ID = 'a'.repeat(32);
 const CHALLENGE_ID = 'b'.repeat(32);
+
+test('recognizes only the closed OAuth failure return marker', () => {
+  assert.equal(oauthReturnFailure('https://local.shimpz.com/chat?oauth=start-failed'), true);
+  assert.equal(oauthReturnFailure('http://127.0.0.1:7777/chat?oauth=callback-failed'), true);
+  for (const value of [
+    'https://local.shimpz.com/chat',
+    'https://local.shimpz.com/chat?oauth=unknown',
+    'https://local.shimpz.com/chat?oauth=start-failed&claim=must-not-cross',
+    'https://local.shimpz.com/chat?oauth=start-failed#token=must-not-cross',
+    'not a URL',
+  ]) assert.equal(oauthReturnFailure(value), false);
+});
 
 function secretRequirement() {
   return {

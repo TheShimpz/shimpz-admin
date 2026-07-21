@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   ASSISTANT_ACCOUNTS_COPY,
+  assistantAccountProviderLabel,
   assistantAccountsCopy,
 } from '../src/lib/assistantAccountsCopy.js';
 
@@ -30,6 +31,20 @@ test('localizes every Assistant account surface without partial fallback', () =>
     assert.ok(Object.values(copy).every((value) => typeof value === 'string' && value.trim()));
   }
   assert.equal(assistantAccountsCopy('unsupported'), ASSISTANT_ACCOUNTS_COPY.en);
+});
+
+test('names the exact Account provider across authorization copy', () => {
+  const copy = assistantAccountsCopy('en', 'cloudflare');
+  assert.equal(copy.authorize, 'Continue to Cloudflare');
+  assert.equal(copy.authorizing, 'Opening Cloudflare…');
+  assert.match(copy.dialogLead, /directly on Cloudflare\.$/);
+  assert.equal(assistantAccountProviderLabel('x'), 'X');
+  assert.equal(assistantAccountProviderLabel('google-workspace'), 'Google Workspace');
+  assert.equal(assistantAccountProviderLabel('Cloudflare'), '');
+  assert.match(dialogSource, /assistantAccountsCopy\(\$locale, provider\)/);
+  assert.match(dialogSource, /\{providerLabel\}/);
+  assert.match(drawerSource, /assistantAccountsCopy\(\$locale, provider\)/);
+  assert.match(drawerSource, /assistantAccountProviderLabel\(account\.provider\)/);
 });
 
 test('explains every requested account, permission, and Power without collecting values', () => {

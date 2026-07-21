@@ -30,6 +30,7 @@
     listAssistantAccounts,
     listRememberedApprovals,
     parseChatEvent,
+    oauthReturnFailure,
     replaceAssistantSecrets,
     revokeRememberedApprovals,
   } from '$lib/localChat.js';
@@ -92,6 +93,7 @@
   let accounts = $state([]);
   let accountsReady = $state(false);
   let accountWorking = $state('');
+  let oauthFailedOnReturn = false;
   let secretsDialogOpen = $state(false);
   let secretChallenge = $state();
   let approvalDialogOpen = $state(false);
@@ -291,7 +293,8 @@
       throw new Error('unexpected Assistant account requirement');
     }
     accountChallenge = incoming;
-    accountsDialogOpen = true;
+    accountsDialogOpen = !oauthFailedOnReturn;
+    oauthFailedOnReturn = false;
     helpOpen = false;
     secretsOpen = false;
     accountsOpen = false;
@@ -760,6 +763,11 @@
     mounted = true;
     const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
+    oauthFailedOnReturn = oauthReturnFailure(location.href);
+    if (oauthFailedOnReturn) {
+      history.replaceState(history.state, '', '/chat');
+      setError(accountsCopy.authorizationFailed);
+    }
     return () => {
       mounted = false;
       closeSocket();

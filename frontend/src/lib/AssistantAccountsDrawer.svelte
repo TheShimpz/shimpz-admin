@@ -1,5 +1,8 @@
 <script>
-  import { assistantAccountsCopy } from '$lib/assistantAccountsCopy.js';
+  import {
+    assistantAccountProviderLabel,
+    assistantAccountsCopy,
+  } from '$lib/assistantAccountsCopy.js';
   import { locale } from '$lib/i18n.js';
 
   let {
@@ -14,7 +17,8 @@
   } = $props();
 
   let closeButton = $state();
-  let copy = $derived(assistantAccountsCopy($locale));
+  let provider = $derived(pending?.requirements?.[0]?.provider ?? '');
+  let copy = $derived(assistantAccountsCopy($locale, provider));
   let pendingIdentities = $derived(new Set((pending?.requirements ?? []).map((requirement) => (
     `${requirement.assistant_id}\u0000${requirement.account_id}`
   ))));
@@ -117,7 +121,7 @@
                   </div>
                   <p>{account.summary}</p>
                   <dl>
-                    <div><dt>{copy.provider}</dt><dd>{account.provider === 'cloudflare' ? 'Cloudflare' : account.provider}</dd></div>
+                    <div><dt>{copy.provider}</dt><dd>{assistantAccountProviderLabel(account.provider)}</dd></div>
                     <div><dt>{copy.account}</dt><dd>{accountLabel(account.account)}</dd></div>
                     <div><dt>{copy.scopes}</dt><dd>{account.scopes.join(' · ')}</dd></div>
                   </dl>

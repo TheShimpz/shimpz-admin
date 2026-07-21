@@ -1,5 +1,8 @@
 <script>
-  import { assistantAccountsCopy } from '$lib/assistantAccountsCopy.js';
+  import {
+    assistantAccountProviderLabel,
+    assistantAccountsCopy,
+  } from '$lib/assistantAccountsCopy.js';
   import { locale } from '$lib/i18n.js';
 
   let { open = false, challenge = undefined, onclose = undefined, onauthorize = undefined } = $props();
@@ -7,7 +10,9 @@
   let submitting = $state(false);
   let submitError = $state('');
   let activeChallengeId = $state('');
-  let copy = $derived(assistantAccountsCopy($locale));
+  let provider = $derived(challenge?.requirements?.[0]?.provider ?? '');
+  let providerLabel = $derived(assistantAccountProviderLabel(provider));
+  let copy = $derived(assistantAccountsCopy($locale, provider));
 
   function close(event) {
     event?.preventDefault();
@@ -59,7 +64,7 @@
               <strong>{requirement.assistant_name}</strong>
               <code>{requirement.assistant_id}</code>
             </div>
-            <span>{requirement.provider === 'x' ? 'X' : requirement.provider}</span>
+            <span>{providerLabel}</span>
           </header>
           <h3>{requirement.name}</h3>
           <p>{requirement.summary}</p>

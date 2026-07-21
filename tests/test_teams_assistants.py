@@ -221,6 +221,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "scope": "dns.read offline_access zone.read",
             "state": "a" * 43,
             "code_challenge": "b" * 43,
+            "callback": "canary",
         }
         fields.update(overrides)
         return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(fields)
@@ -235,6 +236,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "team_1",
             "c" * 32,
             "d" * 43,
+            "canary",
         )
 
         self.assertEqual(response, teams.DriverResponse(200, {"authorization_url": authorization_url}))
@@ -255,15 +257,19 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 "https://shimpz.com.evil.example/",
             ),
             self._authorization_url() + "#access_token=must-not-cross",
+            self._authorization_url(callback="loopback"),
         ):
             _DriverHandler.response_body = json.dumps(
                 {"authorization_url": invalid_url}, separators=(",", ":")
             ).encode()
-            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43)
+            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "canary")
             self.assertEqual(
                 invalid,
                 teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
+
+        with self.assertRaisesRegex(teams.TeamRequestError, "callback mode"):
+            teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
 
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
         _DriverHandler.response_by_route = {
