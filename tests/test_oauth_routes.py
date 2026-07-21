@@ -83,15 +83,11 @@ class OAuthRoutesTest(unittest.TestCase):
 
     @staticmethod
     def _cloudflare_authorization_url() -> str:
-        return "https://dash.cloudflare.com/oauth2/auth?" + urlencode(
+        return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(
             {
-                "response_type": "code",
-                "client_id": "publicClientIdentifier123",
-                "redirect_uri": "http://127.0.0.1:7777/api/oauth/cloudflare/callback",
                 "scope": "dns.read offline_access zone.read",
                 "state": "b" * 43,
                 "code_challenge": "c" * 43,
-                "code_challenge_method": "S256",
             }
         )
 
@@ -155,10 +151,10 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
         binding = "d" * 43
         state = "b" * 43
-        code = "authorization-code-value"
+        claim = "a" * 64
         request = _request(
             "GET",
-            f"http://127.0.0.1:7777/api/oauth/cloudflare/callback?state={state}&code={code}",
+            f"http://127.0.0.1:7777/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
         result = self.admin_app.teams.DriverResponse(
@@ -177,10 +173,10 @@ class OAuthRoutesTest(unittest.TestCase):
         ) as complete:
             response = asyncio.run(self.admin_app.oauth_cloudflare_callback(request))
 
-        complete.assert_called_once_with(state=state, code=code, session_binding=binding)
+        complete.assert_called_once_with(state=state, claim=claim, session_binding=binding)
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers["location"], "/chat")
-        self.assertNotIn(code, response.headers["location"])
+        self.assertNotIn(claim, response.headers["location"])
         self.assertNotIn(state, response.headers["location"])
         self.assertIn("shimpz_oauth_binding=", response.headers["set-cookie"])
         self.assertEqual(response.headers["cache-control"], "no-store")
@@ -194,21 +190,22 @@ class OAuthRoutesTest(unittest.TestCase):
                 + "a" * 43
                 + "&state="
                 + "b" * 43
-                + "&code=authorization-code-value",
+                + "&claim="
+                + "d" * 64,
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
             _request(
                 "GET",
                 "http://127.0.0.1:7777/api/oauth/cloudflare/callback?state="
                 + "a" * 43
-                + "&code=authorization-code-value&access_token=must-not-cross",
+                + "&claim="
+                + "d" * 64
+                + "&access_token=must-not-cross",
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
             _request(
                 "GET",
-                "http://localhost:7777/api/oauth/cloudflare/callback?state="
-                + "a" * 43
-                + "&code=authorization-code-value",
+                "http://localhost:7777/api/oauth/cloudflare/callback?state=" + "a" * 43 + "&claim=" + "d" * 64,
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )

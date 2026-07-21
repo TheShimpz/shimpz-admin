@@ -53,11 +53,10 @@ MAX_ASSISTANT_ACCOUNTS = 512
 MAX_ACCOUNT_SCOPES = 32
 
 _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
-_OAUTH_CODE_RE = re.compile(r"^[A-Za-z0-9._~-]{16,4096}$")
-_OAUTH_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,256}$")
+_OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
 _OAUTH_SCOPE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
-_LOCAL_CLOUDFLARE_CALLBACK = "http://127.0.0.1:7777/api/oauth/cloudflare/callback"
+_CLOUDFLARE_SCOPES = ("dns.read", "offline_access", "zone.read")
 
 
 class TeamRequestError(ValueError):
@@ -118,8 +117,8 @@ def canonical_challenge_id(value: object) -> str:
     return value
 
 
-def canonical_oauth_code(value: object) -> str:
-    if not isinstance(value, str) or _OAUTH_CODE_RE.fullmatch(value) is None:
+def canonical_oauth_claim(value: object) -> str:
+    if not isinstance(value, str) or _OAUTH_CLAIM_RE.fullmatch(value) is None:
         raise TeamRequestError("OAuth authorization response is invalid")
     return value
 
@@ -763,46 +762,35 @@ def _trusted_cloudflare_authorization_url(value: object) -> str:
             parsed.query,
             keep_blank_values=True,
             strict_parsing=True,
-            max_num_fields=7,
+            max_num_fields=3,
         )
         port = parsed.port
     except ValueError as exc:
         raise ValueError("invalid OAuth authorization URL") from exc
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "dash.cloudflare.com"
+        or parsed.hostname != "shimpz.com"
         or port is not None
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.path != "/oauth2/auth"
+        or parsed.path != "/api/oauth/cloudflare/start"
         or parsed.params
         or parsed.fragment
-        or len(query) != 7
-        or len({key for key, _value in query}) != 7
+        or len(query) != 3
+        or len({key for key, _value in query}) != 3
     ):
         raise ValueError("invalid OAuth authorization URL")
     fields = dict(query)
-    if set(fields) != {
-        "response_type",
-        "client_id",
-        "redirect_uri",
-        "scope",
-        "state",
-        "code_challenge",
-        "code_challenge_method",
-    }:
+    if set(fields) != {"scope", "state", "code_challenge"}:
         raise ValueError("invalid OAuth authorization URL")
     if (
-        fields["response_type"] != "code"
-        or fields["redirect_uri"] != _LOCAL_CLOUDFLARE_CALLBACK
-        or fields["code_challenge_method"] != "S256"
-        or _OAUTH_CLIENT_ID_RE.fullmatch(fields["client_id"]) is None
-        or _OAUTH_BINDING_RE.fullmatch(fields["state"]) is None
+        _OAUTH_BINDING_RE.fullmatch(fields["state"]) is None
         or _OAUTH_BINDING_RE.fullmatch(fields["code_challenge"]) is None
     ):
         raise ValueError("invalid OAuth authorization URL")
     scopes = fields["scope"].split(" ")
-    _account_scopes(scopes)
+    if tuple(_account_scopes(scopes)) != _CLOUDFLARE_SCOPES:
+        raise ValueError("invalid OAuth authorization URL")
     return value
 
 
@@ -843,20 +831,26 @@ def disconnect_assistant_account(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-accounts/{assistant}/{account}",
     )
-    if 200 <= response.status < 300 and (response.status != 204 or response.body):
+    if not 200 <= response.status < 300:
+        return response
+    if (
+        response.status != 200
+        or set(response.body) != {"disconnected"}
+        or type(response.body["disconnected"]) is not bool
+    ):
         log.warning("team-driver returned an invalid OAuth disconnect response")
         return DriverResponse(502, {"detail": "OAuth disconnect response is invalid."})
-    return response
+    return DriverResponse(204, {})
 
 
-def complete_cloudflare_oauth_callback(*, state: object, code: object, session_binding: object) -> DriverResponse:
+def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_binding: object) -> DriverResponse:
     identifier = canonical_oauth_binding(state)
-    authorization_code = canonical_oauth_code(code)
+    one_time_claim = canonical_oauth_claim(claim)
     binding = canonical_oauth_binding(session_binding)
     response = _call(
         "POST",
         "/v1/oauth/cloudflare/callback",
-        {"state": identifier, "code": authorization_code, "session_binding": binding},
+        {"state": identifier, "claim": one_time_claim, "session_binding": binding},
     )
     if not 200 <= response.status < 300:
         return response

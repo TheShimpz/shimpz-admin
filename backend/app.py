@@ -669,7 +669,7 @@ async def oauth_cloudflare_callback(request: Request):
     if request.url.hostname != "127.0.0.1" or request.url.port != 7777:
         return response
     pairs = list(request.query_params.multi_items())
-    if len(pairs) != 2 or {key for key, _value in pairs} != {"state", "code"}:
+    if len(pairs) != 2 or {key for key, _value in pairs} != {"state", "claim"}:
         return response
     query = dict(pairs)
     binding = request.cookies.get(OAUTH_COOKIE, "")
@@ -677,7 +677,7 @@ async def oauth_cloudflare_callback(request: Request):
         result = await asyncio.to_thread(
             teams.complete_cloudflare_oauth_callback,
             state=query["state"],
-            code=query["code"],
+            claim=query["claim"],
             session_binding=binding,
         )
     except teams.TeamRequestError:

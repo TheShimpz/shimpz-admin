@@ -218,16 +218,12 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
     @staticmethod
     def _authorization_url(**overrides: str) -> str:
         fields = {
-            "response_type": "code",
-            "client_id": "publicClientIdentifier123",
-            "redirect_uri": "http://127.0.0.1:7777/api/oauth/cloudflare/callback",
             "scope": "dns.read offline_access zone.read",
             "state": "a" * 43,
             "code_challenge": "b" * 43,
-            "code_challenge_method": "S256",
         }
         fields.update(overrides)
-        return "https://dash.cloudflare.com/oauth2/auth?" + urlencode(fields)
+        return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(fields)
 
     def test_starts_only_fixed_cloudflare_pkce_authorization(self):
         authorization_url = self._authorization_url()
@@ -251,13 +247,12 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         self.assertNotRegex(request["body"].decode(), r"token|code|verifier|client")
 
         for invalid_url in (
-            self._authorization_url(redirect_uri="http://localhost:7777/api/oauth/cloudflare/callback"),
-            self._authorization_url(code_challenge_method="plain"),
+            self._authorization_url(scope="dns.read zone.read"),
             self._authorization_url(state="short"),
             self._authorization_url() + "&state=duplicate",
             self._authorization_url().replace(
-                "https://dash.cloudflare.com/",
-                "https://dash.cloudflare.com.evil.example/",
+                "https://shimpz.com/",
+                "https://shimpz.com.evil.example/",
             ),
             self._authorization_url() + "#access_token=must-not-cross",
         ):
@@ -275,7 +270,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             (
                 "DELETE",
                 "/v1/teams/team_1/assistant-accounts/shimpz-assistant/x-account",
-            ): (204, b""),
+            ): (200, b'{"disconnected":true}'),
             (
                 "POST",
                 "/v1/oauth/cloudflare/callback",
@@ -288,7 +283,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         disconnected = teams.disconnect_assistant_account("team_1", "shimpz-assistant", "x-account")
         completed = teams.complete_cloudflare_oauth_callback(
             state="a" * 43,
-            code="authorization-code-value",
+            claim="c" * 64,
             session_binding="b" * 43,
         )
 
@@ -311,7 +306,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             json.loads(callback["body"]),
             {
                 "state": "a" * 43,
-                "code": "authorization-code-value",
+                "claim": "c" * 64,
                 "session_binding": "b" * 43,
             },
         )
