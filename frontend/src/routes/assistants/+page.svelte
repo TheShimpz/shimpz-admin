@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import {
-    INSTALL_INTENT,
+    RELEASED_STORE_ASSISTANT_IDS,
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
     STORE_LIFECYCLE_PROTOCOL_VERSION,
@@ -20,7 +20,6 @@
   import { t, locale } from '$lib/i18n.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
 
-  const OFFICIAL_ASSISTANT_ID = INSTALL_INTENT.assistant;
   const FRAME_READY_TIMEOUT_MS = 8000;
   const DESTINATION_COPY = {
     en: {
@@ -75,15 +74,15 @@
   const LOCAL_COPY = {
     en: {
       createFromSidebar: 'Close this dialog and create a Team from the Store destination.',
-      confirmTitle: 'Install Shimpz Assistant?',
+      confirmTitle: 'Install this Assistant?',
       confirmLead: 'Choose the exact Team. The Store cannot choose it or install anything for you.',
       checkingTitle: 'Preparing the local action…',
       checkingLead: 'The Admin is checking the selected Team and its installed Assistants.',
-      alreadyTitle: 'Shimpz Assistant is already installed.',
+      alreadyTitle: 'This Assistant is already installed.',
       alreadyLead: 'Nothing was installed twice. The Assistant remains ready for your Team.',
       noTeamTitle: 'Installation needs a running Team.',
       noTeamLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
-      unavailableTitle: 'Shimpz Assistant is unavailable right now.',
+      unavailableTitle: 'This Assistant is unavailable right now.',
       unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
       failureTitle: 'The local action did not finish.',
       failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
@@ -104,15 +103,15 @@
     },
     pt: {
       createFromSidebar: 'Feche esta janela e crie um Time no destino da Store.',
-      confirmTitle: 'Instalar o Shimpz Assistant?',
+      confirmTitle: 'Instalar este Assistant?',
       confirmLead: 'Escolha o Time exato. A Store não pode escolhê-lo nem instalar nada por você.',
       checkingTitle: 'Preparando a ação local…',
       checkingLead: 'O Admin está verificando o Time selecionado e seus Assistants instalados.',
-      alreadyTitle: 'O Shimpz Assistant já está instalado.',
+      alreadyTitle: 'Este Assistant já está instalado.',
       alreadyLead: 'Nada foi instalado duas vezes. O Assistant continua pronto para o seu Time.',
       noTeamTitle: 'A instalação precisa de um Time em execução.',
       noTeamLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
-      unavailableTitle: 'O Shimpz Assistant está indisponível agora.',
+      unavailableTitle: 'Este Assistant está indisponível agora.',
       unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
       failureTitle: 'A ação local não foi concluída.',
       failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
@@ -165,8 +164,9 @@
     `${storePageUrl}/embed?store-protocol=${STORE_LIFECYCLE_PROTOCOL_VERSION}&admin-frame=${frameReload}`,
   );
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
-  let officialAssistantAvailable = $derived(
-    $teamContext.catalog.some((entry) => entry.id === OFFICIAL_ASSISTANT_ID),
+  let pendingAssistantAvailable = $derived(
+    RELEASED_STORE_ASSISTANT_IDS.includes(pendingAssistant) &&
+      $teamContext.catalog.some((entry) => entry.id === pendingAssistant),
   );
   let activeTeamRecord = $derived(
     runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
@@ -396,7 +396,7 @@
     dialogMode = 'checking';
     showAssistantDialog();
 
-    if (assistantId !== OFFICIAL_ASSISTANT_ID) {
+    if (!RELEASED_STORE_ASSISTANT_IDS.includes(assistantId)) {
       dialogMode = 'unavailable';
       return;
     }
@@ -413,12 +413,12 @@
       dialogMode = 'no-team';
       return;
     }
-    if (!officialAssistantAvailable) {
+    if (!$teamContext.catalog.some((entry) => entry.id === assistantId)) {
       dialogMode = 'unavailable';
       return;
     }
     dialogMode = $teamContext.installedAssistants.some(
-      (entry) => entry.assistant === OFFICIAL_ASSISTANT_ID,
+      (entry) => entry.assistant === assistantId,
     )
       ? 'installed'
       : 'install';
@@ -476,8 +476,8 @@
   async function confirmInstall() {
     if (
       busy ||
-      pendingAssistant !== OFFICIAL_ASSISTANT_ID ||
-      !officialAssistantAvailable ||
+      !RELEASED_STORE_ASSISTANT_IDS.includes(pendingAssistant) ||
+      !pendingAssistantAvailable ||
       !['install', 'error'].includes(dialogMode)
     ) return;
     const team = runningTeams.find((item) => item.id === selectedTeam);
@@ -486,7 +486,7 @@
     busy = true;
     dialogError = '';
     try {
-      await installAssistant(fetch, team.id, OFFICIAL_ASSISTANT_ID);
+      await installAssistant(fetch, team.id, pendingAssistant);
       await refreshInstalled(team.id);
       const assistantName = pendingAssistantName;
       finishAssistantDialog();
@@ -790,7 +790,7 @@
   primaryLabel={dialogPrimaryLabel}
   secondaryLabel={dialogSecondaryLabel}
   primaryVisible={dialogPrimaryVisible}
-  primaryDisabled={!selectedTeamRecord || !officialAssistantAvailable}
+  primaryDisabled={!selectedTeamRecord || !pendingAssistantAvailable}
   {busy}
   destructive={dialogAction === 'uninstall'}
   onconfirm={confirmAssistantAction}

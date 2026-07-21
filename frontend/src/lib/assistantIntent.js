@@ -25,7 +25,7 @@ const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const STORE_LOCALES = new Set(['en', 'pt']);
-const RELEASED_STORE_ASSISTANT_IDS = Object.freeze([INSTALL_INTENT.assistant]);
+export const RELEASED_STORE_ASSISTANT_IDS = Object.freeze(['shimpz-assistant', 'shimpz-cloudflare']);
 const RELEASED_STORE_ASSISTANTS = new Set(RELEASED_STORE_ASSISTANT_IDS);
 const STORE_ACTIONS = new Set(['install', 'uninstall']);
 
@@ -64,24 +64,24 @@ export function createStoreActionLatch() {
   });
 }
 
-function acceptsStoreIntent(event, iframeWindow, expected) {
+function acceptsStoreIntent(event, iframeWindow, expectedType) {
   if (!isTrustedStoreEvent(event, iframeWindow)) return false;
   const data = event.data;
   if (!hasExactKeys(data, INTENT_KEYS)) return false;
   return (
-    data.type === expected.type &&
-    data.version === expected.version &&
-    data.assistant === expected.assistant
+    data.type === expectedType &&
+    data.version === STORE_LIFECYCLE_PROTOCOL_VERSION &&
+    RELEASED_STORE_ASSISTANTS.has(data.assistant)
   );
 }
 
-function acknowledgeStoreIntent(event, iframeWindow, expected, acknowledgementType) {
-  if (!acceptsStoreIntent(event, iframeWindow, expected)) return false;
+function acknowledgeStoreIntent(event, iframeWindow, expectedType, acknowledgementType) {
+  if (!acceptsStoreIntent(event, iframeWindow, expectedType)) return false;
   event.source.postMessage(
     {
       type: acknowledgementType,
-      version: expected.version,
-      assistant: expected.assistant,
+      version: STORE_LIFECYCLE_PROTOCOL_VERSION,
+      assistant: event.data.assistant,
       accepted: true,
     },
     event.origin,
@@ -94,7 +94,7 @@ function acknowledgeStoreIntent(event, iframeWindow, expected, acknowledgementTy
  * a local token, Team id, or authority to install; the Captain must select and confirm locally.
  */
 export function acceptsStoreInstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT);
+  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT.type);
 }
 
 /**
@@ -102,17 +102,17 @@ export function acceptsStoreInstallIntent(event, iframeWindow) {
  * inventory, token, runtime, or installation state; local admission remains entirely in the Admin.
  */
 export function acknowledgeStoreInstallIntent(event, iframeWindow) {
-  return acknowledgeStoreIntent(event, iframeWindow, INSTALL_INTENT, INSTALL_ACK_TYPE);
+  return acknowledgeStoreIntent(event, iframeWindow, INSTALL_INTENT.type, INSTALL_ACK_TYPE);
 }
 
 /** Accept only the exact inert uninstall request; the Store still receives no local authority. */
 export function acceptsStoreUninstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT);
+  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT.type);
 }
 
 /** Acknowledge receipt without revealing whether, where, or how an Assistant is installed. */
 export function acknowledgeStoreUninstallIntent(event, iframeWindow) {
-  return acknowledgeStoreIntent(event, iframeWindow, UNINSTALL_INTENT, UNINSTALL_ACK_TYPE);
+  return acknowledgeStoreIntent(event, iframeWindow, UNINSTALL_INTENT.type, UNINSTALL_ACK_TYPE);
 }
 
 /**

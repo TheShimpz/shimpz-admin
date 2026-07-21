@@ -46,11 +46,18 @@ test('builds only canonical Assistant detail links on the Store origin', () => {
   }
 });
 
-test('accepts only the exact Shimpz Assistant intent from the embedded Store window', () => {
+test('accepts only exact released Assistant intents from the embedded Store window', () => {
   const iframeWindow = {};
   const event = { origin: STORE_ORIGIN, source: iframeWindow, data: { ...INSTALL_INTENT } };
 
   assert.equal(acceptsStoreInstallIntent(event, iframeWindow), true);
+  assert.equal(
+    acceptsStoreInstallIntent(
+      { ...event, data: { ...INSTALL_INTENT, assistant: 'shimpz-cloudflare' } },
+      iframeWindow,
+    ),
+    true,
+  );
 });
 
 test('rejects every untrusted origin, source, type, version, id, and extra field', () => {
@@ -127,7 +134,7 @@ test('keeps exactly one Store action latched until its matching release', () => 
   assert.equal(latch.acquire('unknown'), false);
 });
 
-test('accepts and acknowledges only the exact Shimpz Assistant uninstall intent', () => {
+test('accepts and acknowledges only exact released Assistant uninstall intents', () => {
   const acknowledgements = [];
   const iframeWindow = {
     postMessage(message, targetOrigin) { acknowledgements.push({ message, targetOrigin }); },
@@ -160,6 +167,13 @@ test('accepts and acknowledges only the exact Shimpz Assistant uninstall intent'
     assert.equal(acknowledgeStoreUninstallIntent(candidate, iframeWindow), false);
   }
   assert.equal(acknowledgements.length, 1);
+
+  const cloudflare = {
+    ...exact,
+    data: { ...UNINSTALL_INTENT, assistant: 'shimpz-cloudflare' },
+  };
+  assert.equal(acknowledgeStoreUninstallIntent(cloudflare, iframeWindow), true);
+  assert.equal(acknowledgements[1].message.assistant, 'shimpz-cloudflare');
 });
 
 test('accepts only exact bounded integer Store frame measurements', () => {
@@ -225,6 +239,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
 
   assert.equal(postStoreAssistantState(iframeWindow, 'loading', []), true);
   assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['shimpz-assistant']), true);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['shimpz-cloudflare']), true);
   assert.equal(postStoreAssistantState(iframeWindow, 'error', []), true);
   assert.deepEqual(messages, [
     {
@@ -237,6 +252,15 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
         version: 1,
         status: 'ready',
         installed: ['shimpz-assistant'],
+      },
+      targetOrigin: STORE_ORIGIN,
+    },
+    {
+      message: {
+        type: STORE_STATE_TYPE,
+        version: 1,
+        status: 'ready',
+        installed: ['shimpz-cloudflare'],
       },
       targetOrigin: STORE_ORIGIN,
     },
@@ -294,13 +318,14 @@ test('projects only released Store Assistants from private local inventory', () 
   const inventory = [
     { assistant: 'private-captain-tool', status: 'running' },
     { assistant: 'shimpz-assistant', status: 'running' },
+    { assistant: 'shimpz-cloudflare', status: 'running' },
     { assistant: 'custom-customer-agent', status: 'created' },
   ];
 
-  assert.deepEqual(projectReleasedStoreAssistantIds(inventory), ['shimpz-assistant']);
+  assert.deepEqual(projectReleasedStoreAssistantIds(inventory), ['shimpz-assistant', 'shimpz-cloudflare']);
   assert.deepEqual(
     projectReleasedStoreAssistantIds(inventory.filter((entry) => entry.assistant !== 'shimpz-assistant')),
-    [],
+    ['shimpz-cloudflare'],
   );
   assert.deepEqual(projectReleasedStoreAssistantIds(null), []);
 });
