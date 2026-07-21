@@ -8,7 +8,7 @@
 # mounted as a single file) and its own `/data` volume (admin.json, 0600).
 
 # ── stage 1: build the SvelteKit static UI ────────────────────────────────────────────────────
-FROM node:24-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059 AS ui
+FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059 AS ui
 ARG SOURCE_DATE_EPOCH=0
 # IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so npm doesn't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf

@@ -10,6 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DockerfileDeliveryTests(unittest.TestCase):
+    def test_static_ui_build_uses_the_native_builder_platform(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:"
+            "5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059 AS ui",
+            dockerfile,
+        )
+
     def test_runtime_copy_contains_every_backend_module(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         logical_lines = re.sub(r"\\\n\s*", " ", dockerfile).splitlines()
