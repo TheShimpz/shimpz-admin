@@ -144,9 +144,10 @@ test('fills the main column while keeping turns scrollable and the composer visi
   assert.match(source, /\.empty-conversation \.composer \{\s*grid-row: 1;\s*align-self: center;/);
   assert.match(
     source,
-    /\{#if turns\.length === 0\}[\s\S]*<ShimpzBrand variant="symbol" product="" href="\/chat\/" ariaLabel="Shimpz" \/>/,
+    /<form class="composer" onsubmit=\{send\}>\s*\{#if turns\.length === 0\}[\s\S]*<ShimpzBrand variant="symbol" product="" href="\/chat\/" ariaLabel="Shimpz" \/>[\s\S]*\{\/if\}\s*<ChatContextControls/,
   );
-  assert.match(source, /\.empty-chat-brand \{[\s\S]*grid-row: 1;[\s\S]*justify-self: center;/);
+  assert.match(source, /\.empty-chat-brand \{[\s\S]*justify-self: center;[\s\S]*margin-block-end:/);
+  assert.doesNotMatch(source, /\.empty-chat-brand \{[^}]*transform:/s);
   assert.match(source, /textarea \{[\s\S]*?height: 3\.2rem;[\s\S]*?resize: none;[\s\S]*?overflow-y: auto;/);
   assert.doesNotMatch(source, /\.composer \{[^}]*border-top:/s);
   assert.match(source, /\.composer button \{\s*height: 3\.2rem;\s*min-height: 0;/);

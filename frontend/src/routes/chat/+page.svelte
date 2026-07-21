@@ -797,13 +797,12 @@
           </div>
         {/if}
 
-          {#if turns.length === 0}
-            <div class="empty-chat-brand">
-              <ShimpzBrand variant="symbol" product="" href="/chat/" ariaLabel="Shimpz" />
-            </div>
-          {/if}
-
           <form class="composer" onsubmit={send}>
+            {#if turns.length === 0}
+              <div class="empty-chat-brand">
+                <ShimpzBrand variant="symbol" product="" href="/chat/" ariaLabel="Shimpz" />
+              </div>
+            {/if}
             <ChatContextControls disabled={busy || stopping} />
             <div class="composer-input">
               <textarea
@@ -1110,15 +1109,12 @@
   .empty-conversation .composer {
     grid-row: 1;
     align-self: center;
-    transform: translateY(5.5rem);
   }
 
   .empty-chat-brand {
     display: grid;
-    grid-row: 1;
-    align-self: center;
     justify-self: center;
-    transform: translateY(-5.25rem);
+    margin-block-end: clamp(0.75rem, 2dvh, 1.5rem);
   }
 
   textarea {
@@ -1276,7 +1272,5 @@
     .composer-input { gap: 0.45rem; }
     .composer-actions { gap: 0.3rem; }
     button { padding-inline: 0.65rem; }
-    .empty-conversation .composer { transform: translateY(4.75rem); }
-    .empty-chat-brand { transform: translateY(-4.5rem); }
   }
 </style>
