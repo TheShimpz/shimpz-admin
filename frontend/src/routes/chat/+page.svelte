@@ -14,6 +14,7 @@
   import { locale } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
+  import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
   import { teamContext } from '$lib/teamContext.js';
   import {
@@ -796,6 +797,12 @@
           </div>
         {/if}
 
+          {#if turns.length === 0}
+            <div class="empty-chat-brand">
+              <ShimpzBrand variant="symbol" product="" href="/chat/" ariaLabel="Shimpz" />
+            </div>
+          {/if}
+
           <form class="composer" onsubmit={send}>
             <ChatContextControls disabled={busy || stopping} />
             <div class="composer-input">
@@ -1123,6 +1130,15 @@
   .empty-conversation .composer {
     grid-row: 1;
     align-self: center;
+    transform: translateY(5.5rem);
+  }
+
+  .empty-chat-brand {
+    display: grid;
+    grid-row: 1;
+    align-self: center;
+    justify-self: center;
+    transform: translateY(-5.25rem);
   }
 
   textarea {
@@ -1280,5 +1296,7 @@
     .composer-input { gap: 0.45rem; }
     .composer-actions { gap: 0.3rem; }
     button { padding-inline: 0.65rem; }
+    .empty-conversation .composer { transform: translateY(4.75rem); }
+    .empty-chat-brand { transform: translateY(-4.5rem); }
   }
 </style>

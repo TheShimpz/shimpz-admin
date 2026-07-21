@@ -7,15 +7,23 @@
   } = $props();
 </script>
 
-<a class:hero={variant === 'hero'} class="brand-lockup" {href} aria-label={ariaLabel}>
+<a
+  class:hero={variant === 'hero'}
+  class:symbol-only={variant === 'symbol'}
+  class="brand-lockup"
+  {href}
+  aria-label={ariaLabel}
+>
   <span class="brand-symbol" aria-hidden="true">
     <img src="/brand/shimpz-thinking.svg" alt="" />
     <span class="reflection"></span>
   </span>
-  <span class="brand-type">
-    <span class="wordmark">Shimpz</span>
-    {#if product}<span class="product">{product}</span>{/if}
-  </span>
+  {#if variant !== 'symbol'}
+    <span class="brand-type">
+      <span class="wordmark">Shimpz</span>
+      {#if product}<span class="product">{product}</span>{/if}
+    </span>
+  {/if}
 </a>
 
 <style>
@@ -94,6 +102,12 @@
   .hero .brand-symbol {
     width: clamp(7rem, 18vw, 11rem);
     height: clamp(7rem, 18vw, 11rem);
+  }
+
+  .symbol-only .brand-symbol {
+    width: clamp(8rem, 18vw, 13rem);
+    height: clamp(8rem, 18vw, 13rem);
+    filter: drop-shadow(0 0 1.2rem rgba(0, 240, 255, 0.14));
   }
 
   @keyframes glass-reflection {
