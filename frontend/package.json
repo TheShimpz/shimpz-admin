@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
-    "test": "node --test tests/*.test.js"
+    "test": "node tests/run-tests.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.1",
