@@ -775,16 +775,20 @@ test('composer context provides model buttons and complete Assistant scope contr
   assert.doesNotMatch(contextControlsSource, /overflow-x: auto|grid-auto-flow: column/);
 });
 
-test('Assistant context hides empty bulk actions and leaves Store navigation to the shell', () => {
+test('Assistant context hides empty bulk actions and opens the Store for the current Team', () => {
   assert.match(
     contextControlsSource,
     /\{#if runningAssistants\.length > 0\}\s*<div class="bulk-actions">[\s\S]*onclick=\{selectAllTeamAssistants\}[\s\S]*onclick=\{unselectAllTeamAssistants\}/,
   );
-  assert.doesNotMatch(contextControlsSource, /openAssistantStore|copy\.addAssistant/);
   assert.match(
     contextControlsSource,
     /onclick=\{\(\) => close\(assistantDialog, assistantTrigger\)\}>\{copy\.close\}<\/button>/,
   );
+  assert.match(
+    contextControlsSource,
+    /function openAssistantStore\(\)[\s\S]*new URL\('\/assistants\/', page\.url\)[\s\S]*searchParams\.set\('team', \$teamContext\.selectedTeamId\)[\s\S]*goto\(next\)/,
+  );
+  assert.match(contextControlsSource, /onclick=\{openAssistantStore\}>\{copy\.openStore\}<\/button>/);
 });
 
 test('composer context localizes every supported Admin locale and removes hard-coded kickers', () => {
@@ -793,6 +797,7 @@ test('composer context localizes every supported Admin locale and removes hard-c
   }
   assert.equal(contextControlsSource.match(/deleteKicker:/g)?.length, 8);
   assert.equal(contextControlsSource.match(/deleteFailed:/g)?.length, 8);
+  assert.equal(contextControlsSource.match(/openStore:/g)?.length, 8);
   assert.match(contextControlsSource, /aria-label=\{copy\.contextAria\}/);
   assert.match(contextControlsSource, /\{copy\.teamKicker\}/);
   assert.match(contextControlsSource, /\{copy\.brainKicker\}/);
