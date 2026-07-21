@@ -1,9 +1,10 @@
 """The agent-credential keyset — the ONE enumerated list the wizard manages.
 
-This is the exact set of keys `.env` holds (and that `shimpz-app`'s `_deploy_secretgate` forbids to
-project apps). The wizard renders the form FROM this list and the API does exact lookups AGAINST
-it — an unknown key is a hard error, never a silent write (fail-fast doctrine). Machine-internal
-secrets carry `generate: True` and are minted here, never typed by a human.
+This is the exact set of keys the wizard manages (and that `shimpz-app`'s `_deploy_secretgate`
+forbids to project apps). Installer-owned control-plane credentials may coexist in `.env`, but are
+never exposed as wizard fields. The wizard renders the form FROM this list and the API does exact
+lookups AGAINST it — an unknown key is a hard error, never a silent write (fail-fast doctrine).
+Machine-internal secrets carry `generate: True` and are minted here, never typed by a human.
 
 `validator` values are dispatched by validate_live.py: a `live_*` kind performs one real remote
 call; a `re:` kind is a full-match regex; None means presence-only.
