@@ -814,7 +814,11 @@ def start_assistant_account_authorization(
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"authorization_url"}:
+        if (
+            set(response.body) != {"authorization_url", "trace_id"}
+            or not isinstance(response.body["trace_id"], str)
+            or _TRACE_ID_RE.fullmatch(response.body["trace_id"]) is None
+        ):
             raise ValueError("invalid OAuth authorization response")
         authorization_url = _trusted_cloudflare_authorization_url(response.body["authorization_url"], callback_mode)
     except KeyError, TypeError, ValueError:

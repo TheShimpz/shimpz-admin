@@ -229,7 +229,8 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
     def test_starts_only_fixed_cloudflare_pkce_authorization(self):
         authorization_url = self._authorization_url()
         _DriverHandler.response_body = json.dumps(
-            {"authorization_url": authorization_url}, separators=(",", ":")
+            {"authorization_url": authorization_url, "trace_id": "f" * 32},
+            separators=(",", ":"),
         ).encode()
 
         response = teams.start_assistant_account_authorization(
@@ -260,7 +261,8 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             self._authorization_url(callback="loopback"),
         ):
             _DriverHandler.response_body = json.dumps(
-                {"authorization_url": invalid_url}, separators=(",", ":")
+                {"authorization_url": invalid_url, "trace_id": "f" * 32},
+                separators=(",", ":"),
             ).encode()
             invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "canary")
             self.assertEqual(
@@ -270,6 +272,21 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
         with self.assertRaisesRegex(teams.TeamRequestError, "callback mode"):
             teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
+
+        for invalid_envelope in (
+            {"authorization_url": authorization_url},
+            {"authorization_url": authorization_url, "trace_id": "short"},
+            {"authorization_url": authorization_url, "trace_id": "f" * 32, "token": "must-not-cross"},
+        ):
+            _DriverHandler.response_body = json.dumps(
+                invalid_envelope,
+                separators=(",", ":"),
+            ).encode()
+            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "canary")
+            self.assertEqual(
+                invalid,
+                teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
+            )
 
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
         _DriverHandler.response_by_route = {
