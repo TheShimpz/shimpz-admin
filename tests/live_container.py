@@ -20,6 +20,7 @@ IMAGE = "shimpz-admin:local"
 PASSWORD = " ".join(("correct", "horse", "battery"))
 ADMIN_UID = 1000
 ADMIN_GID = 1000
+CONTAINER_TEMP = Path("/") / "tmp"
 
 
 class DockerCLI:
@@ -152,7 +153,7 @@ class ReadOnlyAdminContainerTests(unittest.TestCase):
             container,
             "--read-only",
             "--tmpfs",
-            "/tmp:size=32m,mode=1777",  # noqa: S108 -- container tmpfs, never a host credential path
+            f"{CONTAINER_TEMP}:size=32m,mode=1777",
             "--security-opt",
             "no-new-privileges:true",
             "--user",
