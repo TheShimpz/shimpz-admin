@@ -25,8 +25,8 @@ CHALLENGE_ID = "b" * 32
 
 def secret_requirement() -> dict[str, object]:
     return {
-        "assistant_id": "shimpz-assistant",
-        "assistant_name": "Shimpz Assistant",
+        "assistant_id": "shimpz-cloudflare",
+        "assistant_name": "Shimpz Cloudflare",
         "power_ids": ["identity-me", "create-post"],
         "secrets": [
             {"id": "x-api-key", "name": "X API Key", "summary": "Identifies the X application."},
@@ -38,16 +38,16 @@ def secret_requirement() -> dict[str, object]:
 def approval_requirements() -> list[dict[str, object]]:
     return [
         {
-            "assistant_id": "shimpz-assistant",
-            "assistant_name": "Shimpz Assistant",
+            "assistant_id": "shimpz-cloudflare",
+            "assistant_name": "Shimpz Cloudflare",
             "power_id": "create-post",
             "power_summary": "Publish this exact post on X.",
             "input": {"text": "Hello", "reply_to": None},
             "approval": "each-run",
         },
         {
-            "assistant_id": "shimpz-assistant",
-            "assistant_name": "Shimpz Assistant",
+            "assistant_id": "shimpz-cloudflare",
+            "assistant_name": "Shimpz Cloudflare",
             "power_id": "create-post",
             "power_summary": "Publish this exact post on X.",
             "input": {"text": "Second", "reply_to": "123"},
@@ -58,8 +58,8 @@ def approval_requirements() -> list[dict[str, object]]:
 
 def account_requirement() -> dict[str, object]:
     return {
-        "assistant_id": "shimpz-assistant",
-        "assistant_name": "Shimpz Assistant",
+        "assistant_id": "shimpz-cloudflare",
+        "assistant_name": "Shimpz Cloudflare",
         "account_id": "x-account",
         "provider": "x",
         "name": "X account",
@@ -122,7 +122,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         api_key = "sk-test-0123456789"
         teams.chat(
             "team_1",
-            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-assistant"]},
+            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
             provider="openai",
             api_key=api_key,
         )
@@ -131,7 +131,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["path"], "/v1/teams/team_1/chat")
         self.assertEqual(
             json.loads(request["body"]),
-            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-assistant"]},
+            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
         )
         self.assertEqual(request["headers"]["x-shimpz-model-provider"], "openai")
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
@@ -146,7 +146,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                 "challenge_id": CHALLENGE_ID,
                 "values": [
                     {
-                        "assistant_id": "shimpz-assistant",
+                        "assistant_id": "shimpz-cloudflare",
                         "secret_id": "x-api-secret",
                         "value": transport_fixture,
                     }
@@ -165,7 +165,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                 "challenge_id": CHALLENGE_ID,
                 "values": [
                     {
-                        "assistant_id": "shimpz-assistant",
+                        "assistant_id": "shimpz-cloudflare",
                         "secret_id": "x-api-secret",
                         "value": transport_fixture,
                     }
@@ -284,7 +284,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-assistant"]},
+                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
             )
 
         self.assertEqual(response.status, 428)
@@ -379,7 +379,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_secret_replacement_is_exact_and_projects_only_masks(self) -> None:
         payload = {
-            "assistant_id": "shimpz-assistant",
+            "assistant_id": "shimpz-cloudflare",
             "values": [{"secret_id": "x-api-key", "value": "replacement-secret-123"}],
         }
         controller = teams.DriverResponse(
@@ -388,8 +388,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_id": "team_1",
                 "assistants": [
                     {
-                        "id": "shimpz-assistant",
-                        "name": "Shimpz Assistant",
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
                         "secrets": [
                             {
                                 "id": "x-api-key",
@@ -414,7 +414,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_secret_replacement_rejects_ambiguous_batches_before_transport(self) -> None:
         valid = {
-            "assistant_id": "shimpz-assistant",
+            "assistant_id": "shimpz-cloudflare",
             "values": [{"secret_id": "x-api-key", "value": "replacement-secret-123"}],
         }
         invalid = (
@@ -435,7 +435,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "challenge_id": CHALLENGE_ID,
             "values": [
                 {
-                    "assistant_id": "shimpz-assistant",
+                    "assistant_id": "shimpz-cloudflare",
                     "secret_id": "x-api-key",
                     "value": "secret-value-123",
                 }
@@ -485,7 +485,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-assistant"]},
+                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
             )
 
         self.assertEqual(response.status, 428)
@@ -521,7 +521,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn(
                 "team_1",
-                {"message": "Post both", "files": [], "assistant_ids": ["shimpz-assistant"]},
+                {"message": "Post both", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
             )
 
         expected = approval_requirements()
@@ -612,8 +612,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "team_id": "team_1",
             "assistants": [
                 {
-                    "id": "shimpz-assistant",
-                    "name": "Shimpz Assistant",
+                    "id": "shimpz-cloudflare",
+                    "name": "Shimpz Cloudflare",
                     "secrets": [
                         {
                             "id": "x-api-key",
@@ -668,7 +668,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "challenge_id": CHALLENGE_ID,
             "values": [
                 {
-                    "assistant_id": "shimpz-assistant",
+                    "assistant_id": "shimpz-cloudflare",
                     "secret_id": "x-api-key",
                     "value": leak_fixture,
                 }
@@ -695,7 +695,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {
                 "message": "Hi",
                 "files": [],
-                "assistant_ids": ["shimpz-assistant", "shimpz-assistant"],
+                "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
             },
             {
                 "message": "Hi",
@@ -896,8 +896,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {
                 "team_id": "team_1",
                 "grants": [
-                    {"assistant_id": "shimpz-assistant", "power_id": "create-post"},
-                    {"assistant_id": "shimpz-assistant", "power_id": "delete-post"},
+                    {"assistant_id": "shimpz-cloudflare", "power_id": "create-post"},
+                    {"assistant_id": "shimpz-cloudflare", "power_id": "delete-post"},
                 ],
                 "trace_id": TRACE_ID,
             },

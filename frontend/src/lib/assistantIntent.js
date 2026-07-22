@@ -2,12 +2,12 @@ export const STORE_ORIGIN = 'https://shimpz.com';
 export const INSTALL_INTENT = Object.freeze({
   type: 'shimpz:assistant-install',
   version: 1,
-  assistant: 'shimpz-assistant',
+  assistant: 'shimpz-cloudflare',
 });
 export const UNINSTALL_INTENT = Object.freeze({
   type: 'shimpz:assistant-uninstall',
   version: 1,
-  assistant: 'shimpz-assistant',
+  assistant: 'shimpz-cloudflare',
 });
 export const INSTALL_ACK_TYPE = 'shimpz:assistant-install-ack';
 export const UNINSTALL_ACK_TYPE = 'shimpz:assistant-uninstall-ack';
@@ -25,7 +25,7 @@ const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const STORE_LOCALES = new Set(['en', 'pt']);
-export const RELEASED_STORE_ASSISTANT_IDS = Object.freeze(['shimpz-assistant', 'shimpz-cloudflare']);
+export const RELEASED_STORE_ASSISTANT_IDS = Object.freeze(['shimpz-cloudflare']);
 const RELEASED_STORE_ASSISTANTS = new Set(RELEASED_STORE_ASSISTANT_IDS);
 const STORE_ACTIONS = new Set(['install', 'uninstall']);
 

@@ -32,8 +32,8 @@ test('pins the embedded Store lifecycle protocol cache key', () => {
 
 test('builds only canonical Assistant detail links on the Store origin', () => {
   assert.equal(
-    assistantStoreHref('en', 'shimpz-assistant'),
-    'https://shimpz.com/en/assistants/shimpz-assistant',
+    assistantStoreHref('en', 'shimpz-cloudflare'),
+    'https://shimpz.com/en/assistants/shimpz-cloudflare',
   );
   assert.equal(
     assistantStoreHref('pt', 'salesnator'),
@@ -92,7 +92,7 @@ test('acknowledges an accepted intent without exposing any local state', () => {
     message: {
       type: INSTALL_ACK_TYPE,
       version: 1,
-      assistant: 'shimpz-assistant',
+      assistant: 'shimpz-cloudflare',
       accepted: true,
     },
     targetOrigin: STORE_ORIGIN,
@@ -147,7 +147,7 @@ test('accepts and acknowledges only exact released Assistant uninstall intents',
     message: {
       type: UNINSTALL_ACK_TYPE,
       version: 1,
-      assistant: 'shimpz-assistant',
+      assistant: 'shimpz-cloudflare',
       accepted: true,
     },
     targetOrigin: STORE_ORIGIN,
@@ -238,7 +238,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
   };
 
   assert.equal(postStoreAssistantState(iframeWindow, 'loading', []), true);
-  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['shimpz-assistant']), true);
+  assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['shimpz-cloudflare']), true);
   assert.equal(postStoreAssistantState(iframeWindow, 'ready', ['shimpz-cloudflare']), true);
   assert.equal(postStoreAssistantState(iframeWindow, 'error', []), true);
   assert.deepEqual(messages, [
@@ -251,7 +251,7 @@ test('posts only exact bounded Assistant Store state to the canonical iframe ori
         type: STORE_STATE_TYPE,
         version: 1,
         status: 'ready',
-        installed: ['shimpz-assistant'],
+        installed: ['shimpz-cloudflare'],
       },
       targetOrigin: STORE_ORIGIN,
     },
@@ -291,11 +291,11 @@ test('rejects malformed, ambiguous, and oversized Assistant Store state', () => 
     [null, 'ready', []],
     [{}, 'ready', []],
     [iframeWindow, 'unknown', []],
-    [iframeWindow, 'loading', ['shimpz-assistant']],
-    [iframeWindow, 'error', ['shimpz-assistant']],
+    [iframeWindow, 'loading', ['shimpz-cloudflare']],
+    [iframeWindow, 'error', ['shimpz-cloudflare']],
     [iframeWindow, 'ready', null],
     [iframeWindow, 'ready', ['Hello-Pulse']],
-    [iframeWindow, 'ready', ['shimpz-assistant', 'shimpz-assistant']],
+    [iframeWindow, 'ready', ['shimpz-cloudflare', 'shimpz-cloudflare']],
     [iframeWindow, 'ready', tooMany],
   ];
   for (const [target, status, installed] of cases) {
@@ -317,15 +317,15 @@ test('rejects consecutive and trailing hyphens in Assistant Store state ids', ()
 test('projects only released Store Assistants from private local inventory', () => {
   const inventory = [
     { assistant: 'private-captain-tool', status: 'running' },
-    { assistant: 'shimpz-assistant', status: 'running' },
     { assistant: 'shimpz-cloudflare', status: 'running' },
+    { assistant: 'retired-assistant', status: 'running' },
     { assistant: 'custom-customer-agent', status: 'created' },
   ];
 
-  assert.deepEqual(projectReleasedStoreAssistantIds(inventory), ['shimpz-assistant', 'shimpz-cloudflare']);
+  assert.deepEqual(projectReleasedStoreAssistantIds(inventory), ['shimpz-cloudflare']);
   assert.deepEqual(
-    projectReleasedStoreAssistantIds(inventory.filter((entry) => entry.assistant !== 'shimpz-assistant')),
-    ['shimpz-cloudflare'],
+    projectReleasedStoreAssistantIds(inventory.filter((entry) => entry.assistant !== 'shimpz-cloudflare')),
+    [],
   );
   assert.deepEqual(projectReleasedStoreAssistantIds(null), []);
 });

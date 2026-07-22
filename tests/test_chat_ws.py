@@ -313,7 +313,7 @@ class ChatWebSocketTests(unittest.TestCase):
                     "type": "chat",
                     "message": "duplicate",
                     "files": [],
-                    "assistant_ids": ["shimpz-assistant", "shimpz-assistant"],
+                    "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
                 },
                 {
                     "type": "chat",
@@ -676,7 +676,7 @@ class ChatWebSocketTests(unittest.TestCase):
                         "type": "chat",
                         "message": "first",
                         "files": [],
-                        "assistant_ids": ["shimpz-assistant"],
+                        "assistant_ids": ["shimpz-cloudflare"],
                     }
                 )
                 await _wait_for_thread(started)
@@ -698,7 +698,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 self.assertEqual(turn_mock.call_count, 1)
                 turn_mock.assert_called_once_with(
                     "team_1",
-                    {"message": "first", "files": [], "assistant_ids": ["shimpz-assistant"]},
+                    {"message": "first", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
                 )
                 self.assertEqual(stop_mock.call_count, 1)
 

@@ -138,7 +138,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         teams.list_assistants()
         teams.list_installed_assistants("team_1")
-        teams.assistant_help("team_1", "shimpz-assistant", "pt")
+        teams.assistant_help("team_1", "shimpz-cloudflare", "pt")
         teams.install_assistant("team_1", {"assistant": "hello-pulse"})
         teams.uninstall_assistant("team_1", "hello-pulse")
 
@@ -147,7 +147,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             [
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/teams/team_1/assistants"),
-                ("GET", "/v1/teams/team_1/assistants/shimpz-assistant/help/pt"),
+                ("GET", "/v1/teams/team_1/assistants/shimpz-cloudflare/help/pt"),
                 ("POST", "/v1/teams/team_1/assistants"),
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
             ],
@@ -183,8 +183,8 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
     def test_projects_only_bounded_account_status_metadata(self):
         account = {
-            "assistant_id": "shimpz-assistant",
-            "assistant_name": "Shimpz Assistant",
+            "assistant_id": "shimpz-cloudflare",
+            "assistant_name": "Shimpz Cloudflare",
             "id": "x-account",
             "provider": "cloudflare",
             "name": "Cloudflare account",
@@ -296,18 +296,18 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         _DriverHandler.response_by_route = {
             (
                 "DELETE",
-                "/v1/teams/team_1/assistant-accounts/shimpz-assistant/x-account",
+                "/v1/teams/team_1/assistant-accounts/shimpz-cloudflare/x-account",
             ): (200, b'{"disconnected":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
             (
                 "POST",
                 "/v1/oauth/cloudflare/callback",
             ): (
                 200,
-                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-assistant","account_id":"x-account","trace_id":"ffffffffffffffffffffffffffffffff"}',
+                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-cloudflare","account_id":"x-account","trace_id":"ffffffffffffffffffffffffffffffff"}',
             ),
         }
 
-        disconnected = teams.disconnect_assistant_account("team_1", "shimpz-assistant", "x-account")
+        disconnected = teams.disconnect_assistant_account("team_1", "shimpz-cloudflare", "x-account")
         completed = teams.complete_cloudflare_oauth_callback(
             state="a" * 43,
             claim="c" * 64,
@@ -322,7 +322,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 {
                     "connected": True,
                     "team_id": "team_1",
-                    "assistant_id": "shimpz-assistant",
+                    "assistant_id": "shimpz-cloudflare",
                     "account_id": "x-account",
                 },
             ),
@@ -501,7 +501,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             lambda: teams.list_installed_assistants("Team_1"),
             lambda: teams.install_assistant("team_1", {"assistant": "../hello-pulse"}),
             lambda: teams.assistant_help("team_1", "../escape"),
-            lambda: teams.assistant_help("team_1", "shimpz-assistant", "../pt"),
+            lambda: teams.assistant_help("team_1", "shimpz-cloudflare", "../pt"),
             lambda: teams.install_assistant("team_1", {"assistant": "hello-pulse", "extra": True}),
             lambda: teams.uninstall_assistant("team_1", "../hello-pulse"),
         )
@@ -556,7 +556,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(_DriverHandler.requests, [])
 
     def test_help_route_is_authenticated_and_forwards_only_the_fixed_installed_path(self):
-        _DriverHandler.response_body = b'{"assistant":"shimpz-assistant","markdown":"# Shimpz Assistant"}'
+        _DriverHandler.response_body = b'{"assistant":"shimpz-cloudflare","markdown":"# Shimpz Cloudflare"}'
 
         document = self._run_asgi_probe("assistant-help")
 
@@ -564,14 +564,14 @@ class TeamAssistantRouteTest(_LiveDriverCase):
             document,
             {
                 "status": 200,
-                "body": {"assistant": "shimpz-assistant", "markdown": "# Shimpz Assistant"},
+                "body": {"assistant": "shimpz-cloudflare", "markdown": "# Shimpz Cloudflare"},
             },
         )
         self.assertEqual(len(_DriverHandler.requests), 1)
         request = _DriverHandler.requests[0]
         self.assertEqual(
             (request["method"], request["path"]),
-            ("GET", "/v1/teams/team_1/assistants/shimpz-assistant/help/en"),
+            ("GET", "/v1/teams/team_1/assistants/shimpz-cloudflare/help/en"),
         )
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
@@ -845,7 +845,7 @@ def _run_asgi_probe(scenario: str) -> None:
             _asgi_request(
                 admin_app,
                 "GET",
-                "/api/teams/team_1/assistants/shimpz-assistant/help",
+                "/api/teams/team_1/assistants/shimpz-cloudflare/help",
                 token=token,
             )
         )

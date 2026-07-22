@@ -174,13 +174,13 @@ test('chat builds only the versioned WebSocket contract', () => {
   const frame = createChatFrame('team_1', {
     message: '  Hi  ',
     files: ['a'.repeat(32)],
-    assistant_ids: ['shimpz-assistant'],
+    assistant_ids: ['shimpz-cloudflare'],
   });
   assert.deepEqual(frame, {
     type: 'chat',
     message: 'Hi',
     files: ['a'.repeat(32)],
-    assistant_ids: ['shimpz-assistant'],
+    assistant_ids: ['shimpz-cloudflare'],
   });
   assert.doesNotMatch(JSON.stringify(frame), /power|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
@@ -271,10 +271,10 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
   }
 
   for (const assistant_ids of [
-    'shimpz-assistant',
+    'shimpz-cloudflare',
     ['Shimpz-Assistant'],
     ['shimpz--assistant'],
-    ['shimpz-assistant', 'shimpz-assistant'],
+    ['shimpz-cloudflare', 'shimpz-cloudflare'],
     Array.from({ length: 17 }, (_value, index) => `assistant-${index}`),
   ]) {
     assert.throws(

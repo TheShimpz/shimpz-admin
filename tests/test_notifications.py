@@ -90,7 +90,7 @@ class NotificationStateTests(unittest.TestCase):
         )
 
     def test_release_changelog_preserves_canonical_markdown_final_newline(self) -> None:
-        release = _release("shimpz-assistant", 1)
+        release = _release("shimpz-cloudflare", 1)
         release["changelog"] = "# Changelog\n\n## 0.1.1\n\n- Safe patch.\n"
 
         validated = notifications.validate_feed(_feed(release), allow_empty=False)
@@ -98,10 +98,10 @@ class NotificationStateTests(unittest.TestCase):
         self.assertEqual(validated["releases"][0]["changelog"], release["changelog"])
 
     def test_first_current_observation_baselines_only_installed_assistants(self) -> None:
-        feed = _feed(_release("shimpz-assistant", 1), _release("other-assistant", 1))
+        feed = _feed(_release("shimpz-cloudflare", 1), _release("other-assistant", 1))
         fetch, list_teams, list_installed = self._sync_mocks(
             feed,
-            inventory=_installed(**{"shimpz-assistant": "running"}),
+            inventory=_installed(**{"shimpz-cloudflare": "running"}),
         )
         with fetch, list_teams, list_installed, mock.patch.object(notifications.teams, "install_assistant") as install:
             result = notifications.sync()
@@ -117,16 +117,16 @@ class NotificationStateTests(unittest.TestCase):
                 "failed_updates": 0,
             },
         )
-        self.assertEqual(notifications._read()["cursors"], {"shimpz-assistant": 1})
+        self.assertEqual(notifications._read()["cursors"], {"shimpz-cloudflare": 1})
         install.assert_not_called()
 
     def test_newer_feed_waits_for_controller_to_report_outdated(self) -> None:
         state = notifications._default_state()
-        state["cached_feed"] = _feed(_release("shimpz-assistant", 1))
-        state["cursors"] = {"shimpz-assistant": 1}
+        state["cached_feed"] = _feed(_release("shimpz-cloudflare", 1))
+        state["cursors"] = {"shimpz-cloudflare": 1}
         with notifications._STORE_LOCK:
             notifications._write_unlocked(state)
-        feed = _feed(_release("shimpz-assistant", 1), _release("shimpz-assistant", 2))
+        feed = _feed(_release("shimpz-cloudflare", 1), _release("shimpz-cloudflare", 2))
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
@@ -134,23 +134,23 @@ class NotificationStateTests(unittest.TestCase):
             mock.patch.object(
                 notifications.teams,
                 "list_installed_assistants",
-                return_value=_installed(**{"shimpz-assistant": "running"}),
+                return_value=_installed(**{"shimpz-cloudflare": "running"}),
             ),
             mock.patch.object(notifications.teams, "install_assistant") as install,
         ):
             result = notifications.sync()
 
         self.assertEqual(result["notifications"], [])
-        self.assertEqual(notifications._read()["cursors"], {"shimpz-assistant": 1})
+        self.assertEqual(notifications._read()["cursors"], {"shimpz-cloudflare": 1})
         install.assert_not_called()
 
     def test_outdated_assistant_uses_id_only_update_then_emits_unseen_notice(self) -> None:
         state = notifications._default_state()
-        state["cached_feed"] = _feed(_release("shimpz-assistant", 1))
-        state["cursors"] = {"shimpz-assistant": 1}
+        state["cached_feed"] = _feed(_release("shimpz-cloudflare", 1))
+        state["cursors"] = {"shimpz-cloudflare": 1}
         with notifications._STORE_LOCK:
             notifications._write_unlocked(state)
-        feed = _feed(_release("shimpz-assistant", 1), _release("shimpz-assistant", 2))
+        feed = _feed(_release("shimpz-cloudflare", 1), _release("shimpz-cloudflare", 2))
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
@@ -159,31 +159,31 @@ class NotificationStateTests(unittest.TestCase):
                 notifications.teams,
                 "list_installed_assistants",
                 side_effect=[
-                    _installed(**{"shimpz-assistant": "outdated"}),
-                    _installed(**{"shimpz-assistant": "running"}),
+                    _installed(**{"shimpz-cloudflare": "outdated"}),
+                    _installed(**{"shimpz-cloudflare": "running"}),
                 ],
             ),
             mock.patch.object(
                 notifications.teams,
                 "install_assistant",
-                return_value=_install_response("shimpz-assistant"),
+                return_value=_install_response("shimpz-cloudflare"),
             ) as install,
         ):
             result = notifications.sync()
 
-        install.assert_called_once_with("marketing", {"assistant": "shimpz-assistant"})
+        install.assert_called_once_with("marketing", {"assistant": "shimpz-cloudflare"})
         self.assertEqual(result["sync"]["updated_assistants"], 1)
         self.assertEqual(result["sync"]["notifications_added"], 1)
         self.assertEqual(result["unread_count"], 1)
         self.assertEqual(result["notifications"][0]["sequence"], 2)
         self.assertIsNone(result["notifications"][0]["read_at"])
-        self.assertEqual(notifications._read()["cursors"], {"shimpz-assistant": 2})
+        self.assertEqual(notifications._read()["cursors"], {"shimpz-cloudflare": 2})
 
     def test_304_reuses_cached_feed(self) -> None:
         state = notifications._default_state()
         state["etag"] = '"v2"'
-        state["cached_feed"] = _feed(_release("shimpz-assistant", 1), _release("shimpz-assistant", 2))
-        state["cursors"] = {"shimpz-assistant": 1}
+        state["cached_feed"] = _feed(_release("shimpz-cloudflare", 1), _release("shimpz-cloudflare", 2))
+        state["cursors"] = {"shimpz-cloudflare": 1}
         with notifications._STORE_LOCK:
             notifications._write_unlocked(state)
 
@@ -194,14 +194,14 @@ class NotificationStateTests(unittest.TestCase):
                 notifications.teams,
                 "list_installed_assistants",
                 side_effect=[
-                    _installed(**{"shimpz-assistant": "outdated"}),
-                    _installed(**{"shimpz-assistant": "running"}),
+                    _installed(**{"shimpz-cloudflare": "outdated"}),
+                    _installed(**{"shimpz-cloudflare": "running"}),
                 ],
             ),
             mock.patch.object(
                 notifications.teams,
                 "install_assistant",
-                return_value=_install_response("shimpz-assistant"),
+                return_value=_install_response("shimpz-cloudflare"),
             ),
         ):
             result = notifications.sync()
@@ -216,14 +216,14 @@ class NotificationStateTests(unittest.TestCase):
                 notifications.teams,
                 "list_installed_assistants",
                 side_effect=[
-                    _installed(**{"shimpz-assistant": "outdated"}),
-                    _installed(**{"shimpz-assistant": "running"}),
+                    _installed(**{"shimpz-cloudflare": "outdated"}),
+                    _installed(**{"shimpz-cloudflare": "running"}),
                 ],
             ),
             mock.patch.object(
                 notifications.teams,
                 "install_assistant",
-                return_value=_install_response("shimpz-assistant"),
+                return_value=_install_response("shimpz-cloudflare"),
             ) as install,
         ):
             result = notifications.sync()
@@ -231,14 +231,14 @@ class NotificationStateTests(unittest.TestCase):
         self.assertEqual(result["sync"]["status"], "offline")
         self.assertEqual(result["sync"]["updated_assistants"], 1)
         self.assertEqual(result["notifications"], [])
-        install.assert_called_once_with("marketing", {"assistant": "shimpz-assistant"})
+        install.assert_called_once_with("marketing", {"assistant": "shimpz-cloudflare"})
 
     def test_update_failure_retains_cursor_and_emits_nothing(self) -> None:
         state = notifications._default_state()
-        state["cursors"] = {"shimpz-assistant": 1}
+        state["cursors"] = {"shimpz-cloudflare": 1}
         with notifications._STORE_LOCK:
             notifications._write_unlocked(state)
-        feed = _feed(_release("shimpz-assistant", 1), _release("shimpz-assistant", 2))
+        feed = _feed(_release("shimpz-cloudflare", 1), _release("shimpz-cloudflare", 2))
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
@@ -246,12 +246,12 @@ class NotificationStateTests(unittest.TestCase):
             mock.patch.object(
                 notifications.teams,
                 "list_installed_assistants",
-                return_value=_installed(**{"shimpz-assistant": "outdated"}),
+                return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
                 notifications.teams,
                 "install_assistant",
-                return_value=_install_response("shimpz-assistant", status=503),
+                return_value=_install_response("shimpz-cloudflare", status=503),
             ),
         ):
             result = notifications.sync()
@@ -259,14 +259,14 @@ class NotificationStateTests(unittest.TestCase):
         self.assertEqual(result["sync"]["status"], "partial")
         self.assertEqual(result["sync"]["failed_updates"], 1)
         self.assertEqual(result["notifications"], [])
-        self.assertEqual(notifications._read()["cursors"], {"shimpz-assistant": 1})
+        self.assertEqual(notifications._read()["cursors"], {"shimpz-cloudflare": 1})
 
     def test_feed_cannot_supply_a_digest_or_expand_the_update_request(self) -> None:
-        unsafe = _release("shimpz-assistant", 1)
+        unsafe = _release("shimpz-cloudflare", 1)
         unsafe["digest"] = "sha256:" + "f" * 64
         with self.assertRaisesRegex(ValueError, "release fields"):
             notifications.validate_feed(_feed(unsafe))
-        textual_digest = _release("shimpz-assistant", 1)
+        textual_digest = _release("shimpz-cloudflare", 1)
         textual_digest["changelog"] = "Run sha256:" + "f" * 64
         with self.assertRaisesRegex(ValueError, "executable installation metadata"):
             notifications.validate_feed(_feed(textual_digest), allow_empty=False)
@@ -278,22 +278,22 @@ class NotificationStateTests(unittest.TestCase):
                 notifications.teams,
                 "list_installed_assistants",
                 side_effect=[
-                    _installed(**{"shimpz-assistant": "outdated"}),
-                    _installed(**{"shimpz-assistant": "running"}),
+                    _installed(**{"shimpz-cloudflare": "outdated"}),
+                    _installed(**{"shimpz-cloudflare": "running"}),
                 ],
             ),
             mock.patch.object(
                 notifications.teams,
                 "install_assistant",
-                return_value=_install_response("shimpz-assistant"),
+                return_value=_install_response("shimpz-cloudflare"),
             ) as install,
         ):
             notifications.sync()
-        self.assertEqual(install.call_args.args, ("marketing", {"assistant": "shimpz-assistant"}))
+        self.assertEqual(install.call_args.args, ("marketing", {"assistant": "shimpz-cloudflare"}))
         self.assertNotIn("digest", json.dumps(install.call_args.args))
 
     def test_fixed_https_fetch_sends_only_public_conditional_headers_and_never_redirects(self) -> None:
-        body = json.dumps(_feed(_release("shimpz-assistant", 1)), separators=(",", ":")).encode()
+        body = json.dumps(_feed(_release("shimpz-cloudflare", 1)), separators=(",", ":")).encode()
 
         class Response:
             status = 200
@@ -342,7 +342,7 @@ class NotificationStateTests(unittest.TestCase):
         )
         self.assertNotIn("authorization", {key.lower() for key in kwargs["headers"]})
         self.assertNotIn("cookie", {key.lower() for key in kwargs["headers"]})
-        self.assertEqual((status, fetched, etag), ("fresh", _feed(_release("shimpz-assistant", 1)), '"v1"'))
+        self.assertEqual((status, fetched, etag), ("fresh", _feed(_release("shimpz-cloudflare", 1)), '"v1"'))
 
         Response.status = 302
         with (
@@ -365,11 +365,11 @@ class NotificationStateTests(unittest.TestCase):
 
     def test_mark_read_mark_all_and_clear_retain_cursors(self) -> None:
         state = notifications._default_state()
-        state["cursors"] = {"shimpz-assistant": 2}
+        state["cursors"] = {"shimpz-cloudflare": 2}
         state["notifications"] = [
             {
-                "id": notifications._notification_id("shimpz-assistant", sequence),
-                **_release("shimpz-assistant", sequence),
+                "id": notifications._notification_id("shimpz-cloudflare", sequence),
+                **_release("shimpz-cloudflare", sequence),
                 "read_at": None,
             }
             for sequence in (1, 2)
@@ -385,7 +385,7 @@ class NotificationStateTests(unittest.TestCase):
         self.assertEqual(all_read["unread_count"], 0)
         cleared = notifications.clear()
         self.assertEqual(cleared, {"notifications": [], "unread_count": 0})
-        self.assertEqual(notifications._read()["cursors"], {"shimpz-assistant": 2})
+        self.assertEqual(notifications._read()["cursors"], {"shimpz-cloudflare": 2})
 
     def test_store_is_0600_and_corruption_fails_loud(self) -> None:
         with notifications._STORE_LOCK:

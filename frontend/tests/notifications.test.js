@@ -15,9 +15,9 @@ import {
 
 const notification = Object.freeze({
   id: '0123456789abcdef0123456789abcdef',
-  assistant_id: 'shimpz-assistant',
+  assistant_id: 'shimpz-cloudflare',
   sequence: 3,
-  headline: 'Shimpz Assistant 0.3 is ready',
+  headline: 'Shimpz Cloudflare 0.3 is ready',
   changelog: '# Faster forecasts\n\nThe weather Power now returns clearer results.',
   published_at: '2026-07-19T12:30:00Z',
   read_at: null,

@@ -233,7 +233,7 @@ class OAuthRoutesTest(unittest.TestCase):
             {
                 "connected": True,
                 "team_id": "team_1",
-                "assistant_id": "shimpz-assistant",
+                "assistant_id": "shimpz-cloudflare",
                 "account_id": "x-account",
             },
         )
@@ -305,7 +305,7 @@ class OAuthRoutesTest(unittest.TestCase):
             response = asyncio.run(
                 self.admin_app.team_assistant_account_disconnect(
                     "team_1",
-                    "shimpz-assistant",
+                    "shimpz-cloudflare",
                     "x-account",
                 )
             )
