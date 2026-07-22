@@ -189,6 +189,7 @@ class OAuthRoutesTest(unittest.TestCase):
             self._cloudflare_authorization_url("canary"),
         )
         self.assertTrue(binding["secure"])
+        self.assertEqual(binding["samesite"].lower(), "none")
 
         callback = _request(
             "GET",

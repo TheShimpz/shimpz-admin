@@ -675,13 +675,14 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     if not isinstance(authorization_url, str):
         return _oauth_chat_redirect("start-failed")
     response = RedirectResponse(authorization_url, status_code=303)
+    canary_callback = _oauth_origin() == OAUTH_ORIGINS["canary"]
     response.set_cookie(
         OAUTH_COOKIE,
         pending.session_binding,
         max_age=OAUTH_COOKIE_TTL,
         httponly=True,
-        samesite="lax",
-        secure=_oauth_origin() == OAUTH_ORIGINS["canary"],
+        samesite="none" if canary_callback else "lax",
+        secure=canary_callback,
         path=OAUTH_COOKIE_PATH,
     )
     response.headers["Cache-Control"] = "no-store"
