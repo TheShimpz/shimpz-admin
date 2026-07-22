@@ -809,7 +809,7 @@ def start_assistant_account_authorization(
     canonical_id = canonical_team_id(team_id)
     challenge_id = canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
-    if callback_mode not in {"loopback", "canary"}:
+    if callback_mode not in {"loopback", "hosted"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
     response = _call(
         "POST",

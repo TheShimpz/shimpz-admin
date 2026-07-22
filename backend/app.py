@@ -60,7 +60,7 @@ OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
 OAUTH_ORIGINS = {
     "loopback": "http://127.0.0.1:7777",
-    "canary": "https://local.shimpz.com",
+    "hosted": "https://local.shimpz.com",
 }
 MIN_PASSWORD_LEN = 12
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
@@ -674,14 +674,14 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     if not isinstance(authorization_url, str):
         return _oauth_chat_redirect("start-failed")
     response = RedirectResponse(authorization_url, status_code=303)
-    canary_callback = _oauth_origin() == OAUTH_ORIGINS["canary"]
+    hosted_callback = _oauth_origin() == OAUTH_ORIGINS["hosted"]
     response.set_cookie(
         OAUTH_COOKIE,
         pending.session_binding,
         max_age=OAUTH_COOKIE_TTL,
         httponly=True,
-        samesite="none" if canary_callback else "lax",
-        secure=canary_callback,
+        samesite="none" if hosted_callback else "lax",
+        secure=hosted_callback,
         path=OAUTH_COOKIE_PATH,
     )
     response.headers["Cache-Control"] = "no-store"

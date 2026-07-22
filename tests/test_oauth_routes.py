@@ -149,7 +149,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.status_code, 303)
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
-    def test_canary_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
+    def test_hosted_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
         authorize_request = _request(
             "POST",
             "https://local.shimpz.com/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
@@ -157,7 +157,7 @@ class OAuthRoutesTest(unittest.TestCase):
             cookie=f"shimpz_admin={self.session}",
         )
         with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(self.admin_app, "_session_ok", return_value=True),
         ):
             authorized = asyncio.run(
@@ -173,10 +173,10 @@ class OAuthRoutesTest(unittest.TestCase):
         start_request = _request("GET", authorization_url.geturl())
         provider = self.admin_app.teams.DriverResponse(
             200,
-            {"authorization_url": self._cloudflare_authorization_url("canary")},
+            {"authorization_url": self._cloudflare_authorization_url("hosted")},
         )
         with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(self.admin_app.teams, "start_assistant_account_authorization", return_value=provider),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
@@ -186,7 +186,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(started.status_code, 303)
         self.assertEqual(
             started.headers["location"],
-            self._cloudflare_authorization_url("canary"),
+            self._cloudflare_authorization_url("hosted"),
         )
         self.assertTrue(binding["secure"])
         self.assertEqual(binding["samesite"].lower(), "none")
@@ -198,7 +198,7 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         completed = self.admin_app.teams.DriverResponse(200, {"connected": True})
         with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}),
+            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(
                 self.admin_app.teams,
                 "complete_cloudflare_oauth_callback",
@@ -215,7 +215,7 @@ class OAuthRoutesTest(unittest.TestCase):
 
         for origin in ("http://local.shimpz.com", "https://local.shimpz.com:444"):
             rejected = _request("GET", origin + "/api/oauth/cloudflare/start?handoff=" + "f" * 64)
-            with mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "canary"}):
+            with mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}):
                 result = asyncio.run(self.admin_app.oauth_cloudflare_start(rejected, "f" * 64))
             self.assertEqual(result.headers["location"], "/chat?oauth=start-failed")
 

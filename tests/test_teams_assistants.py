@@ -225,7 +225,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "scope": "dns.read offline_access zone.read",
             "state": "a" * 43,
             "code_challenge": "b" * 43,
-            "callback": "canary",
+            "callback": "hosted",
         }
         fields.update(overrides)
         return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(fields)
@@ -241,7 +241,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "team_1",
             "c" * 32,
             "d" * 43,
-            "canary",
+            "hosted",
         )
 
         self.assertEqual(response, teams.DriverResponse(200, {"authorization_url": authorization_url}))
@@ -268,7 +268,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "canary")
+            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
@@ -286,7 +286,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 invalid_envelope,
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "canary")
+            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
