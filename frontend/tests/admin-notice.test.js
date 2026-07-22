@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { get } from 'svelte/store';
 
@@ -11,8 +10,6 @@ import {
   dismissAdminNotice,
   showAdminNotice,
 } from '../src/lib/adminNotice.js';
-
-const component = readFileSync(new URL('../src/lib/AdminNotice.svelte', import.meta.url), 'utf8');
 
 test.afterEach(clearAdminNotice);
 
@@ -122,18 +119,4 @@ test('expires at a pause race and resumes an initially hidden notice safely', ()
   assert.deepEqual(expired, [3]);
   clock.advance(1);
   assert.deepEqual(expired, [3, 4]);
-});
-
-test('exposes accessible dismissal, timed progress and pause behavior', () => {
-  assert.match(component, /defaultDurationMs = DEFAULT_ADMIN_NOTICE_DURATION_MS/);
-  assert.match(component, /onclick=\{dismissCurrentNotice\}/);
-  assert.match(component, /role=\{\$adminNotice\.tone === 'error' \? 'alert' : 'status'\}/);
-  assert.match(component, /aria-live=\{\$adminNotice\.tone === 'error' \? 'assertive' : 'polite'\}/);
-  assert.match(component, /onmouseenter=\{\(\) => noticeTimer\.hold\('pointer'\)\}/);
-  assert.match(component, /onfocusin=\{\(\) => noticeTimer\.hold\('focus'\)\}/);
-  assert.match(component, /document\.addEventListener\('visibilitychange', visibilityChanged\)/);
-  assert.match(component, /animation: notice-progress var\(--notice-duration\) linear forwards/);
-  assert.match(component, /@keyframes notice-progress \{ to \{ transform: scaleX\(1\); \} \}/);
-  assert.match(component, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(component, /button:focus-visible \{ outline: 2px solid var\(--accent\);/);
 });

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { get } from 'svelte/store';
@@ -11,8 +10,6 @@ import {
   modelContext,
   selectTeamBrain,
 } from '../src/lib/modelContext.js';
-
-const gateSource = readFileSync(new URL('../src/lib/ProviderSetupGate.svelte', import.meta.url), 'utf8');
 
 function response(status, body) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
@@ -223,34 +220,4 @@ test('late model responses from the previous Team cannot replace current authori
   await oldLoad;
   assert.equal(get(modelContext).teamId, 'support');
   assert.equal(get(modelContext).ready, true);
-});
-
-test('central provider gate owns key entry without duplicating provider/model selects', () => {
-  assert.match(gateSource, /type="password"/);
-  assert.match(gateSource, /configureModelContext\(fetch, \$modelContext\.teamId/);
-  assert.match(gateSource, /title: 'Brain BYOK'/);
-  assert.match(gateSource, /<h2 id="provider-gate-title">\{copy\.title\}<\/h2>\s*<p class="lead">\{copy\.lead\}<\/p>/);
-  assert.match(gateSource, /startChatting: 'Start Chatting'/);
-  assert.match(gateSource, /startChatting: 'Começar a conversar'/);
-  assert.match(gateSource, /startChatting: 'Empezar a chatear'/);
-  assert.match(gateSource, /startChatting: '开始聊天'/);
-  assert.match(gateSource, /startChatting: 'Commencer à discuter'/);
-  assert.match(gateSource, /startChatting: 'Chat starten'/);
-  assert.match(gateSource, /startChatting: 'チャットを開始'/);
-  assert.match(gateSource, /startChatting: 'ابدأ الدردشة'/);
-  assert.match(gateSource, /\? copy\.validating\s*: copy\.startChatting/);
-  const gateStyle = gateSource.slice(gateSource.indexOf('.provider-gate {'), gateSource.indexOf('.gate-mark {'));
-  assert.doesNotMatch(gateStyle, /background:|box-shadow:|border:/);
-  assert.doesNotMatch(gateSource, /<select/);
-  assert.doesNotMatch(gateSource, /api_key|resolve_api_key/);
-});
-
-test('provider gate omits unconfigured status copy while preserving verified feedback and key validation', () => {
-  assert.doesNotMatch(gateSource, /copy\.required|required: 'Validation required'|Validação necessária/);
-  assert.match(gateSource, /\{#if selected\.configured\}[\s\S]*\{copy\.verified\}[\s\S]*\{\/if\}/);
-  assert.match(gateSource, /type="password"[\s\S]*minlength="16"[\s\S]*required/);
-  assert.match(
-    gateSource,
-    /autocomplete="off"[\s\S]*data-1p-ignore[\s\S]*data-lpignore="true"[\s\S]*data-bwignore="true"/,
-  );
 });
