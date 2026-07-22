@@ -28,14 +28,6 @@ CATALOG = {
         "recreate_target": "r2-driver",
         "reconfigurable": True,
     },
-    "cloudflare": {
-        "public_name": "Cloudflare",
-        "category": CAPABILITY,
-        "blurb": "Publish Shimpz's apps on your own domains (DNS, Tunnel, Access).",
-        # only the SHIMPZ_CF_TOKEN/SHIMPZ_CF_ACCOUNT subset auto-applies; CF_TUNNEL_TOKEN → cloudflared (restart)
-        "recreate_target": "cf-driver",
-        "reconfigurable": True,
-    },
     "internal": {
         "public_name": "Datastores",
         "category": INFRA,
@@ -70,7 +62,7 @@ def keys_for(group):
 def container_env_for(group, values):
     """Map the group's `.env` values → the env var names the recreate target actually reads.
 
-    Only the three stateless recreate targets need this; everything else returns {} (nothing to
+    Only the two stateless recreate targets need this; everything else returns {} (nothing to
     recreate). Mirrors docker-compose.yml's `environment:` for each driver. Empty strings are
     intentional — disabling an integration recreates the sidecar INERT.
     """
@@ -87,10 +79,5 @@ def container_env_for(group, values):
             "OPENAI_API_KEY": values.get("SHIMPZ_OPENAI_MEDIA_API_KEY", ""),
             "VOICE_TOOLS_OPENAI_KEY": values.get("VOICE_TOOLS_OPENAI_KEY")
             or values.get("SHIMPZ_OPENAI_MEDIA_API_KEY", ""),
-        }
-    if group == "cloudflare":
-        return {
-            "SHIMPZ_CF_TOKEN": values.get("SHIMPZ_CF_TOKEN", ""),
-            "SHIMPZ_CF_ACCOUNT": values.get("SHIMPZ_CF_ACCOUNT", ""),
         }
     return {}

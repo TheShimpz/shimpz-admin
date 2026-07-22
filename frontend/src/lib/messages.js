@@ -170,31 +170,6 @@ export const messages = {
           'Create a secret key and copy the sk-… value.',
         ],
       },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'Your Cloudflare account ID (32-hex).',
-        linkLabel: 'Cloudflare dashboard',
-        steps: [
-          'Sign in at dash.cloudflare.com and open any domain (or Account Home).',
-          'The Account ID is the 32-character hex in the URL and right sidebar.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'A Cloudflare API token so Shimpz can set up DNS, tunnels and Access for your domains.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'Permissions: Zone·DNS·Edit, Zone·Zone·Read, Account·Cloudflare Tunnel·Edit, Account·Access Apps & Policies·Edit.',
-          'Zone Resources: All zones (or the ones Shimpz manages), then create and copy.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'Optional — exposes the live desktop publicly, behind Cloudflare Zero Trust.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → create a tunnel named “shimpz-brain”.',
-          'On “Install connector”, copy the long string after --token.',
-        ],
-      },
       R2_ACCOUNT_ID: {
         help: 'Optional — Cloudflare R2 for uploads, share links and backups.',
         linkLabel: 'Cloudflare → R2',
@@ -377,31 +352,6 @@ export const messages = {
         steps: [
           'Entre em platform.openai.com → API keys.',
           'Crie uma chave secreta e copie o valor sk-… .',
-        ],
-      },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'Seu Account ID da Cloudflare (32 caracteres hex).',
-        linkLabel: 'Painel da Cloudflare',
-        steps: [
-          'Entre em dash.cloudflare.com e abra qualquer domínio (ou Account Home).',
-          'O Account ID é o hex de 32 caracteres na URL e na barra lateral direita.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'Um token de API da Cloudflare para o Shimpz configurar DNS, túneis e Access nos seus domínios.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'Permissões: Zone·DNS·Edit, Zone·Zone·Read, Account·Cloudflare Tunnel·Edit, Account·Access Apps & Policies·Edit.',
-          'Zone Resources: All zones (ou as que o Shimpz gerencia), então crie e copie.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'Opcional — expõe o desktop ao vivo publicamente, atrás do Zero Trust da Cloudflare.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → crie um túnel “shimpz-brain”.',
-          'Em “Install connector”, copie a string longa após --token.',
         ],
       },
       R2_ACCOUNT_ID: {
@@ -588,31 +538,6 @@ export const messages = {
           'Crea una clave secreta y copia el valor sk-… .',
         ],
       },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'Tu Account ID de Cloudflare (32 hex).',
-        linkLabel: 'Panel de Cloudflare',
-        steps: [
-          'Entra en dash.cloudflare.com y abre cualquier dominio (o Account Home).',
-          'El Account ID es el hex de 32 caracteres en la URL y la barra derecha.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'Un token de API de Cloudflare para que Shimpz configure DNS, túneles y Access en tus dominios.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'Permisos: Zone·DNS·Edit, Zone·Zone·Read, Account·Cloudflare Tunnel·Edit, Account·Access Apps & Policies·Edit.',
-          'Zone Resources: All zones (o las que Shimpz gestione), luego crea y copia.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'Opcional — expone el escritorio en vivo públicamente, tras Cloudflare Zero Trust.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → crea un túnel “shimpz-brain”.',
-          'En “Install connector”, copia la cadena larga tras --token.',
-        ],
-      },
       R2_ACCOUNT_ID: {
         help: 'Opcional — Cloudflare R2 para subidas, enlaces y copias.',
         linkLabel: 'Cloudflare → R2',
@@ -795,31 +720,6 @@ export const messages = {
         steps: [
           '登录 platform.openai.com → API keys。',
           '创建一个密钥并复制 sk-… 值。',
-        ],
-      },
-      SHIMPZ_CF_ACCOUNT: {
-        help: '你的 Cloudflare 账户 ID（32 位十六进制）。',
-        linkLabel: 'Cloudflare 控制台',
-        steps: [
-          '登录 dash.cloudflare.com，打开任一域名（或 Account Home）。',
-          '账户 ID 是 URL 和右侧栏中的 32 位十六进制字符串。',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: '一个 Cloudflare API 令牌，让 Shimpz 为你的域名配置 DNS、隧道和 Access。',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token。',
-          '权限：Zone·DNS·Edit、Zone·Zone·Read、Account·Cloudflare Tunnel·Edit、Account·Access Apps & Policies·Edit。',
-          'Zone Resources 选 All zones（或 Shimpz 管理的域），然后创建并复制。',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: '可选——通过 Cloudflare Zero Trust 将实时桌面公开。',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → 创建名为 “shimpz-brain” 的隧道。',
-          '在 “Install connector” 处，复制 --token 后的长字符串。',
         ],
       },
       R2_ACCOUNT_ID: {
@@ -1006,31 +906,6 @@ export const messages = {
           'Créez une clé secrète et copiez la valeur sk-… .',
         ],
       },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'Votre Account ID Cloudflare (32 hex).',
-        linkLabel: 'Tableau de bord Cloudflare',
-        steps: [
-          'Connectez-vous à dash.cloudflare.com et ouvrez un domaine (ou Account Home).',
-          'L’Account ID est la chaîne hex de 32 caractères dans l’URL et la barre de droite.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'Un jeton API Cloudflare pour que Shimpz configure DNS, tunnels et Access sur vos domaines.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'Permissions : Zone·DNS·Edit, Zone·Zone·Read, Account·Cloudflare Tunnel·Edit, Account·Access Apps & Policies·Edit.',
-          'Zone Resources : All zones (ou celles que Shimpz gère), puis créez et copiez.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'Optionnel — expose le bureau en direct publiquement, derrière Cloudflare Zero Trust.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → créez un tunnel « shimpz-brain ».',
-          'Sur « Install connector », copiez la longue chaîne après --token.',
-        ],
-      },
       R2_ACCOUNT_ID: {
         help: 'Optionnel — Cloudflare R2 pour les envois, liens et sauvegardes.',
         linkLabel: 'Cloudflare → R2',
@@ -1213,31 +1088,6 @@ export const messages = {
         steps: [
           'Melde dich bei platform.openai.com → API keys an.',
           'Erstelle einen geheimen Schlüssel und kopiere den sk-…-Wert.',
-        ],
-      },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'Deine Cloudflare-Account-ID (32 Hex).',
-        linkLabel: 'Cloudflare-Dashboard',
-        steps: [
-          'Melde dich bei dash.cloudflare.com an und öffne eine Domain (oder Account Home).',
-          'Die Account-ID ist die 32-stellige Hex in URL und rechter Seitenleiste.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'Ein Cloudflare-API-Token, damit Shimpz DNS, Tunnel und Access für deine Domains einrichtet.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'Rechte: Zone·DNS·Edit, Zone·Zone·Read, Account·Cloudflare Tunnel·Edit, Account·Access Apps & Policies·Edit.',
-          'Zone Resources: All zones (oder die von Shimpz verwalteten), dann erstellen und kopieren.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'Optional — macht den Live-Desktop öffentlich, hinter Cloudflare Zero Trust.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → erstelle einen Tunnel „shimpz-brain“.',
-          'Bei „Install connector“ die lange Zeichenkette nach --token kopieren.',
         ],
       },
       R2_ACCOUNT_ID: {
@@ -1424,31 +1274,6 @@ export const messages = {
           'シークレットキーを作成し sk-… の値をコピー。',
         ],
       },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'あなたの Cloudflare アカウント ID（32 桁の 16 進数）。',
-        linkLabel: 'Cloudflare ダッシュボード',
-        steps: [
-          'dash.cloudflare.com にサインインし、任意のドメイン（または Account Home）を開く。',
-          'アカウント ID は URL と右サイドバーの 32 桁 16 進数です。',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'Shimpz があなたのドメインの DNS・トンネル・Access を設定するための Cloudflare API トークン。',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token。',
-          '権限: Zone·DNS·Edit、Zone·Zone·Read、Account·Cloudflare Tunnel·Edit、Account·Access Apps & Policies·Edit。',
-          'Zone Resources は All zones（または Shimpz が管理する範囲）、作成してコピー。',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: '任意——Cloudflare Zero Trust の背後でライブデスクトップを公開します。',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels →「shimpz-brain」というトンネルを作成。',
-          '「Install connector」で --token の後の長い文字列をコピー。',
-        ],
-      },
       R2_ACCOUNT_ID: {
         help: '任意——アップロード・共有リンク・バックアップ用の Cloudflare R2。',
         linkLabel: 'Cloudflare → R2',
@@ -1631,31 +1456,6 @@ export const messages = {
         steps: [
           'سجّل الدخول إلى platform.openai.com → API keys.',
           'أنشئ مفتاحًا سرّيًا وانسخ القيمة ‎sk-… .',
-        ],
-      },
-      SHIMPZ_CF_ACCOUNT: {
-        help: 'مُعرِّف حساب Cloudflare الخاص بك (32 خانة ست عشرية).',
-        linkLabel: 'لوحة تحكّم Cloudflare',
-        steps: [
-          'سجّل الدخول إلى dash.cloudflare.com وافتح أي نطاق (أو Account Home).',
-          'مُعرِّف الحساب هو السلسلة الست عشرية المكوّنة من 32 خانة في الرابط والشريط الأيمن.',
-        ],
-      },
-      SHIMPZ_CF_TOKEN: {
-        help: 'رمز API من Cloudflare كي يُعدّ Shimpz الـ DNS والأنفاق و Access لنطاقاتك.',
-        linkLabel: 'Cloudflare → API Tokens',
-        steps: [
-          'My Profile → API Tokens → Create Token → Create Custom Token.',
-          'الصلاحيات: Zone·DNS·Edit و Zone·Zone·Read و Account·Cloudflare Tunnel·Edit و Account·Access Apps & Policies·Edit.',
-          'Zone Resources: All zones (أو التي يديرها Shimpz)، ثم أنشئ وانسخ.',
-        ],
-      },
-      CF_TUNNEL_TOKEN: {
-        help: 'اختياري — يعرض سطح المكتب المباشر للعموم خلف Cloudflare Zero Trust.',
-        linkLabel: 'Cloudflare Zero Trust',
-        steps: [
-          'Zero Trust → Networks → Tunnels → أنشئ نفقًا باسم «shimpz-brain».',
-          'في «Install connector»، انسخ السلسلة الطويلة بعد ‎--token.',
         ],
       },
       R2_ACCOUNT_ID: {

@@ -9,8 +9,6 @@ container bakes a gai.conf fix, but the wizard runs on the BARE host of a fresh 
 such fix exists). Sorting A records first is the fail-safe.
 """
 
-import base64
-import binascii
 import json
 import re
 import socket
@@ -42,23 +40,6 @@ def _http_json(url, headers):
         return e.code, None
 
 
-def _live_cloudflare(value):
-    """Verify a CF token of EITHER kind.
-
-    /user/tokens/verify covers user tokens; ACCOUNT-owned tokens 401 there (the owner's real
-    token does — caught live in R136), so fall back to a zone read, which any correctly-scoped
-    token must pass anyway (cf-driver requires Zone Read).
-    """
-    headers = {"Authorization": f"Bearer {value}"}
-    status, body = _http_json("https://api.cloudflare.com/client/v4/user/tokens/verify", headers)
-    if status == 200 and body and body.get("success"):
-        return True, f"user token {body['result'].get('status', 'active')}"
-    zstatus, _ = _http_json("https://api.cloudflare.com/client/v4/zones?per_page=1", headers)
-    if zstatus == 200:
-        return True, "account token accepted (zone read OK)"
-    return False, f"Cloudflare rejected the token (verify HTTP {status}, zones HTTP {zstatus})"
-
-
 def _live_openai(value):
     status, _ = _http_json("https://api.openai.com/v1/models", {"Authorization": f"Bearer {value}"})
     if status == 200:
@@ -73,22 +54,9 @@ def _live_github(value):
     return False, f"GitHub rejected the token (HTTP {status})"
 
 
-def _tunnel_token(value):
-    """A cloudflared connector token is base64(JSON with a/t/s) — a pure shape check, no network."""
-    try:
-        blob = json.loads(base64.b64decode(value + "=" * (-len(value) % 4), validate=True))
-    except binascii.Error, ValueError:
-        return False, "not a base64-encoded tunnel token"
-    if isinstance(blob, dict) and {"a", "t", "s"} <= blob.keys():
-        return True, "tunnel token shape OK"
-    return False, "decodes, but not a cloudflared connector token (missing a/t/s)"
-
-
 _LIVE = {
-    "live_cloudflare": _live_cloudflare,
     "live_openai": _live_openai,
     "live_github": _live_github,
-    "tunnel_token": _tunnel_token,
 }
 
 
