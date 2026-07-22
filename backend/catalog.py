@@ -9,18 +9,11 @@ names a human types to the ACTUAL env var names the target container reads (mirr
 
 import keyset
 
-CAPABILITY, INFRA = "CAPABILITY", "INFRA"
-CATEGORIES = (CAPABILITY, INFRA)
+INFRA = "INFRA"
+CATEGORIES = (INFRA,)
 
 # group → configuration and runtime metadata.
 CATALOG = {
-    "storage-r2": {
-        "public_name": "Cloudflare R2",
-        "category": CAPABILITY,
-        "blurb": "Object storage for uploads, share links and backups.",
-        "recreate_target": "r2-driver",
-        "reconfigurable": True,
-    },
     "internal": {
         "public_name": "Datastores",
         "category": INFRA,
@@ -59,12 +52,4 @@ def container_env_for(group, values):
     recreate). Mirrors docker-compose.yml's `environment:` for each driver. Empty strings are
     intentional — disabling an integration recreates the sidecar INERT.
     """
-    if group == "storage-r2":
-        acct = values.get("R2_ACCOUNT_ID", "").strip()
-        return {
-            "R2_BUCKET": values.get("R2_BUCKET", ""),
-            "RCLONE_CONFIG_R2_ACCESS_KEY_ID": values.get("R2_ACCESS_KEY_ID", ""),
-            "RCLONE_CONFIG_R2_SECRET_ACCESS_KEY": values.get("R2_SECRET_ACCESS_KEY", ""),
-            "RCLONE_CONFIG_R2_ENDPOINT": f"https://{acct}.r2.cloudflarestorage.com" if acct else "",
-        }
     return {}

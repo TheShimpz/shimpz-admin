@@ -34,7 +34,6 @@ import adminstore
 import auth
 import catalog
 import chat_ws
-import driver_proxy
 import envfile
 import integrations
 import keyset
@@ -791,44 +790,6 @@ async def team_file_upload(team_id: str, request: Request):
 @app.delete("/api/teams/{team_id}/files/{file_id}")
 def team_file_delete(team_id: str, file_id: str):
     return _team_driver_response(lambda: teams.delete_file(team_id, file_id))
-
-
-def _driver_proxy_response(action):
-    """Return only bounded JSON received from team-driver; normalize local validation failures."""
-    try:
-        response = action()
-    except driver_proxy.ProxyRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    return JSONResponse(status_code=response.status, content=response.body)
-
-
-# Driver configuration stays out of `.env`/keyset: these session-gated routes are a stateless,
-# JSON-only pass-through to team-driver's per-Team control plane.
-@app.get("/api/teams/{team_id}/drivers/{driver_id}")
-def team_driver_get(team_id: str, driver_id: str):
-    return _driver_proxy_response(lambda: driver_proxy.get_driver(team_id, driver_id))
-
-
-@app.post("/api/teams/{team_id}/drivers/{driver_id}/credentials")
-def team_driver_credential_create(team_id: str, driver_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.create_credential(team_id, driver_id, payload))
-
-
-@app.put("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}")
-def team_driver_credential_replace(team_id: str, driver_id: str, credential_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.replace_credential(team_id, driver_id, credential_id, payload))
-
-
-@app.delete("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}")
-def team_driver_credential_delete(team_id: str, driver_id: str, credential_id: str, payload: dict):
-    return _driver_proxy_response(lambda: driver_proxy.delete_credential(team_id, driver_id, credential_id, payload))
-
-
-@app.post("/api/teams/{team_id}/drivers/{driver_id}/credentials/{credential_id}/verify")
-def team_driver_credential_verify(team_id: str, driver_id: str, credential_id: str, payload: dict | None = None):
-    return _driver_proxy_response(
-        lambda: driver_proxy.verify_credential(team_id, driver_id, credential_id, payload or {})
-    )
 
 
 @app.api_route(

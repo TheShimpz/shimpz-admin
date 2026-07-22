@@ -52,7 +52,7 @@ RUN groupadd -g "${SHIMPZ_DRIVER_TOKEN_GID}" shimpzdriver-token && usermod -aG s
 
 WORKDIR /app/backend
 COPY backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/catalog.py \
-     backend/chat_ws.py backend/driver_proxy.py backend/envfile.py backend/integrations.py backend/keyset.py \
+     backend/chat_ws.py backend/envfile.py backend/integrations.py backend/keyset.py \
      backend/localchat.py backend/modelproviders.py backend/notifications.py backend/oauth_handoff.py \
      backend/validate_live.py ./
 # UI_DIR in app.py resolves to backend/../frontend/build

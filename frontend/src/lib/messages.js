@@ -161,24 +161,7 @@ export const messages = {
       enable: 'Enable',
       disable: 'Disable',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'Optional — Cloudflare R2 for uploads, share links and backups.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Open Cloudflare → R2; the Account ID is in the S3 endpoint.',
-          'Create a bucket first and put its name in R2_BUCKET.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'R2 access key, scoped to your bucket.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → create an Account token with Object Read & Write on your bucket.',
-          'Copy the Access Key ID here and the Secret into the next field.',
-        ],
-      },
-    },
+    fields: {},
   },
 
   pt: {
@@ -337,24 +320,7 @@ export const messages = {
       enable: 'Ativar',
       disable: 'Desativar',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'Opcional — Cloudflare R2 para uploads, links e backups.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Abra Cloudflare → R2; o Account ID está no endpoint S3.',
-          'Crie um bucket antes e ponha o nome em R2_BUCKET.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'Access key do R2, com escopo no seu bucket.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → crie um token de conta com Object Read & Write no bucket.',
-          'Cole o Access Key ID aqui e o Secret no próximo campo.',
-        ],
-      },
-    },
+    fields: {},
   },
 
   es: {
@@ -513,24 +479,7 @@ export const messages = {
       enable: 'Activar',
       disable: 'Desactivar',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'Opcional — Cloudflare R2 para subidas, enlaces y copias.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Abre Cloudflare → R2; el Account ID está en el endpoint S3.',
-          'Crea un bucket primero y pon su nombre en R2_BUCKET.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'Access key de R2, con alcance en tu bucket.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → crea un token de cuenta con Object Read & Write en el bucket.',
-          'Copia el Access Key ID aquí y el Secret en el campo siguiente.',
-        ],
-      },
-    },
+    fields: {},
   },
 
   zh: {
@@ -689,24 +638,7 @@ export const messages = {
       enable: '启用',
       disable: '停用',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: '可选——用于上传、分享链接和备份的 Cloudflare R2。',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          '打开 Cloudflare → R2；账户 ID 在 S3 端点里。',
-          '先创建一个存储桶，把名字填到 R2_BUCKET。',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'R2 访问密钥，作用域限定到你的存储桶。',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → 创建一个对存储桶具有 Object Read & Write 的账户令牌。',
-          '把 Access Key ID 复制到这里，Secret 填到下一个字段。',
-        ],
-      },
-    },
+    fields: {},
   },
 
   fr: {
@@ -865,24 +797,7 @@ export const messages = {
       enable: 'Activer',
       disable: 'Désactiver',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'Optionnel — Cloudflare R2 pour les envois, liens et sauvegardes.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Ouvrez Cloudflare → R2 ; l’Account ID est dans l’endpoint S3.',
-          'Créez d’abord un bucket et mettez son nom dans R2_BUCKET.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'Clé d’accès R2, limitée à votre bucket.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → créez un jeton de compte avec Object Read & Write sur le bucket.',
-          'Copiez l’Access Key ID ici et le Secret dans le champ suivant.',
-        ],
-      },
-    },
+    fields: {},
   },
 
   de: {
@@ -1041,24 +956,7 @@ export const messages = {
       enable: 'Aktivieren',
       disable: 'Deaktivieren',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'Optional — Cloudflare R2 für Uploads, Links und Backups.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Öffne Cloudflare → R2; die Account-ID steht im S3-Endpoint.',
-          'Erstelle zuerst einen Bucket und trage den Namen in R2_BUCKET ein.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'R2-Access-Key, auf deinen Bucket beschränkt.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → erstelle ein Account-Token mit Object Read & Write auf dem Bucket.',
-          'Kopiere die Access Key ID hierher und das Secret ins nächste Feld.',
-        ],
-      },
-    },
+    fields: {},
   },
 
   ja: {
@@ -1217,24 +1115,7 @@ export const messages = {
       enable: '有効化',
       disable: '無効化',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: '任意——アップロード・共有リンク・バックアップ用の Cloudflare R2。',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'Cloudflare → R2 を開く。アカウント ID は S3 エンドポイントにあります。',
-          '先にバケットを作成し、名前を R2_BUCKET に入れます。',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'バケットにスコープした R2 アクセスキー。',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → バケットに Object Read & Write を持つアカウントトークンを作成。',
-          'Access Key ID をここに、Secret を次の欄に貼り付け。',
-        ],
-      },
-    },
+    fields: {},
   },
 
   ar: {
@@ -1393,23 +1274,6 @@ export const messages = {
       enable: 'تفعيل',
       disable: 'تعطيل',
     },
-    fields: {
-      R2_ACCOUNT_ID: {
-        help: 'اختياري — Cloudflare R2 للرفع والروابط والنُّسخ الاحتياطية.',
-        linkLabel: 'Cloudflare → R2',
-        steps: [
-          'افتح Cloudflare → R2؛ مُعرِّف الحساب في نقطة نهاية S3.',
-          'أنشئ حاوية (bucket) أولًا وضع اسمها في R2_BUCKET.',
-        ],
-      },
-      R2_ACCESS_KEY_ID: {
-        help: 'مفتاح وصول R2، مقصور على حاويتك.',
-        linkLabel: 'Cloudflare → R2 → API Tokens',
-        steps: [
-          'R2 → Manage API Tokens → أنشئ رمز حساب بصلاحية Object Read & Write على الحاوية.',
-          'انسخ Access Key ID هنا و Secret في الحقل التالي.',
-        ],
-      },
-    },
+    fields: {},
   },
 };
