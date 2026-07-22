@@ -695,7 +695,12 @@ def _project_account_inventory(response: DriverResponse, team_id: str) -> Driver
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"team_id", "accounts"} or response.body["team_id"] != team_id:
+        if (
+            set(response.body) != {"team_id", "accounts", "trace_id"}
+            or response.body["team_id"] != team_id
+            or not isinstance(response.body["trace_id"], str)
+            or _TRACE_ID_RE.fullmatch(response.body["trace_id"]) is None
+        ):
             raise ValueError("invalid Team account envelope")
         raw_accounts = response.body["accounts"]
         if not isinstance(raw_accounts, list) or len(raw_accounts) > MAX_ASSISTANT_ACCOUNTS:
@@ -843,8 +848,10 @@ def disconnect_assistant_account(
         return response
     if (
         response.status != 200
-        or set(response.body) != {"disconnected"}
+        or set(response.body) != {"disconnected", "trace_id"}
         or type(response.body["disconnected"]) is not bool
+        or not isinstance(response.body["trace_id"], str)
+        or _TRACE_ID_RE.fullmatch(response.body["trace_id"]) is None
     ):
         log.warning("team-driver returned an invalid OAuth disconnect response")
         return DriverResponse(502, {"detail": "OAuth disconnect response is invalid."})
@@ -863,9 +870,13 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"connected", "team_id", "assistant_id", "account_id"}:
+        if set(response.body) != {"connected", "team_id", "assistant_id", "account_id", "trace_id"}:
             raise ValueError("invalid OAuth callback response")
-        if response.body["connected"] is not True:
+        if (
+            response.body["connected"] is not True
+            or not isinstance(response.body["trace_id"], str)
+            or _TRACE_ID_RE.fullmatch(response.body["trace_id"]) is None
+        ):
             raise ValueError("invalid OAuth callback response")
         body = {
             "connected": True,

@@ -195,7 +195,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "expires_at": "2026-07-20T12:00:00Z",
         }
         _DriverHandler.response_body = json.dumps(
-            {"team_id": "team_1", "accounts": [account]},
+            {"team_id": "team_1", "accounts": [account], "trace_id": "f" * 32},
             separators=(",", ":"),
         ).encode()
 
@@ -206,7 +206,11 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         self.assertNotRegex(json.dumps(response.body), r"token|code|verifier|client_secret")
 
         _DriverHandler.response_body = json.dumps(
-            {"team_id": "team_1", "accounts": [{**account, "access_token": "must-not-cross"}]},
+            {
+                "team_id": "team_1",
+                "accounts": [{**account, "access_token": "must-not-cross"}],
+                "trace_id": "f" * 32,
+            },
             separators=(",", ":"),
         ).encode()
         invalid = teams.list_assistant_accounts("team_1")
@@ -293,13 +297,13 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             (
                 "DELETE",
                 "/v1/teams/team_1/assistant-accounts/shimpz-assistant/x-account",
-            ): (200, b'{"disconnected":true}'),
+            ): (200, b'{"disconnected":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
             (
                 "POST",
                 "/v1/oauth/cloudflare/callback",
             ): (
                 200,
-                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-assistant","account_id":"x-account"}',
+                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-assistant","account_id":"x-account","trace_id":"ffffffffffffffffffffffffffffffff"}',
             ),
         }
 
