@@ -222,6 +222,56 @@ class _Connection:
     closed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class _Submission:
+    operation: str
+    fields: frozenset[str]
+    required_message: str
+    canonicalize: Callable[[object], dict[str, object]]
+    submit_name: str
+    challenge_type: str
+    missing_message: str
+    other_pending_message: str
+    stale_message: str
+
+
+_SUBMISSIONS = {
+    "secret-submit": _Submission(
+        "secret-submit",
+        frozenset({"type", "challenge_id", "values"}),
+        "secret-submit frame requires challenge_id and values",
+        teams.canonical_secret_submission,
+        "submit_secrets",
+        "secret",
+        "no Assistant secret challenge is pending",
+        "an Assistant approval is pending",
+        "the Assistant secret challenge is stale",
+    ),
+    "approval-submit": _Submission(
+        "approval-submit",
+        frozenset({"type", "challenge_id", "approved"}),
+        "approval-submit requires challenge_id and approved",
+        teams.canonical_approval_submission,
+        "submit_approval",
+        "approval",
+        "no Assistant approval is pending",
+        "Assistant secrets are required",
+        "the Assistant approval challenge is stale",
+    ),
+    "input-submit": _Submission(
+        "input-submit",
+        frozenset({"type", "challenge_id", "answer"}),
+        "input-submit requires challenge_id and answer",
+        teams.canonical_input_submission,
+        "submit_input",
+        "input",
+        "no Assistant input is pending",
+        "another Assistant challenge is pending",
+        "the Assistant input challenge is stale",
+    ),
+}
+
+
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
     try:
         await websocket.send_json(dict(event))
@@ -648,113 +698,46 @@ async def _dispatch_chat(
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
 
-async def _dispatch_secret_submit(
+def _prepare_submission(
+    connection: _Connection,
+    frame: dict[str, object],
+    submission: _Submission,
+) -> dict[str, object]:
+    if set(frame) != submission.fields:
+        raise FrameError(400, submission.required_message)
+    try:
+        payload = submission.canonicalize({key: value for key, value in frame.items() if key != "type"})
+    except teams.TeamRequestError as exc:
+        raise FrameError(400, f"invalid Assistant {submission.challenge_type} submission") from exc
+    if connection.active is not None or connection.sync_task is not None:
+        raise FrameError(409, "a chat operation is already active")
+    if connection.pending_challenge_id is None:
+        raise FrameError(409, submission.missing_message)
+    if connection.pending_challenge_type != submission.challenge_type:
+        raise FrameError(409, submission.other_pending_message)
+    if payload["challenge_id"] != connection.pending_challenge_id:
+        raise FrameError(409, submission.stale_message)
+    return payload
+
+
+async def _dispatch_submit(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
     frame: dict[str, object],
+    submission: _Submission,
 ) -> None:
-    if set(frame) != {"type", "challenge_id", "values"}:
-        await _send_event(
-            websocket,
-            _error_terminal(400, "secret-submit frame requires challenge_id and values"),
-        )
+    try:
+        payload = _prepare_submission(connection, frame, submission)
+    except FrameError as exc:
+        await _send_event(websocket, _error_terminal(exc.status, exc.detail))
         return
     try:
-        payload = teams.canonical_secret_submission({key: value for key, value in frame.items() if key != "type"})
-    except teams.TeamRequestError:
-        await _send_event(websocket, _error_terminal(400, "invalid Assistant secret submission"))
-        return
-    if connection.active is not None or connection.sync_task is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
-        return
-    if connection.pending_challenge_id is None:
-        await _send_event(websocket, _error_terminal(409, "no Assistant secret challenge is pending"))
-        return
-    if connection.pending_challenge_type != "secret":
-        await _send_event(websocket, _error_terminal(409, "an Assistant approval is pending"))
-        return
-    if payload["challenge_id"] != connection.pending_challenge_id:
-        await _send_event(websocket, _error_terminal(409, "the Assistant secret challenge is stale"))
-        return
-    try:
-        future = _TURN_EXECUTOR.submit(localchat.submit_secrets, team_id, payload)
+        future = _TURN_EXECUTOR.submit(getattr(localchat, submission.submit_name), team_id, payload)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
-    turn = _Turn(future=future, operation="secret-submit")
-    connection.active = turn
-    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
-
-
-async def _dispatch_approval_submit(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    frame: dict[str, object],
-) -> None:
-    if set(frame) != {"type", "challenge_id", "approved"}:
-        await _send_event(websocket, _error_terminal(400, "approval-submit requires challenge_id and approved"))
-        return
-    try:
-        payload = teams.canonical_approval_submission({key: value for key, value in frame.items() if key != "type"})
-    except teams.TeamRequestError:
-        await _send_event(websocket, _error_terminal(400, "invalid Assistant approval submission"))
-        return
-    if connection.active is not None or connection.sync_task is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
-        return
-    if connection.pending_challenge_id is None:
-        await _send_event(websocket, _error_terminal(409, "no Assistant approval is pending"))
-        return
-    if connection.pending_challenge_type != "approval":
-        await _send_event(websocket, _error_terminal(409, "Assistant secrets are required"))
-        return
-    if payload["challenge_id"] != connection.pending_challenge_id:
-        await _send_event(websocket, _error_terminal(409, "the Assistant approval challenge is stale"))
-        return
-    try:
-        future = _TURN_EXECUTOR.submit(localchat.submit_approval, team_id, payload)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
-        return
-    turn = _Turn(future=future, operation="approval-submit")
-    connection.active = turn
-    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
-
-
-async def _dispatch_input_submit(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    frame: dict[str, object],
-) -> None:
-    if set(frame) != {"type", "challenge_id", "answer"}:
-        await _send_event(websocket, _error_terminal(400, "input-submit requires challenge_id and answer"))
-        return
-    try:
-        payload = teams.canonical_input_submission({key: value for key, value in frame.items() if key != "type"})
-    except teams.TeamRequestError:
-        await _send_event(websocket, _error_terminal(400, "invalid Assistant input submission"))
-        return
-    if connection.active is not None or connection.sync_task is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
-        return
-    if connection.pending_challenge_id is None:
-        await _send_event(websocket, _error_terminal(409, "no Assistant input is pending"))
-        return
-    if connection.pending_challenge_type != "input":
-        await _send_event(websocket, _error_terminal(409, "another Assistant challenge is pending"))
-        return
-    if payload["challenge_id"] != connection.pending_challenge_id:
-        await _send_event(websocket, _error_terminal(409, "the Assistant input challenge is stale"))
-        return
-    try:
-        future = _TURN_EXECUTOR.submit(localchat.submit_input, team_id, payload)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
-        return
-    turn = _Turn(future=future, operation="input-submit")
+    turn = _Turn(future=future, operation=submission.operation)
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
@@ -770,16 +753,13 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
 
 async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str, frame: dict[str, object]) -> None:
     frame_type = frame.get("type")
+    submission = _SUBMISSIONS.get(frame_type) if isinstance(frame_type, str) else None
     if frame_type == "sync" and set(frame) == {"type"}:
         await _dispatch_sync(websocket, connection, team_id)
     elif frame_type == "chat":
         await _dispatch_chat(websocket, connection, team_id, frame)
-    elif frame_type == "secret-submit":
-        await _dispatch_secret_submit(websocket, connection, team_id, frame)
-    elif frame_type == "approval-submit":
-        await _dispatch_approval_submit(websocket, connection, team_id, frame)
-    elif frame_type == "input-submit":
-        await _dispatch_input_submit(websocket, connection, team_id, frame)
+    elif submission is not None:
+        await _dispatch_submit(websocket, connection, team_id, frame, submission)
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
     else:
