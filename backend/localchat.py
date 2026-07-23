@@ -149,11 +149,12 @@ class PublicResponse(teams.DriverResponse):
             }
         if body.get("team_id") != team_id:
             return None
+        event = None
         if set(body) == {"team_id", "team_name", "reply"}:
-            return {"type": "done", **body}
-        if set(body) == {"team_id", "assistants"}:
-            return {"type": "secret-inventory", **body}
-        return None
+            event = {"type": "done", **body}
+        elif set(body) == {"team_id", "assistants"}:
+            event = {"type": "secret-inventory", **body}
+        return event
 
 
 def _unavailable() -> teams.DriverResponse:
