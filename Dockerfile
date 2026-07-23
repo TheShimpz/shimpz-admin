@@ -51,7 +51,7 @@ ARG SHIMPZ_DRIVER_TOKEN_GID=10002
 RUN groupadd -g "${SHIMPZ_DRIVER_TOKEN_GID}" shimpzdriver-token && usermod -aG shimpzdriver-token admin
 
 WORKDIR /app/backend
-COPY backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/catalog.py \
+COPY backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/team_driver_contract.py backend/catalog.py \
      backend/chat_ws.py backend/envfile.py backend/integrations.py backend/keyset.py \
      backend/localchat.py backend/modelproviders.py backend/notifications.py backend/oauth_handoff.py \
      backend/validate_live.py ./

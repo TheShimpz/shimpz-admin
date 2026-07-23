@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
 
 import modelproviders
+import team_driver_contract
 
 log = logging.getLogger("shimpz-admin")
 
@@ -30,25 +31,21 @@ MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
-MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_FILE_UPLOAD_BYTES = team_driver_contract.MAX_FILE_UPLOAD_BYTES
 MAX_FILE_JSON_BODY_BYTES = 4 * ((MAX_FILE_UPLOAD_BYTES + 2) // 3) + 8192
 CONTROL_TIMEOUT_SECONDS = 180
 
-_TEAM_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
-_ASSISTANT_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 ASSISTANT_HELP_LOCALES = frozenset({"en", "pt", "es", "zh", "fr", "de", "ja", "ar"})
-_FILE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_FILE_ID_RE = team_driver_contract.FILE_ID_RE
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CHALLENGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+\-]*/[a-z0-9][a-z0-9!#$&^_.+\-]*$")
-MAX_CHAT_MESSAGE_CHARS = 16_000
-MAX_CHAT_FILES = 8
-MAX_CHAT_ASSISTANTS = 16
+MAX_CHAT_MESSAGE_CHARS = team_driver_contract.MAX_CHAT_MESSAGE_CHARS
+MAX_CHAT_FILES = team_driver_contract.MAX_CHAT_FILES
+MAX_CHAT_ASSISTANTS = team_driver_contract.MAX_CHAT_ASSISTANTS
 MAX_SECRET_SUBMISSIONS = 64
 MAX_ASSISTANT_SECRET_BYTES = 16 * 1024
 MAX_TEAMS = 128
-MAX_TEAM_NAME_CHARS = 80
+MAX_TEAM_NAME_CHARS = team_driver_contract.MAX_TEAM_NAME_CHARS
 MAX_ASSISTANT_ACCOUNTS = 512
 MAX_ACCOUNT_SCOPES = 32
 
@@ -81,22 +78,24 @@ def _canonical_id(value: object, *, field: str, pattern: re.Pattern[str], maximu
 
 
 def canonical_team_id(value: object) -> str:
-    return _canonical_id(value, field="team id", pattern=_TEAM_ID_RE, maximum=40)
+    canonical = team_driver_contract.canonical_team_id(value)
+    if canonical is None:
+        raise TeamRequestError("team id must be a canonical lowercase identifier")
+    return canonical
 
 
 def canonical_team_name(value: object) -> str:
-    if (
-        not isinstance(value, str)
-        or not 1 <= len(value) <= MAX_TEAM_NAME_CHARS
-        or value.strip() != value
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
-    ):
+    canonical = team_driver_contract.canonical_team_name(value)
+    if canonical is None:
         raise TeamRequestError("team name must contain 1 to 80 trimmed characters")
-    return value
+    return canonical
 
 
 def canonical_assistant_id(value: object) -> str:
-    return _canonical_id(value, field="assistant id", pattern=_ASSISTANT_ID_RE, maximum=80)
+    canonical = team_driver_contract.canonical_assistant_id(value)
+    if canonical is None:
+        raise TeamRequestError("assistant id must be a canonical lowercase identifier")
+    return canonical
 
 
 def canonical_assistant_help_locale(value: object) -> str:
@@ -124,28 +123,15 @@ def canonical_oauth_claim(value: object) -> str:
 
 
 def canonical_filename(value: object) -> str:
-    if not isinstance(value, str) or not value or value.strip() != value:
-        raise TeamRequestError("filename must be non-empty and trimmed")
-    try:
-        encoded = value.encode("utf-8")
-    except UnicodeError as exc:
-        raise TeamRequestError("filename must be valid UTF-8") from exc
-    if len(encoded) > 255:
-        raise TeamRequestError("filename is too long")
-    if value in {".", ".."} or "/" in value or "\\" in value:
-        raise TeamRequestError("filename must not contain a path")
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise TeamRequestError("filename contains control characters")
-    return value
+    canonical = team_driver_contract.canonical_filename(value)
+    if canonical is None:
+        raise TeamRequestError("filename must be a trimmed, non-path UTF-8 name")
+    return canonical
 
 
 def canonical_media_type(value: object) -> str:
-    if value is None or value == "":
-        return "application/octet-stream"
-    if not isinstance(value, str) or len(value) > 127:
-        raise TeamRequestError("invalid media type")
-    media_type = value.lower()
-    if _MEDIA_TYPE_RE.fullmatch(media_type) is None:
+    media_type = team_driver_contract.canonical_media_type(value)
+    if media_type is None:
         raise TeamRequestError("invalid media type")
     return media_type
 
@@ -930,46 +916,13 @@ def _files_path(team_id: object, file_id: object | None = None) -> str:
     return f"{base}/{_canonical_id(file_id, field='file id', pattern=_FILE_ID_RE, maximum=32)}"
 
 
-def _integer(value: object, *, minimum: int = 0) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError("invalid integer")
-    return value
-
-
-def _usage(document: dict[str, object]) -> dict[str, int]:
-    used = _integer(document.get("used_bytes"))
-    limit = _integer(document.get("limit_bytes"), minimum=1)
-    remaining = _integer(document.get("remaining_bytes"))
-    if used > limit or remaining != limit - used:
-        raise ValueError("invalid storage usage")
-    return {"used_bytes": used, "limit_bytes": limit, "remaining_bytes": remaining}
-
-
-def _file_metadata(document: object, *, include_usage: bool) -> dict[str, object]:
-    if not isinstance(document, dict):
-        raise ValueError("invalid file metadata")
-    file_id = document.get("id")
-    sha256 = document.get("sha256")
-    if not isinstance(file_id, str) or _FILE_ID_RE.fullmatch(file_id) is None:
-        raise ValueError("invalid file id")
-    if not isinstance(sha256, str) or _SHA256_RE.fullmatch(sha256) is None:
-        raise ValueError("invalid file digest")
-    metadata: dict[str, object] = {
-        "id": file_id,
-        "name": canonical_filename(document.get("name")),
-        "media_type": canonical_media_type(document.get("media_type")),
-        "size": _integer(document.get("size"), minimum=1),
-        "sha256": sha256,
-        "created_at": _integer(document.get("created_at"), minimum=1),
-    }
-    if metadata["size"] > MAX_FILE_UPLOAD_BYTES:
-        raise ValueError("invalid file size")
-    if include_usage:
-        metadata.update(_usage(document))
-    return metadata
-
-
-def _project_storage_response(response: DriverResponse, *, team_id: str, kind: str) -> DriverResponse:
+def _project_storage_response(
+    response: DriverResponse,
+    *,
+    team_id: str,
+    kind: str,
+    expected_file_id: str | None = None,
+) -> DriverResponse:
     if not 200 <= response.status < 300:
         error_body = {
             key: value
@@ -979,34 +932,14 @@ def _project_storage_response(response: DriverResponse, *, team_id: str, kind: s
         if not error_body:
             error_body = {"detail": "team-driver request failed"}
         return DriverResponse(response.status, error_body)
-    try:
-        if response.body.get("team_id") != team_id:
-            raise ValueError("invalid Team identity")
-        if kind == "upload":
-            body: dict[str, object] = {
-                "team_id": team_id,
-                "file": _file_metadata(response.body.get("file"), include_usage=True),
-            }
-        elif kind == "list":
-            files = response.body.get("files")
-            if not isinstance(files, list) or len(files) > 256:
-                raise ValueError("invalid file inventory")
-            body = {
-                "team_id": team_id,
-                "files": [_file_metadata(item, include_usage=False) for item in files],
-                **_usage(response.body),
-            }
-        elif kind == "delete":
-            file_id = response.body.get("id")
-            deleted = response.body.get("deleted")
-            if not isinstance(file_id, str) or _FILE_ID_RE.fullmatch(file_id) is None:
-                raise ValueError("invalid file id")
-            if not isinstance(deleted, bool):
-                raise ValueError("invalid deletion result")
-            body = {"team_id": team_id, "id": file_id, "deleted": deleted, **_usage(response.body)}
-        else:
-            raise ValueError("invalid storage response kind")
-    except TeamRequestError, TypeError, ValueError:
+    body = team_driver_contract.project_storage_response(
+        response.body,
+        kind=kind,
+        expected_team_id=team_id,
+        expected_file_id=expected_file_id,
+        include_team_id=True,
+    )
+    if body is None:
         log.warning("team-driver returned an invalid storage response (%s)", kind)
         return DriverResponse(502, {"detail": "team-driver unavailable"})
     return DriverResponse(response.status, body)
@@ -1037,5 +970,11 @@ def list_files(team_id: object) -> DriverResponse:
 
 def delete_file(team_id: object, file_id: object) -> DriverResponse:
     canonical_id = canonical_team_id(team_id)
-    response = _call("DELETE", _files_path(canonical_id, file_id))
-    return _project_storage_response(response, team_id=canonical_id, kind="delete")
+    canonical_file_id = _canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
+    response = _call("DELETE", _files_path(canonical_id, canonical_file_id))
+    return _project_storage_response(
+        response,
+        team_id=canonical_id,
+        kind="delete",
+        expected_file_id=canonical_file_id,
+    )

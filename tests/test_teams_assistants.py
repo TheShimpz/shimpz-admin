@@ -423,7 +423,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
         self.assertEqual(
             uploaded,
-            teams.DriverResponse(200, {"team_id": "team_1", "file": {**metadata, **usage}}),
+            teams.DriverResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
         )
         upload_request = _DriverHandler.requests[-1]
         self.assertEqual(
@@ -472,6 +472,23 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         )
         for request in _DriverHandler.requests:
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
+
+    def test_storage_projection_keeps_over_quota_cleanup_visible(self):
+        response = teams.DriverResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "files": [],
+                "used_bytes": 8,
+                "limit_bytes": 4,
+                "remaining_bytes": 0,
+            },
+        )
+
+        self.assertEqual(
+            teams._project_storage_response(response, team_id="team_1", kind="list"),
+            response,
+        )
 
     def test_storage_bridge_rejects_paths_and_non_opaque_ids_before_network_access(self):
         invalid = (
