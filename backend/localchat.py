@@ -215,27 +215,42 @@ def _clean_public_text(value: object, maximum: int) -> str:
     return value
 
 
+def _challenge_envelope(
+    response: teams.DriverResponse,
+    team_id: str,
+    status: str,
+    fields: frozenset[str],
+) -> tuple[str, str]:
+    if set(response.body) != fields:
+        raise ValueError("invalid challenge envelope")
+    if (
+        response.body["team_id"] != team_id
+        or response.body["status"] != status
+        or not _valid_trace_id(response.body["trace_id"])
+    ):
+        raise ValueError("invalid challenge identity")
+    challenge_id = response.body["challenge_id"]
+    turn_id = response.body["turn_id"]
+    if (
+        not isinstance(challenge_id, str)
+        or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
+        or not isinstance(turn_id, str)
+        or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
+    ):
+        raise ValueError("invalid challenge metadata")
+    return challenge_id, turn_id
+
+
 def _project_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     try:
-        if set(response.body) != _CHALLENGE_RESPONSE_FIELDS:
-            raise ValueError("invalid challenge envelope")
-        if (
-            response.body["team_id"] != team_id
-            or response.body["status"] != "secrets-required"
-            or not _valid_trace_id(response.body["trace_id"])
-        ):
-            raise ValueError("invalid challenge identity")
-        challenge_id = response.body["challenge_id"]
-        turn_id = response.body["turn_id"]
+        challenge_id, turn_id = _challenge_envelope(
+            response,
+            team_id,
+            "secrets-required",
+            _CHALLENGE_RESPONSE_FIELDS,
+        )
         raw_requirements = response.body["requirements"]
-        if (
-            not isinstance(challenge_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
-            or not isinstance(turn_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
-            or not isinstance(raw_requirements, list)
-            or not 1 <= len(raw_requirements) <= MAX_SECRET_REQUIREMENTS
-        ):
+        if not isinstance(raw_requirements, list) or not 1 <= len(raw_requirements) <= MAX_SECRET_REQUIREMENTS:
             raise ValueError("invalid challenge metadata")
         requirements: list[dict[str, object]] = []
         seen_assistants: set[str] = set()
@@ -303,25 +318,14 @@ def _project_challenge(response: teams.DriverResponse, team_id: str) -> teams.Dr
 
 def _project_approval_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     try:
-        if set(response.body) != _CHALLENGE_RESPONSE_FIELDS:
-            raise ValueError("invalid approval envelope")
-        if (
-            response.body["team_id"] != team_id
-            or response.body["status"] != "approval-required"
-            or not _valid_trace_id(response.body["trace_id"])
-        ):
-            raise ValueError("invalid approval identity")
-        challenge_id = response.body["challenge_id"]
-        turn_id = response.body["turn_id"]
+        challenge_id, turn_id = _challenge_envelope(
+            response,
+            team_id,
+            "approval-required",
+            _CHALLENGE_RESPONSE_FIELDS,
+        )
         raw_requirements = response.body["requirements"]
-        if (
-            not isinstance(challenge_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
-            or not isinstance(turn_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
-            or not isinstance(raw_requirements, list)
-            or len(raw_requirements) != 1
-        ):
+        if not isinstance(raw_requirements, list) or len(raw_requirements) != 1:
             raise ValueError("invalid approval metadata")
         requirements: list[dict[str, object]] = []
         for raw in raw_requirements:
@@ -369,25 +373,14 @@ def _project_approval_challenge(response: teams.DriverResponse, team_id: str) ->
 
 def _project_input_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     try:
-        if set(response.body) != _INPUT_CHALLENGE_RESPONSE_FIELDS:
-            raise ValueError("invalid input envelope")
-        if (
-            response.body["team_id"] != team_id
-            or response.body["status"] != "input-required"
-            or not _valid_trace_id(response.body["trace_id"])
-        ):
-            raise ValueError("invalid input identity")
-        challenge_id = response.body["challenge_id"]
-        turn_id = response.body["turn_id"]
+        challenge_id, turn_id = _challenge_envelope(
+            response,
+            team_id,
+            "input-required",
+            _INPUT_CHALLENGE_RESPONSE_FIELDS,
+        )
         request = response.body["request"]
-        if (
-            not isinstance(challenge_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
-            or not isinstance(turn_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
-            or not isinstance(request, dict)
-            or set(request) != {"type", "title", "summary", "docs", "options"}
-        ):
+        if not isinstance(request, dict) or set(request) != {"type", "title", "summary", "docs", "options"}:
             raise ValueError("invalid input metadata")
         request_type = request["type"]
         options = request["options"]
@@ -437,24 +430,16 @@ def _project_input_challenge(response: teams.DriverResponse, team_id: str) -> te
 def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
-        if set(response.body) != _ACCOUNT_CHALLENGE_RESPONSE_FIELDS:
-            raise ValueError("invalid account envelope")
-        if (
-            response.body["team_id"] != team_id
-            or response.body["status"] != "accounts-required"
-            or not _valid_trace_id(response.body["trace_id"])
-        ):
-            raise ValueError("invalid account identity")
-        challenge_id = response.body["challenge_id"]
-        turn_id = response.body["turn_id"]
+        challenge_id, turn_id = _challenge_envelope(
+            response,
+            team_id,
+            "accounts-required",
+            _ACCOUNT_CHALLENGE_RESPONSE_FIELDS,
+        )
         expires_in = response.body["expires_in"]
         raw_requirements = response.body["requirements"]
         if (
-            not isinstance(challenge_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(challenge_id) is None
-            or not isinstance(turn_id, str)
-            or _CHALLENGE_ID_RE.fullmatch(turn_id) is None
-            or not isinstance(expires_in, int)
+            not isinstance(expires_in, int)
             or isinstance(expires_in, bool)
             or not 1 <= expires_in <= 900
             or not isinstance(raw_requirements, list)
