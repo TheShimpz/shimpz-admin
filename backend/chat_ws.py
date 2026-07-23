@@ -194,6 +194,21 @@ def secret_inventory_event(response: object, team_id: str) -> dict[str, object] 
     return _projected_event(response, team_id, frozenset({"secret-inventory"}))
 
 
+_CHALLENGE_PROJECTORS = (
+    ("account", account_challenge_event),
+    ("secret", secret_challenge_event),
+    ("input", input_challenge_event),
+    ("approval", approval_challenge_event),
+)
+
+
+def _first_challenge(response: object, team_id: str) -> tuple[dict[str, object] | None, str | None]:
+    for challenge_type, projector in _CHALLENGE_PROJECTORS:
+        if (challenge := projector(response, team_id)) is not None:
+            return challenge, challenge_type
+    return None, None
+
+
 def _stop_accepted(response: object, team_id: str) -> bool | None:
     if not isinstance(response, localchat.PublicResponse) or not 200 <= response.status < 300:
         return None
@@ -310,17 +325,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 response = teams.DriverResponse(400, {})
         if connection.closed or turn.stop_requested or turn.terminal_sent:
             return
-        challenge = account_challenge_event(response, team_id)
-        challenge_type = "account"
-        if challenge is None:
-            challenge = secret_challenge_event(response, team_id)
-            challenge_type = "secret"
-        if challenge is None:
-            challenge = input_challenge_event(response, team_id)
-            challenge_type = "input"
-        if challenge is None:
-            challenge = approval_challenge_event(response, team_id)
-            challenge_type = "approval"
+        challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None:
             connection.pending_challenge_id = challenge["challenge_id"]
             connection.pending_challenge_type = challenge_type
@@ -433,17 +438,7 @@ async def _deliver_account_sync(
         await _send_event(websocket, _error_terminal(502, "the Assistant account challenge was invalid"))
         return True
 
-    resumed = account_challenge_event(resumed_response, team_id)
-    challenge_type = "account"
-    if resumed is None:
-        resumed = secret_challenge_event(resumed_response, team_id)
-        challenge_type = "secret"
-    if resumed is None:
-        resumed = input_challenge_event(resumed_response, team_id)
-        challenge_type = "input"
-    if resumed is None:
-        resumed = approval_challenge_event(resumed_response, team_id)
-        challenge_type = "approval"
+    resumed, challenge_type = _first_challenge(resumed_response, team_id)
     if resumed is not None:
         pending_turn_id = pending_response.body.get("turn_id")
         resumed_turn_id = resumed_response.body.get("turn_id")
