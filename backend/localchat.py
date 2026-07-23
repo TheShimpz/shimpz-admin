@@ -120,11 +120,7 @@ class PublicResponse(teams.DriverResponse):
         object.__setattr__(self, "body", _freeze(self.body))
 
     def __eq__(self, other: object) -> bool:
-        return (
-            isinstance(other, teams.DriverResponse)
-            and self.status == other.status
-            and self.body == other.body
-        )
+        return isinstance(other, teams.DriverResponse) and self.status == other.status and self.body == other.body
 
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
