@@ -12,6 +12,7 @@ buggy controller can never echo that key or internal execution details back to t
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 
@@ -644,15 +645,21 @@ def _project_turn(
     )
 
 
-def turn(team_id: object, payload: object) -> teams.DriverResponse:
+def _submit(
+    team_id: object,
+    payload: object,
+    canonicalize: Callable[[object], dict[str, object]],
+    request: Callable[..., teams.DriverResponse],
+    forbidden_values: Callable[[dict[str, object]], tuple[str, ...]] = lambda _body: (),
+) -> teams.DriverResponse:
     canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_chat_payload(payload)
+    body = canonicalize(payload)
     credential = _model_credential(canonical_id)
     if isinstance(credential, teams.DriverResponse):
         return credential
     provider, api_key = credential
 
-    response = teams.chat(canonical_id, body, provider=provider, api_key=api_key)
+    response = request(canonical_id, body, provider=provider, api_key=api_key)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
@@ -660,150 +667,117 @@ def turn(team_id: object, payload: object) -> teams.DriverResponse:
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
-    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+    return _project_turn(response, canonical_id, forbidden_values=(api_key, *forbidden_values(body)))
+
+
+def _secret_values(body: dict[str, object]) -> tuple[str, ...]:
+    return tuple(item["value"] for item in body["values"])
+
+
+def _input_values(body: dict[str, object]) -> tuple[str, ...]:
+    answer = body["answer"]
+    return (answer,) if isinstance(answer, str) else ()
+
+
+def turn(team_id: object, payload: object) -> teams.DriverResponse:
+    return _submit(team_id, payload, teams.canonical_chat_payload, teams.chat)
 
 
 def submit_secrets(team_id: object, payload: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_secret_submission(payload)
-    credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.DriverResponse):
-        return credential
-    provider, api_key = credential
-    response = teams.submit_chat_secrets(canonical_id, body, provider=provider, api_key=api_key)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    submitted_values = tuple(item["value"] for item in body["values"])
-    return _project_turn(response, canonical_id, forbidden_values=(api_key, *submitted_values))
-
-
-def pending_secrets(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.pending_chat_secrets(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    if set(response.body) == {"team_id", "status", "trace_id"}:
-        if (
-            response.body.get("team_id") == canonical_id
-            and response.body.get("status") == "none"
-            and _valid_trace_id(response.body.get("trace_id"))
-        ):
-            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
-    return _project_challenge(response, canonical_id)
-
-
-def pending_accounts(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.pending_chat_accounts(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    if set(response.body) == {"team_id", "status", "trace_id"}:
-        if (
-            response.body.get("team_id") == canonical_id
-            and response.body.get("status") == "none"
-            and _valid_trace_id(response.body.get("trace_id"))
-        ):
-            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
-    return _project_account_challenge(response, canonical_id)
+    return _submit(
+        team_id,
+        payload,
+        teams.canonical_secret_submission,
+        teams.submit_chat_secrets,
+        _secret_values,
+    )
 
 
 def resume_accounts(team_id: object, challenge_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_account_resume({"challenge_id": challenge_id})
-    credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.DriverResponse):
-        return credential
-    provider, api_key = credential
-    response = teams.resume_chat_accounts(canonical_id, body, provider=provider, api_key=api_key)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+    return _submit(
+        team_id,
+        {"challenge_id": challenge_id},
+        teams.canonical_account_resume,
+        teams.resume_chat_accounts,
+    )
 
 
 def submit_approval(team_id: object, payload: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_approval_submission(payload)
-    credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.DriverResponse):
-        return credential
-    provider, api_key = credential
-    response = teams.submit_chat_approval(canonical_id, body, provider=provider, api_key=api_key)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+    return _submit(
+        team_id,
+        payload,
+        teams.canonical_approval_submission,
+        teams.submit_chat_approval,
+    )
 
 
 def submit_input(team_id: object, payload: object) -> teams.DriverResponse:
+    return _submit(
+        team_id,
+        payload,
+        teams.canonical_input_submission,
+        teams.submit_chat_input,
+        _input_values,
+    )
+
+
+def _pending(
+    team_id: object,
+    request: Callable[[str], teams.DriverResponse],
+    project: Callable[[teams.DriverResponse, str], teams.DriverResponse],
+    invalid_code: str,
+) -> teams.DriverResponse:
     canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_input_submission(payload)
-    credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.DriverResponse):
-        return credential
-    provider, api_key = credential
-    response = teams.submit_chat_input(canonical_id, body, provider=provider, api_key=api_key)
+    response = request(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
-    if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
     if not 200 <= response.status < 300:
         return _safe_error(response)
-    answer = body["answer"]
-    forbidden = (api_key, answer) if isinstance(answer, str) else (api_key,)
-    return _project_turn(response, canonical_id, forbidden_values=forbidden)
+    if set(response.body) != {"team_id", "status", "trace_id"}:
+        return project(response, canonical_id)
+    if (
+        response.body.get("team_id") == canonical_id
+        and response.body.get("status") == "none"
+        and _valid_trace_id(response.body.get("trace_id"))
+    ):
+        return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
+    return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
+
+
+def pending_secrets(team_id: object) -> teams.DriverResponse:
+    return _pending(
+        team_id,
+        teams.pending_chat_secrets,
+        _project_challenge,
+        "secret-challenge-response-invalid",
+    )
+
+
+def pending_accounts(team_id: object) -> teams.DriverResponse:
+    return _pending(
+        team_id,
+        teams.pending_chat_accounts,
+        _project_account_challenge,
+        "account-challenge-response-invalid",
+    )
 
 
 def pending_approval(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.pending_chat_approval(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    if set(response.body) == {"team_id", "status", "trace_id"}:
-        if (
-            response.body.get("team_id") == canonical_id
-            and response.body.get("status") == "none"
-            and _valid_trace_id(response.body.get("trace_id"))
-        ):
-            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
-    return _project_approval_challenge(response, canonical_id)
+    return _pending(
+        team_id,
+        teams.pending_chat_approval,
+        _project_approval_challenge,
+        "approval-challenge-response-invalid",
+    )
 
 
 def pending_input(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.pending_chat_input(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    if set(response.body) == {"team_id", "status", "trace_id"}:
-        if (
-            response.body.get("team_id") == canonical_id
-            and response.body.get("status") == "none"
-            and _valid_trace_id(response.body.get("trace_id"))
-        ):
-            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "input-challenge-response-invalid"})
-    return _project_input_challenge(response, canonical_id)
+    return _pending(
+        team_id,
+        teams.pending_chat_input,
+        _project_input_challenge,
+        "input-challenge-response-invalid",
+    )
 
 
 def secret_inventory(team_id: object) -> teams.DriverResponse:
