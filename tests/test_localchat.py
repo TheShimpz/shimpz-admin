@@ -560,9 +560,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             )
             with (
                 self.subTest(request_type=request_type),
-                mock.patch.object(teams, "get_inference", return_value=teams.DriverResponse(
-                    200, {"provider": "openai", "model": "gpt-5.5"}
-                )),
+                mock.patch.object(
+                    teams,
+                    "get_inference",
+                    return_value=teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"}),
+                ),
                 mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(teams, "chat", return_value=controller),
             ):

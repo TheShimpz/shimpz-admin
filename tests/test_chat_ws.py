@@ -440,9 +440,7 @@ class ChatWebSocketTests(unittest.TestCase):
                             },
                         },
                     )
-                    await websocket.send_json(
-                        {"type": "input-submit", "challenge_id": CHALLENGE_ID, "answer": answer}
-                    )
+                    await websocket.send_json({"type": "input-submit", "challenge_id": CHALLENGE_ID, "answer": answer})
                     self.assertEqual((await websocket.next_json())["type"], "done")
                     submit.assert_called_once_with(
                         "team_1",

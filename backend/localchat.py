@@ -26,9 +26,7 @@ _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _CHALLENGE_RESPONSE_FIELDS = frozenset({"team_id", "status", "turn_id", "challenge_id", "requirements", "trace_id"})
-_INPUT_CHALLENGE_RESPONSE_FIELDS = frozenset(
-    {"team_id", "status", "turn_id", "challenge_id", "request", "trace_id"}
-)
+_INPUT_CHALLENGE_RESPONSE_FIELDS = frozenset({"team_id", "status", "turn_id", "challenge_id", "request", "trace_id"})
 _ACCOUNT_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
@@ -403,10 +401,7 @@ def _project_input_challenge(response: teams.DriverResponse, team_id: str) -> te
             if (
                 not options
                 or any(
-                    not isinstance(option, str)
-                    or not option
-                    or len(option) > MAX_INPUT_OPTION_CHARS
-                    or "\0" in option
+                    not isinstance(option, str) or not option or len(option) > MAX_INPUT_OPTION_CHARS or "\0" in option
                     for option in options
                 )
                 or len(options) != len(set(options))
