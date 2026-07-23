@@ -24,59 +24,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
 MAX_FRAME_BYTES = 512 * 1024
-MAX_PUBLIC_REPLY_CHARS = 60_000
-MAX_PUBLIC_TEAM_NAME_CHARS = 80
 MAX_PUBLIC_ERROR_CHARS = 800
-MAX_PUBLIC_LABEL_CHARS = 80
-MAX_PUBLIC_SUMMARY_CHARS = 160
-MAX_SECRET_REQUIREMENTS = 16
-MAX_SECRET_VALUES = 64
-MAX_SECRETS_PER_ASSISTANT = 32
-MAX_POWERS_PER_ASSISTANT = 128
-MAX_INSTALLED_ASSISTANTS = 128
-MAX_APPROVAL_REQUIREMENTS = 64
-MAX_ACCOUNT_REQUIREMENTS = 64
-MAX_ACCOUNT_SCOPES = 32
-MAX_ACCOUNT_POWERS = 128
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
-_REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
-_OPAQUE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-_CHAT_ERROR_DETAILS = {
-    "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
-    "assistant-approval-challenge-expired": "the Assistant approval expired; retry the message",
-    "assistant-approval-state-unavailable": "remembered Assistant approvals are unavailable",
-    "assistant-account-challenge-expired": "the Assistant account expired; retry the message",
-    "assistant-account-contract-invalid": "the Assistant account contract changed; retry the message",
-    "assistant-account-state-unavailable": "Assistant account state is unavailable",
-    "assistant-registry-drift": "an installed Assistant is no longer available",
-    "assistant-unavailable": "the Brain requested an unavailable Assistant",
-    "brain-runtime-failed": "the Brain runtime could not complete the Team turn",
-    "chat-active": "this Team already has an active chat turn",
-    "chat-request-failed": "the local chat request failed",
-    "chat-response-invalid": "the local chat returned an invalid response",
-    "chat-stop-response-invalid": "the local chat stop response was invalid",
-    "chat-stopped": "the chat turn was stopped",
-    "file-not-found": "a selected file was not found",
-    "inference-not-configured": "the Team model provider is not configured",
-    "inference-provider-mismatch": "the configured model provider changed; retry",
-    "inference-response-invalid": "the Team model configuration is invalid",
-    "invalid-files": "the selected files are invalid",
-    "invalid-power-input": "an Assistant Power received invalid input",
-    "model-credential-missing": "the selected model provider needs an API key",
-    "model-credential-store-invalid": "the model credential store is invalid",
-    "ownership-conflict": "the Team resource ownership check failed",
-    "power-approval-required": "an Assistant Power requires approval",
-    "power-state-unavailable": "the Team Power execution state is unavailable",
-    "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
-    "secret-challenge-response-invalid": "the Assistant secret challenge was invalid",
-    "secret-inventory-response-invalid": "the Assistant secret inventory was invalid",
-    "approval-challenge-response-invalid": "the Assistant approval challenge was invalid",
-    "approval-inventory-response-invalid": "the remembered Assistant approvals were invalid",
-    "account-challenge-response-invalid": "the Assistant account challenge was invalid",
-    "team-context-changed": "the Team capabilities changed; retry",
-    "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
-}
 
 
 class FrameError(ValueError):
@@ -193,24 +143,6 @@ async def receive_bounded_json(websocket: WebSocket) -> dict[str, object]:
     return value
 
 
-def _valid_team_name(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and value == value.strip()
-        and 0 < len(value) <= MAX_PUBLIC_TEAM_NAME_CHARS
-        and _CONTROL_RE.search(value) is None
-    )
-
-
-def _valid_reply(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and bool(value.strip())
-        and len(value) <= MAX_PUBLIC_REPLY_CHARS
-        and _REPLY_CONTROL_RE.search(value) is None
-    )
-
-
 def _safe_status(value: object, fallback: int = 502) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and 400 <= value <= 599 else fallback
 
@@ -224,390 +156,44 @@ def _error_terminal(status: object, detail: str = "local chat request failed") -
     return {"type": "error", "status": _safe_status(status), "detail": safe_detail}
 
 
+def _projected_event(
+    response: object,
+    team_id: str,
+    allowed_types: frozenset[str],
+) -> dict[str, object] | None:
+    if not isinstance(response, localchat.PublicResponse):
+        return None
+    event = response.websocket_event(team_id)
+    if event is None or event.get("type") not in allowed_types:
+        return None
+    return dict(event)
+
+
 def turn_terminal(response: object, team_id: str) -> dict[str, object]:
-    """Project a secret-safe localchat response onto the public v3 terminal contract."""
-    if not isinstance(response, teams.DriverResponse):
-        return _error_terminal(502)
-    if isinstance(response.status, int) and not isinstance(response.status, bool) and 200 <= response.status < 300:
-        body = response.body
-        if (
-            isinstance(body, dict)
-            and set(body) == {"team_id", "team_name", "reply"}
-            and body.get("team_id") == team_id
-            and _valid_team_name(body.get("team_name"))
-            and _valid_reply(body.get("reply"))
-        ):
-            return {
-                "type": "done",
-                "team_id": team_id,
-                "team_name": body["team_name"],
-                "reply": body["reply"],
-            }
-        return _error_terminal(502, "local chat returned an invalid response")
-
-    # ``localchat`` reduces controller/provider failures to one bounded machine code. Map only this
-    # closed allowlist to fixed public text; raw prose, tracebacks and credentials never cross here.
-    details = {
-        400: "invalid chat request",
-        409: "chat turn could not start",
-        429: "local chat capacity reached",
-        503: "local chat runtime is unavailable",
-    }
-    status = _safe_status(response.status)
-    fallback = details.get(status, "local chat request failed")
-    body = response.body
-    if not isinstance(body, dict) or set(body) != {"code"}:
-        return _error_terminal(status, fallback)
-    code = body.get("code")
-    if not isinstance(code, str) or code not in _CHAT_ERROR_DETAILS:
-        return _error_terminal(status, fallback)
-    return _error_terminal(status, f"{code}: {_CHAT_ERROR_DETAILS[code]}")
-
-
-def _canonical_assistant_id(value: object) -> str | None:
-    try:
-        return teams.canonical_assistant_id(value)
-    except teams.TeamRequestError:
-        return None
-
-
-def _valid_public_text(value: object, maximum: int) -> bool:
-    return isinstance(value, str) and value == value.strip() and 0 < len(value) <= maximum and value.isprintable()
-
-
-def _canonical_secret_metadata(value: object) -> dict[str, str] | None:
-    if not isinstance(value, dict) or set(value) != {"id", "name", "summary"}:
-        return None
-    secret_id = _canonical_assistant_id(value.get("id"))
-    if (
-        secret_id is None
-        or not _valid_public_text(value.get("name"), MAX_PUBLIC_LABEL_CHARS)
-        or not _valid_public_text(value.get("summary"), MAX_PUBLIC_SUMMARY_CHARS)
-    ):
-        return None
-    return {"id": secret_id, "name": value["name"], "summary": value["summary"]}
+    event = _projected_event(response, team_id, frozenset({"done", "error"}))
+    return event if event is not None else _error_terminal(502, "local chat returned an invalid response")
 
 
 def secret_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    """Return one exact public challenge without ever copying submitted secret values."""
-    if (
-        not isinstance(response, teams.DriverResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or (response.status != 428 and not 200 <= response.status < 300)
-        or not isinstance(response.body, dict)
-        or set(response.body) != {"team_id", "status", "turn_id", "challenge_id", "requirements"}
-        or response.body.get("team_id") != team_id
-        or response.body.get("status") != "secrets-required"
-    ):
-        return None
-    turn_id = response.body.get("turn_id")
-    challenge_id = response.body.get("challenge_id")
-    raw_requirements = response.body.get("requirements")
-    if (
-        not isinstance(turn_id, str)
-        or _OPAQUE_ID_RE.fullmatch(turn_id) is None
-        or not isinstance(challenge_id, str)
-        or _OPAQUE_ID_RE.fullmatch(challenge_id) is None
-        or not isinstance(raw_requirements, list)
-        or not 1 <= len(raw_requirements) <= MAX_SECRET_REQUIREMENTS
-    ):
-        return None
-
-    requirements: list[dict[str, object]] = []
-    seen_assistants: set[str] = set()
-    total_secrets = 0
-    for raw in raw_requirements:
-        if not isinstance(raw, dict) or set(raw) != {"assistant_id", "assistant_name", "power_ids", "secrets"}:
-            return None
-        assistant_id = _canonical_assistant_id(raw.get("assistant_id"))
-        power_ids = raw.get("power_ids")
-        raw_secrets = raw.get("secrets")
-        if (
-            assistant_id is None
-            or assistant_id in seen_assistants
-            or not _valid_public_text(raw.get("assistant_name"), MAX_PUBLIC_LABEL_CHARS)
-            or not isinstance(power_ids, list)
-            or not 1 <= len(power_ids) <= MAX_POWERS_PER_ASSISTANT
-            or not isinstance(raw_secrets, list)
-            or not 1 <= len(raw_secrets) <= MAX_SECRETS_PER_ASSISTANT
-        ):
-            return None
-        canonical_powers = [_canonical_assistant_id(power_id) for power_id in power_ids]
-        if any(power_id is None for power_id in canonical_powers) or len(set(canonical_powers)) != len(
-            canonical_powers
-        ):
-            return None
-        secrets = [_canonical_secret_metadata(secret) for secret in raw_secrets]
-        if any(secret is None for secret in secrets):
-            return None
-        secret_ids = [secret["id"] for secret in secrets if secret is not None]
-        if len(set(secret_ids)) != len(secret_ids):
-            return None
-        total_secrets += len(secrets)
-        if total_secrets > MAX_SECRET_VALUES:
-            return None
-        seen_assistants.add(assistant_id)
-        requirements.append(
-            {
-                "assistant_id": assistant_id,
-                "assistant_name": raw["assistant_name"],
-                "power_ids": canonical_powers,
-                "secrets": secrets,
-            }
-        )
-    return {
-        "type": "secrets-required",
-        "turn_id": turn_id,
-        "challenge_id": challenge_id,
-        "requirements": requirements,
-    }
+    return _projected_event(response, team_id, frozenset({"secrets-required"}))
 
 
 def approval_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    """Return an exact, bounded operation preview for explicit human approval."""
-    if (
-        not isinstance(response, teams.DriverResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or (response.status != 428 and not 200 <= response.status < 300)
-        or not isinstance(response.body, dict)
-        or set(response.body) != {"team_id", "status", "turn_id", "challenge_id", "requirements"}
-        or response.body.get("team_id") != team_id
-        or response.body.get("status") != "approval-required"
-    ):
-        return None
-    turn_id = response.body.get("turn_id")
-    challenge_id = response.body.get("challenge_id")
-    raw_requirements = response.body.get("requirements")
-    if (
-        not isinstance(turn_id, str)
-        or _OPAQUE_ID_RE.fullmatch(turn_id) is None
-        or not isinstance(challenge_id, str)
-        or _OPAQUE_ID_RE.fullmatch(challenge_id) is None
-        or not isinstance(raw_requirements, list)
-        or not 1 <= len(raw_requirements) <= MAX_APPROVAL_REQUIREMENTS
-    ):
-        return None
-    requirements: list[dict[str, object]] = []
-    for raw in raw_requirements:
-        if not isinstance(raw, dict) or set(raw) != {
-            "assistant_id",
-            "assistant_name",
-            "power_id",
-            "power_summary",
-            "input",
-            "approval",
-        }:
-            return None
-        assistant_id = _canonical_assistant_id(raw.get("assistant_id"))
-        power_id = _canonical_assistant_id(raw.get("power_id"))
-        try:
-            power_input = localchat._bounded_approval_input(raw.get("input"))
-        except TypeError, ValueError:
-            return None
-        if (
-            assistant_id is None
-            or power_id is None
-            or not _valid_public_text(raw.get("assistant_name"), MAX_PUBLIC_LABEL_CHARS)
-            or not _valid_public_text(raw.get("power_summary"), MAX_PUBLIC_SUMMARY_CHARS)
-            or raw.get("approval") not in {"always", "once"}
-        ):
-            return None
-        requirements.append(
-            {
-                "assistant_id": assistant_id,
-                "assistant_name": raw["assistant_name"],
-                "power_id": power_id,
-                "power_summary": raw["power_summary"],
-                "input": power_input,
-                "approval": raw["approval"],
-            }
-        )
-    return {
-        "type": "approval-required",
-        "turn_id": turn_id,
-        "challenge_id": challenge_id,
-        "requirements": requirements,
-    }
+    return _projected_event(response, team_id, frozenset({"approval-required"}))
 
 
 def account_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    """Return exact public OAuth consent metadata without copying authorization material."""
-    if (
-        not isinstance(response, teams.DriverResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or (response.status != 428 and not 200 <= response.status < 300)
-        or not isinstance(response.body, dict)
-        or set(response.body) != {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements"}
-        or response.body.get("team_id") != team_id
-        or response.body.get("status") != "accounts-required"
-    ):
-        return None
-    turn_id = response.body.get("turn_id")
-    challenge_id = response.body.get("challenge_id")
-    expires_in = response.body.get("expires_in")
-    raw_requirements = response.body.get("requirements")
-    if (
-        not isinstance(turn_id, str)
-        or _OPAQUE_ID_RE.fullmatch(turn_id) is None
-        or not isinstance(challenge_id, str)
-        or _OPAQUE_ID_RE.fullmatch(challenge_id) is None
-        or not isinstance(expires_in, int)
-        or isinstance(expires_in, bool)
-        or not 1 <= expires_in <= 900
-        or not isinstance(raw_requirements, list)
-        or not 1 <= len(raw_requirements) <= MAX_ACCOUNT_REQUIREMENTS
-    ):
-        return None
-
-    requirements: list[dict[str, object]] = []
-    seen_accounts: set[tuple[str, str]] = set()
-    for raw in raw_requirements:
-        if not isinstance(raw, dict) or set(raw) != {
-            "assistant_id",
-            "assistant_name",
-            "account_id",
-            "provider",
-            "name",
-            "summary",
-            "scopes",
-            "powers",
-        }:
-            return None
-        assistant_id = _canonical_assistant_id(raw.get("assistant_id"))
-        account_id = _canonical_assistant_id(raw.get("account_id"))
-        provider = _canonical_assistant_id(raw.get("provider"))
-        raw_scopes = raw.get("scopes")
-        raw_powers = raw.get("powers")
-        if (
-            assistant_id is None
-            or account_id is None
-            or provider is None
-            or (assistant_id, account_id) in seen_accounts
-            or not _valid_public_text(raw.get("assistant_name"), MAX_PUBLIC_LABEL_CHARS)
-            or not _valid_public_text(raw.get("name"), MAX_PUBLIC_LABEL_CHARS)
-            or not _valid_public_text(raw.get("summary"), MAX_PUBLIC_SUMMARY_CHARS)
-            or not isinstance(raw_scopes, list)
-            or not 1 <= len(raw_scopes) <= MAX_ACCOUNT_SCOPES
-            or not isinstance(raw_powers, list)
-            or not 1 <= len(raw_powers) <= MAX_ACCOUNT_POWERS
-        ):
-            return None
-        if any(not _valid_public_text(scope, 128) for scope in raw_scopes) or len(set(raw_scopes)) != len(raw_scopes):
-            return None
-        powers: list[dict[str, str]] = []
-        seen_powers: set[str] = set()
-        for raw_power in raw_powers:
-            if not isinstance(raw_power, dict) or set(raw_power) != {"id", "name", "summary"}:
-                return None
-            power_id = _canonical_assistant_id(raw_power.get("id"))
-            if (
-                power_id is None
-                or power_id in seen_powers
-                or not _valid_public_text(raw_power.get("name"), MAX_PUBLIC_LABEL_CHARS)
-                or not _valid_public_text(raw_power.get("summary"), MAX_PUBLIC_SUMMARY_CHARS)
-            ):
-                return None
-            seen_powers.add(power_id)
-            powers.append({"id": power_id, "name": raw_power["name"], "summary": raw_power["summary"]})
-        seen_accounts.add((assistant_id, account_id))
-        requirements.append(
-            {
-                "assistant_id": assistant_id,
-                "assistant_name": raw["assistant_name"],
-                "account_id": account_id,
-                "provider": provider,
-                "name": raw["name"],
-                "summary": raw["summary"],
-                "scopes": list(raw_scopes),
-                "powers": powers,
-            }
-        )
-    return {
-        "type": "accounts-required",
-        "challenge_id": challenge_id,
-        "expires_in": expires_in,
-        "requirements": requirements,
-    }
-
-
-def _valid_secret_mask(value: object) -> bool:
-    if value == "••••":
-        return True
-    if not isinstance(value, str) or not value.isprintable():
-        return False
-    characters = list(value)
-    if len(characters) not in {3, 5, 7, 9}:
-        return False
-    middle = len(characters) // 2
-    return 1 <= middle <= 4 and characters[middle] == "…"
+    return _projected_event(response, team_id, frozenset({"accounts-required"}))
 
 
 def secret_inventory_event(response: object, team_id: str) -> dict[str, object] | None:
-    """Return one exact Team-bound inventory containing metadata and masks only."""
-    if (
-        not isinstance(response, teams.DriverResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or not 200 <= response.status < 300
-        or not isinstance(response.body, dict)
-        or set(response.body) != {"team_id", "assistants"}
-        or response.body.get("team_id") != team_id
-    ):
-        return None
-    raw_assistants = response.body.get("assistants")
-    if not isinstance(raw_assistants, list) or len(raw_assistants) > MAX_INSTALLED_ASSISTANTS:
-        return None
-    assistants: list[dict[str, object]] = []
-    seen_assistants: set[str] = set()
-    for raw in raw_assistants:
-        if not isinstance(raw, dict) or set(raw) != {"id", "name", "secrets"}:
-            return None
-        assistant_id = _canonical_assistant_id(raw.get("id"))
-        raw_secrets = raw.get("secrets")
-        if (
-            assistant_id is None
-            or assistant_id in seen_assistants
-            or not _valid_public_text(raw.get("name"), MAX_PUBLIC_LABEL_CHARS)
-            or not isinstance(raw_secrets, list)
-            or len(raw_secrets) > MAX_SECRETS_PER_ASSISTANT
-        ):
-            return None
-        secrets: list[dict[str, object]] = []
-        seen_secrets: set[str] = set()
-        for raw_secret in raw_secrets:
-            if not isinstance(raw_secret, dict) or set(raw_secret) != {"id", "name", "summary", "configured", "mask"}:
-                return None
-            metadata = _canonical_secret_metadata({key: raw_secret[key] for key in ("id", "name", "summary")})
-            configured = raw_secret.get("configured")
-            mask = raw_secret.get("mask")
-            if (
-                metadata is None
-                or metadata["id"] in seen_secrets
-                or not isinstance(configured, bool)
-                or (configured and not _valid_secret_mask(mask))
-                or (not configured and mask is not None)
-            ):
-                return None
-            seen_secrets.add(metadata["id"])
-            secrets.append({**metadata, "configured": configured, "mask": mask})
-        seen_assistants.add(assistant_id)
-        assistants.append({"id": assistant_id, "name": raw["name"], "secrets": secrets})
-    return {"type": "secret-inventory", "team_id": team_id, "assistants": assistants}
+    return _projected_event(response, team_id, frozenset({"secret-inventory"}))
 
 
 def _stop_accepted(response: object, team_id: str) -> bool | None:
-    if (
-        not isinstance(response, teams.DriverResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or not 200 <= response.status < 300
-        or not isinstance(response.body, dict)
-    ):
+    if not isinstance(response, localchat.PublicResponse) or not 200 <= response.status < 300:
         return None
-    if set(response.body) != {"team_id", "stopped"} or response.body.get("team_id") != team_id:
+    if response.body.get("team_id") != team_id:
         return None
     stopped = response.body.get("stopped")
     return stopped if isinstance(stopped, bool) else None

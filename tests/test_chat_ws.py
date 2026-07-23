@@ -43,8 +43,8 @@ def _requirements() -> list[dict[str, object]]:
 
 
 def _challenge(status: int = 428) -> object:
-    teams_module = importlib.import_module("teams")
-    return teams_module.DriverResponse(
+    localchat_module = importlib.import_module("localchat")
+    return localchat_module.PublicResponse(
         status,
         {
             "team_id": "team_1",
@@ -78,8 +78,8 @@ def _approval_requirements() -> list[dict[str, object]]:
 
 
 def _approval_challenge(status: int = 428) -> object:
-    teams_module = importlib.import_module("teams")
-    return teams_module.DriverResponse(
+    localchat_module = importlib.import_module("localchat")
+    return localchat_module.PublicResponse(
         status,
         {
             "team_id": "team_1",
@@ -110,8 +110,8 @@ def _account_requirements() -> list[dict[str, object]]:
 
 
 def _account_challenge(status: int = 428) -> object:
-    teams_module = importlib.import_module("teams")
-    return teams_module.DriverResponse(
+    localchat_module = importlib.import_module("localchat")
+    return localchat_module.PublicResponse(
         status,
         {
             "team_id": "team_1",
@@ -125,8 +125,8 @@ def _account_challenge(status: int = 428) -> object:
 
 
 def _inventory() -> object:
-    teams_module = importlib.import_module("teams")
-    return teams_module.DriverResponse(
+    localchat_module = importlib.import_module("localchat")
+    return localchat_module.PublicResponse(
         200,
         {
             "team_id": "team_1",
@@ -359,15 +359,15 @@ class ChatWebSocketTests(unittest.TestCase):
         )
         self.assertNotIn("value", json.dumps(expected_challenge))
 
-        augmented = _challenge()
-        augmented.body["api_key"] = "must-never-cross"
-        self.assertIsNone(self.chat_ws.secret_challenge_event(augmented, "team_1"))
-        cross_team = _inventory()
-        cross_team.body["team_id"] = "other_team"
+        unprojected = self.teams.DriverResponse(_challenge().status, dict(_challenge().body))
+        self.assertIsNone(self.chat_ws.secret_challenge_event(unprojected, "team_1"))
+        cross_team = self.chat_ws.localchat.PublicResponse(
+            200,
+            {**dict(_inventory().body), "team_id": "other_team"},
+        )
         self.assertIsNone(self.chat_ws.secret_inventory_event(cross_team, "team_1"))
-        invalid_mask = _inventory()
-        invalid_mask.body["assistants"][0]["secrets"][0]["mask"] = "secret-value"
-        self.assertIsNone(self.chat_ws.secret_inventory_event(invalid_mask, "team_1"))
+        with self.assertRaises(TypeError):
+            _inventory().body["assistants"][0]["secrets"][0]["mask"] = "secret-value"
 
     def test_approval_events_project_exact_inputs_without_internal_authority(self) -> None:
         expected = {
@@ -380,18 +380,8 @@ class ChatWebSocketTests(unittest.TestCase):
         self.assertNotIn("api_key", json.dumps(expected))
         self.assertNotIn("secret_values", json.dumps(expected))
 
-        for mutation in (
-            {"trace_id": "must-not-cross"},
-            {"api_key": "must-not-cross"},
-        ):
-            invalid = _approval_challenge()
-            invalid.body.update(mutation)
-            with self.subTest(mutation=mutation):
-                self.assertIsNone(self.chat_ws.approval_challenge_event(invalid, "team_1"))
-
-        invalid_policy = _approval_challenge()
-        invalid_policy.body["requirements"][0]["approval"] = "each-run"
-        self.assertIsNone(self.chat_ws.approval_challenge_event(invalid_policy, "team_1"))
+        with self.assertRaises(TypeError):
+            _approval_challenge().body["requirements"][0]["approval"] = "each-run"
 
     def test_account_events_are_exact_and_never_project_oauth_material(self) -> None:
         expected = {
@@ -402,20 +392,13 @@ class ChatWebSocketTests(unittest.TestCase):
         }
         self.assertEqual(self.chat_ws.account_challenge_event(_account_challenge(), "team_1"), expected)
 
-        for mutation in (
-            {"access_token": "must-not-cross"},
-            {"authorization_code": "must-not-cross"},
-            {"code_verifier": "must-not-cross"},
-            {"team_id": "other_team"},
-        ):
-            invalid = _account_challenge()
-            invalid.body.update(mutation)
-            with self.subTest(mutation=mutation):
-                self.assertIsNone(self.chat_ws.account_challenge_event(invalid, "team_1"))
-
-        duplicate = _account_challenge()
-        duplicate.body["requirements"] = [*_account_requirements(), *_account_requirements()]
-        self.assertIsNone(self.chat_ws.account_challenge_event(duplicate, "team_1"))
+        cross_team = self.chat_ws.localchat.PublicResponse(
+            200,
+            {**dict(_account_challenge().body), "team_id": "other_team"},
+        )
+        self.assertIsNone(self.chat_ws.account_challenge_event(cross_team, "team_1"))
+        with self.assertRaises(TypeError):
+            _account_challenge().body["access_token"] = "must-not-cross"
 
     def test_chat_pauses_on_account_before_secret_or_approval_submission(self) -> None:
         async def scenario() -> None:
@@ -613,7 +596,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
             uri = f"ws://127.0.0.1:{port}/api/teams/team_1/chat/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
-            response = self.teams.DriverResponse(
+            response = self.chat_ws.localchat.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "hello from the Team"},
             )
@@ -659,12 +642,12 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.teams.DriverResponse(
+                return self.chat_ws.localchat.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
                 )
 
-            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
+            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn) as turn_mock,
                 mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
@@ -712,12 +695,12 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.teams.DriverResponse(
+                return self.chat_ws.localchat.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
                 )
 
-            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
+            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn),
                 mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
@@ -734,8 +717,8 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_pending_secret_challenge_is_cancelled_on_disconnect_and_not_resynced(self) -> None:
         async def scenario() -> None:
-            none_pending = self.teams.DriverResponse(200, {"team_id": "team_1", "status": "none"})
-            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
+            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
+            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_ws.localchat, "turn", return_value=_challenge()),
                 mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
@@ -832,9 +815,11 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_account_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
-            augmented = _account_challenge(status=200)
             sensitive_marker = "must-not-cross"
-            augmented.body["access_token"] = sensitive_marker
+            augmented = self.teams.DriverResponse(
+                200,
+                {**dict(_account_challenge(status=200).body), "access_token": sensitive_marker},
+            )
             with (
                 mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(self.chat_ws.localchat, "pending_accounts", return_value=augmented),
@@ -855,11 +840,11 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_account_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
-            completed = self.teams.DriverResponse(
+            completed = self.chat_ws.localchat.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Published."},
             )
-            none_pending = self.teams.DriverResponse(200, {"team_id": "team_1", "status": "none"})
+            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             with (
                 mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(
@@ -895,8 +880,10 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_account_sync_rejects_a_next_gate_from_another_turn(self) -> None:
         async def scenario() -> None:
-            next_secret = _challenge()
-            next_secret.body["turn_id"] = "c" * 32
+            next_secret = self.chat_ws.localchat.PublicResponse(
+                428,
+                {**dict(_challenge().body), "turn_id": "c" * 32},
+            )
             with (
                 mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(
@@ -919,7 +906,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_explicit_approval_resumes_only_the_exact_pending_challenge(self) -> None:
         async def scenario() -> None:
-            completed = self.teams.DriverResponse(
+            completed = self.chat_ws.localchat.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Both posts were published."},
             )
@@ -974,7 +961,7 @@ class ChatWebSocketTests(unittest.TestCase):
             started = threading.Event()
             release = threading.Event()
             submitted_value = "test-private-must-never-cross-the-websocket"
-            completed = self.teams.DriverResponse(
+            completed = self.chat_ws.localchat.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Lisbon is sunny."},
             )
@@ -1043,8 +1030,8 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_stop_cancels_a_pending_secret_challenge_through_localchat(self) -> None:
         async def scenario() -> None:
-            stopped = self.teams.DriverResponse(200, {"team_id": "team_1", "stopped": True})
-            completed = self.teams.DriverResponse(
+            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            completed = self.chat_ws.localchat.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Fresh turn."},
             )
@@ -1096,7 +1083,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
         async def scenario() -> None:
             concrete_error = await response_for(
-                self.teams.DriverResponse(
+                self.chat_ws.localchat.PublicResponse(
                     409,
                     {"code": "team-has-no-active-assistants"},
                 )
@@ -1121,11 +1108,13 @@ class ChatWebSocketTests(unittest.TestCase):
             )
             self.assertEqual(
                 upstream_error,
-                {"type": "error", "status": 502, "detail": "local chat request failed"},
+                {"type": "error", "status": 502, "detail": "local chat returned an invalid response"},
             )
             self.assertNotIn(sensitive_marker, json.dumps(upstream_error))
 
-            unknown_code = await response_for(self.teams.DriverResponse(409, {"code": "private-controller-diagnostic"}))
+            unknown_code = await response_for(
+                self.chat_ws.localchat.PublicResponse(409, {"code": "private-controller-diagnostic"})
+            )
             self.assertEqual(
                 unknown_code,
                 {"type": "error", "status": 409, "detail": "chat turn could not start"},

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from dataclasses import dataclass
 from http import HTTPStatus
 
 import modelproviders
@@ -47,10 +48,120 @@ MAX_APPROVAL_INPUT_TOTAL_BYTES = 128 * 1024
 MAX_APPROVAL_JSON_DEPTH = 16
 MAX_APPROVAL_JSON_NODES = 1024
 MAX_REMEMBERED_APPROVALS = 8192
+_CHAT_ERROR_DETAILS = {
+    "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
+    "assistant-approval-challenge-expired": "the Assistant approval expired; retry the message",
+    "assistant-approval-state-unavailable": "remembered Assistant approvals are unavailable",
+    "assistant-account-challenge-expired": "the Assistant account expired; retry the message",
+    "assistant-account-contract-invalid": "the Assistant account contract changed; retry the message",
+    "assistant-account-state-unavailable": "Assistant account state is unavailable",
+    "assistant-registry-drift": "an installed Assistant is no longer available",
+    "assistant-unavailable": "the Brain requested an unavailable Assistant",
+    "brain-runtime-failed": "the Brain runtime could not complete the Team turn",
+    "chat-active": "this Team already has an active chat turn",
+    "chat-request-failed": "the local chat request failed",
+    "chat-response-invalid": "the local chat returned an invalid response",
+    "chat-stop-response-invalid": "the local chat stop response was invalid",
+    "chat-stopped": "the chat turn was stopped",
+    "file-not-found": "a selected file was not found",
+    "inference-not-configured": "the Team model provider is not configured",
+    "inference-provider-mismatch": "the configured model provider changed; retry",
+    "inference-response-invalid": "the Team model configuration is invalid",
+    "invalid-files": "the selected files are invalid",
+    "invalid-power-input": "an Assistant Power received invalid input",
+    "model-credential-missing": "the selected model provider needs an API key",
+    "model-credential-store-invalid": "the model credential store is invalid",
+    "ownership-conflict": "the Team resource ownership check failed",
+    "power-approval-required": "an Assistant Power requires approval",
+    "power-state-unavailable": "Team Power execution state is unavailable",
+    "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
+    "secret-challenge-response-invalid": "the Assistant secret challenge was invalid",
+    "secret-inventory-response-invalid": "the Assistant secret inventory was invalid",
+    "approval-challenge-response-invalid": "the Assistant approval challenge was invalid",
+    "approval-inventory-response-invalid": "the remembered Assistant approvals were invalid",
+    "account-challenge-response-invalid": "the Assistant account challenge was invalid",
+    "team-context-changed": "the Team capabilities changed; retry",
+    "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
+}
+_CHAT_ERROR_FALLBACKS = {
+    400: "invalid chat request",
+    409: "chat turn could not start",
+    429: "local chat capacity reached",
+    503: "local chat runtime is unavailable",
+}
+
+
+def _immutable(*_args, **_kwargs):
+    raise TypeError("public chat projections are immutable")
+
+
+class FrozenDict(dict):
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = _immutable
+
+
+class FrozenList(list):
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _immutable
+    append = clear = extend = insert = pop = remove = reverse = sort = _immutable
+
+
+def _freeze(value: object) -> object:
+    if isinstance(value, dict):
+        return FrozenDict((key, _freeze(item)) for key, item in value.items())
+    if isinstance(value, list):
+        return FrozenList(_freeze(item) for item in value)
+    return value
+
+
+@dataclass(frozen=True, eq=False)
+class PublicResponse(teams.DriverResponse):
+    """A fully projected response whose nested public payload cannot be mutated."""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "body", _freeze(self.body))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, teams.DriverResponse)
+            and self.status == other.status
+            and self.body == other.body
+        )
+
+    def websocket_event(self, team_id: str) -> dict[str, object] | None:
+        body = self.body
+        challenge_status = body.get("status")
+        if challenge_status in {"secrets-required", "approval-required", "accounts-required"}:
+            if body.get("team_id") != team_id:
+                return None
+            event = {"type": challenge_status, **body}
+            event.pop("team_id", None)
+            event.pop("status", None)
+            if challenge_status == "accounts-required":
+                event.pop("turn_id", None)
+            return event
+        if not 200 <= self.status < 300:
+            status = self.status if 400 <= self.status <= 599 else 502
+            code = body.get("code")
+            detail = _CHAT_ERROR_DETAILS.get(code) if isinstance(code, str) else None
+            return {
+                "type": "error",
+                "status": status,
+                "detail": (
+                    f"{code}: {detail}"
+                    if detail is not None
+                    else _CHAT_ERROR_FALLBACKS.get(status, "local chat request failed")
+                ),
+            }
+        if body.get("team_id") != team_id:
+            return None
+        if set(body) == {"team_id", "team_name", "reply"}:
+            return {"type": "done", **body}
+        if set(body) == {"team_id", "assistants"}:
+            return {"type": "secret-inventory", **body}
+        return None
 
 
 def _unavailable() -> teams.DriverResponse:
-    return teams.DriverResponse(
+    return PublicResponse(
         HTTPStatus.SERVICE_UNAVAILABLE,
         {"code": "runtime-unavailable"},
     )
@@ -61,7 +172,7 @@ def _safe_error(response: teams.DriverResponse) -> teams.DriverResponse:
     code = response.body.get("code")
     if not isinstance(code, str) or len(code) > 80 or _ERROR_CODE_RE.fullmatch(code) is None:
         code = "chat-request-failed"
-    return teams.DriverResponse(response.status, {"code": code})
+    return PublicResponse(response.status, {"code": code})
 
 
 def _inference(team_id: str) -> tuple[str, str] | teams.DriverResponse:
@@ -76,9 +187,9 @@ def _inference(team_id: str) -> tuple[str, str] | teams.DriverResponse:
         selected_provider = modelproviders.canonical_provider(provider)
         selected_model = modelproviders.canonical_model(selected_provider, model)
     except modelproviders.ModelProviderError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     if provider != selected_provider:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     return selected_provider, selected_model
 
 
@@ -90,9 +201,9 @@ def _model_credential(team_id: str) -> tuple[str, str] | teams.DriverResponse:
     try:
         api_key = modelproviders.resolve_api_key(provider)
     except modelproviders.ModelProviderError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
     if api_key is None:
-        return teams.DriverResponse(HTTPStatus.CONFLICT, {"code": "model-credential-missing"})
+        return PublicResponse(HTTPStatus.CONFLICT, {"code": "model-credential-missing"})
     return provider, api_key
 
 
@@ -102,7 +213,7 @@ def _clean_public_text(value: object, maximum: int) -> str:
         or not value
         or value != value.strip()
         or len(value) > maximum
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or not value.isprintable()
     ):
         raise ValueError("invalid public text")
     return value
@@ -181,8 +292,8 @@ def _project_challenge(response: teams.DriverResponse, team_id: str) -> teams.Dr
                 }
             )
     except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
-    return teams.DriverResponse(
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
+    return PublicResponse(
         response.status,
         {
             "team_id": team_id,
@@ -291,8 +402,8 @@ def _project_approval_challenge(response: teams.DriverResponse, team_id: str) ->
                 }
             )
     except KeyError, TypeError, ValueError, UnicodeError, teams.TeamRequestError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
-    return teams.DriverResponse(
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
+    return PublicResponse(
         response.status,
         {
             "team_id": team_id,
@@ -395,8 +506,8 @@ def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> 
                 }
             )
     except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
-    return teams.DriverResponse(
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
+    return PublicResponse(
         response.status,
         {
             "team_id": team_id,
@@ -417,7 +528,7 @@ def _project_pending_challenge(response: teams.DriverResponse, team_id: str) -> 
         return _project_challenge(response, team_id)
     if status == "approval-required":
         return _project_approval_challenge(response, team_id)
-    return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
+    return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
 def _project_inventory(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
@@ -484,8 +595,8 @@ def _project_inventory(response: teams.DriverResponse, team_id: str) -> teams.Dr
                 }
             )
     except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-inventory-response-invalid"})
-    return teams.DriverResponse(response.status, {"team_id": team_id, "assistants": assistants})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-inventory-response-invalid"})
+    return PublicResponse(response.status, {"team_id": team_id, "assistants": assistants})
 
 
 def _project_turn(
@@ -506,8 +617,8 @@ def _project_turn(
         or not 0 < len(reply) <= MAX_REPLY_CHARS
         or any(value and (value in team_name or value in reply) for value in forbidden_values)
     ):
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    return teams.DriverResponse(
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    return PublicResponse(
         response.status,
         {"team_id": team_id, "team_name": team_name, "reply": reply},
     )
@@ -563,8 +674,8 @@ def pending_secrets(team_id: object) -> teams.DriverResponse:
             and response.body.get("status") == "none"
             and _valid_trace_id(response.body.get("trace_id"))
         ):
-            return teams.DriverResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
+            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
     return _project_challenge(response, canonical_id)
 
 
@@ -581,8 +692,8 @@ def pending_accounts(team_id: object) -> teams.DriverResponse:
             and response.body.get("status") == "none"
             and _valid_trace_id(response.body.get("trace_id"))
         ):
-            return teams.DriverResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
+            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
     return _project_account_challenge(response, canonical_id)
 
 
@@ -633,8 +744,8 @@ def pending_approval(team_id: object) -> teams.DriverResponse:
             and response.body.get("status") == "none"
             and _valid_trace_id(response.body.get("trace_id"))
         ):
-            return teams.DriverResponse(response.status, {"team_id": canonical_id, "status": "none"})
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
+            return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
     return _project_approval_challenge(response, canonical_id)
 
 
@@ -681,8 +792,8 @@ def approval_inventory(team_id: object) -> teams.DriverResponse:
             seen.add(identity)
             grants.append(item)
     except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
-    return teams.DriverResponse(response.status, {"team_id": canonical_id, "grants": grants})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
+    return PublicResponse(response.status, {"team_id": canonical_id, "grants": grants})
 
 
 def revoke_approvals(team_id: object) -> teams.DriverResponse:
@@ -700,8 +811,8 @@ def revoke_approvals(team_id: object) -> teams.DriverResponse:
         or not 0 <= revoked <= MAX_REMEMBERED_APPROVALS
         or not _valid_trace_id(response.body.get("trace_id"))
     ):
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
-    return teams.DriverResponse(response.status, {"team_id": canonical_id, "revoked": revoked})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
+    return PublicResponse(response.status, {"team_id": canonical_id, "revoked": revoked})
 
 
 def _valid_team_name(value: object) -> bool:
@@ -737,7 +848,7 @@ def stop(team_id: object) -> teams.DriverResponse:
         or requested != accepted
         or ((confirmed or forced_restart) and not accepted)
     ):
-        return teams.DriverResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
     # ``accepted`` means the active turn token was cancelled and any late provider reply will be
     # discarded. ``confirmed`` describes only a Power subprocess, not the whole turn.
-    return teams.DriverResponse(response.status, {"team_id": canonical_id, "stopped": accepted})
+    return PublicResponse(response.status, {"team_id": canonical_id, "stopped": accepted})
