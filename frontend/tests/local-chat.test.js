@@ -524,7 +524,7 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body, '{}');
 
-  const handoffUrl = `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}`;
+  const handoffUrl = `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}`;
   assert.deepEqual(
     await authorizeAssistantAccount(
       async () => response(200, { authorization_url: handoffUrl }),
@@ -550,14 +550,14 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     { authorization_url: 'https://dash.cloudflare.com/settings' },
     { authorization_url: 'https://user@dash.cloudflare.com/oauth2/auth' },
     { authorization_url: 'https://dash.cloudflare.com/oauth2/auth#token=value' },
-    { authorization_url: `http://localhost:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://localhost:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `http://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `https://local.shimpz.com:444/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `https://local.shimpz.com.evil.test/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
-    { authorization_url: `http://user@127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}#token=value` },
+    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
+    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
+    { authorization_url: `http://user@127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}#token=value` },
     { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
@@ -581,6 +581,36 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     disconnectAssistantAccount(async () => response(200, {}), 'team_1', 'social-publisher', 'x-account'),
     /disaccount response is invalid/,
   );
+});
+
+test('trusts a loopback OAuth handoff only on the Admin browser port', async () => {
+  const previousLocation = globalThis.location;
+  globalThis.location = { port: '49123' };
+  try {
+    const handoff = 'a'.repeat(64);
+    const authorizationUrl = `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`;
+    assert.deepEqual(
+      await authorizeAssistantAccount(
+        async () => response(200, { authorization_url: authorizationUrl }),
+        'team_1',
+        CHALLENGE_ID,
+      ),
+      { authorization_url: authorizationUrl },
+    );
+    await assert.rejects(
+      authorizeAssistantAccount(
+        async () => response(200, {
+          authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${handoff}`,
+        }),
+        'team_1',
+        CHALLENGE_ID,
+      ),
+      /authorization response is invalid/,
+    );
+  } finally {
+    if (previousLocation === undefined) delete globalThis.location;
+    else globalThis.location = previousLocation;
+  }
 });
 
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {

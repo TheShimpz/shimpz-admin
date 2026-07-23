@@ -543,8 +543,9 @@ function trustedAuthorizationUrl(value) {
     !url.port &&
     url.pathname === '/oauth2/auth'
   );
+  const browserPort = globalThis.location?.port || '4600';
   const namedHandoffOrigin = (
-    (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === '7777') ||
+    (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === browserPort) ||
     (url.protocol === 'https:' && url.hostname === 'local.shimpz.com' && !url.port)
   );
   const localHandoff = (

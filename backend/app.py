@@ -46,8 +46,21 @@ OAUTH_COOKIE = "shimpz_oauth_binding"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
+
+
+def _configured_loopback_port() -> int:
+    value = os.environ.get("SHIMPZ_ADMIN_LOOPBACK_PORT", "4600").strip()
+    if not value.isascii() or not value.isdecimal():
+        raise RuntimeError("invalid Admin loopback port")
+    port = int(value)
+    if not 1 <= port <= 65535:
+        raise RuntimeError("invalid Admin loopback port")
+    return port
+
+
+OAUTH_LOOPBACK_PORT = _configured_loopback_port()
 OAUTH_ORIGINS = {
-    "loopback": "http://127.0.0.1:7777",
+    "loopback": f"http://127.0.0.1:{OAUTH_LOOPBACK_PORT}",
     "hosted": "https://local.shimpz.com",
 }
 MIN_PASSWORD_LEN = 12
@@ -90,7 +103,11 @@ def _oauth_origin() -> str:
 def _is_oauth_origin(request: Request) -> bool:
     origin = _oauth_origin()
     if origin == OAUTH_ORIGINS["loopback"]:
-        return request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == 7777
+        return (
+            request.url.scheme == "http"
+            and request.url.hostname == "127.0.0.1"
+            and request.url.port == OAUTH_LOOPBACK_PORT
+        )
     return _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None
 
 

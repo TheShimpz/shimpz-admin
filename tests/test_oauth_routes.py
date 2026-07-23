@@ -70,6 +70,7 @@ class OAuthRoutesTest(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
+                "SHIMPZ_ADMIN_LOOPBACK_PORT": "4600",
             },
         ):
             sys.modules.pop("app", None)
@@ -80,6 +81,17 @@ class OAuthRoutesTest(unittest.TestCase):
             ttl_seconds=30,
         )
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
+
+    def test_loopback_port_is_configurable_and_rejects_invalid_values(self) -> None:
+        with mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_LOOPBACK_PORT": "49123"}):
+            self.assertEqual(self.admin_app._configured_loopback_port(), 49123)
+        for value in ("", "0", "65536", "+4600", "4600/tcp"):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_LOOPBACK_PORT": value}),
+                self.assertRaisesRegex(RuntimeError, "invalid Admin loopback port"),
+            ):
+                self.admin_app._configured_loopback_port()
 
     @staticmethod
     def _cloudflare_authorization_url(callback: str = "loopback") -> str:
@@ -95,7 +107,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:7777/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            "http://localhost:4600/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
@@ -108,7 +120,7 @@ class OAuthRoutesTest(unittest.TestCase):
         parsed = urlsplit(body["authorization_url"])
         self.assertEqual(
             (parsed.scheme, parsed.hostname, parsed.port, parsed.path, parsed.fragment),
-            ("http", "127.0.0.1", 7777, "/api/oauth/cloudflare/start", ""),
+            ("http", "127.0.0.1", 4600, "/api/oauth/cloudflare/start", ""),
         )
         query = parse_qs(parsed.query, strict_parsing=True)
         self.assertEqual(set(query), {"handoff"})
@@ -121,7 +133,7 @@ class OAuthRoutesTest(unittest.TestCase):
             challenge_id="a" * 32,
             admin_session=self.session,
         )
-        request = _request("GET", f"http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff={handoff}")
+        request = _request("GET", f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={handoff}")
         result = self.admin_app.teams.DriverResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
@@ -225,7 +237,7 @@ class OAuthRoutesTest(unittest.TestCase):
         claim = "a" * 64
         request = _request(
             "GET",
-            f"http://127.0.0.1:7777/api/oauth/cloudflare/callback?state={state}&claim={claim}",
+            f"http://127.0.0.1:4600/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
         result = self.admin_app.teams.DriverResponse(
@@ -257,7 +269,7 @@ class OAuthRoutesTest(unittest.TestCase):
         requests = (
             _request(
                 "GET",
-                "http://127.0.0.1:7777/api/oauth/cloudflare/callback?state="
+                "http://127.0.0.1:4600/api/oauth/cloudflare/callback?state="
                 + "a" * 43
                 + "&state="
                 + "b" * 43
@@ -267,7 +279,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             _request(
                 "GET",
-                "http://127.0.0.1:7777/api/oauth/cloudflare/callback?state="
+                "http://127.0.0.1:4600/api/oauth/cloudflare/callback?state="
                 + "a" * 43
                 + "&claim="
                 + "d" * 64
@@ -276,7 +288,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             _request(
                 "GET",
-                "http://localhost:7777/api/oauth/cloudflare/callback?state=" + "a" * 43 + "&claim=" + "d" * 64,
+                "http://localhost:4600/api/oauth/cloudflare/callback?state=" + "a" * 43 + "&claim=" + "d" * 64,
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )
@@ -315,7 +327,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authorize_body_must_be_exactly_empty(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:7777/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            "http://localhost:4600/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
             body=b'{"client_id":"must-not-cross"}',
             cookie=f"shimpz_admin={self.session}",
         )
