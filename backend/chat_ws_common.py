@@ -46,20 +46,6 @@ class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
         return future
 
 
-class BoundedExecutor(BoundedThreadPoolExecutor):
-    """Compatibility spelling used by the local Admin chat plane."""
-
-    def __init__(self, *, workers: int, outstanding: int, name: str) -> None:
-        super().__init__(
-            max_workers=workers,
-            max_outstanding=outstanding,
-            thread_name_prefix=name,
-        )
-
-    def shutdown(self) -> None:
-        super().shutdown(wait=True, cancel_futures=True)
-
-
 def canonical_origin(value: str | None) -> str | None:
     """Return one exact HTTP(S) Origin, preserving an explicitly supplied port."""
     if not value or value == "null":

@@ -117,7 +117,11 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_worker_queue_rejects_instead_of_growing(self) -> None:
-        executor = self.chat_ws.BoundedExecutor(workers=1, outstanding=1, name="chat-test")
+        executor = self.chat_ws.BoundedThreadPoolExecutor(
+            max_workers=1,
+            max_outstanding=1,
+            thread_name_prefix="chat-test",
+        )
         release = threading.Event()
         future = executor.submit(release.wait)
         try:

@@ -25,14 +25,26 @@ MAX_PUBLIC_ERROR_CHARS = 800
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
 ExecutorSaturatedError = chat_ws_common.ExecutorSaturatedError
-BoundedExecutor = chat_ws_common.BoundedExecutor
+BoundedThreadPoolExecutor = chat_ws_common.BoundedThreadPoolExecutor
 
 
 # Turns and cancellation use separate bounded lanes: a slow provider can never consume the worker
 # needed to revoke it. The local controller remains the authoritative per-Team admission boundary.
-_TURN_EXECUTOR = BoundedExecutor(workers=2, outstanding=2, name="shimpz-chat-turn")
-_STOP_EXECUTOR = BoundedExecutor(workers=2, outstanding=4, name="shimpz-chat-stop")
-_SYNC_EXECUTOR = BoundedExecutor(workers=2, outstanding=4, name="shimpz-chat-sync")
+_TURN_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=2,
+    thread_name_prefix="shimpz-chat-turn",
+)
+_STOP_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=4,
+    thread_name_prefix="shimpz-chat-stop",
+)
+_SYNC_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=4,
+    thread_name_prefix="shimpz-chat-sync",
+)
 
 
 canonical_origin = chat_ws_common.canonical_origin
