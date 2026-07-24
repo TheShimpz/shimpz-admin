@@ -53,10 +53,6 @@ async def receive_bounded_json(websocket: WebSocket) -> dict[str, object]:
     return chat_ws_common.decode_bounded_json_frame(message, MAX_FRAME_BYTES)
 
 
-def _safe_status(value: object, fallback: int = 502) -> int:
-    return chat_ws_common.safe_status(value, fallback)
-
-
 def _error_terminal(status: object, detail: str = "local chat request failed") -> dict[str, object]:
     return chat_ws_common.error_terminal(
         status,
