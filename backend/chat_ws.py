@@ -263,8 +263,22 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 
 
 def _sync_snapshot(team_id: str) -> tuple[object, object, object | None, object | None, object | None, object | None]:
-    inventory = localchat.secret_inventory(team_id)
-    pending_account = localchat.pending_accounts(team_id)
+    (
+        inventory,
+        pending_account,
+        pending_secret,
+        pending_input,
+        pending_approval,
+    ) = _parallel_calls(
+        (
+            localchat.secret_inventory,
+            localchat.pending_accounts,
+            localchat.pending_secrets,
+            localchat.pending_input,
+            localchat.pending_approval,
+        ),
+        team_id,
+    )
     account_challenge = account_challenge_event(pending_account, team_id)
     if account_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
@@ -277,10 +291,21 @@ def _sync_snapshot(team_id: str) -> tuple[object, object, object | None, object 
         inventory,
         pending_account,
         None,
-        localchat.pending_secrets(team_id),
-        localchat.pending_input(team_id),
-        localchat.pending_approval(team_id),
+        pending_secret,
+        pending_input,
+        pending_approval,
     )
+
+
+def _parallel_calls(
+    functions: tuple[Callable[[str], object], ...],
+    team_id: str,
+) -> tuple[object, ...]:
+    if len(functions) < 2:
+        return tuple(function(team_id) for function in functions)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(functions)) as executor:
+        futures = [executor.submit(function, team_id) for function in functions]
+        return tuple(future.result() for future in futures)
 
 
 def _is_empty_pending(response: object, team_id: str) -> bool:

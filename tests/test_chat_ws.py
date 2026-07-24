@@ -594,10 +594,57 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_sync_snapshot_reads_independent_driver_state_in_parallel(self) -> None:
+        barrier = threading.Barrier(5, timeout=2)
+        none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
+
+        def concurrent_read(response):
+            def read(team_id: str):
+                self.assertEqual(team_id, "team_1")
+                barrier.wait()
+                return response
+
+            return read
+
+        with (
+            mock.patch.object(
+                self.chat_ws.localchat,
+                "secret_inventory",
+                side_effect=concurrent_read(_inventory()),
+            ),
+            mock.patch.object(
+                self.chat_ws.localchat,
+                "pending_accounts",
+                side_effect=concurrent_read(none_pending),
+            ),
+            mock.patch.object(
+                self.chat_ws.localchat,
+                "pending_secrets",
+                side_effect=concurrent_read(none_pending),
+            ),
+            mock.patch.object(
+                self.chat_ws.localchat,
+                "pending_input",
+                side_effect=concurrent_read(none_pending),
+            ),
+            mock.patch.object(
+                self.chat_ws.localchat,
+                "pending_approval",
+                side_effect=concurrent_read(none_pending),
+            ),
+        ):
+            snapshot = self.chat_ws._sync_snapshot("team_1")
+
+        self.assertEqual(
+            snapshot,
+            (_inventory(), none_pending, None, none_pending, none_pending, none_pending),
+        )
+
     def test_account_sync_resumes_exact_challenge_before_secret_or_approval(self) -> None:
         async def scenario() -> None:
             pending_account = _account_challenge(status=200)
             next_secret = _challenge()
+            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             with (
                 mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(
@@ -610,8 +657,21 @@ class ChatWebSocketTests(unittest.TestCase):
                     "resume_accounts",
                     return_value=next_secret,
                 ) as resume,
-                mock.patch.object(self.chat_ws.localchat, "pending_secrets") as pending_secret,
-                mock.patch.object(self.chat_ws.localchat, "pending_approval") as pending_approval,
+                mock.patch.object(
+                    self.chat_ws.localchat,
+                    "pending_secrets",
+                    return_value=none_pending,
+                ) as pending_secret,
+                mock.patch.object(
+                    self.chat_ws.localchat,
+                    "pending_input",
+                    return_value=none_pending,
+                ) as pending_input,
+                mock.patch.object(
+                    self.chat_ws.localchat,
+                    "pending_approval",
+                    return_value=none_pending,
+                ) as pending_approval,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -619,8 +679,9 @@ class ChatWebSocketTests(unittest.TestCase):
                 self.assertEqual((await websocket.next_json())["type"], "secret-inventory")
                 self.assertEqual((await websocket.next_json())["type"], "secrets-required")
                 resume.assert_called_once_with("team_1", CHALLENGE_ID)
-                pending_secret.assert_not_called()
-                pending_approval.assert_not_called()
+                pending_secret.assert_called_once_with("team_1")
+                pending_input.assert_called_once_with("team_1")
+                pending_approval.assert_called_once_with("team_1")
                 await websocket.disconnect()
 
         asyncio.run(scenario())
@@ -628,6 +689,7 @@ class ChatWebSocketTests(unittest.TestCase):
     def test_account_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
+            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             augmented = self.teams.DriverResponse(
                 200,
                 {**dict(_account_challenge(status=200).body), "access_token": sensitive_marker},
@@ -636,6 +698,9 @@ class ChatWebSocketTests(unittest.TestCase):
                 mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(self.chat_ws.localchat, "pending_accounts", return_value=augmented),
                 mock.patch.object(self.chat_ws.localchat, "resume_accounts") as resume,
+                mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
+                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
+                mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -670,6 +735,7 @@ class ChatWebSocketTests(unittest.TestCase):
                     return_value=completed,
                 ) as resume,
                 mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
+                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
                 mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
@@ -692,6 +758,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def test_account_sync_rejects_a_next_gate_from_another_turn(self) -> None:
         async def scenario() -> None:
+            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             next_secret = self.chat_ws.localchat.PublicResponse(
                 428,
                 {**dict(_challenge().body), "turn_id": "c" * 32},
@@ -704,6 +771,9 @@ class ChatWebSocketTests(unittest.TestCase):
                     return_value=_account_challenge(status=200),
                 ),
                 mock.patch.object(self.chat_ws.localchat, "resume_accounts", return_value=next_secret),
+                mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
+                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
+                mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
