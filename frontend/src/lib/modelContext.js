@@ -2,8 +2,7 @@ import { get, writable } from 'svelte/store';
 
 import { LocalApiError } from './localApi.js';
 import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
-
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
+import { publicError, TEAM_ID_RE } from './validate.js';
 
 function emptyContext() {
   return {
@@ -44,11 +43,6 @@ function requireRequest(fetcher, teamId) {
   }
 }
 
-function publicError(error, fallback = 'The Team model settings are unavailable.') {
-  if (error instanceof LocalApiError && error.message && error.message.length <= 300) return error;
-  return new LocalApiError(fallback);
-}
-
 function providerFrom(state, providerId = state.provider) {
   return state.providers.find((entry) => entry.id === providerId) ?? null;
 }
@@ -58,7 +52,7 @@ function selectedModel(provider, modelId) {
 }
 
 function fail(attempt, error, state) {
-  const safe = publicError(error);
+  const safe = publicError(error, 'The Team model settings are unavailable.');
   if (attempt === generation) {
     modelContext.set({ ...state, phase: 'error', ready: false, error: safe.message });
   }

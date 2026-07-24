@@ -19,6 +19,7 @@
   import { installAssistant, safeApiError } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { jsonObject } from '$lib/validate.js';
 
   const FRAME_READY_TIMEOUT_MS = 8000;
 
@@ -214,11 +215,6 @@
       publishStoreSnapshot('loading', []);
     }
   });
-
-  async function jsonObject(response) {
-    const body = await response.json().catch(() => ({}));
-    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-  }
 
   function publishStoreSnapshot(
     status = storeSnapshotStatus,

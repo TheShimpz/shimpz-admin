@@ -12,10 +12,9 @@
   } from '$lib/modelContext.js';
   import { ASSISTANT_RUNTIME_UPDATED_EVENT } from '$lib/notifications.js';
   import { loadTeamContext, refreshTeamInventory, selectTeam, teamContext } from '$lib/teamContext.js';
+  import { TEAM_ID_RE } from '$lib/validate.js';
 
   let { active = '' } = $props();
-
-  const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 
   let runtimeRefresh = null;
   let requestedTeamId = $derived.by(() => {

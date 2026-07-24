@@ -1,3 +1,5 @@
+import { ASSISTANT_ID_RE, exactKeys } from './validate.js';
+
 export const STORE_ORIGIN = 'https://shimpz.com';
 export const INSTALL_INTENT = Object.freeze({
   type: 'shimpz:assistant-install',
@@ -23,7 +25,6 @@ const INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
 const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
 const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
-const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const STORE_LOCALES = new Set(['en', 'pt']);
 export const RELEASED_STORE_ASSISTANT_IDS = Object.freeze(['shimpz-cloudflare']);
 const RELEASED_STORE_ASSISTANTS = new Set(RELEASED_STORE_ASSISTANT_IDS);
@@ -33,14 +34,6 @@ const STORE_ACTIONS = new Set(['install', 'uninstall']);
 export function assistantStoreHref(locale, assistantId) {
   if (!STORE_LOCALES.has(locale) || !ASSISTANT_ID_RE.test(assistantId)) return null;
   return `${STORE_ORIGIN}/${locale}/assistants/${assistantId}`;
-}
-
-function hasExactKeys(value, expected) {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => typeof key !== 'string')) return false;
-  keys.sort();
-  return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
 }
 
 function isTrustedStoreEvent(event, iframeWindow) {
@@ -67,7 +60,7 @@ export function createStoreActionLatch() {
 function acceptsStoreIntent(event, iframeWindow, expectedType) {
   if (!isTrustedStoreEvent(event, iframeWindow)) return false;
   const data = event.data;
-  if (!hasExactKeys(data, INTENT_KEYS)) return false;
+  if (!exactKeys(data, INTENT_KEYS)) return false;
   return (
     data.type === expectedType &&
     data.version === STORE_LIFECYCLE_PROTOCOL_VERSION &&
@@ -122,7 +115,7 @@ export function acknowledgeStoreUninstallIntent(event, iframeWindow) {
 export function storeFrameHeight(event, iframeWindow) {
   if (!isTrustedStoreEvent(event, iframeWindow)) return null;
   const data = event.data;
-  if (!hasExactKeys(data, FRAME_KEYS)) return null;
+  if (!exactKeys(data, FRAME_KEYS)) return null;
   if (
     data.type !== STORE_FRAME_TYPE ||
     data.version !== INSTALL_INTENT.version ||
@@ -185,7 +178,7 @@ export function postStoreAssistantState(iframeWindow, status, installed) {
     status,
     installed: [...installed],
   };
-  if (!hasExactKeys(message, STATE_KEYS)) return false;
+  if (!exactKeys(message, STATE_KEYS)) return false;
   iframeWindow.postMessage(message, STORE_ORIGIN);
   return true;
 }

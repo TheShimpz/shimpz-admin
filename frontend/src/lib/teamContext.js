@@ -2,13 +2,17 @@ import { get, writable } from 'svelte/store';
 
 import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
 import { listTeamFiles } from './localChat.js';
+import {
+  ASSISTANT_ID_RE,
+  canonicalTeamName,
+  exactKeys,
+  jsonObject,
+  publicError,
+  TEAM_ID_RE,
+  TRACE_ID_RE,
+} from './validate.js';
 
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
-const TRACE_ID_RE = /^[0-9a-f]{32}$/;
-const CONTROL_RE = /[\u0000-\u001f\u007f]/;
-const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const MAX_TEAMS = 128;
-const MAX_TEAM_NAME_CHARS = 80;
 const MAX_ADMIN_PASSWORD_CHARS = 4096;
 const MAX_SELECTED_FILES = 8;
 const MAX_STORED_INTENT_BYTES = 16 * 1024;
@@ -75,7 +79,7 @@ function readStoredAssistantIntent(teamId) {
     if (raw.length > MAX_STORED_INTENT_BYTES) throw new Error('oversized preference');
     const parsed = JSON.parse(raw);
     if (
-      !hasExactKeys(parsed, ['disabled', 'version']) ||
+      !exactKeys(parsed, ['disabled', 'version']) ||
       parsed.version !== ASSISTANT_INTENT_VERSION ||
       !Array.isArray(parsed.disabled) ||
       parsed.disabled.length > MAX_INSTALLED_ASSISTANTS ||
@@ -143,12 +147,6 @@ function reconcileAssistantIntent(teamId, installedAssistants) {
   return activeAssistantIds(installedAssistants, intent.disabled);
 }
 
-function hasExactKeys(value, expected) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const actual = Object.keys(value).sort();
-  return actual.length === expected.length && expected.every((key, index) => key === actual[index]);
-}
-
 function hasExactEnvelopeKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value);
@@ -159,16 +157,6 @@ function hasExactEnvelopeKeys(value, expected) {
   return payloadKeys.length === expected.length && expected.every((key, index) => key === payloadKeys[index]);
 }
 
-async function jsonObject(response) {
-  const body = await response.json().catch(() => ({}));
-  return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-}
-
-function publicError(error, fallback) {
-  if (error instanceof LocalApiError && error.message && error.message.length <= 300) return error;
-  return new LocalApiError(fallback);
-}
-
 function requireFetcher(fetcher) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local Team request.');
 }
@@ -177,19 +165,6 @@ function preferredTeamId(value) {
   if (value === '') return '';
   if (typeof value !== 'string' || !TEAM_ID_RE.test(value)) {
     throw new LocalApiError('Invalid local Team request.');
-  }
-  return value;
-}
-
-function canonicalTeamName(value, message = 'The local Team inventory is invalid.') {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value !== value.trim() ||
-    value.length > MAX_TEAM_NAME_CHARS ||
-    CONTROL_RE.test(value)
-  ) {
-    throw new LocalApiError(message);
   }
   return value;
 }
@@ -215,7 +190,7 @@ async function listTeams(fetcher) {
   const seen = new Set();
   return body.teams.map((team) => {
     if (
-      !hasExactKeys(team, ['status', 'team_id', 'team_name']) ||
+      !exactKeys(team, ['status', 'team_id', 'team_name']) ||
       typeof team.team_id !== 'string' ||
       !TEAM_ID_RE.test(team.team_id) ||
       team.status !== 'running' ||

@@ -1,22 +1,11 @@
-const NOTIFICATION_ID = /^[a-f0-9]{32}$/;
-const ASSISTANT_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+import { ASSISTANT_ID_RE, exactKeys, OPAQUE_ID_RE } from './validate.js';
+
 const UTC_RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const MAX_NOTIFICATIONS = 256;
 const MAX_ASSISTANT_ID_LENGTH = 80;
 const MAX_HEADLINE_LENGTH = 160;
 const MAX_CHANGELOG_BYTES = 32 * 1024;
 export const ASSISTANT_RUNTIME_UPDATED_EVENT = 'shimpz:assistant-runtime-updated';
-
-function isRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function hasExactKeys(value, expected) {
-  if (!isRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
-}
 
 function isBoundedText(value, maximum, { multiline = false, allowBoundaryWhitespace = false } = {}) {
   if (typeof value !== 'string' || value.length === 0 || value.length > maximum) return false;
@@ -35,9 +24,9 @@ function isTimestamp(value) {
 
 function parseNotification(value) {
   const keys = ['id', 'assistant_id', 'sequence', 'headline', 'changelog', 'published_at', 'read_at'];
-  if (!hasExactKeys(value, keys)) throw new Error('invalid notification');
-  if (!NOTIFICATION_ID.test(value.id)) throw new Error('invalid notification id');
-  if (value.assistant_id.length > MAX_ASSISTANT_ID_LENGTH || !ASSISTANT_ID.test(value.assistant_id)) {
+  if (!exactKeys(value, keys)) throw new Error('invalid notification');
+  if (!OPAQUE_ID_RE.test(value.id)) throw new Error('invalid notification id');
+  if (value.assistant_id.length > MAX_ASSISTANT_ID_LENGTH || !ASSISTANT_ID_RE.test(value.assistant_id)) {
     throw new Error('invalid notification assistant');
   }
   if (!Number.isSafeInteger(value.sequence) || value.sequence < 1) throw new Error('invalid notification sequence');
@@ -56,7 +45,7 @@ function parseNotification(value) {
 
 /** Validate the complete local notification snapshot before it reaches UI state. */
 export function parseNotificationEnvelope(value) {
-  if (!hasExactKeys(value, ['notifications', 'unread_count'])) throw new Error('invalid notifications response');
+  if (!exactKeys(value, ['notifications', 'unread_count'])) throw new Error('invalid notifications response');
   if (!Array.isArray(value.notifications) || value.notifications.length > MAX_NOTIFICATIONS) {
     throw new Error('invalid notifications list');
   }
@@ -74,14 +63,14 @@ export function parseNotificationEnvelope(value) {
 }
 
 export function parseNotificationSyncEnvelope(value) {
-  if (!hasExactKeys(value, ['notifications', 'unread_count', 'sync'])) {
+  if (!exactKeys(value, ['notifications', 'unread_count', 'sync'])) {
     throw new Error('invalid notification sync response');
   }
   const envelope = parseNotificationEnvelope({
     notifications: value.notifications,
     unread_count: value.unread_count,
   });
-  if (!hasExactKeys(value.sync, ['status', 'updated_assistants', 'notifications_added', 'failed_updates'])) {
+  if (!exactKeys(value.sync, ['status', 'updated_assistants', 'notifications_added', 'failed_updates'])) {
     throw new Error('invalid notification sync result');
   }
   if (!['ok', 'offline', 'partial'].includes(value.sync.status)) throw new Error('invalid notification sync status');
@@ -125,7 +114,7 @@ export function dispatchAssistantRuntimeUpdated(target = globalThis.window) {
 }
 
 export function readNotification(fetchImpl, notificationId) {
-  if (!NOTIFICATION_ID.test(notificationId)) throw new TypeError('invalid notification id');
+  if (!OPAQUE_ID_RE.test(notificationId)) throw new TypeError('invalid notification id');
   return requestJson(
     fetchImpl,
     `/api/notifications/${notificationId}/read`,

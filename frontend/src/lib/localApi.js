@@ -1,28 +1,22 @@
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
-const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+import {
+  ASSISTANT_ID_RE,
+  CONTROL_RE,
+  jsonObject,
+  LocalApiError,
+  TEAM_ID_RE,
+} from './validate.js';
+
 const ASSISTANT_HELP_LOCALES = new Set(['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']);
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_ASSISTANT_HELP_BYTES = 32 * 1024;
-const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const HELP_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
-export class LocalApiError extends Error {
-  constructor(message, status = 0) {
-    super(message);
-    this.name = 'LocalApiError';
-    this.status = status;
-  }
-}
+export { LocalApiError };
 
 export function safeApiError(body, fallback) {
   const candidate = body?.error ?? body?.detail;
   return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;
-}
-
-async function jsonObject(response) {
-  const body = await response.json().catch(() => ({}));
-  return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
 }
 
 /** Project the controller-owned registry onto display-only Assistant identities. */

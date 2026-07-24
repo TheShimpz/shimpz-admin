@@ -1,7 +1,7 @@
 import { LocalApiError, safeApiError } from './localApi.js';
 import MODEL_CATALOG from './modelCatalog.json' with { type: 'json' };
+import { exactKeys, jsonObject, TEAM_ID_RE } from './validate.js';
 
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 const EXPECTED_CATALOG = Object.freeze(Object.fromEntries(MODEL_CATALOG.providers.map((provider) => [
   provider.id,
   Object.freeze({
@@ -14,15 +14,6 @@ const PROVIDER_IDS = new Set(Object.keys(EXPECTED_CATALOG));
 const MAX_PROVIDERS = PROVIDER_IDS.size;
 const MODEL_FIELDS = ['id', 'input_usd_per_million_cents', 'output_usd_per_million_cents', 'title'];
 const PROVIDER_FIELDS = ['configured', 'default_model', 'id', 'masked', 'models', 'title'];
-
-function exactKeys(value, expected) {
-  return Object.keys(value).sort().join('\0') === [...expected].sort().join('\0');
-}
-
-async function jsonObject(response) {
-  const body = await response.json().catch(() => ({}));
-  return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-}
 
 function validProvider(entry) {
   const expected = EXPECTED_CATALOG[entry?.id];

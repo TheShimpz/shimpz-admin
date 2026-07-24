@@ -1,10 +1,13 @@
 import { LocalApiError, safeApiError } from './localApi.js';
+import {
+  ASSISTANT_ID_RE,
+  CONTROL_RE,
+  exactKeys,
+  jsonObject,
+  OPAQUE_ID_RE,
+  TEAM_ID_RE,
+} from './validate.js';
 
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
-const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const OPAQUE_ID_RE = /^[0-9a-f]{32}$/;
-const FILE_ID_RE = /^[0-9a-f]{32}$/;
-const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /\p{C}/u;
 const MAX_MESSAGE_CHARS = 16_000;
@@ -131,20 +134,10 @@ export function restoreOAuthChatTurns(storage, teamId, now = Date.now()) {
   }
 }
 
-async function jsonObject(response) {
-  const body = await response.json().catch(() => ({}));
-  return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-}
-
 function requireTeam(teamId) {
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local chat request.');
   }
-}
-
-function exactKeys(value, keys) {
-  const actual = Object.keys(value);
-  return actual.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 
 function canonicalTeam(value) {
@@ -567,7 +560,7 @@ export async function listTeamFiles(fetcher, teamId) {
     if (
       !file ||
       typeof file !== 'object' ||
-      !FILE_ID_RE.test(file.id) ||
+      !OPAQUE_ID_RE.test(file.id) ||
       typeof file.name !== 'string' ||
       !file.name ||
       file.name.length > 255 ||
@@ -596,7 +589,7 @@ export function createChatFrame(teamId, turn) {
     message.length > MAX_MESSAGE_CHARS ||
     !Array.isArray(turn.files) ||
     turn.files.length > MAX_FILES ||
-    turn.files.some((fileId) => !FILE_ID_RE.test(fileId)) ||
+    turn.files.some((fileId) => !OPAQUE_ID_RE.test(fileId)) ||
     new Set(turn.files).size !== turn.files.length ||
     !Array.isArray(turn.assistant_ids) ||
     turn.assistant_ids.length > MAX_ASSISTANTS ||
