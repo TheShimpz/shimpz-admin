@@ -9,7 +9,7 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import modelproviders
 
@@ -21,6 +21,7 @@ TOKEN_FILE = os.environ.get("SHIMPZ_TEAMDRIVER_TOKEN_FILE", "/run/shimpz-teamdri
 MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
+FILE_NAME_HEADER = "X-Shimpz-Filename"
 
 
 class TeamRequestError(ValueError):
@@ -139,23 +140,25 @@ def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
     return body
 
 
-def _call(
+def _request(
     method: str,
     path: str,
-    payload: object | None = None,
+    body: bytes | None,
     *,
-    timeout: int = CONTROL_TIMEOUT_SECONDS,
-    max_body_bytes: int = MAX_JSON_BODY_BYTES,
+    content_type: str | None,
+    filename: str | None,
+    timeout: int,
     model_credential: tuple[str, str] | None = None,
 ) -> DriverResponse:
-    body = _encode_payload(payload, max_bytes=max_body_bytes)
     connection = None
     try:
         host, port = _endpoint()
         token = _driver_token()
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-        if body is not None:
-            headers["Content-Type"] = "application/json"
+        if content_type is not None:
+            headers["Content-Type"] = content_type
+        if filename is not None:
+            headers[FILE_NAME_HEADER] = quote(filename, safe="")
         if model_credential is not None:
             provider, api_key = model_credential
             encoded_key = api_key.encode("ascii") if isinstance(api_key, str) and api_key.isascii() else b""
@@ -191,3 +194,45 @@ def _call(
 
     log.info("team-driver %s %s -> HTTP %s", method, path, result.status)
     return result
+
+
+def _call(
+    method: str,
+    path: str,
+    payload: object | None = None,
+    *,
+    timeout: int = CONTROL_TIMEOUT_SECONDS,
+    max_body_bytes: int = MAX_JSON_BODY_BYTES,
+    model_credential: tuple[str, str] | None = None,
+) -> DriverResponse:
+    body = _encode_payload(payload, max_bytes=max_body_bytes)
+    return _request(
+        method,
+        path,
+        body,
+        content_type="application/json" if body is not None else None,
+        filename=None,
+        timeout=timeout,
+        model_credential=model_credential,
+    )
+
+
+def _call_raw(
+    method: str,
+    path: str,
+    body: bytes,
+    *,
+    filename: str,
+    media_type: str,
+    timeout: int = CONTROL_TIMEOUT_SECONDS,
+) -> DriverResponse:
+    if not isinstance(body, bytes) or not isinstance(filename, str) or not isinstance(media_type, str):
+        raise TeamRequestError("raw file request is invalid")
+    return _request(
+        method,
+        path,
+        body,
+        content_type=media_type,
+        filename=filename,
+        timeout=timeout,
+    )

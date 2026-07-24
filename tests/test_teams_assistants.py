@@ -431,14 +431,10 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             (upload_request["method"], upload_request["path"]),
             ("POST", "/v1/teams/team_1/files"),
         )
-        self.assertEqual(
-            json.loads(upload_request["body"]),
-            {
-                "filename": "brief.txt",
-                "media_type": "text/plain",
-                "content_b64": "VGVhbSBwcml2YXRlIGRhdGE=",
-            },
-        )
+        self.assertEqual(upload_request["body"], content)
+        self.assertEqual(upload_request["headers"]["content-type"], "text/plain")
+        self.assertEqual(upload_request["headers"]["x-shimpz-filename"], "brief.txt")
+        self.assertEqual(upload_request["headers"]["content-length"], str(len(content)))
 
         _DriverHandler.response_body = json.dumps(
             {"team_id": "team_1", "files": [{**metadata, "path": "/private/no"}], **usage},
@@ -661,7 +657,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertNotIn(b"test-admin-password", forwarded)
         self.assertNotIn(b"Marketing", forwarded)
 
-    def test_multipart_upload_is_bounded_and_forwarded_as_json_without_a_path(self):
+    def test_multipart_upload_is_bounded_and_forwarded_as_raw_bytes_without_a_path(self):
         content = b"Team private data"
         file_id = "b" * 32
         usage = {
@@ -694,14 +690,10 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(len(_DriverHandler.requests), 1)
         request = _DriverHandler.requests[0]
         self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/team_1/files"))
-        self.assertEqual(
-            json.loads(request["body"]),
-            {
-                "filename": "brief.txt",
-                "media_type": "text/plain",
-                "content_b64": "VGVhbSBwcml2YXRlIGRhdGE=",
-            },
-        )
+        self.assertEqual(request["body"], content)
+        self.assertEqual(request["headers"]["content-type"], "text/plain")
+        self.assertEqual(request["headers"]["x-shimpz-filename"], "brief.txt")
+        self.assertEqual(request["headers"]["content-length"], str(len(content)))
 
     def test_multipart_envelope_over_the_limit_stops_before_driver_call(self):
         document = self._run_asgi_probe("oversized-file")

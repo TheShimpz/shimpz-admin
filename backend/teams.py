@@ -8,7 +8,6 @@ safe 400/404/409 is not flattened into an ambiguous gateway error.
 
 from __future__ import annotations
 
-import base64
 import logging
 import re
 
@@ -26,11 +25,11 @@ MAX_JSON_RESPONSE_BYTES = driver_client.MAX_JSON_RESPONSE_BYTES
 DriverResponse = driver_client.DriverResponse
 TeamRequestError = driver_client.TeamRequestError
 _call = driver_client._call
+_call_raw = driver_client._call_raw
 
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
 MAX_FILE_UPLOAD_BYTES = team_driver_contract.MAX_FILE_UPLOAD_BYTES
-MAX_FILE_JSON_BODY_BYTES = 4 * ((MAX_FILE_UPLOAD_BYTES + 2) // 3) + 8192
 
 ASSISTANT_HELP_LOCALES = frozenset({"en", "pt", "es", "zh", "fr", "de", "ja", "ar"})
 _FILE_ID_RE = team_driver_contract.FILE_ID_RE
@@ -464,12 +463,13 @@ def upload_file(team_id: object, filename: object, media_type: object, content: 
         raise TeamRequestError("file must contain bytes")
     if len(content) > MAX_FILE_UPLOAD_BYTES:
         raise TeamRequestError(f"file exceeds {MAX_FILE_UPLOAD_BYTES} bytes")
-    payload = {
-        "filename": safe_filename,
-        "media_type": safe_media_type,
-        "content_b64": base64.b64encode(content).decode("ascii"),
-    }
-    response = _call("POST", _files_path(canonical_id), payload, max_body_bytes=MAX_FILE_JSON_BODY_BYTES)
+    response = _call_raw(
+        "POST",
+        _files_path(canonical_id),
+        content,
+        filename=safe_filename,
+        media_type=safe_media_type,
+    )
     return _project_storage_response(response, team_id=canonical_id, kind="upload")
 
 
