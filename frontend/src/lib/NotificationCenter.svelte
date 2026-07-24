@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
-  import { locale } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import {
     clearNotifications,
     dispatchAssistantRuntimeUpdated,
@@ -11,56 +11,6 @@
     syncNotifications,
   } from '$lib/notifications.js';
 
-  const COPY = {
-    en: {
-      label: 'Notifications', open: 'Open notifications. {count} unread.', close: 'Close notifications',
-      kicker: 'Space // updates', empty: 'You are all caught up.', unavailable: 'Saved notifications are temporarily unavailable.',
-      unread: 'Unread', read: 'Read', markAll: 'Mark all as read', clear: 'Clear notifications', back: 'Back to notifications',
-      assistant: 'Assistant', published: 'Published {date}',
-    },
-    pt: {
-      label: 'Notificações', open: 'Abrir notificações. {count} não lidas.', close: 'Fechar notificações',
-      kicker: 'Space // atualizações', empty: 'Você está em dia.', unavailable: 'As notificações salvas estão temporariamente indisponíveis.',
-      unread: 'Não lida', read: 'Lida', markAll: 'Marcar todas como lidas', clear: 'Limpar notificações', back: 'Voltar às notificações',
-      assistant: 'Assistant', published: 'Publicada em {date}',
-    },
-    es: {
-      label: 'Notificaciones', open: 'Abrir notificaciones. {count} sin leer.', close: 'Cerrar notificaciones',
-      kicker: 'Space // actualizaciones', empty: 'Estás al día.', unavailable: 'Las notificaciones guardadas no están disponibles temporalmente.',
-      unread: 'Sin leer', read: 'Leída', markAll: 'Marcar todas como leídas', clear: 'Borrar notificaciones', back: 'Volver a notificaciones',
-      assistant: 'Assistant', published: 'Publicada el {date}',
-    },
-    zh: {
-      label: '通知', open: '打开通知。{count} 条未读。', close: '关闭通知',
-      kicker: 'Space // 更新', empty: '你已查看全部更新。', unavailable: '已保存的通知暂时不可用。',
-      unread: '未读', read: '已读', markAll: '全部标为已读', clear: '清空通知', back: '返回通知列表',
-      assistant: 'Assistant', published: '发布于 {date}',
-    },
-    fr: {
-      label: 'Notifications', open: 'Ouvrir les notifications. {count} non lues.', close: 'Fermer les notifications',
-      kicker: 'Space // mises à jour', empty: 'Vous êtes à jour.', unavailable: 'Les notifications enregistrées sont temporairement indisponibles.',
-      unread: 'Non lue', read: 'Lue', markAll: 'Tout marquer comme lu', clear: 'Effacer les notifications', back: 'Retour aux notifications',
-      assistant: 'Assistant', published: 'Publiée le {date}',
-    },
-    de: {
-      label: 'Benachrichtigungen', open: 'Benachrichtigungen öffnen. {count} ungelesen.', close: 'Benachrichtigungen schließen',
-      kicker: 'Space // Updates', empty: 'Alles ist auf dem neuesten Stand.', unavailable: 'Gespeicherte Benachrichtigungen sind vorübergehend nicht verfügbar.',
-      unread: 'Ungelesen', read: 'Gelesen', markAll: 'Alle als gelesen markieren', clear: 'Benachrichtigungen löschen', back: 'Zurück zu Benachrichtigungen',
-      assistant: 'Assistant', published: 'Veröffentlicht am {date}',
-    },
-    ja: {
-      label: '通知', open: '通知を開く。未読 {count} 件。', close: '通知を閉じる',
-      kicker: 'Space // 更新', empty: 'すべて確認済みです。', unavailable: '保存済みの通知は一時的に利用できません。',
-      unread: '未読', read: '既読', markAll: 'すべて既読にする', clear: '通知を消去', back: '通知一覧に戻る',
-      assistant: 'Assistant', published: '{date} に公開',
-    },
-    ar: {
-      label: 'الإشعارات', open: 'فتح الإشعارات. {count} غير مقروءة.', close: 'إغلاق الإشعارات',
-      kicker: 'Space // التحديثات', empty: 'اطّلعت على جميع التحديثات.', unavailable: 'الإشعارات المحفوظة غير متاحة مؤقتًا.',
-      unread: 'غير مقروء', read: 'مقروء', markAll: 'تعليم الكل كمقروء', clear: 'مسح الإشعارات', back: 'العودة إلى الإشعارات',
-      assistant: 'Assistant', published: 'نُشر في {date}',
-    },
-  };
 
   let dialog;
   let trigger;
@@ -73,9 +23,9 @@
   let unavailable = $state(false);
   let actionBusy = $state(false);
 
-  let copy = $derived(COPY[$locale] ?? COPY.en);
+  let copy = $derived($t('notifications'));
   let selected = $derived(notifications.find((notification) => notification.id === selectedId));
-  let openLabel = $derived(copy.open.replace('{count}', String(unreadCount)));
+  let openLabel = $derived($t('notifications.open', { count: unreadCount }));
 
   function applySnapshot(snapshot) {
     notifications = [...snapshot.notifications];
@@ -222,7 +172,7 @@
         <p class="assistant-id">{copy.assistant} // {selected.assistant_id}</p>
         <h3>{selected.headline}</h3>
         <time datetime={selected.published_at}>
-          {copy.published.replace('{date}', formatDate(selected.published_at))}
+          {$t('notifications.published', { date: formatDate(selected.published_at) })}
         </time>
         <div class="changelog"><HelpMarkdown markdown={selected.changelog} /></div>
       </article>

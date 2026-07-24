@@ -30,6 +30,12 @@ const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 
 export const CHAT_WS_PROTOCOL = 'shimpz.chat.v3';
 
+export function assistantAccountProviderLabel(provider) {
+  if (typeof provider !== 'string' || !ASSISTANT_ID_RE.test(provider)) return '';
+  if (provider === 'x') return 'X';
+  return provider.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
+}
+
 function oauthChatTurn(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (

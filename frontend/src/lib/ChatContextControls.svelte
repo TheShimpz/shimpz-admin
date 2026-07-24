@@ -3,7 +3,7 @@
   import { page } from '$app/state';
 
   import AssistantIcon from '$lib/AssistantIcon.svelte';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
   import { LocalApiError } from '$lib/localApi.js';
   import { modelContext, selectTeamBrain } from '$lib/modelContext.js';
   import {
@@ -18,72 +18,6 @@
 
   let { disabled = false } = $props();
 
-  const COPY = {
-    en: {
-      contextAria: 'Chat context',
-      team: 'Team', noTeam: 'Create Team', teamTitle: 'Choose a Team', teamLead: 'Change the private workspace for this conversation.',
-      teamKicker: 'Team // context', addTeam: 'Add Team', createKicker: 'Team // initialize', createTitle: 'Create a Team', createLead: 'Give this isolated local workspace a clear name.',
-      teamName: 'Team name', teamPlaceholder: 'Marketing', create: 'Create Team', creating: 'Creating…', createFailed: 'The Team could not be created.',
-      deleteTeam: 'Delete', deleteTeamNamed: 'Delete {name}', deleteKicker: 'Team // delete', deleteTitle: 'Delete Team', deleteLead: 'This permanently deletes {name} and its local data. Type the exact Team name and enter your current Admin password.', deleteName: 'Confirm Team name', deleteNamePlaceholder: 'Type {name}', adminPassword: 'Admin password', passwordPlaceholder: 'Enter your current password', deleteAction: 'Delete Team', deleting: 'Deleting…', deleteFailed: 'The Team could not be deleted.', wrongPassword: 'The Admin password is incorrect.', technicalDetail: 'Technical detail',
-      brain: 'Brain', brainKicker: 'Brain // context', brainTitle: 'Choose a Brain', brainLead: 'Select the model that coordinates this Team.', modelLoading: 'Loading model settings…', modelFailed: 'Brain settings could not be updated.',
-      assistants: 'Assistants', assistantTitle: 'Choose Assistants', assistantLead: 'Only selected Assistants can lend Powers to the next turns.',
-      assistantKicker: 'Assistants // context', assistantEmpty: 'No running Assistants are available in this Team.', selectAll: 'Select all', selectMaximum: 'Select first {limit}', unselectAll: 'Unselect all',
-      selectionLimit: 'This chat can use up to {limit} Assistants at once.', selected: '{selected} of {total}', selectedLimited: '{selected} of {total} · max {limit}', current: 'Current', openStore: 'Open Assistant Store', close: 'Close', cancel: 'Cancel',
-    },
-    pt: {
-      contextAria: 'Contexto do chat',
-      team: 'Time', noTeam: 'Criar Time', teamTitle: 'Escolha um Time', teamLead: 'Troque o ambiente privado desta conversa.',
-      teamKicker: 'Time // contexto', addTeam: 'Adicionar Time', createKicker: 'Time // inicializar', createTitle: 'Criar um Time', createLead: 'Dê um nome claro para este ambiente local isolado.',
-      teamName: 'Nome do Time', teamPlaceholder: 'Marketing', create: 'Criar Time', creating: 'Criando…', createFailed: 'Não foi possível criar o Time.',
-      deleteTeam: 'Excluir', deleteTeamNamed: 'Excluir {name}', deleteKicker: 'Time // excluir', deleteTitle: 'Excluir Time', deleteLead: 'Isso exclui permanentemente {name} e seus dados locais. Digite o nome exato do Time e informe a senha atual do Admin.', deleteName: 'Confirme o nome do Time', deleteNamePlaceholder: 'Digite {name}', adminPassword: 'Senha do Admin', passwordPlaceholder: 'Digite sua senha atual', deleteAction: 'Excluir Time', deleting: 'Excluindo…', deleteFailed: 'Não foi possível excluir o Time.', wrongPassword: 'A senha do Admin está incorreta.', technicalDetail: 'Detalhe técnico',
-      brain: 'Brain', brainKicker: 'Brain // contexto', brainTitle: 'Escolha um Brain', brainLead: 'Selecione o modelo que coordena este Time.', modelLoading: 'Carregando modelos…', modelFailed: 'Não foi possível atualizar o Brain.',
-      assistants: 'Assistants', assistantTitle: 'Escolha os Assistants', assistantLead: 'Somente os Assistants selecionados podem fornecer Powers nos próximos turnos.',
-      assistantKicker: 'Assistants // contexto', assistantEmpty: 'Nenhum Assistant em execução está disponível neste Time.', selectAll: 'Selecionar todos', selectMaximum: 'Selecionar os primeiros {limit}', unselectAll: 'Desmarcar todos',
-      selectionLimit: 'Este chat pode usar até {limit} Assistants por vez.', selected: '{selected} de {total}', selectedLimited: '{selected} de {total} · máximo {limit}', current: 'Atual', openStore: 'Abrir Store de Assistants', close: 'Fechar', cancel: 'Cancelar',
-    },
-    es: {
-      contextAria: 'Contexto del chat', team: 'Equipo', noTeam: 'Crear Equipo', teamKicker: 'Equipo // contexto', teamTitle: 'Elige un Equipo', teamLead: 'Cambia el espacio privado de esta conversación.',
-      addTeam: 'Añadir Equipo', createKicker: 'Equipo // iniciar', createTitle: 'Crear un Equipo', createLead: 'Ponle un nombre claro a este espacio local aislado.', teamName: 'Nombre del Equipo', teamPlaceholder: 'Marketing', create: 'Crear Equipo', creating: 'Creando…', createFailed: 'No se pudo crear el Equipo.',
-      deleteTeam: 'Eliminar', deleteTeamNamed: 'Eliminar {name}', deleteKicker: 'Equipo // eliminar', deleteTitle: 'Eliminar Equipo', deleteLead: 'Esto elimina permanentemente {name} y sus datos locales. Escribe el nombre exacto del Equipo e introduce la contraseña actual del Admin.', deleteName: 'Confirma el nombre del Equipo', deleteNamePlaceholder: 'Escribe {name}', adminPassword: 'Contraseña del Admin', passwordPlaceholder: 'Introduce tu contraseña actual', deleteAction: 'Eliminar Equipo', deleting: 'Eliminando…', deleteFailed: 'No se pudo eliminar el Equipo.', wrongPassword: 'La contraseña del Admin es incorrecta.', technicalDetail: 'Detalle técnico',
-      brain: 'Brain', brainKicker: 'Brain // contexto', brainTitle: 'Elige un Brain', brainLead: 'Selecciona el modelo que coordina este Equipo.', modelLoading: 'Cargando modelos…', modelFailed: 'No se pudo actualizar el Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // contexto', assistantTitle: 'Elige Assistants', assistantLead: 'Solo los Assistants seleccionados pueden aportar Powers en los próximos turnos.', assistantEmpty: 'No hay Assistants en ejecución en este Equipo.', selectAll: 'Seleccionar todos', selectMaximum: 'Seleccionar los primeros {limit}', unselectAll: 'Deseleccionar todos', selectionLimit: 'Este chat puede usar hasta {limit} Assistants a la vez.', selected: '{selected} de {total}', selectedLimited: '{selected} de {total} · máximo {limit}', current: 'Actual', openStore: 'Abrir Store de Assistants', close: 'Cerrar', cancel: 'Cancelar',
-    },
-    zh: {
-      contextAria: '聊天上下文', team: '团队', noTeam: '创建团队', teamKicker: '团队 // 上下文', teamTitle: '选择团队', teamLead: '切换此对话的私有工作区。',
-      addTeam: '添加团队', createKicker: '团队 // 初始化', createTitle: '创建团队', createLead: '为这个隔离的本地工作区起一个清晰的名称。', teamName: '团队名称', teamPlaceholder: '营销', create: '创建团队', creating: '正在创建…', createFailed: '无法创建团队。',
-      deleteTeam: '删除', deleteTeamNamed: '删除 {name}', deleteKicker: '团队 // 删除', deleteTitle: '删除团队', deleteLead: '这会永久删除 {name} 及其本地数据。请输入完全一致的团队名称和当前管理员密码。', deleteName: '确认团队名称', deleteNamePlaceholder: '输入 {name}', adminPassword: '管理员密码', passwordPlaceholder: '输入当前密码', deleteAction: '删除团队', deleting: '正在删除…', deleteFailed: '无法删除团队。', wrongPassword: 'Admin 密码不正确。', technicalDetail: '技术详情',
-      brain: 'Brain', brainKicker: 'Brain // 上下文', brainTitle: '选择 Brain', brainLead: '选择协调此团队的模型。', modelLoading: '正在加载模型…', modelFailed: '无法更新 Brain 设置。',
-      assistants: 'Assistants', assistantKicker: 'Assistants // 上下文', assistantTitle: '选择 Assistants', assistantLead: '只有选中的 Assistants 能在后续对话中提供 Powers。', assistantEmpty: '此团队没有正在运行的 Assistant。', selectAll: '全选', selectMaximum: '选择前 {limit} 个', unselectAll: '全部取消', selectionLimit: '此聊天一次最多可使用 {limit} 个 Assistants。', selected: '已选 {selected}/{total}', selectedLimited: '已选 {selected}/{total} · 上限 {limit}', current: '当前', openStore: '打开 Assistant Store', close: '关闭', cancel: '取消',
-    },
-    fr: {
-      contextAria: 'Contexte du chat', team: 'Équipe', noTeam: 'Créer une Équipe', teamKicker: 'Équipe // contexte', teamTitle: 'Choisir une Équipe', teamLead: 'Changez l’espace privé de cette conversation.',
-      addTeam: 'Ajouter une Équipe', createKicker: 'Équipe // initialiser', createTitle: 'Créer une Équipe', createLead: 'Donnez un nom clair à cet espace local isolé.', teamName: 'Nom de l’Équipe', teamPlaceholder: 'Marketing', create: 'Créer l’Équipe', creating: 'Création…', createFailed: 'Impossible de créer l’Équipe.',
-      deleteTeam: 'Supprimer', deleteTeamNamed: 'Supprimer {name}', deleteKicker: 'Équipe // supprimer', deleteTitle: 'Supprimer l’Équipe', deleteLead: 'Cette action supprime définitivement {name} et ses données locales. Saisissez le nom exact de l’Équipe et le mot de passe Admin actuel.', deleteName: 'Confirmer le nom de l’Équipe', deleteNamePlaceholder: 'Saisissez {name}', adminPassword: 'Mot de passe Admin', passwordPlaceholder: 'Saisissez votre mot de passe actuel', deleteAction: 'Supprimer l’Équipe', deleting: 'Suppression…', deleteFailed: 'Impossible de supprimer l’Équipe.', wrongPassword: 'Le mot de passe Admin est incorrect.', technicalDetail: 'Détail technique',
-      brain: 'Brain', brainKicker: 'Brain // contexte', brainTitle: 'Choisir un Brain', brainLead: 'Sélectionnez le modèle qui coordonne cette Équipe.', modelLoading: 'Chargement des modèles…', modelFailed: 'Impossible de mettre à jour le Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // contexte', assistantTitle: 'Choisir les Assistants', assistantLead: 'Seuls les Assistants sélectionnés peuvent fournir des Powers aux prochains tours.', assistantEmpty: 'Aucun Assistant en cours d’exécution dans cette Équipe.', selectAll: 'Tout sélectionner', selectMaximum: 'Sélectionner les {limit} premiers', unselectAll: 'Tout désélectionner', selectionLimit: 'Ce chat peut utiliser jusqu’à {limit} Assistants à la fois.', selected: '{selected} sur {total}', selectedLimited: '{selected} sur {total} · maximum {limit}', current: 'Actuel', openStore: 'Ouvrir le Store d’Assistants', close: 'Fermer', cancel: 'Annuler',
-    },
-    de: {
-      contextAria: 'Chat-Kontext', team: 'Team', noTeam: 'Team erstellen', teamKicker: 'Team // Kontext', teamTitle: 'Team auswählen', teamLead: 'Wechsle den privaten Arbeitsbereich für dieses Gespräch.',
-      addTeam: 'Team hinzufügen', createKicker: 'Team // initialisieren', createTitle: 'Team erstellen', createLead: 'Gib diesem isolierten lokalen Arbeitsbereich einen eindeutigen Namen.', teamName: 'Teamname', teamPlaceholder: 'Marketing', create: 'Team erstellen', creating: 'Wird erstellt…', createFailed: 'Das Team konnte nicht erstellt werden.',
-      deleteTeam: 'Löschen', deleteTeamNamed: '{name} löschen', deleteKicker: 'Team // löschen', deleteTitle: 'Team löschen', deleteLead: 'Dadurch werden {name} und seine lokalen Daten dauerhaft gelöscht. Gib den exakten Teamnamen und dein aktuelles Admin-Passwort ein.', deleteName: 'Teamnamen bestätigen', deleteNamePlaceholder: '{name} eingeben', adminPassword: 'Admin-Passwort', passwordPlaceholder: 'Aktuelles Passwort eingeben', deleteAction: 'Team löschen', deleting: 'Wird gelöscht…', deleteFailed: 'Das Team konnte nicht gelöscht werden.', wrongPassword: 'Das Admin-Passwort ist falsch.', technicalDetail: 'Technisches Detail',
-      brain: 'Brain', brainKicker: 'Brain // Kontext', brainTitle: 'Brain auswählen', brainLead: 'Wähle das Modell, das dieses Team koordiniert.', modelLoading: 'Modelle werden geladen…', modelFailed: 'Das Brain konnte nicht aktualisiert werden.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // Kontext', assistantTitle: 'Assistants auswählen', assistantLead: 'Nur ausgewählte Assistants können in den nächsten Runden Powers bereitstellen.', assistantEmpty: 'In diesem Team sind keine Assistants aktiv.', selectAll: 'Alle auswählen', selectMaximum: 'Die ersten {limit} auswählen', unselectAll: 'Alle abwählen', selectionLimit: 'Dieser Chat kann höchstens {limit} Assistants gleichzeitig verwenden.', selected: '{selected} von {total}', selectedLimited: '{selected} von {total} · maximal {limit}', current: 'Aktuell', openStore: 'Assistant Store öffnen', close: 'Schließen', cancel: 'Abbrechen',
-    },
-    ja: {
-      contextAria: 'チャットのコンテキスト', team: 'チーム', noTeam: 'チームを作成', teamKicker: 'チーム // コンテキスト', teamTitle: 'チームを選択', teamLead: 'この会話のプライベートワークスペースを切り替えます。',
-      addTeam: 'チームを追加', createKicker: 'チーム // 初期化', createTitle: 'チームを作成', createLead: 'この分離されたローカルワークスペースに分かりやすい名前を付けます。', teamName: 'チーム名', teamPlaceholder: 'マーケティング', create: 'チームを作成', creating: '作成中…', createFailed: 'チームを作成できませんでした。',
-      deleteTeam: '削除', deleteTeamNamed: '{name} を削除', deleteKicker: 'チーム // 削除', deleteTitle: 'チームを削除', deleteLead: '{name} とローカルデータを完全に削除します。正確なチーム名と現在の管理者パスワードを入力してください。', deleteName: 'チーム名を確認', deleteNamePlaceholder: '{name} と入力', adminPassword: '管理者パスワード', passwordPlaceholder: '現在のパスワードを入力', deleteAction: 'チームを削除', deleting: '削除中…', deleteFailed: 'チームを削除できませんでした。', wrongPassword: 'Admin パスワードが正しくありません。', technicalDetail: '技術詳細',
-      brain: 'Brain', brainKicker: 'Brain // コンテキスト', brainTitle: 'Brain を選択', brainLead: 'このチームを調整するモデルを選択します。', modelLoading: 'モデルを読み込み中…', modelFailed: 'Brain を更新できませんでした。',
-      assistants: 'Assistants', assistantKicker: 'Assistants // コンテキスト', assistantTitle: 'Assistants を選択', assistantLead: '選択した Assistants だけが次のターンで Powers を提供できます。', assistantEmpty: 'このチームで実行中の Assistant はありません。', selectAll: 'すべて選択', selectMaximum: '先頭の {limit} 件を選択', unselectAll: 'すべて解除', selectionLimit: 'このチャットでは一度に最大 {limit} 個の Assistants を使用できます。', selected: '{total} 件中 {selected} 件', selectedLimited: '{total} 件中 {selected} 件 · 上限 {limit}', current: '現在', openStore: 'Assistant Store を開く', close: '閉じる', cancel: 'キャンセル',
-    },
-    ar: {
-      contextAria: 'سياق المحادثة', team: 'الفريق', noTeam: 'إنشاء فريق', teamKicker: 'الفريق // السياق', teamTitle: 'اختر فريقًا', teamLead: 'غيّر مساحة العمل الخاصة بهذه المحادثة.',
-      addTeam: 'إضافة فريق', createKicker: 'الفريق // التهيئة', createTitle: 'إنشاء فريق', createLead: 'امنح مساحة العمل المحلية المعزولة اسمًا واضحًا.', teamName: 'اسم الفريق', teamPlaceholder: 'التسويق', create: 'إنشاء الفريق', creating: 'جارٍ الإنشاء…', createFailed: 'تعذر إنشاء الفريق.',
-      deleteTeam: 'حذف', deleteTeamNamed: 'حذف {name}', deleteKicker: 'الفريق // حذف', deleteTitle: 'حذف الفريق', deleteLead: 'سيؤدي هذا إلى حذف {name} وبياناته المحلية نهائيًا. أدخل اسم الفريق مطابقًا وكلمة مرور Admin الحالية.', deleteName: 'تأكيد اسم الفريق', deleteNamePlaceholder: 'اكتب {name}', adminPassword: 'كلمة مرور Admin', passwordPlaceholder: 'أدخل كلمة المرور الحالية', deleteAction: 'حذف الفريق', deleting: 'جارٍ الحذف…', deleteFailed: 'تعذر حذف الفريق.', wrongPassword: 'كلمة مرور Admin غير صحيحة.', technicalDetail: 'تفاصيل تقنية',
-      brain: 'Brain', brainKicker: 'Brain // السياق', brainTitle: 'اختر Brain', brainLead: 'اختر النموذج الذي ينسّق هذا الفريق.', modelLoading: 'جارٍ تحميل النماذج…', modelFailed: 'تعذر تحديث Brain.',
-      assistants: 'Assistants', assistantKicker: 'Assistants // السياق', assistantTitle: 'اختر Assistants', assistantLead: 'يمكن فقط لـ Assistants المحددين توفير Powers في الأدوار التالية.', assistantEmpty: 'لا يوجد Assistant قيد التشغيل في هذا الفريق.', selectAll: 'تحديد الكل', selectMaximum: 'تحديد أول {limit}', unselectAll: 'إلغاء تحديد الكل', selectionLimit: 'يمكن لهذه المحادثة استخدام ما يصل إلى {limit} من Assistants في الوقت نفسه.', selected: '{selected} من {total}', selectedLimited: '{selected} من {total} · الحد {limit}', current: 'الحالي', openStore: 'فتح متجر Assistants', close: 'إغلاق', cancel: 'إلغاء',
-    },
-  };
 
   let teamDialog = $state();
   let brainDialog = $state();
@@ -103,7 +37,7 @@
   let deleteError = $state('');
   let deleteErrorDetail = $state('');
 
-  let copy = $derived(COPY[$locale] ?? COPY.en);
+  let copy = $derived($t('chatContext'));
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === $teamContext.selectedTeamId) ?? null,
   );
@@ -133,7 +67,7 @@
   let selectedCount = $derived($teamContext.selectedAssistantIds.length);
   let assistantLimitApplies = $derived(runningAssistants.length > MAX_SELECTED_ASSISTANTS);
   let assistantCount = $derived(
-    format(assistantLimitApplies ? copy.selectedLimited : copy.selected, {
+    $t(assistantLimitApplies ? 'chatContext.selectedLimited' : 'chatContext.selected', {
       selected: selectedCount,
       total: runningAssistants.length,
       limit: MAX_SELECTED_ASSISTANTS,
@@ -150,13 +84,6 @@
       if (requiresTeam && !createDialog?.open) open(createDialog);
     });
   });
-
-  function format(template, values) {
-    return Object.entries(values).reduce(
-      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
-      template,
-    );
-  }
 
   function open(dialog) {
     if (!dialog?.open) dialog?.showModal();
@@ -363,7 +290,7 @@
           <button
             class="danger-action"
             type="button"
-            aria-label={format(copy.deleteTeamNamed, { name: team.name })}
+            aria-label={$t('chatContext.deleteTeamNamed', { name: team.name })}
             onclick={() => openDelete(team)}
           >{copy.deleteTeam}</button>
         </li>
@@ -420,7 +347,7 @@
       <div class="bulk-actions">
         <button type="button" onclick={selectAllTeamAssistants}>
           {assistantLimitApplies
-            ? format(copy.selectMaximum, { limit: MAX_SELECTED_ASSISTANTS })
+            ? $t('chatContext.selectMaximum', { limit: MAX_SELECTED_ASSISTANTS })
             : copy.selectAll}
         </button>
         <button type="button" onclick={unselectAllTeamAssistants}>{copy.unselectAll}</button>
@@ -428,7 +355,7 @@
     {/if}
     {#if assistantLimitApplies}
       <p class="selection-limit">
-        {format(copy.selectionLimit, { limit: MAX_SELECTED_ASSISTANTS })}
+        {$t('chatContext.selectionLimit', { limit: MAX_SELECTED_ASSISTANTS })}
       </p>
     {/if}
     {#if runningAssistants.length > 0}
@@ -480,7 +407,7 @@
       <p>{copy.deleteKicker}</p>
       <h2 id="chat-delete-team-title">{copy.deleteTitle}</h2>
       <span id="chat-delete-team-lead">
-        {format(copy.deleteLead, { name: deletingTeam?.name ?? '' })}
+        {$t('chatContext.deleteLead', { name: deletingTeam?.name ?? '' })}
       </span>
     </header>
     <label class="field" for="chat-delete-team-name">
@@ -489,7 +416,7 @@
         id="chat-delete-team-name"
         type="text"
         bind:value={deleteName}
-        placeholder={format(copy.deleteNamePlaceholder, { name: deletingTeam?.name ?? '' })}
+        placeholder={$t('chatContext.deleteNamePlaceholder', { name: deletingTeam?.name ?? '' })}
         maxlength="80"
         autocomplete="off"
         autocapitalize="off"

@@ -1,10 +1,9 @@
 <script>
-  import { assistantApprovalsCopy } from '$lib/assistantApprovalsCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
 
   let { open = false, challenge = undefined, oncancel = undefined, onapprove = undefined } = $props();
   let dialog = $state();
-  let copy = $derived(assistantApprovalsCopy($locale));
+  let copy = $derived($t('assistantApprovals'));
 
   function cancel(event) {
     event?.preventDefault();

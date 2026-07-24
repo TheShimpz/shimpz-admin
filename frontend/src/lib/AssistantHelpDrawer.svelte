@@ -1,20 +1,10 @@
 <script>
-  import { locale } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import { getAssistantHelp } from '$lib/localApi.js';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
 
   let { open = false, teamId = '', assistants = [], onclose = undefined } = $props();
 
-  const COPY = {
-    en: { kicker: 'Assistant // Help', choose: 'Assistant', close: 'Close Help', loading: 'Loading Help…', failed: 'This Assistant Help is unavailable.' },
-    pt: { kicker: 'Assistant // Ajuda', choose: 'Assistant', close: 'Fechar ajuda', loading: 'Carregando ajuda…', failed: 'A ajuda deste Assistant está indisponível.' },
-    es: { kicker: 'Assistant // Ayuda', choose: 'Assistant', close: 'Cerrar ayuda', loading: 'Cargando ayuda…', failed: 'La ayuda de este Assistant no está disponible.' },
-    zh: { kicker: 'Assistant // 帮助', choose: 'Assistant', close: '关闭帮助', loading: '正在加载帮助…', failed: '此 Assistant 的帮助暂不可用。' },
-    fr: { kicker: 'Assistant // Aide', choose: 'Assistant', close: 'Fermer l’aide', loading: 'Chargement de l’aide…', failed: 'L’aide de cet Assistant est indisponible.' },
-    de: { kicker: 'Assistant // Hilfe', choose: 'Assistant', close: 'Hilfe schließen', loading: 'Hilfe wird geladen…', failed: 'Die Hilfe dieses Assistants ist nicht verfügbar.' },
-    ja: { kicker: 'Assistant // ヘルプ', choose: 'Assistant', close: 'ヘルプを閉じる', loading: 'ヘルプを読み込み中…', failed: 'この Assistant のヘルプは利用できません。' },
-    ar: { kicker: 'Assistant // المساعدة', choose: 'Assistant', close: 'إغلاق المساعدة', loading: 'جارٍ تحميل المساعدة…', failed: 'مساعدة هذا الـ Assistant غير متاحة.' },
-  };
 
   let selectedId = $state('');
   let phase = $state('idle');
@@ -22,7 +12,7 @@
   let closeButton = $state();
   let requestSequence = 0;
 
-  let copy = $derived(COPY[$locale] ?? COPY.en);
+  let copy = $derived($t('assistantHelp'));
   let activeId = $derived(
     assistants.some((assistant) => assistant.id === selectedId)
       ? selectedId

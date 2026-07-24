@@ -1,7 +1,5 @@
 <script>
-  import { assistantSecretsCopy } from '$lib/assistantSecretsCopy.js';
-  import { assistantSecretManagementCopy } from '$lib/assistantSecretManagementCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
 
   let {
     open = false,
@@ -18,8 +16,8 @@
   } = $props();
 
   let closeButton = $state();
-  let copy = $derived(assistantSecretsCopy($locale));
-  let management = $derived(assistantSecretManagementCopy($locale));
+  let copy = $derived($t('assistantSecrets'));
+  let management = $derived($t('assistantSecretManagement'));
 
   function handleKeydown(event) {
     if (open && event.key === 'Escape') {

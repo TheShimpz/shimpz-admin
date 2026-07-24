@@ -1,85 +1,11 @@
 <script>
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
 
-  const COPY = {
-    en: {
-      eyebrow: 'Secure model setup',
-      title: 'Brain BYOK',
-      lead: 'Bring your own model API key to start this private Team chat. The key stays sealed inside your local Admin.',
-      provider: 'Provider', model: 'Model', key: 'API key', keyPlaceholder: 'Paste your API key',
-      verified: 'Verified key ready', startChatting: 'Start Chatting',
-      validating: 'Validating securely…', loading: 'Loading model settings…',
-      retry: 'Try again', ready: 'Everything is ready',
-    },
-    pt: {
-      eyebrow: 'Configuração segura do modelo',
-      title: 'Brain BYOK',
-      lead: 'Use sua própria chave de API de modelo para iniciar este chat privado do Time. A chave permanece protegida no seu Admin local.',
-      provider: 'Provider', model: 'Modelo', key: 'Chave da API', keyPlaceholder: 'Cole sua chave da API',
-      verified: 'Chave validada e pronta', startChatting: 'Começar a conversar',
-      validating: 'Validando com segurança…', loading: 'Carregando configuração do modelo…',
-      retry: 'Tentar novamente', ready: 'Está tudo certo',
-    },
-    es: {
-      eyebrow: 'Configuración segura del modelo',
-      title: 'Brain BYOK',
-      lead: 'Usa tu propia clave de API de modelo para iniciar este chat privado del Equipo. La clave permanece protegida en tu Admin local.',
-      provider: 'Proveedor', model: 'Modelo', key: 'Clave de API', keyPlaceholder: 'Pega tu clave de API',
-      verified: 'Clave verificada y lista', startChatting: 'Empezar a chatear',
-      validating: 'Validando de forma segura…', loading: 'Cargando ajustes del modelo…',
-      retry: 'Reintentar', ready: 'Todo está listo',
-    },
-    zh: {
-      eyebrow: '安全模型设置',
-      title: 'Brain BYOK',
-      lead: '使用你自己的模型 API 密钥开始此团队的私密聊天。密钥始终密封保存在本地 Admin 中。',
-      provider: '提供商', model: '模型', key: 'API 密钥', keyPlaceholder: '粘贴你的 API 密钥',
-      verified: '已验证的密钥已就绪', startChatting: '开始聊天',
-      validating: '正在安全验证…', loading: '正在加载模型设置…',
-      retry: '重试', ready: '一切准备就绪',
-    },
-    fr: {
-      eyebrow: 'Configuration sécurisée du modèle',
-      title: 'Brain BYOK',
-      lead: 'Utilisez votre propre clé d’API de modèle pour démarrer le chat privé de cette Équipe. La clé reste protégée dans votre Admin local.',
-      provider: 'Fournisseur', model: 'Modèle', key: 'Clé API', keyPlaceholder: 'Collez votre clé API',
-      verified: 'Clé vérifiée et prête', startChatting: 'Commencer à discuter',
-      validating: 'Validation sécurisée…', loading: 'Chargement des paramètres du modèle…',
-      retry: 'Réessayer', ready: 'Tout est prêt',
-    },
-    de: {
-      eyebrow: 'Sichere Modelleinrichtung',
-      title: 'Brain BYOK',
-      lead: 'Verwenden Sie Ihren eigenen Modell-API-Schlüssel, um den privaten Chat dieses Teams zu starten. Der Schlüssel bleibt sicher in Ihrem lokalen Admin.',
-      provider: 'Anbieter', model: 'Modell', key: 'API-Schlüssel', keyPlaceholder: 'API-Schlüssel einfügen',
-      verified: 'Verifizierter Schlüssel bereit', startChatting: 'Chat starten',
-      validating: 'Wird sicher validiert…', loading: 'Modelleinstellungen werden geladen…',
-      retry: 'Erneut versuchen', ready: 'Alles ist bereit',
-    },
-    ja: {
-      eyebrow: '安全なモデル設定',
-      title: 'Brain BYOK',
-      lead: '独自のモデル API キーを使って、このチームのプライベートチャットを開始します。キーはローカル Admin 内に安全に保管されます。',
-      provider: 'プロバイダー', model: 'モデル', key: 'API キー', keyPlaceholder: 'API キーを貼り付け',
-      verified: '検証済みのキーを使用できます', startChatting: 'チャットを開始',
-      validating: '安全に検証中…', loading: 'モデル設定を読み込み中…',
-      retry: '再試行', ready: '準備が整いました',
-    },
-    ar: {
-      eyebrow: 'إعداد آمن للنموذج',
-      title: 'Brain BYOK',
-      lead: 'استخدم مفتاح API الخاص بنموذجك لبدء الدردشة الخاصة بهذا الفريق. يبقى المفتاح محميًا داخل Admin المحلي.',
-      provider: 'المزوّد', model: 'النموذج', key: 'مفتاح API', keyPlaceholder: 'ألصق مفتاح API',
-      verified: 'المفتاح المتحقق منه جاهز', startChatting: 'ابدأ الدردشة',
-      validating: 'جارٍ التحقق بأمان…', loading: 'جارٍ تحميل إعدادات النموذج…',
-      retry: 'إعادة المحاولة', ready: 'كل شيء جاهز',
-    },
-  };
 
   let apiKey = $state('');
   let submitting = $state(false);
-  let copy = $derived(COPY[$locale] ?? COPY.en);
+  let copy = $derived($t('providerSetup'));
   let selected = $derived($modelContext.providers.find((entry) => entry.id === $modelContext.provider) ?? null);
   let selectedModel = $derived(selected?.models.find((entry) => entry.id === $modelContext.model) ?? null);
 

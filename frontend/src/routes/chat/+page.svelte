@@ -7,11 +7,9 @@
   import AssistantSecretsDialog from '$lib/AssistantSecretsDialog.svelte';
   import AssistantSecretsDrawer from '$lib/AssistantSecretsDrawer.svelte';
   import AssistantSecretRotationDialog from '$lib/AssistantSecretRotationDialog.svelte';
-  import { assistantAccountsCopy } from '$lib/assistantAccountsCopy.js';
-  import { assistantSecretsCopy } from '$lib/assistantSecretsCopy.js';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
   import ShimpzBrand from '$lib/ShimpzBrand.svelte';
@@ -37,40 +35,6 @@
     stashOAuthChatTurns,
   } from '$lib/localChat.js';
 
-  const COPY = {
-    en: {
-      kicker: 'Team // Chat', title: 'Your Team',
-      placeholder: 'Message {team}…', send: 'Send', sending: '{team} is thinking…', you: 'You',
-      stop: 'Stop', stopped: 'The active turn was stopped.',
-      emptyTeams: 'Create a Team below to start chatting.',
-      loading: 'Loading your Team…', loadFailed: 'Local chat data is unavailable.',
-      connecting: 'Connecting…', disconnected: 'The secure chat account was interrupted. Reconnecting…',
-      protocolError: 'The secure chat response was invalid.',
-      turnFailed: 'The chat turn could not start.', capacityFailed: 'The local chat is busy. Try again shortly.',
-      runtimeFailed: 'The local chat runtime is unavailable.', requestFailed: 'The Team could not complete this turn.',
-      technicalDetail: 'Technical detail',
-      help: 'Assistant Help',
-    },
-    pt: {
-      kicker: 'Time // Chat', title: 'Seu Time',
-      placeholder: 'Envie uma mensagem para {team}…', send: 'Enviar', sending: '{team} está pensando…', you: 'Você',
-      stop: 'Parar', stopped: 'O turno ativo foi interrompido.',
-      emptyTeams: 'Crie um Time abaixo para começar a conversar.',
-      loading: 'Carregando seu Time…', loadFailed: 'Os dados do chat local estão indisponíveis.',
-      connecting: 'Conectando…', disconnected: 'A conexão segura do chat foi interrompida. Reconectando…',
-      protocolError: 'A resposta segura do chat era inválida.',
-      turnFailed: 'Não foi possível iniciar o turno do chat.', capacityFailed: 'O chat local está ocupado. Tente novamente em instantes.',
-      runtimeFailed: 'O runtime do chat local está indisponível.', requestFailed: 'O Time não conseguiu concluir este turno.',
-      technicalDetail: 'Detalhe técnico',
-      help: 'Ajuda dos Assistants',
-    },
-    es: { help: 'Ayuda de Assistants' },
-    zh: { help: 'Assistant 帮助' },
-    fr: { help: 'Aide des Assistants' },
-    de: { help: 'Assistant-Hilfe' },
-    ja: { help: 'Assistant ヘルプ' },
-    ar: { help: 'مساعدة الـ Assistants' },
-  };
 
   let mounted = $state(false);
   let socketTeamId = '';
@@ -111,9 +75,9 @@
   let turnsViewport = $state();
   let scrollRequest = 0;
 
-  let copy = $derived({ ...COPY.en, ...(COPY[$locale] ?? {}) });
-  let secretsCopy = $derived(assistantSecretsCopy($locale));
-  let accountsCopy = $derived(assistantAccountsCopy($locale));
+  let copy = $derived($t('chatPage'));
+  let secretsCopy = $derived($t('assistantSecrets'));
+  let accountsCopy = $derived($t('assistantAccounts'));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -122,8 +86,8 @@
     $modelContext.ready && $modelContext.teamId === selectedTeamId ? selectedTeamId : '',
   );
   let teamName = $derived(activeTeam?.name ?? copy.title);
-  let placeholder = $derived(copy.placeholder.replace('{team}', teamName));
-  let thinking = $derived(copy.sending.replace('{team}', teamName));
+  let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
+  let thinking = $derived($t('chatPage.sending', { team: teamName }));
   let helpAssistants = $derived.by(() => {
     const catalog = new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant]));
     const selected = new Set($teamContext.selectedAssistantIds);

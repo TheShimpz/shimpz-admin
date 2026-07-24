@@ -1,7 +1,5 @@
 <script>
-  import { assistantSecretManagementCopy } from '$lib/assistantSecretManagementCopy.js';
-  import { assistantSecretsCopy } from '$lib/assistantSecretsCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
 
   let { open = false, assistant = undefined, onclose = undefined, onsubmit = undefined } = $props();
   let dialog = $state();
@@ -9,8 +7,8 @@
   let submitting = $state(false);
   let submitError = $state('');
   let activeAssistantId = $state('');
-  let copy = $derived(assistantSecretsCopy($locale));
-  let management = $derived(assistantSecretManagementCopy($locale));
+  let copy = $derived($t('assistantSecrets'));
+  let management = $derived($t('assistantSecretManagement'));
   let complete = $derived(Object.values(values).some((value) => typeof value === 'string' && value.length > 0));
 
   function clearValues() { values = {}; submitError = ''; }

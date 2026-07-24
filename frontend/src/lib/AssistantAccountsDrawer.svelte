@@ -1,9 +1,6 @@
 <script>
-  import {
-    assistantAccountProviderLabel,
-    assistantAccountsCopy,
-  } from '$lib/assistantAccountsCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
+  import { assistantAccountProviderLabel } from '$lib/localChat.js';
 
   let {
     open = false,
@@ -18,7 +15,8 @@
 
   let closeButton = $state();
   let provider = $derived(pending?.requirements?.[0]?.provider ?? '');
-  let copy = $derived(assistantAccountsCopy($locale, provider));
+  let providerLabel = $derived(assistantAccountProviderLabel(provider));
+  let copy = $derived($t('assistantAccounts'));
   let pendingIdentities = $derived(new Set((pending?.requirements ?? []).map((requirement) => (
     `${requirement.assistant_id}\u0000${requirement.account_id}`
   ))));
@@ -92,9 +90,11 @@
     {#if pending}
       <section class="pending">
         <strong>{copy.pendingTitle}</strong>
-        <p>{copy.pendingLead}</p>
+        <p>{$t('assistantAccounts.pendingLead', { provider: providerLabel })}</p>
         <button type="button" disabled={working === 'connect'} onclick={() => connect(pending.challenge_id)}>
-          {working === 'connect' ? copy.connecting : copy.connect}
+          {working === 'connect'
+            ? $t('assistantAccounts.connecting', { provider: providerLabel })
+            : copy.connect}
         </button>
       </section>
     {/if}

@@ -1,9 +1,6 @@
 <script>
-  import {
-    assistantAccountProviderLabel,
-    assistantAccountsCopy,
-  } from '$lib/assistantAccountsCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
+  import { assistantAccountProviderLabel } from '$lib/localChat.js';
 
   let { open = false, challenge = undefined, onclose = undefined, onauthorize = undefined } = $props();
   let dialog = $state();
@@ -12,7 +9,7 @@
   let activeChallengeId = $state('');
   let provider = $derived(challenge?.requirements?.[0]?.provider ?? '');
   let providerLabel = $derived(assistantAccountProviderLabel(provider));
-  let copy = $derived(assistantAccountsCopy($locale, provider));
+  let copy = $derived($t('assistantAccounts'));
 
   function close(event) {
     event?.preventDefault();
@@ -53,7 +50,7 @@
     <header>
       <p>{copy.dialogKicker}</p>
       <h2 id="assistant-accounts-dialog-title">{copy.dialogTitle}</h2>
-      <span>{copy.dialogLead}</span>
+      <span>{$t('assistantAccounts.dialogLead', { provider: providerLabel })}</span>
     </header>
 
     <div class="requirements">
@@ -90,7 +87,10 @@
     <footer>
       <button type="button" class="secondary" disabled={submitting} onclick={close}>{copy.cancel}</button>
       <button type="button" class="primary" disabled={submitting} onclick={authorize}>
-        {submitting ? copy.authorizing : copy.authorize}
+        {$t(
+          submitting ? 'assistantAccounts.authorizing' : 'assistantAccounts.authorize',
+          { provider: providerLabel },
+        )}
       </button>
     </footer>
   </section>

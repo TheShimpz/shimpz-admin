@@ -1,6 +1,5 @@
 <script>
-  import { assistantSecretsCopy } from '$lib/assistantSecretsCopy.js';
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
 
   let {
     open = false,
@@ -15,7 +14,7 @@
   let submitError = $state('');
   let activeChallengeId = $state('');
 
-  let copy = $derived(assistantSecretsCopy($locale));
+  let copy = $derived($t('assistantSecrets'));
   let fields = $derived.by(() => (challenge?.requirements ?? []).flatMap((requirement) => (
     requirement.secrets.map((secret) => ({
       assistantId: requirement.assistant_id,

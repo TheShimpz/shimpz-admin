@@ -21,116 +21,6 @@
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
 
   const FRAME_READY_TIMEOUT_MS = 8000;
-  const DESTINATION_COPY = {
-    en: {
-      change: 'Change Team', chooseTitle: 'Choose a destination Team',
-      chooseLead: 'Every Assistant installed from this Store goes only to the Team selected here.',
-      current: 'Current', empty: 'Create a Team to give new Assistants a private destination.',
-      switchFailed: 'The destination Team could not be changed.', createFailed: 'The Team could not be created.',
-    },
-    pt: {
-      change: 'Trocar Time', chooseTitle: 'Escolha o Time de destino',
-      chooseLead: 'Cada Assistant instalado nesta Store vai somente para o Time selecionado aqui.',
-      current: 'Atual', empty: 'Crie um Time para dar aos novos Assistants um destino privado.',
-      switchFailed: 'Não foi possível trocar o Time de destino.', createFailed: 'Não foi possível criar o Time.',
-    },
-    es: {
-      change: 'Cambiar Equipo', chooseTitle: 'Elige el Equipo de destino',
-      chooseLead: 'Cada Assistant instalado desde esta Store irá únicamente al Equipo seleccionado aquí.',
-      current: 'Actual', empty: 'Crea un Equipo para dar a los nuevos Assistants un destino privado.',
-      switchFailed: 'No se pudo cambiar el Equipo de destino.', createFailed: 'No se pudo crear el Equipo.',
-    },
-    zh: {
-      change: '切换团队', chooseTitle: '选择目标团队',
-      chooseLead: '从此 Store 安装的每个 Assistant 只会进入此处选择的团队。',
-      current: '当前', empty: '创建一个团队，为新的 Assistants 提供私有目标。',
-      switchFailed: '无法切换目标团队。', createFailed: '无法创建团队。',
-    },
-    fr: {
-      change: 'Changer d’Équipe', chooseTitle: 'Choisir l’Équipe de destination',
-      chooseLead: 'Chaque Assistant installé depuis ce Store rejoint uniquement l’Équipe sélectionnée ici.',
-      current: 'Actuelle', empty: 'Créez une Équipe pour offrir une destination privée aux nouveaux Assistants.',
-      switchFailed: 'Impossible de changer l’Équipe de destination.', createFailed: 'Impossible de créer l’Équipe.',
-    },
-    de: {
-      change: 'Team wechseln', chooseTitle: 'Ziel-Team auswählen',
-      chooseLead: 'Jeder Assistant aus diesem Store wird nur im hier ausgewählten Team installiert.',
-      current: 'Aktuell', empty: 'Erstelle ein Team als privates Ziel für neue Assistants.',
-      switchFailed: 'Das Ziel-Team konnte nicht gewechselt werden.', createFailed: 'Das Team konnte nicht erstellt werden.',
-    },
-    ja: {
-      change: 'チームを変更', chooseTitle: 'インストール先チームを選択',
-      chooseLead: 'この Store からインストールした Assistant は、ここで選択したチームだけに追加されます。',
-      current: '現在', empty: '新しい Assistants の非公開のインストール先となるチームを作成してください。',
-      switchFailed: 'インストール先チームを変更できませんでした。', createFailed: 'チームを作成できませんでした。',
-    },
-    ar: {
-      change: 'تغيير الفريق', chooseTitle: 'اختر فريق الوجهة',
-      chooseLead: 'يُثبَّت كل Assistant من هذا المتجر في الفريق المحدد هنا فقط.',
-      current: 'الحالي', empty: 'أنشئ فريقًا ليكون وجهة خاصة للـ Assistants الجدد.',
-      switchFailed: 'تعذر تغيير فريق الوجهة.', createFailed: 'تعذر إنشاء الفريق.',
-    },
-  };
-  const LOCAL_COPY = {
-    en: {
-      createFromSidebar: 'Close this dialog and create a Team from the Store destination.',
-      confirmTitle: 'Install this Assistant?',
-      confirmLead: 'Choose the exact Team. The Store cannot choose it or install anything for you.',
-      checkingTitle: 'Preparing the local action…',
-      checkingLead: 'The Admin is checking the selected Team and its installed Assistants.',
-      alreadyTitle: 'This Assistant is already installed.',
-      alreadyLead: 'Nothing was installed twice. The Assistant remains ready for your Team.',
-      noTeamTitle: 'Installation needs a running Team.',
-      noTeamLead: 'Your request reached this Admin, but nothing was installed because there is no local destination yet.',
-      unavailableTitle: 'This Assistant is unavailable right now.',
-      unavailableLead: 'The local catalog or installed inventory could not be verified. Retry the local data before installing.',
-      failureTitle: 'The local action did not finish.',
-      failureLead: 'Nothing was hidden. Review the error below and retry when the local controller is available.',
-      teamLabel: 'Destination Team',
-      teamPlaceholder: 'Select a Team',
-      cancel: 'Cancel',
-      close: 'Close',
-      preparing: 'Checking…',
-      confirm: 'Confirm install',
-      retryAction: 'Try again',
-      working: 'Installing…',
-      genericFailure: 'The local evaluation could not be completed.',
-      frameLoading: 'Loading the Assistant Store…',
-      frameFailureTitle: 'The Store did not finish loading.',
-      frameFailureLead: 'Your local Team is unchanged. Reload the embedded Store or open the canonical page in a new tab.',
-      retryStore: 'Reload Store',
-      openStore: 'Open Store',
-    },
-    pt: {
-      createFromSidebar: 'Feche esta janela e crie um Time no destino da Store.',
-      confirmTitle: 'Instalar este Assistant?',
-      confirmLead: 'Escolha o Time exato. A Store não pode escolhê-lo nem instalar nada por você.',
-      checkingTitle: 'Preparando a ação local…',
-      checkingLead: 'O Admin está verificando o Time selecionado e seus Assistants instalados.',
-      alreadyTitle: 'Este Assistant já está instalado.',
-      alreadyLead: 'Nada foi instalado duas vezes. O Assistant continua pronto para o seu Time.',
-      noTeamTitle: 'A instalação precisa de um Time em execução.',
-      noTeamLead: 'Seu pedido chegou a este Admin, mas nada foi instalado porque ainda não existe um destino local.',
-      unavailableTitle: 'Este Assistant está indisponível agora.',
-      unavailableLead: 'Não foi possível verificar o catálogo local ou o inventário instalado. Atualize os dados locais antes de instalar.',
-      failureTitle: 'A ação local não foi concluída.',
-      failureLead: 'Nada foi ocultado. Revise o erro abaixo e tente novamente quando o controller local estiver disponível.',
-      teamLabel: 'Time de destino',
-      teamPlaceholder: 'Selecione um Time',
-      cancel: 'Cancelar',
-      close: 'Fechar',
-      preparing: 'Verificando…',
-      confirm: 'Confirmar instalação',
-      retryAction: 'Tentar novamente',
-      working: 'Instalando…',
-      genericFailure: 'Não foi possível concluir a avaliação local.',
-      frameLoading: 'Carregando a Store de Assistants…',
-      frameFailureTitle: 'A Store não terminou de carregar.',
-      frameFailureLead: 'Seu Time local não foi alterado. Recarregue a Store incorporada ou abra a página oficial em uma nova aba.',
-      retryStore: 'Recarregar Store',
-      openStore: 'Abrir Store',
-    },
-  };
 
   let dialogError = $state('');
   let busy = $state(false);
@@ -156,8 +46,8 @@
   const storeActionLatch = createStoreActionLatch();
 
   let currentLocale = $derived($locale);
-  let copy = $derived(LOCAL_COPY[currentLocale] ?? LOCAL_COPY.en);
-  let destinationCopy = $derived(DESTINATION_COPY[currentLocale] ?? DESTINATION_COPY.en);
+  let copy = $derived($t('assistantStore'));
+  let destinationCopy = $derived($t('assistantDestination'));
   let storeLocale = $derived(currentLocale === 'pt' ? 'pt' : 'en');
   let storePageUrl = $derived(`https://shimpz.com/${storeLocale}/assistants`);
   let storeUrl = $derived(

@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
 
-  import { locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
   import {
     clearModelContext,
     loadModelContext,
@@ -16,16 +16,7 @@
   let { active = '' } = $props();
 
   const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
-  const COPY = {
-    en: {
-      retry: 'Retry local data',
-    },
-    pt: {
-      retry: 'Tentar dados locais novamente',
-    },
-  };
 
-  let copy = $derived($locale === 'pt' ? COPY.pt : COPY.en);
   let runtimeRefresh = null;
   let requestedTeamId = $derived.by(() => {
     const candidate = page.url.searchParams.get('team') ?? '';
@@ -94,7 +85,7 @@
 {#if $teamContext.phase === 'error' && active !== 'chat'}
   <div class="context-error" role="alert">
     <p>{$teamContext.error}</p>
-    <button type="button" onclick={retry}>{copy.retry}</button>
+    <button type="button" onclick={retry}>{$t('teamSidebar.retry')}</button>
   </div>
 {/if}
 
