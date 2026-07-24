@@ -1,8 +1,7 @@
 // Tiny i18n: a locale store, a dotted-key t() with English fallback, browser detection, and dir.
 // English (en) is the canonical baseline — every other locale falls back to it key-by-key, so a
-// partial translation never shows a blank; it shows English. Field help/guide text that isn't
-// localized here falls back further to the canonical English copy.
-import { writable, derived, get } from 'svelte/store';
+// partial translation never shows a blank; it shows English.
+import { writable, derived } from 'svelte/store';
 import { messages } from './messages.js';
 
 export const LOCALES = [
@@ -60,14 +59,3 @@ export const t = derived(locale, ($locale) => (key, params) => {
   }
   return s;
 });
-
-// Localized per-credential content (label/help/steps/link_label) keyed by env var, English-fallback.
-// Returns whatever the current locale has; missing pieces come from en, then (in the UI) from the
-// backend field. Never throws.
-export function fieldContent(code, key) {
-  const cur = lookup(code, `fields.${key}`) ?? {};
-  const en = lookup('en', `fields.${key}`) ?? {};
-  return { ...en, ...cur };
-}
-
-export { get };
