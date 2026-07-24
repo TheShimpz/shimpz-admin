@@ -9,41 +9,82 @@ otherwise a corrupt store would silently re-open first-run bootstrap and let any
 password. (Contrast with shimpzipc's quarantine-and-continue; here "continue" is a security hole.)
 """
 
+import copy
 import json
 import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import auth
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_ADMIN_STORE") or "/data/admin.json")
 _MODEL_CREDENTIAL_LOCK = threading.RLock()
+_STORE_LOCK = threading.RLock()
+
+
+@dataclass(frozen=True)
+class _StoreCache:
+    path: Path
+    identity: tuple[int, int, int, int] | None
+    data: dict
+
+
+_store_cache: _StoreCache | None = None
+
+
+def _store_identity(path: Path) -> tuple[int, int, int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size
+
+
+def _read_store_file(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
 def _read():
     """Parse admin.json → dict. Missing file → {} (fresh install). Corrupt → raise (fail-loud)."""
-    if not STORE_PATH.exists():
-        return {}
-    try:
-        data = json.loads(STORE_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        raise RuntimeError(f"admin store {STORE_PATH} is corrupt — refusing to read: {e}") from None
-    if not isinstance(data, dict):
-        raise RuntimeError(f"admin store {STORE_PATH} is not a JSON object")
-    return data
+    global _store_cache
+    path = STORE_PATH
+    with _STORE_LOCK:
+        identity = _store_identity(path)
+        if _store_cache is not None and (_store_cache.path, _store_cache.identity) == (path, identity):
+            return copy.deepcopy(_store_cache.data)
+        if identity is None:
+            data = {}
+        else:
+            try:
+                data = json.loads(_read_store_file(path))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                raise RuntimeError(f"admin store {path} is corrupt — refusing to read: {e}") from None
+            if _store_identity(path) != identity:
+                raise RuntimeError(f"admin store {path} changed while reading")
+            if not isinstance(data, dict):
+                raise RuntimeError(f"admin store {path} is not a JSON object")
+        _store_cache = _StoreCache(path, identity, data)
+        return copy.deepcopy(data)
 
 
 def _write(data):
     """Atomically write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs)."""
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STORE_PATH.with_name(f".{STORE_PATH.name}.{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, json.dumps(data, indent=2, sort_keys=True).encode("utf-8"))
-    finally:
-        os.close(fd)
-    tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
+    global _store_cache
+    with _STORE_LOCK:
+        if not isinstance(data, dict):
+            raise RuntimeError(f"admin store {STORE_PATH} is not a JSON object")
+        payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
+        STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = STORE_PATH.with_name(f".{STORE_PATH.name}.{os.getpid()}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, payload)
+        finally:
+            os.close(fd)
+        tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
+        _store_cache = _StoreCache(STORE_PATH, _store_identity(STORE_PATH), copy.deepcopy(data))
 
 
 def get():
