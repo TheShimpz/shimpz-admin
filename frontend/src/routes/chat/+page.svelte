@@ -1,12 +1,8 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import AssistantApprovalDialog from '$lib/AssistantApprovalDialog.svelte';
   import AssistantAccountsDialog from '$lib/AssistantAccountsDialog.svelte';
   import AssistantAccountsDrawer from '$lib/AssistantAccountsDrawer.svelte';
   import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
-  import AssistantSecretsDialog from '$lib/AssistantSecretsDialog.svelte';
-  import AssistantSecretsDrawer from '$lib/AssistantSecretsDrawer.svelte';
-  import AssistantSecretRotationDialog from '$lib/AssistantSecretRotationDialog.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
   import { t } from '$lib/i18n.js';
@@ -19,19 +15,14 @@
     CHAT_WS_PROTOCOL,
     authorizeAssistantAccount,
     chatSocketUrl,
-    createApprovalSubmitFrame,
     createChatFrame,
-    createSecretSubmitFrame,
     createStopFrame,
     createSyncFrame,
     disconnectAssistantAccount,
     listAssistantAccounts,
-    listRememberedApprovals,
     parseChatEvent,
     oauthReturnFailure,
-    replaceAssistantSecrets,
     restoreOAuthChatTurns,
-    revokeRememberedApprovals,
     stashOAuthChatTurns,
   } from '$lib/localChat.js';
 
@@ -50,8 +41,6 @@
   let reconnectAttempt = 0;
   let helpOpen = $state(false);
   let helpButton = $state();
-  let secretsOpen = $state(false);
-  let secretsButton = $state();
   let accountsOpen = $state(false);
   let accountsButton = $state();
   let accountsDialogOpen = $state(false);
@@ -60,23 +49,11 @@
   let accountsReady = $state(false);
   let accountWorking = $state('');
   let oauthFailedOnReturn = false;
-  let secretsDialogOpen = $state(false);
-  let secretChallenge = $state();
-  let approvalDialogOpen = $state(false);
-  let approvalChallenge = $state();
-  let secretInventory = $state([]);
-  let secretInventoryReady = $state(false);
-  let rotationOpen = $state(false);
-  let rotationAssistant = $state();
-  let rememberedApprovals = $state([]);
-  let approvalsReady = $state(false);
-  let approvalsLoading = $state(false);
   let composerInput = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
 
   let copy = $derived($t('chatPage'));
-  let secretsCopy = $derived($t('assistantSecrets'));
   let accountsCopy = $derived($t('assistantAccounts'));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
@@ -98,38 +75,6 @@
         name: catalog.get(runtime.assistant)?.name ?? runtime.assistant,
       }));
   });
-  let secretAssistants = $derived.by(() => {
-    const catalog = new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant]));
-    const inventory = new Map(secretInventory.map((assistant) => [assistant.id, assistant]));
-    const pending = new Map((secretChallenge?.requirements ?? []).map((requirement) => (
-      [requirement.assistant_id, requirement]
-    )));
-    return $teamContext.installedAssistants.map((runtime) => {
-      const known = inventory.get(runtime.assistant);
-      const required = pending.get(runtime.assistant);
-      const missing = new Map((required?.secrets ?? []).map((secret) => [secret.id, secret]));
-      const secrets = (known?.secrets ?? []).map((secret) => {
-        const requirement = missing.get(secret.id);
-        if (!requirement) return secret;
-        missing.delete(secret.id);
-        return { ...requirement, configured: false, mask: null };
-      });
-      for (const secret of missing.values()) {
-        secrets.push({ ...secret, configured: false, mask: null });
-      }
-      return {
-        id: runtime.assistant,
-        name: known?.name ?? required?.assistant_name ?? catalog.get(runtime.assistant)?.name ?? runtime.assistant,
-        secrets,
-      };
-    });
-  });
-  let missingSecretCount = $derived(
-    secretAssistants.reduce(
-      (total, assistant) => total + assistant.secrets.filter((secret) => !secret.configured).length,
-      0,
-    ),
-  );
   let contextLoading = $derived(
     $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
   );
@@ -163,7 +108,6 @@
       !chatTeamId ||
       busy ||
       helpOpen ||
-      secretsOpen ||
       accountsOpen ||
       document.querySelector('dialog[open]')
     ) return;
@@ -191,23 +135,12 @@
   }
 
   function resetChallengeState({ includeInventory = false } = {}) {
-    secretChallenge = undefined;
-    secretsDialogOpen = false;
-    approvalChallenge = undefined;
-    approvalDialogOpen = false;
     accountChallenge = undefined;
     accountsDialogOpen = false;
     accountsReady = false;
     accountWorking = '';
-    secretInventoryReady = false;
-    rotationOpen = false;
-    rotationAssistant = undefined;
-    approvalsReady = false;
     if (includeInventory) {
       accounts = [];
-      secretInventory = [];
-      rememberedApprovals = [];
-      approvalsLoading = false;
     }
   }
 
@@ -223,46 +156,6 @@
     current?.close(1000, 'Team changed');
   }
 
-  function acceptSecretChallenge(incoming) {
-    const selected = new Set($teamContext.selectedAssistantIds);
-    if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
-      throw new Error('unexpected Assistant secret requirement');
-    }
-    secretChallenge = incoming;
-    secretsDialogOpen = true;
-    helpOpen = false;
-    secretsOpen = false;
-    accountsOpen = false;
-    busy = true;
-    stopping = false;
-  }
-
-  function acceptSecretInventory(incoming) {
-    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-    if (
-      incoming.assistants.length !== installed.size ||
-      incoming.assistants.some((assistant) => !installed.has(assistant.id))
-    ) {
-      throw new Error('unexpected Assistant secret inventory');
-    }
-    secretInventory = incoming.assistants;
-    secretInventoryReady = true;
-  }
-
-  function acceptApprovalChallenge(incoming) {
-    const selected = new Set($teamContext.selectedAssistantIds);
-    if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
-      throw new Error('unexpected Assistant approval requirement');
-    }
-    approvalChallenge = incoming;
-    approvalDialogOpen = true;
-    helpOpen = false;
-    secretsOpen = false;
-    accountsOpen = false;
-    busy = true;
-    stopping = false;
-  }
-
   function acceptAccountChallenge(incoming) {
     const selected = new Set($teamContext.selectedAssistantIds);
     if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
@@ -272,7 +165,6 @@
     accountsDialogOpen = true;
     oauthFailedOnReturn = false;
     helpOpen = false;
-    secretsOpen = false;
     accountsOpen = false;
     busy = true;
     stopping = false;
@@ -335,20 +227,8 @@
           expectedTeam.id,
           expectedTeam.name,
         );
-        if (incoming.type === 'secrets-required') {
-          acceptSecretChallenge(incoming);
-          return;
-        }
-        if (incoming.type === 'approval-required') {
-          acceptApprovalChallenge(incoming);
-          return;
-        }
         if (incoming.type === 'accounts-required') {
           acceptAccountChallenge(incoming);
-          return;
-        }
-        if (incoming.type === 'secret-inventory') {
-          acceptSecretInventory(incoming);
           return;
         }
         if (!busy && !stopping) throw new Error('unexpected terminal frame');
@@ -401,7 +281,6 @@
     busy = turns.length > 0;
     scrollRequest += 1;
     helpOpen = false;
-    secretsOpen = false;
     accountsOpen = false;
     resetChallengeState({ includeInventory: true });
     clearError();
@@ -411,11 +290,6 @@
   function closeHelp() {
     helpOpen = false;
     queueMicrotask(() => helpButton?.focus());
-  }
-
-  function closeSecrets() {
-    secretsOpen = false;
-    queueMicrotask(() => secretsButton?.focus());
   }
 
   function closeAccounts() {
@@ -451,7 +325,6 @@
   function toggleAccounts() {
     const next = !accountsOpen;
     helpOpen = false;
-    secretsOpen = false;
     accountsOpen = next;
     if (next && chatTeamId) void refreshAccounts(chatTeamId);
   }
@@ -503,129 +376,6 @@
     } finally {
       if (chatTeamId === teamId) accountWorking = '';
     }
-  }
-
-  async function refreshApprovals(teamId) {
-    approvalsReady = false;
-    try {
-      const inventory = await listRememberedApprovals(fetch, teamId);
-      if (chatTeamId !== teamId) return;
-      rememberedApprovals = inventory.grants;
-      approvalsReady = true;
-    } catch (reason) {
-      if (chatTeamId !== teamId) return;
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-    }
-  }
-
-  function toggleSecrets() {
-    const next = !secretsOpen;
-    helpOpen = false;
-    accountsOpen = false;
-    secretsOpen = next;
-    if (next && chatTeamId) void refreshApprovals(chatTeamId);
-  }
-
-  function openRotation(assistant) {
-    secretsOpen = false;
-    rotationAssistant = assistant;
-    rotationOpen = true;
-  }
-
-  function closeRotation() {
-    rotationOpen = false;
-    rotationAssistant = undefined;
-  }
-
-  async function rotateSecrets(assistantId, values) {
-    const teamId = chatTeamId;
-    if (!teamId) throw new Error(copy.loadFailed);
-    const inventory = await replaceAssistantSecrets(fetch, teamId, assistantId, values);
-    if (chatTeamId !== teamId) return;
-    secretInventory = inventory.assistants;
-    secretInventoryReady = true;
-    closeRotation();
-  }
-
-  async function revokeApprovals() {
-    const teamId = chatTeamId;
-    if (!teamId || approvalsLoading) return;
-    approvalsLoading = true;
-    try {
-      await revokeRememberedApprovals(fetch, teamId);
-      if (chatTeamId !== teamId) return;
-      rememberedApprovals = [];
-      approvalsReady = true;
-    } catch (reason) {
-      if (chatTeamId === teamId) setError(reason instanceof Error ? reason.message : copy.loadFailed);
-    } finally {
-      if (chatTeamId === teamId) approvalsLoading = false;
-    }
-  }
-
-  function closeSecretsDialog() {
-    secretsDialogOpen = false;
-    secretChallenge = undefined;
-    stop();
-  }
-
-  function openSecretsDialog() {
-    if (!secretChallenge) return;
-    secretsOpen = false;
-    secretsDialogOpen = true;
-  }
-
-  function submitSecrets(challengeId, values) {
-    const teamId = $teamContext.selectedTeamId;
-    if (
-      !busy ||
-      !teamId ||
-      chatTeamId !== teamId ||
-      !socketReady ||
-      !socket ||
-      !secretChallenge ||
-      secretChallenge.challenge_id !== challengeId
-    ) {
-      throw new Error('Assistant secret challenge is unavailable');
-    }
-    const frame = createSecretSubmitFrame(teamId, challengeId, values);
-    try {
-      socket.send(JSON.stringify(frame));
-    } catch (reason) {
-      secretChallenge = undefined;
-      secretsDialogOpen = false;
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      socket.close();
-      throw reason;
-    }
-    secretChallenge = undefined;
-    secretsDialogOpen = false;
-  }
-
-  function submitApproval() {
-    const teamId = $teamContext.selectedTeamId;
-    if (
-      !busy ||
-      !teamId ||
-      chatTeamId !== teamId ||
-      !socketReady ||
-      !socket ||
-      !approvalChallenge
-    ) return;
-    try {
-      socket.send(JSON.stringify(createApprovalSubmitFrame(teamId, approvalChallenge.challenge_id)));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      socket.close();
-    }
-    approvalChallenge = undefined;
-    approvalDialogOpen = false;
-  }
-
-  function cancelApproval() {
-    approvalDialogOpen = false;
-    approvalChallenge = undefined;
-    stop();
   }
 
   function send(event) {
@@ -693,11 +443,10 @@
 
   $effect(() => {
     if (helpOpen && helpAssistants.length === 0) helpOpen = false;
-    if (secretsOpen && secretAssistants.length === 0) secretsOpen = false;
   });
 
   $effect(() => {
-    if (mounted && chatTeamId && !busy && !helpOpen && !secretsOpen && !accountsOpen) void focusComposer();
+    if (mounted && chatTeamId && !busy && !helpOpen && !accountsOpen) void focusComposer();
   });
 
   onMount(() => {
@@ -722,7 +471,7 @@
 <div class="chat-route">
   {#if activeTeam}
     {#if chatTeamId}
-      <div class="chat-workspace" class:drawer-open={helpOpen || secretsOpen || accountsOpen}>
+      <div class="chat-workspace" class:drawer-open={helpOpen || accountsOpen}>
         <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
         <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
@@ -782,33 +531,11 @@
                 </svg>
               </button>
               <button
-                bind:this={secretsButton}
-                class="secrets"
-                type="button"
-                onclick={() => {
-                  toggleSecrets();
-                }}
-                disabled={secretAssistants.length === 0}
-                aria-label={secretsCopy.trigger}
-                title={secretsCopy.trigger}
-                aria-expanded={secretsOpen}
-                aria-controls="assistant-secrets-drawer"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="8" cy="12" r="3.25"></circle>
-                  <path d="M11.25 12H21M17 12v3M14 12v2"></path>
-                </svg>
-                {#if missingSecretCount > 0}
-                  <span class="secret-badge" aria-hidden="true">{missingSecretCount}</span>
-                {/if}
-              </button>
-              <button
                 bind:this={helpButton}
                 class="help"
                 type="button"
                 onclick={() => {
                   const next = !helpOpen;
-                  secretsOpen = false;
                   accountsOpen = false;
                   helpOpen = next;
                 }}
@@ -831,19 +558,6 @@
           assistants={helpAssistants}
           onclose={closeHelp}
         />
-        <AssistantSecretsDrawer
-          open={secretsOpen}
-          assistants={secretAssistants}
-          synced={secretInventoryReady}
-          pending={secretChallenge}
-          approvalCount={rememberedApprovals.length}
-          approvalsSynced={approvalsReady}
-          approvalsLoading={approvalsLoading}
-          onclose={closeSecrets}
-          onprovide={openSecretsDialog}
-          onrotate={openRotation}
-          onrevoke={revokeApprovals}
-        />
         <AssistantAccountsDrawer
           open={accountsOpen}
           {accounts}
@@ -854,29 +568,11 @@
           onconnect={authorizeAccount}
           ondisconnect={disconnectAccount}
         />
-        <AssistantSecretsDialog
-          open={secretsDialogOpen}
-          challenge={secretChallenge}
-          onclose={closeSecretsDialog}
-          onsubmit={submitSecrets}
-        />
-        <AssistantApprovalDialog
-          open={approvalDialogOpen}
-          challenge={approvalChallenge}
-          oncancel={cancelApproval}
-          onapprove={submitApproval}
-        />
         <AssistantAccountsDialog
           open={accountsDialogOpen}
           challenge={accountChallenge}
           onclose={closeAccountsDialog}
           onauthorize={authorizeAccount}
-        />
-        <AssistantSecretRotationDialog
-          open={rotationOpen}
-          assistant={rotationAssistant}
-          onclose={closeRotation}
-          onsubmit={rotateSecrets}
         />
       </div>
     {:else}
@@ -1119,42 +815,24 @@
   }
 
   button.help,
-  button.secrets,
   button.accounts {
     width: 3.2rem;
     padding: 0;
     font-size: 0.9rem;
   }
 
-  button.secrets,
   button.accounts {
     position: relative;
     display: grid;
     place-items: center;
   }
 
-  button.secrets svg,
   button.accounts svg {
     width: 1rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: square;
     stroke-width: 1.6;
-  }
-
-  .secret-badge {
-    position: absolute;
-    inset-block-start: 0.25rem;
-    inset-inline-end: 0.25rem;
-    display: grid;
-    min-width: 0.9rem;
-    height: 0.9rem;
-    place-items: center;
-    padding: 0 0.15rem;
-    background: var(--danger);
-    color: #170008;
-    font-size: 0.46rem;
-    line-height: 1;
   }
 
   button.stop {
