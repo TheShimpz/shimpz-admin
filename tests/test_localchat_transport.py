@@ -85,58 +85,6 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
         self.assertNotIn(api_key.encode(), request["body"])
 
-    def test_secret_submission_uses_bounded_json_and_private_model_header(self) -> None:
-        model_key = "sk-test-0123456789"
-        transport_fixture = "assistant-secret-123456789"
-        teams.submit_chat_secrets(
-            "team_1",
-            {
-                "challenge_id": CHALLENGE_ID,
-                "values": [
-                    {
-                        "assistant_id": "shimpz-cloudflare",
-                        "secret_id": "x-api-secret",
-                        "value": transport_fixture,
-                    }
-                ],
-            },
-            provider="openai",
-            api_key=model_key,
-        )
-
-        request = _ControllerHandler.request
-        self.assertEqual(request["path"], "/v1/teams/team_1/chat/secrets")
-        self.assertEqual(request["headers"]["x-shimpz-model-api-key"], model_key)
-        self.assertEqual(
-            json.loads(request["body"]),
-            {
-                "challenge_id": CHALLENGE_ID,
-                "values": [
-                    {
-                        "assistant_id": "shimpz-cloudflare",
-                        "secret_id": "x-api-secret",
-                        "value": transport_fixture,
-                    }
-                ],
-            },
-        )
-        self.assertNotIn(model_key.encode(), request["body"])
-
-    def test_approval_submission_uses_private_model_header_and_explicit_boolean(self) -> None:
-        model_key = "sk-test-0123456789"
-        teams.submit_chat_approval(
-            "team_1",
-            {"challenge_id": CHALLENGE_ID, "approved": True},
-            provider="openai",
-            api_key=model_key,
-        )
-
-        request = _ControllerHandler.request
-        self.assertEqual(request["path"], "/v1/teams/team_1/chat/approval")
-        self.assertEqual(request["headers"]["x-shimpz-model-api-key"], model_key)
-        self.assertEqual(json.loads(request["body"]), {"challenge_id": CHALLENGE_ID, "approved": True})
-        self.assertNotIn(model_key.encode(), request["body"])
-
     def test_account_resume_uses_private_model_header_and_exact_challenge(self) -> None:
         model_key = "sk-test-0123456789"
         teams.resume_chat_accounts(

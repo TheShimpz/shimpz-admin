@@ -26,31 +26,17 @@ MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
-_CHALLENGE_RESPONSE_FIELDS = frozenset({"team_id", "status", "turn_id", "challenge_id", "requirements", "trace_id"})
-_INPUT_CHALLENGE_RESPONSE_FIELDS = frozenset({"team_id", "status", "turn_id", "challenge_id", "request", "trace_id"})
 _ACCOUNT_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
-_INVENTORY_RESPONSE_FIELDS = frozenset({"team_id", "assistants", "trace_id"})
-MAX_SECRET_REQUIREMENTS = 16
-MAX_SECRETS_PER_CHALLENGE = 64
-MAX_SECRET_LABEL_CHARS = 80
-MAX_SECRET_SUMMARY_CHARS = 160
-MAX_INSTALLED_ASSISTANTS = 128
 MAX_ACCOUNT_REQUIREMENTS = 64
 MAX_ACCOUNT_SCOPES = 32
 MAX_ACCOUNT_POWERS = 128
 MAX_ACCOUNT_SCOPE_CHARS = 128
-MAX_REMEMBERED_APPROVALS = 8192
-INPUT_TYPES = frozenset({"str", "int", "float", "bool", "choice", "choices"})
-MAX_INPUT_OPTIONS = 64
-MAX_INPUT_OPTION_CHARS = 200
+MAX_ACCOUNT_LABEL_CHARS = 80
+MAX_ACCOUNT_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
     "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
-    "assistant-approval-challenge-expired": "the Assistant approval expired; retry the message",
-    "assistant-approval-state-unavailable": "remembered Assistant approvals are unavailable",
-    "assistant-input-challenge-expired": "the Assistant input request expired; retry the message",
-    "assistant-input-replay-changed": "the Assistant input flow changed; retry the message",
     "assistant-account-challenge-expired": "the Assistant account expired; retry the message",
     "assistant-account-contract-invalid": "the Assistant account contract changed; retry the message",
     "assistant-account-state-unavailable": "Assistant account state is unavailable",
@@ -73,12 +59,7 @@ _CHAT_ERROR_DETAILS = {
     "ownership-conflict": "the Team resource ownership check failed",
     "power-state-unavailable": "Team Power execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
-    "secret-challenge-response-invalid": "the Assistant secret challenge was invalid",
-    "secret-inventory-response-invalid": "the Assistant secret inventory was invalid",
-    "approval-challenge-response-invalid": "the Assistant approval challenge was invalid",
-    "approval-inventory-response-invalid": "the remembered Assistant approvals were invalid",
     "account-challenge-response-invalid": "the Assistant account challenge was invalid",
-    "input-challenge-response-invalid": "the Assistant input challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
 }
@@ -124,14 +105,13 @@ class PublicResponse(teams.DriverResponse):
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
         challenge_status = body.get("status")
-        if challenge_status in {"secrets-required", "approval-required", "accounts-required", "input-required"}:
+        if challenge_status == "accounts-required":
             if body.get("team_id") != team_id:
                 return None
             event = {"type": challenge_status, **body}
             event.pop("team_id", None)
             event.pop("status", None)
-            if challenge_status == "accounts-required":
-                event.pop("turn_id", None)
+            event.pop("turn_id", None)
             return event
         if not 200 <= self.status < 300:
             status = self.status if 400 <= self.status <= 599 else 502
@@ -151,8 +131,6 @@ class PublicResponse(teams.DriverResponse):
         event = None
         if set(body) == {"team_id", "team_name", "reply"}:
             event = {"type": "done", **body}
-        elif set(body) == {"team_id", "assistants"}:
-            event = {"type": "secret-inventory", **body}
         return event
 
 
@@ -223,192 +201,6 @@ def _challenge_envelope(
     return identity
 
 
-def _project_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
-    try:
-        challenge_id, turn_id = _challenge_envelope(
-            response,
-            team_id,
-            "secrets-required",
-            _CHALLENGE_RESPONSE_FIELDS,
-        )
-        raw_requirements = response.body["requirements"]
-        if not isinstance(raw_requirements, list) or not 1 <= len(raw_requirements) <= MAX_SECRET_REQUIREMENTS:
-            raise ValueError("invalid challenge metadata")
-        requirements: list[dict[str, object]] = []
-        seen_assistants: set[str] = set()
-        total_secrets = 0
-        for raw in raw_requirements:
-            if not isinstance(raw, dict) or set(raw) != {
-                "assistant_id",
-                "assistant_name",
-                "power_ids",
-                "secrets",
-            }:
-                raise ValueError("invalid requirement")
-            assistant_id = teams.canonical_assistant_id(raw["assistant_id"])
-            if assistant_id in seen_assistants:
-                raise ValueError("duplicate Assistant")
-            seen_assistants.add(assistant_id)
-            assistant_name = chat_ws_common.public_text(raw["assistant_name"], MAX_SECRET_LABEL_CHARS)
-            power_ids = raw["power_ids"]
-            raw_secrets = raw["secrets"]
-            if not isinstance(power_ids, list) or not power_ids or not isinstance(raw_secrets, list) or not raw_secrets:
-                raise ValueError("empty requirement")
-            canonical_powers = [teams.canonical_assistant_id(item) for item in power_ids]
-            if len(set(canonical_powers)) != len(canonical_powers):
-                raise ValueError("duplicate Power")
-            projected_secrets: list[dict[str, str]] = []
-            seen_secrets: set[str] = set()
-            for secret in raw_secrets:
-                if not isinstance(secret, dict) or set(secret) != {"id", "name", "summary"}:
-                    raise ValueError("invalid secret metadata")
-                secret_id = teams.canonical_assistant_id(secret["id"])
-                if secret_id in seen_secrets:
-                    raise ValueError("duplicate secret")
-                seen_secrets.add(secret_id)
-                projected_secrets.append(
-                    {
-                        "id": secret_id,
-                        "name": chat_ws_common.public_text(secret["name"], MAX_SECRET_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(secret["summary"], MAX_SECRET_SUMMARY_CHARS),
-                    }
-                )
-            total_secrets += len(projected_secrets)
-            if total_secrets > MAX_SECRETS_PER_CHALLENGE:
-                raise ValueError("too many secrets")
-            requirements.append(
-                {
-                    "assistant_id": assistant_id,
-                    "assistant_name": assistant_name,
-                    "power_ids": canonical_powers,
-                    "secrets": projected_secrets,
-                }
-            )
-    except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-challenge-response-invalid"})
-    return PublicResponse(
-        response.status,
-        {
-            "team_id": team_id,
-            "status": "secrets-required",
-            "turn_id": turn_id,
-            "challenge_id": challenge_id,
-            "requirements": requirements,
-        },
-    )
-
-
-def _project_approval_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
-    try:
-        challenge_id, turn_id = _challenge_envelope(
-            response,
-            team_id,
-            "approval-required",
-            _CHALLENGE_RESPONSE_FIELDS,
-        )
-        raw_requirements = response.body["requirements"]
-        if not isinstance(raw_requirements, list) or len(raw_requirements) != 1:
-            raise ValueError("invalid approval metadata")
-        requirements: list[dict[str, object]] = []
-        for raw in raw_requirements:
-            if not isinstance(raw, dict) or set(raw) != {
-                "assistant_id",
-                "assistant_name",
-                "power_id",
-                "title",
-                "summary",
-                "docs",
-                "approval",
-            }:
-                raise ValueError("invalid approval requirement")
-            assistant_id = teams.canonical_assistant_id(raw["assistant_id"])
-            power_id = teams.canonical_assistant_id(raw["power_id"])
-            if raw["approval"] not in {"always", "once"}:
-                raise ValueError("invalid approval policy")
-            docs = raw["docs"]
-            if docs is not None:
-                docs = chat_ws_common.public_text(docs, 2048)
-            requirements.append(
-                {
-                    "assistant_id": assistant_id,
-                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_SECRET_LABEL_CHARS),
-                    "power_id": power_id,
-                    "title": chat_ws_common.public_text(raw["title"], MAX_SECRET_LABEL_CHARS),
-                    "summary": chat_ws_common.public_text(raw["summary"], 240),
-                    "docs": docs,
-                    "approval": raw["approval"],
-                }
-            )
-    except KeyError, TypeError, ValueError, UnicodeError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-challenge-response-invalid"})
-    return PublicResponse(
-        response.status,
-        {
-            "team_id": team_id,
-            "status": "approval-required",
-            "turn_id": turn_id,
-            "challenge_id": challenge_id,
-            "requirements": requirements,
-        },
-    )
-
-
-def _project_input_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
-    try:
-        challenge_id, turn_id = _challenge_envelope(
-            response,
-            team_id,
-            "input-required",
-            _INPUT_CHALLENGE_RESPONSE_FIELDS,
-        )
-        request = response.body["request"]
-        if not isinstance(request, dict) or set(request) != {"type", "title", "summary", "docs", "options"}:
-            raise ValueError("invalid input metadata")
-        request_type = request["type"]
-        options = request["options"]
-        if (
-            not isinstance(request_type, str)
-            or request_type not in INPUT_TYPES
-            or not isinstance(options, list)
-            or len(options) > MAX_INPUT_OPTIONS
-        ):
-            raise ValueError("invalid input request")
-        if request_type in {"choice", "choices"}:
-            if (
-                not options
-                or any(
-                    not isinstance(option, str) or not option or len(option) > MAX_INPUT_OPTION_CHARS or "\0" in option
-                    for option in options
-                )
-                or len(options) != len(set(options))
-            ):
-                raise ValueError("invalid input options")
-        elif options:
-            raise ValueError("invalid primitive input options")
-        docs = request["docs"]
-        if docs is not None:
-            docs = chat_ws_common.public_text(docs, 2048)
-        projected = {
-            "type": request_type,
-            "title": chat_ws_common.public_text(request["title"], 80),
-            "summary": chat_ws_common.public_text(request["summary"], 240),
-            "docs": docs,
-            "options": list(options),
-        }
-    except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "input-challenge-response-invalid"})
-    return PublicResponse(
-        response.status,
-        {
-            "team_id": team_id,
-            "status": "input-required",
-            "turn_id": turn_id,
-            "challenge_id": challenge_id,
-            "request": projected,
-        },
-    )
-
-
 def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
@@ -475,18 +267,18 @@ def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> 
                 powers.append(
                     {
                         "id": power_id,
-                        "name": chat_ws_common.public_text(raw_power["name"], MAX_SECRET_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(raw_power["summary"], MAX_SECRET_SUMMARY_CHARS),
+                        "name": chat_ws_common.public_text(raw_power["name"], MAX_ACCOUNT_LABEL_CHARS),
+                        "summary": chat_ws_common.public_text(raw_power["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
                     }
                 )
             requirements.append(
                 {
                     "assistant_id": assistant_id,
-                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_SECRET_LABEL_CHARS),
+                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_ACCOUNT_LABEL_CHARS),
                     "account_id": account_id,
                     "provider": teams.canonical_assistant_id(raw["provider"]),
-                    "name": chat_ws_common.public_text(raw["name"], MAX_SECRET_LABEL_CHARS),
-                    "summary": chat_ws_common.public_text(raw["summary"], MAX_SECRET_SUMMARY_CHARS),
+                    "name": chat_ws_common.public_text(raw["name"], MAX_ACCOUNT_LABEL_CHARS),
+                    "summary": chat_ws_common.public_text(raw["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
                     "scopes": scopes,
                     "powers": powers,
                 }
@@ -507,84 +299,9 @@ def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> 
 
 
 def _project_pending_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
-    status = response.body.get("status")
-    if status == "accounts-required":
+    if response.body.get("status") == "accounts-required":
         return _project_account_challenge(response, team_id)
-    if status == "secrets-required":
-        return _project_challenge(response, team_id)
-    if status == "approval-required":
-        return _project_approval_challenge(response, team_id)
-    if status == "input-required":
-        return _project_input_challenge(response, team_id)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
-
-
-def _project_inventory_secret(secret: object, seen_secrets: set[str]) -> dict[str, object]:
-    if not isinstance(secret, dict) or set(secret) != {
-        "id",
-        "name",
-        "summary",
-        "configured",
-        "mask",
-    }:
-        raise ValueError("invalid secret inventory item")
-    secret_id = teams.canonical_assistant_id(secret["id"])
-    configured = secret["configured"]
-    mask = secret["mask"]
-    if (
-        secret_id in seen_secrets
-        or not isinstance(configured, bool)
-        or (configured and (not isinstance(mask, str) or not 1 <= len(mask) <= 9))
-        or (not configured and mask is not None)
-    ):
-        raise ValueError("invalid secret inventory status")
-    seen_secrets.add(secret_id)
-    return {
-        "id": secret_id,
-        "name": chat_ws_common.public_text(secret["name"], MAX_SECRET_LABEL_CHARS),
-        "summary": chat_ws_common.public_text(secret["summary"], MAX_SECRET_SUMMARY_CHARS),
-        "configured": configured,
-        "mask": mask,
-    }
-
-
-def _project_inventory(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    try:
-        if set(response.body) != _INVENTORY_RESPONSE_FIELDS:
-            raise ValueError("invalid inventory envelope")
-        if response.body["team_id"] != team_id or not _valid_trace_id(response.body["trace_id"]):
-            raise ValueError("invalid inventory identity")
-        raw_assistants = response.body["assistants"]
-        if not isinstance(raw_assistants, list) or len(raw_assistants) > MAX_INSTALLED_ASSISTANTS:
-            raise ValueError("invalid Assistant inventory")
-        assistants: list[dict[str, object]] = []
-        seen_assistants: set[str] = set()
-        for raw in raw_assistants:
-            if not isinstance(raw, dict) or set(raw) != {"id", "name", "secrets"}:
-                raise ValueError("invalid Assistant inventory item")
-            assistant_id = teams.canonical_assistant_id(raw["id"])
-            if assistant_id in seen_assistants:
-                raise ValueError("duplicate Assistant")
-            seen_assistants.add(assistant_id)
-            raw_secrets = raw["secrets"]
-            if not isinstance(raw_secrets, list) or len(raw_secrets) > 32:
-                raise ValueError("invalid secret inventory")
-            seen_secrets: set[str] = set()
-            secrets = [_project_inventory_secret(secret, seen_secrets) for secret in raw_secrets]
-            assistants.append(
-                {
-                    "id": assistant_id,
-                    "name": chat_ws_common.public_text(raw["name"], MAX_SECRET_LABEL_CHARS),
-                    "secrets": secrets,
-                }
-            )
-    except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "secret-inventory-response-invalid"})
-    return PublicResponse(response.status, {"team_id": team_id, "assistants": assistants})
 
 
 def _project_turn(
@@ -617,7 +334,6 @@ def _submit(
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
     request: Callable[..., teams.DriverResponse],
-    forbidden_values: Callable[[dict[str, object]], tuple[str, ...]] = lambda _body: (),
 ) -> teams.DriverResponse:
     canonical_id = teams.canonical_team_id(team_id)
     body = canonicalize(payload)
@@ -634,30 +350,11 @@ def _submit(
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
-    return _project_turn(response, canonical_id, forbidden_values=(api_key, *forbidden_values(body)))
-
-
-def _secret_values(body: dict[str, object]) -> tuple[str, ...]:
-    return tuple(item["value"] for item in body["values"])
-
-
-def _input_values(body: dict[str, object]) -> tuple[str, ...]:
-    answer = body["answer"]
-    return (answer,) if isinstance(answer, str) else ()
+    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
 
 
 def turn(team_id: object, payload: object) -> teams.DriverResponse:
     return _submit(team_id, payload, teams.canonical_chat_payload, teams.chat)
-
-
-def submit_secrets(team_id: object, payload: object) -> teams.DriverResponse:
-    return _submit(
-        team_id,
-        payload,
-        teams.canonical_secret_submission,
-        teams.submit_chat_secrets,
-        _secret_values,
-    )
 
 
 def resume_accounts(team_id: object, challenge_id: object) -> teams.DriverResponse:
@@ -666,25 +363,6 @@ def resume_accounts(team_id: object, challenge_id: object) -> teams.DriverRespon
         {"challenge_id": challenge_id},
         teams.canonical_account_resume,
         teams.resume_chat_accounts,
-    )
-
-
-def submit_approval(team_id: object, payload: object) -> teams.DriverResponse:
-    return _submit(
-        team_id,
-        payload,
-        teams.canonical_approval_submission,
-        teams.submit_chat_approval,
-    )
-
-
-def submit_input(team_id: object, payload: object) -> teams.DriverResponse:
-    return _submit(
-        team_id,
-        payload,
-        teams.canonical_input_submission,
-        teams.submit_chat_input,
-        _input_values,
     )
 
 
@@ -711,15 +389,6 @@ def _pending(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
 
 
-def pending_secrets(team_id: object) -> teams.DriverResponse:
-    return _pending(
-        team_id,
-        teams.pending_chat_secrets,
-        _project_challenge,
-        "secret-challenge-response-invalid",
-    )
-
-
 def pending_accounts(team_id: object) -> teams.DriverResponse:
     return _pending(
         team_id,
@@ -727,90 +396,6 @@ def pending_accounts(team_id: object) -> teams.DriverResponse:
         _project_account_challenge,
         "account-challenge-response-invalid",
     )
-
-
-def pending_approval(team_id: object) -> teams.DriverResponse:
-    return _pending(
-        team_id,
-        teams.pending_chat_approval,
-        _project_approval_challenge,
-        "approval-challenge-response-invalid",
-    )
-
-
-def pending_input(team_id: object) -> teams.DriverResponse:
-    return _pending(
-        team_id,
-        teams.pending_chat_input,
-        _project_input_challenge,
-        "input-challenge-response-invalid",
-    )
-
-
-def secret_inventory(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    return _project_inventory(teams.list_assistant_secrets(canonical_id), canonical_id)
-
-
-def replace_secrets(team_id: object, payload: object) -> teams.DriverResponse:
-    """Atomically rotate a declared subset, then expose only controller-owned masks."""
-    canonical_id = teams.canonical_team_id(team_id)
-    body = teams.canonical_secret_replacement(payload)
-    response = teams.replace_assistant_secrets(canonical_id, body)
-    return _project_inventory(response, canonical_id)
-
-
-def approval_inventory(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.list_assistant_approvals(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    try:
-        if set(response.body) != {"team_id", "grants", "trace_id"}:
-            raise ValueError("invalid approval inventory")
-        if response.body["team_id"] != canonical_id or not _valid_trace_id(response.body["trace_id"]):
-            raise ValueError("invalid approval inventory identity")
-        raw_grants = response.body["grants"]
-        if not isinstance(raw_grants, list) or len(raw_grants) > MAX_REMEMBERED_APPROVALS:
-            raise ValueError("invalid approval inventory count")
-        grants: list[dict[str, str]] = []
-        seen: set[tuple[str, str]] = set()
-        for raw in raw_grants:
-            if not isinstance(raw, dict) or set(raw) != {"assistant_id", "power_id"}:
-                raise ValueError("invalid approval grant")
-            item = {
-                "assistant_id": teams.canonical_assistant_id(raw["assistant_id"]),
-                "power_id": teams.canonical_assistant_id(raw["power_id"]),
-            }
-            identity = (item["assistant_id"], item["power_id"])
-            if identity in seen:
-                raise ValueError("duplicate approval grant")
-            seen.add(identity)
-            grants.append(item)
-    except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
-    return PublicResponse(response.status, {"team_id": canonical_id, "grants": grants})
-
-
-def revoke_approvals(team_id: object) -> teams.DriverResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.revoke_assistant_approvals(canonical_id)
-    if response.status in _MISSING_RUNTIME_STATUSES:
-        return _unavailable()
-    if not 200 <= response.status < 300:
-        return _safe_error(response)
-    revoked = response.body.get("revoked")
-    if (
-        set(response.body) != {"team_id", "revoked", "trace_id"}
-        or response.body.get("team_id") != canonical_id
-        or type(revoked) is not int
-        or not 0 <= revoked <= MAX_REMEMBERED_APPROVALS
-        or not _valid_trace_id(response.body.get("trace_id"))
-    ):
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "approval-inventory-response-invalid"})
-    return PublicResponse(response.status, {"team_id": canonical_id, "revoked": revoked})
 
 
 def _valid_team_name(value: object) -> bool:

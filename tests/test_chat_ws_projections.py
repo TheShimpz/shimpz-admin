@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -19,53 +18,6 @@ class ChatWebSocketProjectionTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.chat_ws = importlib.import_module("chat_ws")
         cls.teams = importlib.import_module("teams")
-
-    def test_secret_events_are_exact_bounded_and_never_project_values(self) -> None:
-        expected_challenge = {
-            "type": "secrets-required",
-            "turn_id": fixtures.TURN_ID,
-            "challenge_id": fixtures.CHALLENGE_ID,
-            "requirements": fixtures.requirements(),
-        }
-        self.assertEqual(
-            self.chat_ws.secret_challenge_event(fixtures.challenge(), "team_1"),
-            expected_challenge,
-        )
-        expected_inventory = {
-            "type": "secret-inventory",
-            "team_id": "team_1",
-            "assistants": fixtures.inventory().body["assistants"],
-        }
-        self.assertEqual(
-            self.chat_ws.secret_inventory_event(fixtures.inventory(), "team_1"),
-            expected_inventory,
-        )
-        self.assertNotIn("value", json.dumps(expected_challenge))
-
-        challenge = fixtures.challenge()
-        unprojected = self.teams.DriverResponse(challenge.status, dict(challenge.body))
-        self.assertIsNone(self.chat_ws.secret_challenge_event(unprojected, "team_1"))
-        cross_team = self.chat_ws.localchat.PublicResponse(
-            200,
-            {**dict(fixtures.inventory().body), "team_id": "other_team"},
-        )
-        self.assertIsNone(self.chat_ws.secret_inventory_event(cross_team, "team_1"))
-        with self.assertRaises(TypeError):
-            fixtures.inventory().body["assistants"][0]["secrets"][0]["mask"] = "secret-value"
-
-    def test_approval_events_project_in_body_metadata_without_internal_authority(self) -> None:
-        expected = {
-            "type": "approval-required",
-            "turn_id": fixtures.TURN_ID,
-            "challenge_id": fixtures.CHALLENGE_ID,
-            "requirements": fixtures.approval_requirements(),
-        }
-        self.assertEqual(self.chat_ws.approval_challenge_event(fixtures.approval_challenge(), "team_1"), expected)
-        self.assertNotIn("api_key", json.dumps(expected))
-        self.assertNotIn("secret_values", json.dumps(expected))
-
-        with self.assertRaises(TypeError):
-            fixtures.approval_challenge().body["requirements"][0]["approval"] = "each-run"
 
     def test_account_events_are_exact_and_never_project_oauth_material(self) -> None:
         expected = {

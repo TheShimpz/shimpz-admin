@@ -221,10 +221,6 @@ def configure_inference(team_id: object, payload: object) -> DriverResponse:
 
 
 canonical_chat_payload = chat_payloads.canonical_chat_payload
-canonical_secret_submission = chat_payloads.canonical_secret_submission
-canonical_secret_replacement = chat_payloads.canonical_secret_replacement
-canonical_approval_submission = chat_payloads.canonical_approval_submission
-canonical_input_submission = chat_payloads.canonical_input_submission
 canonical_account_resume = chat_payloads.canonical_account_resume
 
 
@@ -253,21 +249,6 @@ def stop_chat(team_id: object) -> DriverResponse:
     return _call("POST", f"/v1/teams/{canonical_id}/chat/stop", {})
 
 
-def pending_chat_secrets(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/secrets")
-
-
-def pending_chat_approval(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/approval")
-
-
-def pending_chat_input(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/input")
-
-
 def pending_chat_accounts(team_id: object) -> DriverResponse:
     canonical_id = canonical_team_id(team_id)
     return _call("GET", f"/v1/teams/{canonical_id}/chat/accounts")
@@ -289,89 +270,6 @@ def resume_chat_accounts(
         timeout=CONTROL_TIMEOUT_SECONDS,
         model_credential=(provider, api_key),
     )
-
-
-def submit_chat_secrets(
-    team_id: object,
-    payload: object,
-    *,
-    provider: str,
-    api_key: str,
-) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    body = canonical_secret_submission(payload)
-    return _call(
-        "POST",
-        f"/v1/teams/{canonical_id}/chat/secrets",
-        body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
-        max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
-        model_credential=(provider, api_key),
-    )
-
-
-def submit_chat_approval(
-    team_id: object,
-    payload: object,
-    *,
-    provider: str,
-    api_key: str,
-) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    body = canonical_approval_submission(payload)
-    return _call(
-        "POST",
-        f"/v1/teams/{canonical_id}/chat/approval",
-        body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
-        max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
-        model_credential=(provider, api_key),
-    )
-
-
-def submit_chat_input(
-    team_id: object,
-    payload: object,
-    *,
-    provider: str,
-    api_key: str,
-) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    body = canonical_input_submission(payload)
-    return _call(
-        "POST",
-        f"/v1/teams/{canonical_id}/chat/input",
-        body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
-        max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
-        model_credential=(provider, api_key),
-    )
-
-
-def list_assistant_secrets(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/assistant-secrets")
-
-
-def replace_assistant_secrets(team_id: object, payload: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    body = canonical_secret_replacement(payload)
-    return _call(
-        "PUT",
-        f"/v1/teams/{canonical_id}/assistant-secrets",
-        body,
-        max_body_bytes=MAX_SECRET_JSON_BODY_BYTES,
-    )
-
-
-def list_assistant_approvals(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/assistant-approvals")
-
-
-def revoke_assistant_approvals(team_id: object) -> DriverResponse:
-    canonical_id = canonical_team_id(team_id)
-    return _call("DELETE", f"/v1/teams/{canonical_id}/assistant-approvals")
 
 
 list_assistant_accounts = accounts_oauth.list_assistant_accounts

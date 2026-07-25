@@ -30,7 +30,6 @@ import adminstore
 import auth
 import chat_ws
 import chat_ws_common
-import localchat
 import modelproviders
 import notifications
 import oauth_handoff
@@ -412,28 +411,6 @@ async def team_inference_configure(team_id: str, request: Request):
 @app.websocket("/api/teams/{team_id}/chat/ws")
 async def team_chat_ws(websocket: WebSocket, team_id: str):
     await chat_ws.serve(websocket, team_id, session_ok=_session_ok)
-
-
-@app.put("/api/teams/{team_id}/assistant-secrets")
-async def team_assistant_secrets_replace(team_id: str, request: Request):
-    payload = await _bounded_json_object(request, teams.MAX_SECRET_JSON_BODY_BYTES)
-    return await run_in_threadpool(
-        _team_driver_response,
-        lambda: localchat.replace_secrets(team_id, payload),
-    )
-
-
-@app.get("/api/teams/{team_id}/assistant-approvals")
-def team_assistant_approvals(team_id: str):
-    return _team_driver_response(lambda: localchat.approval_inventory(team_id))
-
-
-@app.delete("/api/teams/{team_id}/assistant-approvals")
-async def team_assistant_approvals_revoke(team_id: str):
-    return await run_in_threadpool(
-        _team_driver_response,
-        lambda: localchat.revoke_approvals(team_id),
-    )
 
 
 @app.get("/api/teams/{team_id}/assistant-accounts")

@@ -18,16 +18,8 @@ import chat_ws_fixtures
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-TURN_ID = chat_ws_fixtures.TURN_ID
 CHALLENGE_ID = chat_ws_fixtures.CHALLENGE_ID
 _account_challenge = chat_ws_fixtures.account_challenge
-_account_requirements = chat_ws_fixtures.account_requirements
-_approval_challenge = chat_ws_fixtures.approval_challenge
-_approval_requirements = chat_ws_fixtures.approval_requirements
-_challenge = chat_ws_fixtures.challenge
-_input_challenge = chat_ws_fixtures.input_challenge
-_inventory = chat_ws_fixtures.inventory
-_requirements = chat_ws_fixtures.requirements
 
 
 class _Socket:
@@ -142,118 +134,20 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def _accepted(message: dict) -> bool:
         return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v3", "headers": []}
 
-    def test_sync_snapshot_reads_independent_driver_state_in_parallel(self) -> None:
-        barrier = threading.Barrier(5, timeout=2)
-        none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
-
-        def concurrent_read(response):
-            def read(team_id: str):
-                self.assertEqual(team_id, "team_1")
-                barrier.wait()
-                return response
-
-            return read
-
-        with (
-            mock.patch.object(
-                self.chat_ws.localchat,
-                "secret_inventory",
-                side_effect=concurrent_read(_inventory()),
-            ),
-            mock.patch.object(
-                self.chat_ws.localchat,
-                "pending_accounts",
-                side_effect=concurrent_read(none_pending),
-            ),
-            mock.patch.object(
-                self.chat_ws.localchat,
-                "pending_secrets",
-                side_effect=concurrent_read(none_pending),
-            ),
-            mock.patch.object(
-                self.chat_ws.localchat,
-                "pending_input",
-                side_effect=concurrent_read(none_pending),
-            ),
-            mock.patch.object(
-                self.chat_ws.localchat,
-                "pending_approval",
-                side_effect=concurrent_read(none_pending),
-            ),
-        ):
-            snapshot = self.chat_ws._sync_snapshot("team_1")
-
-        self.assertEqual(
-            snapshot,
-            (_inventory(), none_pending, None, none_pending, none_pending, none_pending),
-        )
-
-    def test_account_sync_resumes_exact_challenge_before_secret_or_approval(self) -> None:
-        async def scenario() -> None:
-            pending_account = _account_challenge(status=200)
-            next_secret = _challenge()
-            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
-            with (
-                mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "pending_accounts",
-                    return_value=pending_account,
-                ),
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "resume_accounts",
-                    return_value=next_secret,
-                ) as resume,
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "pending_secrets",
-                    return_value=none_pending,
-                ) as pending_secret,
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "pending_input",
-                    return_value=none_pending,
-                ) as pending_input,
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "pending_approval",
-                    return_value=none_pending,
-                ) as pending_approval,
-            ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "sync"})
-                self.assertEqual((await websocket.next_json())["type"], "secret-inventory")
-                self.assertEqual((await websocket.next_json())["type"], "secrets-required")
-                resume.assert_called_once_with("team_1", CHALLENGE_ID)
-                pending_secret.assert_called_once_with("team_1")
-                pending_input.assert_called_once_with("team_1")
-                pending_approval.assert_called_once_with("team_1")
-                await websocket.disconnect()
-
-        asyncio.run(scenario())
-
     def test_account_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
-            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             augmented = self.teams.DriverResponse(
                 200,
                 {**dict(_account_challenge(status=200).body), "access_token": sensitive_marker},
             )
             with (
-                mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(self.chat_ws.localchat, "pending_accounts", return_value=augmented),
                 mock.patch.object(self.chat_ws.localchat, "resume_accounts") as resume,
-                mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
-                self.assertEqual((await websocket.next_json())["type"], "secret-inventory")
                 error = await websocket.next_json()
                 self.assertEqual(error["type"], "error")
                 self.assertEqual(error["status"], 502)
@@ -269,9 +163,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Published."},
             )
-            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
             with (
-                mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
                 mock.patch.object(
                     self.chat_ws.localchat,
                     "pending_accounts",
@@ -282,14 +174,10 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     "resume_accounts",
                     return_value=completed,
                 ) as resume,
-                mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
-                self.assertEqual((await websocket.next_json())["type"], "secret-inventory")
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -300,201 +188,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     },
                 )
                 resume.assert_called_once_with("team_1", CHALLENGE_ID)
-                await websocket.disconnect()
-
-        asyncio.run(scenario())
-
-    def test_account_sync_rejects_a_next_gate_from_another_turn(self) -> None:
-        async def scenario() -> None:
-            none_pending = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "status": "none"})
-            next_secret = self.chat_ws.localchat.PublicResponse(
-                428,
-                {**dict(_challenge().body), "turn_id": "c" * 32},
-            )
-            with (
-                mock.patch.object(self.chat_ws.localchat, "secret_inventory", return_value=_inventory()),
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "pending_accounts",
-                    return_value=_account_challenge(status=200),
-                ),
-                mock.patch.object(self.chat_ws.localchat, "resume_accounts", return_value=next_secret),
-                mock.patch.object(self.chat_ws.localchat, "pending_secrets", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_input", return_value=none_pending),
-                mock.patch.object(self.chat_ws.localchat, "pending_approval", return_value=none_pending),
-            ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "sync"})
-                self.assertEqual((await websocket.next_json())["type"], "secret-inventory")
-                error = await websocket.next_json()
-                self.assertEqual(error["type"], "error")
-                self.assertEqual(error["status"], 502)
-                await websocket.disconnect()
-
-        asyncio.run(scenario())
-
-    def test_explicit_approval_resumes_only_the_exact_pending_challenge(self) -> None:
-        async def scenario() -> None:
-            completed = self.chat_ws.localchat.PublicResponse(
-                200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Both posts were published."},
-            )
-            with (
-                mock.patch.object(self.chat_ws.localchat, "turn", return_value=_approval_challenge()),
-                mock.patch.object(self.chat_ws.localchat, "submit_approval", return_value=completed) as submit,
-            ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "publish both", "files": [], "assistant_ids": ["social-publisher"]}
-                )
-                self.assertEqual(
-                    await websocket.next_json(),
-                    {
-                        "type": "approval-required",
-                        "turn_id": TURN_ID,
-                        "challenge_id": CHALLENGE_ID,
-                        "requirements": _approval_requirements(),
-                    },
-                )
-                invalid = (
-                    {"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": False},
-                    {"type": "approval-submit", "challenge_id": "c" * 32, "approved": True},
-                    {"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": True, "input": {}},
-                )
-                for frame in invalid:
-                    await websocket.send_json(frame)
-                    self.assertIn((await websocket.next_json())["status"], {400, 409})
-                submit.assert_not_called()
-
-                await websocket.send_json({"type": "approval-submit", "challenge_id": CHALLENGE_ID, "approved": True})
-                self.assertEqual(
-                    await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Both posts were published.",
-                    },
-                )
-                submit.assert_called_once_with(
-                    "team_1",
-                    {"challenge_id": CHALLENGE_ID, "approved": True},
-                )
-                await websocket.disconnect()
-
-        asyncio.run(scenario())
-
-    def test_one_secret_submit_resumes_the_turn_without_echoing_its_value(self) -> None:
-        async def scenario() -> None:
-            started = threading.Event()
-            release = threading.Event()
-            submitted_value = "test-private-must-never-cross-the-websocket"
-            completed = self.chat_ws.localchat.PublicResponse(
-                200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Lisbon is sunny."},
-            )
-
-            def submit(_team_id, _payload):
-                started.set()
-                release.wait(timeout=2)
-                return completed
-
-            with (
-                mock.patch.object(self.chat_ws.localchat, "turn", return_value=_challenge()),
-                mock.patch.object(self.chat_ws.localchat, "submit_secrets", side_effect=submit) as submit_mock,
-            ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "weather", "files": [], "assistant_ids": ["weather-guide"]}
-                )
-                self.assertEqual((await websocket.next_json())["type"], "secrets-required")
-                frame = {
-                    "type": "secret-submit",
-                    "challenge_id": CHALLENGE_ID,
-                    "values": [
-                        {
-                            "assistant_id": "weather-guide",
-                            "secret_id": "weather-api-token",
-                            "value": submitted_value,
-                        }
-                    ],
-                }
-                await websocket.send_json(frame)
-                await _wait_for_thread(started)
-                await websocket.send_json(frame)
-                self.assertEqual(
-                    await websocket.next_json(),
-                    {"type": "error", "status": 409, "detail": "a chat operation is already active"},
-                )
-                release.set()
-                terminal = await websocket.next_json()
-                self.assertEqual(
-                    terminal,
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Lisbon is sunny.",
-                    },
-                )
-                self.assertNotIn(submitted_value, json.dumps(terminal))
-                submit_mock.assert_called_once_with(
-                    "team_1",
-                    {
-                        "challenge_id": CHALLENGE_ID,
-                        "values": [
-                            {
-                                "assistant_id": "weather-guide",
-                                "secret_id": "weather-api-token",
-                                "value": submitted_value,
-                            }
-                        ],
-                    },
-                )
-                await websocket.disconnect()
-
-        asyncio.run(scenario())
-
-    def test_stop_cancels_a_pending_secret_challenge_through_localchat(self) -> None:
-        async def scenario() -> None:
-            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
-            completed = self.chat_ws.localchat.PublicResponse(
-                200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Fresh turn."},
-            )
-            with (
-                mock.patch.object(
-                    self.chat_ws.localchat,
-                    "turn",
-                    side_effect=(_challenge(), completed),
-                ) as turn_mock,
-                mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
-            ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "weather", "files": [], "assistant_ids": ["weather-guide"]}
-                )
-                self.assertEqual((await websocket.next_json())["type"], "secrets-required")
-                await websocket.send_json({"type": "stop"})
-                self.assertEqual(await websocket.next_json(), {"type": "stopped"})
-                stop_mock.assert_called_once_with("team_1")
-                await websocket.send_json(
-                    {"type": "chat", "message": "hello again", "files": [], "assistant_ids": ["weather-guide"]}
-                )
-                self.assertEqual(
-                    await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Fresh turn.",
-                    },
-                )
-                self.assertEqual(turn_mock.call_count, 2)
                 await websocket.disconnect()
 
         asyncio.run(scenario())
