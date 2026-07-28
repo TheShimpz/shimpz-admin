@@ -43,7 +43,7 @@ RUN groupadd -g 1000 admin && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin ad
 
 WORKDIR /app/backend
 COPY backend/accounts_oauth.py backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/team_driver_contract.py \
-     backend/chat_payloads.py backend/chat_ws.py backend/chat_ws_common.py backend/strict_json.py backend/driver_client.py \
+     backend/chat_payloads.py backend/chat_ws.py backend/chat_ws_common.py backend/driver_client.py \
      backend/localchat.py backend/modelproviders.py backend/model_catalog.json backend/notifications.py backend/oauth_handoff.py \
      ./
 # UI_DIR in app.py resolves to backend/../frontend/build
