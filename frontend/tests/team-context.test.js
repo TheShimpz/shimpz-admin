@@ -221,7 +221,7 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
 
   for (const teams of [
     [{ team_id: '../escape', team_name: 'Unsafe', status: 'running' }],
-    [{ id: 'marketing', name: 'Legacy alias', status: 'running' }],
+    [{ id: 'marketing', name: 'Unsupported alias', status: 'running' }],
   ]) {
     clearTeamContext();
     await assert.rejects(

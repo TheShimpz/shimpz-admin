@@ -143,7 +143,7 @@ class TeamInferenceTests(unittest.TestCase):
         with mock.patch.object(teams, "_call", return_value=response):
             self.assertIs(teams.get_inference("team_1"), response)
 
-    def test_rejects_secrets_and_legacy_cli_providers_before_network_io(self) -> None:
+    def test_rejects_secrets_and_retired_cli_providers_before_network_io(self) -> None:
         payloads = (
             {"provider": "openai", "model": "gpt-5.5", "api_key": "must-not-cross"},
             {"provider": "codex", "model": "gpt-5.5"},

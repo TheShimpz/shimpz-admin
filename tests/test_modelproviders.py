@@ -233,12 +233,12 @@ class ModelProviderTests(unittest.TestCase):
             if response is not None:
                 response.read.assert_not_called()
 
-    def test_legacy_or_secretless_records_are_not_configured_or_resolved(self) -> None:
-        legacy_secret = "sk-legacy-0123456789"
+    def test_unverified_or_secretless_records_are_not_configured_or_resolved(self) -> None:
+        unverified_secret = "sk-unverified-0123456789"
         adminstore._write(
             {
                 "model_credentials": {
-                    "openai": {"api_key": legacy_secret, "updated": 1_784_400_000},
+                    "openai": {"api_key": unverified_secret, "updated": 1_784_400_000},
                     "anthropic": {"verified_at": 1_784_400_000},
                 }
             }

@@ -551,7 +551,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
 
         self.assertTrue(document["routes_ok"])
         self.assertTrue(document["closed_api_ok"])
-        self.assertTrue(document["legacy_operations_absent"])
+        self.assertTrue(document["retired_operations_absent"])
         self.assertTrue(document["power_routes_absent"])
         self.assertEqual(document["power_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
@@ -606,7 +606,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
 
         self.assertEqual(document["valid"], {"status": 200, "body": expected})
         self.assertEqual(
-            document["legacy"],
+            document["unsupported_field"],
             {"status": 400, "body": {"detail": "request body must contain only team_name"}},
         )
         self.assertEqual(
@@ -810,7 +810,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
     return {
         "routes_ok": expected.issubset(routes),
         "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
-        "legacy_operations_absent": not any("/operations/" in path for path, _method in routes),
+        "retired_operations_absent": not any("/operations/" in path for path, _method in routes),
         "power_routes_absent": not any("/powers/" in path for path, _method in routes),
         "power_status": power_status,
         "anonymous_status": status,
@@ -861,7 +861,7 @@ def _run_asgi_probe(scenario: str) -> None:
         async def create_requests():
             results = {}
             for key, payload in (
-                ("legacy", {"name": "Marketing"}),
+                ("unsupported_field", {"name": "Marketing"}),
                 ("non_string", {"team_name": 123}),
                 ("valid", {"team_name": "Marketing"}),
             ):
