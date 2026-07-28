@@ -547,7 +547,7 @@
           title={$t('store.frameTitle')}
           class:frame-ready={framePhase === 'ready'}
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-          referrerpolicy="origin"
+          referrerpolicy="no-referrer"
           onload={storeFrameLoaded}
         ></iframe>
         {#if framePhase === 'loading'}
