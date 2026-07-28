@@ -179,7 +179,10 @@ class ModelProviderTests(unittest.TestCase):
             response.close.assert_called_once_with()
             connection.close.assert_called_once_with()
             self.assertTrue(configured["configured"])
-            self.assertEqual(adminstore.model_credentials()[provider]["verified_at"], 1_784_404_000)
+            self.assertEqual(
+                adminstore.model_credentials()[provider],
+                {"api_key": secret, "verified_at": 1_784_404_000},
+            )
 
     def test_provider_rejection_does_not_persist_or_disclose_the_secret(self) -> None:
         secret = "sk-rejected-0123456789"

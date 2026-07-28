@@ -131,7 +131,6 @@ def set_model_api_key(provider, api_key):
         verified_at = int(time.time())
         records[provider] = {
             "api_key": api_key,
-            "updated": verified_at,
             "verified_at": verified_at,
         }
         _write(data)
