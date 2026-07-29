@@ -464,30 +464,6 @@ def _installed(response: teams.TeamResponse) -> dict[str, str]:
     return result
 
 
-def _upgrade(team_id: str, assistant_id: str) -> bool:
-    """Use only the controller's ID-based, build-pinned install path and verify readiness."""
-    response = teams.install_assistant(team_id, {"assistant": assistant_id})
-    if not 200 <= response.status < 300:
-        return False
-    try:
-        allowed = {"assistant", "installed"}
-        if "trace_id" in response.body:
-            allowed.add("trace_id")
-            trace_id = response.body["trace_id"]
-            if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-                raise ValueError("invalid trace id")
-        if (
-            set(response.body) != allowed
-            or response.body["assistant"] != assistant_id
-            or not isinstance(response.body["installed"], bool)
-        ):
-            raise ValueError("invalid update response")
-        verified = _installed(teams.list_installed_assistants(team_id))
-    except KeyError, TypeError, ValueError, OSError, teams.TeamRequestError:
-        return False
-    return verified.get(assistant_id) == "running"
-
-
 def _prune(records: list[dict[str, object]]) -> list[dict[str, object]]:
     records.sort(key=lambda item: (str(item["published_at"]), str(item["assistant_id"]), int(item["sequence"])))
     while len(records) > MAX_NOTIFICATIONS:
@@ -548,7 +524,7 @@ def _inventory_failure(
     }
 
 
-def _upgrade_outdated(
+def _observe_outdated(
     inventories: dict[str, dict[str, str]],
 ) -> tuple[set[str], set[tuple[str, str]], int]:
     outdated = sorted(
@@ -558,16 +534,9 @@ def _upgrade_outdated(
         if status == "outdated"
     )
     had_outdated = {assistant_id for _team_id, assistant_id in outdated}
-    successful: set[tuple[str, str]] = set()
-    failed = 0
-    results = _parallel_calls(_upgrade, outdated)
-    for (team_id, assistant_id), updated in zip(outdated, results, strict=True):
-        if updated:
-            successful.add((team_id, assistant_id))
-            inventories[team_id][assistant_id] = "running"
-        else:
-            failed += 1
-    return had_outdated, successful, failed
+    # An update requires a newly selected immutable source digest. Release notifications
+    # deliberately carry display metadata only, so they can never mutate a Team.
+    return had_outdated, set(), 0
 
 
 def _installed_releases(
@@ -657,7 +626,7 @@ def sync() -> dict[str, object]:
         installed_ids = {assistant_id for inventory in inventories.values() for assistant_id in inventory}
         if len(installed_ids) > MAX_CURSORS:
             raise NotificationStoreError("installed Assistant inventory exceeds notification bounds")
-        had_outdated, successful_updates, failed_updates = _upgrade_outdated(inventories)
+        had_outdated, successful_updates, failed_updates = _observe_outdated(inventories)
         envelope, notifications_added = _reconcile_state(
             feed_status=feed_status,
             feed=feed,

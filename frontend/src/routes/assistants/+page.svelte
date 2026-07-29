@@ -3,7 +3,6 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import {
-    RELEASED_STORE_ASSISTANT_IDS,
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
     STORE_LIFECYCLE_PROTOCOL_VERSION,
@@ -12,7 +11,7 @@
     acknowledgeStoreUninstallIntent,
     createStoreActionLatch,
     postStoreAssistantState,
-    projectReleasedStoreAssistantIds,
+    projectInstalledAssistantIds,
   } from '$lib/assistantIntent.js';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
@@ -33,6 +32,7 @@
   let newTeamName = $state('');
   let selectedTeam = $state('');
   let pendingAssistant = $state('');
+  let pendingSourceDigest = $state('');
   let iframeElement = $state();
   let dialogOpen = $state(false);
   let dialogAction = $state('install');
@@ -56,8 +56,8 @@
   );
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let pendingAssistantAvailable = $derived(
-    RELEASED_STORE_ASSISTANT_IDS.includes(pendingAssistant) &&
-      $teamContext.catalog.some((entry) => entry.id === pendingAssistant),
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
+      /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest),
   );
   let activeTeamRecord = $derived(
     runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
@@ -208,7 +208,7 @@
   $effect(() => {
     const context = $teamContext;
     if (context.phase === 'ready') {
-      publishStoreSnapshot('ready', projectReleasedStoreAssistantIds(context.installedAssistants));
+      publishStoreSnapshot('ready', projectInstalledAssistantIds(context.installedAssistants));
     } else if (context.phase === 'error') {
       publishStoreSnapshot('error', []);
     } else {
@@ -253,7 +253,7 @@
       publishStoreSnapshot(
         status,
         status === 'ready'
-          ? projectReleasedStoreAssistantIds($teamContext.installedAssistants)
+          ? projectInstalledAssistantIds($teamContext.installedAssistants)
           : [],
       );
       return;
@@ -262,7 +262,7 @@
       await refreshTeamInventory(fetch);
       publishStoreSnapshot(
         'ready',
-        projectReleasedStoreAssistantIds($teamContext.installedAssistants),
+        projectInstalledAssistantIds($teamContext.installedAssistants),
       );
     } catch {
       publishStoreSnapshot('error', []);
@@ -273,16 +273,17 @@
     dialogOpen = true;
   }
 
-  async function beginInstall(assistantId) {
+  async function beginInstall(assistantId, sourceDigest) {
     const attempt = ++dialogAttempt;
     dialogAction = 'install';
     pendingAssistant = assistantId;
+    pendingSourceDigest = sourceDigest;
     selectedTeam = activeTeamRecord?.id ?? '';
     dialogError = '';
     dialogMode = 'checking';
     showAssistantDialog();
 
-    if (!RELEASED_STORE_ASSISTANT_IDS.includes(assistantId)) {
+    if (!pendingAssistantAvailable) {
       dialogMode = 'unavailable';
       return;
     }
@@ -297,10 +298,6 @@
     }
     if (!team) {
       dialogMode = 'no-team';
-      return;
-    }
-    if (!$teamContext.catalog.some((entry) => entry.id === assistantId)) {
-      dialogMode = 'unavailable';
       return;
     }
     dialogMode = $teamContext.installedAssistants.some(
@@ -347,7 +344,7 @@
         publishStoreSnapshot();
         return;
       }
-      void runStoreInstall(event.data.assistant);
+      void runStoreInstall(event.data.assistant, event.data.source_digest);
       return;
     }
     if (acknowledgeStoreUninstallIntent(event, iframeElement?.contentWindow)) {
@@ -362,7 +359,6 @@
   async function confirmInstall() {
     if (
       busy ||
-      !RELEASED_STORE_ASSISTANT_IDS.includes(pendingAssistant) ||
       !pendingAssistantAvailable ||
       !['install', 'error'].includes(dialogMode)
     ) return;
@@ -372,7 +368,7 @@
     busy = true;
     dialogError = '';
     try {
-      await installAssistant(fetch, team.id, pendingAssistant);
+      await installAssistant(fetch, team.id, pendingAssistant, pendingSourceDigest);
       await refreshInstalled(team.id);
       const assistantName = pendingAssistantName;
       finishAssistantDialog();
@@ -394,9 +390,9 @@
     }
   }
 
-  async function runStoreInstall(assistantId) {
+  async function runStoreInstall(assistantId, sourceDigest) {
     try {
-      await beginInstall(assistantId);
+      await beginInstall(assistantId, sourceDigest);
     } catch (error) {
       dialogError = error instanceof Error ? error.message : copy.genericFailure;
       if (dialogOpen) {

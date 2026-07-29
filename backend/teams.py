@@ -58,6 +58,13 @@ def canonical_team_name(value: object) -> str:
 
 
 canonical_assistant_id = chat_payloads.canonical_assistant_id
+_SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def canonical_source_digest(value: object) -> str:
+    if not isinstance(value, str) or _SOURCE_DIGEST_RE.fullmatch(value) is None:
+        raise TeamRequestError("source digest must be a canonical sha256 digest")
+    return value
 
 
 def canonical_assistant_help_locale(value: object) -> str:
@@ -300,10 +307,15 @@ def assistant_help(team_id: object, assistant_id: object, locale: object = "en")
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:
-    if not isinstance(payload, dict) or set(payload) != {"assistant"}:
-        raise TeamRequestError("request body must contain only assistant")
-    assistant_id = canonical_assistant_id(payload["assistant"])
-    return _call("POST", _assistant_path(team_id), {"assistant": assistant_id})
+    if not isinstance(payload, dict) or set(payload) != {"assistant_id", "source_digest"}:
+        raise TeamRequestError("request body must contain only assistant_id and source_digest")
+    assistant_id = canonical_assistant_id(payload["assistant_id"])
+    source_digest = canonical_source_digest(payload["source_digest"])
+    return _call(
+        "POST",
+        _assistant_path(team_id),
+        {"assistant_id": assistant_id, "source_digest": source_digest},
+    )
 
 
 def uninstall_assistant(team_id: object, assistant_id: object) -> TeamResponse:

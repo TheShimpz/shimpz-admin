@@ -10,6 +10,8 @@ import {
   safeApiError,
 } from '../src/lib/localApi.js';
 
+const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
+
 function response(status, body) {
   return {
     ok: status >= 200 && status < 300,
@@ -25,12 +27,16 @@ test('install is passive and never invokes an Assistant Power', async () => {
     return response(200, { assistant: 'hello-pulse', installed: true });
   };
 
-  const result = await installAssistant(fetcher, 'team_1', 'hello-pulse');
+  const result = await installAssistant(fetcher, 'team_1', 'hello-pulse', SOURCE_DIGEST);
 
   assert.deepEqual(result, { assistant: 'hello-pulse', installed: true });
   assert.deepEqual(
     calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
-    [['POST', '/api/teams/team_1/assistants', { assistant: 'hello-pulse' }]],
+    [[
+      'POST',
+      '/api/teams/team_1/assistants',
+      { assistant_id: 'hello-pulse', source_digest: SOURCE_DIGEST },
+    ]],
   );
   assert.equal(calls.some(({ url }) => url.includes('/powers/')), false);
 });
@@ -43,7 +49,7 @@ test('idempotent install reports an existing Assistant without executing it', as
   };
 
   assert.deepEqual(
-    await installAssistant(fetcher, 'team_1', 'hello-pulse'),
+    await installAssistant(fetcher, 'team_1', 'hello-pulse', SOURCE_DIGEST),
     { assistant: 'hello-pulse', installed: false },
   );
   assert.equal(calls, 1);
@@ -57,7 +63,7 @@ test('safe install errors stop after one request and prefer error over detail', 
   };
 
   await assert.rejects(
-    installAssistant(fetcher, 'team_1', 'hello-pulse'),
+    installAssistant(fetcher, 'team_1', 'hello-pulse', SOURCE_DIGEST),
     (error) => error instanceof LocalApiError && error.status === 503 && error.message === 'runtime recovery failed',
   );
   assert.equal(calls.length, 1);
@@ -74,7 +80,7 @@ test('invalid install responses fail closed without invoking anything else', asy
       installAssistant(async () => {
         calls += 1;
         return response(200, body);
-      }, 'team_1', 'hello-pulse'),
+      }, 'team_1', 'hello-pulse', SOURCE_DIGEST),
       (error) => error instanceof LocalApiError && error.message.includes('invalid response'),
     );
     assert.equal(calls, 1);

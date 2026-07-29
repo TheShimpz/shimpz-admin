@@ -1,16 +1,8 @@
 import { ASSISTANT_ID_RE, exactKeys } from './validate.js';
 
 export const STORE_ORIGIN = 'https://shimpz.com';
-export const INSTALL_INTENT = Object.freeze({
-  type: 'shimpz:assistant-install',
-  version: 1,
-  assistant: 'shimpz-cloudflare',
-});
-export const UNINSTALL_INTENT = Object.freeze({
-  type: 'shimpz:assistant-uninstall',
-  version: 1,
-  assistant: 'shimpz-cloudflare',
-});
+export const INSTALL_INTENT_TYPE = 'shimpz:assistant-install';
+export const UNINSTALL_INTENT_TYPE = 'shimpz:assistant-uninstall';
 export const INSTALL_ACK_TYPE = 'shimpz:assistant-install-ack';
 export const UNINSTALL_ACK_TYPE = 'shimpz:assistant-uninstall-ack';
 export const STORE_FRAME_TYPE = 'shimpz:assistant-store-frame';
@@ -19,21 +11,20 @@ export const STORE_STATE_TYPE = 'shimpz:assistant-store-state';
 export const STORE_FRAME_MIN_HEIGHT = 320;
 export const STORE_FRAME_MAX_HEIGHT = 5000;
 export const STORE_STATE_MAX_ASSISTANTS = 128;
-export const STORE_LIFECYCLE_PROTOCOL_VERSION = 1;
+export const STORE_LIFECYCLE_PROTOCOL_VERSION = 2;
 
-const INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
+const INSTALL_INTENT_KEYS = Object.freeze(['assistant', 'source_digest', 'type', 'version']);
+const UNINSTALL_INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
 const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
 const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
 const STORE_LOCALES = new Set(['en', 'pt']);
-export const RELEASED_STORE_ASSISTANT_IDS = Object.freeze(['shimpz-cloudflare']);
-const RELEASED_STORE_ASSISTANTS = new Set(RELEASED_STORE_ASSISTANT_IDS);
 const STORE_ACTIONS = new Set(['install', 'uninstall']);
 
 /** Build one canonical Store detail link without accepting an arbitrary origin or path. */
 export function assistantStoreHref(locale, assistantId) {
   if (!STORE_LOCALES.has(locale) || !ASSISTANT_ID_RE.test(assistantId)) return null;
-  return `${STORE_ORIGIN}/${locale}/assistants/${assistantId}`;
+  return `${STORE_ORIGIN}/${locale}/assistants?assistant=${encodeURIComponent(assistantId)}`;
 }
 
 function isTrustedStoreEvent(event, iframeWindow) {
@@ -57,19 +48,28 @@ export function createStoreActionLatch() {
   });
 }
 
-function acceptsStoreIntent(event, iframeWindow, expectedType) {
+function acceptsStoreIntent(event, iframeWindow, expectedType, expectedKeys) {
   if (!isTrustedStoreEvent(event, iframeWindow)) return false;
   const data = event.data;
-  if (!exactKeys(data, INTENT_KEYS)) return false;
+  if (!exactKeys(data, expectedKeys)) return false;
   return (
     data.type === expectedType &&
     data.version === STORE_LIFECYCLE_PROTOCOL_VERSION &&
-    RELEASED_STORE_ASSISTANTS.has(data.assistant)
+    typeof data.assistant === 'string' &&
+    data.assistant.length <= 80 &&
+    ASSISTANT_ID_RE.test(data.assistant) &&
+    (
+      expectedType !== INSTALL_INTENT_TYPE ||
+      (
+        typeof data.source_digest === 'string' &&
+        /^sha256:[0-9a-f]{64}$/.test(data.source_digest)
+      )
+    )
   );
 }
 
-function acknowledgeStoreIntent(event, iframeWindow, expectedType, acknowledgementType) {
-  if (!acceptsStoreIntent(event, iframeWindow, expectedType)) return false;
+function acknowledgeStoreIntent(event, iframeWindow, expectedType, expectedKeys, acknowledgementType) {
+  if (!acceptsStoreIntent(event, iframeWindow, expectedType, expectedKeys)) return false;
   event.source.postMessage(
     {
       type: acknowledgementType,
@@ -87,7 +87,7 @@ function acknowledgeStoreIntent(event, iframeWindow, expectedType, acknowledgeme
  * a local token, Team id, or authority to install; the Captain must select and confirm locally.
  */
 export function acceptsStoreInstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT.type);
+  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT_TYPE, INSTALL_INTENT_KEYS);
 }
 
 /**
@@ -95,17 +95,29 @@ export function acceptsStoreInstallIntent(event, iframeWindow) {
  * inventory, token, runtime, or installation state; local admission remains entirely in the Admin.
  */
 export function acknowledgeStoreInstallIntent(event, iframeWindow) {
-  return acknowledgeStoreIntent(event, iframeWindow, INSTALL_INTENT.type, INSTALL_ACK_TYPE);
+  return acknowledgeStoreIntent(
+    event,
+    iframeWindow,
+    INSTALL_INTENT_TYPE,
+    INSTALL_INTENT_KEYS,
+    INSTALL_ACK_TYPE,
+  );
 }
 
 /** Accept only the exact inert uninstall request; the Store still receives no local authority. */
 export function acceptsStoreUninstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT.type);
+  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT_TYPE, UNINSTALL_INTENT_KEYS);
 }
 
 /** Acknowledge receipt without revealing whether, where, or how an Assistant is installed. */
 export function acknowledgeStoreUninstallIntent(event, iframeWindow) {
-  return acknowledgeStoreIntent(event, iframeWindow, UNINSTALL_INTENT.type, UNINSTALL_ACK_TYPE);
+  return acknowledgeStoreIntent(
+    event,
+    iframeWindow,
+    UNINSTALL_INTENT_TYPE,
+    UNINSTALL_INTENT_KEYS,
+    UNINSTALL_ACK_TYPE,
+  );
 }
 
 /**
@@ -118,7 +130,7 @@ export function storeFrameHeight(event, iframeWindow) {
   if (!exactKeys(data, FRAME_KEYS)) return null;
   if (
     data.type !== STORE_FRAME_TYPE ||
-    data.version !== INSTALL_INTENT.version ||
+    data.version !== STORE_LIFECYCLE_PROTOCOL_VERSION ||
     !Number.isInteger(data.height) ||
     data.height < STORE_FRAME_MIN_HEIGHT ||
     data.height > STORE_FRAME_MAX_HEIGHT
@@ -131,21 +143,29 @@ export function acknowledgeStoreFrame(event, iframeWindow) {
   const height = storeFrameHeight(event, iframeWindow);
   if (height === null) return null;
   event.source.postMessage(
-    { type: STORE_CONTEXT_TYPE, version: INSTALL_INTENT.version },
+    { type: STORE_CONTEXT_TYPE, version: STORE_LIFECYCLE_PROTOCOL_VERSION },
     STORE_ORIGIN,
   );
   return height;
 }
 
 /** Project the private local inventory onto the intentionally public Store catalog. */
-export function projectReleasedStoreAssistantIds(installedAssistants) {
+export function projectInstalledAssistantIds(installedAssistants) {
   if (!Array.isArray(installedAssistants)) return [];
-  const installed = new Set(
-    installedAssistants
-      .filter((entry) => entry && typeof entry === 'object' && typeof entry.assistant === 'string')
-      .map((entry) => entry.assistant),
-  );
-  return RELEASED_STORE_ASSISTANT_IDS.filter((assistant) => installed.has(assistant));
+  const installed = [];
+  for (const entry of installedAssistants) {
+    const assistant = entry && typeof entry === 'object' ? entry.assistant : null;
+    if (
+      typeof assistant !== 'string' ||
+      assistant.length > 80 ||
+      !ASSISTANT_ID_RE.test(assistant) ||
+      installed.includes(assistant)
+    ) {
+      return [];
+    }
+    installed.push(assistant);
+  }
+  return installed;
 }
 
 /**
@@ -164,7 +184,6 @@ export function postStoreAssistantState(iframeWindow, status, installed) {
       typeof assistant !== 'string' ||
       assistant.length > 80 ||
       !ASSISTANT_ID_RE.test(assistant) ||
-      !RELEASED_STORE_ASSISTANTS.has(assistant) ||
       seen.has(assistant)
     ) {
       return false;
@@ -174,7 +193,7 @@ export function postStoreAssistantState(iframeWindow, status, installed) {
 
   const message = {
     type: STORE_STATE_TYPE,
-    version: INSTALL_INTENT.version,
+    version: STORE_LIFECYCLE_PROTOCOL_VERSION,
     status,
     installed: [...installed],
   };

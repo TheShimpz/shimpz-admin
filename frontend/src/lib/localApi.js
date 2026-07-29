@@ -138,11 +138,14 @@ export async function getAssistantHelp(fetcher, teamId, assistantId, locale = 'e
 }
 
 /** Install or reconcile one allowlisted Assistant without invoking a Power or starting a chat turn. */
-export async function installAssistant(fetcher, teamId, assistantId) {
+export async function installAssistant(fetcher, teamId, assistantId, sourceDigest) {
   if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
   if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
+    throw new LocalApiError('Invalid local Assistant request.');
+  }
+  if (typeof sourceDigest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(sourceDigest)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
@@ -151,7 +154,7 @@ export async function installAssistant(fetcher, teamId, assistantId) {
   const installResponse = await fetcher(base, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ assistant: assistantId }),
+    body: JSON.stringify({ assistant_id: assistantId, source_digest: sourceDigest }),
   });
   const installBody = await jsonObject(installResponse);
   if (!installResponse.ok) {

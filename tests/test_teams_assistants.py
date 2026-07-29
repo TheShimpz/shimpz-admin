@@ -140,7 +140,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         teams.list_assistants()
         teams.list_installed_assistants("team_1")
         teams.assistant_help("team_1", "shimpz-cloudflare", "pt")
-        teams.install_assistant("team_1", {"assistant": "hello-pulse"})
+        teams.install_assistant(
+            "team_1",
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+        )
         teams.uninstall_assistant("team_1", "hello-pulse")
 
         self.assertEqual(
@@ -153,7 +156,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
             ],
         )
-        self.assertEqual(json.loads(_TeamHandler.requests[3]["body"]), {"assistant": "hello-pulse"})
+        self.assertEqual(
+            json.loads(_TeamHandler.requests[3]["body"]),
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+        )
         for request in _TeamHandler.requests:
             self.assertEqual(request["headers"]["accept"], "application/json")
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
@@ -163,7 +169,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         _TeamHandler.response_status = 409
         _TeamHandler.response_body = b'{"detail":"assistant already installed"}'
 
-        response = teams.install_assistant("team_1", {"assistant": "hello-pulse"})
+        response = teams.install_assistant(
+            "team_1",
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+        )
 
         self.assertEqual(
             response,
@@ -513,10 +522,20 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
     def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
         invalid = (
             lambda: teams.list_installed_assistants("Team_1"),
-            lambda: teams.install_assistant("team_1", {"assistant": "../hello-pulse"}),
+            lambda: teams.install_assistant(
+                "team_1",
+                {"assistant_id": "../hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+            ),
             lambda: teams.assistant_help("team_1", "../escape"),
             lambda: teams.assistant_help("team_1", "shimpz-cloudflare", "../pt"),
-            lambda: teams.install_assistant("team_1", {"assistant": "hello-pulse", "extra": True}),
+            lambda: teams.install_assistant(
+                "team_1",
+                {
+                    "assistant_id": "hello-pulse",
+                    "source_digest": "sha256:" + ("a" * 64),
+                    "extra": True,
+                },
+            ),
             lambda: teams.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:
@@ -591,7 +610,10 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         request = _TeamHandler.requests[0]
         self.assertEqual(request["method"], "POST")
         self.assertEqual(request["path"], "/v1/teams/team_1/assistants")
-        self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
+        self.assertEqual(
+            json.loads(request["body"]),
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+        )
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_create_route_forwards_only_a_typed_team_name(self):
@@ -837,7 +859,10 @@ def _run_asgi_probe(scenario: str) -> None:
     if scenario == "routes":
         output = _probe_routes(admin_app, token)
     elif scenario == "install-conflict":
-        payload = json.dumps({"assistant": "hello-pulse"}, separators=(",", ":")).encode()
+        payload = json.dumps(
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+            separators=(",", ":"),
+        ).encode()
         status, body = asyncio.run(
             _asgi_request(
                 admin_app,
@@ -931,7 +956,10 @@ def _run_asgi_probe(scenario: str) -> None:
     elif scenario == "concurrent-session":
 
         async def concurrent_requests():
-            payload = json.dumps({"assistant": "hello-pulse"}, separators=(",", ":")).encode()
+            payload = json.dumps(
+                {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+                separators=(",", ":"),
+            ).encode()
             started = time.monotonic()
             install_task = asyncio.create_task(
                 _asgi_request(
