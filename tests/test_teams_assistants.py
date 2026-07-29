@@ -826,7 +826,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
             admin_app,
             "POST",
             "/api/teams/team_1/assistants/hello-pulse/powers/hello",
-            b'{"name":"Captain"}',
+            b'{"name":"Supervisor"}',
             token=token,
         )
     )

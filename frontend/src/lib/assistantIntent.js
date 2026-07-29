@@ -84,7 +84,7 @@ function acknowledgeStoreIntent(event, iframeWindow, expectedType, expectedKeys,
 
 /**
  * Accept one inert Store intent. The Store can nominate the released Assistant, but it never gets
- * a local token, Team id, or authority to install; the Captain must select and confirm locally.
+ * a local token, Team id, or authority to install; the Supervisor must select and confirm locally.
  */
 export function acceptsStoreInstallIntent(event, iframeWindow) {
   return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT_TYPE, INSTALL_INTENT_KEYS);

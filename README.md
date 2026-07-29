@@ -1,6 +1,6 @@
 # Shimpz Admin
 
-Shimpz Admin is the loopback-only operator console installed with a local Shimpz Team. Its SvelteKit
+Shimpz Admin is the loopback-only Supervisor console installed with a local Shimpz Space. Its SvelteKit
 frontend and FastAPI backend provide password/session authentication, Team lifecycle, Assistant
 install/uninstall and help, provider/model selection, Team files, local chat, and OAuth Account
 connection management.
