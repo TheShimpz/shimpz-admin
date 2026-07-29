@@ -630,4 +630,4 @@ else:
     @app.get("/")
     async def no_ui():
         # Loud, not silent: APIs stay usable (tests/CI), humans are told exactly what to run.
-        return PlainTextResponse("UI not built — build apps/admin/frontend (npm run build).")
+        return PlainTextResponse("UI not built — build admin/frontend (npm run build).")
