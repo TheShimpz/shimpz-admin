@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
-# check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_DRIVER_TOKEN_GID is a numeric group id, never a credential
+# check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_TEAM_TOKEN_GID is a numeric group id, never a credential
 #
 # shimpz-admin — the persistent local Team control panel. Runs as a compose service on 127.0.0.1
 # only, holds no Docker socket or host configuration mount, and persists only its private `/data`.
@@ -42,8 +42,8 @@ COPY --from=dependencies /opt/venv /opt/venv
 RUN groupadd -g 1000 admin && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin admin
 
 WORKDIR /app/backend
-COPY backend/accounts_oauth.py backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/team_driver_contract.py \
-     backend/chat_payloads.py backend/chat_ws.py backend/chat_ws_common.py backend/driver_client.py \
+COPY backend/accounts_oauth.py backend/app.py backend/adminstore.py backend/auth.py backend/teams.py backend/team_contract.py \
+     backend/chat_payloads.py backend/chat_ws.py backend/chat_ws_common.py backend/team_client.py \
      backend/localchat.py backend/modelproviders.py backend/model_catalog.json backend/notifications.py backend/oauth_handoff.py \
      ./
 # UI_DIR in app.py resolves to backend/../frontend/build

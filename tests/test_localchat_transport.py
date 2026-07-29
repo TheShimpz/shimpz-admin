@@ -14,7 +14,8 @@ from typing import ClassVar
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import driver_client
+import team_client
+
 import teams
 
 TRACE_ID = "a" * 32
@@ -54,13 +55,13 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.token_file = Path(self.temporary.name) / "token"
         self.token_file.write_text("controller-test-token", encoding="ascii")
-        self.previous_url, self.previous_token = driver_client.URL, driver_client.TOKEN_FILE
-        driver_client.URL = f"http://127.0.0.1:{self.server.server_port}"
-        driver_client.TOKEN_FILE = str(self.token_file)
+        self.previous_url, self.previous_token = team_client.URL, team_client.TOKEN_FILE
+        team_client.URL = f"http://127.0.0.1:{self.server.server_port}"
+        team_client.TOKEN_FILE = str(self.token_file)
 
     def tearDown(self) -> None:
-        driver_client.URL = self.previous_url
-        driver_client.TOKEN_FILE = self.previous_token
+        team_client.URL = self.previous_url
+        team_client.TOKEN_FILE = self.previous_token
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)

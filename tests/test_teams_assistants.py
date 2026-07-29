@@ -19,11 +19,12 @@ from urllib.parse import urlencode
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import driver_client
+import team_client
+
 import teams
 
 
-class _DriverHandler(BaseHTTPRequestHandler):
+class _TeamHandler(BaseHTTPRequestHandler):
     requests: ClassVar[list[dict[str, object]]] = []
     response_by_route: ClassVar[dict[tuple[str, str], tuple[int, bytes]]] = {}
     response_status = 200
@@ -65,17 +66,17 @@ class _DriverHandler(BaseHTTPRequestHandler):
     do_DELETE = _handle
 
 
-class _LiveDriverCase(unittest.TestCase):
-    """Give each contract a real loopback driver and real bearer file."""
+class _LiveTeamCase(unittest.TestCase):
+    """Give each contract a real loopback Team endpoint and real bearer file."""
 
     def setUp(self):
-        _DriverHandler.requests = []
-        _DriverHandler.response_by_route = {}
-        _DriverHandler.response_status = 200
-        _DriverHandler.response_body = b'{"ok":true}'
-        _DriverHandler.response_headers = {"Content-Type": "application/json"}
-        _DriverHandler.response_delay_seconds = 0.0
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _DriverHandler)
+        _TeamHandler.requests = []
+        _TeamHandler.response_by_route = {}
+        _TeamHandler.response_status = 200
+        _TeamHandler.response_body = b'{"ok":true}'
+        _TeamHandler.response_headers = {"Content-Type": "application/json"}
+        _TeamHandler.response_delay_seconds = 0.0
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _TeamHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_server)
@@ -83,9 +84,9 @@ class _LiveDriverCase(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
-        self.token_file = self.root / "team-driver.token"
+        self.token_file = self.root / "team.token"
         self.token_file.write_text("internal-test-bearer\n", encoding="utf-8")
-        self.driver_url = f"http://127.0.0.1:{self.server.server_port}"
+        self.team_url = f"http://127.0.0.1:{self.server.server_port}"
 
     def _stop_server(self):
         self.server.shutdown()
@@ -99,8 +100,8 @@ class _LiveDriverCase(unittest.TestCase):
                 "PYTHONPATH": str(ROOT / "backend"),
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
-                "SHIMPZ_TEAMDRIVER_URL": self.driver_url,
-                "SHIMPZ_TEAMDRIVER_TOKEN_FILE": str(self.token_file),
+                "SHIMPZ_TEAM_URL": self.team_url,
+                "SHIMPZ_TEAM_TOKEN_FILE": str(self.token_file),
             }
         )
         result = subprocess.run(
@@ -122,18 +123,18 @@ class _LiveDriverCase(unittest.TestCase):
         return document
 
 
-class TeamAssistantBridgeTest(_LiveDriverCase):
+class TeamAssistantBridgeTest(_LiveTeamCase):
     def setUp(self):
         super().setUp()
-        self.original_token_file = driver_client.TOKEN_FILE
-        self.original_url = driver_client.URL
-        driver_client.TOKEN_FILE = str(self.token_file)
-        driver_client.URL = self.driver_url
+        self.original_token_file = team_client.TOKEN_FILE
+        self.original_url = team_client.URL
+        team_client.TOKEN_FILE = str(self.token_file)
+        team_client.URL = self.team_url
         self.addCleanup(self._restore_bridge_config)
 
     def _restore_bridge_config(self):
-        driver_client.TOKEN_FILE = self.original_token_file
-        driver_client.URL = self.original_url
+        team_client.TOKEN_FILE = self.original_token_file
+        team_client.URL = self.original_url
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         teams.list_assistants()
@@ -143,7 +144,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         teams.uninstall_assistant("team_1", "hello-pulse")
 
         self.assertEqual(
-            [(item["method"], item["path"]) for item in _DriverHandler.requests],
+            [(item["method"], item["path"]) for item in _TeamHandler.requests],
             [
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/teams/team_1/assistants"),
@@ -152,25 +153,25 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
             ],
         )
-        self.assertEqual(json.loads(_DriverHandler.requests[3]["body"]), {"assistant": "hello-pulse"})
-        for request in _DriverHandler.requests:
+        self.assertEqual(json.loads(_TeamHandler.requests[3]["body"]), {"assistant": "hello-pulse"})
+        for request in _TeamHandler.requests:
             self.assertEqual(request["headers"]["accept"], "application/json")
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
-        self.assertNotIn("content-type", _DriverHandler.requests[0]["headers"])
+        self.assertNotIn("content-type", _TeamHandler.requests[0]["headers"])
 
-    def test_preserves_safe_driver_status_and_body(self):
-        _DriverHandler.response_status = 409
-        _DriverHandler.response_body = b'{"detail":"assistant already installed"}'
+    def test_preserves_safe_team_status_and_body(self):
+        _TeamHandler.response_status = 409
+        _TeamHandler.response_body = b'{"detail":"assistant already installed"}'
 
         response = teams.install_assistant("team_1", {"assistant": "hello-pulse"})
 
         self.assertEqual(
             response,
-            teams.DriverResponse(409, {"detail": "assistant already installed"}),
+            teams.TeamResponse(409, {"detail": "assistant already installed"}),
         )
 
     def test_accepts_only_an_empty_no_content_response(self):
-        _DriverHandler.response_by_route = {
+        _TeamHandler.response_by_route = {
             ("DELETE", "/v1/teams/team_1/assistant-accounts/social-publisher/x-account"): (204, b""),
         }
 
@@ -179,7 +180,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "/v1/teams/team_1/assistant-accounts/social-publisher/x-account",
         )
 
-        self.assertEqual(response, teams.DriverResponse(204, {}))
+        self.assertEqual(response, teams.TeamResponse(204, {}))
 
     def test_projects_only_bounded_account_status_metadata(self):
         account = {
@@ -194,18 +195,18 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "account": {"id": "123", "name": "Shimpz", "username": "shimpz"},
             "expires_at": "2026-07-20T12:00:00Z",
         }
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {"team_id": "team_1", "accounts": [account], "trace_id": "f" * 32},
             separators=(",", ":"),
         ).encode()
 
         response = teams.list_assistant_accounts("team_1")
 
-        self.assertEqual(response, teams.DriverResponse(200, {"accounts": [account]}))
-        self.assertEqual(_DriverHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-accounts")
+        self.assertEqual(response, teams.TeamResponse(200, {"accounts": [account]}))
+        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-accounts")
         self.assertNotRegex(json.dumps(response.body), r"token|code|verifier|client_secret")
 
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {
                 "team_id": "team_1",
                 "accounts": [{**account, "access_token": "must-not-cross"}],
@@ -216,7 +217,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         invalid = teams.list_assistant_accounts("team_1")
         self.assertEqual(
             invalid,
-            teams.DriverResponse(502, {"detail": "Assistant account inventory is invalid."}),
+            teams.TeamResponse(502, {"detail": "Assistant account inventory is invalid."}),
         )
 
     @staticmethod
@@ -232,7 +233,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
     def test_starts_only_fixed_cloudflare_pkce_authorization(self):
         authorization_url = self._authorization_url()
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {"authorization_url": authorization_url, "trace_id": "f" * 32},
             separators=(",", ":"),
         ).encode()
@@ -244,8 +245,8 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "hosted",
         )
 
-        self.assertEqual(response, teams.DriverResponse(200, {"authorization_url": authorization_url}))
-        request = _DriverHandler.requests[-1]
+        self.assertEqual(response, teams.TeamResponse(200, {"authorization_url": authorization_url}))
+        request = _TeamHandler.requests[-1]
         self.assertEqual(
             request["path"],
             "/v1/teams/team_1/assistant-accounts/challenges/" + "c" * 32 + "/authorize",
@@ -264,14 +265,14 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             self._authorization_url() + "#access_token=must-not-cross",
             self._authorization_url(callback="loopback"),
         ):
-            _DriverHandler.response_body = json.dumps(
+            _TeamHandler.response_body = json.dumps(
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},
                 separators=(",", ":"),
             ).encode()
             invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
-                teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
         with self.assertRaisesRegex(teams.TeamRequestError, "callback mode"):
@@ -282,18 +283,18 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             {"authorization_url": authorization_url, "trace_id": "short"},
             {"authorization_url": authorization_url, "trace_id": "f" * 32, "token": "must-not-cross"},
         ):
-            _DriverHandler.response_body = json.dumps(
+            _TeamHandler.response_body = json.dumps(
                 invalid_envelope,
                 separators=(",", ":"),
             ).encode()
             invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
-                teams.DriverResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
-        _DriverHandler.response_by_route = {
+        _TeamHandler.response_by_route = {
             (
                 "DELETE",
                 "/v1/teams/team_1/assistant-accounts/shimpz-cloudflare/x-account",
@@ -314,10 +315,10 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             session_binding="b" * 43,
         )
 
-        self.assertEqual(disconnected, teams.DriverResponse(204, {}))
+        self.assertEqual(disconnected, teams.TeamResponse(204, {}))
         self.assertEqual(
             completed,
-            teams.DriverResponse(
+            teams.TeamResponse(
                 200,
                 {
                     "connected": True,
@@ -327,7 +328,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
                 },
             ),
         )
-        callback = _DriverHandler.requests[-1]
+        callback = _TeamHandler.requests[-1]
         self.assertEqual(callback["path"], "/v1/oauth/cloudflare/callback")
         self.assertEqual(
             json.loads(callback["body"]),
@@ -339,7 +340,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         )
 
     def test_destroy_requires_the_authoritative_name_and_forwards_no_confirmation_secret(self):
-        _DriverHandler.response_by_route = {
+        _TeamHandler.response_by_route = {
             (
                 "GET",
                 "/v1/teams",
@@ -368,19 +369,19 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(
-            [(request["method"], request["path"]) for request in _DriverHandler.requests],
+            [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [
                 ("GET", "/v1/teams"),
                 ("GET", "/v1/teams"),
                 ("DELETE", "/v1/teams/team_1"),
             ],
         )
-        deleted = _DriverHandler.requests[-1]
+        deleted = _TeamHandler.requests[-1]
         self.assertEqual(deleted["body"], b"")
         self.assertNotIn("content-type", deleted["headers"])
 
     def test_destroy_rejects_an_ambiguous_inventory_before_delete(self):
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {
                 "teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running", "extra": True}],
             },
@@ -389,9 +390,9 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
         response = teams.destroy("team_1", "Marketing")
 
-        self.assertEqual(response, teams.DriverResponse(502, {"detail": "Team inventory response is invalid."}))
+        self.assertEqual(response, teams.TeamResponse(502, {"detail": "Team inventory response is invalid."}))
         self.assertEqual(
-            [(request["method"], request["path"]) for request in _DriverHandler.requests],
+            [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [("GET", "/v1/teams")],
         )
 
@@ -411,7 +412,7 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
             "limit_bytes": 100 * 1024 * 1024,
             "remaining_bytes": 100 * 1024 * 1024 - len(content),
         }
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {
                 "team_id": "team_1",
                 "file": {**metadata, **usage, "path": "/private/never-expose"},
@@ -424,9 +425,9 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
 
         self.assertEqual(
             uploaded,
-            teams.DriverResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
+            teams.TeamResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
         )
-        upload_request = _DriverHandler.requests[-1]
+        upload_request = _TeamHandler.requests[-1]
         self.assertEqual(
             (upload_request["method"], upload_request["path"]),
             ("POST", "/v1/teams/team_1/files"),
@@ -436,42 +437,42 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         self.assertEqual(upload_request["headers"]["x-shimpz-filename"], "brief.txt")
         self.assertEqual(upload_request["headers"]["content-length"], str(len(content)))
 
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {"team_id": "team_1", "files": [{**metadata, "path": "/private/no"}], **usage},
             separators=(",", ":"),
         ).encode()
         listed = teams.list_files("team_1")
         self.assertEqual(
             listed,
-            teams.DriverResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
+            teams.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
         )
 
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             separators=(",", ":"),
         ).encode()
         deleted = teams.delete_file("team_1", file_id)
         self.assertEqual(
             deleted,
-            teams.DriverResponse(
+            teams.TeamResponse(
                 200,
                 {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             ),
         )
 
         self.assertEqual(
-            [(request["method"], request["path"]) for request in _DriverHandler.requests],
+            [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [
                 ("POST", "/v1/teams/team_1/files"),
                 ("GET", "/v1/teams/team_1/files"),
                 ("DELETE", f"/v1/teams/team_1/files/{file_id}"),
             ],
         )
-        for request in _DriverHandler.requests:
+        for request in _TeamHandler.requests:
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_storage_projection_keeps_over_quota_cleanup_visible(self):
-        response = teams.DriverResponse(
+        response = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -496,17 +497,17 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         for action in invalid:
             with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
                 action()
-        self.assertEqual(_DriverHandler.requests, [])
+        self.assertEqual(_TeamHandler.requests, [])
 
     def test_storage_bridge_preserves_safe_error_status_without_internal_fields(self):
-        _DriverHandler.response_status = 507
-        _DriverHandler.response_body = b'{"detail":"Team storage quota exceeded","path":"/private/no"}'
+        _TeamHandler.response_status = 507
+        _TeamHandler.response_body = b'{"detail":"Team storage quota exceeded","path":"/private/no"}'
 
         response = teams.upload_file("team_1", "brief.txt", "text/plain", b"data")
 
         self.assertEqual(
             response,
-            teams.DriverResponse(507, {"detail": "Team storage quota exceeded"}),
+            teams.TeamResponse(507, {"detail": "Team storage quota exceeded"}),
         )
 
     def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
@@ -521,9 +522,9 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         for action in invalid:
             with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
                 action()
-        self.assertEqual(_DriverHandler.requests, [])
+        self.assertEqual(_TeamHandler.requests, [])
 
-    def test_invalid_or_oversized_driver_json_fails_closed(self):
+    def test_invalid_or_oversized_team_json_fails_closed(self):
         cases = (
             (b'["not-an-object"]', {"Content-Type": "application/json"}),
             (b'{"ok":true}', {"Content-Type": "text/plain"}),
@@ -537,15 +538,15 @@ class TeamAssistantBridgeTest(_LiveDriverCase):
         )
         for body, headers in cases:
             with self.subTest(headers=headers):
-                _DriverHandler.response_body = body
-                _DriverHandler.response_headers = headers
+                _TeamHandler.response_body = body
+                _TeamHandler.response_headers = headers
                 self.assertEqual(
                     teams.list_assistants(),
-                    teams.DriverResponse(502, {"detail": "team-driver unavailable"}),
+                    teams.TeamResponse(502, {"detail": "team unavailable"}),
                 )
 
 
-class TeamAssistantRouteTest(_LiveDriverCase):
+class TeamAssistantRouteTest(_LiveTeamCase):
     def test_exposes_only_session_gated_assistant_routes(self):
         document = self._run_asgi_probe("routes")
 
@@ -556,10 +557,10 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(document["power_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
-        self.assertEqual(_DriverHandler.requests, [])
+        self.assertEqual(_TeamHandler.requests, [])
 
     def test_help_route_is_authenticated_and_forwards_only_the_fixed_installed_path(self):
-        _DriverHandler.response_body = b'{"assistant":"shimpz-cloudflare","markdown":"# Shimpz Cloudflare"}'
+        _TeamHandler.response_body = b'{"assistant":"shimpz-cloudflare","markdown":"# Shimpz Cloudflare"}'
 
         document = self._run_asgi_probe("assistant-help")
 
@@ -570,8 +571,8 @@ class TeamAssistantRouteTest(_LiveDriverCase):
                 "body": {"assistant": "shimpz-cloudflare", "markdown": "# Shimpz Cloudflare"},
             },
         )
-        self.assertEqual(len(_DriverHandler.requests), 1)
-        request = _DriverHandler.requests[0]
+        self.assertEqual(len(_TeamHandler.requests), 1)
+        request = _TeamHandler.requests[0]
         self.assertEqual(
             (request["method"], request["path"]),
             ("GET", "/v1/teams/team_1/assistants/shimpz-cloudflare/help/en"),
@@ -579,15 +580,15 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_install_route_preserves_conflict_and_forwards_exact_body(self):
-        _DriverHandler.response_status = 409
-        _DriverHandler.response_body = b'{"detail":"already installed"}'
+        _TeamHandler.response_status = 409
+        _TeamHandler.response_body = b'{"detail":"already installed"}'
 
         document = self._run_asgi_probe("install-conflict")
 
         self.assertEqual(document["status"], 409)
         self.assertEqual(document["body"], {"detail": "already installed"})
-        self.assertEqual(len(_DriverHandler.requests), 1)
-        request = _DriverHandler.requests[0]
+        self.assertEqual(len(_TeamHandler.requests), 1)
+        request = _TeamHandler.requests[0]
         self.assertEqual(request["method"], "POST")
         self.assertEqual(request["path"], "/v1/teams/team_1/assistants")
         self.assertEqual(json.loads(request["body"]), {"assistant": "hello-pulse"})
@@ -600,7 +601,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
             "status": "running",
             "created": True,
         }
-        _DriverHandler.response_body = json.dumps(expected, separators=(",", ":")).encode()
+        _TeamHandler.response_body = json.dumps(expected, separators=(",", ":")).encode()
 
         document = self._run_asgi_probe("team-create")
 
@@ -613,14 +614,14 @@ class TeamAssistantRouteTest(_LiveDriverCase):
             document["non_string"],
             {"status": 400, "body": {"detail": "team name must be a string"}},
         )
-        self.assertEqual(len(_DriverHandler.requests), 1)
-        request = _DriverHandler.requests[0]
+        self.assertEqual(len(_TeamHandler.requests), 1)
+        request = _TeamHandler.requests[0]
         self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/marketing/create"))
         self.assertEqual(json.loads(request["body"]), {"team_name": "Marketing"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_destroy_route_requires_name_and_password_without_forwarding_either(self):
-        _DriverHandler.response_by_route = {
+        _TeamHandler.response_by_route = {
             (
                 "GET",
                 "/v1/teams",
@@ -643,17 +644,17 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         )
         self.assertEqual(document["valid"]["status"], 200)
         self.assertEqual(
-            [(request["method"], request["path"]) for request in _DriverHandler.requests],
+            [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [
                 ("GET", "/v1/teams"),
                 ("GET", "/v1/teams"),
                 ("DELETE", "/v1/teams/team_1"),
             ],
         )
-        delete_request = _DriverHandler.requests[-1]
+        delete_request = _TeamHandler.requests[-1]
         self.assertEqual(delete_request["body"], b"")
         self.assertNotIn("content-type", delete_request["headers"])
-        forwarded = b"".join(request["body"] for request in _DriverHandler.requests)
+        forwarded = b"".join(request["body"] for request in _TeamHandler.requests)
         self.assertNotIn(b"test-admin-password", forwarded)
         self.assertNotIn(b"Marketing", forwarded)
 
@@ -665,7 +666,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
             "limit_bytes": 100 * 1024 * 1024,
             "remaining_bytes": 100 * 1024 * 1024 - len(content),
         }
-        _DriverHandler.response_body = json.dumps(
+        _TeamHandler.response_body = json.dumps(
             {
                 "team_id": "team_1",
                 "file": {
@@ -687,23 +688,23 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertEqual(document["status"], 200)
         self.assertNotIn("path", document["body"])
         self.assertNotIn("path", document["body"]["file"])
-        self.assertEqual(len(_DriverHandler.requests), 1)
-        request = _DriverHandler.requests[0]
+        self.assertEqual(len(_TeamHandler.requests), 1)
+        request = _TeamHandler.requests[0]
         self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/team_1/files"))
         self.assertEqual(request["body"], content)
         self.assertEqual(request["headers"]["content-type"], "text/plain")
         self.assertEqual(request["headers"]["x-shimpz-filename"], "brief.txt")
         self.assertEqual(request["headers"]["content-length"], str(len(content)))
 
-    def test_multipart_envelope_over_the_limit_stops_before_driver_call(self):
+    def test_multipart_envelope_over_the_limit_stops_before_team_call(self):
         document = self._run_asgi_probe("oversized-file")
 
         self.assertEqual(document["status"], 413)
         self.assertEqual(document["body"], {"detail": "file upload too large"})
-        self.assertEqual(_DriverHandler.requests, [])
+        self.assertEqual(_TeamHandler.requests, [])
 
-    def test_session_responds_while_real_driver_holds_install(self):
-        _DriverHandler.response_delay_seconds = 1.0
+    def test_session_responds_while_real_team_holds_install(self):
+        _TeamHandler.response_delay_seconds = 1.0
 
         document = self._run_asgi_probe("concurrent-session")
 
@@ -712,7 +713,7 @@ class TeamAssistantRouteTest(_LiveDriverCase):
         self.assertTrue(document["install_was_pending"])
         self.assertLess(document["session_elapsed_seconds"], 0.75)
         self.assertEqual(document["install_status"], 200)
-        self.assertEqual(len(_DriverHandler.requests), 1)
+        self.assertEqual(len(_TeamHandler.requests), 1)
 
 
 async def _asgi_request(
@@ -820,8 +821,9 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
 
 def _probe_session():
     import adminstore
-    import app as admin_app
     import auth
+
+    import app as admin_app
 
     adminstore.set_password("test-admin-password")
     token = auth.issue_session(adminstore.get()["session_secret"])

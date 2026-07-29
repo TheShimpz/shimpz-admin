@@ -16,8 +16,9 @@ from dataclasses import dataclass
 
 import chat_ws_common
 import localchat
-import teams
 from fastapi import WebSocket, WebSocketDisconnect
+
+import teams
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
 MAX_FRAME_BYTES = 512 * 1024
@@ -154,7 +155,7 @@ async def _send_terminal_once(
 
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
-        response = teams.DriverResponse(502, {})
+        response = teams.TeamResponse(502, {})
         # A provider callback may raise any ordinary exception. This process boundary must fail
         # closed while cancellation and process-control BaseExceptions continue to propagate.
         with contextlib.suppress(Exception):
@@ -164,7 +165,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             except asyncio.CancelledError:
                 raise
             except teams.TeamRequestError:
-                response = teams.DriverResponse(400, {})
+                response = teams.TeamResponse(400, {})
         if connection.closed or turn.stop_requested or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
@@ -174,7 +175,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             if not await _send_event(websocket, challenge):
                 connection.closed = True
             return
-        if isinstance(response, teams.DriverResponse) and (
+        if isinstance(response, teams.TeamResponse) and (
             response.status == 428
             or (isinstance(response.body, dict) and response.body.get("status") == "accounts-required")
         ):
@@ -203,7 +204,7 @@ def _sync_snapshot(team_id: str) -> tuple[object, object | None]:
 
 def _is_empty_pending(response: object, team_id: str) -> bool:
     return (
-        isinstance(response, teams.DriverResponse)
+        isinstance(response, teams.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and 200 <= response.status < 300
@@ -214,7 +215,7 @@ def _is_empty_pending(response: object, team_id: str) -> bool:
 
 def _pending_error(response: object, team_id: str, challenge_type: str) -> dict[str, object]:
     if (
-        isinstance(response, teams.DriverResponse)
+        isinstance(response, teams.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and not 200 <= response.status < 300
@@ -254,7 +255,7 @@ async def _deliver_account_sync(
             connection.closed = True
         return True
 
-    if isinstance(resumed_response, teams.DriverResponse) and (
+    if isinstance(resumed_response, teams.TeamResponse) and (
         resumed_response.status == 428
         or (isinstance(resumed_response.body, dict) and resumed_response.body.get("status") == "accounts-required")
     ):
@@ -316,13 +317,13 @@ async def _run_stop(
     emit: bool,
 ) -> None:
     try:
-        response = teams.DriverResponse(502, {})
+        response = teams.TeamResponse(502, {})
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
                 response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(localchat.stop, team_id))
             except ExecutorSaturatedError:
-                response = teams.DriverResponse(429, {})
+                response = teams.TeamResponse(429, {})
         accepted = _stop_accepted(response, team_id)
         if not emit or connection.closed or turn.terminal_sent:
             return
@@ -331,7 +332,7 @@ async def _run_stop(
             connection.pending_challenge_type = None
             await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
         elif accepted is None:
-            status = response.status if isinstance(response, teams.DriverResponse) else 502
+            status = response.status if isinstance(response, teams.TeamResponse) else 502
             await _send_terminal_once(
                 websocket,
                 connection,

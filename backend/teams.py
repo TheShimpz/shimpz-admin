@@ -1,8 +1,8 @@
-"""Bounded Admin -> team-driver bridge for Teams and trusted Assistants.
+"""Bounded Admin -> team bridge for Teams and trusted Assistants.
 
 The local Admin owns the signed browser session but never receives Docker access.  The
-team-driver owns runtime lifecycle and admission; this module reaches only its fixed internal
-HTTP routes with the existing bearer file.  Driver JSON and HTTP status codes are preserved so a
+team owns runtime lifecycle and admission; this module reaches only its fixed internal
+HTTP routes with the existing bearer file.  Team JSON and HTTP status codes are preserved so a
 safe 400/404/409 is not flattened into an ambiguous gateway error.
 """
 
@@ -14,44 +14,44 @@ import re
 import accounts_oauth
 import chat_payloads
 import chat_ws_common
-import driver_client
 import modelproviders
-import team_driver_contract
+import team_client
+import team_contract
 
 log = logging.getLogger("shimpz-admin")
 
-CONTROL_TIMEOUT_SECONDS = driver_client.CONTROL_TIMEOUT_SECONDS
-MAX_JSON_BODY_BYTES = driver_client.MAX_JSON_BODY_BYTES
-MAX_JSON_RESPONSE_BYTES = driver_client.MAX_JSON_RESPONSE_BYTES
-DriverResponse = driver_client.DriverResponse
-TeamRequestError = driver_client.TeamRequestError
-_call = driver_client._call
-_call_raw = driver_client._call_raw
+CONTROL_TIMEOUT_SECONDS = team_client.CONTROL_TIMEOUT_SECONDS
+MAX_JSON_BODY_BYTES = team_client.MAX_JSON_BODY_BYTES
+MAX_JSON_RESPONSE_BYTES = team_client.MAX_JSON_RESPONSE_BYTES
+TeamResponse = team_client.TeamResponse
+TeamRequestError = team_client.TeamRequestError
+_call = team_client._call
+_call_raw = team_client._call_raw
 
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
-MAX_FILE_UPLOAD_BYTES = team_driver_contract.MAX_FILE_UPLOAD_BYTES
+MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 
 ASSISTANT_HELP_LOCALES = frozenset({"en", "pt", "es", "zh", "fr", "de", "ja", "ar"})
-_FILE_ID_RE = team_driver_contract.FILE_ID_RE
+_FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
-MAX_TEAM_NAME_CHARS = team_driver_contract.MAX_TEAM_NAME_CHARS
+MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
 
 
 def to_team_id(team_name: object) -> str:
-    """A Team name -> the Docker/Postgres-safe id used by team-driver."""
+    """A Team name -> the Docker/Postgres-safe id used by team."""
     return re.sub(r"[^a-z0-9_]+", "_", str(team_name).lower()).strip("_")[:40]
 
 
 def canonical_team_id(value: object) -> str:
-    canonical = team_driver_contract.canonical_team_id(value)
+    canonical = team_contract.canonical_team_id(value)
     if canonical is None:
         raise TeamRequestError("team id must be a canonical lowercase identifier")
     return canonical
 
 
 def canonical_team_name(value: object) -> str:
-    canonical = team_driver_contract.canonical_team_name(value)
+    canonical = team_contract.canonical_team_name(value)
     if canonical is None:
         raise TeamRequestError("team name must contain 1 to 80 trimmed characters")
     return canonical
@@ -76,31 +76,31 @@ canonical_oauth_claim = accounts_oauth.canonical_oauth_claim
 
 
 def canonical_filename(value: object) -> str:
-    canonical = team_driver_contract.canonical_filename(value)
+    canonical = team_contract.canonical_filename(value)
     if canonical is None:
         raise TeamRequestError("filename must be a trimmed, non-path UTF-8 name")
     return canonical
 
 
 def canonical_media_type(value: object) -> str:
-    media_type = team_driver_contract.canonical_media_type(value)
+    media_type = team_contract.canonical_media_type(value)
     if media_type is None:
         raise TeamRequestError("invalid media type")
     return media_type
 
 
-def list_teams() -> DriverResponse:
+def list_teams() -> TeamResponse:
     return _call("GET", "/v1/teams")
 
 
-def create(team_id: object, team_name: object) -> DriverResponse:
+def create(team_id: object, team_name: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     if not isinstance(team_name, str) or not team_name.strip() or len(team_name) > MAX_TEAM_NAME_CHARS:
         raise TeamRequestError("team name must be between 1 and 80 characters")
     return _call("POST", f"/v1/teams/{canonical_id}/create", {"team_name": team_name.strip()})
 
 
-def _authoritative_team_name(response: DriverResponse, team_id: str) -> DriverResponse | str:
+def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamResponse | str:
     """Project one strict Team identity from the controller inventory before destruction."""
     if not 200 <= response.status < 300:
         return response
@@ -128,19 +128,19 @@ def _authoritative_team_name(response: DriverResponse, team_id: str) -> DriverRe
                 raise ValueError("duplicate Team identity")
             names[item_id] = item_name
     except KeyError, TypeError, ValueError, TeamRequestError:
-        log.warning("team-driver returned an invalid Team inventory")
-        return DriverResponse(502, {"detail": "Team inventory response is invalid."})
+        log.warning("team returned an invalid Team inventory")
+        return TeamResponse(502, {"detail": "Team inventory response is invalid."})
     try:
         return names[team_id]
     except KeyError:
-        return DriverResponse(404, {"detail": "Team not found"})
+        return TeamResponse(404, {"detail": "Team not found"})
 
 
-def destroy(team_id: object, expected_team_name: object) -> DriverResponse:
+def destroy(team_id: object, expected_team_name: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     expected_name = canonical_team_name(expected_team_name)
     authoritative = _authoritative_team_name(list_teams(), canonical_id)
-    if isinstance(authoritative, DriverResponse):
+    if isinstance(authoritative, TeamResponse):
         return authoritative
     if authoritative != expected_name:
         raise TeamRequestError("Team name confirmation does not match")
@@ -148,11 +148,11 @@ def destroy(team_id: object, expected_team_name: object) -> DriverResponse:
 
 
 def _project_inference_response(
-    response: DriverResponse,
+    response: TeamResponse,
     team_id: str,
     *,
     expected: tuple[str, str] | None = None,
-) -> DriverResponse:
+) -> TeamResponse:
     """Project the authenticated controller envelope into the smaller browser contract."""
     if not 200 <= response.status < 300:
         return response
@@ -179,22 +179,22 @@ def _project_inference_response(
             raise ValueError("mismatched inference metadata")
     except KeyError, TypeError, ValueError, TeamRequestError, modelproviders.ModelProviderError:
         # Never reflect controller fields: an invalid response could contain credentials or internals.
-        log.warning("team-driver returned an invalid inference response")
-        return DriverResponse(502, {"detail": "Team inference response is invalid."})
-    return DriverResponse(
+        log.warning("team returned an invalid inference response")
+        return TeamResponse(502, {"detail": "Team inference response is invalid."})
+    return TeamResponse(
         response.status,
         {"team_id": team_id, "provider": selected_provider, "model": selected_model},
     )
 
 
-def get_inference(team_id: object) -> DriverResponse:
+def get_inference(team_id: object) -> TeamResponse:
     """Read provider/model metadata only; the controller response must never contain a key."""
     canonical_id = canonical_team_id(team_id)
     response = _call("GET", f"/v1/teams/{canonical_id}/inference")
     return _project_inference_response(response, canonical_id)
 
 
-def configure_inference(team_id: object, payload: object) -> DriverResponse:
+def configure_inference(team_id: object, payload: object) -> TeamResponse:
     """Forward the closed, secret-free Team inference contract."""
     canonical_id = canonical_team_id(team_id)
     if not isinstance(payload, dict) or set(payload) != {"provider", "model"}:
@@ -230,7 +230,7 @@ def chat(
     *,
     provider: str,
     api_key: str,
-) -> DriverResponse:
+) -> TeamResponse:
     """Send a turn whose JSON is secret-free; the key uses the private authenticated header."""
     canonical_id = canonical_team_id(team_id)
     body = canonical_chat_payload(payload)
@@ -244,12 +244,12 @@ def chat(
     )
 
 
-def stop_chat(team_id: object) -> DriverResponse:
+def stop_chat(team_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     return _call("POST", f"/v1/teams/{canonical_id}/chat/stop", {})
 
 
-def pending_chat_accounts(team_id: object) -> DriverResponse:
+def pending_chat_accounts(team_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     return _call("GET", f"/v1/teams/{canonical_id}/chat/accounts")
 
@@ -260,7 +260,7 @@ def resume_chat_accounts(
     *,
     provider: str,
     api_key: str,
-) -> DriverResponse:
+) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     body = canonical_account_resume(payload)
     return _call(
@@ -278,8 +278,8 @@ disconnect_assistant_account = accounts_oauth.disconnect_assistant_account
 complete_cloudflare_oauth_callback = accounts_oauth.complete_cloudflare_oauth_callback
 
 
-def list_assistants() -> DriverResponse:
-    """Return the team-driver's trusted, admission-controlled catalog."""
+def list_assistants() -> TeamResponse:
+    """Return the team's trusted, admission-controlled catalog."""
     return _call("GET", "/v1/assistants")
 
 
@@ -289,24 +289,24 @@ def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     return base if assistant_id is None else f"{base}/{canonical_assistant_id(assistant_id)}"
 
 
-def list_installed_assistants(team_id: object) -> DriverResponse:
+def list_installed_assistants(team_id: object) -> TeamResponse:
     return _call("GET", _assistant_path(team_id))
 
 
-def assistant_help(team_id: object, assistant_id: object, locale: object = "en") -> DriverResponse:
+def assistant_help(team_id: object, assistant_id: object, locale: object = "en") -> TeamResponse:
     """Return one installed Assistant's bounded, controller-owned Help document."""
     canonical_locale = canonical_assistant_help_locale(locale)
     return _call("GET", f"{_assistant_path(team_id, assistant_id)}/help/{canonical_locale}")
 
 
-def install_assistant(team_id: object, payload: object) -> DriverResponse:
+def install_assistant(team_id: object, payload: object) -> TeamResponse:
     if not isinstance(payload, dict) or set(payload) != {"assistant"}:
         raise TeamRequestError("request body must contain only assistant")
     assistant_id = canonical_assistant_id(payload["assistant"])
     return _call("POST", _assistant_path(team_id), {"assistant": assistant_id})
 
 
-def uninstall_assistant(team_id: object, assistant_id: object) -> DriverResponse:
+def uninstall_assistant(team_id: object, assistant_id: object) -> TeamResponse:
     return _call("DELETE", _assistant_path(team_id, assistant_id))
 
 
@@ -319,12 +319,12 @@ def _files_path(team_id: object, file_id: object | None = None) -> str:
 
 
 def _project_storage_response(
-    response: DriverResponse,
+    response: TeamResponse,
     *,
     team_id: str,
     kind: str,
     expected_file_id: str | None = None,
-) -> DriverResponse:
+) -> TeamResponse:
     if not 200 <= response.status < 300:
         error_body = {
             key: value
@@ -332,9 +332,9 @@ def _project_storage_response(
             if isinstance((value := response.body.get(key)), str) and 0 < len(value) <= 500
         }
         if not error_body:
-            error_body = {"detail": "team-driver request failed"}
-        return DriverResponse(response.status, error_body)
-    body = team_driver_contract.project_storage_response(
+            error_body = {"detail": "team request failed"}
+        return TeamResponse(response.status, error_body)
+    body = team_contract.project_storage_response(
         response.body,
         kind=kind,
         expected_team_id=team_id,
@@ -342,12 +342,12 @@ def _project_storage_response(
         include_team_id=True,
     )
     if body is None:
-        log.warning("team-driver returned an invalid storage response (%s)", kind)
-        return DriverResponse(502, {"detail": "team-driver unavailable"})
-    return DriverResponse(response.status, body)
+        log.warning("team returned an invalid storage response (%s)", kind)
+        return TeamResponse(502, {"detail": "team unavailable"})
+    return TeamResponse(response.status, body)
 
 
-def upload_file(team_id: object, filename: object, media_type: object, content: object) -> DriverResponse:
+def upload_file(team_id: object, filename: object, media_type: object, content: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     safe_filename = canonical_filename(filename)
     safe_media_type = canonical_media_type(media_type)
@@ -365,13 +365,13 @@ def upload_file(team_id: object, filename: object, media_type: object, content: 
     return _project_storage_response(response, team_id=canonical_id, kind="upload")
 
 
-def list_files(team_id: object) -> DriverResponse:
+def list_files(team_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     response = _call("GET", _files_path(canonical_id))
     return _project_storage_response(response, team_id=canonical_id, kind="list")
 
 
-def delete_file(team_id: object, file_id: object) -> DriverResponse:
+def delete_file(team_id: object, file_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     canonical_file_id = chat_payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
     response = _call("DELETE", _files_path(canonical_id, canonical_file_id))

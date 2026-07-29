@@ -9,13 +9,13 @@ from urllib.parse import parse_qsl, urlparse
 
 import chat_payloads
 import chat_ws_common
-import driver_client
-import team_driver_contract
+import team_client
+import team_contract
 
 log = logging.getLogger("shimpz-admin")
 
-DriverResponse = driver_client.DriverResponse
-TeamRequestError = driver_client.TeamRequestError
+TeamResponse = team_client.TeamResponse
+TeamRequestError = team_client.TeamRequestError
 
 MAX_ASSISTANT_ACCOUNTS = 512
 MAX_ACCOUNT_SCOPES = 32
@@ -28,7 +28,7 @@ _CLOUDFLARE_SCOPES = ("dns.read", "offline_access", "zone.read")
 
 
 def _canonical_team_id(value: object) -> str:
-    canonical = team_driver_contract.canonical_team_id(value)
+    canonical = team_contract.canonical_team_id(value)
     if canonical is None:
         raise TeamRequestError("team id must be a canonical lowercase identifier")
     return canonical
@@ -87,7 +87,7 @@ def _account_expiry(value: object) -> str | None:
     return value
 
 
-def _project_account_inventory(response: DriverResponse, team_id: str) -> DriverResponse:
+def _project_account_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
     """Expose status metadata only; provider tokens and controller generations stay private."""
     if not 200 <= response.status < 300:
         return response
@@ -142,15 +142,15 @@ def _project_account_inventory(response: DriverResponse, team_id: str) -> Driver
                 }
             )
     except KeyError, TypeError, ValueError, TeamRequestError:
-        log.warning("team-driver returned an invalid Assistant account inventory")
-        return DriverResponse(502, {"detail": "Assistant account inventory is invalid."})
-    return DriverResponse(200, {"accounts": accounts})
+        log.warning("team returned an invalid Assistant account inventory")
+        return TeamResponse(502, {"detail": "Assistant account inventory is invalid."})
+    return TeamResponse(200, {"accounts": accounts})
 
 
-def list_assistant_accounts(team_id: object) -> DriverResponse:
+def list_assistant_accounts(team_id: object) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
     return _project_account_inventory(
-        driver_client._call("GET", f"/v1/teams/{canonical_id}/assistant-accounts"),
+        team_client._call("GET", f"/v1/teams/{canonical_id}/assistant-accounts"),
         canonical_id,
     )
 
@@ -202,13 +202,13 @@ def start_assistant_account_authorization(
     challenge_id: object,
     session_binding: object,
     callback_mode: object,
-) -> DriverResponse:
+) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
     canonical_challenge = chat_payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
     if callback_mode not in {"loopback", "hosted"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
-    response = driver_client._call(
+    response = team_client._call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-accounts/challenges/{canonical_challenge}/authorize",
         {"session_binding": binding},
@@ -224,20 +224,20 @@ def start_assistant_account_authorization(
             raise ValueError("invalid OAuth authorization response")
         authorization_url = _trusted_cloudflare_authorization_url(response.body["authorization_url"], callback_mode)
     except KeyError, TypeError, ValueError:
-        log.warning("team-driver returned an invalid OAuth authorization response")
-        return DriverResponse(502, {"detail": "OAuth authorization response is invalid."})
-    return DriverResponse(200, {"authorization_url": authorization_url})
+        log.warning("team returned an invalid OAuth authorization response")
+        return TeamResponse(502, {"detail": "OAuth authorization response is invalid."})
+    return TeamResponse(200, {"authorization_url": authorization_url})
 
 
 def disconnect_assistant_account(
     team_id: object,
     assistant_id: object,
     account_id: object,
-) -> DriverResponse:
+) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
     assistant = chat_payloads.canonical_assistant_id(assistant_id)
     account = chat_payloads.canonical_assistant_id(account_id)
-    response = driver_client._call(
+    response = team_client._call(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-accounts/{assistant}/{account}",
     )
@@ -250,16 +250,16 @@ def disconnect_assistant_account(
         or not isinstance(response.body["trace_id"], str)
         or chat_ws_common.HEX_ID_RE.fullmatch(response.body["trace_id"]) is None
     ):
-        log.warning("team-driver returned an invalid OAuth disconnect response")
-        return DriverResponse(502, {"detail": "OAuth disconnect response is invalid."})
-    return DriverResponse(204, {})
+        log.warning("team returned an invalid OAuth disconnect response")
+        return TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
+    return TeamResponse(204, {})
 
 
-def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_binding: object) -> DriverResponse:
+def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_binding: object) -> TeamResponse:
     identifier = canonical_oauth_binding(state)
     one_time_claim = canonical_oauth_claim(claim)
     binding = canonical_oauth_binding(session_binding)
-    response = driver_client._call(
+    response = team_client._call(
         "POST",
         "/v1/oauth/cloudflare/callback",
         {"state": identifier, "claim": one_time_claim, "session_binding": binding},
@@ -282,6 +282,6 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
             "account_id": chat_payloads.canonical_assistant_id(response.body["account_id"]),
         }
     except KeyError, TypeError, ValueError, TeamRequestError:
-        log.warning("team-driver returned an invalid OAuth callback response")
-        return DriverResponse(502, {"detail": "OAuth callback response is invalid."})
-    return DriverResponse(200, body)
+        log.warning("team returned an invalid OAuth callback response")
+        return TeamResponse(502, {"detail": "OAuth callback response is invalid."})
+    return TeamResponse(200, body)

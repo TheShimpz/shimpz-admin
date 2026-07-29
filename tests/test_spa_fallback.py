@@ -81,7 +81,7 @@ class SpaFallbackTests(unittest.TestCase):
     def test_absolute_and_traversal_paths_never_escape_ui_directory(self) -> None:
         paths = (
             "//data/admin.json",
-            "//run/shimpz-teamdriver/token",
+            "//run/shimpz-team/token",
             "//repo/.env",
             "/../../etc/passwd",
             f"/{self.external_file}",

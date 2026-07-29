@@ -134,7 +134,7 @@ class OAuthRoutesTest(unittest.TestCase):
             admin_session=self.session,
         )
         request = _request("GET", f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={handoff}")
-        result = self.admin_app.teams.DriverResponse(
+        result = self.admin_app.teams.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
         )
@@ -183,7 +183,7 @@ class OAuthRoutesTest(unittest.TestCase):
 
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
-        provider = self.admin_app.teams.DriverResponse(
+        provider = self.admin_app.teams.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("hosted")},
         )
@@ -208,7 +208,7 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://local.shimpz.com/api/oauth/cloudflare/callback?state=" + "b" * 43 + "&claim=" + "a" * 64,
             cookie=f"shimpz_oauth_binding={binding.value}",
         )
-        completed = self.admin_app.teams.DriverResponse(200, {"connected": True})
+        completed = self.admin_app.teams.TeamResponse(200, {"connected": True})
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(
@@ -240,7 +240,7 @@ class OAuthRoutesTest(unittest.TestCase):
             f"http://127.0.0.1:4600/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
-        result = self.admin_app.teams.DriverResponse(
+        result = self.admin_app.teams.TeamResponse(
             200,
             {
                 "connected": True,
@@ -298,7 +298,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertTrue(all(response.headers["location"] == "/chat?oauth=callback-failed" for response in responses))
 
     def test_inventory_and_disconnect_keep_the_public_contract_exact(self) -> None:
-        inventory = self.admin_app.teams.DriverResponse(200, {"accounts": []})
+        inventory = self.admin_app.teams.TeamResponse(200, {"accounts": []})
         with mock.patch.object(
             self.admin_app.teams,
             "list_assistant_accounts",
@@ -308,7 +308,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(json.loads(listed.body), {"accounts": []})
         self.assertEqual(listed.headers["cache-control"], "no-store")
 
-        disconnected = self.admin_app.teams.DriverResponse(204, {})
+        disconnected = self.admin_app.teams.TeamResponse(204, {})
         with mock.patch.object(
             self.admin_app.teams,
             "disconnect_assistant_account",

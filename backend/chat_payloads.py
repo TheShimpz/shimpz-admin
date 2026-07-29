@@ -5,17 +5,17 @@ from __future__ import annotations
 import re
 
 import chat_ws_common
-import team_driver_contract
-from driver_client import TeamRequestError
+import team_contract
+from team_client import TeamRequestError
 
-_FILE_ID_RE = team_driver_contract.FILE_ID_RE
-MAX_CHAT_MESSAGE_CHARS = team_driver_contract.MAX_CHAT_MESSAGE_CHARS
-MAX_CHAT_FILES = team_driver_contract.MAX_CHAT_FILES
-MAX_CHAT_ASSISTANTS = team_driver_contract.MAX_CHAT_ASSISTANTS
+_FILE_ID_RE = team_contract.FILE_ID_RE
+MAX_CHAT_MESSAGE_CHARS = team_contract.MAX_CHAT_MESSAGE_CHARS
+MAX_CHAT_FILES = team_contract.MAX_CHAT_FILES
+MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
 
 
 def canonical_assistant_id(value: object) -> str:
-    canonical = team_driver_contract.canonical_assistant_id(value)
+    canonical = team_contract.canonical_assistant_id(value)
     if canonical is None:
         raise TeamRequestError("assistant id must be a canonical lowercase identifier")
     return canonical

@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import notifications
+
 import teams
 
 TRACE_ID = "a" * 32
@@ -36,8 +37,8 @@ def _feed(*releases: dict[str, object]) -> dict[str, object]:
     return {"schema_version": 1, "releases": list(releases)}
 
 
-def _teams(*team_ids: str) -> teams.DriverResponse:
-    return teams.DriverResponse(
+def _teams(*team_ids: str) -> teams.TeamResponse:
+    return teams.TeamResponse(
         200,
         {
             "teams": [{"team_id": team_id, "team_name": team_id.title(), "status": "running"} for team_id in team_ids],
@@ -46,8 +47,8 @@ def _teams(*team_ids: str) -> teams.DriverResponse:
     )
 
 
-def _installed(**statuses: str) -> teams.DriverResponse:
-    return teams.DriverResponse(
+def _installed(**statuses: str) -> teams.TeamResponse:
+    return teams.TeamResponse(
         200,
         {
             "assistants": [{"assistant": assistant_id, "status": status} for assistant_id, status in statuses.items()],
@@ -56,10 +57,10 @@ def _installed(**statuses: str) -> teams.DriverResponse:
     )
 
 
-def _install_response(assistant_id: str, *, status: int = 200) -> teams.DriverResponse:
+def _install_response(assistant_id: str, *, status: int = 200) -> teams.TeamResponse:
     if status != 200:
-        return teams.DriverResponse(status, {"detail": "update failed"})
-    return teams.DriverResponse(
+        return teams.TeamResponse(status, {"detail": "update failed"})
+    return teams.TeamResponse(
         200,
         {"assistant": assistant_id, "installed": False, "trace_id": TRACE_ID},
     )
@@ -79,7 +80,7 @@ class NotificationStateTests(unittest.TestCase):
         self,
         feed: dict[str, object],
         *,
-        inventory: teams.DriverResponse,
+        inventory: teams.TeamResponse,
         fetch_status: str = "fresh",
     ):
         return (

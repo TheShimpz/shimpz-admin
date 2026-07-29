@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import localchat
 import modelproviders
+
 import teams
 
 TRACE_ID = "a" * 32
@@ -83,11 +84,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "trace_id": TRACE_ID,
         }
 
-        response = localchat._project_account_challenge(teams.DriverResponse(428, body), "team_1")
+        response = localchat._project_account_challenge(teams.TeamResponse(428, body), "team_1")
 
         self.assertEqual(
             response,
-            teams.DriverResponse(
+            teams.TeamResponse(
                 428,
                 {key: value for key, value in body.items() if key != "trace_id"},
             ),
@@ -123,15 +124,15 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                response = localchat._project_account_challenge(teams.DriverResponse(428, body), "team_1")
+                response = localchat._project_account_challenge(teams.TeamResponse(428, body), "team_1")
             self.assertEqual(
                 response,
-                teams.DriverResponse(502, {"code": "account-challenge-response-invalid"}),
+                teams.TeamResponse(502, {"code": "account-challenge-response-invalid"}),
             )
 
     def test_turn_preserves_account_before_later_gates(self) -> None:
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
-        controller = teams.DriverResponse(
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        controller = teams.TeamResponse(
             428,
             {
                 "team_id": "team_1",
@@ -158,7 +159,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.body["requirements"], [account_requirement()])
 
     def test_pending_account_is_team_bound_and_none_is_closed(self) -> None:
-        pending = teams.DriverResponse(
+        pending = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -175,18 +176,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(projected.body["status"], "accounts-required")
         self.assertNotIn("trace_id", projected.body)
 
-        none = teams.DriverResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
+        none = teams.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
         with mock.patch.object(teams, "pending_chat_accounts", return_value=none):
             self.assertEqual(
                 localchat.pending_accounts("team_1"),
-                teams.DriverResponse(200, {"team_id": "team_1", "status": "none"}),
+                teams.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
 
-        cross_team = teams.DriverResponse(200, {**none.body, "team_id": "team_2"})
+        cross_team = teams.TeamResponse(200, {**none.body, "team_id": "team_2"})
         with mock.patch.object(teams, "pending_chat_accounts", return_value=cross_team):
             self.assertEqual(
                 localchat.pending_accounts("team_1"),
-                teams.DriverResponse(502, {"code": "account-challenge-response-invalid"}),
+                teams.TeamResponse(502, {"code": "account-challenge-response-invalid"}),
             )
 
     def test_account_resume_rejects_augmented_or_invalid_payload_before_transport(self) -> None:
@@ -233,8 +234,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         inference.assert_not_called()
 
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
-        inference = teams.DriverResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"})
-        controller = teams.DriverResponse(
+        inference = teams.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"})
+        controller = teams.TeamResponse(
             200,
             {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready", "trace_id": TRACE_ID},
         )
@@ -257,7 +258,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(call.kwargs, {"provider": "anthropic", "api_key": "sk-ant-0123456789"})
 
     def test_missing_controller_contract_fails_503_without_mocking_success(self) -> None:
-        missing = teams.DriverResponse(404, {"detail": "no such operation"})
+        missing = teams.TeamResponse(404, {"detail": "no such operation"})
         with (
             mock.patch.object(teams, "get_inference", return_value=missing),
             mock.patch.object(modelproviders, "resolve_api_key") as resolve_key,
@@ -282,20 +283,20 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         for body in invalid:
             with (
                 self.subTest(body=body),
-                mock.patch.object(teams, "get_inference", return_value=teams.DriverResponse(200, body)),
+                mock.patch.object(teams, "get_inference", return_value=teams.TeamResponse(200, body)),
                 mock.patch.object(modelproviders, "resolve_api_key") as resolve_key,
                 mock.patch.object(teams, "chat") as chat,
             ):
                 response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
             self.assertEqual(
                 response,
-                teams.DriverResponse(502, {"code": "inference-response-invalid"}),
+                teams.TeamResponse(502, {"code": "inference-response-invalid"}),
             )
             resolve_key.assert_not_called()
             chat.assert_not_called()
 
     def test_missing_model_credential_returns_a_stable_code_without_calling_controller(self) -> None:
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         with (
             mock.patch.object(teams, "get_inference", return_value=inference),
             mock.patch.object(modelproviders, "resolve_api_key", return_value=None),
@@ -303,13 +304,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
 
-        self.assertEqual(response, teams.DriverResponse(409, {"code": "model-credential-missing"}))
+        self.assertEqual(response, teams.TeamResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
 
     def test_controller_cannot_echo_the_private_key_to_browser(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
-        echoed = teams.DriverResponse(
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        echoed = teams.TeamResponse(
             502,
             {
                 "error": f"provider rejected {api_key}",
@@ -330,7 +331,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.body, {"code": "brain-runtime-failed"})
         self.assertNotIn(api_key, json.dumps(response.body))
 
-        echoed_reply = teams.DriverResponse(
+        echoed_reply = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -352,9 +353,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn(api_key, json.dumps(response.body))
 
     def test_invalid_authoritative_team_name_is_not_projected(self) -> None:
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         for team_name in ("", " Marketing", "Marketing\nignore rules", "x" * 81, None):
-            controller = teams.DriverResponse(
+            controller = teams.TeamResponse(
                 200,
                 {"team_id": "team_1", "team_name": team_name, "reply": "Ready", "trace_id": TRACE_ID},
             )
@@ -369,7 +370,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
     def test_controller_identity_and_closed_turn_contract_fail_closed(self) -> None:
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         valid = {
             "team_id": "team_1",
             "team_name": "Marketing",
@@ -387,15 +388,15 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 self.subTest(controller_body=controller_body),
                 mock.patch.object(teams, "get_inference", return_value=inference),
                 mock.patch.object(modelproviders, "resolve_api_key", return_value="sk-test-0123456789"),
-                mock.patch.object(teams, "chat", return_value=teams.DriverResponse(200, controller_body)),
+                mock.patch.object(teams, "chat", return_value=teams.TeamResponse(200, controller_body)),
             ):
                 response = localchat.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
-            self.assertEqual(response, teams.DriverResponse(502, {"code": "chat-response-invalid"}))
+            self.assertEqual(response, teams.TeamResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = teams.DriverResponse(200, {"provider": "openai", "model": "gpt-5.5"})
-        controller = teams.DriverResponse(
+        inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        controller = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -414,7 +415,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn(api_key, json.dumps(response.body))
 
     def test_stop_projects_an_accepted_turn_without_overclaiming_power_confirmation(self) -> None:
-        controller = teams.DriverResponse(
+        controller = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -427,7 +428,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         with mock.patch.object(teams, "stop_chat", return_value=controller):
             response = localchat.stop("team_1")
-        self.assertEqual(response, teams.DriverResponse(200, {"team_id": "team_1", "stopped": True}))
+        self.assertEqual(response, teams.TeamResponse(200, {"team_id": "team_1", "stopped": True}))
 
     def test_stop_rejects_malformed_or_cross_team_controller_responses(self) -> None:
         valid = {
@@ -451,13 +452,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(
                     teams,
                     "stop_chat",
-                    return_value=teams.DriverResponse(200, controller_body),
+                    return_value=teams.TeamResponse(200, controller_body),
                 ),
             ):
                 response = localchat.stop("team_1")
             self.assertEqual(
                 response,
-                teams.DriverResponse(502, {"code": "chat-stop-response-invalid"}),
+                teams.TeamResponse(502, {"code": "chat-stop-response-invalid"}),
             )
 
 

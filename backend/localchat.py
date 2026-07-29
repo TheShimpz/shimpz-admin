@@ -18,6 +18,7 @@ from http import HTTPStatus
 
 import chat_ws_common
 import modelproviders
+
 import teams
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -93,14 +94,14 @@ def _freeze(value: object) -> object:
 
 
 @dataclass(frozen=True, eq=False)
-class PublicResponse(teams.DriverResponse):
+class PublicResponse(teams.TeamResponse):
     """A fully projected response whose nested public payload cannot be mutated."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "body", _freeze(self.body))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, teams.DriverResponse) and self.status == other.status and self.body == other.body
+        return isinstance(other, teams.TeamResponse) and self.status == other.status and self.body == other.body
 
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
@@ -134,14 +135,14 @@ class PublicResponse(teams.DriverResponse):
         return event
 
 
-def _unavailable() -> teams.DriverResponse:
+def _unavailable() -> teams.TeamResponse:
     return PublicResponse(
         HTTPStatus.SERVICE_UNAVAILABLE,
         {"code": "runtime-unavailable"},
     )
 
 
-def _safe_error(response: teams.DriverResponse) -> teams.DriverResponse:
+def _safe_error(response: teams.TeamResponse) -> teams.TeamResponse:
     """Reduce one authenticated controller failure to a bounded, non-secret machine code."""
     code = response.body.get("code")
     if not isinstance(code, str) or len(code) > 80 or _ERROR_CODE_RE.fullmatch(code) is None:
@@ -149,7 +150,7 @@ def _safe_error(response: teams.DriverResponse) -> teams.DriverResponse:
     return PublicResponse(response.status, {"code": code})
 
 
-def _inference(team_id: str) -> tuple[str, str] | teams.DriverResponse:
+def _inference(team_id: str) -> tuple[str, str] | teams.TeamResponse:
     response = teams.get_inference(team_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
@@ -167,9 +168,9 @@ def _inference(team_id: str) -> tuple[str, str] | teams.DriverResponse:
     return selected_provider, selected_model
 
 
-def _model_credential(team_id: str) -> tuple[str, str] | teams.DriverResponse:
+def _model_credential(team_id: str) -> tuple[str, str] | teams.TeamResponse:
     inference = _inference(team_id)
-    if isinstance(inference, teams.DriverResponse):
+    if isinstance(inference, teams.TeamResponse):
         return inference
     provider, _model = inference
     try:
@@ -182,7 +183,7 @@ def _model_credential(team_id: str) -> tuple[str, str] | teams.DriverResponse:
 
 
 def _challenge_envelope(
-    response: teams.DriverResponse,
+    response: teams.TeamResponse,
     team_id: str,
     status: str,
     fields: frozenset[str],
@@ -201,7 +202,7 @@ def _challenge_envelope(
     return identity
 
 
-def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
+def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
         challenge_id, turn_id = _challenge_envelope(
@@ -298,18 +299,18 @@ def _project_account_challenge(response: teams.DriverResponse, team_id: str) -> 
     )
 
 
-def _project_pending_challenge(response: teams.DriverResponse, team_id: str) -> teams.DriverResponse:
+def _project_pending_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
     if response.body.get("status") == "accounts-required":
         return _project_account_challenge(response, team_id)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
 def _project_turn(
-    response: teams.DriverResponse,
+    response: teams.TeamResponse,
     team_id: str,
     *,
     forbidden_values: tuple[str, ...],
-) -> teams.DriverResponse:
+) -> teams.TeamResponse:
     response_team_id = response.body.get("team_id")
     team_name = response.body.get("team_name")
     reply = response.body.get("reply")
@@ -333,12 +334,12 @@ def _submit(
     team_id: object,
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
-    request: Callable[..., teams.DriverResponse],
-) -> teams.DriverResponse:
+    request: Callable[..., teams.TeamResponse],
+) -> teams.TeamResponse:
     canonical_id = teams.canonical_team_id(team_id)
     body = canonicalize(payload)
     credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.DriverResponse):
+    if isinstance(credential, teams.TeamResponse):
         return credential
     provider, api_key = credential
 
@@ -353,11 +354,11 @@ def _submit(
     return _project_turn(response, canonical_id, forbidden_values=(api_key,))
 
 
-def turn(team_id: object, payload: object) -> teams.DriverResponse:
+def turn(team_id: object, payload: object) -> teams.TeamResponse:
     return _submit(team_id, payload, teams.canonical_chat_payload, teams.chat)
 
 
-def resume_accounts(team_id: object, challenge_id: object) -> teams.DriverResponse:
+def resume_accounts(team_id: object, challenge_id: object) -> teams.TeamResponse:
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
@@ -368,10 +369,10 @@ def resume_accounts(team_id: object, challenge_id: object) -> teams.DriverRespon
 
 def _pending(
     team_id: object,
-    request: Callable[[str], teams.DriverResponse],
-    project: Callable[[teams.DriverResponse, str], teams.DriverResponse],
+    request: Callable[[str], teams.TeamResponse],
+    project: Callable[[teams.TeamResponse, str], teams.TeamResponse],
     invalid_code: str,
-) -> teams.DriverResponse:
+) -> teams.TeamResponse:
     canonical_id = teams.canonical_team_id(team_id)
     response = request(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
@@ -389,7 +390,7 @@ def _pending(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
 
 
-def pending_accounts(team_id: object) -> teams.DriverResponse:
+def pending_accounts(team_id: object) -> teams.TeamResponse:
     return _pending(
         team_id,
         teams.pending_chat_accounts,
@@ -411,7 +412,7 @@ def _valid_trace_id(value: object) -> bool:
     return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
 
 
-def stop(team_id: object) -> teams.DriverResponse:
+def stop(team_id: object) -> teams.TeamResponse:
     canonical_id = teams.canonical_team_id(team_id)
     response = teams.stop_chat(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:

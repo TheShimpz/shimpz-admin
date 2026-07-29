@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import chat_ws_common
+
 import teams
 
 log = logging.getLogger("shimpz-admin")
@@ -423,7 +424,7 @@ def _allowed_envelope(body: object, field: str) -> object:
     return body[field]
 
 
-def _team_ids(response: teams.DriverResponse) -> list[str]:
+def _team_ids(response: teams.TeamResponse) -> list[str]:
     if not 200 <= response.status < 300:
         raise OSError("Team inventory unavailable")
     inventory = _allowed_envelope(response.body, "teams")
@@ -443,7 +444,7 @@ def _team_ids(response: teams.DriverResponse) -> list[str]:
     return ids
 
 
-def _installed(response: teams.DriverResponse) -> dict[str, str]:
+def _installed(response: teams.TeamResponse) -> dict[str, str]:
     if not 200 <= response.status < 300:
         raise OSError("Assistant inventory unavailable")
     inventory = _allowed_envelope(response.body, "assistants")

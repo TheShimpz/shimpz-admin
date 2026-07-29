@@ -137,7 +137,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def test_account_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
-            augmented = self.teams.DriverResponse(
+            augmented = self.teams.TeamResponse(
                 200,
                 {**dict(_account_challenge(status=200).body), "access_token": sensitive_marker},
             )
@@ -193,8 +193,8 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_public_terminal_relays_only_the_closed_sanitized_error_document(self) -> None:
-        async def response_for(driver_response) -> dict:
-            with mock.patch.object(self.chat_ws.localchat, "turn", return_value=driver_response):
+        async def response_for(team_response) -> dict:
+            with mock.patch.object(self.chat_ws.localchat, "turn", return_value=team_response):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "chat", "message": "hello", "files": [], "assistant_ids": []})
@@ -224,7 +224,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
             sensitive_marker = "sk-private-must-never-cross-the-websocket"
             upstream_error = await response_for(
-                self.teams.DriverResponse(
+                self.teams.TeamResponse(
                     502,
                     {"code": "brain-runtime-failed", "debug": sensitive_marker},
                 )
@@ -244,7 +244,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             )
 
             augmented_success = await response_for(
-                self.teams.DriverResponse(
+                self.teams.TeamResponse(
                     200,
                     {
                         "team_id": "team_1",

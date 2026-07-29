@@ -33,6 +33,7 @@ import chat_ws_common
 import modelproviders
 import notifications
 import oauth_handoff
+
 import teams
 
 log = logging.getLogger("shimpz-admin")
@@ -204,10 +205,10 @@ async def admin_setup(request: Request, payload: dict):
     return resp
 
 
-# ── Teams + Assistants: authenticated control plane for team-driver. Every route stays under
+# ── Teams + Assistants: authenticated control plane for team. Every route stays under
 # /api/ and outside OPEN_API, so the signed local Admin session is required before the private bearer
-# bridge can run. The Admin has no Docker socket and preserves bounded driver JSON/status exactly. ──
-def _team_driver_response(action):
+# bridge can run. The Admin has no Docker socket and preserves bounded Team JSON/status exactly. ──
+def _team_response(action):
     try:
         response = action()
     except teams.TeamRequestError as exc:
@@ -339,7 +340,7 @@ async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
 
 @app.get("/api/teams")
 def teams_list():
-    return _team_driver_response(teams.list_teams)
+    return _team_response(teams.list_teams)
 
 
 @app.post("/api/teams")
@@ -354,7 +355,7 @@ def teams_create(payload: dict):
     team_id = teams.to_team_id(team_name)
     if not team_id:
         raise HTTPException(status_code=400, detail="team name has no usable characters")
-    response = _team_driver_response(lambda: teams.create(team_id, team_name))
+    response = _team_response(lambda: teams.create(team_id, team_name))
     if 200 <= response.status_code < 300:
         log.info("team created: %s", team_id)
     return response
@@ -388,7 +389,7 @@ async def teams_destroy(team_id: str, request: Request):
         raise HTTPException(status_code=403, detail="admin password is incorrect")
 
     return await run_in_threadpool(
-        _team_driver_response,
+        _team_response,
         lambda: teams.destroy(team_id, team_name),
     )
 
@@ -396,14 +397,14 @@ async def teams_destroy(team_id: str, request: Request):
 @app.get("/api/teams/{team_id}/inference")
 def team_inference_status(team_id: str):
     """Return only the Team's provider/model selection; credentials remain in this backend."""
-    return _team_driver_response(lambda: teams.get_inference(team_id))
+    return _team_response(lambda: teams.get_inference(team_id))
 
 
 @app.put("/api/teams/{team_id}/inference")
 async def team_inference_configure(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
-        _team_driver_response,
+        _team_response,
         lambda: teams.configure_inference(team_id, payload),
     )
 
@@ -415,7 +416,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
 
 @app.get("/api/teams/{team_id}/assistant-accounts")
 def team_assistant_accounts(team_id: str):
-    response = _team_driver_response(lambda: teams.list_assistant_accounts(team_id))
+    response = _team_response(lambda: teams.list_assistant_accounts(team_id))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -526,17 +527,17 @@ async def oauth_cloudflare_callback(request: Request):
 
 @app.get("/api/assistants")
 def assistants_list():
-    return _team_driver_response(teams.list_assistants)
+    return _team_response(teams.list_assistants)
 
 
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
-    return _team_driver_response(lambda: teams.list_installed_assistants(team_id))
+    return _team_response(lambda: teams.list_installed_assistants(team_id))
 
 
 @app.get("/api/teams/{team_id}/assistants/{assistant_id}/help")
 def team_assistant_help(team_id: str, assistant_id: str, locale: str = "en"):
-    response = _team_driver_response(lambda: teams.assistant_help(team_id, assistant_id, locale))
+    response = _team_response(lambda: teams.assistant_help(team_id, assistant_id, locale))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -545,14 +546,14 @@ def team_assistant_help(team_id: str, assistant_id: str, locale: str = "en"):
 async def team_assistant_install(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
-        _team_driver_response,
+        _team_response,
         lambda: teams.install_assistant(team_id, payload),
     )
 
 
 @app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
 def team_assistant_uninstall(team_id: str, assistant_id: str):
-    return _team_driver_response(lambda: teams.uninstall_assistant(team_id, assistant_id))
+    return _team_response(lambda: teams.uninstall_assistant(team_id, assistant_id))
 
 
 @app.get("/api/notifications")
@@ -586,21 +587,21 @@ def notifications_clear():
 
 @app.get("/api/teams/{team_id}/files")
 def team_files_list(team_id: str):
-    return _team_driver_response(lambda: teams.list_files(team_id))
+    return _team_response(lambda: teams.list_files(team_id))
 
 
 @app.post("/api/teams/{team_id}/files")
 async def team_file_upload(team_id: str, request: Request):
     filename, media_type, content = await _bounded_multipart_file(request)
     return await run_in_threadpool(
-        _team_driver_response,
+        _team_response,
         lambda: teams.upload_file(team_id, filename, media_type, content),
     )
 
 
 @app.delete("/api/teams/{team_id}/files/{file_id}")
 def team_file_delete(team_id: str, file_id: str):
-    return _team_driver_response(lambda: teams.delete_file(team_id, file_id))
+    return _team_response(lambda: teams.delete_file(team_id, file_id))
 
 
 @app.api_route(

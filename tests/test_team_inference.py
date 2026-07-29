@@ -19,7 +19,7 @@ TRACE_PUT = "fedcba9876543210fedcba9876543210"
 class TeamInferenceTests(unittest.TestCase):
     def test_get_and_put_project_the_real_controller_envelope(self) -> None:
         responses = (
-            teams.DriverResponse(
+            teams.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -28,7 +28,7 @@ class TeamInferenceTests(unittest.TestCase):
                     "trace_id": TRACE_GET,
                 },
             ),
-            teams.DriverResponse(
+            teams.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -41,7 +41,7 @@ class TeamInferenceTests(unittest.TestCase):
         with mock.patch.object(teams, "_call", side_effect=responses) as call:
             self.assertEqual(
                 teams.get_inference("team_1"),
-                teams.DriverResponse(
+                teams.TeamResponse(
                     200,
                     {"team_id": "team_1", "provider": "openai", "model": "gpt-5.5"},
                 ),
@@ -51,7 +51,7 @@ class TeamInferenceTests(unittest.TestCase):
                     "team_1",
                     {"provider": "anthropic", "model": "claude-sonnet-5"},
                 ),
-                teams.DriverResponse(
+                teams.TeamResponse(
                     200,
                     {
                         "team_id": "team_1",
@@ -97,11 +97,11 @@ class TeamInferenceTests(unittest.TestCase):
         for body in invalid_responses:
             with (
                 self.subTest(body=body),
-                mock.patch.object(teams, "_call", return_value=teams.DriverResponse(200, body)),
+                mock.patch.object(teams, "_call", return_value=teams.TeamResponse(200, body)),
             ):
                 self.assertEqual(
                     teams.get_inference("team_1"),
-                    teams.DriverResponse(502, {"detail": "Team inference response is invalid."}),
+                    teams.TeamResponse(502, {"detail": "Team inference response is invalid."}),
                 )
 
     def test_rejects_secret_bearing_or_extra_controller_metadata_without_reflecting_it(self) -> None:
@@ -128,18 +128,18 @@ class TeamInferenceTests(unittest.TestCase):
                 mock.patch.object(
                     teams,
                     "_call",
-                    return_value=teams.DriverResponse(200, body),
+                    return_value=teams.TeamResponse(200, body),
                 ),
             ):
                 projected = teams.get_inference("team_1")
                 self.assertEqual(
                     projected,
-                    teams.DriverResponse(502, {"detail": "Team inference response is invalid."}),
+                    teams.TeamResponse(502, {"detail": "Team inference response is invalid."}),
                 )
                 self.assertNotIn(secret, repr(projected.body))
 
     def test_preserves_bounded_non_success_controller_status(self) -> None:
-        response = teams.DriverResponse(409, {"detail": "not configured"})
+        response = teams.TeamResponse(409, {"detail": "not configured"})
         with mock.patch.object(teams, "_call", return_value=response):
             self.assertIs(teams.get_inference("team_1"), response)
 

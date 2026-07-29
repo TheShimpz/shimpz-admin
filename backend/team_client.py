@@ -1,4 +1,4 @@
-"""Bounded authenticated HTTP transport from Admin to team-driver."""
+"""Bounded authenticated HTTP transport from Admin to team."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ import modelproviders
 
 log = logging.getLogger("shimpz-admin")
 
-URL = os.environ.get("SHIMPZ_TEAMDRIVER_URL", "http://team-driver:7077")
-TOKEN_FILE = os.environ.get("SHIMPZ_TEAMDRIVER_TOKEN_FILE", "/run/shimpz-teamdriver/token")
+URL = os.environ.get("SHIMPZ_TEAM_URL", "http://team:7077")
+TOKEN_FILE = os.environ.get("SHIMPZ_TEAM_TOKEN_FILE", "/run/shimpz-team/token")
 
 MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
@@ -25,11 +25,11 @@ FILE_NAME_HEADER = "X-Shimpz-Filename"
 
 
 class TeamRequestError(ValueError):
-    """The browser supplied an invalid id or request body; no driver call was made."""
+    """The browser supplied an invalid id or request body; no Team call was made."""
 
 
 @dataclass(frozen=True)
-class DriverResponse:
+class TeamResponse:
     status: int
     body: dict[str, object]
 
@@ -54,7 +54,7 @@ def _read_token_file(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _driver_token() -> str:
+def _team_token() -> str:
     global _token_cache
     path = Path(TOKEN_FILE)
     identity = _token_identity(path)
@@ -63,9 +63,9 @@ def _driver_token() -> str:
             return _token_cache.token
         token = _read_token_file(path)
         if not token:
-            raise OSError("empty team-driver bearer")
+            raise OSError("empty team bearer")
         if _token_identity(path) != identity:
-            raise OSError("team-driver bearer changed while reading")
+            raise OSError("team bearer changed while reading")
         _token_cache = _TokenCache(path, identity, token)
         return token
 
@@ -88,7 +88,7 @@ def _endpoint() -> tuple[str, int]:
     try:
         parsed = urlparse(URL)
     except ValueError as exc:
-        raise OSError("invalid team-driver endpoint") from exc
+        raise OSError("invalid team endpoint") from exc
     if (
         parsed.scheme != "http"
         or not parsed.hostname
@@ -99,44 +99,44 @@ def _endpoint() -> tuple[str, int]:
         or parsed.query
         or parsed.fragment
     ):
-        raise OSError("invalid team-driver endpoint")
+        raise OSError("invalid team endpoint")
     try:
         return parsed.hostname, parsed.port or 7077
     except ValueError as exc:
-        raise OSError("invalid team-driver endpoint") from exc
+        raise OSError("invalid team endpoint") from exc
 
 
 def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
     if response.status == 204:
         raw_length = response.getheader("Content-Length")
         if raw_length not in {None, "0"} or response.read(1):
-            raise OSError("invalid team-driver response")
+            raise OSError("invalid team response")
         return {}
 
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if content_type != "application/json":
-        raise OSError("invalid team-driver response")
+        raise OSError("invalid team response")
 
     raw_length = response.getheader("Content-Length")
     if raw_length is not None:
         try:
             length = int(raw_length)
         except ValueError as exc:
-            raise OSError("invalid team-driver response") from exc
+            raise OSError("invalid team response") from exc
         if length < 0 or length > MAX_JSON_RESPONSE_BYTES:
-            raise OSError("invalid team-driver response")
+            raise OSError("invalid team response")
 
     raw = response.read(MAX_JSON_RESPONSE_BYTES + 1)
     if len(raw) > MAX_JSON_RESPONSE_BYTES:
-        raise OSError("invalid team-driver response")
+        raise OSError("invalid team response")
     if not raw:
         return {}
     try:
         body = json.loads(raw)
     except (json.JSONDecodeError, UnicodeError, RecursionError) as exc:
-        raise OSError("invalid team-driver response") from exc
+        raise OSError("invalid team response") from exc
     if not isinstance(body, dict):
-        raise OSError("invalid team-driver response")
+        raise OSError("invalid team response")
     return body
 
 
@@ -149,11 +149,11 @@ def _request(
     filename: str | None,
     timeout: int,
     model_credential: tuple[str, str] | None = None,
-) -> DriverResponse:
+) -> TeamResponse:
     connection = None
     try:
         host, port = _endpoint()
-        token = _driver_token()
+        token = _team_token()
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
         if content_type is not None:
             headers["Content-Type"] = content_type
@@ -179,20 +179,20 @@ def _request(
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
-            raise OSError("invalid team-driver status")
-        result = DriverResponse(response.status, _decode_response(response))
+            raise OSError("invalid team status")
+        result = TeamResponse(response.status, _decode_response(response))
     except OSError, UnicodeError, http.client.HTTPException:
         # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
-        log.warning("team-driver request failed (%s)", method)
-        return DriverResponse(502, {"detail": "team-driver unavailable"})
+        log.warning("team request failed (%s)", method)
+        return TeamResponse(502, {"detail": "team unavailable"})
     finally:
         if connection is not None:
             try:
                 connection.close()
             except OSError:
-                log.warning("team-driver connection close failed (%s)", method)
+                log.warning("team connection close failed (%s)", method)
 
-    log.info("team-driver %s %s -> HTTP %s", method, path, result.status)
+    log.info("team %s %s -> HTTP %s", method, path, result.status)
     return result
 
 
@@ -204,7 +204,7 @@ def _call(
     timeout: int = CONTROL_TIMEOUT_SECONDS,
     max_body_bytes: int = MAX_JSON_BODY_BYTES,
     model_credential: tuple[str, str] | None = None,
-) -> DriverResponse:
+) -> TeamResponse:
     body = _encode_payload(payload, max_bytes=max_body_bytes)
     return _request(
         method,
@@ -225,7 +225,7 @@ def _call_raw(
     filename: str,
     media_type: str,
     timeout: int = CONTROL_TIMEOUT_SECONDS,
-) -> DriverResponse:
+) -> TeamResponse:
     if not isinstance(body, bytes) or not isinstance(filename, str) or not isinstance(media_type, str):
         raise TeamRequestError("raw file request is invalid")
     return _request(

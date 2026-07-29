@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import driver_client
+import team_client
 
 
 class _Response:
@@ -22,8 +22,8 @@ class _Response:
 
 class DriverClientCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        with driver_client._token_cache_lock:
-            driver_client._token_cache = None
+        with team_client._token_cache_lock:
+            team_client._token_cache = None
 
     def test_calls_cache_token_by_file_identity_and_keep_connections_request_scoped(self) -> None:
         connections: list[mock.Mock] = []
@@ -38,24 +38,24 @@ class DriverClientCacheTests(unittest.TestCase):
             token_file = Path(directory) / "token"
             token_file.write_text("first-controller-token", encoding="utf-8")
             with (
-                mock.patch.object(driver_client, "TOKEN_FILE", str(token_file)),
+                mock.patch.object(team_client, "TOKEN_FILE", str(token_file)),
                 mock.patch.object(
-                    driver_client,
+                    team_client,
                     "_read_token_file",
-                    wraps=driver_client._read_token_file,
+                    wraps=team_client._read_token_file,
                 ) as read_token,
                 mock.patch.object(
-                    driver_client.http.client,
+                    team_client.http.client,
                     "HTTPConnection",
                     side_effect=connection_factory,
                 ) as open_connection,
             ):
-                self.assertEqual(driver_client._call("GET", "/v1/teams").status, 200)
-                self.assertEqual(driver_client._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
                 self.assertEqual(read_token.call_count, 1)
 
                 token_file.write_text("rotated-controller-token-value", encoding="utf-8")
-                self.assertEqual(driver_client._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
 
         self.assertEqual(read_token.call_count, 2)
         self.assertEqual(open_connection.call_count, 3)
