@@ -20,7 +20,7 @@ class _Response:
         return b"{}"
 
 
-class DriverClientCacheTests(unittest.TestCase):
+class TeamClientCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         with team_client._token_cache_lock:
             team_client._token_cache = None
