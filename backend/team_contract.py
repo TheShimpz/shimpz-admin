@@ -8,12 +8,14 @@ TEAM_ID_PATTERN = r"^[a-z0-9_]{1,40}$"
 ASSISTANT_ID_PATTERN = r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
 FILE_ID_PATTERN = r"^[0-9a-f]{32}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
+SOURCE_DIGEST_PATTERN = rf"^sha256:{SHA256_PATTERN[1:-1]}$"
 MEDIA_TYPE_PATTERN = r"^[a-z0-9][a-z0-9!#$&^_.+\-]*/[a-z0-9][a-z0-9!#$&^_.+\-]*$"
 
 TEAM_ID_RE = re.compile(TEAM_ID_PATTERN)
 ASSISTANT_ID_RE = re.compile(ASSISTANT_ID_PATTERN)
 FILE_ID_RE = re.compile(FILE_ID_PATTERN)
 SHA256_RE = re.compile(SHA256_PATTERN)
+SOURCE_DIGEST_RE = re.compile(SOURCE_DIGEST_PATTERN)
 MEDIA_TYPE_RE = re.compile(MEDIA_TYPE_PATTERN)
 
 MAX_CHAT_MESSAGE_CHARS = 16_000
@@ -34,6 +36,10 @@ def canonical_assistant_id(value: object) -> str | None:
     if not isinstance(value, str) or len(value) > 80 or ASSISTANT_ID_RE.fullmatch(value) is None:
         return None
     return value
+
+
+def canonical_source_digest(value: object) -> str | None:
+    return value if isinstance(value, str) and SOURCE_DIGEST_RE.fullmatch(value) is not None else None
 
 
 def canonical_team_name(value: object) -> str | None:
