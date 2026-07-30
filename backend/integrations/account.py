@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 log = logging.getLogger("shimpz-admin")
 
-URL = os.environ.get("SHIMPZ_ACCOUNT_URL", "http://accounts:7079")
+URL = os.environ.get("SHIMPZ_ACCOUNT_URL", "http://account:7079")
 SESSION_TOKEN_FILE = Path(
     os.environ.get(
         "SHIMPZ_ACCOUNT_ADMIN_SESSION_TOKEN_FILE",
