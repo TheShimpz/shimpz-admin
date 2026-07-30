@@ -13,10 +13,10 @@ const SECRET_CONTROL_RE = /\p{C}/u;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
-const MAX_ACCOUNTS = 512;
-const MAX_ACCOUNTS_PER_CHALLENGE = 64;
-const MAX_ACCOUNT_SCOPES = 32;
-const MAX_ACCOUNT_POWERS = 128;
+const MAX_INTEGRATIONS = 512;
+const MAX_INTEGRATION_REQUIREMENTS = 64;
+const MAX_INTEGRATION_SCOPES = 32;
+const MAX_INTEGRATION_POWERS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
@@ -183,7 +183,7 @@ function canonicalOptionalPublicText(value, maximum) {
 }
 
 function canonicalIntegrationScopes(values) {
-  if (!Array.isArray(values) || !values.length || values.length > MAX_ACCOUNT_SCOPES) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_SCOPES) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   const scopes = values.map((value) => canonicalPublicText(value, 128));
@@ -210,7 +210,7 @@ function canonicalIntegrationPower(value) {
 }
 
 function canonicalIntegrationPowers(values) {
-  if (!Array.isArray(values) || !values.length || values.length > MAX_ACCOUNT_POWERS) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_POWERS) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   const powers = values.map(canonicalIntegrationPower);
@@ -475,7 +475,11 @@ export async function listAssistantIntegrations(fetcher, teamId) {
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant integrations are unavailable.'), response.status);
   }
-  if (!exactKeys(body, ['integrations']) || !Array.isArray(body.integrations) || body.integrations.length > MAX_ACCOUNTS) {
+  if (
+    !exactKeys(body, ['integrations']) ||
+    !Array.isArray(body.integrations) ||
+    body.integrations.length > MAX_INTEGRATIONS
+  ) {
     throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
   }
   let integrations;
@@ -594,7 +598,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       value.expires_in > 900 ||
       !Array.isArray(value.requirements) ||
       !value.requirements.length ||
-      value.requirements.length > MAX_ACCOUNTS_PER_CHALLENGE
+      value.requirements.length > MAX_INTEGRATION_REQUIREMENTS
     ) {
       throw new LocalApiError('The local chat response is invalid.');
     }
