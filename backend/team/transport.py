@@ -15,6 +15,8 @@ from urllib.parse import quote, urlparse
 
 import models
 
+from protocol.http.v1 import payload as team_contract
+
 log = logging.getLogger("shimpz-admin")
 
 URL = os.environ.get("SHIMPZ_TEAM_URL", "http://team:7077")
@@ -24,7 +26,6 @@ MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
 FILE_NAME_HEADER = "X-Shimpz-Filename"
-ACCOUNT_SESSION_HEADER = "X-Shimpz-Account"
 _SUPERVISOR_SESSION: ContextVar[tuple[str, bool] | None] = ContextVar("shimpz_supervisor_session", default=None)
 
 
@@ -185,7 +186,7 @@ def _request(
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
         account_session = _account_session()
         if account_session:
-            headers[ACCOUNT_SESSION_HEADER] = account_session
+            headers[team_contract.ACCOUNT_SESSION_HEADER] = account_session
         if content_type is not None:
             headers["Content-Type"] = content_type
         if filename is not None:
