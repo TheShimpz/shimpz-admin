@@ -3,13 +3,13 @@ import test from 'node:test';
 
 import {
   CHAT_WS_PROTOCOL,
-  authorizeAssistantAccount,
+  authorizeAssistantIntegration,
   chatSocketUrl,
   createChatFrame,
   createStopFrame,
   createSyncFrame,
-  disconnectAssistantAccount,
-  listAssistantAccounts,
+  disconnectAssistantIntegration,
+  listAssistantIntegrations,
   listTeamFiles,
   oauthReturnFailure,
   parseChatEvent,
@@ -72,14 +72,14 @@ test('rejects expired, malformed, oversized and storage-failing OAuth conversati
   assert.equal(values.size, 0);
 });
 
-function accountRequirement() {
+function integrationRequirement() {
   return {
     assistant_id: 'social-publisher',
     assistant_name: 'Social Publisher',
-    account_id: 'x-account',
+    integration_id: 'x-integration',
     provider: 'x',
-    name: 'X account',
-    summary: 'Publishes approved posts through your X account.',
+    name: 'X integration',
+    summary: 'Publishes approved posts through your X integration.',
     scopes: ['tweet.read', 'tweet.write', 'users.read'],
     powers: [
       { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
@@ -87,19 +87,19 @@ function accountRequirement() {
   };
 }
 
-function accountInventory(status = 'connected') {
+function integrationInventory(status = 'connected') {
   return {
-    accounts: [
+    integrations: [
       {
         assistant_id: 'social-publisher',
         assistant_name: 'Social Publisher',
-        id: 'x-account',
+        id: 'x-integration',
         provider: 'x',
-        name: 'X account',
-        summary: 'Publishes approved posts through your X account.',
+        name: 'X integration',
+        summary: 'Publishes approved posts through your X integration.',
         scopes: ['tweet.read', 'tweet.write', 'users.read'],
         status,
-        account: status === 'missing' ? null : { id: '142', name: 'Shimpz', username: 'TheShimpz' },
+        integration: status === 'missing' ? null : { id: '142', name: 'Shimpz', username: 'TheShimpz' },
         expires_at: status === 'missing' ? null : '2026-07-20T12:34:56.000Z',
       },
     ],
@@ -197,12 +197,12 @@ test('chat accepts only exact, bounded terminal events', () => {
 
 
 
-test('chat accepts only exact bounded public account requirements', () => {
+test('chat accepts only exact bounded public integration requirements', () => {
   const challenge = {
-    type: 'accounts-required',
+    type: 'integrations-required',
     challenge_id: CHALLENGE_ID,
     expires_in: 300,
-    requirements: [accountRequirement()],
+    requirements: [integrationRequirement()],
   };
   const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
   assert.deepEqual(parsed, challenge);
@@ -211,12 +211,12 @@ test('chat accepts only exact bounded public account requirements', () => {
   assert.doesNotMatch(JSON.stringify(parsed), /token|code|verifier|client_secret/i);
 });
 
-test('chat rejects augmented, duplicated, and sensitive account requirements', () => {
+test('chat rejects augmented, duplicated, and sensitive integration requirements', () => {
   const base = {
-    type: 'accounts-required',
+    type: 'integrations-required',
     challenge_id: CHALLENGE_ID,
     expires_in: 300,
-    requirements: [accountRequirement()],
+    requirements: [integrationRequirement()],
   };
   for (const invalid of [
     { ...base, access_token: 'must-not-cross' },
@@ -224,14 +224,14 @@ test('chat rejects augmented, duplicated, and sensitive account requirements', (
     { ...base, expires_in: 0 },
     { ...base, expires_in: 901 },
     { ...base, requirements: [] },
-    { ...base, requirements: [accountRequirement(), accountRequirement()] },
-    { ...base, requirements: [{ ...accountRequirement(), client_id: 'must-not-cross' }] },
-    { ...base, requirements: [{ ...accountRequirement(), scopes: ['tweet.read', 'tweet.read'] }] },
+    { ...base, requirements: [integrationRequirement(), integrationRequirement()] },
+    { ...base, requirements: [{ ...integrationRequirement(), client_id: 'must-not-cross' }] },
+    { ...base, requirements: [{ ...integrationRequirement(), scopes: ['tweet.read', 'tweet.read'] }] },
     {
       ...base,
       requirements: [{
-        ...accountRequirement(),
-        powers: [{ ...accountRequirement().powers[0], token: 'must-not-cross' }],
+        ...integrationRequirement(),
+        powers: [{ ...integrationRequirement().powers[0], token: 'must-not-cross' }],
       }],
     },
   ]) {
@@ -245,30 +245,30 @@ test('chat rejects augmented, duplicated, and sensitive account requirements', (
 
 
 
-test('lists only bounded status metadata for Team-scoped Assistant accounts', async () => {
+test('lists only bounded status metadata for Team-scoped Assistant integrations', async () => {
   const calls = [];
-  const inventory = accountInventory();
+  const inventory = integrationInventory();
   assert.deepEqual(
-    await listAssistantAccounts(async (url, options) => {
+    await listAssistantIntegrations(async (url, options) => {
       calls.push({ url, options });
       return response(200, inventory);
     }, 'team_1'),
     inventory,
   );
-  assert.equal(calls[0].url, '/api/teams/team_1/assistant-accounts');
+  assert.equal(calls[0].url, '/api/teams/team_1/assistant-integrations');
   assert.equal(calls[0].options.cache, 'no-store');
   assert.doesNotMatch(JSON.stringify(inventory), /token|code|verifier|client_secret/i);
 
   for (const invalid of [
     { ...inventory, token: 'must-not-cross' },
-    { accounts: [{ ...inventory.accounts[0], status: 'refresh-required' }] },
-    { accounts: [{ ...inventory.accounts[0], account: { id: '1', name: null } }] },
-    { accounts: [{ ...inventory.accounts[0], account: { id: '', name: null, username: null } }] },
-    { accounts: [{ ...inventory.accounts[0], expires_at: 'tomorrow' }] },
-    { accounts: [...inventory.accounts, ...inventory.accounts] },
+    { integrations: [{ ...inventory.integrations[0], status: 'refresh-required' }] },
+    { integrations: [{ ...inventory.integrations[0], integration: { id: '1', name: null } }] },
+    { integrations: [{ ...inventory.integrations[0], integration: { id: '', name: null, username: null } }] },
+    { integrations: [{ ...inventory.integrations[0], expires_at: 'tomorrow' }] },
+    { integrations: [...inventory.integrations, ...inventory.integrations] },
   ]) {
     await assert.rejects(
-      listAssistantAccounts(async () => response(200, invalid), 'team_1'),
+      listAssistantIntegrations(async () => response(200, invalid), 'team_1'),
       /inventory is invalid/,
     );
   }
@@ -278,7 +278,7 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   const calls = [];
   const authorizationUrl = 'https://dash.cloudflare.com/oauth2/auth?response_type=code&state=opaque';
   assert.deepEqual(
-    await authorizeAssistantAccount(async (url, options) => {
+    await authorizeAssistantIntegration(async (url, options) => {
       calls.push({ url, options });
       return response(200, { authorization_url: authorizationUrl });
     }, 'team_1', CHALLENGE_ID),
@@ -286,14 +286,14 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   );
   assert.equal(
     calls[0].url,
-    `/api/teams/team_1/assistant-accounts/challenges/${CHALLENGE_ID}/authorize`,
+    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
   );
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body, '{}');
 
   const handoffUrl = `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}`;
   assert.deepEqual(
-    await authorizeAssistantAccount(
+    await authorizeAssistantIntegration(
       async () => response(200, { authorization_url: handoffUrl }),
       'team_1',
       CHALLENGE_ID,
@@ -302,7 +302,7 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   );
   const canaryHandoffUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'b'.repeat(64)}`;
   assert.deepEqual(
-    await authorizeAssistantAccount(
+    await authorizeAssistantIntegration(
       async () => response(200, { authorization_url: canaryHandoffUrl }),
       'team_1',
       CHALLENGE_ID,
@@ -328,25 +328,25 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
-      authorizeAssistantAccount(async () => response(200, body), 'team_1', CHALLENGE_ID),
+      authorizeAssistantIntegration(async () => response(200, body), 'team_1', CHALLENGE_ID),
       /authorization response is invalid/,
     );
   }
 
-  await disconnectAssistantAccount(
+  await disconnectAssistantIntegration(
     async (url, options) => {
       calls.push({ url, options });
       return response(204, {});
     },
     'team_1',
     'social-publisher',
-    'x-account',
+    'x-integration',
   );
-  assert.equal(calls[1].url, '/api/teams/team_1/assistant-accounts/social-publisher/x-account');
+  assert.equal(calls[1].url, '/api/teams/team_1/assistant-integrations/social-publisher/x-integration');
   assert.equal(calls[1].options.method, 'DELETE');
   await assert.rejects(
-    disconnectAssistantAccount(async () => response(200, {}), 'team_1', 'social-publisher', 'x-account'),
-    /disaccount response is invalid/,
+    disconnectAssistantIntegration(async () => response(200, {}), 'team_1', 'social-publisher', 'x-integration'),
+    /disintegration response is invalid/,
   );
 });
 
@@ -357,7 +357,7 @@ test('trusts a loopback OAuth handoff only on the Admin browser port', async () 
     const handoff = 'a'.repeat(64);
     const authorizationUrl = `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`;
     assert.deepEqual(
-      await authorizeAssistantAccount(
+      await authorizeAssistantIntegration(
         async () => response(200, { authorization_url: authorizationUrl }),
         'team_1',
         CHALLENGE_ID,
@@ -365,7 +365,7 @@ test('trusts a loopback OAuth handoff only on the Admin browser port', async () 
       { authorization_url: authorizationUrl },
     );
     await assert.rejects(
-      authorizeAssistantAccount(
+      authorizeAssistantIntegration(
         async () => response(200, {
           authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${handoff}`,
         }),

@@ -38,9 +38,9 @@ MAX_ACCOUNT_LABEL_CHARS = 80
 MAX_ACCOUNT_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
     "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
-    "assistant-account-challenge-expired": "the Assistant account expired; retry the message",
-    "assistant-account-contract-invalid": "the Assistant account contract changed; retry the message",
-    "assistant-account-state-unavailable": "Assistant account state is unavailable",
+    "assistant-integration-challenge-expired": "the Assistant integration expired; retry the message",
+    "assistant-integration-contract-invalid": "the Assistant integration contract changed; retry the message",
+    "assistant-integration-state-unavailable": "Assistant integration state is unavailable",
     "assistant-registry-drift": "an installed Assistant is no longer available",
     "assistant-unavailable": "the Brain requested an unavailable Assistant",
     "brain-runtime-failed": "the Brain runtime could not complete the Team turn",
@@ -60,7 +60,7 @@ _CHAT_ERROR_DETAILS = {
     "ownership-conflict": "the Team resource ownership check failed",
     "power-state-unavailable": "Team Power execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
-    "account-challenge-response-invalid": "the Assistant account challenge was invalid",
+    "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
 }
@@ -106,7 +106,7 @@ class PublicResponse(teams.TeamResponse):
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
         challenge_status = body.get("status")
-        if challenge_status == "accounts-required":
+        if challenge_status == "integrations-required":
             if body.get("team_id") != team_id:
                 return None
             event = {"type": challenge_status, **body}
@@ -202,13 +202,13 @@ def _challenge_envelope(
     return identity
 
 
-def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
+def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
         challenge_id, turn_id = _challenge_envelope(
             response,
             team_id,
-            "accounts-required",
+            "integrations-required",
             _ACCOUNT_CHALLENGE_RESPONSE_FIELDS,
         )
         expires_in = response.body["expires_in"]
@@ -220,28 +220,28 @@ def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> te
             or not isinstance(raw_requirements, list)
             or not 1 <= len(raw_requirements) <= MAX_ACCOUNT_REQUIREMENTS
         ):
-            raise ValueError("invalid account metadata")
+            raise ValueError("invalid integration metadata")
 
         requirements: list[dict[str, object]] = []
-        seen_accounts: set[tuple[str, str]] = set()
+        seen_integrations: set[tuple[str, str]] = set()
         for raw in raw_requirements:
             if not isinstance(raw, dict) or set(raw) != {
                 "assistant_id",
                 "assistant_name",
-                "account_id",
+                "integration_id",
                 "provider",
                 "name",
                 "summary",
                 "scopes",
                 "powers",
             }:
-                raise ValueError("invalid account requirement")
+                raise ValueError("invalid integration requirement")
             assistant_id = teams.canonical_assistant_id(raw["assistant_id"])
-            account_id = teams.canonical_assistant_id(raw["account_id"])
-            identity = (assistant_id, account_id)
-            if identity in seen_accounts:
-                raise ValueError("duplicate account")
-            seen_accounts.add(identity)
+            integration_id = teams.canonical_assistant_id(raw["integration_id"])
+            identity = (assistant_id, integration_id)
+            if identity in seen_integrations:
+                raise ValueError("duplicate integration")
+            seen_integrations.add(identity)
 
             raw_scopes = raw["scopes"]
             raw_powers = raw["powers"]
@@ -251,19 +251,19 @@ def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> te
                 or not isinstance(raw_powers, list)
                 or not 1 <= len(raw_powers) <= MAX_ACCOUNT_POWERS
             ):
-                raise ValueError("invalid account capabilities")
+                raise ValueError("invalid integration capabilities")
             scopes = [chat_ws_common.public_text(scope, MAX_ACCOUNT_SCOPE_CHARS) for scope in raw_scopes]
             if len(set(scopes)) != len(scopes):
-                raise ValueError("duplicate account scope")
+                raise ValueError("duplicate integration scope")
 
             powers: list[dict[str, str]] = []
             seen_powers: set[str] = set()
             for raw_power in raw_powers:
                 if not isinstance(raw_power, dict) or set(raw_power) != {"id", "name", "summary"}:
-                    raise ValueError("invalid account Power")
+                    raise ValueError("invalid integration Power")
                 power_id = teams.canonical_assistant_id(raw_power["id"])
                 if power_id in seen_powers:
-                    raise ValueError("duplicate account Power")
+                    raise ValueError("duplicate integration Power")
                 seen_powers.add(power_id)
                 powers.append(
                     {
@@ -276,7 +276,7 @@ def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> te
                 {
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_ACCOUNT_LABEL_CHARS),
-                    "account_id": account_id,
+                    "integration_id": integration_id,
                     "provider": teams.canonical_assistant_id(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_ACCOUNT_LABEL_CHARS),
                     "summary": chat_ws_common.public_text(raw["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
@@ -285,12 +285,12 @@ def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> te
                 }
             )
     except KeyError, TypeError, ValueError, teams.TeamRequestError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "account-challenge-response-invalid"})
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "integration-challenge-response-invalid"})
     return PublicResponse(
         response.status,
         {
             "team_id": team_id,
-            "status": "accounts-required",
+            "status": "integrations-required",
             "turn_id": turn_id,
             "challenge_id": challenge_id,
             "expires_in": expires_in,
@@ -300,8 +300,8 @@ def _project_account_challenge(response: teams.TeamResponse, team_id: str) -> te
 
 
 def _project_pending_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
-    if response.body.get("status") == "accounts-required":
-        return _project_account_challenge(response, team_id)
+    if response.body.get("status") == "integrations-required":
+        return _project_integration_challenge(response, team_id)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
@@ -358,12 +358,12 @@ def turn(team_id: object, payload: object) -> teams.TeamResponse:
     return _submit(team_id, payload, teams.canonical_chat_payload, teams.chat)
 
 
-def resume_accounts(team_id: object, challenge_id: object) -> teams.TeamResponse:
+def resume_integrations(team_id: object, challenge_id: object) -> teams.TeamResponse:
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
-        teams.canonical_account_resume,
-        teams.resume_chat_accounts,
+        teams.canonical_integration_resume,
+        teams.resume_chat_integrations,
     )
 
 
@@ -390,12 +390,12 @@ def _pending(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
 
 
-def pending_accounts(team_id: object) -> teams.TeamResponse:
+def pending_integrations(team_id: object) -> teams.TeamResponse:
     return _pending(
         team_id,
-        teams.pending_chat_accounts,
-        _project_account_challenge,
-        "account-challenge-response-invalid",
+        teams.pending_chat_integrations,
+        _project_integration_challenge,
+        "integration-challenge-response-invalid",
     )
 
 

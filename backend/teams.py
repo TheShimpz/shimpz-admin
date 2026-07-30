@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 
-import accounts_oauth
+import assistant_integrations
 import chat_payloads
 import modelproviders
 import team_client
@@ -74,13 +74,13 @@ def canonical_assistant_help_locale(value: object) -> str:
     return value
 
 
-canonical_oauth_binding = accounts_oauth.canonical_oauth_binding
+canonical_oauth_binding = assistant_integrations.canonical_oauth_binding
 
 
 canonical_challenge_id = chat_payloads.canonical_challenge_id
 
 
-canonical_oauth_claim = accounts_oauth.canonical_oauth_claim
+canonical_oauth_claim = assistant_integrations.canonical_oauth_claim
 
 
 def canonical_filename(value: object) -> str:
@@ -229,7 +229,7 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
 
 
 canonical_chat_payload = chat_payloads.canonical_chat_payload
-canonical_account_resume = chat_payloads.canonical_account_resume
+canonical_integration_resume = chat_payloads.canonical_integration_resume
 
 
 def chat(
@@ -257,12 +257,12 @@ def stop_chat(team_id: object) -> TeamResponse:
     return _call("POST", f"/v1/teams/{canonical_id}/chat/stop", {})
 
 
-def pending_chat_accounts(team_id: object) -> TeamResponse:
+def pending_chat_integrations(team_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/accounts")
+    return _call("GET", f"/v1/teams/{canonical_id}/chat/integrations")
 
 
-def resume_chat_accounts(
+def resume_chat_integrations(
     team_id: object,
     payload: object,
     *,
@@ -270,20 +270,20 @@ def resume_chat_accounts(
     api_key: str,
 ) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
-    body = canonical_account_resume(payload)
+    body = canonical_integration_resume(payload)
     return _call(
         "POST",
-        f"/v1/teams/{canonical_id}/chat/accounts",
+        f"/v1/teams/{canonical_id}/chat/integrations",
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         model_credential=(provider, api_key),
     )
 
 
-list_assistant_accounts = accounts_oauth.list_assistant_accounts
-start_assistant_account_authorization = accounts_oauth.start_assistant_account_authorization
-disconnect_assistant_account = accounts_oauth.disconnect_assistant_account
-complete_cloudflare_oauth_callback = accounts_oauth.complete_cloudflare_oauth_callback
+list_assistant_integrations = assistant_integrations.list_assistant_integrations
+start_assistant_integration_authorization = assistant_integrations.start_assistant_integration_authorization
+disconnect_assistant_integration = assistant_integrations.disconnect_assistant_integration
+complete_cloudflare_oauth_callback = assistant_integrations.complete_cloudflare_oauth_callback
 
 
 def list_assistants() -> TeamResponse:

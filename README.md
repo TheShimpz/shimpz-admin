@@ -2,12 +2,12 @@
 
 Shimpz Admin is the loopback-only Supervisor console installed with a local Shimpz Space. Its SvelteKit
 frontend and FastAPI backend provide password/session authentication, Team lifecycle, Assistant
-install/uninstall and help, provider/model selection, Team files, local chat, and OAuth Account
+install/uninstall and help, provider/model selection, Team files, local chat, and OAuth Integration
 connection management.
 
 Admin has no Docker socket. It calls the local Team controller over a private authenticated network
 using a file-backed bearer mounted read-only. The controller remains authoritative for Team ownership,
-workload identity, Power execution, storage, Account encryption, and Brain turns.
+workload identity, Power execution, storage, Integration encryption, and Brain turns.
 
 ## Credential and chat boundary
 
@@ -15,7 +15,7 @@ workload identity, Power execution, storage, Account encryption, and Brain turns
   Browser responses expose masked credential state, never stored values.
 - Team inference configuration contains only the canonical `provider` and `model` selection.
 - Browser chat uses `shimpz.chat.v3`: strict `chat`, `stop`, and `sync` client frames plus the bounded
-  `accounts-required` OAuth gate. An empty Assistant selection is Brain-only and never expands.
+  `integrations-required` OAuth gate. An empty Assistant selection is Brain-only and never expands.
 - For a turn or challenge resume, Admin resolves the selected model key internally and sends it only
   through the controller's fixed `X-Shimpz-Model-Provider` and `X-Shimpz-Model-Api-Key` headers. The key
   is absent from browser JSON, iframe messages, logs, audit records, and responses.

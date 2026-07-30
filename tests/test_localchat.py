@@ -46,14 +46,14 @@ def approval_requirements() -> list[dict[str, object]]:
     ]
 
 
-def account_requirement() -> dict[str, object]:
+def integration_requirement() -> dict[str, object]:
     return {
         "assistant_id": "shimpz-cloudflare",
         "assistant_name": "Shimpz Cloudflare",
-        "account_id": "x-account",
+        "integration_id": "x-integration",
         "provider": "x",
-        "name": "X account",
-        "summary": "Lets approved Powers access the connected X account.",
+        "name": "X integration",
+        "summary": "Lets approved Powers access the connected X integration.",
         "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
         "powers": [
             {"id": "identity-me", "name": "Read profile", "summary": "Read the connected X profile."},
@@ -73,18 +73,18 @@ def input_request(request_type: str, options: list[str] | None = None) -> dict[s
 
 
 class LocalChatOrchestrationTests(unittest.TestCase):
-    def test_account_challenge_projects_only_public_consent_metadata(self) -> None:
+    def test_integration_challenge_projects_only_public_consent_metadata(self) -> None:
         body = {
             "team_id": "team_1",
-            "status": "accounts-required",
+            "status": "integrations-required",
             "turn_id": CHALLENGE_ID,
             "challenge_id": CHALLENGE_ID,
             "expires_in": 300,
-            "requirements": [account_requirement()],
+            "requirements": [integration_requirement()],
             "trace_id": TRACE_ID,
         }
 
-        response = localchat._project_account_challenge(teams.TeamResponse(428, body), "team_1")
+        response = localchat._project_integration_challenge(teams.TeamResponse(428, body), "team_1")
 
         self.assertEqual(
             response,
@@ -96,17 +96,17 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn("token", json.dumps(response.body).lower())
         self.assertNotIn("client_secret", json.dumps(response.body).lower())
 
-    def test_account_challenge_fails_closed_on_ambiguous_or_private_data(self) -> None:
+    def test_integration_challenge_fails_closed_on_ambiguous_or_private_data(self) -> None:
         valid = {
             "team_id": "team_1",
-            "status": "accounts-required",
+            "status": "integrations-required",
             "turn_id": CHALLENGE_ID,
             "challenge_id": CHALLENGE_ID,
             "expires_in": 300,
-            "requirements": [account_requirement()],
+            "requirements": [integration_requirement()],
             "trace_id": TRACE_ID,
         }
-        requirement = account_requirement()
+        requirement = integration_requirement()
         invalid = (
             {**valid, "team_id": "team_2"},
             {**valid, "access_token": "must-not-cross"},
@@ -124,23 +124,23 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                response = localchat._project_account_challenge(teams.TeamResponse(428, body), "team_1")
+                response = localchat._project_integration_challenge(teams.TeamResponse(428, body), "team_1")
             self.assertEqual(
                 response,
-                teams.TeamResponse(502, {"code": "account-challenge-response-invalid"}),
+                teams.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
             )
 
-    def test_turn_preserves_account_before_later_gates(self) -> None:
+    def test_turn_preserves_integration_before_later_gates(self) -> None:
         inference = teams.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         controller = teams.TeamResponse(
             428,
             {
                 "team_id": "team_1",
-                "status": "accounts-required",
+                "status": "integrations-required",
                 "turn_id": CHALLENGE_ID,
                 "challenge_id": CHALLENGE_ID,
                 "expires_in": 300,
-                "requirements": [account_requirement()],
+                "requirements": [integration_requirement()],
                 "trace_id": TRACE_ID,
             },
         )
@@ -155,42 +155,42 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status, 428)
-        self.assertEqual(response.body["status"], "accounts-required")
-        self.assertEqual(response.body["requirements"], [account_requirement()])
+        self.assertEqual(response.body["status"], "integrations-required")
+        self.assertEqual(response.body["requirements"], [integration_requirement()])
 
-    def test_pending_account_is_team_bound_and_none_is_closed(self) -> None:
+    def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
         pending = teams.TeamResponse(
             200,
             {
                 "team_id": "team_1",
-                "status": "accounts-required",
+                "status": "integrations-required",
                 "turn_id": CHALLENGE_ID,
                 "challenge_id": CHALLENGE_ID,
                 "expires_in": 300,
-                "requirements": [account_requirement()],
+                "requirements": [integration_requirement()],
                 "trace_id": TRACE_ID,
             },
         )
-        with mock.patch.object(teams, "pending_chat_accounts", return_value=pending):
-            projected = localchat.pending_accounts("team_1")
-        self.assertEqual(projected.body["status"], "accounts-required")
+        with mock.patch.object(teams, "pending_chat_integrations", return_value=pending):
+            projected = localchat.pending_integrations("team_1")
+        self.assertEqual(projected.body["status"], "integrations-required")
         self.assertNotIn("trace_id", projected.body)
 
         none = teams.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
-        with mock.patch.object(teams, "pending_chat_accounts", return_value=none):
+        with mock.patch.object(teams, "pending_chat_integrations", return_value=none):
             self.assertEqual(
-                localchat.pending_accounts("team_1"),
+                localchat.pending_integrations("team_1"),
                 teams.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
 
         cross_team = teams.TeamResponse(200, {**none.body, "team_id": "team_2"})
-        with mock.patch.object(teams, "pending_chat_accounts", return_value=cross_team):
+        with mock.patch.object(teams, "pending_chat_integrations", return_value=cross_team):
             self.assertEqual(
-                localchat.pending_accounts("team_1"),
-                teams.TeamResponse(502, {"code": "account-challenge-response-invalid"}),
+                localchat.pending_integrations("team_1"),
+                teams.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
             )
 
-    def test_account_resume_rejects_augmented_or_invalid_payload_before_transport(self) -> None:
+    def test_integration_resume_rejects_augmented_or_invalid_payload_before_transport(self) -> None:
         invalid = (
             {},
             {"challenge_id": "short"},
@@ -200,7 +200,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         with mock.patch.object(teams, "_call") as transport:
             for payload in invalid:
                 with self.subTest(payload=payload), self.assertRaises(teams.TeamRequestError):
-                    teams.resume_chat_accounts(
+                    teams.resume_chat_integrations(
                         "team_1",
                         payload,
                         provider="openai",

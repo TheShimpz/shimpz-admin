@@ -86,9 +86,9 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
         self.assertNotIn(api_key.encode(), request["body"])
 
-    def test_account_resume_uses_private_model_header_and_exact_challenge(self) -> None:
+    def test_integration_resume_uses_private_model_header_and_exact_challenge(self) -> None:
         model_key = "sk-test-0123456789"
-        teams.resume_chat_accounts(
+        teams.resume_chat_integrations(
             "team_1",
             {"challenge_id": CHALLENGE_ID},
             provider="openai",
@@ -96,7 +96,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         )
 
         request = _ControllerHandler.request
-        self.assertEqual(request["path"], "/v1/teams/team_1/chat/accounts")
+        self.assertEqual(request["path"], "/v1/teams/team_1/chat/integrations")
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], model_key)
         self.assertEqual(json.loads(request["body"]), {"challenge_id": CHALLENGE_ID})
         self.assertNotIn(model_key.encode(), request["body"])

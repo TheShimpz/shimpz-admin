@@ -42,7 +42,7 @@ COPY --from=dependencies /opt/venv /opt/venv
 RUN groupadd -g 1000 admin && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin admin
 
 WORKDIR /app/backend
-COPY backend/accounts_oauth.py backend/app.py backend/adminstore.py backend/auth.py backend/teams.py \
+COPY backend/assistant_integrations.py backend/app.py backend/adminstore.py backend/auth.py backend/teams.py \
      backend/chat_payloads.py backend/chat_ws.py backend/team_client.py \
      backend/localchat.py backend/modelproviders.py backend/model_catalog.json backend/notifications.py backend/oauth_handoff.py \
      ./

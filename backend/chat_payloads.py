@@ -62,8 +62,8 @@ def _canonical_id(value: object, *, field: str, pattern: re.Pattern[str], maximu
     return value
 
 
-def canonical_account_resume(payload: object) -> dict[str, str]:
-    """Bind continuation to the one exact controller-owned account challenge."""
+def canonical_integration_resume(payload: object) -> dict[str, str]:
+    """Bind continuation to the one exact controller-owned integration challenge."""
     if not isinstance(payload, dict) or set(payload) != {"challenge_id"}:
-        raise TeamRequestError("account continuation requires only challenge_id")
+        raise TeamRequestError("integration continuation requires only challenge_id")
     return {"challenge_id": canonical_challenge_id(payload["challenge_id"])}

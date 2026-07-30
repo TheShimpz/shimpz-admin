@@ -8,15 +8,15 @@ TURN_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
 
 
-def account_requirements() -> list[dict[str, object]]:
+def integration_requirements() -> list[dict[str, object]]:
     return [
         {
             "assistant_id": "social-publisher",
             "assistant_name": "Social Publisher",
-            "account_id": "x-account",
+            "integration_id": "x-integration",
             "provider": "x",
-            "name": "X account",
-            "summary": "Lets approved Powers access the connected X account.",
+            "name": "X integration",
+            "summary": "Lets approved Powers access the connected X integration.",
             "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
             "powers": [
                 {"id": "profile-me", "name": "Read profile", "summary": "Read the connected X profile."},
@@ -26,16 +26,16 @@ def account_requirements() -> list[dict[str, object]]:
     ]
 
 
-def account_challenge(status: int = 428) -> object:
+def integration_challenge(status: int = 428) -> object:
     localchat_module = importlib.import_module("localchat")
     return localchat_module.PublicResponse(
         status,
         {
             "team_id": "team_1",
-            "status": "accounts-required",
+            "status": "integrations-required",
             "turn_id": TURN_ID,
             "challenge_id": CHALLENGE_ID,
             "expires_in": 300,
-            "requirements": account_requirements(),
+            "requirements": integration_requirements(),
         },
     )

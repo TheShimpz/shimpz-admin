@@ -27,7 +27,7 @@ const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 
 export const CHAT_WS_PROTOCOL = 'shimpz.chat.v3';
 
-export function assistantAccountProviderLabel(provider) {
+export function assistantIntegrationProviderLabel(provider) {
   if (typeof provider !== 'string' || !ASSISTANT_ID_RE.test(provider)) return '';
   if (provider === 'x') return 'X';
   return provider.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
@@ -182,7 +182,7 @@ function canonicalOptionalPublicText(value, maximum) {
   return value === null ? null : canonicalPublicText(value, maximum);
 }
 
-function canonicalAccountScopes(values) {
+function canonicalIntegrationScopes(values) {
   if (!Array.isArray(values) || !values.length || values.length > MAX_ACCOUNT_SCOPES) {
     throw new LocalApiError('The local chat response is invalid.');
   }
@@ -193,7 +193,7 @@ function canonicalAccountScopes(values) {
   return scopes;
 }
 
-function canonicalAccountPower(value) {
+function canonicalIntegrationPower(value) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -209,18 +209,18 @@ function canonicalAccountPower(value) {
   };
 }
 
-function canonicalAccountPowers(values) {
+function canonicalIntegrationPowers(values) {
   if (!Array.isArray(values) || !values.length || values.length > MAX_ACCOUNT_POWERS) {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  const powers = values.map(canonicalAccountPower);
+  const powers = values.map(canonicalIntegrationPower);
   if (new Set(powers.map((power) => power.id)).size !== powers.length) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   return powers;
 }
 
-function canonicalAccountRequirement(value) {
+function canonicalIntegrationRequirement(value) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -228,7 +228,7 @@ function canonicalAccountRequirement(value) {
     !exactKeys(value, [
       'assistant_id',
       'assistant_name',
-      'account_id',
+      'integration_id',
       'provider',
       'name',
       'summary',
@@ -241,16 +241,16 @@ function canonicalAccountRequirement(value) {
   return {
     assistant_id: canonicalId(value.assistant_id),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
-    account_id: canonicalId(value.account_id),
+    integration_id: canonicalId(value.integration_id),
     provider: canonicalId(value.provider),
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 160),
-    scopes: canonicalAccountScopes(value.scopes),
-    powers: canonicalAccountPowers(value.powers),
+    scopes: canonicalIntegrationScopes(value.scopes),
+    powers: canonicalIntegrationPowers(value.powers),
   };
 }
 
-function canonicalAccountAccount(value) {
+function canonicalIntegrationIntegration(value) {
   if (value === null) return null;
   if (
     !value ||
@@ -258,7 +258,7 @@ function canonicalAccountAccount(value) {
     Array.isArray(value) ||
     !exactKeys(value, ['id', 'name', 'username'])
   ) {
-    throw new LocalApiError('The Assistant account inventory is invalid.');
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   return {
     id: canonicalPublicText(value.id, 160),
@@ -267,7 +267,7 @@ function canonicalAccountAccount(value) {
   };
 }
 
-function canonicalAccountExpiry(value) {
+function canonicalIntegrationExpiry(value) {
   if (value === null) return null;
   const match = typeof value === 'string'
     ? value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|([+-])(\d{2}):(\d{2}))$/)
@@ -278,7 +278,7 @@ function canonicalAccountExpiry(value) {
     value !== value.trim() ||
     CONTROL_RE.test(value)
   ) {
-    throw new LocalApiError('The Assistant account inventory is invalid.');
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   const [, year, month, day, hour, minute, second, , offsetHour = '00', offsetMinute = '00'] = match;
   const maximumDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
@@ -293,16 +293,16 @@ function canonicalAccountExpiry(value) {
     Number(offsetHour) > 23 ||
     Number(offsetMinute) > 59
   ) {
-    throw new LocalApiError('The Assistant account inventory is invalid.');
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) {
-    throw new LocalApiError('The Assistant account inventory is invalid.');
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   return value;
 }
 
-function canonicalAccountInventoryItem(value) {
+function canonicalIntegrationInventoryItem(value) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -316,25 +316,25 @@ function canonicalAccountInventoryItem(value) {
       'summary',
       'scopes',
       'status',
-      'account',
+      'integration',
       'expires_at',
     ]) ||
     !['missing', 'connected', 'expired', 'reauthorization-required'].includes(value.status)
   ) {
-    throw new LocalApiError('The Assistant account inventory is invalid.');
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
-  const account = canonicalAccountAccount(value.account);
+  const integration = canonicalIntegrationIntegration(value.integration);
   return {
-    assistant_id: canonicalId(value.assistant_id, 'The Assistant account inventory is invalid.'),
+    assistant_id: canonicalId(value.assistant_id, 'The Assistant integration inventory is invalid.'),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
-    id: canonicalId(value.id, 'The Assistant account inventory is invalid.'),
-    provider: canonicalId(value.provider, 'The Assistant account inventory is invalid.'),
+    id: canonicalId(value.id, 'The Assistant integration inventory is invalid.'),
+    provider: canonicalId(value.provider, 'The Assistant integration inventory is invalid.'),
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 160),
-    scopes: canonicalAccountScopes(value.scopes),
+    scopes: canonicalIntegrationScopes(value.scopes),
     status: value.status,
-    account,
-    expires_at: canonicalAccountExpiry(value.expires_at),
+    integration,
+    expires_at: canonicalIntegrationExpiry(value.expires_at),
   };
 }
 
@@ -464,41 +464,41 @@ export function createSyncFrame(teamId) {
   return { type: 'sync' };
 }
 
-export async function listAssistantAccounts(fetcher, teamId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant account request.');
+export async function listAssistantIntegrations(fetcher, teamId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant integration request.');
   requireTeam(teamId);
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-accounts`, {
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-integrations`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   });
   const body = await jsonObject(response);
   if (!response.ok) {
-    throw new LocalApiError(safeApiError(body, 'Assistant accounts are unavailable.'), response.status);
+    throw new LocalApiError(safeApiError(body, 'Assistant integrations are unavailable.'), response.status);
   }
-  if (!exactKeys(body, ['accounts']) || !Array.isArray(body.accounts) || body.accounts.length > MAX_ACCOUNTS) {
-    throw new LocalApiError('The Assistant account inventory is invalid.', response.status);
+  if (!exactKeys(body, ['integrations']) || !Array.isArray(body.integrations) || body.integrations.length > MAX_ACCOUNTS) {
+    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
   }
-  let accounts;
+  let integrations;
   try {
-    accounts = body.accounts.map(canonicalAccountInventoryItem);
+    integrations = body.integrations.map(canonicalIntegrationInventoryItem);
   } catch {
-    throw new LocalApiError('The Assistant account inventory is invalid.', response.status);
+    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
   }
-  const identities = accounts.map((account) => `${account.assistant_id}\u0000${account.id}`);
+  const identities = integrations.map((integration) => `${integration.assistant_id}\u0000${integration.id}`);
   if (new Set(identities).size !== identities.length) {
-    throw new LocalApiError('The Assistant account inventory is invalid.', response.status);
+    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
   }
-  return { accounts };
+  return { integrations };
 }
 
-export async function authorizeAssistantAccount(fetcher, teamId, challengeId) {
+export async function authorizeAssistantIntegration(fetcher, teamId, challengeId) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
   requireTeam(teamId);
   if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
     throw new LocalApiError('Invalid Assistant authorization request.');
   }
   const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-accounts/challenges/${challengeId}/authorize`,
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/authorize`,
     {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -515,21 +515,21 @@ export async function authorizeAssistantAccount(fetcher, teamId, challengeId) {
   return { authorization_url: trustedAuthorizationUrl(body.authorization_url) };
 }
 
-export async function disconnectAssistantAccount(fetcher, teamId, assistantId, accountId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant account request.');
+export async function disconnectAssistantIntegration(fetcher, teamId, assistantId, integrationId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant integration request.');
   requireTeam(teamId);
-  const canonicalAssistant = canonicalId(assistantId, 'Invalid Assistant account request.');
-  const canonicalAccount = canonicalId(accountId, 'Invalid Assistant account request.');
+  const canonicalAssistant = canonicalId(assistantId, 'Invalid Assistant integration request.');
+  const canonicalIntegration = canonicalId(integrationId, 'Invalid Assistant integration request.');
   const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-accounts/${canonicalAssistant}/${canonicalAccount}`,
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/${canonicalAssistant}/${canonicalIntegration}`,
     { method: 'DELETE', headers: { Accept: 'application/json' } },
   );
   if (!response.ok) {
     const body = await jsonObject(response);
-    throw new LocalApiError(safeApiError(body, 'Assistant account could not be disconnected.'), response.status);
+    throw new LocalApiError(safeApiError(body, 'Assistant integration could not be disconnected.'), response.status);
   }
   if (response.status !== 204) {
-    throw new LocalApiError('The Assistant disaccount response is invalid.', response.status);
+    throw new LocalApiError('The Assistant disintegration response is invalid.', response.status);
   }
 }
 
@@ -584,7 +584,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     return { type: 'error', status: value.status, detail: value.detail };
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
-  if (value.type === 'accounts-required') {
+  if (value.type === 'integrations-required') {
     if (
       !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||
       typeof value.challenge_id !== 'string' ||
@@ -598,15 +598,15 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     ) {
       throw new LocalApiError('The local chat response is invalid.');
     }
-    const requirements = value.requirements.map(canonicalAccountRequirement);
+    const requirements = value.requirements.map(canonicalIntegrationRequirement);
     const identities = requirements.map((requirement) => (
-      `${requirement.assistant_id}\u0000${requirement.account_id}`
+      `${requirement.assistant_id}\u0000${requirement.integration_id}`
     ));
     if (new Set(identities).size !== identities.length) {
       throw new LocalApiError('The local chat response is invalid.');
     }
     return {
-      type: 'accounts-required',
+      type: 'integrations-required',
       challenge_id: value.challenge_id,
       expires_in: value.expires_in,
       requirements,

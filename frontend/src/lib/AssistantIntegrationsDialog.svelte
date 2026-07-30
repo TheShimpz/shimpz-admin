@@ -1,6 +1,6 @@
 <script>
   import { t } from '$lib/i18n.js';
-  import { assistantAccountProviderLabel } from '$lib/localChat.js';
+  import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
   let { open = false, challenge = undefined, onclose = undefined, onauthorize = undefined } = $props();
   let dialog = $state();
@@ -8,8 +8,8 @@
   let submitError = $state('');
   let activeChallengeId = $state('');
   let provider = $derived(challenge?.requirements?.[0]?.provider ?? '');
-  let providerLabel = $derived(assistantAccountProviderLabel(provider));
-  let copy = $derived($t('assistantAccounts'));
+  let providerLabel = $derived(assistantIntegrationProviderLabel(provider));
+  let copy = $derived($t('assistantIntegrations'));
 
   function close(event) {
     event?.preventDefault();
@@ -45,16 +45,16 @@
   });
 </script>
 
-<dialog bind:this={dialog} aria-labelledby="assistant-accounts-dialog-title" oncancel={close}>
+<dialog bind:this={dialog} aria-labelledby="assistant-integrations-dialog-title" oncancel={close}>
   <section class="dialog-panel">
     <header>
       <p>{copy.dialogKicker}</p>
-      <h2 id="assistant-accounts-dialog-title">{copy.dialogTitle}</h2>
-      <span>{$t('assistantAccounts.dialogLead', { provider: providerLabel })}</span>
+      <h2 id="assistant-integrations-dialog-title">{copy.dialogTitle}</h2>
+      <span>{$t('assistantIntegrations.dialogLead', { provider: providerLabel })}</span>
     </header>
 
     <div class="requirements">
-      {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.account_id}`)}
+      {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.integration_id}`)}
         <article>
           <header>
             <div>
@@ -88,7 +88,7 @@
       <button type="button" class="secondary" disabled={submitting} onclick={close}>{copy.cancel}</button>
       <button type="button" class="primary" disabled={submitting} onclick={authorize}>
         {$t(
-          submitting ? 'assistantAccounts.authorizing' : 'assistantAccounts.authorize',
+          submitting ? 'assistantIntegrations.authorizing' : 'assistantIntegrations.authorize',
           { provider: providerLabel },
         )}
       </button>

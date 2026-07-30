@@ -19,19 +19,19 @@ class ChatWebSocketProjectionTests(unittest.TestCase):
         cls.chat_ws = importlib.import_module("chat_ws")
         cls.teams = importlib.import_module("teams")
 
-    def test_account_events_are_exact_and_never_project_oauth_material(self) -> None:
+    def test_integration_events_are_exact_and_never_project_oauth_material(self) -> None:
         expected = {
-            "type": "accounts-required",
+            "type": "integrations-required",
             "challenge_id": fixtures.CHALLENGE_ID,
             "expires_in": 300,
-            "requirements": fixtures.account_requirements(),
+            "requirements": fixtures.integration_requirements(),
         }
-        self.assertEqual(self.chat_ws.account_challenge_event(fixtures.account_challenge(), "team_1"), expected)
+        self.assertEqual(self.chat_ws.integration_challenge_event(fixtures.integration_challenge(), "team_1"), expected)
 
         cross_team = self.chat_ws.localchat.PublicResponse(
             200,
-            {**dict(fixtures.account_challenge().body), "team_id": "other_team"},
+            {**dict(fixtures.integration_challenge().body), "team_id": "other_team"},
         )
-        self.assertIsNone(self.chat_ws.account_challenge_event(cross_team, "team_1"))
+        self.assertIsNone(self.chat_ws.integration_challenge_event(cross_team, "team_1"))
         with self.assertRaises(TypeError):
-            fixtures.account_challenge().body["access_token"] = "must-not-cross"
+            fixtures.integration_challenge().body["access_token"] = "must-not-cross"

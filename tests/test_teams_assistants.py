@@ -181,52 +181,52 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
     def test_accepts_only_an_empty_no_content_response(self):
         _TeamHandler.response_by_route = {
-            ("DELETE", "/v1/teams/team_1/assistant-accounts/social-publisher/x-account"): (204, b""),
+            ("DELETE", "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration"): (204, b""),
         }
 
         response = teams._call(
             "DELETE",
-            "/v1/teams/team_1/assistant-accounts/social-publisher/x-account",
+            "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration",
         )
 
         self.assertEqual(response, teams.TeamResponse(204, {}))
 
-    def test_projects_only_bounded_account_status_metadata(self):
-        account = {
+    def test_projects_only_bounded_integration_status_metadata(self):
+        integration = {
             "assistant_id": "shimpz-cloudflare",
             "assistant_name": "Shimpz Cloudflare",
-            "id": "x-account",
+            "id": "x-integration",
             "provider": "cloudflare",
-            "name": "Cloudflare account",
-            "summary": "Inspect zones and DNS records with your connected Cloudflare account.",
+            "name": "Cloudflare integration",
+            "summary": "Inspect zones and DNS records with your connected Cloudflare integration.",
             "scopes": ["dns.read", "offline_access", "zone.read"],
             "status": "connected",
-            "account": {"id": "123", "name": "Shimpz", "username": "shimpz"},
+            "integration": {"id": "123", "name": "Shimpz", "username": "shimpz"},
             "expires_at": "2026-07-20T12:00:00Z",
         }
         _TeamHandler.response_body = json.dumps(
-            {"team_id": "team_1", "accounts": [account], "trace_id": "f" * 32},
+            {"team_id": "team_1", "integrations": [integration], "trace_id": "f" * 32},
             separators=(",", ":"),
         ).encode()
 
-        response = teams.list_assistant_accounts("team_1")
+        response = teams.list_assistant_integrations("team_1")
 
-        self.assertEqual(response, teams.TeamResponse(200, {"accounts": [account]}))
-        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-accounts")
+        self.assertEqual(response, teams.TeamResponse(200, {"integrations": [integration]}))
+        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-integrations")
         self.assertNotRegex(json.dumps(response.body), r"token|code|verifier|client_secret")
 
         _TeamHandler.response_body = json.dumps(
             {
                 "team_id": "team_1",
-                "accounts": [{**account, "access_token": "must-not-cross"}],
+                "integrations": [{**integration, "access_token": "must-not-cross"}],
                 "trace_id": "f" * 32,
             },
             separators=(",", ":"),
         ).encode()
-        invalid = teams.list_assistant_accounts("team_1")
+        invalid = teams.list_assistant_integrations("team_1")
         self.assertEqual(
             invalid,
-            teams.TeamResponse(502, {"detail": "Assistant account inventory is invalid."}),
+            teams.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
         )
 
     @staticmethod
@@ -247,7 +247,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = teams.start_assistant_account_authorization(
+        response = teams.start_assistant_integration_authorization(
             "team_1",
             "c" * 32,
             "d" * 43,
@@ -258,7 +258,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         request = _TeamHandler.requests[-1]
         self.assertEqual(
             request["path"],
-            "/v1/teams/team_1/assistant-accounts/challenges/" + "c" * 32 + "/authorize",
+            "/v1/teams/team_1/assistant-integrations/challenges/" + "c" * 32 + "/authorize",
         )
         self.assertEqual(json.loads(request["body"]), {"session_binding": "d" * 43})
         self.assertNotRegex(request["body"].decode(), r"token|code|verifier|client")
@@ -278,14 +278,14 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
         with self.assertRaisesRegex(teams.TeamRequestError, "callback mode"):
-            teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
+            teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
 
         for invalid_envelope in (
             {"authorization_url": authorization_url},
@@ -296,7 +296,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 invalid_envelope,
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_account_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
@@ -306,18 +306,18 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         _TeamHandler.response_by_route = {
             (
                 "DELETE",
-                "/v1/teams/team_1/assistant-accounts/shimpz-cloudflare/x-account",
+                "/v1/teams/team_1/assistant-integrations/shimpz-cloudflare/x-integration",
             ): (200, b'{"disconnected":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
             (
                 "POST",
                 "/v1/oauth/cloudflare/callback",
             ): (
                 200,
-                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-cloudflare","account_id":"x-account","trace_id":"ffffffffffffffffffffffffffffffff"}',
+                b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-cloudflare","integration_id":"x-integration","trace_id":"ffffffffffffffffffffffffffffffff"}',
             ),
         }
 
-        disconnected = teams.disconnect_assistant_account("team_1", "shimpz-cloudflare", "x-account")
+        disconnected = teams.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
         completed = teams.complete_cloudflare_oauth_callback(
             state="a" * 43,
             claim="c" * 64,
@@ -333,7 +333,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                     "connected": True,
                     "team_id": "team_1",
                     "assistant_id": "shimpz-cloudflare",
-                    "account_id": "x-account",
+                    "integration_id": "x-integration",
                 },
             ),
         )

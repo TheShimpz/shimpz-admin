@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import AssistantAccountsDialog from '$lib/AssistantAccountsDialog.svelte';
-  import AssistantAccountsDrawer from '$lib/AssistantAccountsDrawer.svelte';
+  import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
+  import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import HelpMarkdown from '$lib/HelpMarkdown.svelte';
@@ -13,13 +13,13 @@
   import { teamContext } from '$lib/teamContext.js';
   import {
     CHAT_WS_PROTOCOL,
-    authorizeAssistantAccount,
+    authorizeAssistantIntegration,
     chatSocketUrl,
     createChatFrame,
     createStopFrame,
     createSyncFrame,
-    disconnectAssistantAccount,
-    listAssistantAccounts,
+    disconnectAssistantIntegration,
+    listAssistantIntegrations,
     parseChatEvent,
     oauthReturnFailure,
     restoreOAuthChatTurns,
@@ -41,20 +41,20 @@
   let reconnectAttempt = 0;
   let helpOpen = $state(false);
   let helpButton = $state();
-  let accountsOpen = $state(false);
-  let accountsButton = $state();
-  let accountsDialogOpen = $state(false);
-  let accountChallenge = $state();
-  let accounts = $state([]);
-  let accountsReady = $state(false);
-  let accountWorking = $state('');
+  let integrationsOpen = $state(false);
+  let integrationsButton = $state();
+  let integrationsDialogOpen = $state(false);
+  let integrationChallenge = $state();
+  let integrations = $state([]);
+  let integrationsReady = $state(false);
+  let integrationWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
 
   let copy = $derived($t('chatPage'));
-  let accountsCopy = $derived($t('assistantAccounts'));
+  let integrationsCopy = $derived($t('assistantIntegrations'));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -108,7 +108,7 @@
       !chatTeamId ||
       busy ||
       helpOpen ||
-      accountsOpen ||
+      integrationsOpen ||
       document.querySelector('dialog[open]')
     ) return;
     composerInput?.focus({ preventScroll: true });
@@ -135,12 +135,12 @@
   }
 
   function resetChallengeState({ includeInventory = false } = {}) {
-    accountChallenge = undefined;
-    accountsDialogOpen = false;
-    accountsReady = false;
-    accountWorking = '';
+    integrationChallenge = undefined;
+    integrationsDialogOpen = false;
+    integrationsReady = false;
+    integrationWorking = '';
     if (includeInventory) {
-      accounts = [];
+      integrations = [];
     }
   }
 
@@ -156,16 +156,16 @@
     current?.close(1000, 'Team changed');
   }
 
-  function acceptAccountChallenge(incoming) {
+  function acceptIntegrationChallenge(incoming) {
     const selected = new Set($teamContext.selectedAssistantIds);
     if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
-      throw new Error('unexpected Assistant account requirement');
+      throw new Error('unexpected Assistant integration requirement');
     }
-    accountChallenge = incoming;
-    accountsDialogOpen = true;
+    integrationChallenge = incoming;
+    integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
     helpOpen = false;
-    accountsOpen = false;
+    integrationsOpen = false;
     busy = true;
     stopping = false;
   }
@@ -227,8 +227,8 @@
           expectedTeam.id,
           expectedTeam.name,
         );
-        if (incoming.type === 'accounts-required') {
-          acceptAccountChallenge(incoming);
+        if (incoming.type === 'integrations-required') {
+          acceptIntegrationChallenge(incoming);
           return;
         }
         if (!busy && !stopping) throw new Error('unexpected terminal frame');
@@ -281,7 +281,7 @@
     busy = turns.length > 0;
     scrollRequest += 1;
     helpOpen = false;
-    accountsOpen = false;
+    integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
     clearError();
     if (nextTeamId) connectSocket(nextTeamId);
@@ -292,89 +292,89 @@
     queueMicrotask(() => helpButton?.focus());
   }
 
-  function closeAccounts() {
-    accountsOpen = false;
-    queueMicrotask(() => accountsButton?.focus());
+  function closeIntegrations() {
+    integrationsOpen = false;
+    queueMicrotask(() => integrationsButton?.focus());
   }
 
-  function closeAccountsDialog() {
-    accountsDialogOpen = false;
+  function closeIntegrationsDialog() {
+    integrationsDialogOpen = false;
   }
 
-  async function refreshAccounts(teamId) {
-    accountsReady = false;
+  async function refreshIntegrations(teamId) {
+    integrationsReady = false;
     try {
-      const inventory = await listAssistantAccounts(fetch, teamId);
+      const inventory = await listAssistantIntegrations(fetch, teamId);
       if (chatTeamId !== teamId) return;
       const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-      if (inventory.accounts.some((account) => !installed.has(account.assistant_id))) {
-        throw new Error(accountsCopy.inventoryFailed);
+      if (inventory.integrations.some((integration) => !installed.has(integration.assistant_id))) {
+        throw new Error(integrationsCopy.inventoryFailed);
       }
-      accounts = inventory.accounts;
-      accountsReady = true;
+      integrations = inventory.integrations;
+      integrationsReady = true;
     } catch (reason) {
       if (chatTeamId !== teamId) return;
-      accounts = [];
+      integrations = [];
       setError(
-        accountsCopy.inventoryFailed,
-        reason instanceof Error ? reason.message : accountsCopy.inventoryFailed,
+        integrationsCopy.inventoryFailed,
+        reason instanceof Error ? reason.message : integrationsCopy.inventoryFailed,
       );
     }
   }
 
-  function toggleAccounts() {
-    const next = !accountsOpen;
+  function toggleIntegrations() {
+    const next = !integrationsOpen;
     helpOpen = false;
-    accountsOpen = next;
-    if (next && chatTeamId) void refreshAccounts(chatTeamId);
+    integrationsOpen = next;
+    if (next && chatTeamId) void refreshIntegrations(chatTeamId);
   }
 
-  async function authorizeAccount(challengeId) {
+  async function authorizeIntegration(challengeId) {
     const teamId = chatTeamId;
     if (
       !teamId ||
-      accountWorking ||
-      !accountChallenge ||
-      accountChallenge.challenge_id !== challengeId
-    ) throw new Error(accountsCopy.authorizationFailed);
-    accountWorking = 'connect';
+      integrationWorking ||
+      !integrationChallenge ||
+      integrationChallenge.challenge_id !== challengeId
+    ) throw new Error(integrationsCopy.authorizationFailed);
+    integrationWorking = 'connect';
     try {
-      const authorization = await authorizeAssistantAccount(fetch, teamId, challengeId);
-      if (chatTeamId !== teamId || accountChallenge?.challenge_id !== challengeId) {
-        throw new Error(accountsCopy.authorizationFailed);
+      const authorization = await authorizeAssistantIntegration(fetch, teamId, challengeId);
+      if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
+        throw new Error(integrationsCopy.authorizationFailed);
       }
       stashOAuthChatTurns(sessionStorage, teamId, turns);
       location.assign(authorization.authorization_url);
     } catch (reason) {
       if (chatTeamId === teamId) {
         setError(
-          accountsCopy.authorizationFailed,
-          reason instanceof Error ? reason.message : accountsCopy.authorizationFailed,
+          integrationsCopy.authorizationFailed,
+          reason instanceof Error ? reason.message : integrationsCopy.authorizationFailed,
         );
       }
-      accountWorking = '';
+      integrationWorking = '';
       throw reason;
     }
   }
 
-  async function disconnectAccount(account) {
+  async function disconnectIntegration(integration) {
     const teamId = chatTeamId;
-    if (!teamId || accountWorking) return;
-    const identity = `${account.assistant_id}\u0000${account.id}`;
-    accountWorking = identity;
+    if (!teamId || integrationWorking) return;
+    const identity = `${integration.assistant_id}\u0000${integration.id}`;
+    integrationWorking = identity;
     try {
-      await disconnectAssistantAccount(fetch, teamId, account.assistant_id, account.id);
+      await disconnectAssistantIntegration(fetch, teamId, integration.assistant_id, integration.id);
       if (chatTeamId !== teamId) return;
-      await refreshAccounts(teamId);
+      await refreshIntegrations(teamId);
     } catch (reason) {
       if (chatTeamId === teamId) {
         setError(
-          accountsCopy.disconnectFailed,
-          reason instanceof Error ? reason.message : accountsCopy.disconnectFailed,
+          integrationsCopy.disconnectFailed,
+          reason instanceof Error ? reason.message : integrationsCopy.disconnectFailed,
         );
       }
     } finally {
-      if (chatTeamId === teamId) accountWorking = '';
+      if (chatTeamId === teamId) integrationWorking = '';
     }
   }
 
@@ -446,7 +446,7 @@
   });
 
   $effect(() => {
-    if (mounted && chatTeamId && !busy && !helpOpen && !accountsOpen) void focusComposer();
+    if (mounted && chatTeamId && !busy && !helpOpen && !integrationsOpen) void focusComposer();
   });
 
   onMount(() => {
@@ -457,7 +457,7 @@
     if (oauthFailedOnReturn) {
       busy = false;
       history.replaceState(history.state, '', '/chat');
-      setError(accountsCopy.authorizationFailed);
+      setError(integrationsCopy.authorizationFailed);
     }
     return () => {
       mounted = false;
@@ -471,7 +471,7 @@
 <div class="chat-route">
   {#if activeTeam}
     {#if chatTeamId}
-      <div class="chat-workspace" class:drawer-open={helpOpen || accountsOpen}>
+      <div class="chat-workspace" class:drawer-open={helpOpen || integrationsOpen}>
         <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
         <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
@@ -516,15 +516,15 @@
               <div class="composer-actions">
               {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
               <button
-                bind:this={accountsButton}
-                class="accounts"
+                bind:this={integrationsButton}
+                class="integrations"
                 type="button"
-                onclick={toggleAccounts}
-                disabled={$teamContext.installedAssistants.length === 0 && !accountChallenge}
-                aria-label={accountsCopy.trigger}
-                title={accountsCopy.trigger}
-                aria-expanded={accountsOpen}
-                aria-controls="assistant-accounts-drawer"
+                onclick={toggleIntegrations}
+                disabled={$teamContext.installedAssistants.length === 0 && !integrationChallenge}
+                aria-label={integrationsCopy.trigger}
+                title={integrationsCopy.trigger}
+                aria-expanded={integrationsOpen}
+                aria-controls="assistant-integrations-drawer"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
@@ -536,7 +536,7 @@
                 type="button"
                 onclick={() => {
                   const next = !helpOpen;
-                  accountsOpen = false;
+                  integrationsOpen = false;
                   helpOpen = next;
                 }}
                 disabled={helpAssistants.length === 0}
@@ -558,21 +558,21 @@
           assistants={helpAssistants}
           onclose={closeHelp}
         />
-        <AssistantAccountsDrawer
-          open={accountsOpen}
-          {accounts}
-          synced={accountsReady}
-          pending={accountChallenge}
-          working={accountWorking}
-          onclose={closeAccounts}
-          onconnect={authorizeAccount}
-          ondisconnect={disconnectAccount}
+        <AssistantIntegrationsDrawer
+          open={integrationsOpen}
+          {integrations}
+          synced={integrationsReady}
+          pending={integrationChallenge}
+          working={integrationWorking}
+          onclose={closeIntegrations}
+          onconnect={authorizeIntegration}
+          ondisconnect={disconnectIntegration}
         />
-        <AssistantAccountsDialog
-          open={accountsDialogOpen}
-          challenge={accountChallenge}
-          onclose={closeAccountsDialog}
-          onauthorize={authorizeAccount}
+        <AssistantIntegrationsDialog
+          open={integrationsDialogOpen}
+          challenge={integrationChallenge}
+          onclose={closeIntegrationsDialog}
+          onauthorize={authorizeIntegration}
         />
       </div>
     {:else}
@@ -815,19 +815,19 @@
   }
 
   button.help,
-  button.accounts {
+  button.integrations {
     width: 3.2rem;
     padding: 0;
     font-size: 0.9rem;
   }
 
-  button.accounts {
+  button.integrations {
     position: relative;
     display: grid;
     place-items: center;
   }
 
-  button.accounts svg {
+  button.integrations svg {
     width: 1rem;
     fill: none;
     stroke: currentColor;

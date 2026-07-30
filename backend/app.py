@@ -414,15 +414,15 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
     await chat_ws.serve(websocket, team_id, session_ok=_session_ok)
 
 
-@app.get("/api/teams/{team_id}/assistant-accounts")
-def team_assistant_accounts(team_id: str):
-    response = _team_response(lambda: teams.list_assistant_accounts(team_id))
+@app.get("/api/teams/{team_id}/assistant-integrations")
+def team_assistant_integrations(team_id: str):
+    response = _team_response(lambda: teams.list_assistant_integrations(team_id))
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-@app.post("/api/teams/{team_id}/assistant-accounts/challenges/{challenge_id}/authorize")
-async def team_assistant_account_authorize(team_id: str, challenge_id: str, request: Request):
+@app.post("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize")
+async def team_assistant_integration_authorize(team_id: str, challenge_id: str, request: Request):
     payload = await _bounded_json_object(request)
     if payload:
         raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
@@ -448,14 +448,14 @@ async def team_assistant_account_authorize(team_id: str, challenge_id: str, requ
     )
 
 
-@app.delete("/api/teams/{team_id}/assistant-accounts/{assistant_id}/{account_id}")
-async def team_assistant_account_disconnect(team_id: str, assistant_id: str, account_id: str):
+@app.delete("/api/teams/{team_id}/assistant-integrations/{assistant_id}/{integration_id}")
+async def team_assistant_integration_disconnect(team_id: str, assistant_id: str, integration_id: str):
     try:
         response = await asyncio.to_thread(
-            teams.disconnect_assistant_account,
+            teams.disconnect_assistant_integration,
             team_id,
             assistant_id,
-            account_id,
+            integration_id,
         )
     except teams.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
@@ -471,7 +471,7 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
         result = await asyncio.to_thread(
-            teams.start_assistant_account_authorization,
+            teams.start_assistant_integration_authorization,
             pending.team_id,
             pending.challenge_id,
             pending.session_binding,

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 CHALLENGE_ID = chat_ws_fixtures.CHALLENGE_ID
-_account_challenge = chat_ws_fixtures.account_challenge
+_integration_challenge = chat_ws_fixtures.integration_challenge
 
 
 class _Socket:
@@ -134,16 +134,16 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def _accepted(message: dict) -> bool:
         return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v3", "headers": []}
 
-    def test_account_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
+    def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
             augmented = self.teams.TeamResponse(
                 200,
-                {**dict(_account_challenge(status=200).body), "access_token": sensitive_marker},
+                {**dict(_integration_challenge(status=200).body), "access_token": sensitive_marker},
             )
             with (
-                mock.patch.object(self.chat_ws.localchat, "pending_accounts", return_value=augmented),
-                mock.patch.object(self.chat_ws.localchat, "resume_accounts") as resume,
+                mock.patch.object(self.chat_ws.localchat, "pending_integrations", return_value=augmented),
+                mock.patch.object(self.chat_ws.localchat, "resume_integrations") as resume,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -157,7 +157,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_account_sync_delivers_done_only_after_explicit_resume(self) -> None:
+    def test_integration_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
             completed = self.chat_ws.localchat.PublicResponse(
                 200,
@@ -166,12 +166,12 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             with (
                 mock.patch.object(
                     self.chat_ws.localchat,
-                    "pending_accounts",
-                    return_value=_account_challenge(status=200),
+                    "pending_integrations",
+                    return_value=_integration_challenge(status=200),
                 ),
                 mock.patch.object(
                     self.chat_ws.localchat,
-                    "resume_accounts",
+                    "resume_integrations",
                     return_value=completed,
                 ) as resume,
             ):

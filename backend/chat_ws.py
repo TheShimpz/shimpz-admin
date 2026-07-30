@@ -117,13 +117,13 @@ def turn_terminal(response: object, team_id: str) -> dict[str, object]:
     return event if event is not None else _error_terminal(502, "local chat returned an invalid response")
 
 
-def account_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    return _projected_event(response, team_id, frozenset({"accounts-required"}))
+def integration_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
+    return _projected_event(response, team_id, frozenset({"integrations-required"}))
 
 
 def _first_challenge(response: object, team_id: str) -> tuple[dict[str, object] | None, str | None]:
-    challenge = account_challenge_event(response, team_id)
-    return (challenge, "account") if challenge is not None else (None, None)
+    challenge = integration_challenge_event(response, team_id)
+    return (challenge, "integration") if challenge is not None else (None, None)
 
 
 def _stop_accepted(response: object, team_id: str) -> bool | None:
@@ -201,7 +201,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             return
         if isinstance(response, teams.TeamResponse) and (
             response.status == 428
-            or (isinstance(response.body, dict) and response.body.get("status") == "accounts-required")
+            or (isinstance(response.body, dict) and response.body.get("status") == "integrations-required")
         ):
             event = _error_terminal(502, "the Assistant challenge was invalid")
         else:
@@ -216,14 +216,14 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 
 
 def _sync_snapshot(team_id: str) -> tuple[object, object | None]:
-    pending_account = localchat.pending_accounts(team_id)
-    account_challenge = account_challenge_event(pending_account, team_id)
-    if account_challenge is not None:
+    pending_integration = localchat.pending_integrations(team_id)
+    integration_challenge = integration_challenge_event(pending_integration, team_id)
+    if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
         # exact pending challenge remains the controller-owned binding for the paused turn.
-        resumed = localchat.resume_accounts(team_id, account_challenge["challenge_id"])
-        return pending_account, resumed
-    return pending_account, None
+        resumed = localchat.resume_integrations(team_id, integration_challenge["challenge_id"])
+        return pending_integration, resumed
+    return pending_integration, None
 
 
 def _is_empty_pending(response: object, team_id: str) -> bool:
@@ -248,22 +248,22 @@ def _pending_error(response: object, team_id: str, challenge_type: str) -> dict[
     return _error_terminal(502, f"the Assistant {challenge_type} challenge was invalid")
 
 
-async def _deliver_account_sync(
+async def _deliver_integration_sync(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
     pending_response: object,
     resumed_response: object,
 ) -> bool:
-    """Deliver an explicitly resumed account gate; return whether it consumed sync."""
-    pending = account_challenge_event(pending_response, team_id)
+    """Deliver an explicitly resumed integration gate; return whether it consumed sync."""
+    pending = integration_challenge_event(pending_response, team_id)
     if pending is None:
         if _is_empty_pending(pending_response, team_id):
             return False
-        await _send_event(websocket, _pending_error(pending_response, team_id, "account"))
+        await _send_event(websocket, _pending_error(pending_response, team_id, "integration"))
         return True
     if resumed_response is None:
-        await _send_event(websocket, _error_terminal(502, "the Assistant account challenge was invalid"))
+        await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
         return True
 
     resumed, challenge_type = _first_challenge(resumed_response, team_id)
@@ -271,7 +271,7 @@ async def _deliver_account_sync(
         pending_turn_id = pending_response.body.get("turn_id")
         resumed_turn_id = resumed_response.body.get("turn_id")
         if pending_turn_id != resumed_turn_id:
-            await _send_event(websocket, _error_terminal(502, "the Assistant account challenge was invalid"))
+            await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
             return True
         connection.pending_challenge_id = resumed["challenge_id"]
         connection.pending_challenge_type = challenge_type
@@ -281,9 +281,9 @@ async def _deliver_account_sync(
 
     if isinstance(resumed_response, teams.TeamResponse) and (
         resumed_response.status == 428
-        or (isinstance(resumed_response.body, dict) and resumed_response.body.get("status") == "accounts-required")
+        or (isinstance(resumed_response.body, dict) and resumed_response.body.get("status") == "integrations-required")
     ):
-        event = _error_terminal(502, "the Assistant account challenge was invalid")
+        event = _error_terminal(502, "the Assistant integration challenge was invalid")
     else:
         event = turn_terminal(resumed_response, team_id)
     connection.pending_challenge_id = None
@@ -315,15 +315,15 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
         snapshot = await _load_sync_snapshot(websocket, team_id)
         if snapshot is None:
             return
-        pending_account_response, resumed_account_response = snapshot
+        pending_integration_response, resumed_integration_response = snapshot
         if connection.closed:
             return
-        if not await _deliver_account_sync(
+        if not await _deliver_integration_sync(
             websocket,
             connection,
             team_id,
-            pending_account_response,
-            resumed_account_response,
+            pending_integration_response,
+            resumed_integration_response,
         ):
             connection.pending_challenge_id = None
             connection.pending_challenge_type = None

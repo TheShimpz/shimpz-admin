@@ -107,12 +107,12 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:4600/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
         with mock.patch.object(self.admin_app, "_session_ok", return_value=True):
-            response = asyncio.run(self.admin_app.team_assistant_account_authorize("team_1", "a" * 32, request))
+            response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
 
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.body)
@@ -140,7 +140,7 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         with mock.patch.object(
             self.admin_app.teams,
-            "start_assistant_account_authorization",
+            "start_assistant_integration_authorization",
             return_value=result,
         ) as start:
             response = asyncio.run(self.admin_app.oauth_cloudflare_start(request, handoff))
@@ -164,7 +164,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_hosted_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
         authorize_request = _request(
             "POST",
-            "https://local.shimpz.com/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            "https://local.shimpz.com/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
@@ -173,7 +173,7 @@ class OAuthRoutesTest(unittest.TestCase):
             mock.patch.object(self.admin_app, "_session_ok", return_value=True),
         ):
             authorized = asyncio.run(
-                self.admin_app.team_assistant_account_authorize("team_1", "a" * 32, authorize_request)
+                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)
             )
         authorization_url = urlsplit(json.loads(authorized.body)["authorization_url"])
         self.assertEqual(
@@ -189,7 +189,7 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(self.admin_app.teams, "start_assistant_account_authorization", return_value=provider),
+            mock.patch.object(self.admin_app.teams, "start_assistant_integration_authorization", return_value=provider),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
@@ -246,7 +246,7 @@ class OAuthRoutesTest(unittest.TestCase):
                 "connected": True,
                 "team_id": "team_1",
                 "assistant_id": "shimpz-cloudflare",
-                "account_id": "x-account",
+                "integration_id": "x-integration",
             },
         )
         with mock.patch.object(
@@ -298,27 +298,27 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertTrue(all(response.headers["location"] == "/chat?oauth=callback-failed" for response in responses))
 
     def test_inventory_and_disconnect_keep_the_public_contract_exact(self) -> None:
-        inventory = self.admin_app.teams.TeamResponse(200, {"accounts": []})
+        inventory = self.admin_app.teams.TeamResponse(200, {"integrations": []})
         with mock.patch.object(
             self.admin_app.teams,
-            "list_assistant_accounts",
+            "list_assistant_integrations",
             return_value=inventory,
         ):
-            listed = self.admin_app.team_assistant_accounts("team_1")
-        self.assertEqual(json.loads(listed.body), {"accounts": []})
+            listed = self.admin_app.team_assistant_integrations("team_1")
+        self.assertEqual(json.loads(listed.body), {"integrations": []})
         self.assertEqual(listed.headers["cache-control"], "no-store")
 
         disconnected = self.admin_app.teams.TeamResponse(204, {})
         with mock.patch.object(
             self.admin_app.teams,
-            "disconnect_assistant_account",
+            "disconnect_assistant_integration",
             return_value=disconnected,
         ):
             response = asyncio.run(
-                self.admin_app.team_assistant_account_disconnect(
+                self.admin_app.team_assistant_integration_disconnect(
                     "team_1",
                     "shimpz-cloudflare",
-                    "x-account",
+                    "x-integration",
                 )
             )
         self.assertEqual(response.status_code, 204)
@@ -327,12 +327,12 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authorize_body_must_be_exactly_empty(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:4600/api/teams/team_1/assistant-accounts/challenges/" + "a" * 32 + "/authorize",
+            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b'{"client_id":"must-not-cross"}',
             cookie=f"shimpz_admin={self.session}",
         )
         with self.assertRaises(HTTPException) as raised:
-            asyncio.run(self.admin_app.team_assistant_account_authorize("team_1", "a" * 32, request))
+            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
         self.assertEqual(raised.exception.status_code, 400)
 
 

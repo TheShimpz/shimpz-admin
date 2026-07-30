@@ -1,4 +1,4 @@
-"""OAuth account projection and fixed Cloudflare authorization bridge."""
+"""OAuth integration projection and fixed Cloudflare authorization bridge."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ log = logging.getLogger("shimpz-admin")
 TeamResponse = team_client.TeamResponse
 TeamRequestError = team_client.TeamRequestError
 
-MAX_ASSISTANT_ACCOUNTS = 512
-MAX_ACCOUNT_SCOPES = 32
+MAX_ASSISTANT_INTEGRATIONS = 512
+MAX_INTEGRATION_SCOPES = 32
 
 _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -47,8 +47,8 @@ def canonical_oauth_claim(value: object) -> str:
     return value
 
 
-def _account_scopes(value: object) -> list[str]:
-    if not isinstance(value, list) or not 1 <= len(value) <= MAX_ACCOUNT_SCOPES:
+def _integration_scopes(value: object) -> list[str]:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_INTEGRATION_SCOPES:
         raise ValueError("invalid OAuth scopes")
     scopes: list[str] = []
     for item in value:
@@ -60,21 +60,21 @@ def _account_scopes(value: object) -> list[str]:
     return scopes
 
 
-def _account_identity(value: object) -> dict[str, str | None] | None:
+def _integration_identity(value: object) -> dict[str, str | None] | None:
     if value is None:
         return None
     if not isinstance(value, dict) or set(value) != {"id", "name", "username"}:
-        raise ValueError("invalid OAuth account")
-    account_id = chat_ws_common.public_text(value["id"], 128, field="OAuth account id")
-    result: dict[str, str | None] = {"id": account_id, "name": None, "username": None}
+        raise ValueError("invalid OAuth integration")
+    integration_id = chat_ws_common.public_text(value["id"], 128, field="OAuth integration id")
+    result: dict[str, str | None] = {"id": integration_id, "name": None, "username": None}
     for field in ("name", "username"):
         item = value[field]
         if item is not None:
-            result[field] = chat_ws_common.public_text(item, 128, field=f"OAuth account {field}")
+            result[field] = chat_ws_common.public_text(item, 128, field=f"OAuth integration {field}")
     return result
 
 
-def _account_expiry(value: object) -> str | None:
+def _integration_expiry(value: object) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or len(value) > 40 or _RFC3339_RE.fullmatch(value) is None:
@@ -88,24 +88,24 @@ def _account_expiry(value: object) -> str | None:
     return value
 
 
-def _project_account_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
+def _project_integration_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
     """Expose status metadata only; provider tokens and controller generations stay private."""
     if not 200 <= response.status < 300:
         return response
     try:
         if (
-            set(response.body) != {"team_id", "accounts", "trace_id"}
+            set(response.body) != {"team_id", "integrations", "trace_id"}
             or response.body["team_id"] != team_id
             or not isinstance(response.body["trace_id"], str)
             or chat_ws_common.HEX_ID_RE.fullmatch(response.body["trace_id"]) is None
         ):
-            raise ValueError("invalid Team account envelope")
-        raw_accounts = response.body["accounts"]
-        if not isinstance(raw_accounts, list) or len(raw_accounts) > MAX_ASSISTANT_ACCOUNTS:
-            raise ValueError("invalid Team account inventory")
-        accounts: list[dict[str, object]] = []
+            raise ValueError("invalid Team integration envelope")
+        raw_integrations = response.body["integrations"]
+        if not isinstance(raw_integrations, list) or len(raw_integrations) > MAX_ASSISTANT_INTEGRATIONS:
+            raise ValueError("invalid Team integration inventory")
+        integrations: list[dict[str, object]] = []
         identities: set[tuple[str, str]] = set()
-        for item in raw_accounts:
+        for item in raw_integrations:
             if not isinstance(item, dict) or set(item) != {
                 "assistant_id",
                 "assistant_name",
@@ -115,43 +115,43 @@ def _project_account_inventory(response: TeamResponse, team_id: str) -> TeamResp
                 "summary",
                 "scopes",
                 "status",
-                "account",
+                "integration",
                 "expires_at",
             }:
-                raise ValueError("invalid Team account fields")
+                raise ValueError("invalid Team integration fields")
             assistant_id = chat_payloads.canonical_assistant_id(item["assistant_id"])
-            account_id = chat_payloads.canonical_assistant_id(item["id"])
-            identity = (assistant_id, account_id)
+            integration_id = chat_payloads.canonical_assistant_id(item["id"])
+            identity = (assistant_id, integration_id)
             if identity in identities:
-                raise ValueError("duplicate Team account")
+                raise ValueError("duplicate Team integration")
             identities.add(identity)
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:
-                raise ValueError("invalid Team account status")
-            accounts.append(
+                raise ValueError("invalid Team integration status")
+            integrations.append(
                 {
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(item["assistant_name"], 80, field="Assistant name"),
-                    "id": account_id,
+                    "id": integration_id,
                     "provider": chat_payloads.canonical_assistant_id(item["provider"]),
-                    "name": chat_ws_common.public_text(item["name"], 80, field="account name"),
-                    "summary": chat_ws_common.public_text(item["summary"], 160, field="account summary"),
-                    "scopes": _account_scopes(item["scopes"]),
+                    "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),
+                    "summary": chat_ws_common.public_text(item["summary"], 160, field="integration summary"),
+                    "scopes": _integration_scopes(item["scopes"]),
                     "status": status,
-                    "account": _account_identity(item["account"]),
-                    "expires_at": _account_expiry(item["expires_at"]),
+                    "integration": _integration_identity(item["integration"]),
+                    "expires_at": _integration_expiry(item["expires_at"]),
                 }
             )
     except KeyError, TypeError, ValueError, TeamRequestError:
-        log.warning("team returned an invalid Assistant account inventory")
-        return TeamResponse(502, {"detail": "Assistant account inventory is invalid."})
-    return TeamResponse(200, {"accounts": accounts})
+        log.warning("team returned an invalid Assistant integration inventory")
+        return TeamResponse(502, {"detail": "Assistant integration inventory is invalid."})
+    return TeamResponse(200, {"integrations": integrations})
 
 
-def list_assistant_accounts(team_id: object) -> TeamResponse:
+def list_assistant_integrations(team_id: object) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
-    return _project_account_inventory(
-        team_client._call("GET", f"/v1/teams/{canonical_id}/assistant-accounts"),
+    return _project_integration_inventory(
+        team_client._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
         canonical_id,
     )
 
@@ -193,12 +193,12 @@ def _trusted_cloudflare_authorization_url(value: object, callback_mode: str) -> 
     ):
         raise ValueError("invalid OAuth authorization URL")
     scopes = fields["scope"].split(" ")
-    if tuple(_account_scopes(scopes)) != _CLOUDFLARE_SCOPES:
+    if tuple(_integration_scopes(scopes)) != _CLOUDFLARE_SCOPES:
         raise ValueError("invalid OAuth authorization URL")
     return value
 
 
-def start_assistant_account_authorization(
+def start_assistant_integration_authorization(
     team_id: object,
     challenge_id: object,
     session_binding: object,
@@ -211,7 +211,7 @@ def start_assistant_account_authorization(
         raise TeamRequestError("OAuth callback mode is invalid.")
     response = team_client._call(
         "POST",
-        f"/v1/teams/{canonical_id}/assistant-accounts/challenges/{canonical_challenge}/authorize",
+        f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
         {"session_binding": binding},
     )
     if not 200 <= response.status < 300:
@@ -230,17 +230,17 @@ def start_assistant_account_authorization(
     return TeamResponse(200, {"authorization_url": authorization_url})
 
 
-def disconnect_assistant_account(
+def disconnect_assistant_integration(
     team_id: object,
     assistant_id: object,
-    account_id: object,
+    integration_id: object,
 ) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
     assistant = chat_payloads.canonical_assistant_id(assistant_id)
-    account = chat_payloads.canonical_assistant_id(account_id)
+    integration = chat_payloads.canonical_assistant_id(integration_id)
     response = team_client._call(
         "DELETE",
-        f"/v1/teams/{canonical_id}/assistant-accounts/{assistant}/{account}",
+        f"/v1/teams/{canonical_id}/assistant-integrations/{assistant}/{integration}",
     )
     if not 200 <= response.status < 300:
         return response
@@ -268,7 +268,7 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"connected", "team_id", "assistant_id", "account_id", "trace_id"}:
+        if set(response.body) != {"connected", "team_id", "assistant_id", "integration_id", "trace_id"}:
             raise ValueError("invalid OAuth callback response")
         if (
             response.body["connected"] is not True
@@ -280,7 +280,7 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
             "connected": True,
             "team_id": _canonical_team_id(response.body["team_id"]),
             "assistant_id": chat_payloads.canonical_assistant_id(response.body["assistant_id"]),
-            "account_id": chat_payloads.canonical_assistant_id(response.body["account_id"]),
+            "integration_id": chat_payloads.canonical_assistant_id(response.body["integration_id"]),
         }
     except KeyError, TypeError, ValueError, TeamRequestError:
         log.warning("team returned an invalid OAuth callback response")
