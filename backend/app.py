@@ -213,7 +213,11 @@ async def _gate(request: Request, call_next):
     if evidence is None:
         return JSONResponse({"detail": "unauthenticated"}, status_code=401)
     request.state.supervisor = evidence
-    return await call_next(request)
+    with team.supervisor_session(
+        request.cookies.get(COOKIE, ""),
+        account=ADMIN_PROFILE == "hosted",
+    ):
+        return await call_next(request)
 
 
 @app.get("/api/session")
@@ -562,7 +566,15 @@ async def team_inference_configure(team_id: str, request: Request):
 
 @app.websocket("/api/teams/{team_id}/chat/ws")
 async def team_chat_ws(websocket: WebSocket, team_id: str):
-    await chat_socket.serve(websocket, team_id, session_ok=_session_ok)
+    await chat_socket.serve(
+        websocket,
+        team_id,
+        session_ok=_session_ok,
+        request_scope=lambda cookies: team.supervisor_session(
+            cookies.get(COOKIE, ""),
+            account=ADMIN_PROFILE == "hosted",
+        ),
+    )
 
 
 @app.get("/api/teams/{team_id}/assistant-integrations")
@@ -578,21 +590,39 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     if payload:
         raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
     session_token = request.cookies.get(COOKIE, "")
-    if not await _session_ok(request.cookies):
-        raise HTTPException(status_code=401, detail="unauthenticated")
+    preparation = None
+    authorized = False
     try:
         canonical_team = team.canonical_team_id(team_id)
         canonical_challenge = team.canonical_challenge_id(challenge_id)
-        handoff = OAUTH_HANDOFFS.issue(
+        preparation = OAUTH_HANDOFFS.issue(
             team_id=canonical_team,
             challenge_id=canonical_challenge,
             admin_session=session_token,
         )
+        result = await asyncio.to_thread(
+            integrations.start_assistant_integration_authorization,
+            canonical_team,
+            canonical_challenge,
+            preparation.session_binding,
+            _oauth_callback_mode(),
+        )
+        if result.status != 200:
+            return JSONResponse(
+                result.body,
+                status_code=result.status,
+                headers={"Cache-Control": "no-store"},
+            )
+        OAUTH_HANDOFFS.authorize(preparation.token, result.body.get("authorization_url"))
+        authorized = True
     except team.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except handoff_store.OAuthHandoffError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
-    authorization_url = _oauth_origin() + OAUTH_START_PATH + "?" + urlencode({"handoff": handoff})
+    finally:
+        if preparation is not None and not authorized:
+            OAUTH_HANDOFFS.discard(preparation.token)
+    authorization_url = _oauth_origin() + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
     return JSONResponse(
         {"authorization_url": authorization_url},
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
@@ -621,22 +651,9 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
         return _oauth_chat_redirect("start-failed")
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
-        result = await asyncio.to_thread(
-            integrations.start_assistant_integration_authorization,
-            pending.team_id,
-            pending.challenge_id,
-            pending.session_binding,
-            _oauth_callback_mode(),
-        )
-    except handoff_store.OAuthHandoffError, team.TeamRequestError:
+    except handoff_store.OAuthHandoffError:
         return _oauth_chat_redirect("start-failed")
-    if result.status != 200:
-        log.info("OAuth authorization start rejected (HTTP %s)", result.status)
-        return _oauth_chat_redirect("start-failed")
-    authorization_url = result.body.get("authorization_url")
-    if not isinstance(authorization_url, str):
-        return _oauth_chat_redirect("start-failed")
-    response = RedirectResponse(authorization_url, status_code=303)
+    response = RedirectResponse(pending.authorization_url, status_code=303)
     hosted_callback = _oauth_origin() == OAUTH_ORIGINS["hosted"]
     response.set_cookie(
         OAUTH_COOKIE,

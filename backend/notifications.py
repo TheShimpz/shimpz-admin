@@ -7,6 +7,7 @@ build-pinned Assistant registry and are requested only by canonical Assistant id
 
 from __future__ import annotations
 
+import contextvars
 import copy
 import hashlib
 import http.client
@@ -491,7 +492,7 @@ def _parallel_calls(function, arguments: list[tuple]) -> list:
     if len(arguments) < 2:
         return [function(*items) for items in arguments]
     with ThreadPoolExecutor(max_workers=min(MAX_SYNC_WORKERS, len(arguments))) as executor:
-        futures = [executor.submit(function, *items) for items in arguments]
+        futures = [executor.submit(contextvars.copy_context().run, function, *items) for items in arguments]
         return [future.result() for future in futures]
 
 

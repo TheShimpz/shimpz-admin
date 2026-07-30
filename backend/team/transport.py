@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -22,6 +24,8 @@ MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
 FILE_NAME_HEADER = "X-Shimpz-Filename"
+ACCOUNT_SESSION_HEADER = "X-Shimpz-Account"
+_SUPERVISOR_SESSION: ContextVar[tuple[str, bool] | None] = ContextVar("shimpz_supervisor_session", default=None)
 
 
 class TeamRequestError(ValueError):
@@ -43,6 +47,30 @@ class _TokenCache:
 
 _token_cache_lock = threading.Lock()
 _token_cache: _TokenCache | None = None
+
+
+@contextmanager
+def supervisor_session(value: object, *, account: bool):
+    """Bind one already-validated human session to downstream Team calls in this request."""
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 2048
+        or not value.isascii()
+        or any(not 0x20 <= ord(character) <= 0x7E for character in value)
+    ):
+        raise TeamRequestError("Supervisor session is unavailable")
+    if type(account) is not bool:
+        raise TeamRequestError("Supervisor session kind is invalid")
+    reset = _SUPERVISOR_SESSION.set((value, account))
+    try:
+        yield
+    finally:
+        _SUPERVISOR_SESSION.reset(reset)
+
+
+def _account_session() -> str:
+    binding = _SUPERVISOR_SESSION.get()
+    return binding[0] if binding is not None and binding[1] else ""
 
 
 def _token_identity(path: Path) -> tuple[int, int, int, int]:
@@ -155,6 +183,9 @@ def _request(
         host, port = _endpoint()
         token = _team_token()
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+        account_session = _account_session()
+        if account_session:
+            headers[ACCOUNT_SESSION_HEADER] = account_session
         if content_type is not None:
             headers["Content-Type"] = content_type
         if filename is not None:

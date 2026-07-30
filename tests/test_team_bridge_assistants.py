@@ -167,6 +167,28 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
         self.assertNotIn("content-type", _TeamHandler.requests[0]["headers"])
 
+    def test_hosted_account_session_is_request_scoped_and_never_sent_by_local(self):
+        account_session = "a1:" + ("a" * 32) + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
+        with transport.supervisor_session(account_session, account=True):
+            team.list_teams()
+        team.list_teams()
+        with transport.supervisor_session(account_session, account=False):
+            team.list_teams()
+
+        self.assertEqual(_TeamHandler.requests[0]["headers"]["x-shimpz-account"], account_session)
+        self.assertNotIn("x-shimpz-account", _TeamHandler.requests[1]["headers"])
+        self.assertNotIn("x-shimpz-account", _TeamHandler.requests[2]["headers"])
+        self.assertEqual(transport._account_session(), "")
+        for invalid in ("", "x\ninjected", None, "a" * 2049):
+            with (
+                self.subTest(invalid=invalid),
+                self.assertRaises(team.TeamRequestError),
+                transport.supervisor_session(invalid, account=True),
+            ):
+                pass
+        with self.assertRaises(team.TeamRequestError), transport.supervisor_session(account_session, account=None):
+            pass
+
     def test_preserves_safe_team_status_and_body(self):
         _TeamHandler.response_status = 409
         _TeamHandler.response_body = b'{"detail":"assistant already installed"}'

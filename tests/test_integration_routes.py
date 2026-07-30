@@ -112,7 +112,17 @@ class OAuthRoutesTest(unittest.TestCase):
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
-        with mock.patch.object(self.admin_app, "_session_ok", new=mock.AsyncMock(return_value=True)):
+        provider = self.admin_app.team.TeamResponse(
+            200,
+            {"authorization_url": self._cloudflare_authorization_url()},
+        )
+        with (
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_assistant_integration_authorization",
+                return_value=provider,
+            ) as start,
+        ):
             response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
 
         self.assertEqual(response.status_code, 200)
@@ -127,25 +137,53 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(set(query), {"handoff"})
         self.assertRegex(query["handoff"][0], r"^[0-9a-f]{64}$")
         self.assertEqual(response.headers["cache-control"], "no-store")
+        arguments = start.call_args.args
+        self.assertEqual(arguments[:2], ("team_1", "a" * 32))
+        self.assertRegex(arguments[2], r"^[A-Za-z0-9_-]{43}$")
+        self.assertEqual(arguments[3], "loopback")
 
-    def test_loopback_start_consumes_once_and_sets_browser_only_callback_binding(self) -> None:
-        handoff = self.admin_app.OAUTH_HANDOFFS.issue(
+    def test_authorization_failure_always_releases_the_handoff_reservation(self) -> None:
+        request = _request(
+            "POST",
+            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
+            body=b"{}",
+            cookie=f"shimpz_admin={self.session}",
+        )
+        with (
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_assistant_integration_authorization",
+                side_effect=RuntimeError("unexpected Team client failure"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "unexpected Team client failure"),
+        ):
+            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+
+        replacement = self.admin_app.OAUTH_HANDOFFS.issue(
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
         )
-        request = _request("GET", f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={handoff}")
-        result = self.admin_app.team.TeamResponse(
-            200,
-            {"authorization_url": self._cloudflare_authorization_url()},
+        self.assertTrue(self.admin_app.OAUTH_HANDOFFS.discard(replacement.token))
+
+    def test_loopback_start_consumes_once_and_sets_browser_only_callback_binding(self) -> None:
+        preparation = self.admin_app.OAUTH_HANDOFFS.issue(
+            team_id="team_1",
+            challenge_id="a" * 32,
+            admin_session=self.session,
+        )
+        self.admin_app.OAUTH_HANDOFFS.authorize(preparation.token, self._cloudflare_authorization_url())
+        request = _request(
+            "GET",
+            f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={preparation.token}",
         )
         with mock.patch.object(
             self.admin_app.integrations,
             "start_assistant_integration_authorization",
-            return_value=result,
+            side_effect=AssertionError("loopback handoff must not call Team"),
         ) as start:
-            response = asyncio.run(self.admin_app.oauth_cloudflare_start(request, handoff))
-            replay = asyncio.run(self.admin_app.oauth_cloudflare_start(request, handoff))
+            response = asyncio.run(self.admin_app.oauth_cloudflare_start(request, preparation.token))
+            replay = asyncio.run(self.admin_app.oauth_cloudflare_start(request, preparation.token))
 
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers["location"], self._cloudflare_authorization_url())
@@ -158,7 +196,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(binding["path"], "/api/oauth/cloudflare")
         self.assertEqual(binding["max-age"], "300")
         self.assertFalse(binding["secure"])
-        start.assert_called_once_with("team_1", "a" * 32, binding.value, "loopback")
+        start.assert_not_called()
         self.assertEqual(replay.status_code, 303)
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
@@ -169,9 +207,17 @@ class OAuthRoutesTest(unittest.TestCase):
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
+        provider = self.admin_app.team.TeamResponse(
+            200,
+            {"authorization_url": self._cloudflare_authorization_url("hosted")},
+        )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(self.admin_app, "_session_ok", new=mock.AsyncMock(return_value=True)),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_assistant_integration_authorization",
+                return_value=provider,
+            ),
         ):
             authorized = asyncio.run(
                 self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)
@@ -184,16 +230,12 @@ class OAuthRoutesTest(unittest.TestCase):
 
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
-        provider = self.admin_app.team.TeamResponse(
-            200,
-            {"authorization_url": self._cloudflare_authorization_url("hosted")},
-        )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_assistant_integration_authorization",
-                return_value=provider,
+                side_effect=AssertionError("authorized handoff must not call Team"),
             ),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))

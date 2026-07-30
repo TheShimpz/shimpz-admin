@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import notifications
 from team import bridge as team
+from team import transport
 
 TRACE_ID = "a" * 32
 
@@ -74,6 +75,18 @@ class NotificationStateTests(unittest.TestCase):
         self.addCleanup(setattr, notifications, "STORE_PATH", self.previous_store)
         with notifications._STORE_LOCK:
             notifications._state_cache = None
+
+    def test_parallel_team_calls_preserve_the_request_account_session(self) -> None:
+        account_session = "a1:" + ("a" * 32) + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
+
+        def current_session(_value: int) -> str:
+            return transport._account_session()
+
+        with transport.supervisor_session(account_session, account=True):
+            values = notifications._parallel_calls(current_session, [(1,), (2,), (3,)])
+
+        self.assertEqual(values, [account_session, account_session, account_session])
+        self.assertEqual(transport._account_session(), "")
 
     def _sync_mocks(
         self,

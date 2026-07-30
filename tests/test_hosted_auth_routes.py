@@ -191,6 +191,37 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertEqual(second, first)
         self.assertEqual(run.await_count, 2)
 
+    def test_authenticated_http_request_binds_the_exact_account_session_to_team(self) -> None:
+        active = self.admin_app.account_identity.AccountResponse(
+            200,
+            {"version": 1, "active": True, "account_id": ACCOUNT_ID, "supervisor": True},
+        )
+        observed: list[str] = []
+
+        def list_teams():
+            observed.append(self.admin_app.team.transport._account_session())
+            return self.admin_app.team.TeamResponse(200, {"teams": []})
+
+        with (
+            mock.patch.object(
+                self.admin_app.account_identity,
+                "run_bounded",
+                new=mock.AsyncMock(return_value=active),
+            ),
+            mock.patch.object(self.admin_app.team, "list_teams", side_effect=list_teams),
+        ):
+            status = asyncio.run(
+                _asgi_get(
+                    self.admin_app.app,
+                    "/api/teams",
+                    cookie=f"shimpz_admin={SESSION}",
+                )
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(observed, [SESSION])
+        self.assertEqual(self.admin_app.team.transport._account_session(), "")
+
     def test_account_unavailability_is_not_reported_as_an_invalid_session(self) -> None:
         unavailable = self.admin_app.account_identity.AccountResponse(
             503,

@@ -132,3 +132,19 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
             release.set()
             future.result(timeout=1)
             executor.shutdown()
+
+    def test_chat_worker_preserves_the_request_account_session(self) -> None:
+        transport = self.admin_app.team.transport
+        account_session = "a1:" + ("a" * 32) + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
+        executor = self.chat_socket.BoundedThreadPoolExecutor(
+            max_workers=1,
+            max_outstanding=1,
+            thread_name_prefix="chat-context-test",
+        )
+        try:
+            with transport.supervisor_session(account_session, account=True):
+                future = self.chat_socket._submit_in_context(executor, transport._account_session)
+            self.assertEqual(future.result(timeout=1), account_session)
+            self.assertEqual(transport._account_session(), "")
+        finally:
+            executor.shutdown()

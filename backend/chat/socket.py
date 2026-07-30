@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import contextvars
 import os
 import threading
 from collections.abc import Awaitable, Callable, Mapping
@@ -30,6 +31,11 @@ FrameError = chat_ws_common.FrameError
 
 class ExecutorSaturatedError(RuntimeError):
     """The local chat worker and queue budget has no free admission slot."""
+
+
+def _submit_in_context(executor, function, /, *args):
+    context = contextvars.copy_context()
+    return executor.submit(context.run, function, *args)
 
 
 class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
@@ -297,7 +303,7 @@ async def _load_sync_snapshot(
     team_id: str,
 ) -> tuple[object, object | None] | None:
     try:
-        future = _SYNC_EXECUTOR.submit(_sync_snapshot, team_id)
+        future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return None
@@ -345,7 +351,7 @@ async def _run_stop(
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
-                response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(local.stop, team_id))
+                response = await asyncio.wrap_future(_submit_in_context(_STOP_EXECUTOR, local.stop, team_id))
             except ExecutorSaturatedError:
                 response = team.TeamResponse(429, {})
         accepted = _stop_accepted(response, team_id)
@@ -439,7 +445,7 @@ async def _dispatch_chat(
         )
         return
     try:
-        future = _TURN_EXECUTOR.submit(local.turn, team_id, payload)
+        future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
@@ -513,51 +519,53 @@ async def serve(
     team_id: object,
     *,
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
+    request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session."""
     canonical_id = await _admit(websocket, team_id, session_ok)
     if canonical_id is None:
         return
 
-    await websocket.accept(subprotocol=CHAT_SUBPROTOCOL)
-    connection = _Connection()
-    try:
-        while True:
-            try:
-                frame = await receive_bounded_json(websocket)
-            except FrameError as exc:
-                await _send_event(websocket, _error_terminal(exc.status, exc.detail))
-                connection.closed = True
-                await websocket.close(code=exc.close_code)
-                return
-            # A week-long cookie can expire or be rotated while a socket is open. Revalidating the
-            # signed token before every operation prevents that connection from extending authority.
-            session_status = await _session_status(session_ok, websocket.cookies)
-            if session_status != "active":
-                connection.closed = True
-                await websocket.close(code=1013 if session_status == "unavailable" else 4401)
-                return
-            await _dispatch(websocket, connection, canonical_id, frame)
-    except WebSocketDisconnect, RuntimeError, OSError:
-        connection.closed = True
-    finally:
-        connection.closed = True
-        sync_task = connection.sync_task
-        if sync_task is not None:
-            sync_task.cancel()
-            await asyncio.gather(sync_task, return_exceptions=True)
-        active = connection.active
-        if active is None and connection.pending_challenge_type == "secret":
-            active = _Turn(future=None, operation="pending-stop")
-            connection.active = active
-            _request_stop(websocket, connection, active, canonical_id, emit=False)
-        if active is not None:
-            stop_task = active.stop_task
-            if active.future is not None and not active.future.done():
-                stop_task = _request_stop(websocket, connection, active, canonical_id, emit=False)
-            if stop_task is not None:
-                with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-                    await asyncio.wait_for(asyncio.shield(stop_task), timeout=15)
-            if active.delivery is not None:
-                active.delivery.cancel()
-                await asyncio.gather(active.delivery, return_exceptions=True)
+    with request_scope(websocket.cookies):
+        await websocket.accept(subprotocol=CHAT_SUBPROTOCOL)
+        connection = _Connection()
+        try:
+            while True:
+                try:
+                    frame = await receive_bounded_json(websocket)
+                except FrameError as exc:
+                    await _send_event(websocket, _error_terminal(exc.status, exc.detail))
+                    connection.closed = True
+                    await websocket.close(code=exc.close_code)
+                    return
+                # A week-long cookie can expire or be rotated while a socket is open. Revalidating the
+                # signed token before every operation prevents that connection from extending authority.
+                session_status = await _session_status(session_ok, websocket.cookies)
+                if session_status != "active":
+                    connection.closed = True
+                    await websocket.close(code=1013 if session_status == "unavailable" else 4401)
+                    return
+                await _dispatch(websocket, connection, canonical_id, frame)
+        except WebSocketDisconnect, RuntimeError, OSError:
+            connection.closed = True
+        finally:
+            connection.closed = True
+            sync_task = connection.sync_task
+            if sync_task is not None:
+                sync_task.cancel()
+                await asyncio.gather(sync_task, return_exceptions=True)
+            active = connection.active
+            if active is None and connection.pending_challenge_type == "secret":
+                active = _Turn(future=None, operation="pending-stop")
+                connection.active = active
+                _request_stop(websocket, connection, active, canonical_id, emit=False)
+            if active is not None:
+                stop_task = active.stop_task
+                if active.future is not None and not active.future.done():
+                    stop_task = _request_stop(websocket, connection, active, canonical_id, emit=False)
+                if stop_task is not None:
+                    with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                        await asyncio.wait_for(asyncio.shield(stop_task), timeout=15)
+                if active.delivery is not None:
+                    active.delivery.cancel()
+                    await asyncio.gather(active.delivery, return_exceptions=True)

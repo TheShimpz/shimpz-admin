@@ -3,13 +3,14 @@
 The Admin session cookie belongs to the hostname the operator used (commonly
 ``localhost``), while reviewed local OAuth callbacks deliberately use
 ``127.0.0.1``. Cookies cannot safely cross that hostname boundary. This tiny
-process-local store therefore lets an authenticated Admin request mint one
-short-lived bearer handoff. The loopback start route consumes it exactly once,
-sets a separate short-lived callback cookie, and never exposes that callback
-binding to JavaScript.
+process-local store therefore lets an authenticated Admin request authorize
+the provider flow through Team, then publish one short-lived bearer handoff
+containing only the already-validated redirect URL and a callback binding. The
+loopback start route consumes it exactly once, sets a separate short-lived
+callback cookie, and never exposes that callback binding to JavaScript.
 
-No OAuth token, authorization code, PKCE verifier, or provider client material
-is stored here.
+No Admin or Account session, OAuth token, authorization code, PKCE verifier,
+or provider client material is stored here.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -37,17 +39,27 @@ class OAuthHandoffError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class OAuthHandoff:
-    """Private data recovered only after consuming a one-use handoff."""
+class OAuthPreparation:
+    """Opaque handoff token and browser binding used during authenticated preparation."""
 
-    team_id: str
-    challenge_id: str
+    token: str
+    session_binding: str
+
+
+@dataclass(frozen=True)
+class OAuthHandoff:
+    """Private redirect data recovered only after consuming an authorized handoff."""
+
+    authorization_url: str
     session_binding: str
 
 
 @dataclass(frozen=True)
 class _PendingHandoff:
-    handoff: OAuthHandoff
+    team_id: str
+    challenge_id: str
+    session_binding: str
+    authorization_url: str | None
     admin_session_digest: bytes
     expires_at: float
 
@@ -81,6 +93,32 @@ def _token(value: object) -> str:
     return value
 
 
+def _authorization_url(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 4096
+        or not value.isascii()
+        or any(ord(character) < 0x21 or ord(character) > 0x7E for character in value)
+    ):
+        raise OAuthHandoffError("OAuth authorization URL is invalid")
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise OAuthHandoffError("OAuth authorization URL is invalid") from exc
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "shimpz.com"
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/api/oauth/cloudflare/start"
+        or parsed.fragment
+    ):
+        raise OAuthHandoffError("OAuth authorization URL is invalid")
+    return value
+
+
 class OAuthHandoffStore:
     """Bounded in-memory handoffs; restart and expiry both fail closed."""
 
@@ -104,8 +142,8 @@ class OAuthHandoffStore:
         for token in expired:
             self._pending.pop(token, None)
 
-    def issue(self, *, team_id: object, challenge_id: object, admin_session: object) -> str:
-        """Issue a one-use handoff only after the caller proved an Admin session."""
+    def issue(self, *, team_id: object, challenge_id: object, admin_session: object) -> OAuthPreparation:
+        """Reserve one handoff while an authenticated caller asks Team for authorization."""
         team = _team_id(team_id)
         challenge = _challenge_id(challenge_id)
         digest = _admin_session_digest(admin_session)
@@ -116,8 +154,8 @@ class OAuthHandoffStore:
                 raise OAuthHandoffError("OAuth handoff capacity reached")
             if any(
                 hmac.compare_digest(pending.admin_session_digest, digest)
-                and pending.handoff.team_id == team
-                and pending.handoff.challenge_id == challenge
+                and pending.team_id == team
+                and pending.challenge_id == challenge
                 for pending in self._pending.values()
             ):
                 raise OAuthHandoffError("OAuth authorization is already pending")
@@ -127,22 +165,50 @@ class OAuthHandoffStore:
                 token = secrets.token_hex(32)
             binding = secrets.token_urlsafe(32)
             self._pending[token] = _PendingHandoff(
-                handoff=OAuthHandoff(team, challenge, binding),
+                team_id=team,
+                challenge_id=challenge,
+                session_binding=binding,
+                authorization_url=None,
                 admin_session_digest=digest,
                 expires_at=now + self._ttl,
             )
-            return token
+            return OAuthPreparation(token, binding)
+
+    def authorize(self, value: object, authorization_url: object) -> None:
+        """Publish one redirect only after Team returned a strictly validated URL."""
+        token = _token(value)
+        redirect = _authorization_url(authorization_url)
+        now = self._clock()
+        with self._lock:
+            self._expire(now)
+            pending = self._pending.get(token)
+            if pending is None or pending.authorization_url is not None:
+                raise OAuthHandoffError("OAuth handoff is unavailable")
+            self._pending[token] = _PendingHandoff(
+                team_id=pending.team_id,
+                challenge_id=pending.challenge_id,
+                session_binding=pending.session_binding,
+                authorization_url=redirect,
+                admin_session_digest=pending.admin_session_digest,
+                expires_at=pending.expires_at,
+            )
 
     def consume(self, value: object) -> OAuthHandoff:
-        """Consume before returning so every failure after this point requires a restart."""
+        """Consume one authorized handoff before exposing its redirect and binding."""
         token = _token(value)
         now = self._clock()
         with self._lock:
             self._expire(now)
             pending = self._pending.pop(token, None)
-        if pending is None:
+        if pending is None or pending.authorization_url is None:
             raise OAuthHandoffError("OAuth handoff is unavailable")
-        return pending.handoff
+        return OAuthHandoff(pending.authorization_url, pending.session_binding)
+
+    def discard(self, value: object) -> bool:
+        """Remove an incomplete reservation after Team rejects or transport fails."""
+        token = _token(value)
+        with self._lock:
+            return self._pending.pop(token, None) is not None
 
     def cancel_session(self, admin_session: object) -> int:
         """Invalidate all not-yet-consumed handoffs for one logged-out Admin session."""

@@ -27,6 +27,7 @@ TeamResponse = transport.TeamResponse
 TeamRequestError = transport.TeamRequestError
 _call = transport._call
 _call_raw = transport._call_raw
+supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
