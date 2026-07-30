@@ -22,6 +22,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from team import transport
 
+from integrations import assistants as integrations
+
 
 class _TeamHandler(BaseHTTPRequestHandler):
     requests: ClassVar[list[dict[str, object]]] = []
@@ -208,7 +210,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = team.list_assistant_integrations("team_1")
+        response = integrations.list_assistant_integrations("team_1")
 
         self.assertEqual(response, team.TeamResponse(200, {"integrations": [integration]}))
         self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-integrations")
@@ -222,7 +224,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             },
             separators=(",", ":"),
         ).encode()
-        invalid = team.list_assistant_integrations("team_1")
+        invalid = integrations.list_assistant_integrations("team_1")
         self.assertEqual(
             invalid,
             team.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
@@ -246,7 +248,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = team.start_assistant_integration_authorization(
+        response = integrations.start_assistant_integration_authorization(
             "team_1",
             "c" * 32,
             "d" * 43,
@@ -277,14 +279,14 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},
                 separators=(",", ":"),
             ).encode()
-            invalid = team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = integrations.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
         with self.assertRaisesRegex(team.TeamRequestError, "callback mode"):
-            team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
+            integrations.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
 
         for invalid_envelope in (
             {"authorization_url": authorization_url},
@@ -295,7 +297,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 invalid_envelope,
                 separators=(",", ":"),
             ).encode()
-            invalid = team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = integrations.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
                 team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
@@ -316,8 +318,8 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             ),
         }
 
-        disconnected = team.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
-        completed = team.complete_cloudflare_oauth_callback(
+        disconnected = integrations.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
+        completed = integrations.complete_cloudflare_oauth_callback(
             state="a" * 43,
             claim="c" * 64,
             session_binding="b" * 43,

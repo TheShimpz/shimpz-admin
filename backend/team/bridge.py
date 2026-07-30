@@ -15,7 +15,6 @@ import models
 from team import transport
 
 from chat import payloads
-from integrations import assistants as integrations
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -74,13 +73,7 @@ def canonical_assistant_help_locale(value: object) -> str:
     return value
 
 
-canonical_oauth_binding = integrations.canonical_oauth_binding
-
-
 canonical_challenge_id = payloads.canonical_challenge_id
-
-
-canonical_oauth_claim = integrations.canonical_oauth_claim
 
 
 def canonical_filename(value: object) -> str:
@@ -278,12 +271,6 @@ def resume_chat_integrations(
         timeout=CONTROL_TIMEOUT_SECONDS,
         model_credential=(provider, api_key),
     )
-
-
-list_assistant_integrations = integrations.list_assistant_integrations
-start_assistant_integration_authorization = integrations.start_assistant_integration_authorization
-disconnect_assistant_integration = integrations.disconnect_assistant_integration
-complete_cloudflare_oauth_callback = integrations.complete_cloudflare_oauth_callback
 
 
 def list_assistants() -> TeamResponse:

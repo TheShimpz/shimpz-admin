@@ -33,6 +33,7 @@ import state
 from team import bridge as team
 
 from chat import socket as chat_socket
+from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -416,7 +417,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
 
 @app.get("/api/teams/{team_id}/assistant-integrations")
 def team_assistant_integrations(team_id: str):
-    response = _team_response(lambda: team.list_assistant_integrations(team_id))
+    response = _team_response(lambda: integrations.list_assistant_integrations(team_id))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -452,7 +453,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
 async def team_assistant_integration_disconnect(team_id: str, assistant_id: str, integration_id: str):
     try:
         response = await asyncio.to_thread(
-            team.disconnect_assistant_integration,
+            integrations.disconnect_assistant_integration,
             team_id,
             assistant_id,
             integration_id,
@@ -471,7 +472,7 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
         result = await asyncio.to_thread(
-            team.start_assistant_integration_authorization,
+            integrations.start_assistant_integration_authorization,
             pending.team_id,
             pending.challenge_id,
             pending.session_binding,
@@ -512,7 +513,7 @@ async def oauth_cloudflare_callback(request: Request):
     binding = request.cookies.get(OAUTH_COOKIE, "")
     try:
         result = await asyncio.to_thread(
-            team.complete_cloudflare_oauth_callback,
+            integrations.complete_cloudflare_oauth_callback,
             state=query["state"],
             claim=query["claim"],
             session_binding=binding,

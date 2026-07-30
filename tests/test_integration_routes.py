@@ -139,7 +139,7 @@ class OAuthRoutesTest(unittest.TestCase):
             {"authorization_url": self._cloudflare_authorization_url()},
         )
         with mock.patch.object(
-            self.admin_app.team,
+            self.admin_app.integrations,
             "start_assistant_integration_authorization",
             return_value=result,
         ) as start:
@@ -189,7 +189,11 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(self.admin_app.team, "start_assistant_integration_authorization", return_value=provider),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_assistant_integration_authorization",
+                return_value=provider,
+            ),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
@@ -212,7 +216,7 @@ class OAuthRoutesTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(
-                self.admin_app.team,
+                self.admin_app.integrations,
                 "complete_cloudflare_oauth_callback",
                 return_value=completed,
             ) as complete,
@@ -250,7 +254,7 @@ class OAuthRoutesTest(unittest.TestCase):
             },
         )
         with mock.patch.object(
-            self.admin_app.team,
+            self.admin_app.integrations,
             "complete_cloudflare_oauth_callback",
             return_value=result,
         ) as complete:
@@ -292,7 +296,7 @@ class OAuthRoutesTest(unittest.TestCase):
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )
-        with mock.patch.object(self.admin_app.team, "complete_cloudflare_oauth_callback") as complete:
+        with mock.patch.object(self.admin_app.integrations, "complete_cloudflare_oauth_callback") as complete:
             responses = [asyncio.run(self.admin_app.oauth_cloudflare_callback(request)) for request in requests]
         complete.assert_not_called()
         self.assertTrue(all(response.headers["location"] == "/chat?oauth=callback-failed" for response in responses))
@@ -300,7 +304,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_inventory_and_disconnect_keep_the_public_contract_exact(self) -> None:
         inventory = self.admin_app.team.TeamResponse(200, {"integrations": []})
         with mock.patch.object(
-            self.admin_app.team,
+            self.admin_app.integrations,
             "list_assistant_integrations",
             return_value=inventory,
         ):
@@ -310,7 +314,7 @@ class OAuthRoutesTest(unittest.TestCase):
 
         disconnected = self.admin_app.team.TeamResponse(204, {})
         with mock.patch.object(
-            self.admin_app.team,
+            self.admin_app.integrations,
             "disconnect_assistant_integration",
             return_value=disconnected,
         ):
