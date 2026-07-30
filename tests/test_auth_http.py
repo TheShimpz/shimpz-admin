@@ -31,7 +31,12 @@ class AuthHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(
             payload,
-            {"authenticated": False, "initialized": False, "features": {"teamCredentials": False}},
+            {
+                "profile": "local",
+                "authenticated": False,
+                "initialized": False,
+                "features": {"teamCredentials": False},
+            },
         )
         self.assertEqual(request(port, "GET", "/api/model-providers")[0], 401)
         self.assertEqual(request(port, "POST", "/api/admin/setup", {"password": "short"})[0], 400)

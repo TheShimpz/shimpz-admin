@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shimpz.com/account/admin-session/v1/introspection-request.schema.json",
+  "title": "Account Admin-session introspection request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "token"],
+  "properties": {
+    "version": {"const": 1},
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[ -~]+$"
+    }
+  }
+}

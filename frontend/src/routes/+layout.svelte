@@ -13,6 +13,8 @@
   let { children } = $props();
 
   let phase = $state('checking');
+  let profile = $state('');
+  let username = $state('');
   let password = $state('');
   let confirmation = $state('');
   let error = $state('');
@@ -43,12 +45,19 @@
       if (!response.ok) throw new Error('session unavailable');
 
       const session = await response.json();
+      if (session?.profile !== 'local' && session?.profile !== 'hosted') {
+        throw new Error('invalid session profile');
+      }
+      profile = session.profile;
       if (session?.authenticated === true) {
         phase = 'ready';
         if (page.url.pathname === '/') await goto('/chat/', { replaceState: true });
-      } else if (session?.initialized === false) {
+      } else if (profile === 'local' && session?.initialized === false) {
         phase = 'setup';
-      } else if (session?.initialized === true) {
+      } else if (
+        (profile === 'local' && session?.initialized === true) ||
+        (profile === 'hosted' && session?.account_id === null)
+      ) {
         phase = 'login';
       } else {
         throw new Error('invalid session');
@@ -62,6 +71,10 @@
     if (busy || (phase !== 'setup' && phase !== 'login')) return;
 
     error = '';
+    if (profile === 'hosted' && !username) {
+      error = $t('auth.usernameRequired');
+      return;
+    }
     if (phase === 'setup' && password.length < 12) {
       error = $t('auth.tooShort');
       return;
@@ -76,16 +89,21 @@
       const response = await fetch(phase === 'setup' ? '/api/admin/setup' : '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(profile === 'hosted' ? { username, password } : { password }),
       });
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        error = response.status === 401 ? $t('auth.badPassword') : (body.detail ?? `HTTP ${response.status}`);
+        error =
+          response.status === 401
+            ? $t('auth.badPassword')
+            : response.status === 403
+              ? $t('auth.supervisorRequired')
+              : (body.detail ?? `HTTP ${response.status}`);
         return;
       }
 
-      password = confirmation = '';
+      username = password = confirmation = '';
       await enterAdmin();
     } catch {
       error = $t('auth.unreachable');
@@ -114,6 +132,8 @@
   <AdminShell>
     <AuthScreen
       {phase}
+      {profile}
+      bind:username
       bind:password
       bind:confirmation
       {error}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -29,6 +30,7 @@ class AuthRouteTests(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_SETUP_TOKEN": "retired-token-must-be-inert",
             },
         ):
@@ -58,25 +60,29 @@ class AuthRouteTests(unittest.TestCase):
         self.assertFalse(any("/api/teams" in path or "/assistants" in path for path in self.admin_app.OPEN_API))
 
     @staticmethod
-    def _request(path: str) -> Request:
+    def _request(path: str, payload: dict[str, object] | None = None) -> Request:
         raw_path, _, query = path.partition("?")
+        body = json.dumps(payload).encode() if payload is not None else b""
+        headers = (
+            [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())] if body else []
+        )
         scope = {
             "type": "http",
             "asgi": {"version": "3.0"},
             "http_version": "1.1",
-            "method": "GET",
+            "method": "POST" if body else "GET",
             "scheme": "http",
             "path": raw_path,
             "raw_path": raw_path.encode(),
             "query_string": query.encode(),
             "root_path": "",
-            "headers": [],
+            "headers": headers,
             "client": ("127.0.0.1", 1234),
             "server": ("testserver", 80),
         }
 
         async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+            return {"type": "http.request", "body": body, "more_body": False}
 
         return Request(scope, receive)
 
@@ -106,10 +112,7 @@ class AuthRouteTests(unittest.TestCase):
         password = "correct horse battery staple"
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(
-                self.admin_app.admin_setup(
-                    self._request("/api/admin/setup"),
-                    {"password": password},
-                )
+                self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
             )
 
         self.assertEqual(response.status_code, 200)
@@ -120,19 +123,13 @@ class AuthRouteTests(unittest.TestCase):
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "correct horse battery staple"
         asyncio.run(
-            self.admin_app.admin_setup(
-                self._request("/api/admin/setup"),
-                {"password": password},
-            )
+            self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
         )
         record = self.admin_app.state.get()
 
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(
-                self.admin_app.login(
-                    self._request("/api/login"),
-                    {"password": password},
-                )
+                self.admin_app.login(self._request("/api/login", {"password": password}))
             )
 
         self.assertEqual(response.status_code, 200)

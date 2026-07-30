@@ -1,9 +1,8 @@
-"""The local Admin API and static UI server running in the `shimpz-admin` container.
+"""The profile-aware Admin API and static UI server running in the `shimpz-admin` container.
 
-Auth (persistent): first run has NO password — the "create admin password" screen is reachable
-while uninitialized (the panel binds loopback / sits behind Cloudflare Access; the window closes
-forever the instant a password is set). After that, a signed session cookie (`shimpz_admin`) is the
-only way in. Query parameters never grant a session.
+Local uses its one separately authenticated Supervisor password and session. Hosted accepts only an
+online, enabled Account session with current Supervisor privilege. Query parameters never grant a
+session in either profile.
 
 The static SPA + the auth endpoints are open (the login form carries no secret); every Team,
 Assistant, model-provider, OAuth, notification, and chat endpoint requires a valid session. This
@@ -15,7 +14,7 @@ import json
 import logging
 import os
 import sys
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -33,6 +32,7 @@ import state
 from team import bridge as team
 
 from chat import socket as chat_socket
+from integrations import account as account_identity
 from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
@@ -40,7 +40,18 @@ from protocol.http.v1 import websocket as chat_ws_common
 log = logging.getLogger("shimpz-admin")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
+
+def _admin_profile() -> str:
+    profile = os.environ.get("SHIMPZ_ADMIN_PROFILE", "").strip()
+    if profile not in {"local", "hosted"}:
+        raise RuntimeError("SHIMPZ_ADMIN_PROFILE must be exactly local or hosted")
+    return profile
+
+
+ADMIN_PROFILE = _admin_profile()
+TEAM_CREDENTIALS_ENABLED = (
+    ADMIN_PROFILE == "local" and os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
+)
 
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 COOKIE = "shimpz_admin"
@@ -68,7 +79,9 @@ OAUTH_ORIGINS = {
 }
 MIN_PASSWORD_LEN = 12
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
-MAX_ADMIN_PASSWORD_CHARS = 4 * 1024
+MAX_PASSWORD_CHARS = 4 * 1024
+MAX_ACCOUNT_USERNAME_CHARS = 32
+ACCOUNT_COOKIE_TTL = 14 * 24 * 60 * 60
 
 # Open surface: the SPA shell (served for any non-/api path) + these auth endpoints. Everything
 # else under /api/ needs a session.
@@ -77,14 +90,31 @@ OPEN_API = frozenset(
         "/api/session",
         "/api/login",
         "/api/logout",
-        "/api/admin/setup",
         "/api/oauth/cloudflare/start",
         "/api/oauth/cloudflare/callback",
     }
+    | ({"/api/admin/setup"} if ADMIN_PROFILE == "local" else set())
 )
 
-app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None)
+
+@asynccontextmanager
+async def _lifespan(_application: FastAPI):
+    if _admin_profile() != ADMIN_PROFILE:
+        raise RuntimeError("Admin profile changed after route registration")
+    yield
+
+
+app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 OAUTH_HANDOFFS = handoff_store.OAuthHandoffStore()
+
+
+class SessionEvidenceUnavailableError(RuntimeError):
+    """The Hosted Account authority could not provide current session evidence."""
+
+
+@app.exception_handler(SessionEvidenceUnavailableError)
+async def _session_evidence_unavailable(_request: Request, _exc: SessionEvidenceUnavailableError):
+    return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
 
 
 def _is_https(request):
@@ -116,12 +146,43 @@ def _is_oauth_origin(request: Request) -> bool:
 
 def _set_session(resp, request, token):
     resp.set_cookie(
-        COOKIE, token, max_age=auth.TTL, httponly=True, samesite="strict", secure=_is_https(request), path="/"
+        COOKIE,
+        token,
+        max_age=auth.TTL if ADMIN_PROFILE == "local" else ACCOUNT_COOKIE_TTL,
+        httponly=True,
+        samesite="strict",
+        secure=ADMIN_PROFILE == "hosted" or _is_https(request),
+        path="/",
     )
 
 
-def _session_ok(cookies):
+def _local_session_ok(cookies):
     return auth.verify_session(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
+
+
+async def _session_evidence(cookies) -> dict[str, object] | None:
+    if ADMIN_PROFILE == "local":
+        return {"profile": "local"} if _local_session_ok(cookies) else None
+    token = cookies.get(COOKIE, "")
+    if not token:
+        return None
+    response = await account_identity.run_bounded(account_identity.introspect, token)
+    if response.status == 401:
+        return None
+    if response.status != 200:
+        raise SessionEvidenceUnavailableError
+    if response.body.get("active") is not True or response.body.get("supervisor") is not True:
+        return None
+    return response.body
+
+
+async def _session_ok(cookies) -> bool:
+    return await _session_evidence(cookies) is not None
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("cf-connecting-ip", "").strip()
+    return forwarded or (request.client.host if request.client else "")
 
 
 def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
@@ -138,36 +199,47 @@ def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
 
 @app.middleware("http")
 async def _gate(request: Request, call_next):
-    """Dual-mode gate: static SPA + auth endpoints open; the rest needs a signed session cookie."""
+    """Keep static/auth routes open and validate the profile's current Supervisor on every API call."""
     path = request.url.path
 
     # Static SPA + assets (login form has no secret) and the open auth endpoints.
     if not path.startswith("/api/") or path in OPEN_API:
         return await call_next(request)
-
     # Everything else under /api/ requires a valid session.
-    if not _session_ok(request.cookies):
+    try:
+        evidence = await _session_evidence(request.cookies)
+    except SessionEvidenceUnavailableError:
+        return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
+    if evidence is None:
         return JSONResponse({"detail": "unauthenticated"}, status_code=401)
+    request.state.supervisor = evidence
     return await call_next(request)
 
 
 @app.get("/api/session")
 async def session(request: Request):
-    return {
-        "authenticated": _session_ok(request.cookies),
-        "initialized": state.is_initialized(),
+    evidence = await _session_evidence(request.cookies)
+    response = {
+        "profile": ADMIN_PROFILE,
+        "authenticated": evidence is not None,
         "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
     }
+    if ADMIN_PROFILE == "local":
+        response["initialized"] = state.is_initialized()
+    else:
+        response["account_id"] = evidence.get("account_id") if evidence is not None else None
+    return response
 
 
-@app.post("/api/login")
-async def login(request: Request, payload: dict):
+async def _local_login(request: Request, payload: dict) -> JSONResponse:
+    if set(payload) != {"password"} or not isinstance(payload["password"], str):
+        raise HTTPException(status_code=400, detail="request body must contain only password")
     if not state.is_initialized():
         raise HTTPException(status_code=409, detail="no admin password set yet — create one first")
     rec = state.get()
     password_ok = await asyncio.to_thread(
         auth.verify_password,
-        str(payload.get("password", "")),
+        payload["password"],
         rec.get("salt", ""),
         rec.get("password_hash", ""),
     )
@@ -180,25 +252,81 @@ async def login(request: Request, payload: dict):
     return resp
 
 
+async def _hosted_login(request: Request, payload: dict) -> JSONResponse:
+    if set(payload) != {"username", "password"}:
+        raise HTTPException(status_code=400, detail="request body must contain only username and password")
+    username = payload["username"]
+    password = payload["password"]
+    if (
+        not isinstance(username, str)
+        or not 1 <= len(username) <= MAX_ACCOUNT_USERNAME_CHARS
+        or not isinstance(password, str)
+        or not 1 <= len(password) <= MAX_PASSWORD_CHARS
+    ):
+        raise HTTPException(status_code=400, detail="invalid Account credentials")
+    logged_in = await account_identity.run_bounded(
+        account_identity.login,
+        username,
+        password,
+        _client_ip(request),
+    )
+    if logged_in.status == 401:
+        raise HTTPException(status_code=401, detail="invalid username or password")
+    if logged_in.status != 200:
+        raise HTTPException(status_code=503, detail="Account identity is unavailable")
+    token = logged_in.body["token"]
+    evidence = await account_identity.run_bounded(account_identity.introspect, token)
+    if evidence.status != 200:
+        await account_identity.run_bounded(account_identity.logout, token)
+        raise HTTPException(status_code=503, detail="Account identity is unavailable")
+    if evidence.body.get("active") is not True or evidence.body.get("supervisor") is not True:
+        await account_identity.run_bounded(account_identity.logout, token)
+        raise HTTPException(status_code=403, detail="Supervisor privilege is required")
+    response = JSONResponse({"ok": True, "account_id": evidence.body["account_id"]})
+    _set_session(response, request, token)
+    log.info("Hosted Supervisor login ok")
+    return response
+
+
+@app.post("/api/login")
+async def login(request: Request):
+    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
+    if ADMIN_PROFILE == "local":
+        return await _local_login(request, payload)
+    return await _hosted_login(request, payload)
+
+
 @app.post("/api/logout")
 async def logout(request: Request):
     session_token = request.cookies.get(COOKIE, "")
     if session_token:
         with suppress(handoff_store.OAuthHandoffError):
             OAUTH_HANDOFFS.cancel_session(session_token)
-    resp = JSONResponse({"ok": True})
+    status = 200
+    if ADMIN_PROFILE == "hosted" and session_token:
+        revoked = await account_identity.run_bounded(account_identity.logout, session_token)
+        if revoked.status != 200:
+            status = 503
+    body = {"ok": status == 200}
+    if status != 200:
+        body["detail"] = "Account session revocation is unavailable"
+    resp = JSONResponse(body, status_code=status)
     resp.delete_cookie(COOKIE, path="/")
     return resp
 
 
-@app.post("/api/admin/setup")
-async def admin_setup(request: Request, payload: dict):
+async def admin_setup(request: Request):
+    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
+    if set(payload) != {"password"} or not isinstance(payload["password"], str):
+        raise HTTPException(status_code=400, detail="request body must contain only password")
     async with _ADMIN_SETUP_LOCK:
         if state.is_initialized():
             raise HTTPException(status_code=409, detail="admin password already set")
-        password = str(payload.get("password", ""))
+        password = payload["password"]
         if len(password) < MIN_PASSWORD_LEN:
             raise HTTPException(status_code=400, detail=f"password must be at least {MIN_PASSWORD_LEN} characters")
+        if len(password) > MAX_PASSWORD_CHARS:
+            raise HTTPException(status_code=400, detail="password is too long")
         await asyncio.to_thread(state.set_password, password)
     resp = JSONResponse({"ok": True})
     _set_session(resp, request, auth.issue_session(state.get()["session_secret"]))
@@ -206,9 +334,13 @@ async def admin_setup(request: Request, payload: dict):
     return resp
 
 
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
+
+
 # ── Teams + Assistants: authenticated control plane for team. Every route stays under
-# /api/ and outside OPEN_API, so the signed local Admin session is required before the private bearer
-# bridge can run. The Admin has no Docker socket and preserves bounded Team JSON/status exactly. ──
+# /api/ and outside OPEN_API, so the current profile's Supervisor session is required before the
+# private bearer bridge can run. Admin has no Docker socket and preserves bounded Team JSON/status. ──
 def _team_response(action):
     try:
         response = action()
@@ -247,13 +379,11 @@ async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_
     return payload
 
 
-@app.get("/api/model-providers")
 def model_providers_status():
     """Return masked local provider state; cleartext keys never leave the Admin backend."""
     return models.status()
 
 
-@app.put("/api/model-providers/{provider}")
 async def model_provider_configure(provider: str, request: Request):
     payload = await _bounded_json_object(request)
     if set(payload) != {"api_key"}:
@@ -264,14 +394,17 @@ async def model_provider_configure(provider: str, request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except models.ModelProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
-
-
-@app.delete("/api/model-providers/{provider}")
 def model_provider_delete(provider: str):
     try:
         return models.remove(provider)
     except models.ModelProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/model-providers", model_providers_status, methods=["GET"])
+    app.add_api_route("/api/model-providers/{provider}", model_provider_configure, methods=["PUT"])
+    app.add_api_route("/api/model-providers/{provider}", model_provider_delete, methods=["DELETE"])
 
 
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
@@ -371,23 +504,40 @@ async def teams_destroy(team_id: str, request: Request):
     password = payload["password"]
     if not isinstance(team_name, str) or not isinstance(password, str):
         raise HTTPException(status_code=400, detail="Team name and password must be strings")
-    if not 1 <= len(password) <= MAX_ADMIN_PASSWORD_CHARS:
-        raise HTTPException(status_code=400, detail="admin password is invalid")
+    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
+        raise HTTPException(status_code=400, detail="Supervisor password is invalid")
 
-    record = state.get()
-    try:
-        password_ok = await asyncio.to_thread(
-            auth.verify_password,
+    if ADMIN_PROFILE == "local":
+        record = state.get()
+        try:
+            password_ok = await asyncio.to_thread(
+                auth.verify_password,
+                password,
+                record.get("salt", ""),
+                record.get("password_hash", ""),
+            )
+        except TypeError, ValueError:
+            log.warning("Admin password record is invalid")
+            raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
+        if not password_ok:
+            log.info("Team deletion password confirmation failed")
+            raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
+    else:
+        evidence = await _session_evidence(request.cookies)
+        if evidence is None:
+            raise HTTPException(status_code=401, detail="unauthenticated")
+        verified = await account_identity.run_bounded(
+            account_identity.verify_sudo_password,
+            request.cookies.get(COOKIE, ""),
             password,
-            record.get("salt", ""),
-            record.get("password_hash", ""),
+            _client_ip(request),
         )
-    except TypeError, ValueError:
-        log.warning("admin password record is invalid")
-        raise HTTPException(status_code=503, detail="admin password verification is unavailable") from None
-    if not password_ok:
-        log.info("Team deletion password confirmation failed")
-        raise HTTPException(status_code=403, detail="admin password is incorrect")
+        if verified.status in {401, 403}:
+            raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
+        if verified.status == 429:
+            raise HTTPException(status_code=429, detail="too many password attempts")
+        if verified.status != 200:
+            raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable")
 
     return await run_in_threadpool(
         _team_response,
@@ -428,7 +578,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     if payload:
         raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
     session_token = request.cookies.get(COOKIE, "")
-    if not _session_ok(request.cookies):
+    if not await _session_ok(request.cookies):
         raise HTTPException(status_code=401, detail="unauthenticated")
     try:
         canonical_team = team.canonical_team_id(team_id)

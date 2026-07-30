@@ -34,6 +34,7 @@ class SpaFallbackTests(unittest.TestCase):
                 {
                     "SHIMPZ_REPO": str(cls.root),
                     "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
+                    "SHIMPZ_ADMIN_PROFILE": "local",
                 },
             ),
             mock.patch.object(Path, "is_dir", return_value=True),

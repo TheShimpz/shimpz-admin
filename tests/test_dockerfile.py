@@ -59,6 +59,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         copied = set(re.findall(r"\bbackend(?:/[a-z][a-z0-9_]*)+\.py\b", re.sub(r"\\\n\s*", " ", runtime)))
         expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / "backend").rglob("*.py")}
         expected.remove("backend/protocol/http/v1/verify.py")
+        expected.remove("backend/protocol/account/admin-session/v1/verify.py")
 
         self.assertEqual(copied, expected)
 

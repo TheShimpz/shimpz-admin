@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shimpz.com/account/admin-session/v1/introspection-response.schema.json",
+  "title": "Account Admin-session introspection response v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "active", "account_id", "supervisor"],
+      "properties": {
+        "version": {"const": 1},
+        "active": {"const": true},
+        "account_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "supervisor": {"type": "boolean"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "active"],
+      "properties": {
+        "version": {"const": 1},
+        "active": {"const": false}
+      }
+    }
+  ]
+}

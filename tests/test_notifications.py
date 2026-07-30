@@ -506,6 +506,7 @@ class NotificationRouteTests(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_NOTIFICATION_STORE": str(root / "notifications.json"),
             },
         ):

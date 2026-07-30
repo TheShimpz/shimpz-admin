@@ -4,6 +4,8 @@
 
   let {
     phase,
+    profile = '',
+    username = $bindable(''),
     password = $bindable(''),
     confirmation = $bindable(''),
     error = '',
@@ -13,6 +15,7 @@
   } = $props();
 
   let setup = $derived(phase === 'setup');
+  let hosted = $derived(profile === 'hosted');
 </script>
 
 <section class="auth-stage" aria-labelledby="auth-title">
@@ -35,10 +38,26 @@
         {/if}
       </div>
     {:else}
-      <h1 id="auth-title">{setup ? $t('auth.setupTitle') : $t('auth.loginTitle')}</h1>
-      <p class="lead">{setup ? $t('auth.setupLead') : $t('auth.loginLead')}</p>
+      <h1 id="auth-title">
+        {setup ? $t('auth.setupTitle') : hosted ? $t('auth.hostedLoginTitle') : $t('auth.loginTitle')}
+      </h1>
+      <p class="lead">
+        {setup ? $t('auth.setupLead') : hosted ? $t('auth.hostedLoginLead') : $t('auth.loginLead')}
+      </p>
 
       <form onsubmit={(event) => (event.preventDefault(), onSubmit())}>
+        {#if hosted}
+          <label for="account-username">{$t('auth.username')}</label>
+          <input
+            id="account-username"
+            type="text"
+            bind:value={username}
+            autocomplete="username"
+            maxlength="32"
+            required
+            disabled={busy}
+          />
+        {/if}
         <label for="admin-password">{$t('auth.password')}</label>
         <input
           id="admin-password"
@@ -67,7 +86,7 @@
 
         {#if error}<p class="message error" role="alert">{error}</p>{/if}
 
-        <button class="primary" type="submit" disabled={busy || !password}>
+        <button class="primary" type="submit" disabled={busy || !password || (hosted && !username)}>
           <span>{busy ? $t('auth.checking') : setup ? $t('auth.create') : $t('auth.signIn')}</span>
           <span aria-hidden="true">→</span>
         </button>

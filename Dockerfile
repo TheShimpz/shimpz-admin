@@ -44,7 +44,7 @@ RUN groupadd -g 1000 admin && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin ad
 WORKDIR /app/backend
 COPY backend/app.py backend/auth.py backend/models.py backend/model_catalog.json backend/notifications.py backend/state.py ./
 COPY backend/chat/local.py backend/chat/payloads.py backend/chat/socket.py ./chat/
-COPY backend/integrations/assistants.py backend/integrations/handoff.py ./integrations/
+COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/handoff.py ./integrations/
 COPY backend/team/bridge.py backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build
@@ -59,7 +59,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     SHIMPZ_NOTIFICATION_STORE=/data/notifications.json
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
 # copy surface omits a module imported by the Admin application.
-RUN python -c "import app"
+RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app"
 USER 1000:1000
 EXPOSE 4600
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--log-level", "warning"]

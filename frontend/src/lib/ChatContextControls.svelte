@@ -32,7 +32,7 @@
   let dialogError = $state('');
   let deletingTeam = $state();
   let deleteName = $state('');
-  let adminPassword = $state('');
+  let supervisorPassword = $state('');
   let deleting = $state(false);
   let deleteError = $state('');
   let deleteErrorDetail = $state('');
@@ -144,7 +144,7 @@
 
   function resetDeleteForm() {
     deleteName = '';
-    adminPassword = '';
+    supervisorPassword = '';
   }
 
   function openDelete(team) {
@@ -174,24 +174,24 @@
   async function submitDelete(event) {
     event.preventDefault();
     const target = deletingTeam;
-    if (deleting || !target || deleteName !== target.name || !adminPassword) return;
+    if (deleting || !target || deleteName !== target.name || !supervisorPassword) return;
     deleting = true;
     deleteError = '';
     deleteErrorDetail = '';
     let deleted = false;
     try {
-      await deleteTeam(fetch, target.id, deleteName, adminPassword);
+      await deleteTeam(fetch, target.id, deleteName, supervisorPassword);
       deleted = true;
     } catch (error) {
       const known = error instanceof LocalApiError;
-      const wrongPassword = known && error.status === 403 && error.message === 'admin password is incorrect';
+      const wrongPassword = known && error.status === 403 && error.message === 'Supervisor password is incorrect';
       deleteError = wrongPassword
         ? copy.wrongPassword
         : copy.deleteFailed;
       deleteErrorDetail = known && !wrongPassword
         ? `${error.status > 0 ? `HTTP ${error.status} · ` : ''}${error.message}`
         : '';
-      adminPassword = '';
+      supervisorPassword = '';
     } finally {
       deleting = false;
     }
@@ -426,11 +426,11 @@
       />
     </label>
     <label class="field" for="chat-delete-team-password">
-      <span>{copy.adminPassword}</span>
+      <span>{copy.supervisorPassword}</span>
       <input
         id="chat-delete-team-password"
         type="password"
-        bind:value={adminPassword}
+        bind:value={supervisorPassword}
         placeholder={copy.passwordPlaceholder}
         maxlength="4096"
         autocomplete="current-password"
@@ -449,7 +449,7 @@
       <button
         class="danger"
         type="submit"
-        disabled={deleting || !deletingTeam || deleteName !== deletingTeam.name || !adminPassword}
+        disabled={deleting || !deletingTeam || deleteName !== deletingTeam.name || !supervisorPassword}
       >{deleting ? copy.deleting : copy.deleteAction}</button>
     </footer>
   </form>

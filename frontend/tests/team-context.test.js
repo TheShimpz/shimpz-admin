@@ -433,12 +433,12 @@ test('Team deletion preserves the bounded API reason and status for safe diagnos
 
   await assert.rejects(
     deleteTeam(fixtureFetcher({
-      '/api/teams/marketing': async () => response(403, { detail: 'admin password is incorrect' }),
+      '/api/teams/marketing': async () => response(403, { detail: 'Supervisor password is incorrect' }),
     }), 'marketing', 'Marketing', 'wrong password'),
     (error) => (
       error instanceof LocalApiError &&
       error.status === 403 &&
-      error.message === 'admin password is incorrect'
+      error.message === 'Supervisor password is incorrect'
     ),
   );
   assert.equal(get(teamContext).phase, 'ready');

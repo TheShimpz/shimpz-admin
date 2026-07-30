@@ -70,6 +70,7 @@ class OAuthRoutesTest(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_ADMIN_LOOPBACK_PORT": "4600",
             },
         ):
@@ -111,7 +112,7 @@ class OAuthRoutesTest(unittest.TestCase):
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
         )
-        with mock.patch.object(self.admin_app, "_session_ok", return_value=True):
+        with mock.patch.object(self.admin_app, "_session_ok", new=mock.AsyncMock(return_value=True)):
             response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
 
         self.assertEqual(response.status_code, 200)
@@ -170,7 +171,7 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(self.admin_app, "_session_ok", return_value=True),
+            mock.patch.object(self.admin_app, "_session_ok", new=mock.AsyncMock(return_value=True)),
         ):
             authorized = asyncio.run(
                 self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "vectors": [
+    {
+      "name": "active Supervisor",
+      "request": {
+        "version": 1,
+        "token": "a1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2209600:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "response": {
+        "version": 1,
+        "active": true,
+        "account_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "supervisor": true
+      }
+    },
+    {
+      "name": "known inactive session",
+      "request": {
+        "version": 1,
+        "token": "a1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "response": {
+        "version": 1,
+        "active": false
+      }
+    }
+  ]
+}

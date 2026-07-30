@@ -12,7 +12,7 @@ import concurrent.futures
 import contextlib
 import os
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -474,17 +474,20 @@ def _has_subprotocol(websocket: WebSocket) -> bool:
     return protocols == [CHAT_SUBPROTOCOL]
 
 
-def _session_valid(session_ok: Callable[[Mapping[str, str]], bool], cookies: Mapping[str, str]) -> bool:
-    # Authentication callbacks fail closed on every ordinary validation error.
+async def _session_status(
+    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
+    cookies: Mapping[str, str],
+) -> str:
+    status = "unavailable"
     with contextlib.suppress(Exception):
-        return session_ok(cookies) is True
-    return False
+        status = "active" if await session_ok(cookies) is True else "invalid"
+    return status
 
 
 async def _admit(
     websocket: WebSocket,
     team_id: object,
-    session_ok: Callable[[Mapping[str, str]], bool],
+    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
 ) -> str | None:
     origin = canonical_origin(websocket.headers.get("origin"))
     if origin is None or origin not in ALLOWED_ORIGINS:
@@ -498,8 +501,9 @@ async def _admit(
     except team.TeamRequestError:
         await websocket.close(code=4400)
         return None
-    if not _session_valid(session_ok, websocket.cookies):
-        await websocket.close(code=4401)
+    session_status = await _session_status(session_ok, websocket.cookies)
+    if session_status != "active":
+        await websocket.close(code=1013 if session_status == "unavailable" else 4401)
         return None
     return canonical_id
 
@@ -508,7 +512,7 @@ async def serve(
     websocket: WebSocket,
     team_id: object,
     *,
-    session_ok: Callable[[Mapping[str, str]], bool],
+    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session."""
     canonical_id = await _admit(websocket, team_id, session_ok)
@@ -528,9 +532,10 @@ async def serve(
                 return
             # A week-long cookie can expire or be rotated while a socket is open. Revalidating the
             # signed token before every operation prevents that connection from extending authority.
-            if not _session_valid(session_ok, websocket.cookies):
+            session_status = await _session_status(session_ok, websocket.cookies)
+            if session_status != "active":
                 connection.closed = True
-                await websocket.close(code=4401)
+                await websocket.close(code=1013 if session_status == "unavailable" else 4401)
                 return
             await _dispatch(websocket, connection, canonical_id, frame)
     except WebSocketDisconnect, RuntimeError, OSError:

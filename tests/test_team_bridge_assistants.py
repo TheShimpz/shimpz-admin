@@ -101,6 +101,7 @@ class _LiveTeamCase(unittest.TestCase):
                 "PYTHONPATH": str(ROOT / "backend"),
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_TEAM_URL": self.team_url,
                 "SHIMPZ_TEAM_TOKEN_FILE": str(self.token_file),
             }
@@ -661,7 +662,10 @@ class TeamAssistantRouteTest(_LiveTeamCase):
             document["malformed"],
             {"status": 400, "body": {"detail": "request body must contain only team_name and password"}},
         )
-        self.assertEqual(document["wrong_password"], {"status": 403, "body": {"detail": "admin password is incorrect"}})
+        self.assertEqual(
+            document["wrong_password"],
+            {"status": 403, "body": {"detail": "Supervisor password is incorrect"}},
+        )
         self.assertEqual(
             document["wrong_name"], {"status": 400, "body": {"detail": "Team name confirmation does not match"}}
         )

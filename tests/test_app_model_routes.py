@@ -26,7 +26,11 @@ class ModelProviderRouteTests(unittest.TestCase):
         root = Path(cls.tempdir.name)
         with mock.patch.dict(
             os.environ,
-            {"SHIMPZ_REPO": str(root), "SHIMPZ_ADMIN_STORE": str(root / "admin.json")},
+            {
+                "SHIMPZ_REPO": str(root),
+                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
+            },
         ):
             sys.modules.pop("app", None)
             cls.admin_app = importlib.import_module("app")

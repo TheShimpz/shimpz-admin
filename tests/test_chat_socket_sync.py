@@ -111,6 +111,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(cls.root),
                 "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
             },
         ):

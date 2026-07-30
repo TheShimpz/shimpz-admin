@@ -13,7 +13,7 @@ import {
 } from './validate.js';
 
 const MAX_TEAMS = 128;
-const MAX_ADMIN_PASSWORD_CHARS = 4096;
+const MAX_PASSWORD_CHARS = 4096;
 const MAX_SELECTED_FILES = 8;
 const MAX_STORED_INTENT_BYTES = 16 * 1024;
 const MAX_INSTALLED_ASSISTANTS = 128;
@@ -562,8 +562,8 @@ export async function deleteTeam(fetcher, id, name, password) {
   if (typeof name !== 'string' || name !== target.name) {
     throw new LocalApiError('Enter the exact Team name.');
   }
-  if (typeof password !== 'string' || !password || password.length > MAX_ADMIN_PASSWORD_CHARS) {
-    throw new LocalApiError('Enter the current Admin password.');
+  if (typeof password !== 'string' || !password || password.length > MAX_PASSWORD_CHARS) {
+    throw new LocalApiError('Enter the current Supervisor password.');
   }
 
   const attempt = ++generation;

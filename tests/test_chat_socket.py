@@ -106,6 +106,7 @@ class ChatWebSocketTests(unittest.TestCase):
             {
                 "SHIMPZ_REPO": str(cls.root),
                 "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
+                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
             },
         ):
@@ -220,6 +221,27 @@ class ChatWebSocketTests(unittest.TestCase):
                 )
                 await websocket.finish()
                 turn.assert_not_called()
+
+        asyncio.run(scenario())
+
+    def test_session_authority_unavailability_uses_retryable_close_code(self) -> None:
+        async def scenario() -> None:
+            unavailable = self.admin_app.SessionEvidenceUnavailableError()
+            with mock.patch.object(
+                self.admin_app,
+                "_session_ok",
+                new=mock.AsyncMock(side_effect=[True, unavailable]),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "must not run", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await websocket.next_message(),
+                    {"type": "websocket.close", "code": 1013, "reason": ""},
+                )
+                await websocket.finish()
 
         asyncio.run(scenario())
 
