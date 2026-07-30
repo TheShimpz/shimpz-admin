@@ -17,7 +17,7 @@ import time
 _N, _R, _P, _DKLEN = 2**14, 8, 1, 32
 _MAXMEM = 128 * _N * _R * 4  # ~64 MiB headroom
 
-TTL = 7 * 24 * 3600  # session lifetime; single-operator loopback tool, revocable via secret rotate
+TTL = 7 * 24 * 3600  # session lifetime; single-Supervisor loopback tool, revocable via secret rotate
 _SCHEME = "v1"
 
 

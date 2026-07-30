@@ -1,6 +1,6 @@
 """One-use browser handoffs for local OAuth callbacks.
 
-The Admin session cookie belongs to the hostname the operator used (commonly
+The Admin session cookie belongs to the hostname the Supervisor used (commonly
 ``localhost``), while reviewed local OAuth callbacks deliberately use
 ``127.0.0.1``. Cookies cannot safely cross that hostname boundary. This tiny
 process-local store therefore lets an authenticated Admin request authorize
