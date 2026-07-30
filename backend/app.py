@@ -375,6 +375,34 @@ if ADMIN_PROFILE == "local":
     app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
 
 
+async def local_space_reset(request: Request):
+    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
+    if set(payload) != {"password"} or not isinstance(payload["password"], str):
+        raise HTTPException(status_code=400, detail="request body must contain only password")
+    password = payload["password"]
+    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
+        raise HTTPException(status_code=400, detail="Supervisor password is invalid")
+    record = state.get()
+    try:
+        password_ok = await asyncio.to_thread(
+            auth.verify_password,
+            password,
+            record.get("salt", ""),
+            record.get("password_hash", ""),
+        )
+    except (TypeError, ValueError):
+        log.warning("Admin password record is invalid")
+        raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
+    if not password_ok:
+        log.info("Space reset password confirmation failed")
+        raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
+    return await run_in_threadpool(_team_response, team.reset_space)
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])
+
+
 # ── Teams + Assistants: authenticated control plane for team. Every route stays under
 # /api/ and outside OPEN_API, so the current profile's Supervisor session is required before the
 # private bearer bridge can run. Admin has no Docker socket and preserves bounded Team JSON/status. ──

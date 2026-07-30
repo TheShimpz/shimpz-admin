@@ -160,6 +160,32 @@ class AuthRouteTests(unittest.TestCase):
             record["password_hash"],
         )
 
+    def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
+        password = "correct horse battery staple"
+        asyncio.run(
+            self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
+        )
+        reset = self._request("/api/space", {"password": password})
+        reset.scope["method"] = "DELETE"
+        expected = self.admin_app.team.TeamResponse(200, {"reset": True})
+
+        with mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset:
+            response = asyncio.run(self.admin_app.local_space_reset(reset))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.body), {"reset": True})
+        team_reset.assert_called_once_with()
+
+        wrong = self._request("/api/space", {"password": "definitely wrong"})
+        wrong.scope["method"] = "DELETE"
+        with (
+            self.assertRaises(self.admin_app.HTTPException) as caught,
+            mock.patch.object(self.admin_app.team, "reset_space") as blocked,
+        ):
+            asyncio.run(self.admin_app.local_space_reset(wrong))
+        self.assertEqual(caught.exception.status_code, 403)
+        blocked.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -95,6 +95,10 @@ def list_teams() -> TeamResponse:
     return _call("GET", "/v1/teams")
 
 
+def reset_space() -> TeamResponse:
+    return _call("DELETE", "/v1/space")
+
+
 def create(team_id: object, team_name: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     if not isinstance(team_name, str) or not team_name.strip() or len(team_name) > MAX_TEAM_NAME_CHARS:
