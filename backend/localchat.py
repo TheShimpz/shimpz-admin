@@ -16,10 +16,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 
-import chat_ws_common
 import modelproviders
 
 import teams
+from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
 MAX_REPLY_CHARS = 64 * 1024

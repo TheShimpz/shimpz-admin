@@ -14,11 +14,11 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-import chat_ws_common
 import localchat
 from fastapi import WebSocket, WebSocketDisconnect
 
 import teams
+from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
 MAX_FRAME_BYTES = 512 * 1024

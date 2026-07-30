@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 
-import chat_ws_common
-import team_contract
 from team_client import TeamRequestError
+
+from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import websocket as chat_ws_common
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_CHAT_MESSAGE_CHARS = team_contract.MAX_CHAT_MESSAGE_CHARS

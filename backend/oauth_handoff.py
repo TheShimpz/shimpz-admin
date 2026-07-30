@@ -23,7 +23,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-import chat_ws_common
+from protocol.http.v1 import websocket as chat_ws_common
 
 HANDOFF_TTL_SECONDS = 90
 HANDOFF_CAPACITY = 256

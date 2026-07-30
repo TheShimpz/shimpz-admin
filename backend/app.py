@@ -29,12 +29,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adminstore
 import auth
 import chat_ws
-import chat_ws_common
 import modelproviders
 import notifications
 import oauth_handoff
 
 import teams
+from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")

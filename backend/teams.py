@@ -13,10 +13,11 @@ import re
 
 import accounts_oauth
 import chat_payloads
-import chat_ws_common
 import modelproviders
 import team_client
-import team_contract
+
+from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 
