@@ -209,10 +209,14 @@ def introspect(token: str) -> AccountResponse:
     if response.status != 200:
         return response
     body = response.body
-    expected = {"version", "active", "account_id", "supervisor"} if body.get("active") is True else {
-        "version",
-        "active",
-    }
+    expected = (
+        {"version", "active", "account_id", "supervisor"}
+        if body.get("active") is True
+        else {
+            "version",
+            "active",
+        }
+    )
     if (
         set(body) != expected
         or type(body.get("version")) is not int

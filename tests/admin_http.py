@@ -83,9 +83,7 @@ class AdminHTTPServer:
                 "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
-                "SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE": str(
-                    supervisor_directory / "public.pem"
-                ),
+                "SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE": str(supervisor_directory / "public.pem"),
                 "SHIMPZ_LOCAL_SUPERVISOR_KEY_GROUP": grp.getgrgid(os.getgid()).gr_name,
                 **self.environment,
             },

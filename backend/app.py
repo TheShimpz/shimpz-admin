@@ -249,7 +249,7 @@ async def _gate(request: Request, call_next):
     try:
         with _team_session_scope(request.cookies):
             return await call_next(request)
-    except (supervisor.SupervisorAuthorityError, team.TeamRequestError):
+    except supervisor.SupervisorAuthorityError, team.TeamRequestError:
         return JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
 
 
@@ -390,7 +390,7 @@ async def local_space_reset(request: Request):
             record.get("salt", ""),
             record.get("password_hash", ""),
         )
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         log.warning("Admin password record is invalid")
         raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
     if not password_ok:
@@ -459,6 +459,8 @@ async def model_provider_configure(provider: str, request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except models.ModelProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
 def model_provider_delete(provider: str):
     try:
         return models.remove(provider)

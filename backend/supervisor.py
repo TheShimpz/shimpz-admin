@@ -85,9 +85,13 @@ def _private_key(identity: LocalIdentity) -> Ed25519PrivateKey:
 
 
 def _public_bytes(identity: LocalIdentity) -> bytes:
-    return _private_key(identity).public_key().public_bytes(
-        Encoding.PEM,
-        PublicFormat.SubjectPublicKeyInfo,
+    return (
+        _private_key(identity)
+        .public_key()
+        .public_bytes(
+            Encoding.PEM,
+            PublicFormat.SubjectPublicKeyInfo,
+        )
     )
 
 

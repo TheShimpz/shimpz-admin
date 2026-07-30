@@ -234,9 +234,7 @@ class ChatWebSocketTests(unittest.TestCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "must not run", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "must not run", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_message(),
                     {"type": "websocket.close", "code": 1013, "reason": ""},

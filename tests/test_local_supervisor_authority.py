@@ -61,9 +61,7 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         raw = self.public_key.read_bytes()
         public = load_pem_public_key(raw)
         self.assertNotIn(identity.private_key_hex.encode(), raw)
-        expected_public = Ed25519PrivateKey.from_private_bytes(
-            bytes.fromhex(identity.private_key_hex)
-        ).public_key()
+        expected_public = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(identity.private_key_hex)).public_key()
         self.assertEqual(
             public.public_bytes(Encoding.Raw, PublicFormat.Raw),
             expected_public.public_bytes(Encoding.Raw, PublicFormat.Raw),

@@ -83,9 +83,7 @@ class AuthRouteTests(unittest.TestCase):
     def _request(path: str, payload: dict[str, object] | None = None) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
-        headers = (
-            [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())] if body else []
-        )
+        headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())] if body else []
         scope = {
             "type": "http",
             "asgi": {"version": "3.0"},
@@ -142,15 +140,11 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "correct horse battery staple"
-        asyncio.run(
-            self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
-        )
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         record = self.admin_app.state.get()
 
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
-            response = asyncio.run(
-                self.admin_app.login(self._request("/api/login", {"password": password}))
-            )
+            response = asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
 
         self.assertEqual(response.status_code, 200)
         to_thread.assert_awaited_once_with(
@@ -162,9 +156,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
         password = "correct horse battery staple"
-        asyncio.run(
-            self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
-        )
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
         expected = self.admin_app.team.TeamResponse(200, {"reset": True})
