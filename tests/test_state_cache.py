@@ -57,6 +57,20 @@ class AdminStoreCacheTests(unittest.TestCase):
 
         read_store.assert_not_called()
 
+    def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
+        state.set_password("correct horse battery staple")
+        first = state.local_supervisor()
+
+        self.assertRegex(first.supervisor_id, r"^[0-9a-f]{32}$")
+        self.assertRegex(first.private_key_hex, r"^[0-9a-f]{64}$")
+        self.assertEqual(state.local_supervisor(), first)
+
+    def test_partial_local_supervisor_record_is_never_repaired(self) -> None:
+        state._write({"supervisor_id": "a" * 32})
+
+        with self.assertRaises(state.supervisor.SupervisorAuthorityError):
+            state.set_password("correct horse battery staple")
+
 
 if __name__ == "__main__":
     unittest.main()

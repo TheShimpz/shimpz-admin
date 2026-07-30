@@ -14,8 +14,10 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 import models
+import supervisor as local_supervisor
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import supervisor as supervisor_contract
 
 log = logging.getLogger("shimpz-admin")
 
@@ -26,7 +28,19 @@ MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
 FILE_NAME_HEADER = "X-Shimpz-Filename"
-_SUPERVISOR_SESSION: ContextVar[tuple[str, bool] | None] = ContextVar("shimpz_supervisor_session", default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class _SupervisorSession:
+    value: str
+    account: bool
+    local_identity: local_supervisor.LocalIdentity | None
+
+
+_SUPERVISOR_SESSION: ContextVar[_SupervisorSession | None] = ContextVar(
+    "shimpz_supervisor_session",
+    default=None,
+)
 
 
 class TeamRequestError(ValueError):
@@ -51,7 +65,12 @@ _token_cache: _TokenCache | None = None
 
 
 @contextmanager
-def supervisor_session(value: object, *, account: bool):
+def supervisor_session(
+    value: object,
+    *,
+    account: bool,
+    local_identity: local_supervisor.LocalIdentity | None = None,
+):
     """Bind one already-validated human session to downstream Team calls in this request."""
     if (
         not isinstance(value, str)
@@ -62,7 +81,21 @@ def supervisor_session(value: object, *, account: bool):
         raise TeamRequestError("Supervisor session is unavailable")
     if type(account) is not bool:
         raise TeamRequestError("Supervisor session kind is invalid")
-    reset = _SUPERVISOR_SESSION.set((value, account))
+    if account:
+        if local_identity is not None:
+            raise TeamRequestError("Hosted Supervisor session cannot carry a Local identity")
+    else:
+        try:
+            validated = local_supervisor.identity_from_record(
+                {
+                    "supervisor_id": local_identity.supervisor_id,
+                    "supervisor_signing_key": local_identity.private_key_hex,
+                }
+            )
+        except (AttributeError, local_supervisor.SupervisorAuthorityError) as exc:
+            raise TeamRequestError("Local Supervisor identity is unavailable") from exc
+        local_identity = validated
+    reset = _SUPERVISOR_SESSION.set(_SupervisorSession(value, account, local_identity))
     try:
         yield
     finally:
@@ -71,7 +104,39 @@ def supervisor_session(value: object, *, account: bool):
 
 def _account_session() -> str:
     binding = _SUPERVISOR_SESSION.get()
-    return binding[0] if binding is not None and binding[1] else ""
+    return binding.value if binding is not None and binding.account else ""
+
+
+def _local_assertion(
+    method: str,
+    path: str,
+    body: bytes | None,
+    *,
+    content_type: str | None,
+    filename: str | None,
+    model_credential: tuple[str, str] | None,
+) -> str:
+    binding = _SUPERVISOR_SESSION.get()
+    if binding is None or binding.account:
+        return ""
+    if binding.local_identity is None:
+        raise local_supervisor.SupervisorAuthorityError("Local Supervisor identity is unavailable")
+    if filename is not None:
+        if body is None or content_type is None:
+            raise local_supervisor.SupervisorAuthorityError("Local Supervisor file binding is invalid")
+        body_binding = local_supervisor.file_body(body, filename, content_type)
+    elif body is not None:
+        body_binding = local_supervisor.json_body(body)
+    else:
+        body_binding = local_supervisor.empty_body()
+    return local_supervisor.sign_request(
+        binding.local_identity,
+        binding.value,
+        method=method,
+        path=path,
+        body=body_binding,
+        model=local_supervisor.model_binding(model_credential),
+    )
 
 
 def _token_identity(path: Path) -> tuple[int, int, int, int]:
@@ -204,6 +269,16 @@ def _request(
             # input, never enter a Team payload, and are never included in this module's logs.
             headers["X-Shimpz-Model-Provider"] = provider
             headers["X-Shimpz-Model-Api-Key"] = api_key
+        assertion = _local_assertion(
+            method,
+            path,
+            body,
+            content_type=content_type,
+            filename=filename,
+            model_credential=model_credential,
+        )
+        if assertion:
+            headers[supervisor_contract.ASSERTION_HEADER] = f"Bearer {assertion}"
         # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
         # socket would require serialization and could retain an authenticated connection across
         # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.

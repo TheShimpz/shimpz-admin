@@ -29,6 +29,7 @@ import auth
 import models
 import notifications
 import state
+import supervisor
 from team import bridge as team
 
 from chat import socket as chat_socket
@@ -101,6 +102,8 @@ OPEN_API = frozenset(
 async def _lifespan(_application: FastAPI):
     if _admin_profile() != ADMIN_PROFILE:
         raise RuntimeError("Admin profile changed after route registration")
+    if ADMIN_PROFILE == "local" and state.is_initialized():
+        await asyncio.to_thread(_materialize_local_supervisor)
     yield
 
 
@@ -109,7 +112,7 @@ OAUTH_HANDOFFS = handoff_store.OAuthHandoffStore()
 
 
 class SessionEvidenceUnavailableError(RuntimeError):
-    """The Hosted Account authority could not provide current session evidence."""
+    """The profile authority could not provide current Supervisor evidence."""
 
 
 @app.exception_handler(SessionEvidenceUnavailableError)
@@ -156,13 +159,32 @@ def _set_session(resp, request, token):
     )
 
 
-def _local_session_ok(cookies):
-    return auth.verify_session(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
+def _materialize_local_supervisor() -> None:
+    supervisor.materialize_public_key(state.local_supervisor())
+
+
+def _initialize_local_supervisor(password: str) -> None:
+    state.set_password(password)
+    _materialize_local_supervisor()
+
+
+def _local_session_evidence(cookies) -> dict[str, object] | None:
+    record = state.get()
+    if not auth.verify_session(record.get("session_secret", ""), cookies.get(COOKIE, "")):
+        return None
+    try:
+        identity = supervisor.identity_from_record(record)
+    except supervisor.SupervisorAuthorityError as exc:
+        raise SessionEvidenceUnavailableError from exc
+    return {
+        "profile": "local",
+        "supervisor_id": identity.supervisor_id,
+    }
 
 
 async def _session_evidence(cookies) -> dict[str, object] | None:
     if ADMIN_PROFILE == "local":
-        return {"profile": "local"} if _local_session_ok(cookies) else None
+        return _local_session_evidence(cookies)
     token = cookies.get(COOKIE, "")
     if not token:
         return None
@@ -178,6 +200,17 @@ async def _session_evidence(cookies) -> dict[str, object] | None:
 
 async def _session_ok(cookies) -> bool:
     return await _session_evidence(cookies) is not None
+
+
+def _team_session_scope(cookies):
+    token = cookies.get(COOKIE, "")
+    if ADMIN_PROFILE == "hosted":
+        return team.supervisor_session(token, account=True)
+    return team.supervisor_session(
+        token,
+        account=False,
+        local_identity=state.local_supervisor(),
+    )
 
 
 def _client_ip(request: Request) -> str:
@@ -213,11 +246,11 @@ async def _gate(request: Request, call_next):
     if evidence is None:
         return JSONResponse({"detail": "unauthenticated"}, status_code=401)
     request.state.supervisor = evidence
-    with team.supervisor_session(
-        request.cookies.get(COOKIE, ""),
-        account=ADMIN_PROFILE == "hosted",
-    ):
-        return await call_next(request)
+    try:
+        with _team_session_scope(request.cookies):
+            return await call_next(request)
+    except (supervisor.SupervisorAuthorityError, team.TeamRequestError):
+        return JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
 
 
 @app.get("/api/session")
@@ -331,7 +364,7 @@ async def admin_setup(request: Request):
             raise HTTPException(status_code=400, detail=f"password must be at least {MIN_PASSWORD_LEN} characters")
         if len(password) > MAX_PASSWORD_CHARS:
             raise HTTPException(status_code=400, detail="password is too long")
-        await asyncio.to_thread(state.set_password, password)
+        await asyncio.to_thread(_initialize_local_supervisor, password)
     resp = JSONResponse({"ok": True})
     _set_session(resp, request, auth.issue_session(state.get()["session_secret"]))
     log.info("admin password created")
@@ -570,10 +603,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         websocket,
         team_id,
         session_ok=_session_ok,
-        request_scope=lambda cookies: team.supervisor_session(
-            cookies.get(COOKIE, ""),
-            account=ADMIN_PROFILE == "hosted",
-        ),
+        request_scope=_team_session_scope,
     )
 
 

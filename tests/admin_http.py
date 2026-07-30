@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import grp
 import http.client
 import json
 import os
@@ -60,6 +61,9 @@ class AdminHTTPServer:
             return int(listener.getsockname()[1])
 
     def __enter__(self) -> AdminHTTPServer:
+        supervisor_directory = self.root / "supervisor"
+        supervisor_directory.mkdir(mode=0o2770)
+        supervisor_directory.chmod(0o2770)
         self.process = subprocess.Popen(
             [
                 sys.executable,
@@ -79,6 +83,10 @@ class AdminHTTPServer:
                 "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
+                "SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE": str(
+                    supervisor_directory / "public.pem"
+                ),
+                "SHIMPZ_LOCAL_SUPERVISOR_KEY_GROUP": grp.getgrgid(os.getgid()).gr_name,
                 **self.environment,
             },
             stdout=subprocess.PIPE,

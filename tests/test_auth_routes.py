@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -25,6 +26,9 @@ class AuthRouteTests(unittest.TestCase):
         cls.tempdir = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.tempdir.cleanup)
         root = Path(cls.tempdir.name)
+        cls.key_directory = root / "supervisor"
+        cls.key_directory.mkdir(mode=0o2770)
+        cls.key_directory.chmod(0o2770)
         with mock.patch.dict(
             os.environ,
             {
@@ -39,9 +43,25 @@ class AuthRouteTests(unittest.TestCase):
         previous_store = cls.admin_app.state.STORE_PATH
         cls.admin_app.state.STORE_PATH = root / "admin.json"
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        previous_public_key = cls.admin_app.supervisor.PUBLIC_KEY_FILE
+        cls.admin_app.supervisor.PUBLIC_KEY_FILE = cls.key_directory / "public.pem"
+        cls.addClassCleanup(
+            setattr,
+            cls.admin_app.supervisor,
+            "PUBLIC_KEY_FILE",
+            previous_public_key,
+        )
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.supervisor.PUBLIC_KEY_FILE.unlink(missing_ok=True)
+        group = mock.patch.object(
+            self.admin_app.supervisor.grp,
+            "getgrnam",
+            return_value=types.SimpleNamespace(gr_gid=os.getgid()),
+        )
+        group.start()
+        self.addCleanup(group.stop)
 
     def test_open_api_is_the_exact_reviewed_auth_surface(self) -> None:
         self.assertEqual(
@@ -118,7 +138,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("set-cookie", response.headers)
         self.assertTrue(self.admin_app.state.is_initialized())
-        to_thread.assert_awaited_once_with(self.admin_app.state.set_password, password)
+        to_thread.assert_awaited_once_with(self.admin_app._initialize_local_supervisor, password)
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "correct horse battery staple"

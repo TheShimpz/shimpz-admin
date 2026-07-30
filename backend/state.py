@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import auth
+import supervisor
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_ADMIN_STORE") or "/data/admin.json")
 _MODEL_CREDENTIAL_LOCK = threading.RLock()
@@ -105,8 +106,20 @@ def set_password(password):
     data["password_hash"] = auth.hash_password(password, salt)
     if not data.get("session_secret"):
         data["session_secret"] = auth.new_secret()
+    identity_fields = {"supervisor_id", "supervisor_signing_key"} & set(data)
+    if identity_fields:
+        identity = supervisor.identity_from_record(data)
+    else:
+        identity = supervisor.new_identity()
+        data["supervisor_id"] = identity.supervisor_id
+        data["supervisor_signing_key"] = identity.private_key_hex
     data.setdefault("created", int(time.time()))
     _write(data)
+
+
+def local_supervisor() -> supervisor.LocalIdentity:
+    """Return the validated private Local Supervisor identity."""
+    return supervisor.identity_from_record(_read())
 
 
 def model_credentials():

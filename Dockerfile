@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
-# check=skip=SecretsUsedInArgOrEnv ; SHIMPZ_TEAM_TOKEN_GID is a numeric group id, never a credential
+# check=skip=SecretsUsedInArgOrEnv ; shared GIDs are numeric access boundaries, never credentials
 #
 # shimpz-admin — the persistent local Team control panel. Runs as a compose service on 127.0.0.1
 # only, holds no Docker socket or host configuration mount, and persists only its private `/data`.
@@ -39,19 +39,26 @@ ARG SOURCE_DATE_EPOCH=0
 COPY --from=dependencies /opt/venv /opt/venv
 
 # Runs as the host repo owner (uid 1000) for the existing Admin data-volume ownership contract.
-RUN groupadd -g 1000 admin && useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin admin
+RUN groupadd -g 1000 admin && \
+    groupadd -g 10021 shimpzsupervisor-key && \
+    useradd -u 1000 -g 1000 -G 10021 -M -s /usr/sbin/nologin admin
 
 WORKDIR /app/backend
-COPY backend/app.py backend/auth.py backend/models.py backend/model_catalog.json backend/notifications.py backend/state.py ./
+COPY backend/app.py backend/auth.py backend/models.py backend/model_catalog.json backend/notifications.py \
+    backend/state.py backend/supervisor.py ./
 COPY backend/chat/local.py backend/chat/payloads.py backend/chat/socket.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/handoff.py ./integrations/
 COPY backend/team/bridge.py backend/team/transport.py ./team/
-COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
+COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/supervisor.py \
+    backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --from=ui /w/build /app/frontend/build
 
-# /data → named volume (admin.json 0600).
-RUN mkdir -p /data && chown 1000:1000 /data
+# /data → named volume (admin.json 0600); the public verifier volume contains no private key.
+RUN mkdir -p /data /run/shimpz-local-supervisor && \
+    chown 1000:1000 /data && \
+    chown root:shimpzsupervisor-key /run/shimpz-local-supervisor && \
+    chmod 2770 /run/shimpz-local-supervisor
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -60,6 +67,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
 # copy surface omits a module imported by the Admin application.
 RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app"
-USER 1000:1000
+USER admin
 EXPOSE 4600
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--log-level", "warning"]
