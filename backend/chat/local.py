@@ -27,15 +27,15 @@ MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
-_ACCOUNT_CHALLENGE_RESPONSE_FIELDS = frozenset(
+_INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
-MAX_ACCOUNT_REQUIREMENTS = 64
-MAX_ACCOUNT_SCOPES = 32
-MAX_ACCOUNT_POWERS = 128
-MAX_ACCOUNT_SCOPE_CHARS = 128
-MAX_ACCOUNT_LABEL_CHARS = 80
-MAX_ACCOUNT_SUMMARY_CHARS = 160
+MAX_INTEGRATION_REQUIREMENTS = 64
+MAX_INTEGRATION_SCOPES = 32
+MAX_INTEGRATION_POWERS = 128
+MAX_INTEGRATION_SCOPE_CHARS = 128
+MAX_INTEGRATION_LABEL_CHARS = 80
+MAX_INTEGRATION_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
     "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
     "assistant-integration-challenge-expired": "the Assistant integration expired; retry the message",
@@ -209,7 +209,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             response,
             team_id,
             "integrations-required",
-            _ACCOUNT_CHALLENGE_RESPONSE_FIELDS,
+            _INTEGRATION_CHALLENGE_RESPONSE_FIELDS,
         )
         expires_in = response.body["expires_in"]
         raw_requirements = response.body["requirements"]
@@ -218,7 +218,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             or isinstance(expires_in, bool)
             or not 1 <= expires_in <= 900
             or not isinstance(raw_requirements, list)
-            or not 1 <= len(raw_requirements) <= MAX_ACCOUNT_REQUIREMENTS
+            or not 1 <= len(raw_requirements) <= MAX_INTEGRATION_REQUIREMENTS
         ):
             raise ValueError("invalid integration metadata")
 
@@ -247,12 +247,12 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             raw_powers = raw["powers"]
             if (
                 not isinstance(raw_scopes, list)
-                or not 1 <= len(raw_scopes) <= MAX_ACCOUNT_SCOPES
+                or not 1 <= len(raw_scopes) <= MAX_INTEGRATION_SCOPES
                 or not isinstance(raw_powers, list)
-                or not 1 <= len(raw_powers) <= MAX_ACCOUNT_POWERS
+                or not 1 <= len(raw_powers) <= MAX_INTEGRATION_POWERS
             ):
                 raise ValueError("invalid integration capabilities")
-            scopes = [chat_ws_common.public_text(scope, MAX_ACCOUNT_SCOPE_CHARS) for scope in raw_scopes]
+            scopes = [chat_ws_common.public_text(scope, MAX_INTEGRATION_SCOPE_CHARS) for scope in raw_scopes]
             if len(set(scopes)) != len(scopes):
                 raise ValueError("duplicate integration scope")
 
@@ -268,18 +268,18 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                 powers.append(
                     {
                         "id": power_id,
-                        "name": chat_ws_common.public_text(raw_power["name"], MAX_ACCOUNT_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(raw_power["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
+                        "name": chat_ws_common.public_text(raw_power["name"], MAX_INTEGRATION_LABEL_CHARS),
+                        "summary": chat_ws_common.public_text(raw_power["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     }
                 )
             requirements.append(
                 {
                     "assistant_id": assistant_id,
-                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_ACCOUNT_LABEL_CHARS),
+                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_INTEGRATION_LABEL_CHARS),
                     "integration_id": integration_id,
                     "provider": team.canonical_assistant_id(raw["provider"]),
-                    "name": chat_ws_common.public_text(raw["name"], MAX_ACCOUNT_LABEL_CHARS),
-                    "summary": chat_ws_common.public_text(raw["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
+                    "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
+                    "summary": chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     "scopes": scopes,
                     "powers": powers,
                 }
