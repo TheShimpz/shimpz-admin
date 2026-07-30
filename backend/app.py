@@ -26,14 +26,14 @@ from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import adminstore
 import auth
-import chat_ws
-import modelproviders
+import models
 import notifications
-import oauth_handoff
+import state
+from team import bridge as team
 
-import teams
+from chat import socket as chat_socket
+from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
@@ -83,7 +83,7 @@ OPEN_API = frozenset(
 )
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None)
-OAUTH_HANDOFFS = oauth_handoff.OAuthHandoffStore()
+OAUTH_HANDOFFS = handoff_store.OAuthHandoffStore()
 
 
 def _is_https(request):
@@ -120,7 +120,7 @@ def _set_session(resp, request, token):
 
 
 def _session_ok(cookies):
-    return auth.verify_session(adminstore.get().get("session_secret", ""), cookies.get(COOKIE, ""))
+    return auth.verify_session(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
 
 
 def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
@@ -154,16 +154,16 @@ async def _gate(request: Request, call_next):
 async def session(request: Request):
     return {
         "authenticated": _session_ok(request.cookies),
-        "initialized": adminstore.is_initialized(),
+        "initialized": state.is_initialized(),
         "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
     }
 
 
 @app.post("/api/login")
 async def login(request: Request, payload: dict):
-    if not adminstore.is_initialized():
+    if not state.is_initialized():
         raise HTTPException(status_code=409, detail="no admin password set yet — create one first")
-    rec = adminstore.get()
+    rec = state.get()
     password_ok = await asyncio.to_thread(
         auth.verify_password,
         str(payload.get("password", "")),
@@ -183,7 +183,7 @@ async def login(request: Request, payload: dict):
 async def logout(request: Request):
     session_token = request.cookies.get(COOKIE, "")
     if session_token:
-        with suppress(oauth_handoff.OAuthHandoffError):
+        with suppress(handoff_store.OAuthHandoffError):
             OAUTH_HANDOFFS.cancel_session(session_token)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE, path="/")
@@ -193,14 +193,14 @@ async def logout(request: Request):
 @app.post("/api/admin/setup")
 async def admin_setup(request: Request, payload: dict):
     async with _ADMIN_SETUP_LOCK:
-        if adminstore.is_initialized():
+        if state.is_initialized():
             raise HTTPException(status_code=409, detail="admin password already set")
         password = str(payload.get("password", ""))
         if len(password) < MIN_PASSWORD_LEN:
             raise HTTPException(status_code=400, detail=f"password must be at least {MIN_PASSWORD_LEN} characters")
-        await asyncio.to_thread(adminstore.set_password, password)
+        await asyncio.to_thread(state.set_password, password)
     resp = JSONResponse({"ok": True})
-    _set_session(resp, request, auth.issue_session(adminstore.get()["session_secret"]))
+    _set_session(resp, request, auth.issue_session(state.get()["session_secret"]))
     log.info("admin password created")
     return resp
 
@@ -211,12 +211,12 @@ async def admin_setup(request: Request, payload: dict):
 def _team_response(action):
     try:
         response = action()
-    except teams.TeamRequestError as exc:
+    except team.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return JSONResponse(status_code=response.status, content=response.body)
 
 
-async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON_BODY_BYTES) -> dict:
+async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_BODY_BYTES) -> dict:
     """Read one JSON object without allowing a Power request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
@@ -249,7 +249,7 @@ async def _bounded_json_object(request: Request, max_bytes: int = teams.MAX_JSON
 @app.get("/api/model-providers")
 def model_providers_status():
     """Return masked local provider state; cleartext keys never leave the Admin backend."""
-    return modelproviders.status()
+    return models.status()
 
 
 @app.put("/api/model-providers/{provider}")
@@ -258,23 +258,23 @@ async def model_provider_configure(provider: str, request: Request):
     if set(payload) != {"api_key"}:
         raise HTTPException(status_code=400, detail="request body must contain only api_key")
     try:
-        return await asyncio.to_thread(modelproviders.configure, provider, payload["api_key"])
-    except modelproviders.ModelProviderError as exc:
+        return await asyncio.to_thread(models.configure, provider, payload["api_key"])
+    except models.ModelProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    except modelproviders.ModelProviderUnavailableError as exc:
+    except models.ModelProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 @app.delete("/api/model-providers/{provider}")
 def model_provider_delete(provider: str):
     try:
-        return modelproviders.remove(provider)
-    except modelproviders.ModelProviderError as exc:
+        return models.remove(provider)
+    except models.ModelProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
-MAX_MULTIPART_BODY_BYTES = teams.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
+MAX_MULTIPART_BODY_BYTES = team.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
 
 
 class _MultipartBodyTooLargeError(OSError):
@@ -324,14 +324,14 @@ async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
             raise HTTPException(status_code=400, detail="multipart body must contain only one file field")
         upload = items[0][1]
         try:
-            filename = teams.canonical_filename(upload.filename)
-            media_type = teams.canonical_media_type(upload.content_type)
-        except teams.TeamRequestError as exc:
+            filename = team.canonical_filename(upload.filename)
+            media_type = team.canonical_media_type(upload.content_type)
+        except team.TeamRequestError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
-        content = await upload.read(teams.MAX_FILE_UPLOAD_BYTES + 1)
+        content = await upload.read(team.MAX_FILE_UPLOAD_BYTES + 1)
         if not content:
             raise HTTPException(status_code=400, detail="file must contain bytes")
-        if len(content) > teams.MAX_FILE_UPLOAD_BYTES:
+        if len(content) > team.MAX_FILE_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="file upload too large")
         return filename, media_type, content
     finally:
@@ -340,7 +340,7 @@ async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
 
 @app.get("/api/teams")
 def teams_list():
-    return _team_response(teams.list_teams)
+    return _team_response(team.list_teams)
 
 
 @app.post("/api/teams")
@@ -352,10 +352,10 @@ def teams_create(payload: dict):
     team_name = payload["team_name"].strip()
     if not team_name:
         raise HTTPException(status_code=400, detail="team name required")
-    team_id = teams.to_team_id(team_name)
+    team_id = team.to_team_id(team_name)
     if not team_id:
         raise HTTPException(status_code=400, detail="team name has no usable characters")
-    response = _team_response(lambda: teams.create(team_id, team_name))
+    response = _team_response(lambda: team.create(team_id, team_name))
     if 200 <= response.status_code < 300:
         log.info("team created: %s", team_id)
     return response
@@ -373,7 +373,7 @@ async def teams_destroy(team_id: str, request: Request):
     if not 1 <= len(password) <= MAX_ADMIN_PASSWORD_CHARS:
         raise HTTPException(status_code=400, detail="admin password is invalid")
 
-    record = adminstore.get()
+    record = state.get()
     try:
         password_ok = await asyncio.to_thread(
             auth.verify_password,
@@ -390,14 +390,14 @@ async def teams_destroy(team_id: str, request: Request):
 
     return await run_in_threadpool(
         _team_response,
-        lambda: teams.destroy(team_id, team_name),
+        lambda: team.destroy(team_id, team_name),
     )
 
 
 @app.get("/api/teams/{team_id}/inference")
 def team_inference_status(team_id: str):
     """Return only the Team's provider/model selection; credentials remain in this backend."""
-    return _team_response(lambda: teams.get_inference(team_id))
+    return _team_response(lambda: team.get_inference(team_id))
 
 
 @app.put("/api/teams/{team_id}/inference")
@@ -405,18 +405,18 @@ async def team_inference_configure(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
         _team_response,
-        lambda: teams.configure_inference(team_id, payload),
+        lambda: team.configure_inference(team_id, payload),
     )
 
 
 @app.websocket("/api/teams/{team_id}/chat/ws")
 async def team_chat_ws(websocket: WebSocket, team_id: str):
-    await chat_ws.serve(websocket, team_id, session_ok=_session_ok)
+    await chat_socket.serve(websocket, team_id, session_ok=_session_ok)
 
 
 @app.get("/api/teams/{team_id}/assistant-integrations")
 def team_assistant_integrations(team_id: str):
-    response = _team_response(lambda: teams.list_assistant_integrations(team_id))
+    response = _team_response(lambda: team.list_assistant_integrations(team_id))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -430,16 +430,16 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     if not _session_ok(request.cookies):
         raise HTTPException(status_code=401, detail="unauthenticated")
     try:
-        canonical_team = teams.canonical_team_id(team_id)
-        canonical_challenge = teams.canonical_challenge_id(challenge_id)
+        canonical_team = team.canonical_team_id(team_id)
+        canonical_challenge = team.canonical_challenge_id(challenge_id)
         handoff = OAUTH_HANDOFFS.issue(
             team_id=canonical_team,
             challenge_id=canonical_challenge,
             admin_session=session_token,
         )
-    except teams.TeamRequestError as exc:
+    except team.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    except oauth_handoff.OAuthHandoffError as exc:
+    except handoff_store.OAuthHandoffError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     authorization_url = _oauth_origin() + OAUTH_START_PATH + "?" + urlencode({"handoff": handoff})
     return JSONResponse(
@@ -452,12 +452,12 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
 async def team_assistant_integration_disconnect(team_id: str, assistant_id: str, integration_id: str):
     try:
         response = await asyncio.to_thread(
-            teams.disconnect_assistant_integration,
+            team.disconnect_assistant_integration,
             team_id,
             assistant_id,
             integration_id,
         )
-    except teams.TeamRequestError as exc:
+    except team.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     if response.status == 204 and not response.body:
         return Response(status_code=204, headers={"Cache-Control": "no-store"})
@@ -471,13 +471,13 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     try:
         pending = OAUTH_HANDOFFS.consume(handoff)
         result = await asyncio.to_thread(
-            teams.start_assistant_integration_authorization,
+            team.start_assistant_integration_authorization,
             pending.team_id,
             pending.challenge_id,
             pending.session_binding,
             _oauth_callback_mode(),
         )
-    except oauth_handoff.OAuthHandoffError, teams.TeamRequestError:
+    except handoff_store.OAuthHandoffError, team.TeamRequestError:
         return _oauth_chat_redirect("start-failed")
     if result.status != 200:
         log.info("OAuth authorization start rejected (HTTP %s)", result.status)
@@ -512,12 +512,12 @@ async def oauth_cloudflare_callback(request: Request):
     binding = request.cookies.get(OAUTH_COOKIE, "")
     try:
         result = await asyncio.to_thread(
-            teams.complete_cloudflare_oauth_callback,
+            team.complete_cloudflare_oauth_callback,
             state=query["state"],
             claim=query["claim"],
             session_binding=binding,
         )
-    except teams.TeamRequestError:
+    except team.TeamRequestError:
         return _oauth_chat_redirect("callback-failed")
     if result.status != 200:
         log.info("OAuth callback rejected (HTTP %s)", result.status)
@@ -527,17 +527,17 @@ async def oauth_cloudflare_callback(request: Request):
 
 @app.get("/api/assistants")
 def assistants_list():
-    return _team_response(teams.list_assistants)
+    return _team_response(team.list_assistants)
 
 
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
-    return _team_response(lambda: teams.list_installed_assistants(team_id))
+    return _team_response(lambda: team.list_installed_assistants(team_id))
 
 
 @app.get("/api/teams/{team_id}/assistants/{assistant_id}/help")
 def team_assistant_help(team_id: str, assistant_id: str, locale: str = "en"):
-    response = _team_response(lambda: teams.assistant_help(team_id, assistant_id, locale))
+    response = _team_response(lambda: team.assistant_help(team_id, assistant_id, locale))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -547,13 +547,13 @@ async def team_assistant_install(team_id: str, request: Request):
     payload = await _bounded_json_object(request)
     return await run_in_threadpool(
         _team_response,
-        lambda: teams.install_assistant(team_id, payload),
+        lambda: team.install_assistant(team_id, payload),
     )
 
 
 @app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
 def team_assistant_uninstall(team_id: str, assistant_id: str):
-    return _team_response(lambda: teams.uninstall_assistant(team_id, assistant_id))
+    return _team_response(lambda: team.uninstall_assistant(team_id, assistant_id))
 
 
 @app.get("/api/notifications")
@@ -587,7 +587,7 @@ def notifications_clear():
 
 @app.get("/api/teams/{team_id}/files")
 def team_files_list(team_id: str):
-    return _team_response(lambda: teams.list_files(team_id))
+    return _team_response(lambda: team.list_files(team_id))
 
 
 @app.post("/api/teams/{team_id}/files")
@@ -595,13 +595,13 @@ async def team_file_upload(team_id: str, request: Request):
     filename, media_type, content = await _bounded_multipart_file(request)
     return await run_in_threadpool(
         _team_response,
-        lambda: teams.upload_file(team_id, filename, media_type, content),
+        lambda: team.upload_file(team_id, filename, media_type, content),
     )
 
 
 @app.delete("/api/teams/{team_id}/files/{file_id}")
 def team_file_delete(team_id: str, file_id: str):
-    return _team_response(lambda: teams.delete_file(team_id, file_id))
+    return _team_response(lambda: team.delete_file(team_id, file_id))
 
 
 @app.api_route(

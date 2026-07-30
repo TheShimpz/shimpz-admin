@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import team_client
+from team import transport
 
 
 class _Response:
@@ -22,8 +22,8 @@ class _Response:
 
 class TeamClientCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        with team_client._token_cache_lock:
-            team_client._token_cache = None
+        with transport._token_cache_lock:
+            transport._token_cache = None
 
     def test_calls_cache_token_by_file_identity_and_keep_connections_request_scoped(self) -> None:
         connections: list[mock.Mock] = []
@@ -38,24 +38,24 @@ class TeamClientCacheTests(unittest.TestCase):
             token_file = Path(directory) / "token"
             token_file.write_text("first-controller-token", encoding="utf-8")
             with (
-                mock.patch.object(team_client, "TOKEN_FILE", str(token_file)),
+                mock.patch.object(transport, "TOKEN_FILE", str(token_file)),
                 mock.patch.object(
-                    team_client,
+                    transport,
                     "_read_token_file",
-                    wraps=team_client._read_token_file,
+                    wraps=transport._read_token_file,
                 ) as read_token,
                 mock.patch.object(
-                    team_client.http.client,
+                    transport.http.client,
                     "HTTPConnection",
                     side_effect=connection_factory,
                 ) as open_connection,
             ):
-                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
-                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
                 self.assertEqual(read_token.call_count, 1)
 
                 token_file.write_text("rotated-controller-token-value", encoding="utf-8")
-                self.assertEqual(team_client._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
 
         self.assertEqual(read_token.call_count, 2)
         self.assertEqual(open_connection.call_count, 3)

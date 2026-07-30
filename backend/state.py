@@ -112,7 +112,7 @@ def set_password(password):
 def model_credentials():
     """Return the private model-credential records for trusted backend callers only.
 
-    HTTP handlers must project these records through ``modelproviders.status``; this function is
+    HTTP handlers must project these records through ``models.status``; this function is
     intentionally not a route and therefore never defines a browser-readable secret surface.
     """
     records = _read().get("model_credentials", {})

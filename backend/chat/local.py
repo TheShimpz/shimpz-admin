@@ -4,7 +4,7 @@ The browser contract is always ``message/files/assistant_ids``. The requested As
 only a scope: the controller still verifies that every selected Assistant is installed and running.
 An empty scope means Brain-only and is never expanded to all installed Assistants. This backend
 reads controller-owned inference metadata, resolves its API key from ``admin.json`` through the
-non-route ``modelproviders.resolve_api_key``, then delivers it only in fixed private headers on the
+non-route ``models.resolve_api_key``, then delivers it only in fixed private headers on the
 authenticated control network. Successful and failed controller responses are reprojected so a
 buggy controller can never echo that key or internal execution details back to the browser.
 """
@@ -16,9 +16,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 
-import modelproviders
+import models
+from team import bridge as team
 
-import teams
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -94,14 +94,14 @@ def _freeze(value: object) -> object:
 
 
 @dataclass(frozen=True, eq=False)
-class PublicResponse(teams.TeamResponse):
+class PublicResponse(team.TeamResponse):
     """A fully projected response whose nested public payload cannot be mutated."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "body", _freeze(self.body))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, teams.TeamResponse) and self.status == other.status and self.body == other.body
+        return isinstance(other, team.TeamResponse) and self.status == other.status and self.body == other.body
 
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
@@ -135,14 +135,14 @@ class PublicResponse(teams.TeamResponse):
         return event
 
 
-def _unavailable() -> teams.TeamResponse:
+def _unavailable() -> team.TeamResponse:
     return PublicResponse(
         HTTPStatus.SERVICE_UNAVAILABLE,
         {"code": "runtime-unavailable"},
     )
 
 
-def _safe_error(response: teams.TeamResponse) -> teams.TeamResponse:
+def _safe_error(response: team.TeamResponse) -> team.TeamResponse:
     """Reduce one authenticated controller failure to a bounded, non-secret machine code."""
     code = response.body.get("code")
     if not isinstance(code, str) or len(code) > 80 or _ERROR_CODE_RE.fullmatch(code) is None:
@@ -150,8 +150,8 @@ def _safe_error(response: teams.TeamResponse) -> teams.TeamResponse:
     return PublicResponse(response.status, {"code": code})
 
 
-def _inference(team_id: str) -> tuple[str, str] | teams.TeamResponse:
-    response = teams.get_inference(team_id)
+def _inference(team_id: str) -> tuple[str, str] | team.TeamResponse:
+    response = team.get_inference(team_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:
@@ -159,23 +159,23 @@ def _inference(team_id: str) -> tuple[str, str] | teams.TeamResponse:
     provider = response.body.get("provider")
     model = response.body.get("model")
     try:
-        selected_provider = modelproviders.canonical_provider(provider)
-        selected_model = modelproviders.canonical_model(selected_provider, model)
-    except modelproviders.ModelProviderError:
+        selected_provider = models.canonical_provider(provider)
+        selected_model = models.canonical_model(selected_provider, model)
+    except models.ModelProviderError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     if provider != selected_provider:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
     return selected_provider, selected_model
 
 
-def _model_credential(team_id: str) -> tuple[str, str] | teams.TeamResponse:
+def _model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
     inference = _inference(team_id)
-    if isinstance(inference, teams.TeamResponse):
+    if isinstance(inference, team.TeamResponse):
         return inference
     provider, _model = inference
     try:
-        api_key = modelproviders.resolve_api_key(provider)
-    except modelproviders.ModelProviderError:
+        api_key = models.resolve_api_key(provider)
+    except models.ModelProviderError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
     if api_key is None:
         return PublicResponse(HTTPStatus.CONFLICT, {"code": "model-credential-missing"})
@@ -183,7 +183,7 @@ def _model_credential(team_id: str) -> tuple[str, str] | teams.TeamResponse:
 
 
 def _challenge_envelope(
-    response: teams.TeamResponse,
+    response: team.TeamResponse,
     team_id: str,
     status: str,
     fields: frozenset[str],
@@ -202,7 +202,7 @@ def _challenge_envelope(
     return identity
 
 
-def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
+def _project_integration_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
         challenge_id, turn_id = _challenge_envelope(
@@ -236,8 +236,8 @@ def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -
                 "powers",
             }:
                 raise ValueError("invalid integration requirement")
-            assistant_id = teams.canonical_assistant_id(raw["assistant_id"])
-            integration_id = teams.canonical_assistant_id(raw["integration_id"])
+            assistant_id = team.canonical_assistant_id(raw["assistant_id"])
+            integration_id = team.canonical_assistant_id(raw["integration_id"])
             identity = (assistant_id, integration_id)
             if identity in seen_integrations:
                 raise ValueError("duplicate integration")
@@ -261,7 +261,7 @@ def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -
             for raw_power in raw_powers:
                 if not isinstance(raw_power, dict) or set(raw_power) != {"id", "name", "summary"}:
                     raise ValueError("invalid integration Power")
-                power_id = teams.canonical_assistant_id(raw_power["id"])
+                power_id = team.canonical_assistant_id(raw_power["id"])
                 if power_id in seen_powers:
                     raise ValueError("duplicate integration Power")
                 seen_powers.add(power_id)
@@ -277,14 +277,14 @@ def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_ACCOUNT_LABEL_CHARS),
                     "integration_id": integration_id,
-                    "provider": teams.canonical_assistant_id(raw["provider"]),
+                    "provider": team.canonical_assistant_id(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_ACCOUNT_LABEL_CHARS),
                     "summary": chat_ws_common.public_text(raw["summary"], MAX_ACCOUNT_SUMMARY_CHARS),
                     "scopes": scopes,
                     "powers": powers,
                 }
             )
-    except KeyError, TypeError, ValueError, teams.TeamRequestError:
+    except KeyError, TypeError, ValueError, team.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "integration-challenge-response-invalid"})
     return PublicResponse(
         response.status,
@@ -299,18 +299,18 @@ def _project_integration_challenge(response: teams.TeamResponse, team_id: str) -
     )
 
 
-def _project_pending_challenge(response: teams.TeamResponse, team_id: str) -> teams.TeamResponse:
+def _project_pending_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
     if response.body.get("status") == "integrations-required":
         return _project_integration_challenge(response, team_id)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
 def _project_turn(
-    response: teams.TeamResponse,
+    response: team.TeamResponse,
     team_id: str,
     *,
     forbidden_values: tuple[str, ...],
-) -> teams.TeamResponse:
+) -> team.TeamResponse:
     response_team_id = response.body.get("team_id")
     team_name = response.body.get("team_name")
     reply = response.body.get("reply")
@@ -334,12 +334,12 @@ def _submit(
     team_id: object,
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
-    request: Callable[..., teams.TeamResponse],
-) -> teams.TeamResponse:
-    canonical_id = teams.canonical_team_id(team_id)
+    request: Callable[..., team.TeamResponse],
+) -> team.TeamResponse:
+    canonical_id = team.canonical_team_id(team_id)
     body = canonicalize(payload)
     credential = _model_credential(canonical_id)
-    if isinstance(credential, teams.TeamResponse):
+    if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
 
@@ -354,26 +354,26 @@ def _submit(
     return _project_turn(response, canonical_id, forbidden_values=(api_key,))
 
 
-def turn(team_id: object, payload: object) -> teams.TeamResponse:
-    return _submit(team_id, payload, teams.canonical_chat_payload, teams.chat)
+def turn(team_id: object, payload: object) -> team.TeamResponse:
+    return _submit(team_id, payload, team.canonical_chat_payload, team.chat)
 
 
-def resume_integrations(team_id: object, challenge_id: object) -> teams.TeamResponse:
+def resume_integrations(team_id: object, challenge_id: object) -> team.TeamResponse:
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
-        teams.canonical_integration_resume,
-        teams.resume_chat_integrations,
+        team.canonical_integration_resume,
+        team.resume_chat_integrations,
     )
 
 
 def _pending(
     team_id: object,
-    request: Callable[[str], teams.TeamResponse],
-    project: Callable[[teams.TeamResponse, str], teams.TeamResponse],
+    request: Callable[[str], team.TeamResponse],
+    project: Callable[[team.TeamResponse, str], team.TeamResponse],
     invalid_code: str,
-) -> teams.TeamResponse:
-    canonical_id = teams.canonical_team_id(team_id)
+) -> team.TeamResponse:
+    canonical_id = team.canonical_team_id(team_id)
     response = request(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
@@ -390,10 +390,10 @@ def _pending(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
 
 
-def pending_integrations(team_id: object) -> teams.TeamResponse:
+def pending_integrations(team_id: object) -> team.TeamResponse:
     return _pending(
         team_id,
-        teams.pending_chat_integrations,
+        team.pending_chat_integrations,
         _project_integration_challenge,
         "integration-challenge-response-invalid",
     )
@@ -412,9 +412,9 @@ def _valid_trace_id(value: object) -> bool:
     return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
 
 
-def stop(team_id: object) -> teams.TeamResponse:
-    canonical_id = teams.canonical_team_id(team_id)
-    response = teams.stop_chat(canonical_id)
+def stop(team_id: object) -> team.TeamResponse:
+    canonical_id = team.canonical_team_id(team_id)
+    response = team.stop_chat(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:

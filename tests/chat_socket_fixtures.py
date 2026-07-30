@@ -27,8 +27,8 @@ def integration_requirements() -> list[dict[str, object]]:
 
 
 def integration_challenge(status: int = 428) -> object:
-    localchat_module = importlib.import_module("localchat")
-    return localchat_module.PublicResponse(
+    local_module = importlib.import_module("chat.local")
+    return local_module.PublicResponse(
         status,
         {
             "team_id": "team_1",

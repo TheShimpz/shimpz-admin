@@ -9,13 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import oauth_handoff
+from integrations import handoff as handoff_store
 
 
 class OAuthHandoffStoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.now = 10.0
-        self.store = oauth_handoff.OAuthHandoffStore(
+        self.store = handoff_store.OAuthHandoffStore(
             capacity=2,
             ttl_seconds=30,
             clock=lambda: self.now,
@@ -34,7 +34,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         self.assertEqual(handoff.team_id, "marketing")
         self.assertEqual(handoff.challenge_id, "b" * 32)
         self.assertRegex(handoff.session_binding, r"^[A-Za-z0-9_-]{43}$")
-        with self.assertRaisesRegex(oauth_handoff.OAuthHandoffError, "unavailable"):
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(token)
 
     def test_expiry_restart_and_wrong_shapes_fail_closed(self) -> None:
@@ -44,20 +44,20 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             admin_session=self.session,
         )
         self.now += 30
-        with self.assertRaisesRegex(oauth_handoff.OAuthHandoffError, "unavailable"):
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(token)
 
-        restarted = oauth_handoff.OAuthHandoffStore(ttl_seconds=30)
-        with self.assertRaisesRegex(oauth_handoff.OAuthHandoffError, "unavailable"):
+        restarted = handoff_store.OAuthHandoffStore(ttl_seconds=30)
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             restarted.consume(token)
         for invalid in ("Marketing", "team/one", "", None):
-            with self.assertRaises(oauth_handoff.OAuthHandoffError):
+            with self.assertRaises(handoff_store.OAuthHandoffError):
                 self.store.issue(
                     team_id=invalid,
                     challenge_id="b" * 32,
                     admin_session=self.session,
                 )
-        with self.assertRaises(oauth_handoff.OAuthHandoffError):
+        with self.assertRaises(handoff_store.OAuthHandoffError):
             self.store.issue(
                 team_id="marketing",
                 challenge_id="not-a-challenge",
@@ -70,7 +70,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             challenge_id="a" * 32,
             admin_session=self.session,
         )
-        with self.assertRaisesRegex(oauth_handoff.OAuthHandoffError, "already pending"):
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "already pending"):
             self.store.issue(
                 team_id="marketing",
                 challenge_id="a" * 32,
@@ -81,7 +81,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             challenge_id="b" * 32,
             admin_session=self.session,
         )
-        with self.assertRaisesRegex(oauth_handoff.OAuthHandoffError, "capacity"):
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "capacity"):
             self.store.issue(
                 team_id="support",
                 challenge_id="c" * 32,
@@ -104,7 +104,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         )
 
         self.assertEqual(self.store.cancel_session(self.session), 1)
-        with self.assertRaises(oauth_handoff.OAuthHandoffError):
+        with self.assertRaises(handoff_store.OAuthHandoffError):
             self.store.consume(first)
         self.assertEqual(self.store.consume(second).team_id, "sales")
 

@@ -34,12 +34,12 @@ class AuthRouteTests(unittest.TestCase):
         ):
             sys.modules.pop("app", None)
             cls.admin_app = importlib.import_module("app")
-        previous_store = cls.admin_app.adminstore.STORE_PATH
-        cls.admin_app.adminstore.STORE_PATH = root / "admin.json"
-        cls.addClassCleanup(setattr, cls.admin_app.adminstore, "STORE_PATH", previous_store)
+        previous_store = cls.admin_app.state.STORE_PATH
+        cls.admin_app.state.STORE_PATH = root / "admin.json"
+        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
 
     def setUp(self) -> None:
-        self.admin_app.adminstore.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
 
     def test_open_api_is_the_exact_reviewed_auth_surface(self) -> None:
         self.assertEqual(
@@ -100,7 +100,7 @@ class AuthRouteTests(unittest.TestCase):
             )
         )
         self.assertEqual(guarded.status_code, 401)
-        self.assertFalse(self.admin_app.adminstore.is_initialized())
+        self.assertFalse(self.admin_app.state.is_initialized())
 
     def test_retired_environment_does_not_change_password_setup(self) -> None:
         password = "correct horse battery staple"
@@ -114,8 +114,8 @@ class AuthRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("set-cookie", response.headers)
-        self.assertTrue(self.admin_app.adminstore.is_initialized())
-        to_thread.assert_awaited_once_with(self.admin_app.adminstore.set_password, password)
+        self.assertTrue(self.admin_app.state.is_initialized())
+        to_thread.assert_awaited_once_with(self.admin_app.state.set_password, password)
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "correct horse battery staple"
@@ -125,7 +125,7 @@ class AuthRouteTests(unittest.TestCase):
                 {"password": password},
             )
         )
-        record = self.admin_app.adminstore.get()
+        record = self.admin_app.state.get()
 
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(

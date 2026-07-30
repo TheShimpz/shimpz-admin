@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
-import modelproviders
+import models
 
 log = logging.getLogger("shimpz-admin")
 
@@ -163,7 +163,7 @@ def _request(
             provider, api_key = model_credential
             encoded_key = api_key.encode("ascii") if isinstance(api_key, str) and api_key.isascii() else b""
             if (
-                provider not in modelproviders.PROVIDERS
+                provider not in models.PROVIDERS
                 or not 16 <= len(encoded_key) <= 8 * 1024
                 or any(not 33 <= byte <= 126 for byte in encoded_key)
             ):

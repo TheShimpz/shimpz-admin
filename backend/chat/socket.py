@@ -1,7 +1,7 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
 The browser speaks only ``shimpz.chat.v3``. Provider and Assistant secrets stay behind
-:mod:`localchat`; this module admits one mutating operation per socket, keeps Stop responsive on its
+:mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
 
@@ -15,10 +15,10 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-import localchat
 from fastapi import WebSocket, WebSocketDisconnect
+from team import bridge as team
 
-import teams
+from chat import local
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
@@ -104,7 +104,7 @@ def _projected_event(
     team_id: str,
     allowed_types: frozenset[str],
 ) -> dict[str, object] | None:
-    if not isinstance(response, localchat.PublicResponse):
+    if not isinstance(response, local.PublicResponse):
         return None
     event = response.websocket_event(team_id)
     if event is None or event.get("type") not in allowed_types:
@@ -127,7 +127,7 @@ def _first_challenge(response: object, team_id: str) -> tuple[dict[str, object] 
 
 
 def _stop_accepted(response: object, team_id: str) -> bool | None:
-    if not isinstance(response, localchat.PublicResponse) or not 200 <= response.status < 300:
+    if not isinstance(response, local.PublicResponse) or not 200 <= response.status < 300:
         return None
     if response.body.get("team_id") != team_id:
         return None
@@ -179,7 +179,7 @@ async def _send_terminal_once(
 
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
-        response = teams.TeamResponse(502, {})
+        response = team.TeamResponse(502, {})
         # A provider callback may raise any ordinary exception. This process boundary must fail
         # closed while cancellation and process-control BaseExceptions continue to propagate.
         with contextlib.suppress(Exception):
@@ -188,8 +188,8 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                     response = await asyncio.wrap_future(turn.future)
             except asyncio.CancelledError:
                 raise
-            except teams.TeamRequestError:
-                response = teams.TeamResponse(400, {})
+            except team.TeamRequestError:
+                response = team.TeamResponse(400, {})
         if connection.closed or turn.stop_requested or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
@@ -199,7 +199,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             if not await _send_event(websocket, challenge):
                 connection.closed = True
             return
-        if isinstance(response, teams.TeamResponse) and (
+        if isinstance(response, team.TeamResponse) and (
             response.status == 428
             or (isinstance(response.body, dict) and response.body.get("status") == "integrations-required")
         ):
@@ -216,19 +216,19 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 
 
 def _sync_snapshot(team_id: str) -> tuple[object, object | None]:
-    pending_integration = localchat.pending_integrations(team_id)
+    pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
         # exact pending challenge remains the controller-owned binding for the paused turn.
-        resumed = localchat.resume_integrations(team_id, integration_challenge["challenge_id"])
+        resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"])
         return pending_integration, resumed
     return pending_integration, None
 
 
 def _is_empty_pending(response: object, team_id: str) -> bool:
     return (
-        isinstance(response, teams.TeamResponse)
+        isinstance(response, team.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and 200 <= response.status < 300
@@ -239,7 +239,7 @@ def _is_empty_pending(response: object, team_id: str) -> bool:
 
 def _pending_error(response: object, team_id: str, challenge_type: str) -> dict[str, object]:
     if (
-        isinstance(response, teams.TeamResponse)
+        isinstance(response, team.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and not 200 <= response.status < 300
@@ -279,7 +279,7 @@ async def _deliver_integration_sync(
             connection.closed = True
         return True
 
-    if isinstance(resumed_response, teams.TeamResponse) and (
+    if isinstance(resumed_response, team.TeamResponse) and (
         resumed_response.status == 428
         or (isinstance(resumed_response.body, dict) and resumed_response.body.get("status") == "integrations-required")
     ):
@@ -341,13 +341,13 @@ async def _run_stop(
     emit: bool,
 ) -> None:
     try:
-        response = teams.TeamResponse(502, {})
+        response = team.TeamResponse(502, {})
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
-                response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(localchat.stop, team_id))
+                response = await asyncio.wrap_future(_STOP_EXECUTOR.submit(local.stop, team_id))
             except ExecutorSaturatedError:
-                response = teams.TeamResponse(429, {})
+                response = team.TeamResponse(429, {})
         accepted = _stop_accepted(response, team_id)
         if not emit or connection.closed or turn.terminal_sent:
             return
@@ -356,7 +356,7 @@ async def _run_stop(
             connection.pending_challenge_type = None
             await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
         elif accepted is None:
-            status = response.status if isinstance(response, teams.TeamResponse) else 502
+            status = response.status if isinstance(response, team.TeamResponse) else 502
             await _send_terminal_once(
                 websocket,
                 connection,
@@ -425,8 +425,8 @@ async def _dispatch_chat(
         )
         return
     try:
-        payload = teams.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
-    except teams.TeamRequestError:
+        payload = team.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
+    except team.TeamRequestError:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
         return
     if connection.active is not None or connection.sync_task is not None:
@@ -439,7 +439,7 @@ async def _dispatch_chat(
         )
         return
     try:
-        future = _TURN_EXECUTOR.submit(localchat.turn, team_id, payload)
+        future = _TURN_EXECUTOR.submit(local.turn, team_id, payload)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
@@ -494,8 +494,8 @@ async def _admit(
         await websocket.close(code=4406)
         return None
     try:
-        canonical_id = teams.canonical_team_id(team_id)
-    except teams.TeamRequestError:
+        canonical_id = team.canonical_team_id(team_id)
+    except team.TeamRequestError:
         await websocket.close(code=4400)
         return None
     if not _session_valid(session_ok, websocket.cookies):

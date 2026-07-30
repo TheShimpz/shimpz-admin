@@ -101,14 +101,14 @@ class ModelProviderRouteTests(unittest.TestCase):
             response = asyncio.run(self.admin_app.model_provider_configure("openai", mock.Mock()))
 
         self.assertEqual(response, expected)
-        worker.assert_awaited_once_with(self.admin_app.modelproviders.configure, "openai", secret)
+        worker.assert_awaited_once_with(self.admin_app.models.configure, "openai", secret)
 
     def test_configure_maps_rejection_and_unavailability_without_disclosing_secret(self) -> None:
         secret = "sk-test-" + str(123456789).zfill(10)
         cases = (
-            (self.admin_app.modelproviders.ModelProviderError("model provider rejected API key"), 400),
+            (self.admin_app.models.ModelProviderError("model provider rejected API key"), 400),
             (
-                self.admin_app.modelproviders.ModelProviderUnavailableError(
+                self.admin_app.models.ModelProviderUnavailableError(
                     "model provider validation is temporarily unavailable"
                 ),
                 503,

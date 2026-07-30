@@ -17,8 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import notifications
-
-import teams
+from team import bridge as team
 
 TRACE_ID = "a" * 32
 
@@ -37,8 +36,8 @@ def _feed(*releases: dict[str, object]) -> dict[str, object]:
     return {"schema_version": 1, "releases": list(releases)}
 
 
-def _teams(*team_ids: str) -> teams.TeamResponse:
-    return teams.TeamResponse(
+def _teams(*team_ids: str) -> team.TeamResponse:
+    return team.TeamResponse(
         200,
         {
             "teams": [{"team_id": team_id, "team_name": team_id.title(), "status": "running"} for team_id in team_ids],
@@ -47,8 +46,8 @@ def _teams(*team_ids: str) -> teams.TeamResponse:
     )
 
 
-def _installed(**statuses: str) -> teams.TeamResponse:
-    return teams.TeamResponse(
+def _installed(**statuses: str) -> team.TeamResponse:
+    return team.TeamResponse(
         200,
         {
             "assistants": [{"assistant": assistant_id, "status": status} for assistant_id, status in statuses.items()],
@@ -57,10 +56,10 @@ def _installed(**statuses: str) -> teams.TeamResponse:
     )
 
 
-def _install_response(assistant_id: str, *, status: int = 200) -> teams.TeamResponse:
+def _install_response(assistant_id: str, *, status: int = 200) -> team.TeamResponse:
     if status != 200:
-        return teams.TeamResponse(status, {"detail": "update failed"})
-    return teams.TeamResponse(
+        return team.TeamResponse(status, {"detail": "update failed"})
+    return team.TeamResponse(
         200,
         {"assistant": assistant_id, "installed": False, "trace_id": TRACE_ID},
     )
@@ -80,7 +79,7 @@ class NotificationStateTests(unittest.TestCase):
         self,
         feed: dict[str, object],
         *,
-        inventory: teams.TeamResponse,
+        inventory: team.TeamResponse,
         fetch_status: str = "fresh",
     ):
         return (
@@ -89,8 +88,8 @@ class NotificationStateTests(unittest.TestCase):
                 "_fetch_feed",
                 return_value=(fetch_status, feed if fetch_status == "fresh" else None, '"v1"'),
             ),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
-            mock.patch.object(notifications.teams, "list_installed_assistants", return_value=inventory),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_installed_assistants", return_value=inventory),
         )
 
     def test_release_changelog_preserves_canonical_markdown_final_newline(self) -> None:
@@ -107,7 +106,7 @@ class NotificationStateTests(unittest.TestCase):
             feed,
             inventory=_installed(**{"shimpz-cloudflare": "running"}),
         )
-        with fetch, list_teams, list_installed, mock.patch.object(notifications.teams, "install_assistant") as install:
+        with fetch, list_teams, list_installed, mock.patch.object(notifications.team, "install_assistant") as install:
             result = notifications.sync()
 
         self.assertEqual(result["notifications"], [])
@@ -134,13 +133,13 @@ class NotificationStateTests(unittest.TestCase):
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "running"}),
             ),
-            mock.patch.object(notifications.teams, "install_assistant") as install,
+            mock.patch.object(notifications.team, "install_assistant") as install,
         ):
             result = notifications.sync()
 
@@ -158,14 +157,14 @@ class NotificationStateTests(unittest.TestCase):
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "install_assistant",
                 return_value=_install_response("shimpz-cloudflare"),
             ) as install,
@@ -188,14 +187,14 @@ class NotificationStateTests(unittest.TestCase):
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("not_modified", None, '"v2"')),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "install_assistant",
                 return_value=_install_response("shimpz-cloudflare"),
             ),
@@ -207,14 +206,14 @@ class NotificationStateTests(unittest.TestCase):
     def test_offline_feed_is_nonfatal_and_never_mutates_a_team(self) -> None:
         with (
             mock.patch.object(notifications, "_fetch_feed", side_effect=notifications.ReleaseFeedError("offline")),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "install_assistant",
                 return_value=_install_response("shimpz-cloudflare"),
             ) as install,
@@ -235,14 +234,14 @@ class NotificationStateTests(unittest.TestCase):
 
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v2"')),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "install_assistant",
                 return_value=_install_response("shimpz-cloudflare", status=503),
             ),
@@ -277,9 +276,9 @@ class NotificationStateTests(unittest.TestCase):
         feed = _feed(*(_release(assistant_id, 1) for assistant_id in team_assistants.values()))
         with (
             mock.patch.object(notifications, "_fetch_feed", return_value=("fresh", feed, '"v1"')),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams(*team_assistants)),
-            mock.patch.object(notifications.teams, "list_installed_assistants", side_effect=list_installed),
-            mock.patch.object(notifications.teams, "install_assistant") as install,
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams(*team_assistants)),
+            mock.patch.object(notifications.team, "list_installed_assistants", side_effect=list_installed),
+            mock.patch.object(notifications.team, "install_assistant") as install,
         ):
             result = notifications.sync()
 
@@ -301,14 +300,14 @@ class NotificationStateTests(unittest.TestCase):
 
         with (
             mock.patch.object(notifications, "_fetch_feed", side_effect=notifications.ReleaseFeedError("invalid")),
-            mock.patch.object(notifications.teams, "list_teams", return_value=_teams("marketing")),
+            mock.patch.object(notifications.team, "list_teams", return_value=_teams("marketing")),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "list_installed_assistants",
                 return_value=_installed(**{"shimpz-cloudflare": "outdated"}),
             ),
             mock.patch.object(
-                notifications.teams,
+                notifications.team,
                 "install_assistant",
                 return_value=_install_response("shimpz-cloudflare"),
             ) as install,
@@ -512,14 +511,14 @@ class NotificationRouteTests(unittest.TestCase):
         ):
             sys.modules.pop("app", None)
             cls.admin_app = importlib.import_module("app")
-        previous_admin_store = cls.admin_app.adminstore.STORE_PATH
+        previous_admin_store = cls.admin_app.state.STORE_PATH
         previous_notification_store = cls.admin_app.notifications.STORE_PATH
-        cls.admin_app.adminstore.STORE_PATH = root / "admin.json"
+        cls.admin_app.state.STORE_PATH = root / "admin.json"
         cls.admin_app.notifications.STORE_PATH = root / "notifications.json"
-        cls.addClassCleanup(setattr, cls.admin_app.adminstore, "STORE_PATH", previous_admin_store)
+        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_admin_store)
         cls.addClassCleanup(setattr, cls.admin_app.notifications, "STORE_PATH", previous_notification_store)
-        cls.admin_app.adminstore.set_password("test-admin-password")
-        cls.token = cls.admin_app.auth.issue_session(cls.admin_app.adminstore.get()["session_secret"])
+        cls.admin_app.state.set_password("test-admin-password")
+        cls.token = cls.admin_app.auth.issue_session(cls.admin_app.state.get()["session_secret"])
 
     def setUp(self) -> None:
         self.admin_app.notifications.STORE_PATH.unlink(missing_ok=True)

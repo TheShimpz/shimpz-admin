@@ -7,16 +7,16 @@ import re
 from datetime import datetime
 from urllib.parse import parse_qsl, urlparse
 
-import chat_payloads
-import team_client
+from team import transport
 
+from chat import payloads
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 
-TeamResponse = team_client.TeamResponse
-TeamRequestError = team_client.TeamRequestError
+TeamResponse = transport.TeamResponse
+TeamRequestError = transport.TeamRequestError
 
 MAX_ASSISTANT_INTEGRATIONS = 512
 MAX_INTEGRATION_SCOPES = 32
@@ -119,8 +119,8 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                 "expires_at",
             }:
                 raise ValueError("invalid Team integration fields")
-            assistant_id = chat_payloads.canonical_assistant_id(item["assistant_id"])
-            integration_id = chat_payloads.canonical_assistant_id(item["id"])
+            assistant_id = payloads.canonical_assistant_id(item["assistant_id"])
+            integration_id = payloads.canonical_assistant_id(item["id"])
             identity = (assistant_id, integration_id)
             if identity in identities:
                 raise ValueError("duplicate Team integration")
@@ -133,7 +133,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(item["assistant_name"], 80, field="Assistant name"),
                     "id": integration_id,
-                    "provider": chat_payloads.canonical_assistant_id(item["provider"]),
+                    "provider": payloads.canonical_assistant_id(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),
                     "summary": chat_ws_common.public_text(item["summary"], 160, field="integration summary"),
                     "scopes": _integration_scopes(item["scopes"]),
@@ -151,7 +151,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
 def list_assistant_integrations(team_id: object) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
     return _project_integration_inventory(
-        team_client._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
+        transport._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
         canonical_id,
     )
 
@@ -205,11 +205,11 @@ def start_assistant_integration_authorization(
     callback_mode: object,
 ) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
-    canonical_challenge = chat_payloads.canonical_challenge_id(challenge_id)
+    canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
     if callback_mode not in {"loopback", "hosted"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
-    response = team_client._call(
+    response = transport._call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
         {"session_binding": binding},
@@ -236,9 +236,9 @@ def disconnect_assistant_integration(
     integration_id: object,
 ) -> TeamResponse:
     canonical_id = _canonical_team_id(team_id)
-    assistant = chat_payloads.canonical_assistant_id(assistant_id)
-    integration = chat_payloads.canonical_assistant_id(integration_id)
-    response = team_client._call(
+    assistant = payloads.canonical_assistant_id(assistant_id)
+    integration = payloads.canonical_assistant_id(integration_id)
+    response = transport._call(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-integrations/{assistant}/{integration}",
     )
@@ -260,7 +260,7 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
     identifier = canonical_oauth_binding(state)
     one_time_claim = canonical_oauth_claim(claim)
     binding = canonical_oauth_binding(session_binding)
-    response = team_client._call(
+    response = transport._call(
         "POST",
         "/v1/oauth/cloudflare/callback",
         {"state": identifier, "claim": one_time_claim, "session_binding": binding},
@@ -279,8 +279,8 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
         body = {
             "connected": True,
             "team_id": _canonical_team_id(response.body["team_id"]),
-            "assistant_id": chat_payloads.canonical_assistant_id(response.body["assistant_id"]),
-            "integration_id": chat_payloads.canonical_assistant_id(response.body["integration_id"]),
+            "assistant_id": payloads.canonical_assistant_id(response.body["assistant_id"]),
+            "integration_id": payloads.canonical_assistant_id(response.body["integration_id"]),
         }
     except KeyError, TypeError, ValueError, TeamRequestError:
         log.warning("team returned an invalid OAuth callback response")

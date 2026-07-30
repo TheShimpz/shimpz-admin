@@ -19,9 +19,8 @@ from urllib.parse import urlencode
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import team_client
-
-import teams
+from team import bridge as team
+from team import transport
 
 
 class _TeamHandler(BaseHTTPRequestHandler):
@@ -126,25 +125,25 @@ class _LiveTeamCase(unittest.TestCase):
 class TeamAssistantBridgeTest(_LiveTeamCase):
     def setUp(self):
         super().setUp()
-        self.original_token_file = team_client.TOKEN_FILE
-        self.original_url = team_client.URL
-        team_client.TOKEN_FILE = str(self.token_file)
-        team_client.URL = self.team_url
+        self.original_token_file = transport.TOKEN_FILE
+        self.original_url = transport.URL
+        transport.TOKEN_FILE = str(self.token_file)
+        transport.URL = self.team_url
         self.addCleanup(self._restore_bridge_config)
 
     def _restore_bridge_config(self):
-        team_client.TOKEN_FILE = self.original_token_file
-        team_client.URL = self.original_url
+        transport.TOKEN_FILE = self.original_token_file
+        transport.URL = self.original_url
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
-        teams.list_assistants()
-        teams.list_installed_assistants("team_1")
-        teams.assistant_help("team_1", "shimpz-cloudflare", "pt")
-        teams.install_assistant(
+        team.list_assistants()
+        team.list_installed_assistants("team_1")
+        team.assistant_help("team_1", "shimpz-cloudflare", "pt")
+        team.install_assistant(
             "team_1",
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
         )
-        teams.uninstall_assistant("team_1", "hello-pulse")
+        team.uninstall_assistant("team_1", "hello-pulse")
 
         self.assertEqual(
             [(item["method"], item["path"]) for item in _TeamHandler.requests],
@@ -169,14 +168,14 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         _TeamHandler.response_status = 409
         _TeamHandler.response_body = b'{"detail":"assistant already installed"}'
 
-        response = teams.install_assistant(
+        response = team.install_assistant(
             "team_1",
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
         )
 
         self.assertEqual(
             response,
-            teams.TeamResponse(409, {"detail": "assistant already installed"}),
+            team.TeamResponse(409, {"detail": "assistant already installed"}),
         )
 
     def test_accepts_only_an_empty_no_content_response(self):
@@ -184,12 +183,12 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             ("DELETE", "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration"): (204, b""),
         }
 
-        response = teams._call(
+        response = team._call(
             "DELETE",
             "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration",
         )
 
-        self.assertEqual(response, teams.TeamResponse(204, {}))
+        self.assertEqual(response, team.TeamResponse(204, {}))
 
     def test_projects_only_bounded_integration_status_metadata(self):
         integration = {
@@ -209,9 +208,9 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = teams.list_assistant_integrations("team_1")
+        response = team.list_assistant_integrations("team_1")
 
-        self.assertEqual(response, teams.TeamResponse(200, {"integrations": [integration]}))
+        self.assertEqual(response, team.TeamResponse(200, {"integrations": [integration]}))
         self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-integrations")
         self.assertNotRegex(json.dumps(response.body), r"token|code|verifier|client_secret")
 
@@ -223,10 +222,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             },
             separators=(",", ":"),
         ).encode()
-        invalid = teams.list_assistant_integrations("team_1")
+        invalid = team.list_assistant_integrations("team_1")
         self.assertEqual(
             invalid,
-            teams.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
+            team.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
         )
 
     @staticmethod
@@ -247,14 +246,14 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = teams.start_assistant_integration_authorization(
+        response = team.start_assistant_integration_authorization(
             "team_1",
             "c" * 32,
             "d" * 43,
             "hosted",
         )
 
-        self.assertEqual(response, teams.TeamResponse(200, {"authorization_url": authorization_url}))
+        self.assertEqual(response, team.TeamResponse(200, {"authorization_url": authorization_url}))
         request = _TeamHandler.requests[-1]
         self.assertEqual(
             request["path"],
@@ -278,14 +277,14 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
-                teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
-        with self.assertRaisesRegex(teams.TeamRequestError, "callback mode"):
-            teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
+        with self.assertRaisesRegex(team.TeamRequestError, "callback mode"):
+            team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "https://evil.example")
 
         for invalid_envelope in (
             {"authorization_url": authorization_url},
@@ -296,10 +295,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 invalid_envelope,
                 separators=(",", ":"),
             ).encode()
-            invalid = teams.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
+            invalid = team.start_assistant_integration_authorization("team_1", "c" * 32, "d" * 43, "hosted")
             self.assertEqual(
                 invalid,
-                teams.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
@@ -317,17 +316,17 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             ),
         }
 
-        disconnected = teams.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
-        completed = teams.complete_cloudflare_oauth_callback(
+        disconnected = team.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
+        completed = team.complete_cloudflare_oauth_callback(
             state="a" * 43,
             claim="c" * 64,
             session_binding="b" * 43,
         )
 
-        self.assertEqual(disconnected, teams.TeamResponse(204, {}))
+        self.assertEqual(disconnected, team.TeamResponse(204, {}))
         self.assertEqual(
             completed,
-            teams.TeamResponse(
+            team.TeamResponse(
                 200,
                 {
                     "connected": True,
@@ -372,9 +371,9 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             ),
         }
 
-        with self.assertRaisesRegex(teams.TeamRequestError, "Team name confirmation does not match"):
-            teams.destroy("team_1", "Not Marketing")
-        response = teams.destroy("team_1", "Marketing")
+        with self.assertRaisesRegex(team.TeamRequestError, "Team name confirmation does not match"):
+            team.destroy("team_1", "Not Marketing")
+        response = team.destroy("team_1", "Marketing")
 
         self.assertEqual(response.status, 200)
         self.assertEqual(
@@ -397,9 +396,9 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        response = teams.destroy("team_1", "Marketing")
+        response = team.destroy("team_1", "Marketing")
 
-        self.assertEqual(response, teams.TeamResponse(502, {"detail": "Team inventory response is invalid."}))
+        self.assertEqual(response, team.TeamResponse(502, {"detail": "Team inventory response is invalid."}))
         self.assertEqual(
             [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [("GET", "/v1/teams")],
@@ -430,11 +429,11 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             separators=(",", ":"),
         ).encode()
 
-        uploaded = teams.upload_file("team_1", "brief.txt", "text/plain", content)
+        uploaded = team.upload_file("team_1", "brief.txt", "text/plain", content)
 
         self.assertEqual(
             uploaded,
-            teams.TeamResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
+            team.TeamResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
         )
         upload_request = _TeamHandler.requests[-1]
         self.assertEqual(
@@ -450,20 +449,20 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             {"team_id": "team_1", "files": [{**metadata, "path": "/private/no"}], **usage},
             separators=(",", ":"),
         ).encode()
-        listed = teams.list_files("team_1")
+        listed = team.list_files("team_1")
         self.assertEqual(
             listed,
-            teams.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
+            team.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
         )
 
         _TeamHandler.response_body = json.dumps(
             {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             separators=(",", ":"),
         ).encode()
-        deleted = teams.delete_file("team_1", file_id)
+        deleted = team.delete_file("team_1", file_id)
         self.assertEqual(
             deleted,
-            teams.TeamResponse(
+            team.TeamResponse(
                 200,
                 {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             ),
@@ -481,7 +480,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_storage_projection_keeps_over_quota_cleanup_visible(self):
-        response = teams.TeamResponse(
+        response = team.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -493,18 +492,18 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         )
 
         self.assertEqual(
-            teams._project_storage_response(response, team_id="team_1", kind="list"),
+            team._project_storage_response(response, team_id="team_1", kind="list"),
             response,
         )
 
     def test_storage_bridge_rejects_paths_and_non_opaque_ids_before_network_access(self):
         invalid = (
-            lambda: teams.upload_file("team_1", "../brief.txt", "text/plain", b"data"),
-            lambda: teams.upload_file("team_1", "brief.txt", "text/plain", b""),
-            lambda: teams.delete_file("team_1", "../not-an-id"),
+            lambda: team.upload_file("team_1", "../brief.txt", "text/plain", b"data"),
+            lambda: team.upload_file("team_1", "brief.txt", "text/plain", b""),
+            lambda: team.delete_file("team_1", "../not-an-id"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
+            with self.subTest(action=action), self.assertRaises(team.TeamRequestError):
                 action()
         self.assertEqual(_TeamHandler.requests, [])
 
@@ -512,23 +511,23 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         _TeamHandler.response_status = 507
         _TeamHandler.response_body = b'{"detail":"Team storage quota exceeded","path":"/private/no"}'
 
-        response = teams.upload_file("team_1", "brief.txt", "text/plain", b"data")
+        response = team.upload_file("team_1", "brief.txt", "text/plain", b"data")
 
         self.assertEqual(
             response,
-            teams.TeamResponse(507, {"detail": "Team storage quota exceeded"}),
+            team.TeamResponse(507, {"detail": "Team storage quota exceeded"}),
         )
 
     def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
         invalid = (
-            lambda: teams.list_installed_assistants("Team_1"),
-            lambda: teams.install_assistant(
+            lambda: team.list_installed_assistants("Team_1"),
+            lambda: team.install_assistant(
                 "team_1",
                 {"assistant_id": "../hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
             ),
-            lambda: teams.assistant_help("team_1", "../escape"),
-            lambda: teams.assistant_help("team_1", "shimpz-cloudflare", "../pt"),
-            lambda: teams.install_assistant(
+            lambda: team.assistant_help("team_1", "../escape"),
+            lambda: team.assistant_help("team_1", "shimpz-cloudflare", "../pt"),
+            lambda: team.install_assistant(
                 "team_1",
                 {
                     "assistant_id": "hello-pulse",
@@ -536,10 +535,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                     "extra": True,
                 },
             ),
-            lambda: teams.uninstall_assistant("team_1", "../hello-pulse"),
+            lambda: team.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(teams.TeamRequestError):
+            with self.subTest(action=action), self.assertRaises(team.TeamRequestError):
                 action()
         self.assertEqual(_TeamHandler.requests, [])
 
@@ -551,7 +550,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 b"",
                 {
                     "Content-Type": "application/json",
-                    "Content-Length": str(teams.MAX_JSON_RESPONSE_BYTES + 1),
+                    "Content-Length": str(team.MAX_JSON_RESPONSE_BYTES + 1),
                 },
             ),
         )
@@ -560,8 +559,8 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 _TeamHandler.response_body = body
                 _TeamHandler.response_headers = headers
                 self.assertEqual(
-                    teams.list_assistants(),
-                    teams.TeamResponse(502, {"detail": "team unavailable"}),
+                    team.list_assistants(),
+                    team.TeamResponse(502, {"detail": "team unavailable"}),
                 )
 
 
@@ -842,13 +841,13 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
 
 
 def _probe_session():
-    import adminstore
     import auth
+    import state
 
     import app as admin_app
 
-    adminstore.set_password("test-admin-password")
-    token = auth.issue_session(adminstore.get()["session_secret"])
+    state.set_password("test-admin-password")
+    token = auth.issue_session(state.get()["session_secret"])
     return admin_app, token
 
 

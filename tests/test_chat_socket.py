@@ -110,19 +110,19 @@ class ChatWebSocketTests(unittest.TestCase):
             },
         ):
             cls.admin_app = importlib.import_module("app")
-        cls.chat_ws = importlib.import_module("chat_ws")
-        cls.teams = importlib.import_module("teams")
-        previous_store = cls.admin_app.adminstore.STORE_PATH
-        previous_origins = cls.chat_ws.ALLOWED_ORIGINS
-        cls.admin_app.adminstore.STORE_PATH = cls.root / "admin.json"
-        cls.chat_ws.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.adminstore, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.chat_ws, "ALLOWED_ORIGINS", previous_origins)
+        cls.chat_socket = importlib.import_module("chat.socket")
+        cls.team = importlib.import_module("team.bridge")
+        previous_store = cls.admin_app.state.STORE_PATH
+        previous_origins = cls.chat_socket.ALLOWED_ORIGINS
+        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
+        cls.chat_socket.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        cls.addClassCleanup(setattr, cls.chat_socket, "ALLOWED_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
-        self.admin_app.adminstore.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.adminstore.set_password("correct horse battery staple")
-        store = self.admin_app.adminstore.get()
+        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.state.set_password("correct horse battery staple")
+        store = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(store["session_secret"])
 
     @staticmethod
@@ -196,7 +196,7 @@ class ChatWebSocketTests(unittest.TestCase):
                     "assistant_ids": ["Shimpz-Assistant"],
                 },
             )
-            with mock.patch.object(self.chat_ws.localchat, "turn") as turn:
+            with mock.patch.object(self.chat_socket.local, "turn") as turn:
                 for frame in invalid_frames:
                     await websocket.send_json(frame)
                     self.assertEqual((await websocket.next_json())["status"], 400)
@@ -209,10 +209,10 @@ class ChatWebSocketTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = _Socket(self.admin_app.app, token=self.token)
             self.assertTrue(self._accepted(await websocket.start()))
-            store = self.admin_app.adminstore.get()
+            store = self.admin_app.state.get()
             store["session_secret"] = self.admin_app.auth.new_secret()
-            self.admin_app.adminstore._write(store)
-            with mock.patch.object(self.chat_ws.localchat, "turn") as turn:
+            self.admin_app.state._write(store)
+            with mock.patch.object(self.chat_socket.local, "turn") as turn:
                 await websocket.send_json({"type": "chat", "message": "must not run", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_message(),
@@ -246,7 +246,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 1007,
             )
             await rejected_frame(
-                "x" * (self.chat_ws.MAX_FRAME_BYTES + 1),
+                "x" * (self.chat_socket.MAX_FRAME_BYTES + 1),
                 {"type": "error", "status": 413, "detail": "WebSocket frame too large"},
                 1009,
             )
@@ -274,15 +274,15 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.chat_ws.localchat.PublicResponse(
+                return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
                 )
 
-            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
-                mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn) as turn_mock,
-                mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as turn_mock,
+                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -327,15 +327,15 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload):
                 started.set()
                 release.wait(timeout=2)
-                return self.chat_ws.localchat.PublicResponse(
+                return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
                 )
 
-            stopped = self.chat_ws.localchat.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
-                mock.patch.object(self.chat_ws.localchat, "turn", side_effect=turn),
-                mock.patch.object(self.chat_ws.localchat, "stop", return_value=stopped) as stop_mock,
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))

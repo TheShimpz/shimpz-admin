@@ -13,7 +13,7 @@ import ssl
 from dataclasses import dataclass
 from pathlib import Path
 
-import adminstore
+import state
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +93,7 @@ def canonical_api_key(value: object) -> str:
 
 
 def _records() -> dict:
-    records = adminstore.model_credentials()
+    records = state.model_credentials()
     unknown = set(records) - set(PROVIDERS)
     if unknown:
         raise RuntimeError("admin store has unsupported model credentials")
@@ -189,13 +189,13 @@ def configure(provider: object, api_key: object) -> dict[str, object]:
     selected = canonical_provider(provider)
     secret = canonical_api_key(api_key)
     _validate_api_key(selected, secret)
-    adminstore.set_model_api_key(selected, secret)
+    state.set_model_api_key(selected, secret)
     return next(item for item in status()["providers"] if item["id"] == selected)
 
 
 def remove(provider: object) -> dict[str, object]:
     selected = canonical_provider(provider)
-    adminstore.delete_model_api_key(selected)
+    state.delete_model_api_key(selected)
     return next(item for item in status()["providers"] if item["id"] == selected)
 
 

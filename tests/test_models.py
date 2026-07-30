@@ -12,32 +12,32 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-import adminstore
-import modelproviders
+import models
+import state
 
 
 class ModelProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.previous_store = adminstore.STORE_PATH
-        adminstore.STORE_PATH = Path(self.temporary.name) / "admin.json"
+        self.previous_store = state.STORE_PATH
+        state.STORE_PATH = Path(self.temporary.name) / "admin.json"
 
     def tearDown(self) -> None:
-        adminstore.STORE_PATH = self.previous_store
+        state.STORE_PATH = self.previous_store
         self.temporary.cleanup()
 
     def test_status_masks_key_and_internal_resolver_is_backend_only(self) -> None:
         secret = "sk-test-0123456789abcdef"
-        with mock.patch.object(modelproviders, "_validate_api_key"):
-            configured = modelproviders.configure("OpenAI", secret)
+        with mock.patch.object(models, "_validate_api_key"):
+            configured = models.configure("OpenAI", secret)
 
         self.assertEqual(configured["masked"], "••••cdef")
-        self.assertNotIn(secret, json.dumps(modelproviders.status()))
-        self.assertEqual(modelproviders.resolve_api_key("openai"), secret)
-        self.assertEqual(stat.S_IMODE(adminstore.STORE_PATH.stat().st_mode), 0o600)
+        self.assertNotIn(secret, json.dumps(models.status()))
+        self.assertEqual(models.resolve_api_key("openai"), secret)
+        self.assertEqual(stat.S_IMODE(state.STORE_PATH.stat().st_mode), 0o600)
 
     def test_status_exposes_the_closed_catalog_with_exact_base_prices(self) -> None:
-        status = modelproviders.status()
+        status = models.status()
 
         self.assertEqual(
             status,
@@ -113,18 +113,18 @@ class ModelProviderTests(unittest.TestCase):
             },
         )
         status["providers"][0]["models"][0]["id"] = "mutated"
-        self.assertEqual(modelproviders.status()["providers"][0]["models"][0]["id"], "gpt-5.6-sol")
+        self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-5.6-sol")
 
     def test_provider_removal_preserves_other_keys(self) -> None:
-        with mock.patch.object(modelproviders, "_validate_api_key"):
-            modelproviders.configure("openai", "sk-openai-0123456789")
-            modelproviders.configure("anthropic", "sk-ant-0123456789")
+        with mock.patch.object(models, "_validate_api_key"):
+            models.configure("openai", "sk-openai-0123456789")
+            models.configure("anthropic", "sk-ant-0123456789")
 
-        removed = modelproviders.remove("openai")
+        removed = models.remove("openai")
 
         self.assertFalse(removed["configured"])
-        self.assertIsNone(modelproviders.resolve_api_key("openai"))
-        self.assertEqual(modelproviders.resolve_api_key("anthropic"), "sk-ant-0123456789")
+        self.assertIsNone(models.resolve_api_key("openai"))
+        self.assertEqual(models.resolve_api_key("anthropic"), "sk-ant-0123456789")
 
     def test_invalid_provider_and_key_fail_closed(self) -> None:
         for provider, secret in (
@@ -133,8 +133,8 @@ class ModelProviderTests(unittest.TestCase):
             ("openai", " short "),
             ("anthropic", "line-one\nline-two-secret"),
         ):
-            with self.subTest(provider=provider, secret=secret), self.assertRaises(modelproviders.ModelProviderError):
-                modelproviders.configure(provider, secret)
+            with self.subTest(provider=provider, secret=secret), self.assertRaises(models.ModelProviderError):
+                models.configure(provider, secret)
 
     def test_validation_uses_each_fixed_tls_endpoint_and_required_headers(self) -> None:
         cases = (
@@ -161,16 +161,16 @@ class ModelProviderTests(unittest.TestCase):
             tls_context = object()
             with (
                 self.subTest(provider=provider),
-                mock.patch.object(modelproviders.ssl, "create_default_context", return_value=tls_context),
-                mock.patch.object(modelproviders.http.client, "HTTPSConnection", return_value=connection) as connect,
-                mock.patch.object(adminstore.time, "time", return_value=1_784_404_000),
+                mock.patch.object(models.ssl, "create_default_context", return_value=tls_context),
+                mock.patch.object(models.http.client, "HTTPSConnection", return_value=connection) as connect,
+                mock.patch.object(state.time, "time", return_value=1_784_404_000),
             ):
-                configured = modelproviders.configure(provider, secret)
+                configured = models.configure(provider, secret)
 
             connect.assert_called_once_with(
                 host,
                 port=443,
-                timeout=modelproviders.VALIDATION_TIMEOUT_SECONDS,
+                timeout=models.VALIDATION_TIMEOUT_SECONDS,
                 context=tls_context,
             )
             connection.request.assert_called_once_with("GET", "/v1/models", headers=headers)
@@ -180,7 +180,7 @@ class ModelProviderTests(unittest.TestCase):
             connection.close.assert_called_once_with()
             self.assertTrue(configured["configured"])
             self.assertEqual(
-                adminstore.model_credentials()[provider],
+                state.model_credentials()[provider],
                 {"api_key": secret, "verified_at": 1_784_404_000},
             )
 
@@ -192,20 +192,20 @@ class ModelProviderTests(unittest.TestCase):
             connection.getresponse.return_value = response
             with (
                 self.subTest(status_code=status_code),
-                mock.patch.object(modelproviders.http.client, "HTTPSConnection", return_value=connection),
-                self.assertRaises(modelproviders.ModelProviderError) as caught,
+                mock.patch.object(models.http.client, "HTTPSConnection", return_value=connection),
+                self.assertRaises(models.ModelProviderError) as caught,
             ):
-                modelproviders.configure("openai", secret)
+                models.configure("openai", secret)
 
             self.assertNotIn(secret, str(caught.exception))
-            self.assertNotIn("openai", adminstore.model_credentials())
+            self.assertNotIn("openai", state.model_credentials())
             response.read.assert_not_called()
 
     def test_provider_unavailability_preserves_the_previous_verified_key(self) -> None:
         previous = "sk-previous-0123456789"
         replacement = "sk-replacement-0123456789"
-        with mock.patch.object(adminstore.time, "time", return_value=1_784_403_000):
-            adminstore.set_model_api_key("openai", previous)
+        with mock.patch.object(state.time, "time", return_value=1_784_403_000):
+            state.set_model_api_key("openai", previous)
 
         failures = (
             (mock.Mock(status=429), None),
@@ -222,20 +222,20 @@ class ModelProviderTests(unittest.TestCase):
                 connection.getresponse.side_effect = failure
             with (
                 self.subTest(status=getattr(response, "status", None), failure=type(failure).__name__),
-                mock.patch.object(modelproviders.http.client, "HTTPSConnection", return_value=connection),
-                self.assertRaises(modelproviders.ModelProviderUnavailableError) as caught,
+                mock.patch.object(models.http.client, "HTTPSConnection", return_value=connection),
+                self.assertRaises(models.ModelProviderUnavailableError) as caught,
             ):
-                modelproviders.configure("openai", replacement)
+                models.configure("openai", replacement)
 
             self.assertNotIn(replacement, str(caught.exception))
-            self.assertEqual(modelproviders.resolve_api_key("openai"), previous)
-            self.assertEqual(adminstore.model_credentials()["openai"]["verified_at"], 1_784_403_000)
+            self.assertEqual(models.resolve_api_key("openai"), previous)
+            self.assertEqual(state.model_credentials()["openai"]["verified_at"], 1_784_403_000)
             if response is not None:
                 response.read.assert_not_called()
 
     def test_unverified_or_secretless_records_are_not_configured_or_resolved(self) -> None:
         unverified_secret = "sk-unverified-0123456789"
-        adminstore._write(
+        state._write(
             {
                 "model_credentials": {
                     "openai": {"api_key": unverified_secret, "updated": 1_784_400_000},
@@ -244,12 +244,12 @@ class ModelProviderTests(unittest.TestCase):
             }
         )
 
-        providers = {item["id"]: item for item in modelproviders.status()["providers"]}
+        providers = {item["id"]: item for item in models.status()["providers"]}
         self.assertFalse(providers["openai"]["configured"])
         self.assertIsNone(providers["openai"]["masked"])
         self.assertFalse(providers["anthropic"]["configured"])
-        self.assertIsNone(modelproviders.resolve_api_key("openai"))
-        self.assertIsNone(modelproviders.resolve_api_key("anthropic"))
+        self.assertIsNone(models.resolve_api_key("openai"))
+        self.assertIsNone(models.resolve_api_key("anthropic"))
 
     def test_model_must_belong_to_its_provider(self) -> None:
         for provider, model in (
@@ -257,8 +257,8 @@ class ModelProviderTests(unittest.TestCase):
             ("anthropic", "gpt-5.6-terra"),
             ("openai", "gpt-5.7"),
         ):
-            with self.subTest(provider=provider, model=model), self.assertRaises(modelproviders.ModelProviderError):
-                modelproviders.canonical_model(provider, model)
+            with self.subTest(provider=provider, model=model), self.assertRaises(models.ModelProviderError):
+                models.canonical_model(provider, model)
 
 
 if __name__ == "__main__":

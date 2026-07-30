@@ -11,23 +11,23 @@ from __future__ import annotations
 import logging
 import re
 
-import assistant_integrations
-import chat_payloads
-import modelproviders
-import team_client
+import models
+from team import transport
 
+from chat import payloads
+from integrations import assistants as integrations
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 
-CONTROL_TIMEOUT_SECONDS = team_client.CONTROL_TIMEOUT_SECONDS
-MAX_JSON_BODY_BYTES = team_client.MAX_JSON_BODY_BYTES
-MAX_JSON_RESPONSE_BYTES = team_client.MAX_JSON_RESPONSE_BYTES
-TeamResponse = team_client.TeamResponse
-TeamRequestError = team_client.TeamRequestError
-_call = team_client._call
-_call_raw = team_client._call_raw
+CONTROL_TIMEOUT_SECONDS = transport.CONTROL_TIMEOUT_SECONDS
+MAX_JSON_BODY_BYTES = transport.MAX_JSON_BODY_BYTES
+MAX_JSON_RESPONSE_BYTES = transport.MAX_JSON_RESPONSE_BYTES
+TeamResponse = transport.TeamResponse
+TeamRequestError = transport.TeamRequestError
+_call = transport._call
+_call_raw = transport._call_raw
 
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
@@ -58,7 +58,7 @@ def canonical_team_name(value: object) -> str:
     return canonical
 
 
-canonical_assistant_id = chat_payloads.canonical_assistant_id
+canonical_assistant_id = payloads.canonical_assistant_id
 _SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
@@ -74,13 +74,13 @@ def canonical_assistant_help_locale(value: object) -> str:
     return value
 
 
-canonical_oauth_binding = assistant_integrations.canonical_oauth_binding
+canonical_oauth_binding = integrations.canonical_oauth_binding
 
 
-canonical_challenge_id = chat_payloads.canonical_challenge_id
+canonical_challenge_id = payloads.canonical_challenge_id
 
 
-canonical_oauth_claim = assistant_integrations.canonical_oauth_claim
+canonical_oauth_claim = integrations.canonical_oauth_claim
 
 
 def canonical_filename(value: object) -> str:
@@ -172,8 +172,8 @@ def _project_inference_response(
         model = response.body["model"]
         trace_id = response.body["trace_id"]
         selected_team_id = canonical_team_id(response_team_id)
-        selected_provider = modelproviders.canonical_provider(provider)
-        selected_model = modelproviders.canonical_model(selected_provider, model)
+        selected_provider = models.canonical_provider(provider)
+        selected_model = models.canonical_model(selected_provider, model)
         if (
             response_team_id != selected_team_id
             or selected_team_id != team_id
@@ -185,7 +185,7 @@ def _project_inference_response(
             raise ValueError("non-canonical inference metadata")
         if expected is not None and (selected_provider, selected_model) != expected:
             raise ValueError("mismatched inference metadata")
-    except KeyError, TypeError, ValueError, TeamRequestError, modelproviders.ModelProviderError:
+    except KeyError, TypeError, ValueError, TeamRequestError, models.ModelProviderError:
         # Never reflect controller fields: an invalid response could contain credentials or internals.
         log.warning("team returned an invalid inference response")
         return TeamResponse(502, {"detail": "Team inference response is invalid."})
@@ -210,9 +210,9 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
     provider = payload["provider"]
     model = payload["model"]
     try:
-        selected_provider = modelproviders.canonical_provider(provider)
-        selected_model = modelproviders.canonical_model(selected_provider, model)
-    except modelproviders.ModelProviderError as exc:
+        selected_provider = models.canonical_provider(provider)
+        selected_model = models.canonical_model(selected_provider, model)
+    except models.ModelProviderError as exc:
         raise TeamRequestError(str(exc)) from None
     if provider != selected_provider:
         raise TeamRequestError("model provider must be canonical")
@@ -228,8 +228,8 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
     )
 
 
-canonical_chat_payload = chat_payloads.canonical_chat_payload
-canonical_integration_resume = chat_payloads.canonical_integration_resume
+canonical_chat_payload = payloads.canonical_chat_payload
+canonical_integration_resume = payloads.canonical_integration_resume
 
 
 def chat(
@@ -280,10 +280,10 @@ def resume_chat_integrations(
     )
 
 
-list_assistant_integrations = assistant_integrations.list_assistant_integrations
-start_assistant_integration_authorization = assistant_integrations.start_assistant_integration_authorization
-disconnect_assistant_integration = assistant_integrations.disconnect_assistant_integration
-complete_cloudflare_oauth_callback = assistant_integrations.complete_cloudflare_oauth_callback
+list_assistant_integrations = integrations.list_assistant_integrations
+start_assistant_integration_authorization = integrations.start_assistant_integration_authorization
+disconnect_assistant_integration = integrations.disconnect_assistant_integration
+complete_cloudflare_oauth_callback = integrations.complete_cloudflare_oauth_callback
 
 
 def list_assistants() -> TeamResponse:
@@ -328,7 +328,7 @@ def _files_path(team_id: object, file_id: object | None = None) -> str:
     base = f"/v1/teams/{canonical_id}/files"
     if file_id is None:
         return base
-    return f"{base}/{chat_payloads._canonical_id(file_id, field='file id', pattern=_FILE_ID_RE, maximum=32)}"
+    return f"{base}/{payloads._canonical_id(file_id, field='file id', pattern=_FILE_ID_RE, maximum=32)}"
 
 
 def _project_storage_response(
@@ -386,7 +386,7 @@ def list_files(team_id: object) -> TeamResponse:
 
 def delete_file(team_id: object, file_id: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
-    canonical_file_id = chat_payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
+    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
     response = _call("DELETE", _files_path(canonical_id, canonical_file_id))
     return _project_storage_response(
         response,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from team_client import TeamRequestError
+from team.transport import TeamRequestError
 
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common

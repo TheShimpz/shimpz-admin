@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-import teams
+from team import bridge as team
+
 from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
@@ -35,7 +36,7 @@ MAX_FEED_BYTES = 512 * 1024
 MAX_STORE_BYTES = 5 * 1024 * 1024
 MAX_RELEASES = 256
 MAX_NOTIFICATIONS = 256
-MAX_TEAMS = teams.MAX_TEAMS
+MAX_TEAMS = team.MAX_TEAMS
 MAX_INSTALLED_PER_TEAM = 256
 MAX_CURSORS = 1024
 MAX_HEADLINE_BYTES = 160
@@ -147,7 +148,7 @@ def _canonical_release(value: object) -> dict[str, object]:
         "published_at",
     }:
         raise ValueError("invalid release fields")
-    assistant_id = teams.canonical_assistant_id(value["assistant_id"])
+    assistant_id = team.canonical_assistant_id(value["assistant_id"])
     if assistant_id != value["assistant_id"]:
         raise ValueError("non-canonical Assistant id")
     release = {
@@ -241,7 +242,7 @@ def _validate_state(value: object) -> dict[str, object]:
         raise ValueError("invalid notification cursors")
     canonical_cursors: dict[str, int] = {}
     for assistant_id, sequence in cursors.items():
-        canonical_id = teams.canonical_assistant_id(assistant_id)
+        canonical_id = team.canonical_assistant_id(assistant_id)
         if canonical_id != assistant_id:
             raise ValueError("invalid notification cursor")
         canonical_cursors[canonical_id] = _canonical_sequence(sequence)
@@ -297,7 +298,7 @@ def _read_unlocked() -> dict[str, object]:
             state = _validate_state(document)
     except NotificationStoreError:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, teams.TeamRequestError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, team.TeamRequestError) as exc:
         raise NotificationStoreError("notification store is corrupt; refusing to continue") from exc
     _state_cache = _StateCache(path, identity, state)
     return copy.deepcopy(state)
@@ -314,7 +315,7 @@ def _write_unlocked(state: dict[str, object]) -> None:
             separators=(",", ":"),
             allow_nan=False,
         ).encode("utf-8")
-    except (TypeError, ValueError, UnicodeError, teams.TeamRequestError) as exc:
+    except (TypeError, ValueError, UnicodeError, team.TeamRequestError) as exc:
         raise NotificationStoreError("refusing to write invalid notification state") from exc
     if len(payload) > MAX_STORE_BYTES:
         raise NotificationStoreError("notification store is too large")
@@ -395,7 +396,7 @@ def _fetch_feed(etag: str | None) -> tuple[str, dict[str, object] | None, str | 
             document = json.loads(raw)
             feed = validate_feed(document, allow_empty=False)
             response_etag = _canonical_etag(response.getheader("ETag"))
-        except (json.JSONDecodeError, UnicodeError, TypeError, ValueError, teams.TeamRequestError) as exc:
+        except (json.JSONDecodeError, UnicodeError, TypeError, ValueError, team.TeamRequestError) as exc:
             raise ReleaseFeedError("invalid release feed") from exc
         else:
             return "fresh", feed, response_etag
@@ -423,7 +424,7 @@ def _allowed_envelope(body: object, field: str) -> object:
     return body[field]
 
 
-def _team_ids(response: teams.TeamResponse) -> list[str]:
+def _team_ids(response: team.TeamResponse) -> list[str]:
     if not 200 <= response.status < 300:
         raise OSError("Team inventory unavailable")
     inventory = _allowed_envelope(response.body, "teams")
@@ -433,8 +434,8 @@ def _team_ids(response: teams.TeamResponse) -> list[str]:
     for item in inventory:
         if not isinstance(item, dict) or set(item) != {"team_id", "team_name", "status"}:
             raise ValueError("invalid Team inventory")
-        team_id = teams.canonical_team_id(item["team_id"])
-        team_name = teams.canonical_team_name(item["team_name"])
+        team_id = team.canonical_team_id(item["team_id"])
+        team_name = team.canonical_team_name(item["team_name"])
         if team_id != item["team_id"] or team_name != item["team_name"] or item["status"] != "running":
             raise ValueError("invalid Team inventory")
         ids.append(team_id)
@@ -443,7 +444,7 @@ def _team_ids(response: teams.TeamResponse) -> list[str]:
     return ids
 
 
-def _installed(response: teams.TeamResponse) -> dict[str, str]:
+def _installed(response: team.TeamResponse) -> dict[str, str]:
     if not 200 <= response.status < 300:
         raise OSError("Assistant inventory unavailable")
     inventory = _allowed_envelope(response.body, "assistants")
@@ -453,7 +454,7 @@ def _installed(response: teams.TeamResponse) -> dict[str, str]:
     for item in inventory:
         if not isinstance(item, dict) or set(item) != {"assistant", "status"}:
             raise ValueError("invalid Assistant inventory")
-        assistant_id = teams.canonical_assistant_id(item["assistant"])
+        assistant_id = team.canonical_assistant_id(item["assistant"])
         status = item["status"]
         if assistant_id != item["assistant"] or not isinstance(status, str) or status not in _RUNTIME_STATUSES:
             raise ValueError("invalid Assistant inventory")
@@ -495,8 +496,8 @@ def _parallel_calls(function, arguments: list[tuple]) -> list:
 
 
 def _inventories() -> dict[str, dict[str, str]]:
-    team_ids = _team_ids(teams.list_teams())
-    responses = _parallel_calls(teams.list_installed_assistants, [(team_id,) for team_id in team_ids])
+    team_ids = _team_ids(team.list_teams())
+    responses = _parallel_calls(team.list_installed_assistants, [(team_id,) for team_id in team_ids])
     return {team_id: _installed(response) for team_id, response in zip(team_ids, responses, strict=True)}
 
 
@@ -619,7 +620,7 @@ def sync() -> dict[str, object]:
         feed_status, feed, etag = _resolve_feed(_read())
         try:
             inventories = _inventories()
-        except OSError, TypeError, ValueError, teams.TeamRequestError:
+        except OSError, TypeError, ValueError, team.TeamRequestError:
             return _inventory_failure(feed_status, feed, etag)
 
         installed_ids = {assistant_id for inventory in inventories.values() for assistant_id in inventory}

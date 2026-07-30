@@ -14,9 +14,8 @@ from typing import ClassVar
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import team_client
-
-import teams
+from team import bridge as team
+from team import transport
 
 TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
@@ -55,13 +54,13 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.token_file = Path(self.temporary.name) / "token"
         self.token_file.write_text("controller-test-token", encoding="ascii")
-        self.previous_url, self.previous_token = team_client.URL, team_client.TOKEN_FILE
-        team_client.URL = f"http://127.0.0.1:{self.server.server_port}"
-        team_client.TOKEN_FILE = str(self.token_file)
+        self.previous_url, self.previous_token = transport.URL, transport.TOKEN_FILE
+        transport.URL = f"http://127.0.0.1:{self.server.server_port}"
+        transport.TOKEN_FILE = str(self.token_file)
 
     def tearDown(self) -> None:
-        team_client.URL = self.previous_url
-        team_client.TOKEN_FILE = self.previous_token
+        transport.URL = self.previous_url
+        transport.TOKEN_FILE = self.previous_token
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
@@ -69,7 +68,7 @@ class PrivateChatTransportTests(unittest.TestCase):
 
     def test_key_uses_private_header_while_json_remains_team_contract(self) -> None:
         api_key = "sk-test-0123456789"
-        teams.chat(
+        team.chat(
             "team_1",
             {"message": "Hello", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
             provider="openai",
@@ -88,7 +87,7 @@ class PrivateChatTransportTests(unittest.TestCase):
 
     def test_integration_resume_uses_private_model_header_and_exact_challenge(self) -> None:
         model_key = "sk-test-0123456789"
-        teams.resume_chat_integrations(
+        team.resume_chat_integrations(
             "team_1",
             {"challenge_id": CHALLENGE_ID},
             provider="openai",

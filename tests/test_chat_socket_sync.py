@@ -13,13 +13,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import chat_ws_fixtures
+import chat_socket_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-CHALLENGE_ID = chat_ws_fixtures.CHALLENGE_ID
-_integration_challenge = chat_ws_fixtures.integration_challenge
+CHALLENGE_ID = chat_socket_fixtures.CHALLENGE_ID
+_integration_challenge = chat_socket_fixtures.integration_challenge
 
 
 class _Socket:
@@ -115,19 +115,19 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             },
         ):
             cls.admin_app = importlib.import_module("app")
-        cls.chat_ws = importlib.import_module("chat_ws")
-        cls.teams = importlib.import_module("teams")
-        previous_store = cls.admin_app.adminstore.STORE_PATH
-        previous_origins = cls.chat_ws.ALLOWED_ORIGINS
-        cls.admin_app.adminstore.STORE_PATH = cls.root / "admin.json"
-        cls.chat_ws.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.adminstore, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.chat_ws, "ALLOWED_ORIGINS", previous_origins)
+        cls.chat_socket = importlib.import_module("chat.socket")
+        cls.team = importlib.import_module("team.bridge")
+        previous_store = cls.admin_app.state.STORE_PATH
+        previous_origins = cls.chat_socket.ALLOWED_ORIGINS
+        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
+        cls.chat_socket.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        cls.addClassCleanup(setattr, cls.chat_socket, "ALLOWED_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
-        self.admin_app.adminstore.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.adminstore.set_password("correct horse battery staple")
-        store = self.admin_app.adminstore.get()
+        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.state.set_password("correct horse battery staple")
+        store = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(store["session_secret"])
 
     @staticmethod
@@ -137,13 +137,13 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
-            augmented = self.teams.TeamResponse(
+            augmented = self.team.TeamResponse(
                 200,
                 {**dict(_integration_challenge(status=200).body), "access_token": sensitive_marker},
             )
             with (
-                mock.patch.object(self.chat_ws.localchat, "pending_integrations", return_value=augmented),
-                mock.patch.object(self.chat_ws.localchat, "resume_integrations") as resume,
+                mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=augmented),
+                mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -159,18 +159,18 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
     def test_integration_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
-            completed = self.chat_ws.localchat.PublicResponse(
+            completed = self.chat_socket.local.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Published."},
             )
             with (
                 mock.patch.object(
-                    self.chat_ws.localchat,
+                    self.chat_socket.local,
                     "pending_integrations",
                     return_value=_integration_challenge(status=200),
                 ),
                 mock.patch.object(
-                    self.chat_ws.localchat,
+                    self.chat_socket.local,
                     "resume_integrations",
                     return_value=completed,
                 ) as resume,
@@ -194,7 +194,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
     def test_public_terminal_relays_only_the_closed_sanitized_error_document(self) -> None:
         async def response_for(team_response) -> dict:
-            with mock.patch.object(self.chat_ws.localchat, "turn", return_value=team_response):
+            with mock.patch.object(self.chat_socket.local, "turn", return_value=team_response):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "chat", "message": "hello", "files": [], "assistant_ids": []})
@@ -206,7 +206,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         async def scenario() -> None:
             concrete_error = await response_for(
-                self.chat_ws.localchat.PublicResponse(
+                self.chat_socket.local.PublicResponse(
                     409,
                     {"code": "team-has-no-active-assistants"},
                 )
@@ -224,7 +224,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
             sensitive_marker = "sk-private-must-never-cross-the-websocket"
             upstream_error = await response_for(
-                self.teams.TeamResponse(
+                self.team.TeamResponse(
                     502,
                     {"code": "brain-runtime-failed", "debug": sensitive_marker},
                 )
@@ -236,7 +236,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             self.assertNotIn(sensitive_marker, json.dumps(upstream_error))
 
             unknown_code = await response_for(
-                self.chat_ws.localchat.PublicResponse(409, {"code": "private-controller-diagnostic"})
+                self.chat_socket.local.PublicResponse(409, {"code": "private-controller-diagnostic"})
             )
             self.assertEqual(
                 unknown_code,
@@ -244,7 +244,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             )
 
             augmented_success = await response_for(
-                self.teams.TeamResponse(
+                self.team.TeamResponse(
                     200,
                     {
                         "team_id": "team_1",

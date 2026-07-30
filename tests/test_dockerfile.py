@@ -53,15 +53,12 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         self.assertNotIn("curl", runtime)
         self.assertNotIn("/usr/local/bin/uv", runtime)
 
-    def test_static_runtime_copy_contains_every_backend_module(self) -> None:
+    def test_static_runtime_copy_contains_every_application_backend_module(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-        logical_lines = re.sub(r"\\\n\s*", " ", dockerfile).splitlines()
-        runtime_copy = next(
-            (line for line in logical_lines if line.startswith("COPY ") and "backend/app.py" in line),
-            "",
-        )
-        copied = set(re.findall(r"\bbackend/[a-z][a-z0-9_]*\.py\b", runtime_copy))
-        expected = {f"backend/{path.name}" for path in (ROOT / "backend").glob("*.py")}
+        runtime = dockerfile.split(" AS runtime\n", 1)[1]
+        copied = set(re.findall(r"\bbackend(?:/[a-z][a-z0-9_]*)+\.py\b", re.sub(r"\\\n\s*", " ", runtime)))
+        expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / "backend").rglob("*.py")}
+        expected.remove("backend/protocol/http/v1/verify.py")
 
         self.assertEqual(copied, expected)
 

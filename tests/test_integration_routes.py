@@ -77,7 +77,7 @@ class OAuthRoutesTest(unittest.TestCase):
             cls.admin_app = importlib.import_module("app")
 
     def setUp(self) -> None:
-        self.admin_app.OAUTH_HANDOFFS = self.admin_app.oauth_handoff.OAuthHandoffStore(
+        self.admin_app.OAUTH_HANDOFFS = self.admin_app.handoff_store.OAuthHandoffStore(
             ttl_seconds=30,
         )
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
@@ -134,12 +134,12 @@ class OAuthRoutesTest(unittest.TestCase):
             admin_session=self.session,
         )
         request = _request("GET", f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={handoff}")
-        result = self.admin_app.teams.TeamResponse(
+        result = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
         )
         with mock.patch.object(
-            self.admin_app.teams,
+            self.admin_app.team,
             "start_assistant_integration_authorization",
             return_value=result,
         ) as start:
@@ -183,13 +183,13 @@ class OAuthRoutesTest(unittest.TestCase):
 
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
-        provider = self.admin_app.teams.TeamResponse(
+        provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("hosted")},
         )
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(self.admin_app.teams, "start_assistant_integration_authorization", return_value=provider),
+            mock.patch.object(self.admin_app.team, "start_assistant_integration_authorization", return_value=provider),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
@@ -208,11 +208,11 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://local.shimpz.com/api/oauth/cloudflare/callback?state=" + "b" * 43 + "&claim=" + "a" * 64,
             cookie=f"shimpz_oauth_binding={binding.value}",
         )
-        completed = self.admin_app.teams.TeamResponse(200, {"connected": True})
+        completed = self.admin_app.team.TeamResponse(200, {"connected": True})
         with (
             mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
             mock.patch.object(
-                self.admin_app.teams,
+                self.admin_app.team,
                 "complete_cloudflare_oauth_callback",
                 return_value=completed,
             ) as complete,
@@ -240,7 +240,7 @@ class OAuthRoutesTest(unittest.TestCase):
             f"http://127.0.0.1:4600/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
-        result = self.admin_app.teams.TeamResponse(
+        result = self.admin_app.team.TeamResponse(
             200,
             {
                 "connected": True,
@@ -250,7 +250,7 @@ class OAuthRoutesTest(unittest.TestCase):
             },
         )
         with mock.patch.object(
-            self.admin_app.teams,
+            self.admin_app.team,
             "complete_cloudflare_oauth_callback",
             return_value=result,
         ) as complete:
@@ -292,15 +292,15 @@ class OAuthRoutesTest(unittest.TestCase):
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )
-        with mock.patch.object(self.admin_app.teams, "complete_cloudflare_oauth_callback") as complete:
+        with mock.patch.object(self.admin_app.team, "complete_cloudflare_oauth_callback") as complete:
             responses = [asyncio.run(self.admin_app.oauth_cloudflare_callback(request)) for request in requests]
         complete.assert_not_called()
         self.assertTrue(all(response.headers["location"] == "/chat?oauth=callback-failed" for response in responses))
 
     def test_inventory_and_disconnect_keep_the_public_contract_exact(self) -> None:
-        inventory = self.admin_app.teams.TeamResponse(200, {"integrations": []})
+        inventory = self.admin_app.team.TeamResponse(200, {"integrations": []})
         with mock.patch.object(
-            self.admin_app.teams,
+            self.admin_app.team,
             "list_assistant_integrations",
             return_value=inventory,
         ):
@@ -308,9 +308,9 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(json.loads(listed.body), {"integrations": []})
         self.assertEqual(listed.headers["cache-control"], "no-store")
 
-        disconnected = self.admin_app.teams.TeamResponse(204, {})
+        disconnected = self.admin_app.team.TeamResponse(204, {})
         with mock.patch.object(
-            self.admin_app.teams,
+            self.admin_app.team,
             "disconnect_assistant_integration",
             return_value=disconnected,
         ):

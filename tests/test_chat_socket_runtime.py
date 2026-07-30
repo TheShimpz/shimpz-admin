@@ -37,18 +37,18 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
             },
         ):
             cls.admin_app = importlib.import_module("app")
-        cls.chat_ws = importlib.import_module("chat_ws")
-        previous_store = cls.admin_app.adminstore.STORE_PATH
-        previous_origins = cls.chat_ws.ALLOWED_ORIGINS
-        cls.admin_app.adminstore.STORE_PATH = cls.root / "admin.json"
-        cls.chat_ws.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.adminstore, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.chat_ws, "ALLOWED_ORIGINS", previous_origins)
+        cls.chat_socket = importlib.import_module("chat.socket")
+        previous_store = cls.admin_app.state.STORE_PATH
+        previous_origins = cls.chat_socket.ALLOWED_ORIGINS
+        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
+        cls.chat_socket.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        cls.addClassCleanup(setattr, cls.chat_socket, "ALLOWED_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
-        self.admin_app.adminstore.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.adminstore.set_password("correct horse battery staple")
-        store = self.admin_app.adminstore.get()
+        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.state.set_password("correct horse battery staple")
+        store = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(store["session_secret"])
 
     def test_real_uvicorn_negotiates_v3_and_delivers_one_public_terminal(self) -> None:
@@ -78,7 +78,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
 
             uri = f"ws://127.0.0.1:{port}/api/teams/team_1/chat/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
-            response = self.chat_ws.localchat.PublicResponse(
+            response = self.chat_socket.local.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "hello from the Team"},
             )
@@ -89,7 +89,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                         origin="http://localhost:7777",
                         additional_headers=headers,
                     )
-                with mock.patch.object(self.chat_ws.localchat, "turn", return_value=response):
+                with mock.patch.object(self.chat_socket.local, "turn", return_value=response):
                     async with websockets.connect(
                         uri,
                         origin="http://localhost:7777",
@@ -117,7 +117,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_worker_queue_rejects_instead_of_growing(self) -> None:
-        executor = self.chat_ws.BoundedThreadPoolExecutor(
+        executor = self.chat_socket.BoundedThreadPoolExecutor(
             max_workers=1,
             max_outstanding=1,
             thread_name_prefix="chat-test",
@@ -125,7 +125,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
         release = threading.Event()
         future = executor.submit(release.wait)
         try:
-            with self.assertRaises(self.chat_ws.ExecutorSaturatedError):
+            with self.assertRaises(self.chat_socket.ExecutorSaturatedError):
                 executor.submit(lambda: None)
         finally:
             release.set()
