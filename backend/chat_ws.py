@@ -11,6 +11,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import os
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
@@ -25,8 +26,31 @@ MAX_FRAME_BYTES = 512 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
-ExecutorSaturatedError = chat_ws_common.ExecutorSaturatedError
-BoundedThreadPoolExecutor = chat_ws_common.BoundedThreadPoolExecutor
+
+
+class ExecutorSaturatedError(RuntimeError):
+    """The local chat worker and queue budget has no free admission slot."""
+
+
+class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+    """Admin-owned executor bounded for the Local chat workload."""
+
+    def __init__(self, *, max_workers: int, max_outstanding: int, thread_name_prefix: str) -> None:
+        if max_workers < 1 or max_outstanding < max_workers:
+            raise ValueError("invalid bounded executor capacity")
+        self._permits = threading.BoundedSemaphore(max_outstanding)
+        super().__init__(max_workers=max_workers, thread_name_prefix=thread_name_prefix)
+
+    def submit(self, fn, /, *args, **kwargs):
+        if not self._permits.acquire(blocking=False):
+            raise ExecutorSaturatedError("blocking worker admission is full")
+        try:
+            future = super().submit(fn, *args, **kwargs)
+        except BaseException:
+            self._permits.release()
+            raise
+        future.add_done_callback(lambda _completed: self._permits.release())
+        return future
 
 
 # Turns and cancellation use separate bounded lanes: a slow provider can never consume the worker
