@@ -5,7 +5,7 @@
 - This repository owns the Supervisor console and private Admin API used by Local and Hosted Space profiles.
 - It does not own Team lifecycle, Account identity, Assistant publication, Brain execution, or provider tokens held
   by their custodians. Admin is a client of those authorities.
-- Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/docs/ARCHITECTURE.md)
+- Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/.context/ARCHITECTURE.md)
   before changing product vocabulary, cross-domain authority, protocols, runtime topology, or source placement.
 
 ## Delivery and engineering
