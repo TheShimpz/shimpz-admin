@@ -24,4 +24,4 @@ workload identity, Power execution, storage, Integration encryption, and Brain t
 
 The production image runs as a non-root user with a read-only root filesystem and publishes only the
 configured loopback port. Backend, frontend, container, and browser contracts live under `tests/` and
-the umbrella repository's `tests/ui/` suite.
+the umbrella repository's `.tests/ui/` suite.
