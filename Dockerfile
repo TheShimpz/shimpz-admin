@@ -5,11 +5,11 @@
 # only, holds no Docker socket or host configuration mount, and persists only its private `/data`.
 
 # ── stage 1: obtain the exact uv binary without retaining an installer toolchain ──────────────
-FROM ghcr.io/astral-sh/uv:0.11.25@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
 ARG SOURCE_DATE_EPOCH=0
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059 AS ui
+FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS ui
 ARG SOURCE_DATE_EPOCH=0
 # IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so npm doesn't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
@@ -25,7 +25,7 @@ RUN npm test && npm run build && \
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────
 # This stage deliberately follows TARGETPLATFORM so native wheels match the final image.
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS dependencies
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
 ARG SOURCE_DATE_EPOCH=0
 COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
@@ -34,7 +34,7 @@ RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-install-project --no-
 
 # ── stage 4: minimal Python runtime ─────────────────────────────────────────────────────────────
 # The digest-pinned Python base already retains CA roots; build-only uv never enters this stage.
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS runtime
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS runtime
 ARG SOURCE_DATE_EPOCH=0
 COPY --from=dependencies /opt/venv /opt/venv
 
