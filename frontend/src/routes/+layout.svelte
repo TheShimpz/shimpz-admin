@@ -29,7 +29,8 @@
         : '',
   );
 
-  async function checkSession() {
+  async function checkSession(options = {}) {
+    const redirectToChat = options.redirectToChat === true;
     clearAdminNotice();
     clearModelContext();
     clearTeamContext();
@@ -52,7 +53,7 @@
           phase = 'login';
         } else {
           phase = 'ready';
-          if (page.url.pathname === '/') await goto('/chat/', { replaceState: true });
+          if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replaceState: true });
         }
       } else if (profile === 'local' && session?.initialized === false) {
         phase = 'setup';
@@ -106,7 +107,7 @@
       }
 
       username = password = confirmation = '';
-      await checkSession();
+      await checkSession({ redirectToChat: true });
     } catch {
       error = $t('auth.unreachable');
     } finally {
@@ -142,7 +143,7 @@
       {error}
       {busy}
       onSubmit={submit}
-      onRetry={checkSession}
+      onRetry={() => checkSession()}
     />
   </AdminShell>
 {/if}
