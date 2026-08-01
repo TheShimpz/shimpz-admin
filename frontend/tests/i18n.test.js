@@ -22,8 +22,8 @@ const retiredWorkloadTerms = {
   zh: [/应用/u, /驱动/u],
   fr: [/\bapps?\b/i, /\bdrivers?\b/i],
   de: [/\bapps?\b/i, /\bdrivers?\b/i],
-  ja: [/アプリ/u, /ドライバー/u],
-  ar: [/التطبيق/u, /برنامج تشغيل/u],
+  ja: [/アプリ/u, /ドライバ/u],
+  ar: [/تطبيق/u, /برنامج تشغيل/u],
 };
 
 function workloadMessages(locale) {
