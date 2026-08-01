@@ -65,6 +65,26 @@ class AdminStoreCacheTests(unittest.TestCase):
         self.assertRegex(first.private_key_hex, r"^[0-9a-f]{64}$")
         self.assertEqual(state.local_supervisor(), first)
 
+    def test_browser_origin_binding_is_exact_atomic_and_noop_when_unchanged(self) -> None:
+        state._write({"password_hash": "configured", "session_secret": "session"})
+
+        with mock.patch.object(state, "_write", wraps=state._write) as write:
+            self.assertEqual(state.bind_browser_origin("https://dev.example.test"), "learned")
+            self.assertEqual(state.browser_origin(), "https://dev.example.test")
+            self.assertEqual(state.bind_browser_origin("https://dev.example.test"), "unchanged")
+            self.assertEqual(state.bind_browser_origin("https://next.example.test:8443"), "replaced")
+
+        self.assertEqual(write.call_count, 2)
+        self.assertEqual(state.browser_origin(), "https://next.example.test:8443")
+        with self.assertRaises(ValueError):
+            state.bind_browser_origin("http://public.example.test")
+
+    def test_invalid_persisted_browser_origin_fails_loud(self) -> None:
+        state._write({"browser_origin": "https://example.test/path"})
+
+        with self.assertRaisesRegex(RuntimeError, "invalid browser origin"):
+            state.browser_origin()
+
     def test_partial_local_supervisor_record_is_never_repaired(self) -> None:
         state._write({"supervisor_id": "a" * 32})
 

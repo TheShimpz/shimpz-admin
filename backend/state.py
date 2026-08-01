@@ -20,7 +20,10 @@ from pathlib import Path
 import auth
 import supervisor
 
+from protocol.http.v1.websocket import canonical_origin
+
 STORE_PATH = Path(os.environ.get("SHIMPZ_ADMIN_STORE") or "/data/admin.json")
+_BROWSER_ORIGIN_LOCK = threading.RLock()
 _MODEL_CREDENTIAL_LOCK = threading.RLock()
 _STORE_LOCK = threading.RLock()
 
@@ -98,8 +101,40 @@ def is_initialized():
     return bool(_read().get("password_hash"))
 
 
-def set_password(password):
+def _validated_browser_origin(data: dict) -> str | None:
+    origin = data.get("browser_origin")
+    if origin is None:
+        return None
+    if not isinstance(origin, str) or canonical_origin(origin) != origin or not origin.startswith("https://"):
+        raise RuntimeError(f"admin store {STORE_PATH} has an invalid browser origin")
+    return origin
+
+
+def browser_origin() -> str | None:
+    """Return the one password-authorized external HTTPS browser origin, when configured."""
+    return _validated_browser_origin(_read())
+
+
+def bind_browser_origin(origin: str) -> str:
+    """Persist one exact external HTTPS origin, returning its material transition."""
+    if canonical_origin(origin) != origin or not origin.startswith("https://"):
+        raise ValueError("browser origin must be one exact HTTPS origin")
+    with _BROWSER_ORIGIN_LOCK:
+        data = _read()
+        current = _validated_browser_origin(data)
+        if current == origin:
+            return "unchanged"
+        data["browser_origin"] = origin
+        _write(data)
+        return "learned" if current is None else "replaced"
+
+
+def set_password(password, browser_origin: str | None = None):
     """Set the admin password (salt + scrypt hash), ensuring a session secret exists too."""
+    if browser_origin is not None and (
+        canonical_origin(browser_origin) != browser_origin or not browser_origin.startswith("https://")
+    ):
+        raise ValueError("browser origin must be one exact HTTPS origin")
     data = _read()
     salt = auth.new_secret()
     data["salt"] = salt
@@ -114,6 +149,8 @@ def set_password(password):
         data["supervisor_id"] = identity.supervisor_id
         data["supervisor_signing_key"] = identity.private_key_hex
     data.setdefault("created", int(time.time()))
+    if browser_origin is not None:
+        data["browser_origin"] = browser_origin
     _write(data)
 
 

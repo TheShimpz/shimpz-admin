@@ -39,6 +39,7 @@
   let socketReady = $state(false);
   let reconnectTimer;
   let reconnectAttempt = 0;
+  const MAX_RECONNECT_ATTEMPTS = 5;
   let helpOpen = $state(false);
   let helpButton = $state();
   let integrationsOpen = $state(false);
@@ -172,6 +173,10 @@
 
   function scheduleReconnect(expectedTeamId) {
     if (reconnectTimer || !mounted || chatTeamId !== expectedTeamId) return;
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      setError(copy.connectionFailed);
+      return;
+    }
     const delay = Math.min(400 * (2 ** reconnectAttempt), 5000);
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(() => {

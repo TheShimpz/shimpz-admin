@@ -11,6 +11,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import contextvars
+import logging
 import os
 import threading
 from collections.abc import Awaitable, Callable, Mapping
@@ -27,6 +28,7 @@ MAX_FRAME_BYTES = 512 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
+log = logging.getLogger("shimpz-admin")
 
 
 class ExecutorSaturatedError(RuntimeError):
@@ -83,10 +85,13 @@ canonical_origin = chat_ws_common.canonical_origin
 
 def _configured_origins() -> frozenset[str]:
     configured = os.environ.get("SHIMPZ_ADMIN_ALLOWED_ORIGINS", _DEFAULT_ORIGINS)
-    return frozenset(origin for item in configured.split(",") if (origin := canonical_origin(item.strip())) is not None)
+    items = [item.strip() for item in configured.split(",")]
+    if not items or any(not item or canonical_origin(item) != item for item in items):
+        raise RuntimeError("SHIMPZ_ADMIN_ALLOWED_ORIGINS must contain exact HTTP(S) origins")
+    return frozenset(items)
 
 
-ALLOWED_ORIGINS = _configured_origins()
+STATIC_ORIGINS = _configured_origins()
 
 
 async def receive_bounded_json(websocket: WebSocket) -> dict[str, object]:
@@ -494,9 +499,17 @@ async def _admit(
     websocket: WebSocket,
     team_id: object,
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
+    allowed_origins: Callable[[], frozenset[str]],
 ) -> str | None:
     origin = canonical_origin(websocket.headers.get("origin"))
-    if origin is None or origin not in ALLOWED_ORIGINS:
+    try:
+        admitted_origins = allowed_origins()
+    except Exception:
+        log.exception("chat WebSocket origin authority is unavailable")
+        await websocket.close(code=1013)
+        return None
+    if origin is None or origin not in admitted_origins:
+        log.info("chat WebSocket origin denied: %s", origin[:200] if origin is not None else "invalid")
         await websocket.close(code=4403)
         return None
     if not _has_subprotocol(websocket):
@@ -520,9 +533,10 @@ async def serve(
     *,
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
+    allowed_origins: Callable[[], frozenset[str]],
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session."""
-    canonical_id = await _admit(websocket, team_id, session_ok)
+    canonical_id = await _admit(websocket, team_id, session_ok, allowed_origins)
     if canonical_id is None:
         return
 

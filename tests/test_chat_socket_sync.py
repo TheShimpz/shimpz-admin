@@ -119,11 +119,11 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         cls.chat_socket = importlib.import_module("chat.socket")
         cls.team = importlib.import_module("team.bridge")
         previous_store = cls.admin_app.state.STORE_PATH
-        previous_origins = cls.chat_socket.ALLOWED_ORIGINS
+        previous_origins = cls.chat_socket.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.chat_socket.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "ALLOWED_ORIGINS", previous_origins)
+        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)

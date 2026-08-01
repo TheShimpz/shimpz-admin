@@ -68,7 +68,7 @@ def _request(
     return Request(scope, receive)
 
 
-async def _asgi_get(application, path: str, *, cookie: str = "") -> int:
+async def _asgi_request(application, path: str, *, cookie: str = "", method: str = "GET") -> int:
     messages: list[dict] = []
     sent = False
 
@@ -86,7 +86,7 @@ async def _asgi_get(application, path: str, *, cookie: str = "") -> int:
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
-        "method": "GET",
+        "method": method,
         "scheme": "https",
         "path": path,
         "raw_path": path.encode(),
@@ -129,8 +129,8 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertNotIn(("/api/admin/setup", "POST"), routes)
         self.assertFalse(any(path.startswith("/api/model-providers") for path, _method in routes))
         self.assertNotIn("/api/admin/setup", self.admin_app.OPEN_API)
-        self.assertEqual(asyncio.run(_asgi_get(self.admin_app.app, "/api/admin/setup")), 401)
-        self.assertEqual(asyncio.run(_asgi_get(self.admin_app.app, "/api/model-providers")), 401)
+        self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/admin/setup")), 401)
+        self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/model-providers")), 401)
         active = self.admin_app.account_identity.AccountResponse(
             200,
             {"version": 1, "active": True, "account_id": ACCOUNT_ID, "supervisor": True},
@@ -142,7 +142,7 @@ class HostedAuthRouteTests(unittest.TestCase):
         ):
             self.assertEqual(
                 asyncio.run(
-                    _asgi_get(
+                    _asgi_request(
                         self.admin_app.app,
                         "/api/model-providers",
                         cookie=f"shimpz_admin={SESSION}",
@@ -211,7 +211,7 @@ class HostedAuthRouteTests(unittest.TestCase):
             mock.patch.object(self.admin_app.team, "list_teams", side_effect=list_teams),
         ):
             status = asyncio.run(
-                _asgi_get(
+                _asgi_request(
                     self.admin_app.app,
                     "/api/teams",
                     cookie=f"shimpz_admin={SESSION}",
@@ -233,10 +233,11 @@ class HostedAuthRouteTests(unittest.TestCase):
             new=mock.AsyncMock(return_value=unavailable),
         ):
             response = asyncio.run(
-                _asgi_get(
+                _asgi_request(
                     self.admin_app.app,
                     "/api/session",
                     cookie=f"shimpz_admin={SESSION}",
+                    method="POST",
                 )
             )
         self.assertEqual(response, 503)

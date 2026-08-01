@@ -965,7 +965,7 @@ def _run_asgi_probe(scenario: str) -> None:
             )
             await asyncio.sleep(0.1)
             session_status, session_body = await asyncio.wait_for(
-                _asgi_request(admin_app, "GET", "/api/session", token=token),
+                _asgi_request(admin_app, "POST", "/api/session", token=token),
                 timeout=0.5,
             )
             install_was_pending = not install_task.done()

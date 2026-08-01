@@ -163,9 +163,38 @@ def _materialize_local_supervisor() -> None:
     supervisor.materialize_public_key(state.local_supervisor())
 
 
-def _initialize_local_supervisor(password: str) -> None:
-    state.set_password(password)
+def _initialize_local_supervisor(password: str, browser_origin: str | None = None) -> None:
+    state.set_password(password, browser_origin)
     _materialize_local_supervisor()
+
+
+def _allowed_browser_origins() -> frozenset[str]:
+    origins = set(chat_socket.STATIC_ORIGINS)
+    if ADMIN_PROFILE == "local" and (browser_origin := state.browser_origin()) is not None:
+        origins.add(browser_origin)
+    return frozenset(origins)
+
+
+def _request_browser_origin(request: Request) -> str | None:
+    raw_origin = request.headers.get("origin")
+    if raw_origin is None:
+        return None
+    origin = chat_ws_common.canonical_origin(raw_origin)
+    if origin is None or origin != raw_origin:
+        raise HTTPException(status_code=403, detail="request Origin must be one exact HTTPS address")
+    if origin in chat_socket.STATIC_ORIGINS:
+        return None
+    if not origin.startswith("https://"):
+        raise HTTPException(status_code=403, detail="external Admin addresses must use HTTPS")
+    return origin
+
+
+async def _bind_browser_origin(origin: str | None) -> None:
+    if origin is None:
+        return
+    transition = await asyncio.to_thread(state.bind_browser_origin, origin)
+    if transition != "unchanged":
+        log.info("Local Admin browser origin %s: %s", transition, origin)
 
 
 def _local_session_evidence(cookies) -> dict[str, object] | None:
@@ -237,7 +266,11 @@ async def _gate(request: Request, call_next):
 
     # Static SPA + assets (login form has no secret) and the open auth endpoints.
     if not path.startswith("/api/") or path in OPEN_API:
-        return await call_next(request)
+        response = await call_next(request)
+        if path == "/api/session":
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Vary"] = "Origin"
+        return response
     # Everything else under /api/ requires a valid session.
     try:
         evidence = await _session_evidence(request.cookies)
@@ -253,7 +286,7 @@ async def _gate(request: Request, call_next):
         return JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
 
 
-@app.get("/api/session")
+@app.post("/api/session")
 async def session(request: Request):
     evidence = await _session_evidence(request.cookies)
     response = {
@@ -263,6 +296,9 @@ async def session(request: Request):
     }
     if ADMIN_PROFILE == "local":
         response["initialized"] = state.is_initialized()
+        if evidence is not None:
+            origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
+            response["origin_admitted"] = origin is not None and origin in _allowed_browser_origins()
     else:
         response["account_id"] = evidence.get("account_id") if evidence is not None else None
     return response
@@ -273,6 +309,7 @@ async def _local_login(request: Request, payload: dict) -> JSONResponse:
         raise HTTPException(status_code=400, detail="request body must contain only password")
     if not state.is_initialized():
         raise HTTPException(status_code=409, detail="no admin password set yet — create one first")
+    browser_origin = _request_browser_origin(request)
     rec = state.get()
     password_ok = await asyncio.to_thread(
         auth.verify_password,
@@ -283,6 +320,7 @@ async def _local_login(request: Request, payload: dict) -> JSONResponse:
     if not password_ok:
         log.info("login failed")  # never the password
         raise HTTPException(status_code=401, detail="wrong password")
+    await _bind_browser_origin(browser_origin)
     resp = JSONResponse({"ok": True})
     _set_session(resp, request, auth.issue_session(rec["session_secret"]))
     log.info("login ok")
@@ -356,6 +394,7 @@ async def admin_setup(request: Request):
     payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
     if set(payload) != {"password"} or not isinstance(payload["password"], str):
         raise HTTPException(status_code=400, detail="request body must contain only password")
+    browser_origin = _request_browser_origin(request)
     async with _ADMIN_SETUP_LOCK:
         if state.is_initialized():
             raise HTTPException(status_code=409, detail="admin password already set")
@@ -364,7 +403,9 @@ async def admin_setup(request: Request):
             raise HTTPException(status_code=400, detail=f"password must be at least {MIN_PASSWORD_LEN} characters")
         if len(password) > MAX_PASSWORD_CHARS:
             raise HTTPException(status_code=400, detail="password is too long")
-        await asyncio.to_thread(_initialize_local_supervisor, password)
+        await asyncio.to_thread(_initialize_local_supervisor, password, browser_origin)
+        if browser_origin is not None:
+            log.info("Local Admin browser origin learned: %s", browser_origin)
     resp = JSONResponse({"ok": True})
     _set_session(resp, request, auth.issue_session(state.get()["session_secret"]))
     log.info("admin password created")
@@ -634,6 +675,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         team_id,
         session_ok=_session_ok,
         request_scope=_team_session_scope,
+        allowed_origins=_allowed_browser_origins,
     )
 
 

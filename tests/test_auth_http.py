@@ -27,7 +27,7 @@ class AuthHTTPTests(unittest.TestCase):
                 self._exercise_lifecycle(server.port, store)
 
     def _exercise_lifecycle(self, port: int, store: Path) -> None:
-        status, payload, _ = request(port, "GET", "/api/session")
+        status, payload, _ = request(port, "POST", "/api/session", origin=f"http://127.0.0.1:{port}")
         self.assertEqual(status, 200)
         self.assertEqual(
             payload,
@@ -79,6 +79,16 @@ class AuthHTTPTests(unittest.TestCase):
         self.assertEqual((login_status, login_payload), (200, {"ok": True}))
         self.assertIsNotNone(fresh_session)
         self.assertEqual(request(port, "GET", "/api/model-providers", session=fresh_session)[0], 200)
+
+        status, payload, _ = request(
+            port,
+            "POST",
+            "/api/session",
+            session=fresh_session,
+            origin=f"http://127.0.0.1:{port}",
+        )
+        self.assertEqual(status, 200)
+        self.assertIs(payload["origin_admitted"], True)
 
         self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
         expired = auth.issue_session(record["session_secret"], ttl=-10)

@@ -24,12 +24,15 @@ def request(
     body: dict[str, object] | None = None,
     *,
     session: str | None = None,
+    origin: str | None = None,
     timeout: float = 10,
 ) -> tuple[int, object, str]:
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     headers = {"Content-Type": "application/json"}
     if session is not None:
         headers["Cookie"] = f"shimpz_admin={session}"
+    if origin is not None:
+        headers["Origin"] = origin
     connection.request(method, path, json.dumps(body) if body is not None else None, headers)
     response = connection.getresponse()
     raw = response.read().decode("utf-8", errors="replace")
@@ -83,6 +86,7 @@ class AdminHTTPServer:
                 "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
+                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": f"http://localhost:{self.port},http://127.0.0.1:{self.port}",
                 "SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE": str(supervisor_directory / "public.pem"),
                 "SHIMPZ_LOCAL_SUPERVISOR_KEY_GROUP": grp.getgrgid(os.getgid()).gr_name,
                 **self.environment,
@@ -98,7 +102,7 @@ class AdminHTTPServer:
                     output = self.process.stdout.read() if self.process.stdout else ""
                     raise RuntimeError(f"Admin HTTP server exited during startup:\n{output[-2000:]}")
                 try:
-                    if request(self.port, "GET", "/api/session", timeout=1)[0] == 200:
+                    if request(self.port, "POST", "/api/session", timeout=1)[0] == 200:
                         return self
                 except OSError:
                     time.sleep(0.05)

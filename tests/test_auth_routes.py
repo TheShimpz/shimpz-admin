@@ -35,6 +35,7 @@ class AuthRouteTests(unittest.TestCase):
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
                 "SHIMPZ_ADMIN_PROFILE": "local",
+                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
                 "SHIMPZ_SETUP_TOKEN": "retired-token-must-be-inert",
             },
         ):
@@ -80,10 +81,20 @@ class AuthRouteTests(unittest.TestCase):
         self.assertFalse(any("/api/teams" in path or "/assistants" in path for path in self.admin_app.OPEN_API))
 
     @staticmethod
-    def _request(path: str, payload: dict[str, object] | None = None) -> Request:
+    def _request(
+        path: str,
+        payload: dict[str, object] | None = None,
+        *,
+        origin: str | None = None,
+        cookie: str | None = None,
+    ) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
         headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())] if body else []
+        if origin is not None:
+            headers.append((b"origin", origin.encode("ascii")))
+        if cookie is not None:
+            headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
         scope = {
             "type": "http",
             "asgi": {"version": "3.0"},
@@ -136,7 +147,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("set-cookie", response.headers)
         self.assertTrue(self.admin_app.state.is_initialized())
-        to_thread.assert_awaited_once_with(self.admin_app._initialize_local_supervisor, password)
+        to_thread.assert_awaited_once_with(self.admin_app._initialize_local_supervisor, password, None)
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "correct horse battery staple"
@@ -153,6 +164,77 @@ class AuthRouteTests(unittest.TestCase):
             record["salt"],
             record["password_hash"],
         )
+
+    def test_external_https_origin_is_bound_only_after_correct_password(self) -> None:
+        password = "correct horse battery staple"
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+
+        wrong = self._request(
+            "/api/login",
+            {"password": "definitely wrong"},
+            origin="https://developer.example.test",
+        )
+        with self.assertRaises(self.admin_app.HTTPException) as caught:
+            asyncio.run(self.admin_app.login(wrong))
+        self.assertEqual(caught.exception.status_code, 401)
+        self.assertIsNone(self.admin_app.state.browser_origin())
+
+        valid = self._request(
+            "/api/login",
+            {"password": password},
+            origin="https://developer.example.test",
+        )
+        response = asyncio.run(self.admin_app.login(valid))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.admin_app.state.browser_origin(), "https://developer.example.test")
+
+        session_token = self.admin_app.auth.issue_session(self.admin_app.state.get()["session_secret"])
+        admitted = asyncio.run(
+            self.admin_app.session(
+                self._request("/api/session", origin="https://developer.example.test", cookie=session_token)
+            )
+        )
+        stale = asyncio.run(
+            self.admin_app.session(
+                self._request("/api/session", origin="https://previous.example.test", cookie=session_token)
+            )
+        )
+        self.assertIs(admitted["origin_admitted"], True)
+        self.assertIs(stale["origin_admitted"], False)
+
+    def test_external_origin_is_validated_before_password_verification(self) -> None:
+        password = "correct horse battery staple"
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+
+        with (
+            self.assertRaises(self.admin_app.HTTPException) as caught,
+            mock.patch.object(self.admin_app.auth, "verify_password") as verify_password,
+        ):
+            asyncio.run(
+                self.admin_app.login(
+                    self._request(
+                        "/api/login",
+                        {"password": password},
+                        origin="http://developer.example.test",
+                    )
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 403)
+        verify_password.assert_not_called()
+
+    def test_first_setup_binds_its_external_https_origin(self) -> None:
+        response = asyncio.run(
+            self.admin_app.admin_setup(
+                self._request(
+                    "/api/admin/setup",
+                    {"password": "correct horse battery staple"},
+                    origin="https://first.example.test",
+                )
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.admin_app.state.browser_origin(), "https://first.example.test")
 
     def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
         password = "correct horse battery staple"

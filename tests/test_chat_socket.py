@@ -114,11 +114,11 @@ class ChatWebSocketTests(unittest.TestCase):
         cls.chat_socket = importlib.import_module("chat.socket")
         cls.team = importlib.import_module("team.bridge")
         previous_store = cls.admin_app.state.STORE_PATH
-        previous_origins = cls.chat_socket.ALLOWED_ORIGINS
+        previous_origins = cls.chat_socket.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.chat_socket.ALLOWED_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "ALLOWED_ORIGINS", previous_origins)
+        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
@@ -162,6 +162,42 @@ class ChatWebSocketTests(unittest.TestCase):
             authenticated = _Socket(self.admin_app.app, token=self.token)
             self.assertTrue(self._accepted(await authenticated.start()))
             await authenticated.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_password_bound_external_origin_is_resolved_for_each_handshake(self) -> None:
+        async def scenario() -> None:
+            before = _Socket(
+                self.admin_app.app,
+                token=self.token,
+                origin="https://developer.example.test",
+            )
+            self.assertEqual(await before.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
+            await before.finish()
+
+            self.assertEqual(
+                self.admin_app.state.bind_browser_origin("https://developer.example.test"),
+                "learned",
+            )
+            admitted = _Socket(
+                self.admin_app.app,
+                token=self.token,
+                origin="https://developer.example.test",
+            )
+            self.assertTrue(self._accepted(await admitted.start()))
+            await admitted.disconnect()
+
+            self.assertEqual(
+                self.admin_app.state.bind_browser_origin("https://next.example.test"),
+                "replaced",
+            )
+            stale = _Socket(
+                self.admin_app.app,
+                token=self.token,
+                origin="https://developer.example.test",
+            )
+            self.assertEqual(await stale.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
+            await stale.finish()
 
         asyncio.run(scenario())
 

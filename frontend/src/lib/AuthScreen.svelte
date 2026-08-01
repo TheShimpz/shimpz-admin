@@ -5,6 +5,7 @@
   let {
     phase,
     profile = '',
+    confirmOrigin = false,
     username = $bindable(''),
     password = $bindable(''),
     confirmation = $bindable(''),
@@ -39,10 +40,22 @@
       </div>
     {:else}
       <h1 id="auth-title">
-        {setup ? $t('auth.setupTitle') : hosted ? $t('auth.hostedLoginTitle') : $t('auth.loginTitle')}
+        {setup
+          ? $t('auth.setupTitle')
+          : hosted
+            ? $t('auth.hostedLoginTitle')
+            : confirmOrigin
+              ? $t('auth.originTitle')
+              : $t('auth.loginTitle')}
       </h1>
       <p class="lead">
-        {setup ? $t('auth.setupLead') : hosted ? $t('auth.hostedLoginLead') : $t('auth.loginLead')}
+        {setup
+          ? $t('auth.setupLead')
+          : hosted
+            ? $t('auth.hostedLoginLead')
+            : confirmOrigin
+              ? $t('auth.originLead')
+              : $t('auth.loginLead')}
       </p>
 
       <form onsubmit={(event) => (event.preventDefault(), onSubmit())}>

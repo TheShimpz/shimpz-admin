@@ -19,6 +19,7 @@
   let confirmation = $state('');
   let error = $state('');
   let busy = $state(false);
+  let confirmOrigin = $state(false);
 
   let active = $derived(
     page.url.pathname.startsWith('/chat')
@@ -28,20 +29,16 @@
         : '',
   );
 
-  async function enterAdmin() {
-    phase = 'ready';
-    await goto('/chat/', { replaceState: true });
-  }
-
   async function checkSession() {
     clearAdminNotice();
     clearModelContext();
     clearTeamContext();
     phase = 'checking';
     error = '';
+    confirmOrigin = false;
 
     try {
-      const response = await fetch('/api/session', { cache: 'no-store' });
+      const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
       if (!response.ok) throw new Error('session unavailable');
 
       const session = await response.json();
@@ -50,8 +47,13 @@
       }
       profile = session.profile;
       if (session?.authenticated === true) {
-        phase = 'ready';
-        if (page.url.pathname === '/') await goto('/chat/', { replaceState: true });
+        if (profile === 'local' && session?.origin_admitted !== true) {
+          confirmOrigin = true;
+          phase = 'login';
+        } else {
+          phase = 'ready';
+          if (page.url.pathname === '/') await goto('/chat/', { replaceState: true });
+        }
       } else if (profile === 'local' && session?.initialized === false) {
         phase = 'setup';
       } else if (
@@ -97,14 +99,14 @@
         error =
           response.status === 401
             ? $t('auth.badPassword')
-            : response.status === 403
+            : response.status === 403 && profile === 'hosted'
               ? $t('auth.supervisorRequired')
               : (body.detail ?? `HTTP ${response.status}`);
         return;
       }
 
       username = password = confirmation = '';
-      await enterAdmin();
+      await checkSession();
     } catch {
       error = $t('auth.unreachable');
     } finally {
@@ -133,6 +135,7 @@
     <AuthScreen
       {phase}
       {profile}
+      {confirmOrigin}
       bind:username
       bind:password
       bind:confirmation
