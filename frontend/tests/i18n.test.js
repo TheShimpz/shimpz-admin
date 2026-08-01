@@ -15,11 +15,28 @@ function leafPaths(value, prefix = '') {
   });
 }
 
+function leafStrings(value) {
+  return Object.values(value).flatMap((child) => {
+    if (child && typeof child === 'object' && !Array.isArray(child)) {
+      return leafStrings(child);
+    }
+    return typeof child === 'string' ? [child] : [];
+  });
+}
+
 test('every Admin locale implements the complete English message contract', () => {
   assert.deepEqual(Object.keys(messages), expectedLocales);
   const englishPaths = leafPaths(messages.en).sort();
 
   for (const locale of expectedLocales) {
     assert.deepEqual(leafPaths(messages[locale]).sort(), englishPaths, locale);
+  }
+});
+
+test('Admin copy names installable Team workloads as Assistants', () => {
+  for (const locale of expectedLocales) {
+    for (const message of leafStrings(messages[locale])) {
+      assert.doesNotMatch(message, /\bapps?\b/i, `${locale}: ${message}`);
+    }
   }
 });
