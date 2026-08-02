@@ -159,23 +159,6 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
-    def test_hosted_authorization_request_keeps_its_exact_session_only_body(self):
-        authorization_url = self._authorization_url()
-        _TeamHandler.response_body = json.dumps(
-            {"authorization_url": authorization_url, "trace_id": "f" * 32},
-            separators=(",", ":"),
-        ).encode()
-
-        response = integrations.start_assistant_integration_authorization(
-            "team_1",
-            "c" * 32,
-            "d" * 43,
-            "hosted",
-        )
-
-        self.assertEqual(response, team.TeamResponse(200, {"authorization_url": authorization_url}))
-        self.assertEqual(json.loads(_TeamHandler.requests[-1]["body"]), {"session_binding": "d" * 43})
-
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
         _TeamHandler.response_by_route = {
             (

@@ -198,25 +198,6 @@ def _trusted_cloudflare_authorization_url(value: object, callback_mode: str) -> 
     return value
 
 
-def start_assistant_integration_authorization(
-    team_id: object,
-    challenge_id: object,
-    session_binding: object,
-    callback_mode: object,
-) -> TeamResponse:
-    canonical_id = _canonical_team_id(team_id)
-    canonical_challenge = payloads.canonical_challenge_id(challenge_id)
-    binding = canonical_oauth_binding(session_binding)
-    if callback_mode not in {"loopback", "hosted"}:
-        raise TeamRequestError("OAuth callback mode is invalid.")
-    response = transport._call(
-        "POST",
-        f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
-        {"session_binding": binding},
-    )
-    return _project_authorization_response(response, callback_mode)
-
-
 def _project_authorization_response(response: TeamResponse, callback_mode: str) -> TeamResponse:
     if not 200 <= response.status < 300:
         return response
