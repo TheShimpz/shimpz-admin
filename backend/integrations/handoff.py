@@ -29,6 +29,7 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 HANDOFF_TTL_SECONDS = 90
 HANDOFF_CAPACITY = 256
+CALLBACK_MODES = frozenset({"loopback", "hosted"})
 
 _TEAM_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _HANDOFF_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -52,6 +53,7 @@ class OAuthHandoff:
 
     authorization_url: str
     session_binding: str
+    callback_mode: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class _PendingHandoff:
     team_id: str
     challenge_id: str
     session_binding: str
+    callback_mode: str
     authorization_url: str | None
     admin_session_digest: bytes
     expires_at: float
@@ -84,6 +87,12 @@ def _team_id(value: object) -> str:
 def _challenge_id(value: object) -> str:
     if not isinstance(value, str) or chat_ws_common.CHALLENGE_ID_RE.fullmatch(value) is None:
         raise OAuthHandoffError("OAuth challenge is invalid")
+    return value
+
+
+def _callback_mode(value: object) -> str:
+    if not isinstance(value, str) or value not in CALLBACK_MODES:
+        raise OAuthHandoffError("OAuth callback mode is invalid")
     return value
 
 
@@ -142,11 +151,19 @@ class OAuthHandoffStore:
         for token in expired:
             self._pending.pop(token, None)
 
-    def issue(self, *, team_id: object, challenge_id: object, admin_session: object) -> OAuthPreparation:
+    def issue(
+        self,
+        *,
+        team_id: object,
+        challenge_id: object,
+        admin_session: object,
+        callback_mode: object,
+    ) -> OAuthPreparation:
         """Reserve one handoff while an authenticated caller asks Team for authorization."""
         team = _team_id(team_id)
         challenge = _challenge_id(challenge_id)
         digest = _admin_session_digest(admin_session)
+        callback = _callback_mode(callback_mode)
         now = self._clock()
         with self._lock:
             self._expire(now)
@@ -168,6 +185,7 @@ class OAuthHandoffStore:
                 team_id=team,
                 challenge_id=challenge,
                 session_binding=binding,
+                callback_mode=callback,
                 authorization_url=None,
                 admin_session_digest=digest,
                 expires_at=now + self._ttl,
@@ -188,21 +206,23 @@ class OAuthHandoffStore:
                 team_id=pending.team_id,
                 challenge_id=pending.challenge_id,
                 session_binding=pending.session_binding,
+                callback_mode=pending.callback_mode,
                 authorization_url=redirect,
                 admin_session_digest=pending.admin_session_digest,
                 expires_at=pending.expires_at,
             )
 
-    def consume(self, value: object) -> OAuthHandoff:
+    def consume(self, value: object, callback_mode: object) -> OAuthHandoff:
         """Consume one authorized handoff before exposing its redirect and binding."""
         token = _token(value)
+        callback = _callback_mode(callback_mode)
         now = self._clock()
         with self._lock:
             self._expire(now)
             pending = self._pending.pop(token, None)
-        if pending is None or pending.authorization_url is None:
+        if pending is None or pending.authorization_url is None or pending.callback_mode != callback:
             raise OAuthHandoffError("OAuth handoff is unavailable")
-        return OAuthHandoff(pending.authorization_url, pending.session_binding)
+        return OAuthHandoff(pending.authorization_url, pending.session_binding, pending.callback_mode)
 
     def discard(self, value: object) -> bool:
         """Remove an incomplete reservation after Team rejects or transport fails."""

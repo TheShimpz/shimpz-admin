@@ -177,6 +177,7 @@ class OAuthRoutesTest(unittest.TestCase):
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         self.assertTrue(self.admin_app.OAUTH_HANDOFFS.discard(replacement.token))
 
@@ -185,6 +186,7 @@ class OAuthRoutesTest(unittest.TestCase):
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         self.admin_app.OAUTH_HANDOFFS.authorize(preparation.token, self._cloudflare_authorization_url())
         request = _request(

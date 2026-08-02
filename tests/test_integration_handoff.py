@@ -31,42 +31,47 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             team_id="marketing",
             challenge_id="b" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
 
         self.assertRegex(preparation.token, r"^[0-9a-f]{64}$")
         self.assertRegex(preparation.session_binding, r"^[A-Za-z0-9_-]{43}$")
         self.store.authorize(preparation.token, self.authorization_url)
-        handoff = self.store.consume(preparation.token)
+        handoff = self.store.consume(preparation.token, "loopback")
         self.assertEqual(handoff.authorization_url, self.authorization_url)
         self.assertRegex(handoff.session_binding, r"^[A-Za-z0-9_-]{43}$")
+        self.assertEqual(handoff.callback_mode, "loopback")
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.consume(preparation.token)
+            self.store.consume(preparation.token, "loopback")
 
     def test_expiry_restart_and_wrong_shapes_fail_closed(self) -> None:
         preparation = self.store.issue(
             team_id="marketing",
             challenge_id="b" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         self.now += 30
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.consume(preparation.token)
+            self.store.consume(preparation.token, "loopback")
 
         restarted = handoff_store.OAuthHandoffStore(ttl_seconds=30)
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            restarted.consume(preparation.token)
+            restarted.consume(preparation.token, "loopback")
         for invalid in ("Marketing", "team/one", "", None):
             with self.assertRaises(handoff_store.OAuthHandoffError):
                 self.store.issue(
                     team_id=invalid,
                     challenge_id="b" * 32,
                     admin_session=self.session,
+                    callback_mode="loopback",
                 )
         with self.assertRaises(handoff_store.OAuthHandoffError):
             self.store.issue(
                 team_id="marketing",
                 challenge_id="not-a-challenge",
                 admin_session=self.session,
+                callback_mode="loopback",
             )
 
     def test_duplicate_and_capacity_limits_do_not_evict_live_handoffs(self) -> None:
@@ -74,28 +79,32 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             team_id="marketing",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "already pending"):
             self.store.issue(
                 team_id="marketing",
                 challenge_id="a" * 32,
                 admin_session=self.session,
+                callback_mode="loopback",
             )
         second = self.store.issue(
             team_id="sales",
             challenge_id="b" * 32,
             admin_session=self.session,
+            callback_mode="hosted",
         )
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "capacity"):
             self.store.issue(
                 team_id="support",
                 challenge_id="c" * 32,
                 admin_session=self.session,
+                callback_mode="loopback",
             )
         self.store.authorize(first.token, self.authorization_url)
         self.store.authorize(second.token, self.authorization_url)
-        self.assertEqual(self.store.consume(first.token).authorization_url, self.authorization_url)
-        self.assertEqual(self.store.consume(second.token).authorization_url, self.authorization_url)
+        self.assertEqual(self.store.consume(first.token, "loopback").authorization_url, self.authorization_url)
+        self.assertEqual(self.store.consume(second.token, "hosted").authorization_url, self.authorization_url)
 
     def test_logout_cancels_only_its_own_unconsumed_handoffs(self) -> None:
         other_session = "v1:9999999999:fedcba9876543210:" + "b" * 64
@@ -103,32 +112,36 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             team_id="marketing",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         second = self.store.issue(
             team_id="sales",
             challenge_id="b" * 32,
             admin_session=other_session,
+            callback_mode="hosted",
         )
 
         self.store.authorize(second.token, self.authorization_url)
         self.assertEqual(self.store.cancel_session(self.session), 1)
         with self.assertRaises(handoff_store.OAuthHandoffError):
-            self.store.consume(first.token)
-        self.assertEqual(self.store.consume(second.token).authorization_url, self.authorization_url)
+            self.store.consume(first.token, "loopback")
+        self.assertEqual(self.store.consume(second.token, "hosted").authorization_url, self.authorization_url)
 
     def test_unprepared_invalid_and_duplicate_authorization_fail_closed(self) -> None:
         preparation = self.store.issue(
             team_id="marketing",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.consume(preparation.token)
+            self.store.consume(preparation.token, "loopback")
 
         second = self.store.issue(
             team_id="marketing",
             challenge_id="a" * 32,
             admin_session=self.session,
+            callback_mode="loopback",
         )
         for invalid in ("http://shimpz.com/api/oauth/cloudflare/start", "https://evil.example/start", "", None):
             with self.subTest(invalid=invalid), self.assertRaises(handoff_store.OAuthHandoffError):
@@ -136,6 +149,19 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         self.store.authorize(second.token, self.authorization_url)
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.authorize(second.token, self.authorization_url)
+
+    def test_callback_mode_mismatch_consumes_the_handoff(self) -> None:
+        preparation = self.store.issue(
+            team_id="marketing",
+            challenge_id="a" * 32,
+            admin_session=self.session,
+            callback_mode="hosted",
+        )
+        self.store.authorize(preparation.token, self.authorization_url)
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
+            self.store.consume(preparation.token, "loopback")
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
+            self.store.consume(preparation.token, "hosted")
 
 
 if __name__ == "__main__":

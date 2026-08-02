@@ -726,6 +726,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
             team_id=canonical_team,
             challenge_id=canonical_challenge,
             admin_session=session_token,
+            callback_mode=callback_mode,
         )
         result = await asyncio.to_thread(
             integrations.start_assistant_integration_authorization,
@@ -776,14 +777,15 @@ async def team_assistant_integration_disconnect(team_id: str, assistant_id: str,
 
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
-    if not _is_oauth_origin(request):
+    request_mode = _oauth_request_mode(request)
+    if not _is_oauth_origin(request) or request_mode is None:
         return _oauth_chat_redirect("start-failed")
     try:
-        pending = OAUTH_HANDOFFS.consume(handoff)
+        pending = OAUTH_HANDOFFS.consume(handoff, request_mode)
     except handoff_store.OAuthHandoffError:
         return _oauth_chat_redirect("start-failed")
     response = RedirectResponse(pending.authorization_url, status_code=303)
-    hosted_callback = _oauth_request_mode(request) == "hosted"
+    hosted_callback = pending.callback_mode == "hosted"
     response.set_cookie(
         OAUTH_COOKIE,
         pending.session_binding,
