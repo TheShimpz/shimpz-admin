@@ -174,6 +174,48 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_empty_sync_clears_an_expired_challenge_before_the_next_turn(self) -> None:
+        async def scenario() -> None:
+            pending = _integration_challenge(status=200)
+            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            completed = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Fresh turn."},
+            )
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "pending_integrations",
+                    side_effect=[pending, empty],
+                ),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "resume_integrations",
+                    return_value=pending,
+                ),
+                mock.patch.object(self.chat_socket.local, "turn", return_value=completed) as turn,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                self.assertEqual((await websocket.next_json())["type"], "integrations-required")
+                await websocket.send_json({"type": "sync"})
+                self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
+                await websocket.send_json({"type": "chat", "message": "Retry", "files": [], "assistant_ids": []})
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "done",
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Fresh turn.",
+                    },
+                )
+                turn.assert_called_once()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_integration_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
             completed = self.chat_socket.local.PublicResponse(

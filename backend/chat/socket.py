@@ -265,18 +265,20 @@ async def _deliver_integration_sync(
     team_id: str,
     pending_response: object,
     resumed_response: object,
-) -> bool:
-    """Deliver an explicitly resumed integration gate; return whether it consumed sync."""
+) -> None:
+    """Deliver one explicit integration synchronization result."""
     pending = integration_challenge_event(pending_response, team_id)
     if pending is None:
         if _is_empty_pending(pending_response, team_id):
+            connection.pending_challenge_id = None
+            connection.pending_challenge_type = None
             await _send_event(websocket, {"type": "sync-empty"})
-            return True
+            return
         await _send_event(websocket, _pending_error(pending_response, team_id, "integration"))
-        return True
+        return
     if resumed_response is None:
         await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
-        return True
+        return
 
     resumed, challenge_type = _first_challenge(resumed_response, team_id)
     if resumed is not None:
@@ -284,12 +286,12 @@ async def _deliver_integration_sync(
         resumed_turn_id = resumed_response.body.get("turn_id")
         if pending_turn_id != resumed_turn_id:
             await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
-            return True
+            return
         connection.pending_challenge_id = resumed["challenge_id"]
         connection.pending_challenge_type = challenge_type
         if not await _send_event(websocket, resumed):
             connection.closed = True
-        return True
+        return
 
     if isinstance(resumed_response, team.TeamResponse) and (
         resumed_response.status == 428
@@ -301,7 +303,6 @@ async def _deliver_integration_sync(
     connection.pending_challenge_id = None
     connection.pending_challenge_type = None
     await _send_event(websocket, event)
-    return True
 
 
 async def _load_sync_snapshot(
@@ -330,15 +331,13 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
         pending_integration_response, resumed_integration_response = snapshot
         if connection.closed:
             return
-        if not await _deliver_integration_sync(
+        await _deliver_integration_sync(
             websocket,
             connection,
             team_id,
             pending_integration_response,
             resumed_integration_response,
-        ):
-            connection.pending_challenge_id = None
-            connection.pending_challenge_type = None
+        )
     finally:
         if connection.sync_task is task:
             connection.sync_task = None
