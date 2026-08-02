@@ -73,7 +73,6 @@ class OAuthRoutesTest(unittest.TestCase):
                 "SHIMPZ_REPO": str(root),
                 "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
                 "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_LOOPBACK_PORT": "4600",
             },
         ):
             sys.modules.pop("app", None)
@@ -85,16 +84,8 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
 
-    def test_loopback_port_is_configurable_and_rejects_invalid_values(self) -> None:
-        with mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_LOOPBACK_PORT": "49123"}):
-            self.assertEqual(self.admin_app._configured_loopback_port(), 49123)
-        for value in ("", "0", "65536", "+4600", "4600/tcp"):
-            with (
-                self.subTest(value=value),
-                mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_LOOPBACK_PORT": value}),
-                self.assertRaisesRegex(RuntimeError, "invalid Admin loopback port"),
-            ):
-                self.admin_app._configured_loopback_port()
+    def test_loopback_oauth_origin_is_fixed(self) -> None:
+        self.assertEqual(self.admin_app.OAUTH_ORIGINS["loopback"], "http://127.0.0.1:7777")
 
     @staticmethod
     def _cloudflare_authorization_url(callback: str = "loopback") -> str:
@@ -110,10 +101,10 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
+            "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
-            origin="http://localhost:4600",
+            origin="http://127.0.0.1:7777",
         )
         provider = self.admin_app.team.TeamResponse(
             200,
@@ -123,11 +114,11 @@ class OAuthRoutesTest(unittest.TestCase):
             mock.patch.object(
                 self.admin_app,
                 "_allowed_browser_origins",
-                return_value=frozenset({"http://localhost:4600", "http://127.0.0.1:4600"}),
+                return_value=frozenset({"http://127.0.0.1:7777"}),
             ),
             mock.patch.object(
                 self.admin_app.integrations,
-                "start_assistant_integration_authorization",
+                "start_local_assistant_integration_authorization",
                 return_value=provider,
             ) as start,
         ):
@@ -139,7 +130,7 @@ class OAuthRoutesTest(unittest.TestCase):
         parsed = urlsplit(body["authorization_url"])
         self.assertEqual(
             (parsed.scheme, parsed.hostname, parsed.port, parsed.path, parsed.fragment),
-            ("http", "127.0.0.1", 4600, "/api/oauth/cloudflare/start", ""),
+            ("http", "127.0.0.1", 7777, "/api/oauth/cloudflare/start", ""),
         )
         query = parse_qs(parsed.query, strict_parsing=True)
         self.assertEqual(set(query), {"handoff"})
@@ -153,20 +144,20 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authorization_failure_always_releases_the_handoff_reservation(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
+            "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
-            origin="http://localhost:4600",
+            origin="http://127.0.0.1:7777",
         )
         with (
             mock.patch.object(
                 self.admin_app,
                 "_allowed_browser_origins",
-                return_value=frozenset({"http://localhost:4600", "http://127.0.0.1:4600"}),
+                return_value=frozenset({"http://127.0.0.1:7777"}),
             ),
             mock.patch.object(
                 self.admin_app.integrations,
-                "start_assistant_integration_authorization",
+                "start_local_assistant_integration_authorization",
                 side_effect=RuntimeError("unexpected Team client failure"),
             ),
             self.assertRaisesRegex(RuntimeError, "unexpected Team client failure"),
@@ -191,11 +182,11 @@ class OAuthRoutesTest(unittest.TestCase):
         self.admin_app.OAUTH_HANDOFFS.authorize(preparation.token, self._cloudflare_authorization_url())
         request = _request(
             "GET",
-            f"http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff={preparation.token}",
+            f"http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff={preparation.token}",
         )
         with mock.patch.object(
             self.admin_app.integrations,
-            "start_assistant_integration_authorization",
+            "start_local_assistant_integration_authorization",
             side_effect=AssertionError("loopback handoff must not call Team"),
         ) as start:
             response = asyncio.run(self.admin_app.oauth_cloudflare_start(request, preparation.token))
@@ -236,7 +227,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             mock.patch.object(
                 self.admin_app.integrations,
-                "start_assistant_integration_authorization",
+                "start_local_assistant_integration_authorization",
                 return_value=provider,
             ),
         ):
@@ -251,10 +242,13 @@ class OAuthRoutesTest(unittest.TestCase):
 
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "start_assistant_integration_authorization",
-            side_effect=AssertionError("authorized handoff must not call Team"),
+        with (
+            mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://local.shimpz.com"),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_local_assistant_integration_authorization",
+                side_effect=AssertionError("authorized handoff must not call Team"),
+            ),
         ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
@@ -274,11 +268,14 @@ class OAuthRoutesTest(unittest.TestCase):
             cookie=f"shimpz_oauth_binding={binding.value}",
         )
         completed = self.admin_app.team.TeamResponse(200, {"connected": True})
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "complete_cloudflare_oauth_callback",
-            return_value=completed,
-        ) as complete:
+        with (
+            mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://local.shimpz.com"),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "complete_cloudflare_oauth_callback",
+                return_value=completed,
+            ) as complete,
+        ):
             response = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))
         self.assertEqual(response.headers["location"], "/chat")
         complete.assert_called_once_with(
@@ -291,6 +288,44 @@ class OAuthRoutesTest(unittest.TestCase):
             rejected = _request("GET", origin + "/api/oauth/cloudflare/start?handoff=" + "f" * 64)
             result = asyncio.run(self.admin_app.oauth_cloudflare_start(rejected, "f" * 64))
             self.assertEqual(result.headers["location"], "/chat?oauth=start-failed")
+
+    def test_replacing_the_admitted_https_origin_invalidates_a_pending_handoff(self) -> None:
+        preparation = self.admin_app.OAUTH_HANDOFFS.issue(
+            team_id="team_1",
+            challenge_id="a" * 32,
+            admin_session=self.session,
+            callback_mode="hosted",
+        )
+        self.admin_app.OAUTH_HANDOFFS.authorize(
+            preparation.token,
+            self._cloudflare_authorization_url("hosted"),
+        )
+        request = _request(
+            "GET",
+            "https://local.shimpz.com/api/oauth/cloudflare/start?handoff=" + preparation.token,
+        )
+        with mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://replacement.example"):
+            rejected = asyncio.run(self.admin_app.oauth_cloudflare_start(request, preparation.token))
+        with mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://local.shimpz.com"):
+            replay = asyncio.run(self.admin_app.oauth_cloudflare_start(request, preparation.token))
+
+        self.assertEqual(rejected.headers["location"], "/chat?oauth=start-failed")
+        self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
+
+    def test_localhost_and_custom_ports_cannot_start_oauth_authorization(self) -> None:
+        origins = ("http://localhost:7777", "http://127.0.0.1:49123")
+        with mock.patch.object(self.admin_app, "_allowed_browser_origins", return_value=frozenset(origins)):
+            for origin in origins:
+                request = _request(
+                    "POST",
+                    origin + "/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
+                    body=b"{}",
+                    cookie=f"shimpz_admin={self.session}",
+                    origin=origin,
+                )
+                with self.subTest(origin=origin), self.assertRaises(HTTPException) as raised:
+                    asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+                self.assertEqual(raised.exception.status_code, 409)
 
     def test_non_callback_https_address_fails_before_team_authorization(self) -> None:
         request = _request(
@@ -308,7 +343,7 @@ class OAuthRoutesTest(unittest.TestCase):
                 "_allowed_browser_origins",
                 return_value=frozenset({"https://developer.example.test"}),
             ),
-            mock.patch.object(self.admin_app.integrations, "start_assistant_integration_authorization") as start,
+            mock.patch.object(self.admin_app.integrations, "start_local_assistant_integration_authorization") as start,
             self.assertRaises(HTTPException) as raised,
         ):
             asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
@@ -321,7 +356,7 @@ class OAuthRoutesTest(unittest.TestCase):
         claim = "a" * 64
         request = _request(
             "GET",
-            f"http://127.0.0.1:4600/api/oauth/cloudflare/callback?state={state}&claim={claim}",
+            f"http://127.0.0.1:7777/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
         result = self.admin_app.team.TeamResponse(
@@ -353,7 +388,7 @@ class OAuthRoutesTest(unittest.TestCase):
         requests = (
             _request(
                 "GET",
-                "http://127.0.0.1:4600/api/oauth/cloudflare/callback?state="
+                "http://127.0.0.1:7777/api/oauth/cloudflare/callback?state="
                 + "a" * 43
                 + "&state="
                 + "b" * 43
@@ -363,7 +398,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             _request(
                 "GET",
-                "http://127.0.0.1:4600/api/oauth/cloudflare/callback?state="
+                "http://127.0.0.1:7777/api/oauth/cloudflare/callback?state="
                 + "a" * 43
                 + "&claim="
                 + "d" * 64
@@ -372,7 +407,7 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             _request(
                 "GET",
-                "http://localhost:4600/api/oauth/cloudflare/callback?state=" + "a" * 43 + "&claim=" + "d" * 64,
+                "http://localhost:7777/api/oauth/cloudflare/callback?state=" + "a" * 43 + "&claim=" + "d" * 64,
                 cookie="shimpz_oauth_binding=" + "c" * 43,
             ),
         )
@@ -411,7 +446,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def test_authorize_body_must_be_exactly_empty(self) -> None:
         request = _request(
             "POST",
-            "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
+            "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b'{"client_id":"must-not-cross"}',
             cookie=f"shimpz_admin={self.session}",
         )

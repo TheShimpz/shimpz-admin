@@ -61,21 +61,8 @@ OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
 _ADMIN_SETUP_LOCK = asyncio.Lock()
-
-
-def _configured_loopback_port() -> int:
-    value = os.environ.get("SHIMPZ_ADMIN_LOOPBACK_PORT", "4600").strip()
-    if not value.isascii() or not value.isdecimal():
-        raise RuntimeError("invalid Admin loopback port")
-    port = int(value)
-    if not 1 <= port <= 65535:
-        raise RuntimeError("invalid Admin loopback port")
-    return port
-
-
-OAUTH_LOOPBACK_PORT = _configured_loopback_port()
 OAUTH_ORIGINS = {
-    "loopback": f"http://127.0.0.1:{OAUTH_LOOPBACK_PORT}",
+    "loopback": "http://127.0.0.1:7777",
     "hosted": "https://local.shimpz.com",
 }
 MIN_PASSWORD_LEN = 12
@@ -91,10 +78,16 @@ OPEN_API = frozenset(
         "/api/session",
         "/api/login",
         "/api/logout",
-        "/api/oauth/cloudflare/start",
-        "/api/oauth/cloudflare/callback",
     }
-    | ({"/api/admin/setup"} if ADMIN_PROFILE == "local" else set())
+    | (
+        {
+            "/api/admin/setup",
+            "/api/oauth/cloudflare/start",
+            "/api/oauth/cloudflare/callback",
+        }
+        if ADMIN_PROFILE == "local"
+        else set()
+    )
 )
 
 
@@ -125,13 +118,6 @@ def _is_https(request):
     return request.url.scheme == "https" or xfp == "https"
 
 
-def _configured_oauth_callback_mode() -> str:
-    mode = os.environ.get("SHIMPZ_OAUTH_CALLBACK_MODE", "loopback").strip()
-    if mode not in OAUTH_ORIGINS:
-        raise RuntimeError("invalid OAuth callback mode")
-    return mode
-
-
 def _oauth_origin(callback_mode: str) -> str:
     return OAUTH_ORIGINS[callback_mode]
 
@@ -140,35 +126,29 @@ def _local_oauth_authorization_mode(request: Request) -> str:
     origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
     if origin is None or origin not in _allowed_browser_origins():
         raise HTTPException(status_code=403, detail="OAuth authorization origin is not admitted")
-    if origin in {
-        f"http://localhost:{OAUTH_LOOPBACK_PORT}",
-        OAUTH_ORIGINS["loopback"],
-    }:
+    if origin == OAUTH_ORIGINS["loopback"]:
         return "loopback"
     if origin == OAUTH_ORIGINS["hosted"]:
         return "hosted"
     raise HTTPException(status_code=409, detail="OAuth authorization is unavailable for this Admin address")
 
 
-def _oauth_authorization_mode(request: Request) -> str:
-    if ADMIN_PROFILE == "local":
-        return _local_oauth_authorization_mode(request)
-    return _configured_oauth_callback_mode()
-
-
 def _oauth_request_mode(request: Request) -> str | None:
-    if request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == OAUTH_LOOPBACK_PORT:
+    if ADMIN_PROFILE != "local":
+        return None
+    if request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == 7777:
         return "loopback"
-    if _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None:
+    if (
+        request.url.hostname == "local.shimpz.com"
+        and request.url.port is None
+        and state.browser_origin() == OAUTH_ORIGINS["hosted"]
+    ):
         return "hosted"
     return None
 
 
 def _is_oauth_origin(request: Request) -> bool:
-    mode = _oauth_request_mode(request)
-    if ADMIN_PROFILE == "local":
-        return mode is not None
-    return mode == _configured_oauth_callback_mode()
+    return _oauth_request_mode(request) is not None
 
 
 def _set_session(resp, request, token):
@@ -719,7 +699,9 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     preparation = None
     authorized = False
     try:
-        callback_mode = _oauth_authorization_mode(request)
+        if ADMIN_PROFILE != "local":
+            raise HTTPException(status_code=409, detail="OAuth authorization is unavailable in this profile")
+        callback_mode = _local_oauth_authorization_mode(request)
         canonical_team = team.canonical_team_id(team_id)
         canonical_challenge = team.canonical_challenge_id(challenge_id)
         preparation = OAUTH_HANDOFFS.issue(
@@ -729,7 +711,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
             callback_mode=callback_mode,
         )
         result = await asyncio.to_thread(
-            integrations.start_assistant_integration_authorization,
+            integrations.start_local_assistant_integration_authorization,
             canonical_team,
             canonical_challenge,
             preparation.session_binding,
@@ -779,6 +761,8 @@ async def team_assistant_integration_disconnect(team_id: str, assistant_id: str,
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     request_mode = _oauth_request_mode(request)
     if not _is_oauth_origin(request) or request_mode is None:
+        with suppress(handoff_store.OAuthHandoffError):
+            OAUTH_HANDOFFS.discard(handoff)
         return _oauth_chat_redirect("start-failed")
     try:
         pending = OAUTH_HANDOFFS.consume(handoff, request_mode)
