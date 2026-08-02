@@ -4,7 +4,9 @@ import test from 'node:test';
 import {
   CHAT_WS_PROTOCOL,
   authorizeAssistantIntegration,
+  cancelAssistantIntegrationAuthorization,
   chatSocketUrl,
+  completeAssistantIntegration,
   createChatFrame,
   createStopFrame,
   createSyncFrame,
@@ -276,14 +278,23 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
 
 test('starts only a trusted Cloudflare authorization and disconnects with an empty 204', async () => {
   const calls = [];
-  const authorizationUrl = 'https://dash.cloudflare.com/oauth2/auth?response_type=code&state=opaque';
-  assert.deepEqual(
-    await authorizeAssistantIntegration(async (url, options) => {
-      calls.push({ url, options });
-      return response(200, { authorization_url: authorizationUrl });
-    }, 'team_1', CHALLENGE_ID),
-    { authorization_url: authorizationUrl },
-  );
+  const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
+    + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
+    + '&scope=dns.read+offline_access+zone.read&callback=out-of-band';
+  const previousLocation = globalThis.location;
+  globalThis.location = { protocol: 'https:', hostname: 'developer.example', port: '' };
+  try {
+    assert.deepEqual(
+      await authorizeAssistantIntegration(async (url, options) => {
+        calls.push({ url, options });
+        return response(200, { authorization_url: authorizationUrl, completion_mode: 'code' });
+      }, 'team_1', CHALLENGE_ID),
+      { authorization_url: authorizationUrl, completion_mode: 'code' },
+    );
+  } finally {
+    if (previousLocation === undefined) delete globalThis.location;
+    else globalThis.location = previousLocation;
+  }
   assert.equal(
     calls[0].url,
     `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
@@ -292,21 +303,17 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   assert.equal(calls[0].options.body, '{}');
 
   for (const body of [
-    { authorization_url: 'http://dash.cloudflare.com/oauth2/auth' },
-    { authorization_url: 'https://evil.example/oauth2/auth' },
-    { authorization_url: 'https://dash.cloudflare.com.evil.example/oauth2/auth' },
-    { authorization_url: 'https://dash.cloudflare.com/settings' },
-    { authorization_url: 'https://user@dash.cloudflare.com/oauth2/auth' },
-    { authorization_url: 'https://dash.cloudflare.com/oauth2/auth#token=value' },
-    { authorization_url: `http://localhost:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `https://local.shimpz.com:444/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `https://local.shimpz.com.evil.test/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
-    { authorization_url: `http://user@127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}#token=value` },
-    { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
+    { authorization_url: 'https://evil.example/oauth2/auth', completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('shimpz.com', 'shimpz.com.evil.example'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('https://', 'https://user@'), completion_mode: 'code' },
+    { authorization_url: `${authorizationUrl}&next=https://evil.example`, completion_mode: 'code' },
+    { authorization_url: `${authorizationUrl}#claim=must-not-cross`, completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('callback=out-of-band', 'callback=https://evil.example'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('dns.read+offline_access+zone.read', 'zone.read'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl, completion_mode: 'automatic' },
+    { authorization_url: authorizationUrl, completion_mode: 'redirect' },
+    { authorization_url: authorizationUrl },
+    { authorization_url: authorizationUrl, completion_mode: 'code', code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
       authorizeAssistantIntegration(async () => response(200, body), 'team_1', CHALLENGE_ID),
@@ -340,15 +347,15 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     globalThis.location = { protocol: 'http:', hostname: '127.0.0.1', port: '7777' };
     assert.deepEqual(
       await authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: loopbackUrl }),
+        async () => response(200, { authorization_url: loopbackUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
       ),
-      { authorization_url: loopbackUrl },
+      { authorization_url: loopbackUrl, completion_mode: 'automatic' },
     );
     await assert.rejects(
       authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: hostedUrl }),
+        async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
       ),
@@ -358,16 +365,16 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     globalThis.location = { protocol: 'https:', hostname: 'local.shimpz.com', port: '' };
     assert.deepEqual(
       await authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: hostedUrl }),
+        async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
       ),
-      { authorization_url: hostedUrl },
+      { authorization_url: hostedUrl, completion_mode: 'automatic' },
     );
     for (const authorizationUrl of [loopbackUrl, `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`]) {
       await assert.rejects(
         authorizeAssistantIntegration(
-          async () => response(200, { authorization_url: authorizationUrl }),
+          async () => response(200, { authorization_url: authorizationUrl, completion_mode: 'automatic' }),
           'team_1',
           CHALLENGE_ID,
         ),
@@ -378,6 +385,62 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     if (previousLocation === undefined) delete globalThis.location;
     else globalThis.location = previousLocation;
   }
+});
+
+test('completes and cancels only the exact out-of-band challenge contract', async () => {
+  const calls = [];
+  const completionCode = `c1.${'s'.repeat(43)}.${'a'.repeat(64)}`;
+  const completed = await completeAssistantIntegration(
+    async (url, options) => {
+      calls.push({ url, options });
+      return response(200, {
+        connected: true,
+        team_id: 'team_1',
+        assistant_id: 'shimpz-cloudflare',
+        integration_id: 'cloudflare',
+      });
+    },
+    'team_1',
+    CHALLENGE_ID,
+    completionCode,
+  );
+  assert.equal(completed.connected, true);
+  assert.equal(
+    calls[0].url,
+    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/complete`,
+  );
+  assert.equal(calls[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { completion_code: completionCode });
+
+  await cancelAssistantIntegrationAuthorization(
+    async (url, options) => {
+      calls.push({ url, options });
+      return response(204, {});
+    },
+    'team_1',
+    CHALLENGE_ID,
+  );
+  assert.equal(
+    calls[1].url,
+    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
+  );
+  assert.equal(calls[1].options.method, 'DELETE');
+  assert.equal(calls[1].options.body, '{}');
+
+  for (const invalid of [
+    `c0.${'s'.repeat(43)}.${'a'.repeat(64)}`,
+    `c1.${'s'.repeat(42)}.${'a'.repeat(64)}`,
+    `c1.${'s'.repeat(43)}.${'A'.repeat(64)}`,
+  ]) {
+    await assert.rejects(
+      completeAssistantIntegration(async () => response(200, {}), 'team_1', CHALLENGE_ID, invalid),
+      /completion code/i,
+    );
+  }
+  await assert.rejects(
+    cancelAssistantIntegrationAuthorization(async () => response(200, {}), 'team_1', CHALLENGE_ID),
+    /cancellation response is invalid/,
+  );
 });
 
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {

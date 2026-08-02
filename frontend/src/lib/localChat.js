@@ -338,7 +338,7 @@ function canonicalIntegrationInventoryItem(value) {
   };
 }
 
-function trustedAuthorizationUrl(value) {
+function trustedAuthorizationUrl(value, completionMode) {
   if (typeof value !== 'string' || value.length > 4096 || CONTROL_RE.test(value)) {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
@@ -348,12 +348,6 @@ function trustedAuthorizationUrl(value) {
   } catch {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
-  const directProvider = (
-    url.protocol === 'https:' &&
-    url.hostname === 'dash.cloudflare.com' &&
-    !url.port &&
-    url.pathname === '/oauth2/auth'
-  );
   const browserLocation = globalThis.location;
   const loopbackPage = (
     browserLocation?.protocol === 'http:' &&
@@ -375,7 +369,22 @@ function trustedAuthorizationUrl(value) {
     [...url.searchParams.keys()].length === 1 &&
     /^[0-9a-f]{64}$/.test(url.searchParams.get('handoff') ?? '')
   );
-  if (url.username || url.password || url.hash || (!directProvider && !localHandoff)) {
+  const outOfBand = (
+    url.protocol === 'https:' &&
+    url.hostname === 'shimpz.com' &&
+    !url.port &&
+    url.pathname === '/api/oauth/cloudflare/start' &&
+    [...url.searchParams.keys()].length === 4 &&
+    /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state') ?? '') &&
+    /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code_challenge') ?? '') &&
+    url.searchParams.get('scope') === 'dns.read offline_access zone.read' &&
+    url.searchParams.get('callback') === 'out-of-band'
+  );
+  const trusted = (
+    (completionMode === 'automatic' && localHandoff) ||
+    (completionMode === 'code' && outOfBand)
+  );
+  if (url.username || url.password || url.hash || !trusted) {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
   return url.href;
@@ -523,10 +532,77 @@ export async function authorizeAssistantIntegration(fetcher, teamId, challengeId
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant authorization could not start.'), response.status);
   }
-  if (!exactKeys(body, ['authorization_url'])) {
+  if (
+    !exactKeys(body, ['authorization_url', 'completion_mode']) ||
+    !['automatic', 'code'].includes(body.completion_mode)
+  ) {
     throw new LocalApiError('The Assistant authorization response is invalid.', response.status);
   }
-  return { authorization_url: trustedAuthorizationUrl(body.authorization_url) };
+  return {
+    authorization_url: trustedAuthorizationUrl(body.authorization_url, body.completion_mode),
+    completion_mode: body.completion_mode,
+  };
+}
+
+export async function completeAssistantIntegration(fetcher, teamId, challengeId, completionCode) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+  requireTeam(teamId);
+  if (
+    typeof challengeId !== 'string' ||
+    !OPAQUE_ID_RE.test(challengeId) ||
+    typeof completionCode !== 'string' ||
+    !/^c1\.[A-Za-z0-9_-]{43}\.[0-9a-f]{64}$/.test(completionCode)
+  ) {
+    throw new LocalApiError('Invalid Assistant completion code.');
+  }
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/complete`,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completion_code: completionCode }),
+    },
+  );
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Assistant authorization could not finish.'), response.status);
+  }
+  if (
+    !exactKeys(body, ['connected', 'team_id', 'assistant_id', 'integration_id']) ||
+    body.connected !== true ||
+    body.team_id !== teamId
+  ) {
+    throw new LocalApiError('The Assistant completion response is invalid.', response.status);
+  }
+  return {
+    connected: true,
+    team_id: teamId,
+    assistant_id: canonicalId(body.assistant_id, 'The Assistant completion response is invalid.'),
+    integration_id: canonicalId(body.integration_id, 'The Assistant completion response is invalid.'),
+  };
+}
+
+export async function cancelAssistantIntegrationAuthorization(fetcher, teamId, challengeId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+  requireTeam(teamId);
+  if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
+    throw new LocalApiError('Invalid Assistant authorization request.');
+  }
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/authorize`,
+    {
+      method: 'DELETE',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  if (!response.ok) {
+    const body = await jsonObject(response);
+    throw new LocalApiError(safeApiError(body, 'Assistant authorization could not be cancelled.'), response.status);
+  }
+  if (response.status !== 204) {
+    throw new LocalApiError('The Assistant cancellation response is invalid.', response.status);
+  }
 }
 
 export async function disconnectAssistantIntegration(fetcher, teamId, assistantId, integrationId) {

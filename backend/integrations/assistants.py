@@ -224,7 +224,7 @@ def start_local_assistant_integration_authorization(
     canonical_id = _canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
-    if callback_mode not in {"loopback", "hosted"}:
+    if callback_mode not in {"loopback", "hosted", "out-of-band"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
     response = transport._call(
         "POST",
@@ -232,6 +232,33 @@ def start_local_assistant_integration_authorization(
         {"callback_mode": callback_mode, "session_binding": binding},
     )
     return _project_authorization_response(response, callback_mode)
+
+
+def cancel_local_assistant_integration_authorization(
+    team_id: object,
+    challenge_id: object,
+    session_binding: object,
+) -> TeamResponse:
+    canonical_id = _canonical_team_id(team_id)
+    canonical_challenge = payloads.canonical_challenge_id(challenge_id)
+    binding = canonical_oauth_binding(session_binding)
+    response = transport._call(
+        "DELETE",
+        f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
+        {"session_binding": binding},
+    )
+    if not 200 <= response.status < 300:
+        return response
+    if (
+        response.status != 200
+        or set(response.body) != {"cancelled", "trace_id"}
+        or type(response.body["cancelled"]) is not bool
+        or not isinstance(response.body["trace_id"], str)
+        or chat_ws_common.HEX_ID_RE.fullmatch(response.body["trace_id"]) is None
+    ):
+        log.warning("team returned an invalid OAuth cancellation response")
+        return TeamResponse(502, {"detail": "OAuth cancellation response is invalid."})
+    return TeamResponse(204, {})
 
 
 def disconnect_assistant_integration(

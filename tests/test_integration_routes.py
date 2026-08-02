@@ -126,7 +126,8 @@ class OAuthRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.body)
-        self.assertEqual(set(body), {"authorization_url"})
+        self.assertEqual(set(body), {"authorization_url", "completion_mode"})
+        self.assertEqual(body["completion_mode"], "automatic")
         parsed = urlsplit(body["authorization_url"])
         self.assertEqual(
             (parsed.scheme, parsed.hostname, parsed.port, parsed.path, parsed.fragment),
@@ -327,8 +328,8 @@ class OAuthRoutesTest(unittest.TestCase):
                     asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
                 self.assertEqual(raised.exception.status_code, 409)
 
-    def test_non_callback_https_address_fails_before_team_authorization(self) -> None:
-        request = _request(
+    def test_custom_https_address_completes_out_of_band_in_the_original_session(self) -> None:
+        authorize_request = _request(
             "POST",
             "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
             + "a" * 32
@@ -337,18 +338,123 @@ class OAuthRoutesTest(unittest.TestCase):
             cookie=f"shimpz_admin={self.session}",
             origin="https://developer.example.test",
         )
+        provider_url = self._cloudflare_authorization_url("out-of-band")
+        provider = self.admin_app.team.TeamResponse(200, {"authorization_url": provider_url})
         with (
             mock.patch.object(
                 self.admin_app,
                 "_allowed_browser_origins",
                 return_value=frozenset({"https://developer.example.test"}),
             ),
-            mock.patch.object(self.admin_app.integrations, "start_local_assistant_integration_authorization") as start,
-            self.assertRaises(HTTPException) as raised,
+            mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://developer.example.test"),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_local_assistant_integration_authorization",
+                return_value=provider,
+            ) as start,
         ):
-            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-        self.assertEqual(raised.exception.status_code, 409)
-        start.assert_not_called()
+            authorized = asyncio.run(
+                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)
+            )
+        body = json.loads(authorized.body)
+        self.assertEqual(body, {"authorization_url": provider_url, "completion_mode": "code"})
+        binding = start.call_args.args[2]
+        self.assertEqual(start.call_args.args[3], "out-of-band")
+
+        code = "c1." + "b" * 43 + "." + "d" * 64
+        complete_request = _request(
+            "POST",
+            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
+            + "a" * 32
+            + "/complete",
+            body=json.dumps({"completion_code": code}).encode(),
+            cookie=f"shimpz_admin={self.session}",
+            origin="https://developer.example.test",
+        )
+        completed = self.admin_app.team.TeamResponse(
+            200,
+            {
+                "connected": True,
+                "team_id": "team_1",
+                "assistant_id": "shimpz-cloudflare",
+                "integration_id": "cloudflare",
+            },
+        )
+        with mock.patch.object(
+            self.admin_app.integrations,
+            "complete_cloudflare_oauth_callback",
+            return_value=completed,
+        ) as complete:
+            response = asyncio.run(
+                self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, complete_request)
+            )
+            replay_request = _request(
+                "POST",
+                "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
+                + "a" * 32
+                + "/complete",
+                body=json.dumps({"completion_code": code}).encode(),
+                cookie=f"shimpz_admin={self.session}",
+                origin="https://developer.example.test",
+            )
+            with self.assertRaises(HTTPException) as replay:
+                asyncio.run(
+                    self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, replay_request)
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.body)["connected"], True)
+        complete.assert_called_once_with(state="b" * 43, claim="d" * 64, session_binding=binding)
+        self.assertEqual(replay.exception.status_code, 409)
+
+    def test_custom_https_authorization_cancel_releases_the_exact_team_binding(self) -> None:
+        authorize_request = _request(
+            "POST",
+            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
+            + "a" * 32
+            + "/authorize",
+            body=b"{}",
+            cookie=f"shimpz_admin={self.session}",
+            origin="https://developer.example.test",
+        )
+        provider = self.admin_app.team.TeamResponse(
+            200,
+            {"authorization_url": self._cloudflare_authorization_url("out-of-band")},
+        )
+        with (
+            mock.patch.object(
+                self.admin_app,
+                "_allowed_browser_origins",
+                return_value=frozenset({"https://developer.example.test"}),
+            ),
+            mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://developer.example.test"),
+            mock.patch.object(
+                self.admin_app.integrations,
+                "start_local_assistant_integration_authorization",
+                return_value=provider,
+            ) as start,
+        ):
+            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request))
+
+        cancel_request = _request(
+            "DELETE",
+            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
+            + "a" * 32
+            + "/authorize",
+            body=b"{}",
+            cookie=f"shimpz_admin={self.session}",
+            origin="https://developer.example.test",
+        )
+        cancelled = self.admin_app.team.TeamResponse(204, {})
+        with mock.patch.object(
+            self.admin_app.integrations,
+            "cancel_local_assistant_integration_authorization",
+            return_value=cancelled,
+        ) as cancel:
+            response = asyncio.run(
+                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, cancel_request)
+            )
+        self.assertEqual(response.status_code, 204)
+        cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[2])
 
     def test_hosted_profile_refuses_the_local_oauth_bridge_before_team_io(self) -> None:
         request = _request(

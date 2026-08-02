@@ -113,11 +113,6 @@ async def _session_evidence_unavailable(_request: Request, _exc: SessionEvidence
     return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
 
 
-def _is_https(request):
-    xfp = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
-    return request.url.scheme == "https" or xfp == "https"
-
-
 def _oauth_origin(callback_mode: str) -> str:
     return OAUTH_ORIGINS[callback_mode]
 
@@ -130,6 +125,8 @@ def _local_oauth_authorization_mode(request: Request) -> str:
         return "loopback"
     if origin == OAUTH_ORIGINS["hosted"]:
         return "hosted"
+    if origin.startswith("https://") and origin == state.browser_origin():
+        return "out-of-band"
     raise HTTPException(status_code=409, detail="OAuth authorization is unavailable for this Admin address")
 
 
@@ -151,14 +148,14 @@ def _is_oauth_origin(request: Request) -> bool:
     return _oauth_request_mode(request) is not None
 
 
-def _set_session(resp, request, token):
+def _set_session(resp, token, browser_origin: str | None = None):
     resp.set_cookie(
         COOKIE,
         token,
         max_age=auth.TTL if ADMIN_PROFILE == "local" else ACCOUNT_COOKIE_TTL,
         httponly=True,
         samesite="strict",
-        secure=ADMIN_PROFILE == "hosted" or _is_https(request),
+        secure=ADMIN_PROFILE == "hosted" or browser_origin is not None,
         path="/",
     )
 
@@ -326,7 +323,7 @@ async def _local_login(request: Request, payload: dict) -> JSONResponse:
         raise HTTPException(status_code=401, detail="wrong password")
     await _bind_browser_origin(browser_origin)
     resp = JSONResponse({"ok": True})
-    _set_session(resp, request, auth.issue_session(rec["session_secret"]))
+    _set_session(resp, auth.issue_session(rec["session_secret"]), browser_origin)
     log.info("login ok")
     return resp
 
@@ -362,7 +359,7 @@ async def _hosted_login(request: Request, payload: dict) -> JSONResponse:
         await account_identity.run_bounded(account_identity.logout, token)
         raise HTTPException(status_code=403, detail="Supervisor privilege is required")
     response = JSONResponse({"ok": True, "account_id": evidence.body["account_id"]})
-    _set_session(response, request, token)
+    _set_session(response, token)
     log.info("Hosted Supervisor login ok")
     return response
 
@@ -411,7 +408,7 @@ async def admin_setup(request: Request):
         if browser_origin is not None:
             log.info("Local Admin browser origin learned: %s", browser_origin)
     resp = JSONResponse({"ok": True})
-    _set_session(resp, request, auth.issue_session(state.get()["session_secret"]))
+    _set_session(resp, auth.issue_session(state.get()["session_secret"]), browser_origin)
     log.info("admin password created")
     return resp
 
@@ -732,13 +729,77 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     finally:
         if preparation is not None and not authorized:
             OAUTH_HANDOFFS.discard(preparation.token)
-    authorization_url = (
-        _oauth_origin(callback_mode) + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
-    )
+    if callback_mode == "out-of-band":
+        authorization_url = result.body["authorization_url"]
+        completion_mode = "code"
+    else:
+        authorization_url = (
+            _oauth_origin(callback_mode) + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
+        )
+        completion_mode = "automatic"
     return JSONResponse(
-        {"authorization_url": authorization_url},
+        {"authorization_url": authorization_url, "completion_mode": completion_mode},
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+
+
+@app.post("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/complete")
+async def team_assistant_integration_complete(team_id: str, challenge_id: str, request: Request):
+    payload = await _bounded_json_object(request)
+    if set(payload) != {"completion_code"}:
+        raise HTTPException(status_code=400, detail="request body must contain only completion_code")
+    if ADMIN_PROFILE != "local":
+        raise HTTPException(status_code=409, detail="OAuth completion is unavailable in this profile")
+    try:
+        completion = OAUTH_HANDOFFS.complete(
+            team_id=team.canonical_team_id(team_id),
+            challenge_id=team.canonical_challenge_id(challenge_id),
+            admin_session=request.cookies.get(COOKIE, ""),
+            completion_code=payload["completion_code"],
+        )
+        result = await asyncio.to_thread(
+            integrations.complete_cloudflare_oauth_callback,
+            state=completion.state,
+            claim=completion.claim,
+            session_binding=completion.session_binding,
+        )
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except handoff_store.OAuthHandoffError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
+
+
+@app.delete("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize")
+async def team_assistant_integration_cancel(team_id: str, challenge_id: str, request: Request):
+    payload = await _bounded_json_object(request)
+    if payload:
+        raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
+    if ADMIN_PROFILE != "local":
+        raise HTTPException(status_code=409, detail="OAuth cancellation is unavailable in this profile")
+    try:
+        canonical_team = team.canonical_team_id(team_id)
+        canonical_challenge = team.canonical_challenge_id(challenge_id)
+        binding = OAUTH_HANDOFFS.cancel(
+            team_id=canonical_team,
+            challenge_id=canonical_challenge,
+            admin_session=request.cookies.get(COOKIE, ""),
+        )
+        if binding is None:
+            return Response(status_code=204, headers={"Cache-Control": "no-store"})
+        result = await asyncio.to_thread(
+            integrations.cancel_local_assistant_integration_authorization,
+            canonical_team,
+            canonical_challenge,
+            binding,
+        )
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except handoff_store.OAuthHandoffError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if result.status == 204:
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
 
 
 @app.delete("/api/teams/{team_id}/assistant-integrations/{assistant_id}/{integration_id}")

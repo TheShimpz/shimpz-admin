@@ -2,18 +2,35 @@
   import { t } from '$lib/i18n.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
-  let { open = false, challenge = undefined, onclose = undefined, onauthorize = undefined } = $props();
+  let {
+    open = false,
+    challenge = undefined,
+    onclose = undefined,
+    onauthorize = undefined,
+    oncomplete = undefined,
+    oncancel = undefined,
+  } = $props();
   let dialog = $state();
   let submitting = $state(false);
   let submitError = $state('');
   let activeChallengeId = $state('');
+  let awaitingCompletion = $state(false);
+  let completionCode = $state('');
   let provider = $derived(challenge?.requirements?.[0]?.provider ?? '');
   let providerLabel = $derived(assistantIntegrationProviderLabel(provider));
   let copy = $derived($t('assistantIntegrations'));
 
-  function close(event) {
+  async function close(event) {
     event?.preventDefault();
     if (submitting) return;
+    const challengeId = challenge?.challenge_id;
+    if (awaitingCompletion && challengeId) {
+      submitting = true;
+      await oncancel?.(challengeId);
+    }
+    awaitingCompletion = false;
+    completionCode = '';
+    submitting = false;
     submitError = '';
     onclose?.();
   }
@@ -23,9 +40,25 @@
     submitting = true;
     submitError = '';
     try {
-      await onauthorize?.(challenge.challenge_id);
+      const result = await onauthorize?.(challenge.challenge_id);
+      if (result?.completion_mode === 'code') {
+        awaitingCompletion = true;
+        submitting = false;
+      }
     } catch {
       submitError = copy.authorizationFailed;
+      submitting = false;
+    }
+  }
+
+  async function complete() {
+    if (submitting || !challenge) return;
+    submitting = true;
+    submitError = '';
+    try {
+      await oncomplete?.(challenge.challenge_id, completionCode.trim());
+    } catch {
+      submitError = copy.completionFailed;
       submitting = false;
     }
   }
@@ -42,6 +75,8 @@
     activeChallengeId = challengeId;
     submitting = false;
     submitError = '';
+    awaitingCompletion = false;
+    completionCode = '';
   });
 </script>
 
@@ -53,45 +88,67 @@
       <span>{$t('assistantIntegrations.dialogLead', { provider: providerLabel })}</span>
     </header>
 
-    <div class="requirements">
-      {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.integration_id}`)}
-        <article>
-          <header>
-            <div>
-              <strong>{requirement.assistant_name}</strong>
-              <code>{requirement.assistant_id}</code>
-            </div>
-            <span>{providerLabel}</span>
-          </header>
-          <h3>{requirement.name}</h3>
-          <p>{requirement.summary}</p>
-          <section aria-label={copy.scopesTitle}>
-            <span>{copy.scopesTitle}</span>
-            <div class="chips">
-              {#each requirement.scopes as scope (scope)}<code>{scope}</code>{/each}
-            </div>
-          </section>
-          <section aria-label={copy.powers}>
-            <span>{copy.powers}</span>
-            <ul>
-              {#each requirement.powers as power (power.id)}
-                <li><strong>{power.name}</strong><p>{power.summary}</p></li>
-              {/each}
-            </ul>
-          </section>
-        </article>
-      {/each}
-    </div>
+    {#if awaitingCompletion}
+      <section class="completion" aria-labelledby="assistant-integration-completion-title">
+        <h3 id="assistant-integration-completion-title">{copy.completionTitle}</h3>
+        <p id="assistant-integration-completion-lead">{copy.completionLead}</p>
+        <label for="assistant-integration-completion-code">{copy.completionLabel}</label>
+        <input
+          id="assistant-integration-completion-code"
+          bind:value={completionCode}
+          aria-describedby="assistant-integration-completion-lead"
+          autocomplete="off"
+          spellcheck="false"
+          disabled={submitting}
+        />
+      </section>
+    {:else}
+      <div class="requirements">
+        {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.integration_id}`)}
+          <article>
+            <header>
+              <div>
+                <strong>{requirement.assistant_name}</strong>
+                <code>{requirement.assistant_id}</code>
+              </div>
+              <span>{providerLabel}</span>
+            </header>
+            <h3>{requirement.name}</h3>
+            <p>{requirement.summary}</p>
+            <section aria-label={copy.scopesTitle}>
+              <span>{copy.scopesTitle}</span>
+              <div class="chips">
+                {#each requirement.scopes as scope (scope)}<code>{scope}</code>{/each}
+              </div>
+            </section>
+            <section aria-label={copy.powers}>
+              <span>{copy.powers}</span>
+              <ul>
+                {#each requirement.powers as power (power.id)}
+                  <li><strong>{power.name}</strong><p>{power.summary}</p></li>
+                {/each}
+              </ul>
+            </section>
+          </article>
+        {/each}
+      </div>
+    {/if}
 
     {#if submitError}<p class="dialog-error" role="alert">{submitError}</p>{/if}
     <footer>
       <button type="button" class="secondary" disabled={submitting} onclick={close}>{copy.cancel}</button>
-      <button type="button" class="primary" disabled={submitting} onclick={authorize}>
-        {$t(
-          submitting ? 'assistantIntegrations.authorizing' : 'assistantIntegrations.authorize',
-          { provider: providerLabel },
-        )}
-      </button>
+      {#if awaitingCompletion}
+        <button type="button" class="primary" disabled={submitting || !completionCode.trim()} onclick={complete}>
+          {submitting ? copy.completing : copy.complete}
+        </button>
+      {:else}
+        <button type="button" class="primary" disabled={submitting} onclick={authorize}>
+          {$t(
+            submitting ? 'assistantIntegrations.authorizing' : 'assistantIntegrations.authorize',
+            { provider: providerLabel },
+          )}
+        </button>
+      {/if}
     </footer>
   </section>
 </dialog>
@@ -104,6 +161,12 @@
   .dialog-panel > header h2 { margin: 0; font-size: clamp(1.45rem, 4vw, 2.45rem); letter-spacing: -0.05em; }
   .dialog-panel > header span { display: block; margin: 0.7rem 0 1.1rem; color: var(--text-dim); font-size: 0.72rem; line-height: 1.55; }
   .requirements { display: grid; min-height: 0; gap: 0.8rem; overflow-y: auto; overscroll-behavior: contain; }
+  .completion { display: grid; align-content: center; gap: 0.8rem; min-height: 16rem; border: 1px solid var(--border-strong); padding: clamp(1rem, 4vw, 2rem); background: #030506; }
+  .completion h3, .completion p { margin: 0; }
+  .completion h3 { font-size: clamp(1.1rem, 3vw, 1.6rem); }
+  .completion p { color: var(--text-dim); font-size: 0.72rem; line-height: 1.6; }
+  .completion label { margin-top: 0.7rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .completion input { width: 100%; min-width: 0; border: 1px solid var(--border-strong); padding: 0.85rem; background: #000; color: var(--text); font-family: var(--font-mono); font-size: 0.68rem; }
   article { display: grid; gap: 0.65rem; border: 1px solid var(--border-strong); padding: 0.85rem; background: #030506; }
   article > header { display: flex; align-items: start; justify-content: space-between; gap: 0.75rem; }
   article > header div { display: grid; gap: 0.18rem; }

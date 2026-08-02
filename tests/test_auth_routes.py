@@ -187,6 +187,7 @@ class AuthRouteTests(unittest.TestCase):
         response = asyncio.run(self.admin_app.login(valid))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.admin_app.state.browser_origin(), "https://developer.example.test")
+        self.assertIn("Secure", response.headers["set-cookie"])
 
         session_token = self.admin_app.auth.issue_session(self.admin_app.state.get()["session_secret"])
         admitted = asyncio.run(
@@ -235,6 +236,18 @@ class AuthRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.admin_app.state.browser_origin(), "https://first.example.test")
+        self.assertIn("Secure", response.headers["set-cookie"])
+
+    def test_forwarded_protocol_cannot_mark_a_loopback_session_secure(self) -> None:
+        request = self._request(
+            "/api/admin/setup",
+            {"password": "correct horse battery staple"},
+        )
+        request.scope["headers"].append((b"x-forwarded-proto", b"https"))
+
+        response = asyncio.run(self.admin_app.admin_setup(request))
+
+        self.assertNotIn("Secure", response.headers["set-cookie"])
 
     def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
         password = "correct horse battery staple"

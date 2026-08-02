@@ -14,7 +14,9 @@
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
+    cancelAssistantIntegrationAuthorization,
     chatSocketUrl,
+    completeAssistantIntegration,
     createChatFrame,
     createStopFrame,
     createSyncFrame,
@@ -342,15 +344,42 @@
       !integrationChallenge ||
       integrationChallenge.challenge_id !== challengeId
     ) throw new Error(integrationsCopy.authorizationFailed);
+    const needsSeparateTab = (
+      location.protocol === 'https:' &&
+      !(location.hostname === 'local.shimpz.com' && !location.port)
+    );
+    const authorizationWindow = needsSeparateTab ? window.open('about:blank', '_blank') : null;
+    if (needsSeparateTab && !authorizationWindow) {
+      throw new Error(integrationsCopy.authorizationFailed);
+    }
+    if (authorizationWindow) authorizationWindow.opener = null;
     integrationWorking = 'connect';
+    let authorizationStarted = false;
     try {
       const authorization = await authorizeAssistantIntegration(fetch, teamId, challengeId);
+      authorizationStarted = true;
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.authorizationFailed);
       }
       stashOAuthChatTurns(sessionStorage, teamId, turns);
+      if (authorization.completion_mode === 'code') {
+        if (!authorizationWindow) throw new Error(integrationsCopy.authorizationFailed);
+        authorizationWindow.location.replace(authorization.authorization_url);
+        integrationWorking = '';
+        return authorization;
+      }
+      authorizationWindow?.close();
       location.assign(authorization.authorization_url);
+      return authorization;
     } catch (reason) {
+      authorizationWindow?.close();
+      if (authorizationStarted) {
+        try {
+          await cancelAssistantIntegrationAuthorization(fetch, teamId, challengeId);
+        } catch {
+          // Bounded server-side expiry remains the fail-closed fallback.
+        }
+      }
       if (chatTeamId === teamId) {
         setError(
           integrationsCopy.authorizationFailed,
@@ -359,6 +388,45 @@
       }
       integrationWorking = '';
       throw reason;
+    }
+  }
+
+  async function completeIntegration(challengeId, completionCode) {
+    const teamId = chatTeamId;
+    if (
+      !teamId ||
+      integrationWorking ||
+      integrationChallenge?.challenge_id !== challengeId
+    ) throw new Error(integrationsCopy.completionFailed);
+    integrationWorking = 'complete';
+    try {
+      await completeAssistantIntegration(fetch, teamId, challengeId, completionCode);
+      if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
+        throw new Error(integrationsCopy.completionFailed);
+      }
+      stashOAuthChatTurns(sessionStorage, teamId, turns);
+      location.assign('/chat');
+    } catch (reason) {
+      if (chatTeamId === teamId) {
+        integrationWorking = '';
+        setError(
+          integrationsCopy.completionFailed,
+          reason instanceof Error ? reason.message : integrationsCopy.completionFailed,
+        );
+      }
+      throw reason;
+    }
+  }
+
+  async function cancelIntegrationAuthorization(challengeId) {
+    const teamId = chatTeamId;
+    if (!teamId || integrationChallenge?.challenge_id !== challengeId) return;
+    try {
+      await cancelAssistantIntegrationAuthorization(fetch, teamId, challengeId);
+    } catch {
+      // Expiry remains bounded and a new authorization uses a fresh binding.
+    } finally {
+      if (chatTeamId === teamId) integrationWorking = '';
     }
   }
 
@@ -578,6 +646,8 @@
           challenge={integrationChallenge}
           onclose={closeIntegrationsDialog}
           onauthorize={authorizeIntegration}
+          oncomplete={completeIntegration}
+          oncancel={cancelIntegrationAuthorization}
         />
       </div>
     {:else}

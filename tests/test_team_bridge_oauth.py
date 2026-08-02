@@ -120,6 +120,23 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         )
         self.assertNotRegex(bytes(request["body"]).decode(), r"token|code|verifier|client")
 
+        out_of_band_url = self._authorization_url(callback="out-of-band")
+        _TeamHandler.response_body = json.dumps(
+            {"authorization_url": out_of_band_url, "trace_id": "f" * 32},
+            separators=(",", ":"),
+        ).encode()
+        out_of_band = integrations.start_local_assistant_integration_authorization(
+            "team_1",
+            "c" * 32,
+            "d" * 43,
+            "out-of-band",
+        )
+        self.assertEqual(out_of_band, team.TeamResponse(200, {"authorization_url": out_of_band_url}))
+        self.assertEqual(
+            json.loads(_TeamHandler.requests[-1]["body"]),
+            {"callback_mode": "out-of-band", "session_binding": "d" * 43},
+        )
+
         for invalid_url in (
             self._authorization_url(scope="dns.read zone.read"),
             self._authorization_url(state="short"),
@@ -172,6 +189,10 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 200,
                 b'{"connected":true,"team_id":"team_1","assistant_id":"shimpz-cloudflare","integration_id":"x-integration","trace_id":"ffffffffffffffffffffffffffffffff"}',
             ),
+            (
+                "DELETE",
+                "/v1/teams/team_1/assistant-integrations/challenges/" + "e" * 32 + "/authorize",
+            ): (200, b'{"cancelled":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
         }
 
         disconnected = integrations.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
@@ -180,8 +201,14 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             claim="c" * 64,
             session_binding="b" * 43,
         )
+        cancelled = integrations.cancel_local_assistant_integration_authorization(
+            "team_1",
+            "e" * 32,
+            "d" * 43,
+        )
 
         self.assertEqual(disconnected, team.TeamResponse(204, {}))
+        self.assertEqual(cancelled, team.TeamResponse(204, {}))
         self.assertEqual(
             completed,
             team.TeamResponse(
@@ -194,7 +221,11 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 },
             ),
         )
-        callback = _TeamHandler.requests[-1]
+        callback = next(
+            request
+            for request in _TeamHandler.requests
+            if request["path"] == "/v1/oauth/cloudflare/callback"
+        )
         self.assertEqual(callback["path"], "/v1/oauth/cloudflare/callback")
         self.assertEqual(
             json.loads(callback["body"]),
@@ -204,6 +235,9 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 "session_binding": "b" * 43,
             },
         )
+        cancellation = _TeamHandler.requests[-1]
+        self.assertEqual(cancellation["method"], "DELETE")
+        self.assertEqual(json.loads(cancellation["body"]), {"session_binding": "d" * 43})
 
 
 if __name__ == "__main__":
