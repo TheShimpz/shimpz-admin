@@ -195,6 +195,14 @@ test('chat accepts only exact, bounded terminal events', () => {
     parseChatEvent({ type: 'stopped' }, 'team_1', 'Marketing'),
     { type: 'stopped' },
   );
+  assert.deepEqual(
+    parseChatEvent({ type: 'sync-empty' }, 'team_1', 'Marketing'),
+    { type: 'sync-empty' },
+  );
+  assert.throws(
+    () => parseChatEvent({ type: 'sync-empty', pending: false }, 'team_1', 'Marketing'),
+    /response is invalid/,
+  );
 });
 
 

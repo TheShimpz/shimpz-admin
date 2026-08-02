@@ -158,6 +158,22 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_empty_integration_sync_returns_one_exact_nonterminal_event(self) -> None:
+        async def scenario() -> None:
+            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            with (
+                mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
+                mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
+                resume.assert_not_called()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_integration_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
             completed = self.chat_socket.local.PublicResponse(

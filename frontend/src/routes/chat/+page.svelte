@@ -238,6 +238,15 @@
           acceptIntegrationChallenge(incoming);
           return;
         }
+        if (incoming.type === 'sync-empty') {
+          if (busy && turns.length > 0) {
+            busy = false;
+            stopping = false;
+            resetChallengeState();
+            setError(copy.turnFailed);
+          }
+          return;
+        }
         if (!busy && !stopping) throw new Error('unexpected terminal frame');
       } catch {
         socket = null;

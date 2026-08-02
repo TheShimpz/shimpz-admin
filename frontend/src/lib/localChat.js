@@ -674,6 +674,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     return { type: 'error', status: value.status, detail: value.detail };
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
+  if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };
   if (value.type === 'integrations-required') {
     if (
       !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||

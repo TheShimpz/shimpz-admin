@@ -270,7 +270,8 @@ async def _deliver_integration_sync(
     pending = integration_challenge_event(pending_response, team_id)
     if pending is None:
         if _is_empty_pending(pending_response, team_id):
-            return False
+            await _send_event(websocket, {"type": "sync-empty"})
+            return True
         await _send_event(websocket, _pending_error(pending_response, team_id, "integration"))
         return True
     if resumed_response is None:
