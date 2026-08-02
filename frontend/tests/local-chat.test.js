@@ -291,25 +291,6 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body, '{}');
 
-  const handoffUrl = `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}`;
-  assert.deepEqual(
-    await authorizeAssistantIntegration(
-      async () => response(200, { authorization_url: handoffUrl }),
-      'team_1',
-      CHALLENGE_ID,
-    ),
-    { authorization_url: handoffUrl },
-  );
-  const canaryHandoffUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'b'.repeat(64)}`;
-  assert.deepEqual(
-    await authorizeAssistantIntegration(
-      async () => response(200, { authorization_url: canaryHandoffUrl }),
-      'team_1',
-      CHALLENGE_ID,
-    ),
-    { authorization_url: canaryHandoffUrl },
-  );
-
   for (const body of [
     { authorization_url: 'http://dash.cloudflare.com/oauth2/auth' },
     { authorization_url: 'https://evil.example/oauth2/auth' },
@@ -317,14 +298,14 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     { authorization_url: 'https://dash.cloudflare.com/settings' },
     { authorization_url: 'https://user@dash.cloudflare.com/oauth2/auth' },
     { authorization_url: 'https://dash.cloudflare.com/oauth2/auth#token=value' },
-    { authorization_url: `http://localhost:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://localhost:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `http://local.shimpz.com/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `https://local.shimpz.com:444/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
     { authorization_url: `https://local.shimpz.com.evil.test/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
-    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
-    { authorization_url: `http://user@127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
-    { authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}#token=value` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(63)}` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}&next=https://evil.example` },
+    { authorization_url: `http://user@127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}` },
+    { authorization_url: `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}#token=value` },
     { authorization_url: authorizationUrl, code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
@@ -350,30 +331,49 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   );
 });
 
-test('trusts a loopback OAuth handoff only on the Admin browser port', async () => {
+test('trusts an OAuth handoff only when it matches the exact Local page mode', async () => {
   const previousLocation = globalThis.location;
-  globalThis.location = { port: '49123' };
   try {
     const handoff = 'a'.repeat(64);
-    const authorizationUrl = `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`;
+    const loopbackUrl = `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${handoff}`;
+    const hostedUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${handoff}`;
+    globalThis.location = { protocol: 'http:', hostname: '127.0.0.1', port: '7777' };
     assert.deepEqual(
       await authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: authorizationUrl }),
+        async () => response(200, { authorization_url: loopbackUrl }),
         'team_1',
         CHALLENGE_ID,
       ),
-      { authorization_url: authorizationUrl },
+      { authorization_url: loopbackUrl },
     );
     await assert.rejects(
       authorizeAssistantIntegration(
-        async () => response(200, {
-          authorization_url: `http://127.0.0.1:4600/api/oauth/cloudflare/start?handoff=${handoff}`,
-        }),
+        async () => response(200, { authorization_url: hostedUrl }),
         'team_1',
         CHALLENGE_ID,
       ),
       /authorization response is invalid/,
     );
+
+    globalThis.location = { protocol: 'https:', hostname: 'local.shimpz.com', port: '' };
+    assert.deepEqual(
+      await authorizeAssistantIntegration(
+        async () => response(200, { authorization_url: hostedUrl }),
+        'team_1',
+        CHALLENGE_ID,
+      ),
+      { authorization_url: hostedUrl },
+    );
+    for (const authorizationUrl of [loopbackUrl, `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`]) {
+      await assert.rejects(
+        authorizeAssistantIntegration(
+          async () => response(200, { authorization_url: authorizationUrl }),
+          'team_1',
+          CHALLENGE_ID,
+        ),
+        /authorization response is invalid/,
+      );
+    }
   } finally {
     if (previousLocation === undefined) delete globalThis.location;
     else globalThis.location = previousLocation;

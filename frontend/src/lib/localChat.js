@@ -354,10 +354,20 @@ function trustedAuthorizationUrl(value) {
     !url.port &&
     url.pathname === '/oauth2/auth'
   );
-  const browserPort = globalThis.location?.port || '4600';
+  const browserLocation = globalThis.location;
+  const loopbackPage = (
+    browserLocation?.protocol === 'http:' &&
+    browserLocation?.hostname === '127.0.0.1' &&
+    browserLocation?.port === '7777'
+  );
+  const hostedLocalPage = (
+    browserLocation?.protocol === 'https:' &&
+    browserLocation?.hostname === 'local.shimpz.com' &&
+    !browserLocation?.port
+  );
   const namedHandoffOrigin = (
-    (url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === browserPort) ||
-    (url.protocol === 'https:' && url.hostname === 'local.shimpz.com' && !url.port)
+    (loopbackPage && url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === '7777') ||
+    (hostedLocalPage && url.protocol === 'https:' && url.hostname === 'local.shimpz.com' && !url.port)
   );
   const localHandoff = (
     namedHandoffOrigin &&
