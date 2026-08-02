@@ -250,10 +250,10 @@ class OAuthRoutesTest(unittest.TestCase):
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
         with mock.patch.object(
-                self.admin_app.integrations,
-                "start_assistant_integration_authorization",
-                side_effect=AssertionError("authorized handoff must not call Team"),
-            ):
+            self.admin_app.integrations,
+            "start_assistant_integration_authorization",
+            side_effect=AssertionError("authorized handoff must not call Team"),
+        ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
         cookie.load(started.headers["set-cookie"])
@@ -273,10 +273,10 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         completed = self.admin_app.team.TeamResponse(200, {"connected": True})
         with mock.patch.object(
-                self.admin_app.integrations,
-                "complete_cloudflare_oauth_callback",
-                return_value=completed,
-            ) as complete:
+            self.admin_app.integrations,
+            "complete_cloudflare_oauth_callback",
+            return_value=completed,
+        ) as complete:
             response = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))
         self.assertEqual(response.headers["location"], "/chat")
         complete.assert_called_once_with(

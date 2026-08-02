@@ -157,11 +157,7 @@ def _oauth_authorization_mode(request: Request) -> str:
 
 
 def _oauth_request_mode(request: Request) -> str | None:
-    if (
-        request.url.scheme == "http"
-        and request.url.hostname == "127.0.0.1"
-        and request.url.port == OAUTH_LOOPBACK_PORT
-    ):
+    if request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == OAUTH_LOOPBACK_PORT:
         return "loopback"
     if _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None:
         return "hosted"
