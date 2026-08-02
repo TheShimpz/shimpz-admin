@@ -196,7 +196,8 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertIn("SHIMPZ_ADMIN_PROFILE must be exactly local or hosted", result.stderr)
 
     def test_every_response_suppresses_referrer_metadata(self) -> None:
-        status, headers = asyncio.run(_asgi_response(self.admin_app.app, "/chat"))
+        # Root exists both with the built SPA and in a clean backend-only checkout.
+        status, headers = asyncio.run(_asgi_response(self.admin_app.app, "/"))
 
         self.assertEqual(status, 200)
         self.assertEqual(headers["referrer-policy"], "no-referrer")
