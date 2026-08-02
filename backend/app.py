@@ -760,7 +760,7 @@ async def team_assistant_integration_disconnect(team_id: str, assistant_id: str,
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     request_mode = _oauth_request_mode(request)
-    if not _is_oauth_origin(request) or request_mode is None:
+    if request_mode is None:
         with suppress(handoff_store.OAuthHandoffError):
             OAUTH_HANDOFFS.discard(handoff)
         return _oauth_chat_redirect("start-failed")
