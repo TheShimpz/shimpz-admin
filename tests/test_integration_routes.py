@@ -464,24 +464,6 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
         cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[2])
 
-    def test_hosted_profile_refuses_the_local_oauth_bridge_before_team_io(self) -> None:
-        request = _request(
-            "POST",
-            "https://shimpz.com/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b"{}",
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://shimpz.com",
-        )
-        with (
-            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-            mock.patch.object(self.admin_app.integrations, "start_local_assistant_integration_authorization") as start,
-            self.assertRaises(HTTPException) as raised,
-        ):
-            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-
-        self.assertEqual(raised.exception.status_code, 409)
-        start.assert_not_called()
-
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
         binding = "d" * 43
         state = "b" * 43

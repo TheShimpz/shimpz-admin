@@ -704,8 +704,6 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     preparation = None
     authorized = False
     try:
-        if ADMIN_PROFILE != "local":
-            raise HTTPException(status_code=409, detail="OAuth authorization is unavailable in this profile")
         callback_mode = _local_oauth_authorization_mode(request)
         canonical_team = team.canonical_team_id(team_id)
         canonical_challenge = team.canonical_challenge_id(challenge_id)
@@ -755,8 +753,6 @@ async def team_assistant_integration_complete(team_id: str, challenge_id: str, r
     payload = await _bounded_json_object(request)
     if set(payload) != {"completion_code"}:
         raise HTTPException(status_code=400, detail="request body must contain only completion_code")
-    if ADMIN_PROFILE != "local":
-        raise HTTPException(status_code=409, detail="OAuth completion is unavailable in this profile")
     try:
         completion = OAUTH_HANDOFFS.complete(
             team_id=team.canonical_team_id(team_id),
@@ -781,8 +777,6 @@ async def team_assistant_integration_cancel(team_id: str, challenge_id: str, req
     payload = await _bounded_json_object(request)
     if payload:
         raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
-    if ADMIN_PROFILE != "local":
-        raise HTTPException(status_code=409, detail="OAuth cancellation is unavailable in this profile")
     try:
         canonical_team = team.canonical_team_id(team_id)
         canonical_challenge = team.canonical_challenge_id(challenge_id)
