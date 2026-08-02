@@ -125,26 +125,54 @@ def _is_https(request):
     return request.url.scheme == "https" or xfp == "https"
 
 
-def _oauth_callback_mode() -> str:
+def _configured_oauth_callback_mode() -> str:
     mode = os.environ.get("SHIMPZ_OAUTH_CALLBACK_MODE", "loopback").strip()
     if mode not in OAUTH_ORIGINS:
         raise RuntimeError("invalid OAuth callback mode")
     return mode
 
 
-def _oauth_origin() -> str:
-    return OAUTH_ORIGINS[_oauth_callback_mode()]
+def _oauth_origin(callback_mode: str) -> str:
+    return OAUTH_ORIGINS[callback_mode]
+
+
+def _local_oauth_authorization_mode(request: Request) -> str:
+    origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
+    if origin is None or origin not in _allowed_browser_origins():
+        raise HTTPException(status_code=403, detail="OAuth authorization origin is not admitted")
+    if origin in {
+        f"http://localhost:{OAUTH_LOOPBACK_PORT}",
+        OAUTH_ORIGINS["loopback"],
+    }:
+        return "loopback"
+    if origin == OAUTH_ORIGINS["hosted"]:
+        return "hosted"
+    raise HTTPException(status_code=409, detail="OAuth authorization is unavailable for this Admin address")
+
+
+def _oauth_authorization_mode(request: Request) -> str:
+    if ADMIN_PROFILE == "local":
+        return _local_oauth_authorization_mode(request)
+    return _configured_oauth_callback_mode()
+
+
+def _oauth_request_mode(request: Request) -> str | None:
+    if (
+        request.url.scheme == "http"
+        and request.url.hostname == "127.0.0.1"
+        and request.url.port == OAUTH_LOOPBACK_PORT
+    ):
+        return "loopback"
+    if _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None:
+        return "hosted"
+    return None
 
 
 def _is_oauth_origin(request: Request) -> bool:
-    origin = _oauth_origin()
-    if origin == OAUTH_ORIGINS["loopback"]:
-        return (
-            request.url.scheme == "http"
-            and request.url.hostname == "127.0.0.1"
-            and request.url.port == OAUTH_LOOPBACK_PORT
-        )
-    return _is_https(request) and request.url.hostname == "local.shimpz.com" and request.url.port is None
+    mode = _oauth_request_mode(request)
+    if ADMIN_PROFILE == "local":
+        return mode is not None
+    return mode == _configured_oauth_callback_mode()
 
 
 def _set_session(resp, request, token):
@@ -695,6 +723,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     preparation = None
     authorized = False
     try:
+        callback_mode = _oauth_authorization_mode(request)
         canonical_team = team.canonical_team_id(team_id)
         canonical_challenge = team.canonical_challenge_id(challenge_id)
         preparation = OAUTH_HANDOFFS.issue(
@@ -707,7 +736,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
             canonical_team,
             canonical_challenge,
             preparation.session_binding,
-            _oauth_callback_mode(),
+            callback_mode,
         )
         if result.status != 200:
             return JSONResponse(
@@ -724,7 +753,9 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     finally:
         if preparation is not None and not authorized:
             OAUTH_HANDOFFS.discard(preparation.token)
-    authorization_url = _oauth_origin() + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
+    authorization_url = (
+        _oauth_origin(callback_mode) + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
+    )
     return JSONResponse(
         {"authorization_url": authorization_url},
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
@@ -756,7 +787,7 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     except handoff_store.OAuthHandoffError:
         return _oauth_chat_redirect("start-failed")
     response = RedirectResponse(pending.authorization_url, status_code=303)
-    hosted_callback = _oauth_origin() == OAUTH_ORIGINS["hosted"]
+    hosted_callback = _oauth_request_mode(request) == "hosted"
     response.set_cookie(
         OAUTH_COOKIE,
         pending.session_binding,

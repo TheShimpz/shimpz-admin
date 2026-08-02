@@ -212,7 +212,7 @@ def start_assistant_integration_authorization(
     response = transport._call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
-        {"session_binding": binding},
+        {"callback_mode": callback_mode, "session_binding": binding},
     )
     if not 200 <= response.status < 300:
         return response

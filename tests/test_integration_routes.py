@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 
-def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "") -> Request:
+def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", origin: str = "") -> Request:
     parsed = urlsplit(url)
     headers = [(b"host", parsed.netloc.encode("ascii"))]
     if body:
@@ -33,6 +33,8 @@ def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "") -> R
         )
     if cookie:
         headers.append((b"cookie", cookie.encode("ascii")))
+    if origin:
+        headers.append((b"origin", origin.encode("ascii")))
     scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -111,12 +113,18 @@ class OAuthRoutesTest(unittest.TestCase):
             "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
+            origin="http://localhost:4600",
         )
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
         )
         with (
+            mock.patch.object(
+                self.admin_app,
+                "_allowed_browser_origins",
+                return_value=frozenset({"http://localhost:4600", "http://127.0.0.1:4600"}),
+            ),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_assistant_integration_authorization",
@@ -148,8 +156,14 @@ class OAuthRoutesTest(unittest.TestCase):
             "http://localhost:4600/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
+            origin="http://localhost:4600",
         )
         with (
+            mock.patch.object(
+                self.admin_app,
+                "_allowed_browser_origins",
+                return_value=frozenset({"http://localhost:4600", "http://127.0.0.1:4600"}),
+            ),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_assistant_integration_authorization",
@@ -206,13 +220,18 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://local.shimpz.com/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
             body=b"{}",
             cookie=f"shimpz_admin={self.session}",
+            origin="https://local.shimpz.com",
         )
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("hosted")},
         )
         with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
+            mock.patch.object(
+                self.admin_app,
+                "_allowed_browser_origins",
+                return_value=frozenset({"https://local.shimpz.com"}),
+            ),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_assistant_integration_authorization",
@@ -230,14 +249,11 @@ class OAuthRoutesTest(unittest.TestCase):
 
         handoff = parse_qs(authorization_url.query, strict_parsing=True)["handoff"][0]
         start_request = _request("GET", authorization_url.geturl())
-        with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(
+        with mock.patch.object(
                 self.admin_app.integrations,
                 "start_assistant_integration_authorization",
                 side_effect=AssertionError("authorized handoff must not call Team"),
-            ),
-        ):
+            ):
             started = asyncio.run(self.admin_app.oauth_cloudflare_start(start_request, handoff))
         cookie = SimpleCookie()
         cookie.load(started.headers["set-cookie"])
@@ -256,14 +272,11 @@ class OAuthRoutesTest(unittest.TestCase):
             cookie=f"shimpz_oauth_binding={binding.value}",
         )
         completed = self.admin_app.team.TeamResponse(200, {"connected": True})
-        with (
-            mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}),
-            mock.patch.object(
+        with mock.patch.object(
                 self.admin_app.integrations,
                 "complete_cloudflare_oauth_callback",
                 return_value=completed,
-            ) as complete,
-        ):
+            ) as complete:
             response = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))
         self.assertEqual(response.headers["location"], "/chat")
         complete.assert_called_once_with(
@@ -274,9 +287,31 @@ class OAuthRoutesTest(unittest.TestCase):
 
         for origin in ("http://local.shimpz.com", "https://local.shimpz.com:444"):
             rejected = _request("GET", origin + "/api/oauth/cloudflare/start?handoff=" + "f" * 64)
-            with mock.patch.dict(os.environ, {"SHIMPZ_OAUTH_CALLBACK_MODE": "hosted"}):
-                result = asyncio.run(self.admin_app.oauth_cloudflare_start(rejected, "f" * 64))
+            result = asyncio.run(self.admin_app.oauth_cloudflare_start(rejected, "f" * 64))
             self.assertEqual(result.headers["location"], "/chat?oauth=start-failed")
+
+    def test_non_callback_https_address_fails_before_team_authorization(self) -> None:
+        request = _request(
+            "POST",
+            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
+            + "a" * 32
+            + "/authorize",
+            body=b"{}",
+            cookie=f"shimpz_admin={self.session}",
+            origin="https://developer.example.test",
+        )
+        with (
+            mock.patch.object(
+                self.admin_app,
+                "_allowed_browser_origins",
+                return_value=frozenset({"https://developer.example.test"}),
+            ),
+            mock.patch.object(self.admin_app.integrations, "start_assistant_integration_authorization") as start,
+            self.assertRaises(HTTPException) as raised,
+        ):
+            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+        self.assertEqual(raised.exception.status_code, 409)
+        start.assert_not_called()
 
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
         binding = "d" * 43

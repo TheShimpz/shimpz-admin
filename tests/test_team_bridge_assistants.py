@@ -250,7 +250,10 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             request["path"],
             "/v1/teams/team_1/assistant-integrations/challenges/" + "c" * 32 + "/authorize",
         )
-        self.assertEqual(json.loads(request["body"]), {"session_binding": "d" * 43})
+        self.assertEqual(
+            json.loads(request["body"]),
+            {"callback_mode": "hosted", "session_binding": "d" * 43},
+        )
         self.assertNotRegex(request["body"].decode(), r"token|code|verifier|client")
 
         for invalid_url in (
