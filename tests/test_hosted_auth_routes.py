@@ -69,6 +69,17 @@ def _request(
 
 
 async def _asgi_request(application, path: str, *, cookie: str = "", method: str = "GET") -> int:
+    status, _headers = await _asgi_response(application, path, cookie=cookie, method=method)
+    return status
+
+
+async def _asgi_response(
+    application,
+    path: str,
+    *,
+    cookie: str = "",
+    method: str = "GET",
+) -> tuple[int, dict[str, str]]:
     messages: list[dict] = []
     sent = False
 
@@ -97,7 +108,8 @@ async def _asgi_request(application, path: str, *, cookie: str = "", method: str
         "server": ("admin.shimpz.test", 443),
     }
     await application(scope, receive, send)
-    return next(message["status"] for message in messages if message["type"] == "http.response.start")
+    start = next(message for message in messages if message["type"] == "http.response.start")
+    return start["status"], {key.decode().lower(): value.decode() for key, value in start["headers"]}
 
 
 class HostedAuthRouteTests(unittest.TestCase):
@@ -128,6 +140,10 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertEqual(self.admin_app.ADMIN_PROFILE, "hosted")
         self.assertNotIn(("/api/admin/setup", "POST"), routes)
         self.assertFalse(any(path.startswith("/api/model-providers") for path, _method in routes))
+        oauth_path = "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}"
+        self.assertNotIn((oauth_path + "/authorize", "POST"), routes)
+        self.assertNotIn((oauth_path + "/complete", "POST"), routes)
+        self.assertNotIn((oauth_path + "/authorize", "DELETE"), routes)
         self.assertNotIn("/api/admin/setup", self.admin_app.OPEN_API)
         self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/admin/setup")), 401)
         self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/model-providers")), 401)
@@ -150,6 +166,20 @@ class HostedAuthRouteTests(unittest.TestCase):
                 ),
                 404,
             )
+            concrete_oauth_path = "/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32
+            for method, suffix in (("POST", "/authorize"), ("POST", "/complete"), ("DELETE", "/authorize")):
+                with self.subTest(method=method, suffix=suffix):
+                    self.assertEqual(
+                        asyncio.run(
+                            _asgi_request(
+                                self.admin_app.app,
+                                concrete_oauth_path + suffix,
+                                cookie=f"shimpz_admin={SESSION}",
+                                method=method,
+                            )
+                        ),
+                        404,
+                    )
 
         environment = os.environ.copy()
         environment.pop("SHIMPZ_ADMIN_PROFILE", None)
@@ -164,6 +194,12 @@ class HostedAuthRouteTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SHIMPZ_ADMIN_PROFILE must be exactly local or hosted", result.stderr)
+
+    def test_every_response_suppresses_referrer_metadata(self) -> None:
+        status, headers = asyncio.run(_asgi_response(self.admin_app.app, "/chat"))
+
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["referrer-policy"], "no-referrer")
 
     def test_session_checks_account_online_without_positive_cache(self) -> None:
         active = self.admin_app.account_identity.AccountResponse(

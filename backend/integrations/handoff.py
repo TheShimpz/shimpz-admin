@@ -43,7 +43,7 @@ class OAuthHandoffError(RuntimeError):
     """The local OAuth handoff is invalid, expired, reused, or unavailable."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OAuthPreparation:
     """Opaque handoff token and browser binding used during authenticated preparation."""
 
@@ -51,7 +51,7 @@ class OAuthPreparation:
     session_binding: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OAuthHandoff:
     """Private redirect data recovered only after consuming an authorized handoff."""
 
@@ -60,7 +60,7 @@ class OAuthHandoff:
     callback_mode: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OAuthCompletion:
     """Exact private values released to Team after authenticated code validation."""
 
@@ -69,7 +69,7 @@ class OAuthCompletion:
     session_binding: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class _PendingHandoff:
     team_id: str
     challenge_id: str

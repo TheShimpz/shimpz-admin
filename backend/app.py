@@ -271,20 +271,29 @@ async def _gate(request: Request, call_next):
         if path == "/api/session":
             response.headers["Cache-Control"] = "no-store"
             response.headers["Vary"] = "Origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
         return response
     # Everything else under /api/ requires a valid session.
     try:
         evidence = await _session_evidence(request.cookies)
     except SessionEvidenceUnavailableError:
-        return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
+        response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
     if evidence is None:
-        return JSONResponse({"detail": "unauthenticated"}, status_code=401)
+        response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
     request.state.supervisor = evidence
     try:
         with _team_session_scope(request.cookies):
-            return await call_next(request)
+            response = await call_next(request)
+            response.headers["Referrer-Policy"] = "no-referrer"
+            return response
     except supervisor.SupervisorAuthorityError, team.TeamRequestError:
-        return JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
+        response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
 
 @app.post("/api/session")
@@ -687,7 +696,6 @@ def team_assistant_integrations(team_id: str):
     return response
 
 
-@app.post("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize")
 async def team_assistant_integration_authorize(team_id: str, challenge_id: str, request: Request):
     payload = await _bounded_json_object(request)
     if payload:
@@ -743,7 +751,6 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
     )
 
 
-@app.post("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/complete")
 async def team_assistant_integration_complete(team_id: str, challenge_id: str, request: Request):
     payload = await _bounded_json_object(request)
     if set(payload) != {"completion_code"}:
@@ -770,7 +777,6 @@ async def team_assistant_integration_complete(team_id: str, challenge_id: str, r
     return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
 
 
-@app.delete("/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize")
 async def team_assistant_integration_cancel(team_id: str, challenge_id: str, request: Request):
     payload = await _bounded_json_object(request)
     if payload:
@@ -800,6 +806,24 @@ async def team_assistant_integration_cancel(team_id: str, challenge_id: str, req
     if result.status == 204:
         return Response(status_code=204, headers={"Cache-Control": "no-store"})
     return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route(
+        "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize",
+        team_assistant_integration_authorize,
+        methods=["POST"],
+    )
+    app.add_api_route(
+        "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/complete",
+        team_assistant_integration_complete,
+        methods=["POST"],
+    )
+    app.add_api_route(
+        "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize",
+        team_assistant_integration_cancel,
+        methods=["DELETE"],
+    )
 
 
 @app.delete("/api/teams/{team_id}/assistant-integrations/{assistant_id}/{integration_id}")

@@ -62,6 +62,18 @@ def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", orig
 
 
 class OAuthRoutesTest(unittest.TestCase):
+    def test_local_profile_registers_only_the_closed_oauth_route_methods(self) -> None:
+        routes = {
+            (route.path, method)
+            for route in self.admin_app.app.routes
+            for method in (getattr(route, "methods", None) or set())
+        }
+        path = "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}"
+
+        self.assertIn((path + "/authorize", "POST"), routes)
+        self.assertIn((path + "/complete", "POST"), routes)
+        self.assertIn((path + "/authorize", "DELETE"), routes)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.tempdir = tempfile.TemporaryDirectory()
