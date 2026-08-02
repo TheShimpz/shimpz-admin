@@ -222,9 +222,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             ),
         )
         callback = next(
-            request
-            for request in _TeamHandler.requests
-            if request["path"] == "/v1/oauth/cloudflare/callback"
+            request for request in _TeamHandler.requests if request["path"] == "/v1/oauth/cloudflare/callback"
         )
         self.assertEqual(callback["path"], "/v1/oauth/cloudflare/callback")
         self.assertEqual(

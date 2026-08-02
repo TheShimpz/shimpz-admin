@@ -398,9 +398,7 @@ class OAuthRoutesTest(unittest.TestCase):
                 origin="https://developer.example.test",
             )
             with self.assertRaises(HTTPException) as replay:
-                asyncio.run(
-                    self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, replay_request)
-                )
+                asyncio.run(self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, replay_request))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body)["connected"], True)
         complete.assert_called_once_with(state="b" * 43, claim="d" * 64, session_binding=binding)
@@ -450,9 +448,7 @@ class OAuthRoutesTest(unittest.TestCase):
             "cancel_local_assistant_integration_authorization",
             return_value=cancelled,
         ) as cancel:
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, cancel_request)
-            )
+            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, cancel_request))
         self.assertEqual(response.status_code, 204)
         cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[2])
 
