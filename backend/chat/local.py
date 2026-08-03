@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -20,6 +21,7 @@ from http import HTTPStatus
 import models
 from team import bridge as team
 
+from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -71,19 +73,75 @@ _CHAT_ERROR_FALLBACKS = {
     429: "local chat capacity reached",
     503: "local chat runtime is unavailable",
 }
-PROGRESS_STAGES = ("preparing", "running", "finalizing")
+ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation"})
+PUBLIC_PROGRESS_PHASES = progress_contract.PHASES | ADMIN_PROGRESS_PHASES
+MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 2
 
 
-def _ignore_progress(_stage: str) -> None:
+def _ignore_progress(_event: dict[str, object]) -> None:
     return
 
 
-def _progress(callback: Callable[[str], None], stage: str) -> None:
-    """Emit one fixed, secret-free execution stage without affecting the turn."""
-    if stage not in PROGRESS_STAGES:
-        raise ValueError("invalid chat progress stage")
+def canonical_public_progress(value: object) -> dict[str, object]:
+    """Validate one metadata-only event at the Admin browser boundary."""
+    if not isinstance(value, dict):
+        raise ValueError("invalid public chat progress")
+    origin = value.get("origin")
+    phase = value.get("phase")
+    state = value.get("state")
+    if origin not in {"admin", "team"} or phase not in PUBLIC_PROGRESS_PHASES:
+        raise ValueError("invalid public chat progress")
+    if (origin == "admin") != (phase in ADMIN_PROGRESS_PHASES):
+        raise ValueError("invalid public chat progress authority")
+    event = {key: item for key, item in value.items() if key != "origin"}
+    if origin == "admin":
+        expected = {"phase", "state"} | ({"elapsed_ms"} if state == "finished" else set())
+        if set(event) != expected or state not in progress_contract.STATES:
+            raise ValueError("invalid Admin progress event")
+        if state == "finished" and (
+            type(event["elapsed_ms"]) is not int
+            or not 0 <= event["elapsed_ms"] <= progress_contract.MAX_ELAPSED_MS
+        ):
+            raise ValueError("invalid Admin progress duration")
+    else:
+        team_event = progress_contract.canonical_event({"seq": 1, **event})
+        team_event.pop("seq")
+        event = team_event
+    return {"origin": origin, **event}
+
+
+def _progress(callback: Callable[[dict[str, object]], None], event: dict[str, object]) -> None:
+    canonical = canonical_public_progress(event)
     with contextlib.suppress(Exception):
-        callback(stage)
+        callback(canonical)
+
+
+@contextlib.contextmanager
+def _admin_span(callback: Callable[[dict[str, object]], None]):
+    started_ns = time.monotonic_ns()
+    _progress(callback, {"origin": "admin", "phase": "admin-preparation", "state": "started"})
+    try:
+        yield
+    finally:
+        elapsed_ms = max(0, (time.monotonic_ns() - started_ns) // 1_000_000)
+        _progress(
+            callback,
+            {
+                "origin": "admin",
+                "phase": "admin-preparation",
+                "state": "finished",
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+
+
+def _relay_team_progress(
+    callback: Callable[[dict[str, object]], None],
+    value: dict[str, object],
+) -> None:
+    event = progress_contract.canonical_event(value)
+    event.pop("seq")
+    _progress(callback, {"origin": "team", **event})
 
 
 def _immutable(*_args, **_kwargs):
@@ -349,19 +407,23 @@ def _submit(
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
     request: Callable[..., team.TeamResponse],
-    progress: Callable[[str], None],
+    progress: Callable[[dict[str, object]], None],
 ) -> team.TeamResponse:
-    canonical_id = team.canonical_team_id(team_id)
-    body = canonicalize(payload)
-    _progress(progress, "preparing")
-    credential = _model_credential(canonical_id)
+    with _admin_span(progress):
+        canonical_id = team.canonical_team_id(team_id)
+        body = canonicalize(payload)
+        credential = _model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
 
-    _progress(progress, "running")
-    response = request(canonical_id, body, provider=provider, api_key=api_key)
-    _progress(progress, "finalizing")
+    response = request(
+        canonical_id,
+        body,
+        provider=provider,
+        api_key=api_key,
+        progress=lambda event: _relay_team_progress(progress, event),
+    )
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
@@ -375,7 +437,7 @@ def _submit(
 def turn(
     team_id: object,
     payload: object,
-    progress: Callable[[str], None] = _ignore_progress,
+    progress: Callable[[dict[str, object]], None] = _ignore_progress,
 ) -> team.TeamResponse:
     return _submit(team_id, payload, team.canonical_chat_payload, team.chat, progress)
 
@@ -383,7 +445,7 @@ def turn(
 def resume_integrations(
     team_id: object,
     challenge_id: object,
-    progress: Callable[[str], None] = _ignore_progress,
+    progress: Callable[[dict[str, object]], None] = _ignore_progress,
 ) -> team.TeamResponse:
     return _submit(
         team_id,

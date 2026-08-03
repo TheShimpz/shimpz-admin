@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 
 import models
 from team import transport
@@ -27,6 +28,7 @@ TeamResponse = transport.TeamResponse
 TeamRequestError = transport.TeamRequestError
 _call = transport._call
 _call_raw = transport._call_raw
+_call_stream = transport._call_stream
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
@@ -229,17 +231,19 @@ def chat(
     *,
     provider: str,
     api_key: str,
+    progress: Callable[[dict[str, object]], None],
 ) -> TeamResponse:
     """Send a turn whose JSON is secret-free; the key uses the private authenticated header."""
     canonical_id = canonical_team_id(team_id)
     body = canonical_chat_payload(payload)
-    return _call(
+    return _call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat",
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
         model_credential=(provider, api_key),
+        progress=progress,
     )
 
 
@@ -259,15 +263,17 @@ def resume_chat_integrations(
     *,
     provider: str,
     api_key: str,
+    progress: Callable[[dict[str, object]], None],
 ) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     body = canonical_integration_resume(payload)
-    return _call(
+    return _call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat/integrations",
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         model_credential=(provider, api_key),
+        progress=progress,
     )
 
 

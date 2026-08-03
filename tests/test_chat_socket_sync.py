@@ -21,6 +21,23 @@ sys.path.insert(0, str(ROOT / "backend"))
 CHALLENGE_ID = chat_socket_fixtures.CHALLENGE_ID
 _integration_challenge = chat_socket_fixtures.integration_challenge
 
+_MEASURED_PROGRESS = (
+    {"origin": "admin", "phase": "admin-preparation", "state": "started"},
+    {
+        "origin": "admin",
+        "phase": "admin-preparation",
+        "state": "finished",
+        "elapsed_ms": 4,
+    },
+    {"origin": "team", "phase": "reply-validation", "state": "started"},
+    {
+        "origin": "team",
+        "phase": "reply-validation",
+        "state": "finished",
+        "elapsed_ms": 1,
+    },
+)
+
 
 class _Socket:
     def __init__(
@@ -231,8 +248,8 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
                 def resume_integrations(_team_id, _challenge_id, progress):
-                    for stage in self.chat_socket.local.PROGRESS_STAGES:
-                        progress(stage)
+                    for event in _MEASURED_PROGRESS:
+                        progress(dict(event))
                     return completed
 
                 resume.side_effect = resume_integrations
@@ -240,11 +257,10 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
                 self.assertEqual(
-                    [await websocket.next_json() for _index in range(3)],
+                    [await websocket.next_json() for _index in range(4)],
                     [
-                        {"type": "progress", "stage": "preparing"},
-                        {"type": "progress", "stage": "running"},
-                        {"type": "progress", "stage": "finalizing"},
+                        {"type": "progress", "seq": sequence, **event}
+                        for sequence, event in enumerate(_MEASURED_PROGRESS, start=1)
                     ],
                 )
                 self.assertEqual(

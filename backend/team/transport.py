@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import contextlib
 import http.client
 import json
 import logging
 import os
 import threading
+from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -17,6 +20,7 @@ import models
 import supervisor as local_supervisor
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
 
 log = logging.getLogger("shimpz-admin")
@@ -51,6 +55,9 @@ class TeamRequestError(ValueError):
 class TeamResponse:
     status: int
     body: dict[str, object]
+
+
+ProgressSink = Callable[[dict[str, object]], None]
 
 
 @dataclass(frozen=True)
@@ -234,6 +241,48 @@ def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
     return body
 
 
+def _request_headers(
+    method: str,
+    path: str,
+    body: bytes | None,
+    *,
+    accept: str,
+    content_type: str | None,
+    filename: str | None,
+    model_credential: tuple[str, str] | None,
+) -> dict[str, str]:
+    headers = {"Accept": accept, "Authorization": f"Bearer {_team_token()}"}
+    account_session = _account_session()
+    if account_session:
+        headers[team_contract.ACCOUNT_SESSION_HEADER] = account_session
+    if content_type is not None:
+        headers["Content-Type"] = content_type
+    if filename is not None:
+        headers[FILE_NAME_HEADER] = quote(filename, safe="")
+    if model_credential is not None:
+        provider, api_key = model_credential
+        encoded_key = api_key.encode("ascii") if isinstance(api_key, str) and api_key.isascii() else b""
+        if (
+            provider not in models.PROVIDERS
+            or not 16 <= len(encoded_key) <= 8 * 1024
+            or any(not 33 <= byte <= 126 for byte in encoded_key)
+        ):
+            raise OSError("invalid private model credential")
+        headers["X-Shimpz-Model-Provider"] = provider
+        headers["X-Shimpz-Model-Api-Key"] = api_key
+    assertion = _local_assertion(
+        method,
+        path,
+        body,
+        content_type=content_type,
+        filename=filename,
+        model_credential=model_credential,
+    )
+    if assertion:
+        headers[supervisor_contract.ASSERTION_HEADER] = f"Bearer {assertion}"
+    return headers
+
+
 def _request(
     method: str,
     path: str,
@@ -247,38 +296,15 @@ def _request(
     connection = None
     try:
         host, port = _endpoint()
-        token = _team_token()
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-        account_session = _account_session()
-        if account_session:
-            headers[team_contract.ACCOUNT_SESSION_HEADER] = account_session
-        if content_type is not None:
-            headers["Content-Type"] = content_type
-        if filename is not None:
-            headers[FILE_NAME_HEADER] = quote(filename, safe="")
-        if model_credential is not None:
-            provider, api_key = model_credential
-            encoded_key = api_key.encode("ascii") if isinstance(api_key, str) and api_key.isascii() else b""
-            if (
-                provider not in models.PROVIDERS
-                or not 16 <= len(encoded_key) <= 8 * 1024
-                or any(not 33 <= byte <= 126 for byte in encoded_key)
-            ):
-                raise OSError("invalid private model credential")
-            # Private Admin -> local controller hand-off. These headers never come from browser
-            # input, never enter a Team payload, and are never included in this module's logs.
-            headers["X-Shimpz-Model-Provider"] = provider
-            headers["X-Shimpz-Model-Api-Key"] = api_key
-        assertion = _local_assertion(
+        headers = _request_headers(
             method,
             path,
             body,
+            accept="application/json",
             content_type=content_type,
             filename=filename,
             model_credential=model_credential,
         )
-        if assertion:
-            headers[supervisor_contract.ASSERTION_HEADER] = f"Bearer {assertion}"
         # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
         # socket would require serialization and could retain an authenticated connection across
         # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
@@ -303,6 +329,82 @@ def _request(
     return result
 
 
+def _decode_stream(
+    response: http.client.HTTPResponse,
+    progress: ProgressSink,
+) -> TeamResponse:
+    content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
+    if (
+        response.status != HTTPStatus.OK
+        or content_type != "application/x-ndjson"
+        or response.getheader("Content-Length") is not None
+        or response.getheader("Transfer-Encoding") != "chunked"
+    ):
+        raise OSError("invalid Team chat stream")
+    sequence = 0
+    event_count = 0
+    byte_count = 0
+    while True:
+        raw = response.readline(progress_contract.MAX_LINE_BYTES + 1)
+        if not raw:
+            raise OSError("truncated Team chat stream")
+        byte_count += len(raw)
+        if byte_count > progress_contract.MAX_STREAM_BYTES:
+            raise OSError("Team chat stream exceeded its limit")
+        record = progress_contract.decode_line(raw)
+        if record["type"] == "terminal":
+            if response.read(1):
+                raise OSError("Team chat stream continued after terminal")
+            return TeamResponse(record["status"], record["body"])
+        event_count += 1
+        if event_count > progress_contract.MAX_EVENTS or record["seq"] != sequence + 1:
+            raise OSError("invalid Team chat progress order")
+        sequence = record["seq"]
+        event = {key: value for key, value in record.items() if key != "type"}
+        with contextlib.suppress(Exception):
+            progress(event)
+
+
+def _stream_request(
+    method: str,
+    path: str,
+    body: bytes,
+    *,
+    timeout: int,
+    model_credential: tuple[str, str],
+    progress: ProgressSink,
+) -> TeamResponse:
+    connection = None
+    try:
+        host, port = _endpoint()
+        headers = _request_headers(
+            method,
+            path,
+            body,
+            accept="application/x-ndjson",
+            content_type="application/json",
+            filename=None,
+            model_credential=model_credential,
+        )
+        connection = http.client.HTTPConnection(host, port, timeout=timeout)
+        connection.request(method, path, body=body, headers=headers)
+        result = _decode_stream(connection.getresponse(), progress)
+    except (
+        OSError,
+        UnicodeError,
+        http.client.HTTPException,
+        progress_contract.ProgressContractError,
+    ):
+        log.warning("team chat stream failed (%s)", method)
+        return TeamResponse(502, {"detail": "team unavailable"})
+    finally:
+        if connection is not None:
+            with contextlib.suppress(OSError):
+                connection.close()
+    log.info("team %s %s -> HTTP %s", method, path, result.status)
+    return result
+
+
 def _call(
     method: str,
     path: str,
@@ -321,6 +423,29 @@ def _call(
         filename=None,
         timeout=timeout,
         model_credential=model_credential,
+    )
+
+
+def _call_stream(
+    method: str,
+    path: str,
+    payload: object,
+    *,
+    timeout: int,
+    max_body_bytes: int = MAX_JSON_BODY_BYTES,
+    model_credential: tuple[str, str],
+    progress: ProgressSink,
+) -> TeamResponse:
+    body = _encode_payload(payload, max_bytes=max_body_bytes)
+    if body is None:
+        raise TeamRequestError("stream request body is required")
+    return _stream_request(
+        method,
+        path,
+        body,
+        timeout=timeout,
+        model_credential=model_credential,
+        progress=progress,
     )
 
 

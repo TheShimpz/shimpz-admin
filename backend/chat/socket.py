@@ -151,7 +151,7 @@ def _stop_accepted(response: object, team_id: str) -> bool | None:
 class _Turn:
     future: concurrent.futures.Future | None
     operation: str
-    progress: asyncio.Queue[str] | None = None
+    progress: asyncio.Queue[dict[str, object]] | None = None
     delivery: asyncio.Task | None = None
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False
@@ -190,20 +190,27 @@ async def _send_terminal_once(
     return True
 
 
-def _enqueue_progress(queue: asyncio.Queue[str], stage: str) -> None:
-    if stage not in local.PROGRESS_STAGES:
+def _enqueue_progress(queue: asyncio.Queue[dict[str, object]], value: dict[str, object]) -> None:
+    try:
+        event = local.canonical_public_progress(value)
+    except ValueError:
         return
     with contextlib.suppress(asyncio.QueueFull):
-        queue.put_nowait(stage)
+        queue.put_nowait(event)
 
 
-def _progress_channel() -> tuple[asyncio.Queue[str], Callable[[str], None]]:
-    progress: asyncio.Queue[str] = asyncio.Queue(maxsize=len(local.PROGRESS_STAGES))
+def _progress_channel() -> tuple[
+    asyncio.Queue[dict[str, object]],
+    Callable[[dict[str, object]], None],
+]:
+    progress: asyncio.Queue[dict[str, object]] = asyncio.Queue(
+        maxsize=local.MAX_PUBLIC_PROGRESS_EVENTS,
+    )
     loop = asyncio.get_running_loop()
 
-    def report(stage: str) -> None:
+    def report(event: dict[str, object]) -> None:
         with contextlib.suppress(RuntimeError):
-            loop.call_soon_threadsafe(_enqueue_progress, progress, stage)
+            loop.call_soon_threadsafe(_enqueue_progress, progress, event)
 
     return progress, report
 
@@ -212,12 +219,13 @@ async def _await_progress_result(
     websocket: WebSocket,
     connection: _Connection,
     future: concurrent.futures.Future,
-    progress: asyncio.Queue[str],
+    progress: asyncio.Queue[dict[str, object]],
     inactive: Callable[[], bool],
     suppress_progress: Callable[[], bool],
 ) -> object | None:
     response = asyncio.wrap_future(future)
-    pending_progress: asyncio.Task[str] | None = None
+    pending_progress: asyncio.Task[dict[str, object]] | None = None
+    sequence = 0
     try:
         while not response.done():
             pending_progress = asyncio.create_task(progress.get())
@@ -226,13 +234,14 @@ async def _await_progress_result(
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if pending_progress in completed:
-                stage = pending_progress.result()
+                event = pending_progress.result()
                 pending_progress = None
                 if inactive():
                     return None
                 if suppress_progress():
                     continue
-                if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+                sequence += 1
+                if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
                     connection.closed = True
                     return None
                 continue
@@ -245,10 +254,11 @@ async def _await_progress_result(
         while not progress.empty():
             if inactive():
                 return None
-            stage = progress.get_nowait()
+            event = progress.get_nowait()
             if suppress_progress():
                 continue
-            if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+            sequence += 1
+            if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
                 connection.closed = True
                 return None
         return await response
@@ -321,7 +331,10 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             connection.active = None
 
 
-def _sync_snapshot(team_id: str, progress: Callable[[str], None]) -> tuple[object, object | None]:
+def _sync_snapshot(
+    team_id: str,
+    progress: Callable[[dict[str, object]], None],
+) -> tuple[object, object | None]:
     pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:

@@ -158,7 +158,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.body["status"], "integrations-required")
         self.assertEqual(response.body["requirements"], [integration_requirement()])
 
-    def test_turn_reports_only_actual_fixed_execution_stages(self) -> None:
+    def test_turn_reports_measured_admin_and_team_execution_events(self) -> None:
         inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
         controller = team.TeamResponse(
             200,
@@ -169,20 +169,53 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "trace_id": TRACE_ID,
             },
         )
-        stages: list[str] = []
+        events: list[dict[str, object]] = []
+
+        def execute_chat(*_args, progress, **_kwargs):
+            progress({"seq": 1, "phase": "model", "state": "started"})
+            progress(
+                {
+                    "seq": 2,
+                    "phase": "model",
+                    "state": "finished",
+                    "elapsed_ms": 18,
+                }
+            )
+            progress({"seq": 3, "phase": "reply-validation", "state": "started"})
+            progress(
+                {
+                    "seq": 4,
+                    "phase": "reply-validation",
+                    "state": "finished",
+                    "elapsed_ms": 2,
+                }
+            )
+            return controller
+
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(team, "chat", return_value=controller),
+            mock.patch.object(team, "chat", side_effect=execute_chat),
         ):
             response = local.turn(
                 "team_1",
                 {"message": "Hello", "files": [], "assistant_ids": []},
-                stages.append,
+                events.append,
             )
 
         self.assertEqual(response.status, 200)
-        self.assertEqual(stages, ["preparing", "running", "finalizing"])
+        self.assertEqual(
+            [(event["origin"], event["phase"], event["state"]) for event in events],
+            [
+                ("admin", "admin-preparation", "started"),
+                ("admin", "admin-preparation", "finished"),
+                ("team", "model", "started"),
+                ("team", "model", "finished"),
+                ("team", "reply-validation", "started"),
+                ("team", "reply-validation", "finished"),
+            ],
+        )
+        self.assertEqual(events[-1]["elapsed_ms"], 2)
 
     def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
         pending = team.TeamResponse(
@@ -231,6 +264,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         payload,
                         provider="openai",
                         api_key="sk-test-0123456789",
+                        progress=lambda _event: None,
                     )
         transport.assert_not_called()
 
@@ -281,7 +315,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         call = chat.call_args
         self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": []})
-        self.assertEqual(call.kwargs, {"provider": "anthropic", "api_key": "sk-ant-0123456789"})
+        self.assertEqual(call.kwargs["provider"], "anthropic")
+        self.assertEqual(call.kwargs["api_key"], "sk-ant-0123456789")
+        self.assertTrue(callable(call.kwargs["progress"]))
 
     def test_missing_controller_contract_fails_503_without_mocking_success(self) -> None:
         missing = team.TeamResponse(404, {"detail": "no such operation"})

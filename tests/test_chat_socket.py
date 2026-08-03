@@ -16,6 +16,35 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+_MEASURED_PROGRESS = (
+    {"origin": "admin", "phase": "admin-preparation", "state": "started"},
+    {
+        "origin": "admin",
+        "phase": "admin-preparation",
+        "state": "finished",
+        "elapsed_ms": 5,
+    },
+    {"origin": "team", "phase": "reply-validation", "state": "started"},
+    {
+        "origin": "team",
+        "phase": "reply-validation",
+        "state": "finished",
+        "elapsed_ms": 2,
+    },
+)
+
+
+def _emit_measured_progress(callback) -> None:
+    for event in _MEASURED_PROGRESS:
+        callback(dict(event))
+
+
+def _progress_frames() -> list[dict[str, object]]:
+    return [
+        {"type": "progress", "seq": sequence, **event}
+        for sequence, event in enumerate(_MEASURED_PROGRESS, start=1)
+    ]
+
 
 class _Socket:
     def __init__(
@@ -331,9 +360,7 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload, progress):
                 started.set()
                 release.wait(timeout=2)
-                progress("preparing")
-                progress("running")
-                progress("finalizing")
+                _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
@@ -373,12 +400,8 @@ class ChatWebSocketTests(unittest.TestCase):
                     {"type": "chat", "message": "next", "files": [], "assistant_ids": []}
                 )
                 self.assertEqual(
-                    [await websocket.next_json() for _index in range(3)],
-                    [
-                        {"type": "progress", "stage": "preparing"},
-                        {"type": "progress", "stage": "running"},
-                        {"type": "progress", "stage": "finalizing"},
-                    ],
+                    [await websocket.next_json() for _index in range(4)],
+                    _progress_frames(),
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 self.assertEqual(turn_mock.call_count, 2)
@@ -400,7 +423,7 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload, progress):
                 started.set()
                 release.wait(timeout=2)
-                progress("finalizing")
+                progress(dict(_MEASURED_PROGRESS[-1]))
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "Natural terminal."},
@@ -490,7 +513,7 @@ class ChatWebSocketTests(unittest.TestCase):
             def turn(_team_id, _payload, progress):
                 started.set()
                 release.wait(timeout=2)
-                progress("preparing")
+                progress(dict(_MEASURED_PROGRESS[0]))
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
@@ -523,8 +546,7 @@ class ChatWebSocketTests(unittest.TestCase):
     def test_turn_emits_fixed_progress_before_its_single_terminal(self) -> None:
         async def scenario() -> None:
             def turn(_team_id, _payload, progress):
-                for stage in ("preparing", "running", "finalizing"):
-                    progress(stage)
+                _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
@@ -537,12 +559,8 @@ class ChatWebSocketTests(unittest.TestCase):
                     {"type": "chat", "message": "hello", "files": [], "assistant_ids": []}
                 )
                 self.assertEqual(
-                    [await websocket.next_json() for _index in range(3)],
-                    [
-                        {"type": "progress", "stage": "preparing"},
-                        {"type": "progress", "stage": "running"},
-                        {"type": "progress", "stage": "finalizing"},
-                    ],
+                    [await websocket.next_json() for _index in range(4)],
+                    _progress_frames(),
                 )
                 self.assertEqual(
                     await websocket.next_json(),
