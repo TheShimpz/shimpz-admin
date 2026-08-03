@@ -1,29 +1,29 @@
 <script>
-  import HelpInline from '$lib/HelpInline.svelte';
-  import { parseHelpMarkdown } from '$lib/helpMarkdown.js';
+  import MarkdownInline from '$lib/MarkdownInline.svelte';
+  import { parseMarkdown } from '$lib/markdown.js';
 
-  let { markdown = '', variant = 'help' } = $props();
-  let blocks = $derived(parseHelpMarkdown(markdown));
+  let { markdown = '', variant = 'body' } = $props();
+  let blocks = $derived(parseMarkdown(markdown));
 
   function tableLabel(block) {
     return block.header.map((cell) => cell.map((token) => token.text).join('')).join(', ');
   }
 </script>
 
-<div class="help-markdown" class:chat={variant === 'chat'}>
+<div class="markdown" class:chat={variant === 'chat'}>
   {#each blocks as block}
     {#if block.type === 'heading' && block.level === 1}
-      <h1><HelpInline tokens={block.inlines} /></h1>
+      <h1><MarkdownInline tokens={block.inlines} /></h1>
     {:else if block.type === 'heading' && block.level === 2}
-      <h2><HelpInline tokens={block.inlines} /></h2>
+      <h2><MarkdownInline tokens={block.inlines} /></h2>
     {:else if block.type === 'heading'}
-      <h3><HelpInline tokens={block.inlines} /></h3>
+      <h3><MarkdownInline tokens={block.inlines} /></h3>
     {:else if block.type === 'code'}
       <pre><code>{block.text}</code></pre>
     {:else if block.type === 'list' && block.ordered}
-      <ol>{#each block.items as item}<li><HelpInline tokens={item} /></li>{/each}</ol>
+      <ol>{#each block.items as item}<li><MarkdownInline tokens={item} /></li>{/each}</ol>
     {:else if block.type === 'list'}
-      <ul>{#each block.items as item}<li><HelpInline tokens={item} /></li>{/each}</ul>
+      <ul>{#each block.items as item}<li><MarkdownInline tokens={item} /></li>{/each}</ul>
     {:else if block.type === 'table'}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard scrolling for wide tables) -->
       <div class="table-scroll" role="region" aria-label={tableLabel(block)} tabindex="0">
@@ -32,7 +32,7 @@
             <tr>
               {#each block.header as cell, index}
                 <th class:align-center={block.align[index] === 'center'} class:align-right={block.align[index] === 'right'}>
-                  <HelpInline tokens={cell} />
+                  <MarkdownInline tokens={cell} />
                 </th>
               {/each}
             </tr>
@@ -42,7 +42,7 @@
               <tr>
                 {#each row as cell, index}
                   <td class:align-center={block.align[index] === 'center'} class:align-right={block.align[index] === 'right'}>
-                    <HelpInline tokens={cell} />
+                    <MarkdownInline tokens={cell} />
                   </td>
                 {/each}
               </tr>
@@ -51,14 +51,14 @@
         </table>
       </div>
     {:else}
-      <p><HelpInline tokens={block.inlines} /></p>
+      <p><MarkdownInline tokens={block.inlines} /></p>
     {/if}
   {/each}
 </div>
 
 <style>
-  .help-markdown { color: var(--text-dim); font-size: 0.76rem; line-height: 1.62; }
-  .help-markdown.chat { color: var(--text); font-size: inherit; line-height: 1.55; }
+  .markdown { color: var(--text-dim); font-size: 0.76rem; line-height: 1.62; }
+  .markdown.chat { color: var(--text); font-size: inherit; line-height: 1.55; }
   h1, h2, h3 { margin: 1.2rem 0 0.55rem; color: var(--text); line-height: 1.22; }
   h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
   h1 { font-size: 1.15rem; }
@@ -81,6 +81,6 @@
   tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
   .align-center { text-align: center; }
   .align-right { text-align: end; }
-  .help-markdown :global(a) { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-alt); text-underline-offset: 0.2em; }
-  .help-markdown :global(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .markdown :global(a) { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-alt); text-underline-offset: 0.2em; }
+  .markdown :global(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

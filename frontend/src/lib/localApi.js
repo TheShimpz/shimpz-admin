@@ -6,11 +6,8 @@ import {
   TEAM_ID_RE,
 } from './validate.js';
 
-const ASSISTANT_HELP_LOCALES = new Set(['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']);
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
-const MAX_ASSISTANT_HELP_BYTES = 32 * 1024;
-const HELP_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
 export { LocalApiError };
 
@@ -98,43 +95,6 @@ export async function listInstalledAssistants(fetcher, teamId) {
     seen.add(assistant);
     return { assistant, status };
   });
-}
-
-/** Load Help only for one installed Assistant; Markdown remains untrusted display input. */
-export async function getAssistantHelp(fetcher, teamId, assistantId, locale = 'en') {
-  if (
-    typeof fetcher !== 'function' ||
-    !TEAM_ID_RE.test(teamId) ||
-    typeof assistantId !== 'string' ||
-    assistantId.length > 80 ||
-    !ASSISTANT_ID_RE.test(assistantId) ||
-    !ASSISTANT_HELP_LOCALES.has(locale)
-  ) {
-    throw new LocalApiError('Invalid local Assistant Help request.');
-  }
-
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/help?locale=${locale}`,
-    { cache: 'no-store', headers: { Accept: 'application/json' } },
-  );
-  const body = await jsonObject(response);
-  if (!response.ok) {
-    throw new LocalApiError(
-      safeApiError(body, 'The installed Assistant Help is unavailable.'),
-      response.status,
-    );
-  }
-  const markdown = body.markdown;
-  if (
-    body.assistant !== assistantId ||
-    typeof markdown !== 'string' ||
-    !markdown.trim() ||
-    HELP_CONTROL_RE.test(markdown) ||
-    new TextEncoder().encode(markdown).length > MAX_ASSISTANT_HELP_BYTES
-  ) {
-    throw new LocalApiError('The installed Assistant Help is invalid.', response.status);
-  }
-  return { assistant: assistantId, markdown };
 }
 
 /** Install or reconcile one allowlisted Assistant without invoking a Power or starting a chat turn. */

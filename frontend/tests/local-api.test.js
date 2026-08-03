@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  getAssistantHelp,
   installAssistant,
   LocalApiError,
   listAssistantCatalog,
@@ -107,71 +106,6 @@ test('loads the controller-owned installed Assistant inventory without weakening
     url: '/api/teams/team_1/assistants',
     options: { cache: 'no-store', headers: { Accept: 'application/json' } },
   }]);
-});
-
-test('loads bounded Help lazily for one exact installed Assistant', async () => {
-  const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
-    return response(200, {
-      assistant: 'shimpz-cloudflare',
-      markdown: '# Shimpz Cloudflare\n\nTry asking for the weather.',
-      trace_id: 'safe-controller-audit-id',
-    });
-  };
-
-  assert.deepEqual(await getAssistantHelp(fetcher, 'team_1', 'shimpz-cloudflare', 'pt'), {
-    assistant: 'shimpz-cloudflare',
-    markdown: '# Shimpz Cloudflare\n\nTry asking for the weather.',
-  });
-  assert.deepEqual(calls, [{
-    url: '/api/teams/team_1/assistants/shimpz-cloudflare/help?locale=pt',
-    options: { cache: 'no-store', headers: { Accept: 'application/json' } },
-  }]);
-});
-
-test('rejects malformed, oversized and mismatched Assistant Help responses', async () => {
-  const invalid = [
-    { assistant: 'other-assistant', markdown: '# Help' },
-    { assistant: 'shimpz-cloudflare', markdown: '' },
-    { assistant: 'shimpz-cloudflare', markdown: 'bad\u0000help' },
-    { assistant: 'shimpz-cloudflare', markdown: 'é'.repeat(16_385) },
-  ];
-  for (const body of invalid) {
-    await assert.rejects(
-      getAssistantHelp(async () => response(200, body), 'team_1', 'shimpz-cloudflare'),
-      (error) => error instanceof LocalApiError && error.message === 'The installed Assistant Help is invalid.',
-    );
-  }
-
-  await assert.rejects(
-    getAssistantHelp(
-      async () => response(404, { detail: 'Assistant is not installed' }),
-      'team_1',
-      'shimpz-cloudflare',
-    ),
-    (error) => error instanceof LocalApiError && error.status === 404 && error.message === 'Assistant is not installed',
-  );
-});
-
-test('rejects Help path injection before making a request', async () => {
-  let calls = 0;
-  const fetcher = async () => { calls += 1; return response(200, {}); };
-  for (const [team, assistant] of [
-    ['../team', 'shimpz-cloudflare'],
-    ['team_1', '../assistant'],
-    ['team_1', 'Shimpz-Assistant'],
-  ]) {
-    await assert.rejects(
-      getAssistantHelp(fetcher, team, assistant),
-      (error) => error instanceof LocalApiError && error.message === 'Invalid local Assistant Help request.',
-    );
-  }
-  await assert.rejects(
-    getAssistantHelp(fetcher, 'team_1', 'shimpz-cloudflare', '../pt'),
-    (error) => error instanceof LocalApiError && error.message === 'Invalid local Assistant Help request.',
-  );
-  assert.equal(calls, 0);
 });
 
 test('projects only bounded display identities from the local Assistant catalog', async () => {

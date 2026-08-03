@@ -33,7 +33,6 @@ MAX_CHAT_JSON_BODY_BYTES = 24 * 1024
 MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 
-ASSISTANT_HELP_LOCALES = frozenset({"en", "pt", "es", "zh", "fr", "de", "ja", "ar"})
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
 MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
@@ -65,12 +64,6 @@ _SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 def canonical_source_digest(value: object) -> str:
     if not isinstance(value, str) or _SOURCE_DIGEST_RE.fullmatch(value) is None:
         raise TeamRequestError("source digest must be a canonical sha256 digest")
-    return value
-
-
-def canonical_assistant_help_locale(value: object) -> str:
-    if not isinstance(value, str) or value not in ASSISTANT_HELP_LOCALES:
-        raise TeamRequestError("unsupported Assistant Help locale")
     return value
 
 
@@ -291,12 +284,6 @@ def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
 
 def list_installed_assistants(team_id: object) -> TeamResponse:
     return _call("GET", _assistant_path(team_id))
-
-
-def assistant_help(team_id: object, assistant_id: object, locale: object = "en") -> TeamResponse:
-    """Return one installed Assistant's bounded, controller-owned Help document."""
-    canonical_locale = canonical_assistant_help_locale(locale)
-    return _call("GET", f"{_assistant_path(team_id, assistant_id)}/help/{canonical_locale}")
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:

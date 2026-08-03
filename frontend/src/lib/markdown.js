@@ -28,7 +28,7 @@ function safeLink(raw) {
 }
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
-export function parseHelpInline(source) {
+export function parseInline(source) {
   const input = String(source ?? '');
   const tokens = [];
   let cursor = 0;
@@ -147,7 +147,7 @@ function parseTable(lines, index) {
     const cells = tableCells(lines[cursor]);
     if (!cells || cells.length > header.length) break;
     rows.push([
-      ...cells.map(parseHelpInline),
+      ...cells.map(parseInline),
       ...Array.from({ length: header.length - cells.length }, () => []),
     ]);
     cursor += 1;
@@ -156,7 +156,7 @@ function parseTable(lines, index) {
     block: {
       type: 'table',
       align,
-      header: header.map(parseHelpInline),
+      header: header.map(parseInline),
       rows,
     },
     next: cursor,
@@ -164,10 +164,10 @@ function parseTable(lines, index) {
 }
 
 /**
- * Convert bounded Help Markdown into a closed AST. Raw HTML is always ordinary escaped text;
+ * Convert bounded Markdown into a closed AST. Raw HTML is always ordinary escaped text;
  * callers render only the node types returned here and never inject HTML.
  */
-export function parseHelpMarkdown(markdown) {
+export function parseMarkdown(markdown) {
   const lines = String(markdown ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   const blocks = [];
   let index = 0;
@@ -203,7 +203,7 @@ export function parseHelpMarkdown(markdown) {
       blocks.push({
         type: 'heading',
         level: heading[1].length,
-        inlines: parseHelpInline(heading[2].replace(/\s+#+\s*$/, '')),
+        inlines: parseInline(heading[2].replace(/\s+#+\s*$/, '')),
       });
       index += 1;
       continue;
@@ -216,7 +216,7 @@ export function parseHelpMarkdown(markdown) {
       while (index < lines.length) {
         const item = LIST_ITEM.exec(lines[index]);
         if (!item || /^\d/.test(item[1]) !== ordered) break;
-        items.push(parseHelpInline(item[2]));
+        items.push(parseInline(item[2]));
         index += 1;
       }
       blocks.push({ type: 'list', ordered, items });
@@ -232,7 +232,7 @@ export function parseHelpMarkdown(markdown) {
       paragraph.push(lines[index].trim());
       index += 1;
     }
-    blocks.push({ type: 'paragraph', inlines: parseHelpInline(paragraph.join(' ')) });
+    blocks.push({ type: 'paragraph', inlines: parseInline(paragraph.join(' ')) });
   }
   return blocks;
 }

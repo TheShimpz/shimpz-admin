@@ -140,7 +140,6 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         team.list_assistants()
         team.list_installed_assistants("team_1")
-        team.assistant_help("team_1", "shimpz-cloudflare", "pt")
         team.install_assistant(
             "team_1",
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
@@ -152,13 +151,12 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             [
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/teams/team_1/assistants"),
-                ("GET", "/v1/teams/team_1/assistants/shimpz-cloudflare/help/pt"),
                 ("POST", "/v1/teams/team_1/assistants"),
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
             ],
         )
         self.assertEqual(
-            json.loads(_TeamHandler.requests[3]["body"]),
+            json.loads(_TeamHandler.requests[2]["body"]),
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
         )
         for request in _TeamHandler.requests:
@@ -396,8 +394,6 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 "team_1",
                 {"assistant_id": "../hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
             ),
-            lambda: team.assistant_help("team_1", "../escape"),
-            lambda: team.assistant_help("team_1", "shimpz-cloudflare", "../pt"),
             lambda: team.install_assistant(
                 "team_1",
                 {
@@ -443,30 +439,12 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         self.assertTrue(document["closed_api_ok"])
         self.assertTrue(document["retired_operations_absent"])
         self.assertTrue(document["power_routes_absent"])
+        self.assertTrue(document["help_route_absent"])
         self.assertEqual(document["power_status"], 404)
+        self.assertEqual(document["help_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
         self.assertEqual(_TeamHandler.requests, [])
-
-    def test_help_route_is_authenticated_and_forwards_only_the_fixed_installed_path(self):
-        _TeamHandler.response_body = b'{"assistant":"shimpz-cloudflare","markdown":"# Shimpz Cloudflare"}'
-
-        document = self._run_asgi_probe("assistant-help")
-
-        self.assertEqual(
-            document,
-            {
-                "status": 200,
-                "body": {"assistant": "shimpz-cloudflare", "markdown": "# Shimpz Cloudflare"},
-            },
-        )
-        self.assertEqual(len(_TeamHandler.requests), 1)
-        request = _TeamHandler.requests[0]
-        self.assertEqual(
-            (request["method"], request["path"]),
-            ("GET", "/v1/teams/team_1/assistants/shimpz-cloudflare/help/en"),
-        )
-        self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_install_route_preserves_conflict_and_forwards_exact_body(self):
         _TeamHandler.response_status = 409
@@ -688,7 +666,6 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         ("/api/teams/{team_id}/assistants", "GET"),
         ("/api/teams/{team_id}/assistants", "POST"),
         ("/api/teams/{team_id}/assistants/{assistant_id}", "DELETE"),
-        ("/api/teams/{team_id}/assistants/{assistant_id}/help", "GET"),
         ("/api/teams/{team_id}/files", "GET"),
         ("/api/teams/{team_id}/files", "POST"),
         ("/api/teams/{team_id}/files/{file_id}", "DELETE"),
@@ -703,12 +680,26 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
             token=token,
         )
     )
+    help_status, _help_body = asyncio.run(
+        _asgi_request(
+            admin_app,
+            "GET",
+            "/api/teams/team_1/assistants/shimpz-cloudflare/help",
+            token=token,
+        )
+    )
     return {
         "routes_ok": expected.issubset(routes),
         "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
         "retired_operations_absent": not any("/operations/" in path for path, _method in routes),
         "power_routes_absent": not any("/powers/" in path for path, _method in routes),
+        "help_route_absent": (
+            "/api/teams/{team_id}/assistants/{assistant_id}/help",
+            "GET",
+        )
+        not in routes,
         "power_status": power_status,
+        "help_status": help_status,
         "anonymous_status": status,
         "anonymous_body": body,
     }
@@ -742,16 +733,6 @@ def _run_asgi_probe(scenario: str) -> None:
                 "POST",
                 "/api/teams/team_1/assistants",
                 payload,
-                token=token,
-            )
-        )
-        output = {"status": status, "body": body}
-    elif scenario == "assistant-help":
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "GET",
-                "/api/teams/team_1/assistants/shimpz-cloudflare/help",
                 token=token,
             )
         )

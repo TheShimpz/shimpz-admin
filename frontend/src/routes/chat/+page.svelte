@@ -2,9 +2,8 @@
   import { onMount, tick } from 'svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
-  import AssistantHelpDrawer from '$lib/AssistantHelpDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
-  import HelpMarkdown from '$lib/HelpMarkdown.svelte';
+  import Markdown from '$lib/Markdown.svelte';
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
@@ -42,8 +41,6 @@
   let reconnectTimer;
   let reconnectAttempt = 0;
   const MAX_RECONNECT_ATTEMPTS = 5;
-  let helpOpen = $state(false);
-  let helpButton = $state();
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
@@ -68,16 +65,6 @@
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived($t('chatPage.sending', { team: teamName }));
-  let helpAssistants = $derived.by(() => {
-    const catalog = new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant]));
-    const selected = new Set($teamContext.selectedAssistantIds);
-    return $teamContext.installedAssistants
-      .filter((runtime) => runtime.status === 'running' && selected.has(runtime.assistant))
-      .map((runtime) => ({
-        id: runtime.assistant,
-        name: catalog.get(runtime.assistant)?.name ?? runtime.assistant,
-      }));
-  });
   let contextLoading = $derived(
     $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
   );
@@ -110,7 +97,6 @@
       !mounted ||
       !chatTeamId ||
       busy ||
-      helpOpen ||
       integrationsOpen ||
       document.querySelector('dialog[open]')
     ) return;
@@ -167,7 +153,6 @@
     integrationChallenge = incoming;
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
-    helpOpen = false;
     integrationsOpen = false;
     busy = true;
     stopping = false;
@@ -296,16 +281,10 @@
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
     scrollRequest += 1;
-    helpOpen = false;
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
     clearError();
     if (nextTeamId) connectSocket(nextTeamId);
-  }
-
-  function closeHelp() {
-    helpOpen = false;
-    queueMicrotask(() => helpButton?.focus());
   }
 
   function closeIntegrations() {
@@ -340,7 +319,6 @@
 
   function toggleIntegrations() {
     const next = !integrationsOpen;
-    helpOpen = false;
     integrationsOpen = next;
     if (next && chatTeamId) void refreshIntegrations(chatTeamId);
   }
@@ -524,11 +502,7 @@
   });
 
   $effect(() => {
-    if (helpOpen && helpAssistants.length === 0) helpOpen = false;
-  });
-
-  $effect(() => {
-    if (mounted && chatTeamId && !busy && !helpOpen && !integrationsOpen) void focusComposer();
+    if (mounted && chatTeamId && !busy && !integrationsOpen) void focusComposer();
   });
 
   onMount(() => {
@@ -553,7 +527,7 @@
 <div class="chat-route">
   {#if activeTeam}
     {#if chatTeamId}
-      <div class="chat-workspace" class:drawer-open={helpOpen || integrationsOpen}>
+      <div class="chat-workspace" class:drawer-open={integrationsOpen}>
         <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
         <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
@@ -562,7 +536,7 @@
               aria-label={turn.role === 'user' ? copy.you : turn.author}
             >
               {#if turn.role === 'assistant'}
-                <HelpMarkdown markdown={turn.text} variant="chat" />
+                <Markdown markdown={turn.text} variant="chat" />
               {:else}
                 <p>{turn.text}</p>
               {/if}
@@ -612,21 +586,6 @@
                   <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
                 </svg>
               </button>
-              <button
-                bind:this={helpButton}
-                class="help"
-                type="button"
-                onclick={() => {
-                  const next = !helpOpen;
-                  integrationsOpen = false;
-                  helpOpen = next;
-                }}
-                disabled={helpAssistants.length === 0}
-                aria-label={copy.help}
-                title={copy.help}
-                aria-expanded={helpOpen}
-                aria-controls="assistant-help-drawer"
-              >?</button>
               <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
                 {busy ? thinking : socketReady ? copy.send : copy.connecting}
               </button>
@@ -634,12 +593,6 @@
             </div>
           </form>
         </section>
-        <AssistantHelpDrawer
-          open={helpOpen}
-          teamId={chatTeamId}
-          assistants={helpAssistants}
-          onclose={closeHelp}
-        />
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           {integrations}
@@ -898,7 +851,6 @@
     color: #001013;
   }
 
-  button.help,
   button.integrations {
     width: 3.2rem;
     padding: 0;

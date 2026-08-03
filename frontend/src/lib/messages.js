@@ -183,18 +183,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Assistant Help"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // Help",
-      "choose": "Assistant",
-      "close": "Close Help",
-      "loading": "Loading Help…",
-      "failed": "This Assistant Help is unavailable."
     },
     notifications: {
       "label": "Notifications",
@@ -486,18 +478,10 @@ export const messages = {
       "capacityFailed": "O chat local está ocupado. Tente novamente em instantes.",
       "runtimeFailed": "O runtime do chat local está indisponível.",
       "requestFailed": "O Time não conseguiu concluir este turno.",
-      "technicalDetail": "Detalhe técnico",
-      "help": "Ajuda dos Assistants"
+      "technicalDetail": "Detalhe técnico"
     },
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // Ajuda",
-      "choose": "Assistant",
-      "close": "Fechar ajuda",
-      "loading": "Carregando ajuda…",
-      "failed": "A ajuda deste Assistant está indisponível."
     },
     notifications: {
       "label": "Notificações",
@@ -789,18 +773,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Ayuda de Assistants"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // Ayuda",
-      "choose": "Assistant",
-      "close": "Cerrar ayuda",
-      "loading": "Cargando ayuda…",
-      "failed": "La ayuda de este Assistant no está disponible."
     },
     notifications: {
       "label": "Notificaciones",
@@ -1092,18 +1068,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Assistant 帮助"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // 帮助",
-      "choose": "Assistant",
-      "close": "关闭帮助",
-      "loading": "正在加载帮助…",
-      "failed": "此 Assistant 的帮助暂不可用。"
     },
     notifications: {
       "label": "通知",
@@ -1395,18 +1363,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Aide des Assistants"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // Aide",
-      "choose": "Assistant",
-      "close": "Fermer l’aide",
-      "loading": "Chargement de l’aide…",
-      "failed": "L’aide de cet Assistant est indisponible."
     },
     notifications: {
       "label": "Notifications",
@@ -1698,18 +1658,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Assistant-Hilfe"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // Hilfe",
-      "choose": "Assistant",
-      "close": "Hilfe schließen",
-      "loading": "Hilfe wird geladen…",
-      "failed": "Die Hilfe dieses Assistants ist nicht verfügbar."
     },
     notifications: {
       "label": "Benachrichtigungen",
@@ -2001,18 +1953,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "Assistant ヘルプ"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // ヘルプ",
-      "choose": "Assistant",
-      "close": "ヘルプを閉じる",
-      "loading": "ヘルプを読み込み中…",
-      "failed": "この Assistant のヘルプは利用できません。"
     },
     notifications: {
       "label": "通知",
@@ -2304,18 +2248,10 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
-      "technicalDetail": "Technical detail",
-      "help": "مساعدة الـ Assistants"
+      "technicalDetail": "Technical detail"
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    assistantHelp: {
-      "kicker": "Assistant // المساعدة",
-      "choose": "Assistant",
-      "close": "إغلاق المساعدة",
-      "loading": "جارٍ تحميل المساعدة…",
-      "failed": "مساعدة هذا الـ Assistant غير متاحة."
     },
     notifications: {
       "label": "الإشعارات",

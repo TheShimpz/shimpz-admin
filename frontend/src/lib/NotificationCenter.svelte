@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import HelpMarkdown from '$lib/HelpMarkdown.svelte';
+  import Markdown from '$lib/Markdown.svelte';
   import { locale, t } from '$lib/i18n.js';
   import {
     clearNotifications,
@@ -174,7 +174,7 @@
         <time datetime={selected.published_at}>
           {$t('notifications.published', { date: formatDate(selected.published_at) })}
         </time>
-        <div class="changelog"><HelpMarkdown markdown={selected.changelog} /></div>
+        <div class="changelog"><Markdown markdown={selected.changelog} /></div>
       </article>
     {:else}
       <div class="notification-actions">

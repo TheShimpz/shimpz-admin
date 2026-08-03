@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseHelpInline, parseHelpMarkdown } from '../src/lib/helpMarkdown.js';
+import { parseInline, parseMarkdown } from '../src/lib/markdown.js';
 
-test('parses the small supported Help Markdown surface into a closed AST', () => {
-  const blocks = parseHelpMarkdown(`# Weather Guide
+test('parses the small supported Markdown surface into a closed AST', () => {
+  const blocks = parseMarkdown(`# Weather Guide
 
 Ask for **current weather** or *a forecast* with \`days\`.
 
@@ -34,7 +34,7 @@ What is the weather in Lisbon?
 });
 
 test('keeps raw HTML inert text and refuses executable or credential-bearing links', () => {
-  const tokens = parseHelpInline(
+  const tokens = parseInline(
     '<img src=x onerror=alert(1)> [run](javascript:alert(1)) '
       + '[data](data:text/html,<script>alert(1)</script>) '
       + '[credentials](https://user:password@example.com/) [safe](https://example.com/docs)',
@@ -49,7 +49,7 @@ test('keeps raw HTML inert text and refuses executable or credential-bearing lin
 });
 
 test('does not expose any HTML node or attribute channel in its output model', () => {
-  const blocks = parseHelpMarkdown('# <svg onload=alert(1)>\n\n<script>alert(1)</script>');
+  const blocks = parseMarkdown('# <svg onload=alert(1)>\n\n<script>alert(1)</script>');
   const encoded = JSON.stringify(blocks);
 
   assert.doesNotMatch(encoded, /"(?:html|attributes?|style|event)"\s*:/i);
@@ -58,7 +58,7 @@ test('does not expose any HTML node or attribute channel in its output model', (
 });
 
 test('parses bounded GitHub-style tables with alignment and safe inline tokens', () => {
-  const blocks = parseHelpMarkdown(`Records
+  const blocks = parseMarkdown(`Records
 
 | Type | Name | Value | Proxy |
 | :--- | --- | ---: | :---: |
@@ -79,11 +79,11 @@ Done.`);
 });
 
 test('keeps malformed and oversized table candidates as ordinary text', () => {
-  const malformed = parseHelpMarkdown('| A | B |\n| -- | --- |\n| one | two |');
+  const malformed = parseMarkdown('| A | B |\n| -- | --- |\n| one | two |');
   assert.deepEqual(malformed.map((block) => block.type), ['paragraph']);
 
   const header = `| ${Array.from({ length: 33 }, (_, index) => `h${index}`).join(' | ')} |`;
   const divider = `| ${Array.from({ length: 33 }, () => '---').join(' | ')} |`;
-  const oversized = parseHelpMarkdown(`${header}\n${divider}`);
+  const oversized = parseMarkdown(`${header}\n${divider}`);
   assert.deepEqual(oversized.map((block) => block.type), ['paragraph']);
 });
