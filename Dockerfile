@@ -49,7 +49,7 @@ COPY backend/app.py backend/auth.py backend/models.py backend/model_catalog.json
 COPY backend/chat/local.py backend/chat/payloads.py backend/chat/socket.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/handoff.py ./integrations/
 COPY backend/team/bridge.py backend/team/transport.py ./team/
-COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/supervisor.py \
+COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py backend/protocol/http/v1/supervisor.py \
     backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --from=ui /w/build /app/frontend/build
