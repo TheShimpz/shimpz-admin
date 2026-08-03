@@ -52,7 +52,9 @@ _EXECUTABLE_REFERENCE_RE = re.compile(
     r"\b(?:curl|wget)\b[^\r\n|]{0,512}\|\s*(?:ba)?sh\b)",
     re.IGNORECASE,
 )
-_RUNTIME_STATUSES = frozenset({"created", "restarting", "running", "removing", "paused", "exited", "dead", "outdated"})
+_RUNTIME_STATUSES = frozenset(
+    {"created", "restarting", "running", "removing", "paused", "exited", "dead", "outdated", "invalid"}
+)
 
 _STORE_LOCK = threading.RLock()
 _SYNC_LOCK = threading.Lock()

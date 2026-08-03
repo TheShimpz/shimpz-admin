@@ -94,6 +94,7 @@ test('loads the controller-owned installed Assistant inventory without weakening
       assistants: [
         { assistant: 'hello-pulse', status: 'running' },
         { assistant: 'salesnator', status: 'created' },
+        { assistant: 'retired-assistant', status: 'invalid' },
       ],
     });
   };
@@ -101,6 +102,7 @@ test('loads the controller-owned installed Assistant inventory without weakening
   assert.deepEqual(await listInstalledAssistants(fetcher, 'team_1'), [
     { assistant: 'hello-pulse', status: 'running' },
     { assistant: 'salesnator', status: 'created' },
+    { assistant: 'retired-assistant', status: 'invalid' },
   ]);
   assert.deepEqual(calls, [{
     url: '/api/teams/team_1/assistants',

@@ -105,6 +105,15 @@ class NotificationStateTests(unittest.TestCase):
             mock.patch.object(notifications.team, "list_installed_assistants", return_value=inventory),
         )
 
+    def test_invalid_runtime_is_accepted_without_claiming_an_update(self) -> None:
+        response = _installed(**{"shimpz-cloudflare": "invalid"})
+
+        self.assertEqual(notifications._installed(response), {"shimpz-cloudflare": "invalid"})
+        self.assertEqual(
+            notifications._observe_outdated({"marketing": {"shimpz-cloudflare": "invalid"}}),
+            (set(), set(), 0),
+        )
+
     def test_release_changelog_preserves_canonical_markdown_final_newline(self) -> None:
         release = _release("shimpz-cloudflare", 1)
         release["changelog"] = "# Changelog\n\n## 0.1.1\n\n- Safe patch.\n"
