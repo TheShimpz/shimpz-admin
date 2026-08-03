@@ -33,6 +33,7 @@
   let draft = $state('');
   let turns = $state([]);
   let busy = $state(false);
+  let syncing = $state(false);
   let progressStage = $state('preparing');
   let progressIndex = $state(-1);
   let progressActive = $state(false);
@@ -106,6 +107,7 @@
       !mounted ||
       !chatTeamId ||
       busy ||
+      syncing ||
       integrationsOpen ||
       document.querySelector('dialog[open]')
     ) return;
@@ -114,7 +116,9 @@
 
   async function focusStop() {
     await tick();
-    if (mounted && busy && !integrationChallenge) stopButton?.focus({ preventScroll: true });
+    if (mounted && busy && !syncing && !integrationChallenge) {
+      stopButton?.focus({ preventScroll: true });
+    }
   }
 
   async function revealLatestTurn() {
@@ -155,6 +159,8 @@
     const current = socket;
     socket = null;
     socketReady = false;
+    syncing = false;
+    progressActive = false;
     resetChallengeState();
     current?.close(1000, 'Team changed');
   }
@@ -169,6 +175,7 @@
     oauthFailedOnReturn = false;
     integrationsOpen = false;
     busy = true;
+    syncing = false;
     stopping = false;
     progressActive = false;
   }
@@ -213,11 +220,16 @@
       }
       reconnectAttempt = 0;
       socketReady = true;
+      syncing = true;
+      progressStage = 'preparing';
+      progressIndex = -1;
+      progressActive = false;
       try {
         active.send(JSON.stringify(createSyncFrame(expectedTeamId)));
       } catch {
         socket = null;
         socketReady = false;
+        syncing = false;
         setError(copy.disconnected);
         active.close();
         return;
@@ -239,7 +251,7 @@
           return;
         }
         if (incoming.type === 'progress') {
-          if (!busy) throw new Error('unexpected progress frame');
+          if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (stopping) return;
           const nextIndex = progressStages.findIndex((item) => item.id === incoming.stage);
           if (nextIndex !== progressIndex + 1) throw new Error('out-of-order progress frame');
@@ -249,6 +261,8 @@
           return;
         }
         if (incoming.type === 'sync-empty') {
+          syncing = false;
+          progressActive = false;
           if (busy && turns.length > 0) {
             busy = false;
             stopping = false;
@@ -258,11 +272,12 @@
           }
           return;
         }
-        if (!busy && !stopping) throw new Error('unexpected terminal frame');
+        if (!busy && !stopping && !syncing) throw new Error('unexpected terminal frame');
       } catch {
         socket = null;
         socketReady = false;
         busy = false;
+        syncing = false;
         stopping = false;
         progressActive = false;
         resetChallengeState();
@@ -272,6 +287,7 @@
       }
 
       busy = false;
+      syncing = false;
       stopping = false;
       progressActive = false;
       resetChallengeState();
@@ -292,6 +308,7 @@
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       socket = null;
       socketReady = false;
+      syncing = false;
       stopping = false;
       progressActive = false;
       if (busy) busy = false;
@@ -473,7 +490,15 @@
   function send(event) {
     event.preventDefault();
     const teamId = $teamContext.selectedTeamId;
-    if (busy || !teamId || chatTeamId !== teamId || !draft.trim() || !socketReady || !socket) return;
+    if (
+      busy ||
+      syncing ||
+      !teamId ||
+      chatTeamId !== teamId ||
+      !draft.trim() ||
+      !socketReady ||
+      !socket
+    ) return;
     const message = draft.trim();
     let frame;
     try {
@@ -520,7 +545,7 @@
 
   function stop() {
     const teamId = $teamContext.selectedTeamId;
-    if (!busy || stopping || !teamId || !socketReady || !socket) return;
+    if (!busy || syncing || stopping || !teamId || !socketReady || !socket) return;
     stopping = true;
     progressActive = false;
     clearError();
@@ -540,7 +565,7 @@
   });
 
   $effect(() => {
-    if (mounted && chatTeamId && !busy && !integrationsOpen) void focusComposer();
+    if (mounted && chatTeamId && !busy && !syncing && !integrationsOpen) void focusComposer();
   });
 
   onMount(() => {
@@ -571,7 +596,7 @@
           class="conversation"
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
-          aria-busy={busy && !integrationChallenge}
+          aria-busy={(busy || syncing) && !integrationChallenge}
         >
         <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
@@ -586,12 +611,13 @@
               {/if}
             </article>
           {/each}
-          {#if busy && progressActive && !integrationChallenge}
+          {#if (busy || syncing) && progressActive && !integrationChallenge}
             <ShimpzThinking
               label={thinking}
               stage={progressStage}
               stages={progressStages}
               elapsedText={copy.elapsed}
+              stagesText={copy.progressStages}
             />
           {/if}
         </div>
@@ -609,7 +635,7 @@
                 <ShimpzBrand variant="symbol" product="" href="/chat/" ariaLabel="Shimpz" />
               </div>
             {/if}
-            <ChatContextControls disabled={busy || stopping} />
+            <ChatContextControls disabled={busy || syncing || stopping} />
             <div class="composer-input">
               <textarea
                 bind:this={composerInput}
@@ -617,11 +643,11 @@
                 maxlength="16000"
                 rows="2"
                 placeholder={placeholder}
-                disabled={busy}
+                disabled={busy || syncing}
                 onkeydown={handleComposerKeydown}
               ></textarea>
               <div class="composer-actions">
-              {#if busy}
+              {#if busy && !syncing}
                 <button bind:this={stopButton} class="stop" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
                 </button>
@@ -641,7 +667,11 @@
                   <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
                 </svg>
               </button>
-              <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
+              <button
+                class="send"
+                type="submit"
+                disabled={busy || syncing || !socketReady || !draft.trim()}
+              >
                 {socketReady ? copy.send : copy.connecting}
               </button>
               </div>

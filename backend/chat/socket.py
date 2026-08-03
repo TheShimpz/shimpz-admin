@@ -26,6 +26,7 @@ from protocol.http.v1 import websocket as chat_ws_common
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
+STOP_RESULT_WAIT_SECONDS = 15
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
@@ -213,6 +214,7 @@ async def _await_progress_result(
     future: concurrent.futures.Future,
     progress: asyncio.Queue[str],
     inactive: Callable[[], bool],
+    suppress_progress: Callable[[], bool],
 ) -> object | None:
     response = asyncio.wrap_future(future)
     pending_progress: asyncio.Task[str] | None = None
@@ -228,6 +230,8 @@ async def _await_progress_result(
                 pending_progress = None
                 if inactive():
                     return None
+                if suppress_progress():
+                    continue
                 if not await _send_event(websocket, {"type": "progress", "stage": stage}):
                     connection.closed = True
                     return None
@@ -242,6 +246,8 @@ async def _await_progress_result(
             if inactive():
                 return None
             stage = progress.get_nowait()
+            if suppress_progress():
+                continue
             if not await _send_event(websocket, {"type": "progress", "stage": stage}):
                 connection.closed = True
                 return None
@@ -265,7 +271,8 @@ async def _await_turn_response(
         connection,
         turn.future,
         turn.progress,
-        lambda: connection.closed or turn.stop_requested or turn.terminal_sent,
+        lambda: connection.closed or turn.terminal_sent,
+        lambda: turn.stop_requested,
     )
     return team.TeamResponse(502, {}) if result is None else result
 
@@ -283,7 +290,13 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 raise
             except team.TeamRequestError:
                 response = team.TeamResponse(400, {})
-        if connection.closed or turn.stop_requested or turn.terminal_sent:
+        if turn.stop_requested and turn.stop_task is not None:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(
+                    asyncio.shield(turn.stop_task),
+                    timeout=STOP_RESULT_WAIT_SECONDS,
+                )
+        if connection.closed or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None:
@@ -406,6 +419,7 @@ async def _load_sync_snapshot(
             future,
             progress,
             lambda: connection.closed,
+            lambda: False,
         )
     if snapshot is None and not connection.closed:
         await _send_event(websocket, _error_terminal(502))
@@ -415,19 +429,24 @@ async def _load_sync_snapshot(
 async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
     task = asyncio.current_task()
     try:
-        snapshot = await _load_sync_snapshot(websocket, connection, team_id)
-        if snapshot is None:
-            return
-        pending_integration_response, resumed_integration_response = snapshot
-        if connection.closed:
-            return
-        await _deliver_integration_sync(
-            websocket,
-            connection,
-            team_id,
-            pending_integration_response,
-            resumed_integration_response,
-        )
+        completed = False
+        with contextlib.suppress(Exception):
+            snapshot = await _load_sync_snapshot(websocket, connection, team_id)
+            if snapshot is None:
+                return
+            pending_integration_response, resumed_integration_response = snapshot
+            if connection.closed:
+                return
+            await _deliver_integration_sync(
+                websocket,
+                connection,
+                team_id,
+                pending_integration_response,
+                resumed_integration_response,
+            )
+            completed = True
+        if not completed and not connection.closed and not await _send_event(websocket, _error_terminal(502)):
+            connection.closed = True
     finally:
         if connection.sync_task is task:
             connection.sync_task = None

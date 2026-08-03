@@ -6,6 +6,7 @@
     stage = 'preparing',
     stages = [],
     elapsedText = 'Elapsed time',
+    stagesText = 'Execution stages',
   } = $props();
   let elapsed = $state(0);
 
@@ -34,9 +35,9 @@
       <strong>{label}</strong>
       <span>{stageLabel}</span>
     </span>
-    <time aria-label={`${elapsedText}: ${formattedElapsed}`}>{formattedElapsed}</time>
+    <span class="elapsed">{elapsedText} · {formattedElapsed}</span>
   </div>
-  <ol class="stages" aria-label={label}>
+  <ol class="stages" aria-label={stagesText}>
     {#each stages as item, index}
       <li
         class:complete={index < activeIndex}
@@ -105,12 +106,12 @@
   }
 
   .copy span,
-  time {
+  .elapsed {
     font-size: 0.62rem;
     letter-spacing: 0.055em;
   }
 
-  time {
+  .elapsed {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }

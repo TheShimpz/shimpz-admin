@@ -261,6 +261,30 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_sync_delivery_exception_fails_closed_with_one_terminal(self) -> None:
+        async def scenario() -> None:
+            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            with (
+                mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
+                mock.patch.object(
+                    self.chat_socket,
+                    "_deliver_integration_sync",
+                    side_effect=RuntimeError("must not escape"),
+                ),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {"type": "error", "status": 502, "detail": "local chat request failed"},
+                )
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_public_terminal_relays_only_the_closed_sanitized_error_document(self) -> None:
         async def response_for(team_response) -> dict:
             with mock.patch.object(self.chat_socket.local, "turn", return_value=team_response):

@@ -392,6 +392,96 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_stop_race_preserves_the_completed_turn_when_controller_reports_not_stopped(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            release = threading.Event()
+
+            def turn(_team_id, _payload, progress):
+                started.set()
+                release.wait(timeout=2)
+                progress("finalizing")
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Natural terminal."},
+                )
+
+            def stop(_team_id):
+                release.set()
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "stopped": False},
+                )
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop", side_effect=stop),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "race", "files": [], "assistant_ids": []}
+                )
+                await _wait_for_thread(started)
+                await websocket.send_json({"type": "stop"})
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "done",
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Natural terminal.",
+                    },
+                )
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_blocked_stop_cannot_hold_a_completed_turn_terminal(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            finish_turn = threading.Event()
+            finish_stop = threading.Event()
+
+            def turn(_team_id, _payload, _progress):
+                started.set()
+                finish_turn.wait(timeout=2)
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Bounded terminal."},
+                )
+
+            def stop(_team_id):
+                finish_turn.set()
+                finish_stop.wait(timeout=2)
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "stopped": True},
+                )
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop", side_effect=stop),
+                mock.patch.object(self.chat_socket, "STOP_RESULT_WAIT_SECONDS", 0.02),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "bounded", "files": [], "assistant_ids": []}
+                )
+                await _wait_for_thread(started)
+                await websocket.send_json({"type": "stop"})
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                finish_stop.set()
+                await asyncio.sleep(0.05)
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_disconnect_stops_a_running_turn_once(self) -> None:
         async def scenario() -> None:
             started = threading.Event()
