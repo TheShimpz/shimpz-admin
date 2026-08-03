@@ -3,6 +3,7 @@
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
+  import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import Markdown from '$lib/Markdown.svelte';
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
@@ -34,9 +35,8 @@
   let turns = $state([]);
   let busy = $state(false);
   let syncing = $state(false);
-  let progressStage = $state('preparing');
-  let progressIndex = $state(-1);
-  let progressActive = $state(false);
+  let progressEvents = $state([]);
+  let progressSequence = $state(0);
   let stopping = $state(false);
   let error = $state('');
   let errorDetail = $state('');
@@ -70,11 +70,13 @@
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
-  let progressStages = $derived([
-    { id: 'preparing', label: copy.progressPreparing },
-    { id: 'running', label: copy.progressRunning },
-    { id: 'finalizing', label: copy.progressFinalizing },
-  ]);
+  let exchanges = $derived(groupExchanges(turns));
+  let currentProgress = $derived(progressEvents.at(-1));
+  let liveStatus = $derived(
+    currentProgress
+      ? `${thinking} ${currentProgress.origin} ${currentProgress.phase}`
+      : busy ? thinking : '',
+  );
   let contextLoading = $derived(
     $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
   );
@@ -90,6 +92,29 @@
   );
   let visibleError = $derived(error || (contextFailed ? copy.loadFailed : ''));
   let visibleErrorDetail = $derived(error ? errorDetail : contextErrorDetail);
+
+  function groupExchanges(values) {
+    const grouped = [];
+    for (const turn of values) {
+      if (turn.role === 'user') {
+        grouped.push({ user: turn, assistant: null });
+      } else if (grouped.length > 0 && grouped.at(-1).assistant === null) {
+        grouped.at(-1).assistant = turn;
+      } else {
+        grouped.push({ user: null, assistant: turn });
+      }
+    }
+    return grouped;
+  }
+
+  function resetProgress() {
+    progressEvents = [];
+    progressSequence = 0;
+  }
+
+  function oauthTurns() {
+    return turns.map(({ receipt: _receipt, ...turn }) => turn);
+  }
 
   function clearError() {
     error = '';
@@ -121,15 +146,15 @@
     }
   }
 
-  async function revealLatestTurn() {
+  async function revealLatestExchange() {
     const request = ++scrollRequest;
     await tick();
     if (request !== scrollRequest || !turnsViewport) return;
-    const latest = turnsViewport.querySelector('article:last-of-type');
+    const latest = turnsViewport.querySelector('.exchange:last-of-type');
     if (!latest) return;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    turnsViewport.scrollTo({
-      top: Math.max(0, latest.offsetTop - 16),
+    latest.scrollIntoView({
+      block: 'start',
       behavior: reducedMotion ? 'auto' : 'smooth',
     });
   }
@@ -160,7 +185,7 @@
     socket = null;
     socketReady = false;
     syncing = false;
-    progressActive = false;
+    resetProgress();
     resetChallengeState();
     current?.close(1000, 'Team changed');
   }
@@ -177,7 +202,7 @@
     busy = true;
     syncing = false;
     stopping = false;
-    progressActive = false;
+    resetProgress();
   }
 
   function scheduleReconnect(expectedTeamId) {
@@ -221,9 +246,7 @@
       reconnectAttempt = 0;
       socketReady = true;
       syncing = true;
-      progressStage = 'preparing';
-      progressIndex = -1;
-      progressActive = false;
+      resetProgress();
       try {
         active.send(JSON.stringify(createSyncFrame(expectedTeamId)));
       } catch {
@@ -253,20 +276,17 @@
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (stopping) return;
-          const nextIndex = progressStages.findIndex((item) => item.id === incoming.stage);
-          if (nextIndex !== progressIndex + 1) throw new Error('out-of-order progress frame');
-          progressIndex = nextIndex;
-          progressStage = incoming.stage;
-          progressActive = true;
+          if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
+          progressSequence = incoming.seq;
+          progressEvents = [...progressEvents, incoming];
           return;
         }
         if (incoming.type === 'sync-empty') {
           syncing = false;
-          progressActive = false;
+          resetProgress();
           if (busy && turns.length > 0) {
             busy = false;
             stopping = false;
-            progressActive = false;
             resetChallengeState();
             setError(copy.turnFailed);
           }
@@ -279,21 +299,25 @@
         busy = false;
         syncing = false;
         stopping = false;
-        progressActive = false;
+        resetProgress();
         resetChallengeState();
         setError(copy.protocolError);
         active.close(1002, 'Invalid chat event');
         return;
       }
 
+      const receipt = progressEvents.map((item) => ({ ...item }));
       busy = false;
       syncing = false;
       stopping = false;
-      progressActive = false;
       resetChallengeState();
       if (incoming.type === 'done') {
-        turns = [...turns, { role: 'assistant', text: incoming.reply, author: incoming.team_name }];
-        void revealLatestTurn();
+        turns = [...turns, {
+          role: 'assistant',
+          text: incoming.reply,
+          author: incoming.team_name,
+          receipt,
+        }];
         clearError();
       } else if (incoming.type === 'stopped') {
         setError(copy.stopped);
@@ -303,6 +327,7 @@
           `HTTP ${incoming.status} · ${incoming.detail}`,
         );
       }
+      resetProgress();
     };
     active.onclose = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
@@ -310,7 +335,7 @@
       socketReady = false;
       syncing = false;
       stopping = false;
-      progressActive = false;
+      resetProgress();
       if (busy) busy = false;
       resetChallengeState();
       setError(copy.disconnected);
@@ -326,9 +351,7 @@
     draft = '';
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
-    progressStage = 'preparing';
-    progressIndex = -1;
-    progressActive = false;
+    resetProgress();
     scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
@@ -397,7 +420,7 @@
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.authorizationFailed);
       }
-      stashOAuthChatTurns(sessionStorage, teamId, turns);
+      stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
       if (authorization.completion_mode === 'code') {
         if (!authorizationWindow) throw new Error(integrationsCopy.authorizationFailed);
         authorizationWindow.location.replace(authorization.authorization_url);
@@ -440,7 +463,7 @@
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.completionFailed);
       }
-      stashOAuthChatTurns(sessionStorage, teamId, turns);
+      stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
       location.assign('/chat');
     } catch (reason) {
       if (chatTeamId === teamId) {
@@ -512,19 +535,17 @@
       return;
     }
     busy = true;
-    progressStage = 'preparing';
-    progressIndex = -1;
-    progressActive = false;
+    resetProgress();
     clearError();
     turns = [...turns, { role: 'user', text: message }];
-    void revealLatestTurn();
+    void revealLatestExchange();
     draft = '';
     try {
       socket.send(JSON.stringify(frame));
       void focusStop();
     } catch (reason) {
       busy = false;
-      progressActive = false;
+      resetProgress();
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
     }
@@ -547,7 +568,7 @@
     const teamId = $teamContext.selectedTeamId;
     if (!busy || syncing || stopping || !teamId || !socketReady || !socket) return;
     stopping = true;
-    progressActive = false;
+    resetProgress();
     clearError();
     try {
       socket.send(JSON.stringify(createStopFrame(teamId)));
@@ -575,7 +596,7 @@
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     if (oauthFailedOnReturn) {
       busy = false;
-      progressActive = false;
+      resetProgress();
       history.replaceState(history.state, '', '/chat');
       setError(integrationsCopy.authorizationFailed);
     }
@@ -598,28 +619,33 @@
           aria-label={teamName}
           aria-busy={(busy || syncing) && !integrationChallenge}
         >
-        <div class="turns" bind:this={turnsViewport} aria-live="polite">
-          {#each turns as turn}
-            <article
-              class={turn.role}
-              aria-label={turn.role === 'user' ? copy.you : turn.author}
-            >
-              {#if turn.role === 'assistant'}
-                <Markdown markdown={turn.text} variant="chat" />
-              {:else}
-                <p>{turn.text}</p>
+        <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
+        <div class="turns" bind:this={turnsViewport}>
+          {#each exchanges as exchange, index}
+            <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
+              {#if exchange.user}
+                <article class="user" aria-label={copy.you}>
+                  <p>{exchange.user.text}</p>
+                </article>
               {/if}
-            </article>
+              {#if exchange.assistant}
+                <article class="assistant" aria-label={exchange.assistant.author}>
+                  <Markdown markdown={exchange.assistant.text} variant="chat" />
+                  <ExecutionReceipt
+                    events={exchange.assistant.receipt ?? []}
+                    label={copy.progressStages}
+                  />
+                </article>
+              {:else if index === exchanges.length - 1 && busy && !integrationChallenge}
+                <ShimpzThinking
+                  label={thinking}
+                  events={progressEvents}
+                  elapsedText={copy.elapsed}
+                  stagesText={copy.progressStages}
+                />
+              {/if}
+            </section>
           {/each}
-          {#if (busy || syncing) && progressActive && !integrationChallenge}
-            <ShimpzThinking
-              label={thinking}
-              stage={progressStage}
-              stages={progressStages}
-              elapsedText={copy.elapsed}
-              stagesText={copy.progressStages}
-            />
-          {/if}
         </div>
 
         {#if visibleError}
@@ -750,6 +776,7 @@
   .conversation {
     --chat-rail-gutter: 0.8rem;
     --chat-rail-width: 52rem;
+    position: relative;
     display: grid;
     height: 100%;
     min-width: 0;
@@ -779,7 +806,7 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
-    gap: 0.8rem;
+    gap: 1.4rem;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-block: 1rem;
@@ -791,6 +818,30 @@
 
   .empty-conversation .turns {
     display: none;
+  }
+
+  .live-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .exchange {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 0.8rem;
+  }
+
+  .exchange:last-child {
+    min-block-size: 100%;
   }
 
   article {

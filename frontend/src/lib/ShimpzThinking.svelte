@@ -1,17 +1,22 @@
 <script>
   import { onMount } from 'svelte';
+  import {
+    executionSteps,
+    formatExecutionDuration,
+    technicalStepLabel,
+  } from './executionProgress.js';
 
   let {
     label = 'Your Team is thinking…',
-    stage = 'preparing',
-    stages = [],
+    events = [],
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
   } = $props();
   let elapsed = $state(0);
 
-  let activeIndex = $derived(stages.findIndex((item) => item.id === stage));
-  let stageLabel = $derived(stages[activeIndex]?.label ?? '');
+  let steps = $derived(executionSteps(events));
+  let visibleSteps = $derived(steps.slice(-32));
+  let current = $derived(steps.findLast((step) => step.elapsed_ms === null));
   let formattedElapsed = $derived(elapsedLabel(elapsed));
 
   function elapsedLabel(value) {
@@ -28,35 +33,42 @@
   });
 </script>
 
-<div class="thinking">
+<div class="thinking" role="group" aria-label={label}>
   <div class="summary">
-    <span class="pulse" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    <span class="copy" role="status" aria-live="polite" aria-atomic="true">
+    <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="copy">
       <strong>{label}</strong>
-      <span>{stageLabel}</span>
+      <code>{current ? technicalStepLabel(current) : 'awaiting execution event'}</code>
     </span>
-    <span class="elapsed">{elapsedText} · {formattedElapsed}</span>
+    <span class="elapsed" aria-hidden="true">{elapsedText} · {formattedElapsed}</span>
   </div>
-  <ol class="stages" aria-label={stagesText}>
-    {#each stages as item, index}
-      <li
-        class:complete={index < activeIndex}
-        class:active={index === activeIndex}
-        aria-current={index === activeIndex ? 'step' : undefined}
-      >
-        <i aria-hidden="true"></i><span>{item.label}</span>
-      </li>
-    {/each}
-  </ol>
+
+  {#if visibleSteps.length > 0}
+    <ol class="ledger" aria-label={stagesText}>
+      {#each visibleSteps as step (step.key)}
+        <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
+          <i aria-hidden="true"></i>
+          <code>{technicalStepLabel(step)}</code>
+          {#if step.elapsed_ms === null}
+            <span class="activity" aria-hidden="true"></span>
+          {:else}
+            <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+          {/if}
+        </li>
+      {/each}
+    </ol>
+  {/if}
 </div>
 
 <style>
   .thinking {
     display: grid;
-    width: min(100%, 34rem);
+    width: 100%;
     min-width: 0;
-    gap: 0.75rem;
-    padding: 0.85rem 0;
+    box-sizing: border-box;
+    gap: 0.9rem;
+    margin-inline: auto;
+    padding: 1rem 0;
     color: var(--text-dim);
     font-family: var(--font-mono);
   }
@@ -69,7 +81,7 @@
     gap: 0.8rem;
   }
 
-  .pulse {
+  .signal {
     display: flex;
     height: 2rem;
     align-items: center;
@@ -80,7 +92,7 @@
     clip-path: polygon(0.4rem 0, 100% 0, 100% calc(100% - 0.4rem), calc(100% - 0.4rem) 100%, 0 100%, 0 0.4rem);
   }
 
-  .pulse i {
+  .signal i {
     width: 0.14rem;
     height: 0.3rem;
     background: var(--accent);
@@ -88,14 +100,14 @@
     animation: signal 1.1s ease-in-out infinite;
   }
 
-  .pulse i:nth-child(2) { animation-delay: 0.12s; }
-  .pulse i:nth-child(3) { animation-delay: 0.24s; }
-  .pulse i:nth-child(4) { animation-delay: 0.36s; }
+  .signal i:nth-child(2) { animation-delay: 0.12s; }
+  .signal i:nth-child(3) { animation-delay: 0.24s; }
+  .signal i:nth-child(4) { animation-delay: 0.36s; }
 
   .copy {
     display: grid;
     min-width: 0;
-    gap: 0.18rem;
+    gap: 0.2rem;
   }
 
   .copy strong {
@@ -105,8 +117,9 @@
     letter-spacing: 0.045em;
   }
 
-  .copy span,
+  .copy code,
   .elapsed {
+    color: var(--text-dim);
     font-size: 0.62rem;
     letter-spacing: 0.055em;
   }
@@ -116,65 +129,67 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .stages {
-    position: relative;
+  .ledger {
     display: grid;
+    min-width: 0;
     margin: 0;
     padding: 0;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
     list-style: none;
   }
 
-  .stages::before {
-    position: absolute;
-    top: 0.25rem;
-    right: calc(100% / 6);
-    left: calc(100% / 6);
-    height: 1px;
-    background: var(--admin-divider);
-    content: '';
-  }
-
-  .stages li {
-    position: relative;
+  .ledger li {
     display: grid;
     min-width: 0;
-    justify-items: center;
-    gap: 0.38rem;
-    color: color-mix(in srgb, var(--text-dim) 58%, transparent);
-    text-align: center;
+    grid-template-columns: 0.55rem minmax(0, 1fr) minmax(4rem, 20%);
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--text-faint);
   }
 
-  .stages li i {
-    z-index: 1;
-    width: 0.5rem;
-    height: 0.5rem;
+  .ledger li > i {
+    width: 0.45rem;
+    height: 0.45rem;
     border: 1px solid var(--admin-divider);
     border-radius: 50%;
     background: var(--surface-1);
   }
 
-  .stages li span {
-    max-width: 9rem;
-    font-size: 0.52rem;
-    line-height: 1.35;
-    letter-spacing: 0.04em;
+  .ledger code,
+  .ledger time {
+    min-width: 0;
+    font-size: 0.56rem;
+    letter-spacing: 0.045em;
+    overflow-wrap: anywhere;
   }
 
-  .stages li.complete,
-  .stages li.active {
-    color: var(--text-dim);
+  .ledger time {
+    justify-self: end;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
   }
 
-  .stages li.complete i,
-  .stages li.active i {
+  .ledger li.complete > i,
+  .ledger li.active > i {
     border-color: var(--accent);
     background: var(--accent);
     box-shadow: 0 0 0.38rem color-mix(in srgb, var(--accent) 65%, transparent);
   }
 
-  .stages li.active i {
-    animation: node 1.4s ease-in-out infinite;
+  .activity {
+    position: relative;
+    height: 1px;
+    overflow: hidden;
+    background: var(--admin-divider);
+  }
+
+  .activity::after {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 38%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    content: '';
+    animation: travel 1.2s ease-in-out infinite;
   }
 
   @keyframes signal {
@@ -182,19 +197,23 @@
     50% { height: 1rem; opacity: 1; }
   }
 
-  @keyframes node {
-    0%, 100% { box-shadow: 0 0 0.2rem color-mix(in srgb, var(--accent) 45%, transparent); }
-    50% { box-shadow: 0 0 0.75rem color-mix(in srgb, var(--accent) 88%, transparent); }
+  @keyframes travel {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(365%); }
   }
 
   @media (max-width: 520px) {
-    .stages li span { font-size: 0.46rem; }
+    .summary { grid-template-columns: 2.5rem minmax(0, 1fr); }
+    .elapsed { grid-column: 2; }
+    .ledger li { grid-template-columns: 0.55rem minmax(0, 1fr) 3.5rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .pulse i,
-    .stages li.active i {
+    .signal i,
+    .activity::after {
       animation: none;
     }
+
+    .activity::after { width: 100%; opacity: 0.7; }
   }
 </style>
