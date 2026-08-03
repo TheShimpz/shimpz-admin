@@ -34,6 +34,8 @@
   let turns = $state([]);
   let busy = $state(false);
   let progressStage = $state('preparing');
+  let progressIndex = $state(-1);
+  let progressActive = $state(false);
   let stopping = $state(false);
   let error = $state('');
   let errorDetail = $state('');
@@ -51,6 +53,7 @@
   let integrationWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
+  let stopButton = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
 
@@ -109,6 +112,11 @@
     composerInput?.focus({ preventScroll: true });
   }
 
+  async function focusStop() {
+    await tick();
+    if (mounted && busy && !integrationChallenge) stopButton?.focus({ preventScroll: true });
+  }
+
   async function revealLatestTurn() {
     const request = ++scrollRequest;
     await tick();
@@ -162,6 +170,7 @@
     integrationsOpen = false;
     busy = true;
     stopping = false;
+    progressActive = false;
   }
 
   function scheduleReconnect(expectedTeamId) {
@@ -230,14 +239,20 @@
           return;
         }
         if (incoming.type === 'progress') {
-          if (!busy || stopping) throw new Error('unexpected progress frame');
+          if (!busy) throw new Error('unexpected progress frame');
+          if (stopping) return;
+          const nextIndex = progressStages.findIndex((item) => item.id === incoming.stage);
+          if (nextIndex !== progressIndex + 1) throw new Error('out-of-order progress frame');
+          progressIndex = nextIndex;
           progressStage = incoming.stage;
+          progressActive = true;
           return;
         }
         if (incoming.type === 'sync-empty') {
           if (busy && turns.length > 0) {
             busy = false;
             stopping = false;
+            progressActive = false;
             resetChallengeState();
             setError(copy.turnFailed);
           }
@@ -249,6 +264,7 @@
         socketReady = false;
         busy = false;
         stopping = false;
+        progressActive = false;
         resetChallengeState();
         setError(copy.protocolError);
         active.close(1002, 'Invalid chat event');
@@ -257,6 +273,7 @@
 
       busy = false;
       stopping = false;
+      progressActive = false;
       resetChallengeState();
       if (incoming.type === 'done') {
         turns = [...turns, { role: 'assistant', text: incoming.reply, author: incoming.team_name }];
@@ -276,6 +293,7 @@
       socket = null;
       socketReady = false;
       stopping = false;
+      progressActive = false;
       if (busy) busy = false;
       resetChallengeState();
       setError(copy.disconnected);
@@ -292,6 +310,8 @@
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
     progressStage = 'preparing';
+    progressIndex = -1;
+    progressActive = false;
     scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
@@ -468,14 +488,18 @@
     }
     busy = true;
     progressStage = 'preparing';
+    progressIndex = -1;
+    progressActive = false;
     clearError();
     turns = [...turns, { role: 'user', text: message }];
     void revealLatestTurn();
     draft = '';
     try {
       socket.send(JSON.stringify(frame));
+      void focusStop();
     } catch (reason) {
       busy = false;
+      progressActive = false;
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
     }
@@ -498,6 +522,7 @@
     const teamId = $teamContext.selectedTeamId;
     if (!busy || stopping || !teamId || !socketReady || !socket) return;
     stopping = true;
+    progressActive = false;
     clearError();
     try {
       socket.send(JSON.stringify(createStopFrame(teamId)));
@@ -525,6 +550,7 @@
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     if (oauthFailedOnReturn) {
       busy = false;
+      progressActive = false;
       history.replaceState(history.state, '', '/chat');
       setError(integrationsCopy.authorizationFailed);
     }
@@ -541,7 +567,12 @@
   {#if activeTeam}
     {#if chatTeamId}
       <div class="chat-workspace" class:drawer-open={integrationsOpen}>
-        <section class="conversation" class:empty-conversation={turns.length === 0} aria-label={teamName}>
+        <section
+          class="conversation"
+          class:empty-conversation={turns.length === 0}
+          aria-label={teamName}
+          aria-busy={busy && !integrationChallenge}
+        >
         <div class="turns" bind:this={turnsViewport} aria-live="polite">
           {#each turns as turn}
             <article
@@ -555,8 +586,13 @@
               {/if}
             </article>
           {/each}
-          {#if busy}
-            <ShimpzThinking label={thinking} stage={progressStage} stages={progressStages} />
+          {#if busy && progressActive && !integrationChallenge}
+            <ShimpzThinking
+              label={thinking}
+              stage={progressStage}
+              stages={progressStages}
+              elapsedText={copy.elapsed}
+            />
           {/if}
         </div>
 
@@ -585,7 +621,11 @@
                 onkeydown={handleComposerKeydown}
               ></textarea>
               <div class="composer-actions">
-              {#if busy}<button class="stop" type="button" onclick={stop} disabled={stopping}>{copy.stop}</button>{/if}
+              {#if busy}
+                <button bind:this={stopButton} class="stop" type="button" onclick={stop} disabled={stopping}>
+                  {copy.stop}
+                </button>
+              {/if}
               <button
                 bind:this={integrationsButton}
                 class="integrations"
@@ -602,7 +642,7 @@
                 </svg>
               </button>
               <button class="send" type="submit" disabled={busy || !socketReady || !draft.trim()}>
-                {busy ? thinking : socketReady ? copy.send : copy.connecting}
+                {socketReady ? copy.send : copy.connecting}
               </button>
               </div>
             </div>

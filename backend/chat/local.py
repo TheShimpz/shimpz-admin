@@ -71,12 +71,16 @@ _CHAT_ERROR_FALLBACKS = {
     429: "local chat capacity reached",
     503: "local chat runtime is unavailable",
 }
-_PROGRESS_STAGES = frozenset({"preparing", "running", "finalizing"})
+PROGRESS_STAGES = ("preparing", "running", "finalizing")
+
+
+def _ignore_progress(_stage: str) -> None:
+    return
 
 
 def _progress(callback: Callable[[str], None], stage: str) -> None:
     """Emit one fixed, secret-free execution stage without affecting the turn."""
-    if stage not in _PROGRESS_STAGES:
+    if stage not in PROGRESS_STAGES:
         raise ValueError("invalid chat progress stage")
     with contextlib.suppress(Exception):
         callback(stage)
@@ -371,18 +375,22 @@ def _submit(
 def turn(
     team_id: object,
     payload: object,
-    progress: Callable[[str], None] = lambda _stage: None,
+    progress: Callable[[str], None] = _ignore_progress,
 ) -> team.TeamResponse:
     return _submit(team_id, payload, team.canonical_chat_payload, team.chat, progress)
 
 
-def resume_integrations(team_id: object, challenge_id: object) -> team.TeamResponse:
+def resume_integrations(
+    team_id: object,
+    challenge_id: object,
+    progress: Callable[[str], None] = _ignore_progress,
+) -> team.TeamResponse:
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
         team.canonical_integration_resume,
         team.resume_chat_integrations,
-        lambda _stage: None,
+        progress,
     )
 
 

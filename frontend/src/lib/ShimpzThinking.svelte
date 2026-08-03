@@ -5,11 +5,13 @@
     label = 'Your Team is thinking…',
     stage = 'preparing',
     stages = [],
+    elapsedText = 'Elapsed time',
   } = $props();
   let elapsed = $state(0);
 
-  let activeIndex = $derived(Math.max(0, stages.findIndex((item) => item.id === stage)));
+  let activeIndex = $derived(stages.findIndex((item) => item.id === stage));
   let stageLabel = $derived(stages[activeIndex]?.label ?? '');
+  let formattedElapsed = $derived(elapsedLabel(elapsed));
 
   function elapsedLabel(value) {
     const minutes = Math.floor(value / 60);
@@ -26,18 +28,22 @@
 </script>
 
 <div class="thinking">
-  <div class="summary" role="status" aria-live="polite" aria-atomic="true">
+  <div class="summary">
     <span class="pulse" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    <span class="copy">
+    <span class="copy" role="status" aria-live="polite" aria-atomic="true">
       <strong>{label}</strong>
       <span>{stageLabel}</span>
     </span>
-    <time aria-hidden="true">{elapsedLabel(elapsed)}</time>
+    <time aria-label={`${elapsedText}: ${formattedElapsed}`}>{formattedElapsed}</time>
   </div>
-  <ol class="stages" aria-hidden="true">
+  <ol class="stages" aria-label={label}>
     {#each stages as item, index}
-      <li class:complete={index < activeIndex} class:active={index === activeIndex}>
-        <i></i><span>{item.label}</span>
+      <li
+        class:complete={index < activeIndex}
+        class:active={index === activeIndex}
+        aria-current={index === activeIndex ? 'step' : undefined}
+      >
+        <i aria-hidden="true"></i><span>{item.label}</span>
       </li>
     {/each}
   </ol>
@@ -181,7 +187,7 @@
   }
 
   @media (max-width: 520px) {
-    .stages li span { display: none; }
+    .stages li span { font-size: 0.46rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -228,15 +228,25 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     "pending_integrations",
                     return_value=_integration_challenge(status=200),
                 ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_integrations",
-                    return_value=completed,
-                ) as resume,
+                mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
+                def resume_integrations(_team_id, _challenge_id, progress):
+                    for stage in self.chat_socket.local.PROGRESS_STAGES:
+                        progress(stage)
+                    return completed
+
+                resume.side_effect = resume_integrations
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
+                self.assertEqual(
+                    [await websocket.next_json() for _index in range(3)],
+                    [
+                        {"type": "progress", "stage": "preparing"},
+                        {"type": "progress", "stage": "running"},
+                        {"type": "progress", "stage": "finalizing"},
+                    ],
+                )
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -246,7 +256,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "reply": "Published.",
                     },
                 )
-                resume.assert_called_once_with("team_1", CHALLENGE_ID)
+                resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
                 await websocket.disconnect()
 
         asyncio.run(scenario())

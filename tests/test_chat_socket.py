@@ -292,6 +292,7 @@ class ChatWebSocketTests(unittest.TestCase):
             await websocket.finish()
 
         async def scenario() -> None:
+            self.assertEqual(self.chat_socket.MAX_FRAME_BYTES, 128 * 1024)
             await rejected_frame(
                 '{"type":"chat","message":"first","message":"second"}',
                 {
@@ -327,9 +328,12 @@ class ChatWebSocketTests(unittest.TestCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _progress):
+            def turn(_team_id, _payload, progress):
                 started.set()
                 release.wait(timeout=2)
+                progress("preparing")
+                progress("running")
+                progress("finalizing")
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
@@ -365,9 +369,21 @@ class ChatWebSocketTests(unittest.TestCase):
                 await asyncio.sleep(0.05)
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)
+                await websocket.send_json(
+                    {"type": "chat", "message": "next", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    [await websocket.next_json() for _index in range(3)],
+                    [
+                        {"type": "progress", "stage": "preparing"},
+                        {"type": "progress", "stage": "running"},
+                        {"type": "progress", "stage": "finalizing"},
+                    ],
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                self.assertEqual(turn_mock.call_count, 2)
                 await websocket.disconnect()
-                self.assertEqual(turn_mock.call_count, 1)
-                turn_mock.assert_called_once_with(
+                turn_mock.assert_any_call(
                     "team_1",
                     {"message": "first", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
                     mock.ANY,
@@ -381,9 +397,10 @@ class ChatWebSocketTests(unittest.TestCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _progress):
+            def turn(_team_id, _payload, progress):
                 started.set()
                 release.wait(timeout=2)
+                progress("preparing")
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
@@ -401,6 +418,15 @@ class ChatWebSocketTests(unittest.TestCase):
                 await websocket.disconnect()
                 self.assertEqual(stop_mock.call_count, 1)
                 release.set()
+                await asyncio.sleep(0.05)
+                pending_getters = [
+                    task
+                    for task in asyncio.all_tasks()
+                    if task is not asyncio.current_task()
+                    and not task.done()
+                    and "Queue.get" in repr(task.get_coro())
+                ]
+                self.assertEqual(pending_getters, [])
 
         asyncio.run(scenario())
 

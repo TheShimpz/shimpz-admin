@@ -24,7 +24,7 @@ from chat import local
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v3"
-MAX_FRAME_BYTES = 512 * 1024
+MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
@@ -190,10 +190,67 @@ async def _send_terminal_once(
 
 
 def _enqueue_progress(queue: asyncio.Queue[str], stage: str) -> None:
-    if stage not in {"preparing", "running", "finalizing"}:
+    if stage not in local.PROGRESS_STAGES:
         return
     with contextlib.suppress(asyncio.QueueFull):
         queue.put_nowait(stage)
+
+
+def _progress_channel() -> tuple[asyncio.Queue[str], Callable[[str], None]]:
+    progress: asyncio.Queue[str] = asyncio.Queue(maxsize=len(local.PROGRESS_STAGES))
+    loop = asyncio.get_running_loop()
+
+    def report(stage: str) -> None:
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(_enqueue_progress, progress, stage)
+
+    return progress, report
+
+
+async def _await_progress_result(
+    websocket: WebSocket,
+    connection: _Connection,
+    future: concurrent.futures.Future,
+    progress: asyncio.Queue[str],
+    inactive: Callable[[], bool],
+) -> object | None:
+    response = asyncio.wrap_future(future)
+    pending_progress: asyncio.Task[str] | None = None
+    try:
+        while not response.done():
+            pending_progress = asyncio.create_task(progress.get())
+            completed, _pending = await asyncio.wait(
+                {response, pending_progress},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if pending_progress in completed:
+                stage = pending_progress.result()
+                pending_progress = None
+                if inactive():
+                    return None
+                if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+                    connection.closed = True
+                    return None
+                continue
+            with contextlib.suppress(asyncio.CancelledError):
+                pending_progress.cancel()
+                await pending_progress
+            pending_progress = None
+        if inactive():
+            return None
+        while not progress.empty():
+            if inactive():
+                return None
+            stage = progress.get_nowait()
+            if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+                connection.closed = True
+                return None
+        return await response
+    finally:
+        if pending_progress is not None:
+            pending_progress.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pending_progress
 
 
 async def _await_turn_response(
@@ -203,30 +260,14 @@ async def _await_turn_response(
 ) -> object:
     if turn.future is None or turn.progress is None:
         return team.TeamResponse(502, {})
-    response = asyncio.wrap_future(turn.future)
-    while not response.done():
-        pending_progress = asyncio.create_task(turn.progress.get())
-        completed, _pending = await asyncio.wait(
-            {response, pending_progress},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        if pending_progress in completed:
-            stage = pending_progress.result()
-            if connection.closed or turn.stop_requested or turn.terminal_sent:
-                return team.TeamResponse(502, {})
-            if not await _send_event(websocket, {"type": "progress", "stage": stage}):
-                connection.closed = True
-                return team.TeamResponse(502, {})
-        else:
-            pending_progress.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await pending_progress
-    while not turn.progress.empty():
-        stage = turn.progress.get_nowait()
-        if not await _send_event(websocket, {"type": "progress", "stage": stage}):
-            connection.closed = True
-            return team.TeamResponse(502, {})
-    return await response
+    result = await _await_progress_result(
+        websocket,
+        connection,
+        turn.future,
+        turn.progress,
+        lambda: connection.closed or turn.stop_requested or turn.terminal_sent,
+    )
+    return team.TeamResponse(502, {}) if result is None else result
 
 
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
@@ -267,13 +308,13 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             connection.active = None
 
 
-def _sync_snapshot(team_id: str) -> tuple[object, object | None]:
+def _sync_snapshot(team_id: str, progress: Callable[[str], None]) -> tuple[object, object | None]:
     pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
         # exact pending challenge remains the controller-owned binding for the paused turn.
-        resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"])
+        resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"], progress)
         return pending_integration, resumed
     return pending_integration, None
 
@@ -348,17 +389,25 @@ async def _deliver_integration_sync(
 
 async def _load_sync_snapshot(
     websocket: WebSocket,
+    connection: _Connection,
     team_id: str,
 ) -> tuple[object, object | None] | None:
+    progress, report = _progress_channel()
     try:
-        future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id)
+        future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return None
     snapshot = None
     with contextlib.suppress(Exception):
-        snapshot = await asyncio.wrap_future(future)
-    if snapshot is None:
+        snapshot = await _await_progress_result(
+            websocket,
+            connection,
+            future,
+            progress,
+            lambda: connection.closed,
+        )
+    if snapshot is None and not connection.closed:
         await _send_event(websocket, _error_terminal(502))
     return snapshot
 
@@ -366,7 +415,7 @@ async def _load_sync_snapshot(
 async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
     task = asyncio.current_task()
     try:
-        snapshot = await _load_sync_snapshot(websocket, team_id)
+        snapshot = await _load_sync_snapshot(websocket, connection, team_id)
         if snapshot is None:
             return
         pending_integration_response, resumed_integration_response = snapshot
@@ -491,12 +540,7 @@ async def _dispatch_chat(
         )
         return
     try:
-        progress: asyncio.Queue[str] = asyncio.Queue(maxsize=3)
-        loop = asyncio.get_running_loop()
-
-        def report(stage: str) -> None:
-            loop.call_soon_threadsafe(_enqueue_progress, progress, stage)
-
+        progress, report = _progress_channel()
         future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
