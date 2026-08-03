@@ -199,16 +199,35 @@ test('chat accepts only exact, bounded terminal events', () => {
     parseChatEvent({ type: 'sync-empty' }, 'team_1', 'Marketing'),
     { type: 'sync-empty' },
   );
-  for (const stage of ['preparing', 'running', 'finalizing']) {
-    assert.deepEqual(
-      parseChatEvent({ type: 'progress', stage }, 'team_1', 'Marketing'),
-      { type: 'progress', stage },
-    );
-  }
-  for (const invalid of [
-    { type: 'progress', stage: 'power-running' },
-    { type: 'progress', stage: 'running', detail: 'must-not-cross' },
-  ]) {
+const progressEvents = [
+  { type: 'progress', seq: 1, origin: 'admin', phase: 'admin-preparation', state: 'started' },
+  {
+    type: 'progress', seq: 2, origin: 'admin', phase: 'admin-preparation',
+    state: 'finished', elapsed_ms: 4,
+  },
+  { type: 'progress', seq: 3, origin: 'team', phase: 'model', state: 'started' },
+  {
+    type: 'progress', seq: 4, origin: 'team', phase: 'power', state: 'finished',
+    elapsed_ms: 19, index: 1, total: 2,
+  },
+];
+for (const event of progressEvents) {
+  assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
+}
+for (const invalid of [
+  { type: 'progress', seq: 1, origin: 'team', phase: 'admin-preparation', state: 'started' },
+  { type: 'progress', seq: 1, origin: 'admin', phase: 'model', state: 'started' },
+  { type: 'progress', seq: 0, origin: 'team', phase: 'model', state: 'started' },
+  { type: 'progress', seq: 1, origin: 'team', phase: 'model', state: 'finished' },
+  {
+    type: 'progress', seq: 1, origin: 'team', phase: 'model', state: 'started',
+    detail: 'must-not-cross',
+  },
+  {
+    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
+    index: 2, total: 1,
+  },
+]) {
     assert.throws(
       () => parseChatEvent(invalid, 'team_1', 'Marketing'),
       /response is invalid/,

@@ -20,7 +20,18 @@ const MAX_INTEGRATION_POWERS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
-const CHAT_PROGRESS_STAGES = new Set(['preparing', 'running', 'finalizing']);
+const CHAT_PROGRESS_PHASES = new Set([
+  'admin-preparation',
+  'team-context',
+  'model',
+  'power-preparation',
+  'power',
+  'power-result',
+  'reply-validation',
+]);
+const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
+const MAX_CHAT_PROGRESS_EVENTS = 2050;
+const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
@@ -674,12 +685,52 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     }
     return { type: 'error', status: value.status, detail: value.detail };
   }
-  if (
-    value.type === 'progress' &&
-    exactKeys(value, ['type', 'stage']) &&
-    CHAT_PROGRESS_STAGES.has(value.stage)
-  ) {
-    return { type: 'progress', stage: value.stage };
+  if (value.type === 'progress') {
+    const power = value.phase === 'power';
+    const finished = value.state === 'finished';
+    const expected = ['type', 'seq', 'origin', 'phase', 'state'];
+    if (finished) expected.push('elapsed_ms');
+    if (power) expected.push('index', 'total');
+    const validAuthority = (
+      (value.origin === 'admin' && value.phase === 'admin-preparation') ||
+      (value.origin === 'team' && value.phase !== 'admin-preparation')
+    );
+    if (
+      !exactKeys(value, expected) ||
+      !Number.isSafeInteger(value.seq) ||
+      value.seq < 1 ||
+      value.seq > MAX_CHAT_PROGRESS_EVENTS ||
+      !validAuthority ||
+      !CHAT_PROGRESS_PHASES.has(value.phase) ||
+      !CHAT_PROGRESS_STATES.has(value.state) ||
+      (finished && (
+        !Number.isSafeInteger(value.elapsed_ms) ||
+        value.elapsed_ms < 0 ||
+        value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
+      )) ||
+      (power && (
+        !Number.isSafeInteger(value.index) ||
+        !Number.isSafeInteger(value.total) ||
+        value.index < 1 ||
+        value.total < value.index ||
+        value.total > 512
+      ))
+    ) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    const event = {
+      type: 'progress',
+      seq: value.seq,
+      origin: value.origin,
+      phase: value.phase,
+      state: value.state,
+    };
+    if (finished) event.elapsed_ms = value.elapsed_ms;
+    if (power) {
+      event.index = value.index;
+      event.total = value.total;
+    }
+    return event;
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
   if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };
