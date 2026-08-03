@@ -2,7 +2,7 @@
 
 Shimpz Admin is the loopback-only Supervisor console installed with a local Shimpz Space. Its SvelteKit
 frontend and FastAPI backend provide password/session authentication, Team lifecycle, Assistant
-install/uninstall and help, provider/model selection, Team files, local chat, and OAuth Integration
+install/uninstall, provider/model selection, Team files, local chat, and OAuth Integration
 connection management.
 
 Admin has no Docker socket. It calls the local Team controller over a private authenticated network
