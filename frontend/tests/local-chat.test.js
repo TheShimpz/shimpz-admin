@@ -199,6 +199,21 @@ test('chat accepts only exact, bounded terminal events', () => {
     parseChatEvent({ type: 'sync-empty' }, 'team_1', 'Marketing'),
     { type: 'sync-empty' },
   );
+  for (const stage of ['preparing', 'running', 'finalizing']) {
+    assert.deepEqual(
+      parseChatEvent({ type: 'progress', stage }, 'team_1', 'Marketing'),
+      { type: 'progress', stage },
+    );
+  }
+  for (const invalid of [
+    { type: 'progress', stage: 'power-running' },
+    { type: 'progress', stage: 'running', detail: 'must-not-cross' },
+  ]) {
+    assert.throws(
+      () => parseChatEvent(invalid, 'team_1', 'Marketing'),
+      /response is invalid/,
+    );
+  }
   assert.throws(
     () => parseChatEvent({ type: 'sync-empty', pending: false }, 'team_1', 'Marketing'),
     /response is invalid/,

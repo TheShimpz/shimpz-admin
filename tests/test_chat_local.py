@@ -158,6 +158,32 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.body["status"], "integrations-required")
         self.assertEqual(response.body["requirements"], [integration_requirement()])
 
+    def test_turn_reports_only_actual_fixed_execution_stages(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        controller = team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Ready.",
+                "trace_id": TRACE_ID,
+            },
+        )
+        stages: list[str] = []
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(team, "chat", return_value=controller),
+        ):
+            response = local.turn(
+                "team_1",
+                {"message": "Hello", "files": [], "assistant_ids": []},
+                stages.append,
+            )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(stages, ["preparing", "running", "finalizing"])
+
     def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
         pending = team.TeamResponse(
             200,

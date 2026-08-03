@@ -11,6 +11,7 @@ buggy controller can never echo that key or internal execution details back to t
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -70,6 +71,15 @@ _CHAT_ERROR_FALLBACKS = {
     429: "local chat capacity reached",
     503: "local chat runtime is unavailable",
 }
+_PROGRESS_STAGES = frozenset({"preparing", "running", "finalizing"})
+
+
+def _progress(callback: Callable[[str], None], stage: str) -> None:
+    """Emit one fixed, secret-free execution stage without affecting the turn."""
+    if stage not in _PROGRESS_STAGES:
+        raise ValueError("invalid chat progress stage")
+    with contextlib.suppress(Exception):
+        callback(stage)
 
 
 def _immutable(*_args, **_kwargs):
@@ -335,15 +345,19 @@ def _submit(
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
     request: Callable[..., team.TeamResponse],
+    progress: Callable[[str], None],
 ) -> team.TeamResponse:
     canonical_id = team.canonical_team_id(team_id)
     body = canonicalize(payload)
+    _progress(progress, "preparing")
     credential = _model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
 
+    _progress(progress, "running")
     response = request(canonical_id, body, provider=provider, api_key=api_key)
+    _progress(progress, "finalizing")
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
@@ -354,8 +368,12 @@ def _submit(
     return _project_turn(response, canonical_id, forbidden_values=(api_key,))
 
 
-def turn(team_id: object, payload: object) -> team.TeamResponse:
-    return _submit(team_id, payload, team.canonical_chat_payload, team.chat)
+def turn(
+    team_id: object,
+    payload: object,
+    progress: Callable[[str], None] = lambda _stage: None,
+) -> team.TeamResponse:
+    return _submit(team_id, payload, team.canonical_chat_payload, team.chat, progress)
 
 
 def resume_integrations(team_id: object, challenge_id: object) -> team.TeamResponse:
@@ -364,6 +382,7 @@ def resume_integrations(team_id: object, challenge_id: object) -> team.TeamRespo
         {"challenge_id": challenge_id},
         team.canonical_integration_resume,
         team.resume_chat_integrations,
+        lambda _stage: None,
     )
 
 

@@ -1,152 +1,193 @@
 <script>
-  let { label = 'Your Team is thinking…' } = $props();
+  import { onMount } from 'svelte';
+
+  let {
+    label = 'Your Team is thinking…',
+    stage = 'preparing',
+    stages = [],
+  } = $props();
+  let elapsed = $state(0);
+
+  let activeIndex = $derived(Math.max(0, stages.findIndex((item) => item.id === stage)));
+  let stageLabel = $derived(stages[activeIndex]?.label ?? '');
+
+  function elapsedLabel(value) {
+    const minutes = Math.floor(value / 60);
+    const seconds = String(value % 60).padStart(2, '0');
+    return `${String(minutes).padStart(2, '0')}:${seconds}`;
+  }
+
+  onMount(() => {
+    const startedAt = Date.now();
+    const update = () => { elapsed = Math.floor((Date.now() - startedAt) / 1000); };
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  });
 </script>
 
-<div class="thinking" role="status" aria-live="polite" aria-atomic="true">
-  <span class="mark" aria-hidden="true">
-    <span class="signal"></span>
-    <img src="/brand/shimpz-thinking.svg" alt="" />
-    <span class="scan"></span>
-  </span>
-  <span class="label">{label}<span class="dots"><i></i><i></i><i></i></span></span>
+<div class="thinking">
+  <div class="summary" role="status" aria-live="polite" aria-atomic="true">
+    <span class="pulse" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="copy">
+      <strong>{label}</strong>
+      <span>{stageLabel}</span>
+    </span>
+    <time aria-hidden="true">{elapsedLabel(elapsed)}</time>
+  </div>
+  <ol class="stages" aria-hidden="true">
+    {#each stages as item, index}
+      <li class:complete={index < activeIndex} class:active={index === activeIndex}>
+        <i></i><span>{item.label}</span>
+      </li>
+    {/each}
+  </ol>
 </div>
 
 <style>
   .thinking {
-    display: inline-flex;
+    display: grid;
+    width: min(100%, 34rem);
     min-width: 0;
-    align-items: center;
     gap: 0.75rem;
+    padding: 0.85rem 0;
     color: var(--text-dim);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+  }
+
+  .summary {
+    display: grid;
+    min-width: 0;
+    align-items: center;
+    grid-template-columns: 2.7rem minmax(0, 1fr) auto;
+    gap: 0.8rem;
+  }
+
+  .pulse {
+    display: flex;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.16rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    clip-path: polygon(0.4rem 0, 100% 0, 100% calc(100% - 0.4rem), calc(100% - 0.4rem) 100%, 0 100%, 0 0.4rem);
+  }
+
+  .pulse i {
+    width: 0.14rem;
+    height: 0.3rem;
+    background: var(--accent);
+    box-shadow: 0 0 0.4rem color-mix(in srgb, var(--accent) 72%, transparent);
+    animation: signal 1.1s ease-in-out infinite;
+  }
+
+  .pulse i:nth-child(2) { animation-delay: 0.12s; }
+  .pulse i:nth-child(3) { animation-delay: 0.24s; }
+  .pulse i:nth-child(4) { animation-delay: 0.36s; }
+
+  .copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.18rem;
+  }
+
+  .copy strong {
+    color: var(--text);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.045em;
+  }
+
+  .copy span,
+  time {
+    font-size: 0.62rem;
     letter-spacing: 0.055em;
   }
 
-  .mark {
+  time {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stages {
     position: relative;
     display: grid;
-    width: 3.25rem;
-    height: 3.25rem;
-    flex: 0 0 auto;
-    place-items: center;
-    isolation: isolate;
+    margin: 0;
+    padding: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    list-style: none;
   }
 
-  .mark::before,
-  .signal {
+  .stages::before {
     position: absolute;
+    top: 0.25rem;
+    right: calc(100% / 6);
+    left: calc(100% / 6);
+    height: 1px;
+    background: var(--admin-divider);
     content: '';
-    pointer-events: none;
   }
 
-  .mark::before {
-    inset: 0.2rem;
-    z-index: -2;
-    border: 1px solid rgba(0, 240, 255, 0.3);
-    clip-path: polygon(18% 0, 82% 0, 100% 18%, 100% 82%, 82% 100%, 18% 100%, 0 82%, 0 18%);
-    animation: frame-breathe 2.8s ease-in-out infinite;
-  }
-
-  .signal {
-    inset: 0.52rem;
-    z-index: -1;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(0, 240, 255, 0.16), transparent 68%);
-    filter: blur(0.18rem);
-    animation: signal-breathe 2.8s ease-in-out infinite;
-  }
-
-  img {
-    display: block;
-    width: 2.85rem;
-    height: 2.85rem;
-    object-fit: contain;
-    filter: drop-shadow(0 0 0.18rem rgba(0, 240, 255, 0.35));
-    animation: chimp-breathe 2.8s ease-in-out infinite;
-  }
-
-  .scan {
-    position: absolute;
-    inset: 0.32rem;
-    overflow: hidden;
-    clip-path: polygon(18% 0, 82% 0, 100% 18%, 100% 82%, 82% 100%, 18% 100%, 0 82%, 0 18%);
-    pointer-events: none;
-  }
-
-  .scan::after {
-    position: absolute;
-    top: -20%;
-    left: -45%;
-    width: 22%;
-    height: 140%;
-    background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.52), transparent);
-    content: '';
-    filter: blur(0.08rem);
-    transform: skewX(-12deg);
-    animation: scan 2.35s ease-in-out infinite;
-  }
-
-  .label {
+  .stages li {
+    position: relative;
+    display: grid;
     min-width: 0;
-    overflow-wrap: anywhere;
+    justify-items: center;
+    gap: 0.38rem;
+    color: color-mix(in srgb, var(--text-dim) 58%, transparent);
+    text-align: center;
   }
 
-  .dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    margin-inline-start: 0.35rem;
-  }
-
-  .dots i {
-    width: 0.22rem;
-    height: 0.22rem;
+  .stages li i {
+    z-index: 1;
+    width: 0.5rem;
+    height: 0.5rem;
+    border: 1px solid var(--admin-divider);
     border-radius: 50%;
+    background: var(--surface-1);
+  }
+
+  .stages li span {
+    max-width: 9rem;
+    font-size: 0.52rem;
+    line-height: 1.35;
+    letter-spacing: 0.04em;
+  }
+
+  .stages li.complete,
+  .stages li.active {
+    color: var(--text-dim);
+  }
+
+  .stages li.complete i,
+  .stages li.active i {
+    border-color: var(--accent);
     background: var(--accent);
-    box-shadow: 0 0 0.3rem rgba(0, 240, 255, 0.58);
-    animation: dot 1.2s ease-in-out infinite;
+    box-shadow: 0 0 0.38rem color-mix(in srgb, var(--accent) 65%, transparent);
   }
 
-  .dots i:nth-child(2) { animation-delay: 0.16s; }
-  .dots i:nth-child(3) { animation-delay: 0.32s; }
-
-  @keyframes chimp-breathe {
-    0%, 100% { transform: translateY(0) scale(0.98); filter: drop-shadow(0 0 0.14rem rgba(0, 240, 255, 0.28)); }
-    50% { transform: translateY(-0.08rem) scale(1); filter: drop-shadow(0 0 0.35rem rgba(0, 240, 255, 0.52)); }
+  .stages li.active i {
+    animation: node 1.4s ease-in-out infinite;
   }
 
-  @keyframes frame-breathe {
-    0%, 100% { border-color: rgba(0, 240, 255, 0.22); transform: scale(0.96); }
-    50% { border-color: rgba(255, 46, 116, 0.42); transform: scale(1); }
+  @keyframes signal {
+    0%, 100% { height: 0.3rem; opacity: 0.35; }
+    50% { height: 1rem; opacity: 1; }
   }
 
-  @keyframes signal-breathe {
-    0%, 100% { opacity: 0.4; transform: scale(0.82); }
-    50% { opacity: 1; transform: scale(1.08); }
+  @keyframes node {
+    0%, 100% { box-shadow: 0 0 0.2rem color-mix(in srgb, var(--accent) 45%, transparent); }
+    50% { box-shadow: 0 0 0.75rem color-mix(in srgb, var(--accent) 88%, transparent); }
   }
 
-  @keyframes scan {
-    0%, 16% { left: -45%; opacity: 0; }
-    24% { opacity: 0.82; }
-    66% { left: 124%; opacity: 0.65; }
-    74%, 100% { left: 124%; opacity: 0; }
-  }
-
-  @keyframes dot {
-    0%, 70%, 100% { opacity: 0.28; transform: translateY(0); }
-    35% { opacity: 1; transform: translateY(-0.12rem); }
+  @media (max-width: 520px) {
+    .stages li span { display: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .mark::before,
-    .signal,
-    img,
-    .scan::after,
-    .dots i {
+    .pulse i,
+    .stages li.active i {
       animation: none;
     }
-
-    .dots i { opacity: 0.7; }
   }
 </style>

@@ -33,6 +33,7 @@
   let draft = $state('');
   let turns = $state([]);
   let busy = $state(false);
+  let progressStage = $state('preparing');
   let stopping = $state(false);
   let error = $state('');
   let errorDetail = $state('');
@@ -64,7 +65,12 @@
   );
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
-  let thinking = $derived($t('chatPage.sending', { team: teamName }));
+  let thinking = $derived(copy.sending);
+  let progressStages = $derived([
+    { id: 'preparing', label: copy.progressPreparing },
+    { id: 'running', label: copy.progressRunning },
+    { id: 'finalizing', label: copy.progressFinalizing },
+  ]);
   let contextLoading = $derived(
     $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
   );
@@ -223,6 +229,11 @@
           acceptIntegrationChallenge(incoming);
           return;
         }
+        if (incoming.type === 'progress') {
+          if (!busy || stopping) throw new Error('unexpected progress frame');
+          progressStage = incoming.stage;
+          return;
+        }
         if (incoming.type === 'sync-empty') {
           if (busy && turns.length > 0) {
             busy = false;
@@ -280,6 +291,7 @@
     draft = '';
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
+    progressStage = 'preparing';
     scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
@@ -455,6 +467,7 @@
       return;
     }
     busy = true;
+    progressStage = 'preparing';
     clearError();
     turns = [...turns, { role: 'user', text: message }];
     void revealLatestTurn();
@@ -542,7 +555,9 @@
               {/if}
             </article>
           {/each}
-          {#if busy}<ShimpzThinking label={thinking} />{/if}
+          {#if busy}
+            <ShimpzThinking label={thinking} stage={progressStage} stages={progressStages} />
+          {/if}
         </div>
 
         {#if visibleError}

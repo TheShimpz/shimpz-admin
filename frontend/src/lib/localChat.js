@@ -20,6 +20,7 @@ const MAX_INTEGRATION_POWERS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
+const CHAT_PROGRESS_STAGES = new Set(['preparing', 'running', 'finalizing']);
 const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
@@ -672,6 +673,13 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       throw new LocalApiError('The local chat response is invalid.');
     }
     return { type: 'error', status: value.status, detail: value.detail };
+  }
+  if (
+    value.type === 'progress' &&
+    exactKeys(value, ['type', 'stage']) &&
+    CHAT_PROGRESS_STAGES.has(value.stage)
+  ) {
+    return { type: 'progress', stage: value.stage };
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
   if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };

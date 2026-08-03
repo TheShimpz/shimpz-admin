@@ -150,6 +150,7 @@ def _stop_accepted(response: object, team_id: str) -> bool | None:
 class _Turn:
     future: concurrent.futures.Future | None
     operation: str
+    progress: asyncio.Queue[str] | None = None
     delivery: asyncio.Task | None = None
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False
@@ -188,6 +189,46 @@ async def _send_terminal_once(
     return True
 
 
+def _enqueue_progress(queue: asyncio.Queue[str], stage: str) -> None:
+    if stage not in {"preparing", "running", "finalizing"}:
+        return
+    with contextlib.suppress(asyncio.QueueFull):
+        queue.put_nowait(stage)
+
+
+async def _await_turn_response(
+    websocket: WebSocket,
+    connection: _Connection,
+    turn: _Turn,
+) -> object:
+    if turn.future is None or turn.progress is None:
+        return team.TeamResponse(502, {})
+    response = asyncio.wrap_future(turn.future)
+    while not response.done():
+        pending_progress = asyncio.create_task(turn.progress.get())
+        completed, _pending = await asyncio.wait(
+            {response, pending_progress},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if pending_progress in completed:
+            stage = pending_progress.result()
+            if connection.closed or turn.stop_requested or turn.terminal_sent:
+                return team.TeamResponse(502, {})
+            if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+                connection.closed = True
+                return team.TeamResponse(502, {})
+        else:
+            pending_progress.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pending_progress
+    while not turn.progress.empty():
+        stage = turn.progress.get_nowait()
+        if not await _send_event(websocket, {"type": "progress", "stage": stage}):
+            connection.closed = True
+            return team.TeamResponse(502, {})
+    return await response
+
+
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
         response = team.TeamResponse(502, {})
@@ -196,7 +237,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         with contextlib.suppress(Exception):
             try:
                 if turn.future is not None:
-                    response = await asyncio.wrap_future(turn.future)
+                    response = await _await_turn_response(websocket, connection, turn)
             except asyncio.CancelledError:
                 raise
             except team.TeamRequestError:
@@ -450,11 +491,17 @@ async def _dispatch_chat(
         )
         return
     try:
-        future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload)
+        progress: asyncio.Queue[str] = asyncio.Queue(maxsize=3)
+        loop = asyncio.get_running_loop()
+
+        def report(stage: str) -> None:
+            loop.call_soon_threadsafe(_enqueue_progress, progress, stage)
+
+        future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
-    turn = _Turn(future=future, operation="chat")
+    turn = _Turn(future=future, operation="chat", progress=progress)
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
