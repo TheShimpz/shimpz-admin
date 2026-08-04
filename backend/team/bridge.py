@@ -32,7 +32,6 @@ _call_stream = transport._call_stream
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
-MAX_SECRET_JSON_BODY_BYTES = 512 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
