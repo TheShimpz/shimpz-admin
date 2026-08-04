@@ -34,6 +34,8 @@ const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation'])
 const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
 const MAX_CHAT_PROGRESS_EVENTS = 2052;
 const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
+const MAX_PROGRESS_ASSISTANT_ID_CHARS = 40;
+const MAX_PROGRESS_POWER_ID_CHARS = 80;
 const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
@@ -692,7 +694,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     const finished = value.state === 'finished';
     const expected = ['type', 'seq', 'origin', 'phase', 'state'];
     if (finished) expected.push('elapsed_ms');
-    if (power) expected.push('index', 'total');
+    if (power) expected.push('assistant_id', 'index', 'power', 'total');
     const validAuthority = (
       (value.origin === 'admin' && ADMIN_PROGRESS_PHASES.has(value.phase)) ||
       (value.origin === 'team' && !ADMIN_PROGRESS_PHASES.has(value.phase))
@@ -711,6 +713,12 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
         value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
       )) ||
       (power && (
+        typeof value.assistant_id !== 'string' ||
+        value.assistant_id.length > MAX_PROGRESS_ASSISTANT_ID_CHARS ||
+        !ASSISTANT_ID_RE.test(value.assistant_id) ||
+        typeof value.power !== 'string' ||
+        value.power.length > MAX_PROGRESS_POWER_ID_CHARS ||
+        !ASSISTANT_ID_RE.test(value.power) ||
         !Number.isSafeInteger(value.index) ||
         !Number.isSafeInteger(value.total) ||
         value.index < 1 ||
@@ -729,7 +737,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     };
     if (finished) event.elapsed_ms = value.elapsed_ms;
     if (power) {
+      event.assistant_id = value.assistant_id;
       event.index = value.index;
+      event.power = value.power;
       event.total = value.total;
     }
     return event;

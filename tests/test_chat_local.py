@@ -181,6 +181,29 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "elapsed_ms": 18,
                 }
             )
+            progress(
+                {
+                    "seq": 3,
+                    "phase": "power",
+                    "state": "started",
+                    "assistant_id": "shimpz-cloudflare",
+                    "power": "list-zones",
+                    "index": 1,
+                    "total": 1,
+                }
+            )
+            progress(
+                {
+                    "seq": 4,
+                    "phase": "power",
+                    "state": "finished",
+                    "elapsed_ms": 6,
+                    "assistant_id": "shimpz-cloudflare",
+                    "power": "list-zones",
+                    "index": 1,
+                    "total": 1,
+                }
+            )
             return controller
 
         with (
@@ -202,9 +225,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 ("admin", "admin-preparation", "finished"),
                 ("team", "model", "started"),
                 ("team", "model", "finished"),
+                ("team", "power", "started"),
+                ("team", "power", "finished"),
                 ("admin", "reply-validation", "started"),
                 ("admin", "reply-validation", "finished"),
             ],
+        )
+        power_events = [event for event in events if event["phase"] == "power"]
+        self.assertTrue(
+            all(
+                (event["assistant_id"], event["power"]) == ("shimpz-cloudflare", "list-zones")
+                for event in power_events
+            )
         )
         self.assertIsInstance(events[-1]["elapsed_ms"], int)
 

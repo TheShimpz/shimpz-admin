@@ -209,7 +209,7 @@ const progressEvents = [
   { type: 'progress', seq: 2052, origin: 'admin', phase: 'reply-validation', state: 'started' },
   {
     type: 'progress', seq: 4, origin: 'team', phase: 'power', state: 'finished',
-    elapsed_ms: 19, index: 1, total: 2,
+    elapsed_ms: 19, assistant_id: 'shimpz-cloudflare', index: 1, power: 'list-zones', total: 2,
   },
 ];
 for (const event of progressEvents) {
@@ -229,6 +229,14 @@ for (const invalid of [
   {
     type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
     index: 2, total: 1,
+  },
+  {
+    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
+    assistant_id: 'Shimpz-cloudflare', index: 1, power: 'list-zones', total: 1,
+  },
+  {
+    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
+    assistant_id: 'shimpz-cloudflare', index: 1, power: 'x'.repeat(81), total: 1,
   },
 ]) {
     assert.throws(
