@@ -1,5 +1,5 @@
 <script>
-  import { Button, Notice, Panel, StatusBadge, TextField } from '@shimpz/frontend';
+  import { Button, Card, Notice, StatusBadge, TextField } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
 
@@ -29,7 +29,7 @@
   }
 </script>
 
-<Panel class="provider-gate" tone="accent" aria-labelledby="provider-gate-title">
+<Card class="provider-gate" tone="accent" aria-labelledby="provider-gate-title">
   <div class="gate-mark" aria-hidden="true"><span></span></div>
   <p class="eyebrow">{copy.eyebrow}</p>
   <h2 id="provider-gate-title">{copy.title}</h2>
@@ -83,15 +83,16 @@
       </Button>
     </form>
   {/if}
-</Panel>
+</Card>
 
 <style>
   :global(.provider-gate) {
-    display: grid;
     width: min(30rem, calc(100% - 1.5rem));
-    justify-items: center;
     margin: auto;
-    padding: clamp(1.1rem, 3vw, 1.6rem);
+  }
+  :global(.provider-gate .content) {
+    display: grid;
+    justify-items: center;
     text-align: center;
   }
   .gate-mark { display: grid; width: 2rem; height: 2rem; place-items: center; margin-bottom: 0.7rem; border: 1px solid var(--accent); transform: rotate(45deg); }

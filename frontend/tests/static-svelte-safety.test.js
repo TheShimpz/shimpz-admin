@@ -38,3 +38,19 @@ test('static supply chain: shared frontend is pinned to one immutable commit', (
   assert.match(dependency, immutableCodeload);
   assert.equal(resolved, dependency);
 });
+
+test('static presentation: every Admin surface composes the canonical layout primitives', () => {
+  const contracts = new Map([
+    ['../src/lib/AdminShell.svelte', ['WorkspaceShell']],
+    ['../src/lib/AuthScreen.svelte', ['Card']],
+    ['../src/lib/LocaleMenu.svelte', ['DropdownMenu']],
+    ['../src/lib/NotificationCenter.svelte', ['Card', 'ScrollArea', 'Toolbar']],
+    ['../src/lib/ProviderSetupGate.svelte', ['Card']],
+    ['../src/routes/chat/+page.svelte', ['EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
+    ['../src/routes/assistants/+page.svelte', ['Card', 'EmptyState', 'PageIntro', 'Skeleton', 'Toolbar']],
+  ]);
+  for (const [path, primitives] of contracts) {
+    const source = readFileSync(new URL(path, import.meta.url), 'utf8');
+    for (const primitive of primitives) assert.match(source, new RegExp(`\\b${primitive}\\b`));
+  }
+});

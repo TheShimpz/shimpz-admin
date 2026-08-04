@@ -1,6 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import { Button, TextAreaField } from '@shimpz/frontend';
+  import { Button, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
@@ -621,16 +621,16 @@
           aria-busy={(busy || syncing) && !integrationChallenge}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
-        <div class="turns" bind:this={turnsViewport}>
+        <ScrollArea class="turns" bind:element={turnsViewport}>
           {#each exchanges as exchange, index}
             <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
               {#if exchange.user}
-                <article class="user" aria-label={copy.you}>
+                <Message variant="user" author={copy.you}>
                   <p>{exchange.user.text}</p>
-                </article>
+                </Message>
               {/if}
               {#if exchange.assistant}
-                <article class="assistant" aria-label={exchange.assistant.author}>
+                <Message variant="assistant" author={exchange.assistant.author}>
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
                   <ExecutionReceipt
                     events={exchange.assistant.receipt ?? []}
@@ -639,7 +639,7 @@
                     teamName={exchange.assistant.author}
                     {assistantNames}
                   />
-                </article>
+                </Message>
               {:else if index === exchanges.length - 1 && busy && !integrationChallenge}
                 <ShimpzThinking
                   label={thinking}
@@ -653,13 +653,13 @@
               {/if}
             </section>
           {/each}
-        </div>
+        </ScrollArea>
 
         {#if visibleError}
-          <div class="error" role="alert">
+          <Notice class="error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
-          </div>
+          </Notice>
         {/if}
 
           <form class="composer" onsubmit={send}>
@@ -678,7 +678,7 @@
                 disabled={busy || syncing}
                 onkeydown={handleComposerKeydown}
               />
-              <div class="composer-actions">
+              <Toolbar class="composer-actions" aria-label={copy.send}>
               {#if busy && !syncing}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
@@ -706,7 +706,7 @@
               >
                 {socketReady ? copy.send : copy.connecting}
               </Button>
-              </div>
+              </Toolbar>
             </div>
           </form>
         </section>
@@ -737,17 +737,16 @@
     {/if}
   {:else}
     <section class="empty-state" aria-live="polite">
-      <div class="empty-copy">
-        <div class="empty-mark" aria-hidden="true"><span></span></div>
+      <EmptyState
+        title={contextLoading ? copy.loading : copy.emptyTeams}
+      >
         {#if visibleError}
-          <div class="empty-error" role="alert">
+          <Notice class="empty-error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
-          </div>
-        {:else}
-          <p>{contextLoading ? copy.loading : copy.emptyTeams}</p>
+          </Notice>
         {/if}
-      </div>
+      </EmptyState>
       <div class="context-dock"><ChatContextControls /></div>
     </section>
   {/if}
@@ -806,7 +805,7 @@
     overflow: auto;
   }
 
-  .turns {
+  :global(.turns) {
     position: relative;
     display: flex;
     min-width: 0;
@@ -822,7 +821,7 @@
     );
   }
 
-  .empty-conversation .turns {
+  .empty-conversation :global(.turns) {
     display: none;
   }
 
@@ -850,39 +849,9 @@
     min-block-size: 100%;
   }
 
-  article {
-    position: relative;
-    min-width: 0;
-    box-sizing: border-box;
-    padding: 0.3rem 0;
-    background: transparent;
-  }
-
-  article.user {
-    justify-self: end;
-    width: fit-content;
-    max-width: min(80%, 46rem);
-    border: 1px solid var(--border-strong);
-    padding: 0.65rem 0.8rem;
-    background: var(--surface-3);
-    color: var(--accent);
-    clip-path: polygon(
-      0 0,
-      calc(100% - var(--cut)) 0,
-      100% var(--cut),
-      100% 100%,
-      0 100%
-    );
-  }
-
-  article.assistant {
-    align-self: stretch;
-    width: 100%;
-    max-width: none;
-    color: var(--accent-alt);
-  }
-
-  article p {
+  :global(.turns .shimpz-message--assistant) { align-self: stretch; color: var(--accent-alt); }
+  :global(.turns .shimpz-message--user) { max-width: min(80%, 46rem); color: var(--accent); }
+  :global(.turns .shimpz-message .content p) {
     margin: 0;
     color: var(--text);
     white-space: pre-wrap;
@@ -890,17 +859,14 @@
     overflow-wrap: anywhere;
   }
 
-  .error,
-  .empty-error {
+  :global(.error),
+  :global(.empty-error) {
     display: grid;
     gap: 0.35rem;
-    border-inline-start: 2px solid var(--danger);
-    padding: 0.65rem 0.9rem;
-    color: var(--danger);
     font-size: 0.72rem;
   }
 
-  .error {
+  :global(.error) {
     grid-row: 2;
     width: min(
       calc(100% - (2 * var(--chat-rail-gutter))),
@@ -912,13 +878,13 @@
     overflow-y: auto;
   }
 
-  .error strong,
-  .empty-error strong {
+  :global(.error strong),
+  :global(.empty-error strong) {
     font-weight: 600;
   }
 
-  .error code,
-  .empty-error code {
+  :global(.error code),
+  :global(.empty-error code) {
     color: var(--text-faint);
     font-size: 0.6rem;
     line-height: 1.45;
@@ -968,17 +934,12 @@
     gap: 0.65rem;
   }
 
-  .composer-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
   .composer :global(.shimpz-button) {
     height: 2.75rem;
     min-height: 0;
   }
 
-  .composer-actions :global(.shimpz-button svg) {
+  :global(.composer-actions .shimpz-button svg) {
     width: 1rem;
     fill: none;
     stroke: currentColor;
@@ -998,36 +959,6 @@
     overflow: auto;
   }
 
-  .empty-copy {
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    text-align: center;
-  }
-
-  .empty-mark {
-    display: grid;
-    width: 2.7rem;
-    height: 2.7rem;
-    place-items: center;
-    border: 1px solid var(--border-strong);
-    transform: rotate(45deg);
-  }
-
-  .empty-mark span {
-    width: 0.5rem;
-    height: 0.5rem;
-    background: var(--accent);
-    box-shadow: 0 0 9px rgba(0, 240, 255, 0.55);
-  }
-
-  .empty-copy > p {
-    max-width: 28rem;
-    margin: 0;
-  }
-
   .context-dock {
     width: min(calc(100% - 1.6rem), 48rem);
     justify-self: center;
@@ -1035,11 +966,11 @@
   }
 
   @media (max-width: 640px) {
-    article.user { max-width: 92%; }
+    :global(.turns .shimpz-message--user) { max-width: 92%; }
     .conversation { --chat-rail-gutter: 0.6rem; }
     .composer { gap: 0.45rem; padding: 0.6rem 0; }
     .composer-input { gap: 0.45rem; }
-    .composer-actions { gap: 0.3rem; }
+    :global(.composer-actions) { gap: 0.3rem; }
     .composer :global(.shimpz-button) { padding-inline: 0.65rem; }
   }
 </style>

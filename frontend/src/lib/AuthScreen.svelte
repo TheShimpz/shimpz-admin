@@ -1,5 +1,5 @@
 <script>
-  import { Button, Notice, Panel, ShimpzBrand, TextField } from '@shimpz/frontend';
+  import { Button, Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
 
   let {
@@ -30,7 +30,7 @@
     </div>
   </div>
 
-  <Panel class="auth-panel" tone="accent">
+  <Card class="auth-panel" tone="accent">
     {#if phase === 'checking'}
       <div class="checking" aria-live="polite">
         <div class="scanner" aria-hidden="true"><span></span></div>
@@ -107,7 +107,7 @@
         </Button>
       </form>
     {/if}
-  </Panel>
+  </Card>
 </section>
 
 <style>
@@ -164,7 +164,7 @@
     line-height: 1.7;
   }
 
-  :global(.auth-panel) { display: grid; gap: 0.8rem; padding: clamp(1.25rem, 3vw, 1.75rem); }
+  :global(.auth-panel .content) { display: grid; gap: 0.8rem; }
 
   h1 {
     margin: 0;

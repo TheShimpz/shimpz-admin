@@ -18,7 +18,7 @@ test('renders the Local setup through the shared design system', async ({ page }
   await expect(page.getByLabel(/password/i).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /create password/i })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
-  await expect(page.locator('.shimpz-panel')).toHaveCount(1);
+  await expect(page.locator('.shimpz-card')).toHaveCount(1);
   await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
 });
 
@@ -97,7 +97,7 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(Number.parseFloat(await destination.locator('.destination-name').evaluate(
     (element) => getComputedStyle(element).fontSize,
   ))).toBeGreaterThanOrEqual(20);
-  await expect(page.locator('.store-destination')).toHaveScreenshot('store-destination.png', {
+  await expect(page.locator('.shimpz-page-intro')).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
   });

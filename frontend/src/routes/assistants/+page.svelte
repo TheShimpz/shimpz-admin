@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { ActionLink, Button, ChoiceItem, DialogFrame, EmbedFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import { ActionLink, Button, Card, ChoiceItem, DialogFrame, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
   import {
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
@@ -525,11 +525,12 @@
   <meta name="description" content="Browse and evaluate trusted Shimpz Assistants from the local Admin." />
 </svelte:head>
 
-<h1 class="sr-only">{$t('store.nav')}</h1>
-
-<header class="store-destination" aria-labelledby="store-destination-team">
-  <p>{$t('store.destinationKicker')}</p>
-  <h2 id="store-destination-team">
+<PageIntro
+  kicker={$t('store.destinationKicker')}
+  title={$t('store.nav')}
+  lead={activeTeamRecord ? $t('store.destinationLead', { team: activeTeamRecord.name }) : destinationCopy.empty}
+>
+  {#snippet actions()}
     <Button
       bind:element={destinationTrigger}
       variant="ghost"
@@ -543,15 +544,10 @@
       <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
       <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
     </Button>
-  </h2>
-  <span>
-    {activeTeamRecord
-      ? $t('store.destinationLead', { team: activeTeamRecord.name })
-      : destinationCopy.empty}
-  </span>
-</header>
+  {/snippet}
+</PageIntro>
 
-<section class="store-frame" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
+<Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
         <EmbedFrame
           bind:element={iframeElement}
@@ -563,27 +559,27 @@
           onload={storeFrameLoaded}
         />
         {#if framePhase === 'loading'}
-          <div class="frame-state frame-loading" role="status">
-            <div class="frame-spinner" aria-hidden="true"><span></span></div>
-            <p>{copy.frameLoading}</p>
+          <div class="frame-state" role="status">
+            <EmptyState compact title={copy.frameLoading}>
+              <Skeleton width="8rem" height="0.35rem" />
+            </EmptyState>
           </div>
         {:else if framePhase === 'error'}
-          <div class="frame-state frame-error" role="alert">
-            <span class="frame-error-mark" aria-hidden="true">!</span>
-            <div>
-              <strong>{copy.frameFailureTitle}</strong>
-              <p>{copy.frameFailureLead}</p>
-            </div>
-            <div class="frame-actions">
+          <div class="frame-state" role="alert">
+            <EmptyState title={copy.frameFailureTitle} description={copy.frameFailureLead}>
+              {#snippet actions()}
+              <Toolbar class="frame-actions">
               <Button variant="secondary" type="button" onclick={reloadStoreFrame}>{copy.retryStore}</Button>
               <ActionLink href={storePageUrl} target="_blank" rel="noopener noreferrer">{copy.openStore}<span aria-hidden="true">↗</span></ActionLink>
-            </div>
+              </Toolbar>
+              {/snippet}
+            </EmptyState>
           </div>
         {/if}
       </div>
-</section>
+</Card>
 
-<p class="trust-boundary"><span aria-hidden="true">◇</span>{$t('store.boundary')}</p>
+<Notice class="trust-boundary" variant="info">{$t('store.boundary')}</Notice>
 
 <Modal
   id="store-team-destination-dialog"
@@ -691,38 +687,6 @@
   oncancel={cancelAssistantDialog} />
 
 <style>
-  .store-destination {
-    display: grid;
-    gap: 0.35rem;
-    margin: 0 0 0.75rem;
-    padding: 0.25rem 0;
-  }
-
-  .store-destination p,
-  .store-destination h2,
-  .store-destination span {
-    margin: 0;
-  }
-
-  .store-destination p {
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .store-destination h2 {
-    min-width: 0;
-  }
-
-  .store-destination span {
-    color: var(--text-dim);
-    font-size: 0.76rem;
-    line-height: 1.55;
-  }
-
   :global(.destination-trigger.shimpz-button) {
     max-width: 100%;
     border: 0;
@@ -786,36 +750,18 @@
   .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
   .destination-empty { color: var(--text-dim); }
 
-  .store-frame {
+  :global(.store-frame) {
     position: relative;
+    margin-block-start: var(--shimpz-space-4);
     background: #000;
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
   :global(.shimpz-embed.frame-ready) { opacity: 1; }
-  .frame-state { position: absolute; z-index: 1; inset: 0; display: flex; min-height: 20rem; align-items: center; justify-content: center; padding: clamp(1.2rem, 4vw, 2.5rem); background: radial-gradient(circle at 50% 42%, rgba(0, 240, 255, 0.06), transparent 38%), #000; }
-  .frame-loading { flex-direction: column; gap: 1rem; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .frame-loading p { margin: 0; }
-  .frame-spinner { position: relative; width: 2.6rem; height: 2.6rem; border: 1px solid var(--border-strong); transform: rotate(45deg); }
-  .frame-spinner::before, .frame-spinner span { position: absolute; inset: 0.45rem; border: 1px solid var(--accent); content: ''; animation: frame-spin 1.25s linear infinite; }
-  .frame-spinner span { inset: 0.9rem; border-color: var(--accent-alt); animation-direction: reverse; }
-  @keyframes frame-spin { to { transform: rotate(360deg); } }
-  .frame-error { display: grid; max-width: none; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem; color: var(--text); }
-  .frame-error-mark { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border: 1px solid var(--danger); color: var(--danger); font-family: var(--font-mono); font-weight: 700; }
-  .frame-error strong { font-family: var(--font-mono); font-size: 0.95rem; }
-  .frame-error p { max-width: 52rem; margin: 0.3rem 0 0; color: var(--text-dim); font-size: 0.76rem; line-height: 1.55; }
-  .frame-actions { display: flex; align-items: center; gap: 0.55rem; }
-  .trust-boundary { display: flex; max-width: 78ch; align-items: flex-start; gap: 0.65rem; margin: 1rem 0 0; color: var(--text-faint); font-size: 0.76rem; line-height: 1.6; }
-  .trust-boundary span { color: var(--accent-alt); }
-
-  @media (max-width: 720px) {
-    .frame-error { grid-template-columns: auto minmax(0, 1fr); align-content: center; }
-    .frame-actions { grid-column: 1 / -1; }
-  }
+  .frame-state { position: absolute; z-index: 1; inset: 0; display: grid; min-height: 20rem; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 240, 255, 0.06), transparent 38%), #000; }
+  :global(.trust-boundary) { max-width: 78ch; margin-block-start: var(--shimpz-space-4); }
   @media (max-width: 520px) {
-    .frame-error { grid-template-columns: 1fr; text-align: center; }
-    .frame-error-mark { margin: 0 auto; }
-    .frame-actions { display: grid; }
-    .frame-actions :global(.shimpz-action-link), .frame-actions :global(.shimpz-button) { width: 100%; }
+    :global(.frame-actions) { display: grid; width: 100%; }
+    :global(.frame-actions .shimpz-action-link), :global(.frame-actions .shimpz-button) { width: 100%; }
   }
 </style>

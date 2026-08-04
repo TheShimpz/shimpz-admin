@@ -1,5 +1,5 @@
 <script>
-  import { Button, Modal, Panel } from '@shimpz/frontend';
+  import { Button, Card, Modal, ScrollArea, Toolbar } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import Markdown from '$lib/Markdown.svelte';
   import { locale, t } from '$lib/i18n.js';
@@ -158,7 +158,7 @@
   oncancel={cancel}
   onclose={() => { open = false; }}
 >
-  <Panel class="notification-drawer" tone="accent">
+  <Card class="notification-drawer" tone="accent" padding="none">
     <header>
       <div>
         <p>{copy.kicker}</p>
@@ -168,10 +168,11 @@
     </header>
 
     {#if view === 'detail' && selected}
-      <div class="detail-toolbar">
+      <Toolbar class="detail-toolbar">
         <Button variant="ghost" size="compact" type="button" onclick={() => { view = 'list'; selectedId = ''; }}>← {copy.back}</Button>
-      </div>
-      <article class="notification-detail">
+      </Toolbar>
+      <ScrollArea class="notification-detail">
+      <article>
         <p class="assistant-id">{copy.assistant} // {selected.assistant_id}</p>
         <h3>{selected.headline}</h3>
         <time datetime={selected.published_at}>
@@ -179,13 +180,14 @@
         </time>
         <div class="changelog"><Markdown markdown={selected.changelog} /></div>
       </article>
+      </ScrollArea>
     {:else}
-      <div class="notification-actions">
+      <Toolbar class="notification-actions" align="end">
         <Button variant="secondary" size="compact" type="button" disabled={actionBusy || unreadCount === 0} onclick={markAllRead}>{copy.markAll}</Button>
         <Button variant="danger" size="compact" type="button" disabled={actionBusy || notifications.length === 0} onclick={clearAll}>{copy.clear}</Button>
-      </div>
+      </Toolbar>
 
-      <div class="notification-list" aria-busy={!ready} aria-live="polite">
+      <ScrollArea class="notification-list" aria-busy={!ready} aria-live="polite">
         {#if notifications.length > 0}
           {#each notifications as notification (notification.id)}
             <Button
@@ -205,9 +207,9 @@
         {:else if ready}
           <p class="empty-state">{unavailable ? copy.unavailable : copy.empty}</p>
         {/if}
-      </div>
+      </ScrollArea>
     {/if}
-  </Panel>
+  </Card>
 </Modal>
 
 <style>
@@ -268,6 +270,13 @@
     box-shadow: -1rem 0 3rem rgba(0, 0, 0, 0.7);
   }
 
+  :global(.notification-drawer > .content) {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
   :global(.notification-modal) {
     position: fixed;
     inset-block: 0;
@@ -304,8 +313,8 @@
   h2 { font-size: clamp(1.3rem, 3.5vw, 1.8rem); letter-spacing: -0.045em; }
   h3 { margin-top: 0.3rem; font-size: 1.1rem; line-height: 1.25; }
 
-  .notification-actions,
-  .detail-toolbar {
+  :global(.notification-actions),
+  :global(.detail-toolbar) {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -314,16 +323,12 @@
     padding: 0.65rem 1.1rem;
   }
 
-  .detail-toolbar { justify-content: flex-start; }
+  :global(.detail-toolbar) { justify-content: flex-start; }
 
-  .notification-list,
-  .notification-detail {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
+  :global(.notification-list),
+  :global(.notification-detail) { min-height: 0; }
 
-  .notification-list { padding: 0.5rem 0; }
+  :global(.notification-list) { padding: 0.5rem 0; }
 
   :global(.notification-item) {
     display: grid;
@@ -379,15 +384,15 @@
   .read-state { color: inherit; text-transform: uppercase; }
   .empty-state { margin: 2rem 1.4rem; color: var(--text-faint); font-size: 0.75rem; line-height: 1.6; }
 
-  .notification-detail { padding: 1.4rem; }
-  .notification-detail time { display: block; margin-top: 0.6rem; }
+  :global(.notification-detail article) { padding: 1.4rem; }
+  :global(.notification-detail time) { display: block; margin-top: 0.6rem; }
   .changelog { margin-top: 1.5rem; border-top: 1px solid var(--border-strong); padding-top: 1.25rem; }
 
   @media (max-width: 520px) {
     :global(.notification-modal) { width: 100vw; }
-    .notification-actions { justify-content: stretch; }
-    .notification-actions :global(.shimpz-button) { flex: 1 1 auto; }
+    :global(.notification-actions) { justify-content: stretch; }
+    :global(.notification-actions .shimpz-button) { flex: 1 1 auto; }
     :global(.notification-item) { padding-inline: 1rem; }
-    header, .notification-detail { padding-inline: 1rem; }
+    header, :global(.notification-detail) { padding-inline: 1rem; }
   }
 </style>

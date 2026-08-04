@@ -24,6 +24,7 @@
   --font-mono: var(--shimpz-font-mono);
   --shadow: 0 20px 60px rgb(0 0 0 / 55%);
   --ring: var(--shimpz-focus-ring);
+  --admin-divider: var(--shimpz-color-border);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
