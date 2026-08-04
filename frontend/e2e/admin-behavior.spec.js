@@ -120,8 +120,10 @@ test('compiled Chat renders Markdown, execution receipt, and the integrations dr
   await expect(composer).toBeEnabled();
   const integrations = page.getByRole('button', { name: 'Assistant integrations' });
   await integrations.click();
-  await expect(page.getByRole('complementary', { name: 'Connected integrations' })).toBeVisible();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  await expect(drawer).toBeVisible();
   await page.getByRole('button', { name: 'Close integrations' }).click();
+  await expect(drawer).toBeHidden();
 
   await composer.fill('Show the rendered response');
   await page.getByRole('button', { name: 'Send' }).click();

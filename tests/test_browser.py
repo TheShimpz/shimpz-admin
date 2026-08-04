@@ -27,8 +27,9 @@ class BrowserPolicyTests(unittest.TestCase):
             )
             policy = browser.security_headers(ui_dir)["Content-Security-Policy"]
 
-        self.assertIn(f"script-src 'self' 'sha256-{digest}'", policy)
-        self.assertNotIn("script-src 'self' 'unsafe-inline'", policy)
+        script_directive = next(part.strip() for part in policy.split(";") if part.strip().startswith("script-src"))
+        self.assertIn(f"'sha256-{digest}'", script_directive)
+        self.assertNotIn("'unsafe-inline'", script_directive)
         self.assertIn("style-src 'self' 'unsafe-inline'", policy)
 
 
