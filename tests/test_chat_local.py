@@ -181,15 +181,6 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "elapsed_ms": 18,
                 }
             )
-            progress({"seq": 3, "phase": "reply-validation", "state": "started"})
-            progress(
-                {
-                    "seq": 4,
-                    "phase": "reply-validation",
-                    "state": "finished",
-                    "elapsed_ms": 2,
-                }
-            )
             return controller
 
         with (
@@ -211,11 +202,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 ("admin", "admin-preparation", "finished"),
                 ("team", "model", "started"),
                 ("team", "model", "finished"),
-                ("team", "reply-validation", "started"),
-                ("team", "reply-validation", "finished"),
+                ("admin", "reply-validation", "started"),
+                ("admin", "reply-validation", "finished"),
             ],
         )
-        self.assertEqual(events[-1]["elapsed_ms"], 2)
+        self.assertIsInstance(events[-1]["elapsed_ms"], int)
 
     def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
         pending = team.TeamResponse(
@@ -444,6 +435,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {key: value for key, value in valid.items() if key != "team_id"},
             {**valid, "assistant": "hello-pulse"},
             {**valid, "trace_id": "not-a-trace"},
+            {**valid, "reply": " \n\t"},
+            {**valid, "reply": "unsafe\u0000reply"},
+            {**valid, "reply": "x" * 60_001},
         )
         for controller_body in invalid:
             with (

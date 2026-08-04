@@ -24,9 +24,9 @@ _MEASURED_PROGRESS = (
         "state": "finished",
         "elapsed_ms": 5,
     },
-    {"origin": "team", "phase": "reply-validation", "state": "started"},
+    {"origin": "admin", "phase": "reply-validation", "state": "started"},
     {
-        "origin": "team",
+        "origin": "admin",
         "phase": "reply-validation",
         "state": "finished",
         "elapsed_ms": 2,

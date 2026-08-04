@@ -25,9 +25,10 @@ from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
-MAX_REPLY_CHARS = 64 * 1024
+MAX_REPLY_CHARS = 60_000
 MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+_REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
@@ -73,9 +74,9 @@ _CHAT_ERROR_FALLBACKS = {
     429: "local chat capacity reached",
     503: "local chat runtime is unavailable",
 }
-ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation"})
+ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation", "reply-validation"})
 PUBLIC_PROGRESS_PHASES = progress_contract.PHASES | ADMIN_PROGRESS_PHASES
-MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 2
+MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 4
 
 
 def _ignore_progress(_event: dict[str, object]) -> None:
@@ -117,9 +118,9 @@ def _progress(callback: Callable[[dict[str, object]], None], event: dict[str, ob
 
 
 @contextlib.contextmanager
-def _admin_span(callback: Callable[[dict[str, object]], None]):
+def _admin_span(callback: Callable[[dict[str, object]], None], phase: str):
     started_ns = time.monotonic_ns()
-    _progress(callback, {"origin": "admin", "phase": "admin-preparation", "state": "started"})
+    _progress(callback, {"origin": "admin", "phase": phase, "state": "started"})
     try:
         yield
     finally:
@@ -128,7 +129,7 @@ def _admin_span(callback: Callable[[dict[str, object]], None]):
             callback,
             {
                 "origin": "admin",
-                "phase": "admin-preparation",
+                "phase": phase,
                 "state": "finished",
                 "elapsed_ms": elapsed_ms,
             },
@@ -392,7 +393,9 @@ def _project_turn(
         or not _valid_trace_id(response.body.get("trace_id"))
         or not _valid_team_name(team_name)
         or not isinstance(reply, str)
-        or not 0 < len(reply) <= MAX_REPLY_CHARS
+        or not reply.strip()
+        or len(reply) > MAX_REPLY_CHARS
+        or _REPLY_CONTROL_RE.search(reply) is not None
         or any(value and (value in team_name or value in reply) for value in forbidden_values)
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
@@ -409,7 +412,7 @@ def _submit(
     request: Callable[..., team.TeamResponse],
     progress: Callable[[dict[str, object]], None],
 ) -> team.TeamResponse:
-    with _admin_span(progress):
+    with _admin_span(progress, "admin-preparation"):
         canonical_id = team.canonical_team_id(team_id)
         body = canonicalize(payload)
         credential = _model_credential(canonical_id)
@@ -431,7 +434,8 @@ def _submit(
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
-    return _project_turn(response, canonical_id, forbidden_values=(api_key,))
+    with _admin_span(progress, "reply-validation"):
+        return _project_turn(response, canonical_id, forbidden_values=(api_key,))
 
 
 def turn(
