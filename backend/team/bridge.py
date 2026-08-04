@@ -38,11 +38,14 @@ MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
 MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
+_LATIN_ASCII_EXPANSIONS = str.maketrans(
+    {"æ": "ae", "đ": "d", "ð": "d", "ı": "i", "ł": "l", "ø": "o", "œ": "oe", "þ": "th"}
+)
 
 
 def to_team_id(team_name: object) -> str:
     """A Team name -> the Docker/Postgres-safe id used by team."""
-    folded = unicodedata.normalize("NFKD", str(team_name).casefold())
+    folded = unicodedata.normalize("NFKD", str(team_name).casefold().translate(_LATIN_ASCII_EXPANSIONS))
     ascii_name = folded.encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9_]+", "_", ascii_name).strip("_")[:40]
 

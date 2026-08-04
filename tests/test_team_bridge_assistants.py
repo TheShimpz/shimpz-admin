@@ -130,6 +130,9 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             "Gestão": "gestao",
             "Ação & Operações": "acao_operacoes",
             "Straße Europa": "strasse_europa",
+            "Bjørn & Łukasz": "bjorn_lukasz",
+            "Œuvre Ægir": "oeuvre_aegir",
+            "Kayık Þór": "kayik_thor",
         }
         for team_name, expected in cases.items():
             with self.subTest(team_name=team_name):
