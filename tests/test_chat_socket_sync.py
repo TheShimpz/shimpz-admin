@@ -319,6 +319,94 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_stop_during_sync_emits_one_terminal_without_cancelling_team(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            release = threading.Event()
+            finished = threading.Event()
+            pending = _integration_challenge(status=200)
+            resume_calls = 0
+
+            def resume_integrations(_team_id, _challenge_id, _progress):
+                nonlocal resume_calls
+                resume_calls += 1
+                if resume_calls == 1:
+                    return pending
+                started.set()
+                release.wait(timeout=2)
+                finished.set()
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late completion"},
+                )
+
+            with (
+                mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=pending),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "resume_integrations",
+                    side_effect=resume_integrations,
+                ),
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                self.assertEqual((await websocket.next_json())["type"], "integrations-required")
+                await websocket.send_json({"type": "sync"})
+                await _wait_for_thread(started)
+                await websocket.send_json({"type": "stop"})
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "error",
+                        "status": 409,
+                        "detail": "an Integration synchronization is already active",
+                    },
+                )
+                self.assertEqual(
+                    await websocket.next_message(),
+                    {"type": "websocket.close", "code": 1008, "reason": ""},
+                )
+                await websocket.finish()
+                stop.assert_not_called()
+                release.set()
+                await _wait_for_thread(finished)
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+                stop.assert_not_called()
+
+        asyncio.run(scenario())
+
+    def test_claimed_sync_terminal_suppresses_a_late_mismatch_or_gate(self) -> None:
+        async def scenario() -> None:
+            pending = _integration_challenge(status=200)
+            mismatch = self.chat_socket.local.PublicResponse(
+                428,
+                {**pending.body, "turn_id": "c" * 32},
+            )
+            websocket = mock.AsyncMock()
+            connection = self.chat_socket._Connection(sync_terminal_sent=True)
+
+            await self.chat_socket._deliver_integration_sync(
+                websocket,
+                connection,
+                "team_1",
+                pending,
+                mismatch,
+            )
+            await self.chat_socket._deliver_integration_sync(
+                websocket,
+                connection,
+                "team_1",
+                pending,
+                pending,
+            )
+
+            websocket.send_json.assert_not_awaited()
+
+        asyncio.run(scenario())
+
     def test_sync_delivery_exception_fails_closed_with_one_terminal(self) -> None:
         async def scenario() -> None:
             empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})

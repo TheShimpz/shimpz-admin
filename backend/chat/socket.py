@@ -164,6 +164,7 @@ class _Connection:
     pending_challenge_id: str | None = None
     pending_challenge_type: str | None = None
     sync_task: asyncio.Task | None = None
+    sync_terminal_sent: bool = False
     closed: bool = False
 
 
@@ -184,6 +185,33 @@ async def _send_terminal_once(
     if connection.closed or turn.terminal_sent:
         return False
     turn.terminal_sent = True
+    if not await _send_event(websocket, event):
+        connection.closed = True
+        return False
+    return True
+
+
+async def _send_sync_terminal_once(
+    websocket: WebSocket,
+    connection: _Connection,
+    event: Mapping[str, object],
+) -> bool:
+    if connection.closed or connection.sync_terminal_sent:
+        return False
+    connection.sync_terminal_sent = True
+    if not await _send_event(websocket, event):
+        connection.closed = True
+        return False
+    return True
+
+
+async def _send_sync_event(
+    websocket: WebSocket,
+    connection: _Connection,
+    event: Mapping[str, object],
+) -> bool:
+    if connection.closed or connection.sync_terminal_sent:
+        return False
     if not await _send_event(websocket, event):
         connection.closed = True
         return False
@@ -392,12 +420,20 @@ async def _deliver_integration_sync(
         if _is_empty_pending(pending_response, team_id):
             connection.pending_challenge_id = None
             connection.pending_challenge_type = None
-            await _send_event(websocket, {"type": "sync-empty"})
+            await _send_sync_event(websocket, connection, {"type": "sync-empty"})
             return
-        await _send_event(websocket, _pending_error(pending_response, team_id, "integration"))
+        await _send_sync_terminal_once(
+            websocket,
+            connection,
+            _pending_error(pending_response, team_id, "integration"),
+        )
         return
     if resumed_response is None:
-        await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
+        await _send_sync_terminal_once(
+            websocket,
+            connection,
+            _error_terminal(502, "the Assistant integration challenge was invalid"),
+        )
         return
 
     resumed, challenge_type = _first_challenge(resumed_response, team_id)
@@ -405,12 +441,15 @@ async def _deliver_integration_sync(
         pending_turn_id = pending_response.body.get("turn_id")
         resumed_turn_id = resumed_response.body.get("turn_id")
         if pending_turn_id != resumed_turn_id:
-            await _send_event(websocket, _error_terminal(502, "the Assistant integration challenge was invalid"))
+            await _send_sync_terminal_once(
+                websocket,
+                connection,
+                _error_terminal(502, "the Assistant integration challenge was invalid"),
+            )
             return
         connection.pending_challenge_id = resumed["challenge_id"]
         connection.pending_challenge_type = challenge_type
-        if not await _send_event(websocket, resumed):
-            connection.closed = True
+        await _send_sync_event(websocket, connection, resumed)
         return
 
     if isinstance(resumed_response, team.TeamResponse) and (
@@ -422,7 +461,7 @@ async def _deliver_integration_sync(
         event = turn_terminal(resumed_response, team_id)
     connection.pending_challenge_id = None
     connection.pending_challenge_type = None
-    await _send_event(websocket, event)
+    await _send_sync_terminal_once(websocket, connection, event)
 
 
 async def _load_sync_snapshot(
@@ -434,7 +473,11 @@ async def _load_sync_snapshot(
     try:
         future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
     except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+        await _send_sync_terminal_once(
+            websocket,
+            connection,
+            _error_terminal(429, "local chat capacity reached"),
+        )
         return None
     snapshot = None
     with contextlib.suppress(Exception):
@@ -443,10 +486,10 @@ async def _load_sync_snapshot(
             connection,
             future,
             progress,
-            lambda: connection.closed,
+            lambda: connection.closed or connection.sync_terminal_sent,
         )
     if snapshot is None and not connection.closed:
-        await _send_event(websocket, _error_terminal(502))
+        await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
     return snapshot
 
 
@@ -469,7 +512,16 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
                 resumed_integration_response,
             )
             completed = True
-        if not completed and not connection.closed and not await _send_event(websocket, _error_terminal(502)):
+        if (
+            not completed
+            and not connection.closed
+            and not connection.sync_terminal_sent
+            and not await _send_sync_terminal_once(
+                websocket,
+                connection,
+                _error_terminal(502),
+            )
+        ):
             connection.closed = True
     finally:
         if connection.sync_task is task:
@@ -553,6 +605,7 @@ async def _dispatch_sync(websocket: WebSocket, connection: _Connection, team_id:
     if connection.sync_task is not None or connection.active is not None:
         await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
         return
+    connection.sync_terminal_sent = False
     connection.sync_task = asyncio.create_task(_deliver_sync(websocket, connection, team_id))
 
 
@@ -594,6 +647,17 @@ async def _dispatch_chat(
 
 
 async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
+    if connection.sync_task is not None:
+        sent = await _send_sync_terminal_once(
+            websocket,
+            connection,
+            _error_terminal(409, "an Integration synchronization is already active"),
+        )
+        if sent:
+            connection.closed = True
+            await websocket.close(code=1008)
+            raise WebSocketDisconnect(1008)
+        return
     if connection.active is None and connection.pending_challenge_id is None:
         await _send_event(websocket, _error_terminal(409, "no active chat turn"))
         return
