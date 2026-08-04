@@ -66,4 +66,9 @@ test('opens the Store destination workflow through shared modal controls', async
   await expect(page.getByRole('button', { name: /marketing/i }).last()).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeHidden();
+
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await expect(page.locator('iframe')).toHaveAttribute('src', /\/pt\/assistants\/embed/);
+  await expect(page.getByText('Carregando a Store de Assistants…')).toBeVisible();
 });

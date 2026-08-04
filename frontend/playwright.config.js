@@ -11,6 +11,10 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     browserName: 'chromium',
   },
+  projects: [
+    { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'mobile', use: { viewport: { width: 390, height: 844 } } },
+  ],
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4173',

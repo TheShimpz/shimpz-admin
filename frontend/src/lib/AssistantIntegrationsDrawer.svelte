@@ -145,7 +145,8 @@
 </Drawer>
 
 <style>
-  :global(#assistant-integrations-drawer) { display: grid; min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
+  :global(#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
+  :global(#assistant-integrations-drawer:not([hidden])) { display: grid; }
   :global(#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
   :global(#assistant-integrations-drawer) > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
   :global(#assistant-integrations-drawer) > header h2 { margin: 0; font-size: 1rem; }

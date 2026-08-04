@@ -17,6 +17,8 @@
 
   let setup = $derived(phase === 'setup');
   let hosted = $derived(profile === 'hosted');
+  let confirmationError = $derived(setup && error === $t('auth.mismatch') ? error : '');
+  let formError = $derived(confirmationError ? '' : error);
 </script>
 
 <section class="auth-stage" aria-labelledby="auth-title">
@@ -91,12 +93,13 @@
             bind:value={confirmation}
             autocomplete="new-password"
             required
-            minlength="12"
-            disabled={busy}
-          />
-        {/if}
+          minlength="12"
+          disabled={busy}
+          error={confirmationError}
+        />
+      {/if}
 
-        {#if error}<Notice variant="error">{error}</Notice>{/if}
+        {#if formError}<Notice variant="error">{formError}</Notice>{/if}
 
         <Button type="submit" disabled={busy || !password || (hosted && !username)}>
           <span>{busy ? $t('auth.checking') : setup ? $t('auth.create') : $t('auth.signIn')}</span>

@@ -888,7 +888,7 @@
   .empty-error {
     display: grid;
     gap: 0.35rem;
-    border-left: 2px solid var(--danger);
+    border-inline-start: 2px solid var(--danger);
     padding: 0.65rem 0.9rem;
     color: var(--danger);
     font-size: 0.72rem;

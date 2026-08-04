@@ -1,5 +1,6 @@
 <script>
   import { Button, Modal, Notice, Panel } from '@shimpz/frontend';
+  import { t } from '$lib/i18n.js';
   let {
     open = $bindable(false),
     title,
@@ -43,7 +44,7 @@
   <Panel tone="accent">
   <form class="dialog-panel" onsubmit={submit}>
     <header>
-      <p class="dialog-kicker">Assistant // local admission</p>
+      <p class="dialog-kicker">{$t('store.destinationKicker')}</p>
       <h2 id="assistant-action-title">{title}</h2>
       <p>{lead}</p>
     </header>

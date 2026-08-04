@@ -42,7 +42,7 @@
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="copy">
       <strong>{label}</strong>
-      <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? 'Waiting for execution')}</span>
+      <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? label)}</span>
     </span>
     <span class="elapsed" aria-hidden="true">{elapsedText} · {formattedElapsed}</span>
   </div>

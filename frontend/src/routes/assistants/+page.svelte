@@ -43,6 +43,8 @@
   let frameHeight = $state(420);
   let frameReload = $state(0);
   let frameTimeout;
+  let frameMounted = false;
+  let activeStoreUrl = '';
   let storeSnapshotStatus = 'loading';
   let storeSnapshotInstalled = [];
   const storeActionLatch = createStoreActionLatch();
@@ -331,6 +333,15 @@
     waitForStoreFrame();
   }
 
+  $effect(() => {
+    const nextStoreUrl = storeUrl;
+    if (!frameMounted || nextStoreUrl === activeStoreUrl) return;
+    activeStoreUrl = nextStoreUrl;
+    framePhase = 'loading';
+    frameHeight = 420;
+    waitForStoreFrame();
+  });
+
   function handleStoreMessage(event) {
     const measuredHeight = acknowledgeStoreFrame(event, iframeElement?.contentWindow);
     if (measuredHeight !== null) {
@@ -496,10 +507,13 @@
   }
 
   onMount(() => {
+    frameMounted = true;
+    activeStoreUrl = storeUrl;
     window.addEventListener('message', handleStoreMessage);
     framePhase = 'loading';
     waitForStoreFrame();
     return () => {
+      frameMounted = false;
       clearFrameTimeout();
       window.removeEventListener('message', handleStoreMessage);
     };
@@ -731,7 +745,7 @@
   :global(.destination-trigger > span > span) {
     overflow-wrap: anywhere;
     color: inherit;
-    font-family: var(--font-display);
+    font-family: var(--font-mono);
     font-size: clamp(1.35rem, 3vw, 2rem);
     font-weight: 800;
     letter-spacing: -0.04em;

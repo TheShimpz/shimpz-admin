@@ -1,34 +1,76 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import { locale, setLocale, LOCALES } from '$lib/i18n.js';
+  import { locale, setLocale, LOCALES, t } from '$lib/i18n.js';
 
   let { compact = false, wide = false } = $props();
   let open = $state(false);
+  let root = $state();
+  let trigger = $state();
+  let menuItems = $state([]);
+  let focusedIndex = $state(0);
   let currentLocale = $derived($locale);
   let current = $derived(LOCALES.find((item) => item.code === currentLocale) ?? LOCALES[0]);
 
+  function close(restoreFocus = false) {
+    open = false;
+    if (restoreFocus) queueMicrotask(() => trigger?.focus());
+  }
+
+  function focusItem(index) {
+    focusedIndex = (index + LOCALES.length) % LOCALES.length;
+    queueMicrotask(() => menuItems[focusedIndex]?.focus());
+  }
+
+  function toggle() {
+    if (open) {
+      close();
+      return;
+    }
+    focusedIndex = Math.max(0, LOCALES.findIndex((item) => item.code === currentLocale));
+    open = true;
+    focusItem(focusedIndex);
+  }
+
   function choose(code) {
     setLocale(code);
-    open = false;
+    close(true);
   }
 
   function handleKeydown(event) {
-    if (event.key === 'Escape') open = false;
+    if (!open) return;
+    const navigation = {
+      ArrowDown: focusedIndex + 1,
+      ArrowUp: focusedIndex - 1,
+      Home: 0,
+      End: LOCALES.length - 1,
+    }[event.key];
+    if (navigation !== undefined) {
+      event.preventDefault();
+      focusItem(navigation);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      close(true);
+    }
+  }
+
+  function dismissOutside(event) {
+    if (open && !root?.contains(event.target)) close();
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpointerdown={dismissOutside} onfocusin={dismissOutside} />
 
-<div class="locale-menu" class:wide>
+<div bind:this={root} class="locale-menu" class:wide>
   <Button
+    bind:element={trigger}
     class="locale-trigger"
     variant="ghost"
     size="compact"
     type="button"
-    onclick={() => (open = !open)}
+    onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
-    aria-label={`Language: ${current.name}`}
+    aria-label={$t('shell.languageCurrent', { name: current.name })}
   >
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9"></circle>
@@ -39,14 +81,16 @@
   </Button>
 
   {#if open}
-    <ul role="menu" aria-label="Language">
-      {#each LOCALES as item (item.code)}
+    <ul role="menu" aria-label={$t('shell.languageMenu')}>
+      {#each LOCALES as item, index (item.code)}
         <li role="presentation">
           <Button
             variant="ghost"
             size="compact"
-            type="button"
-            role="menuitemradio"
+          type="button"
+          bind:element={menuItems[index]}
+          role="menuitemradio"
+          tabindex={focusedIndex === index ? 0 : -1}
             aria-checked={item.code === currentLocale}
             class={item.code === currentLocale ? 'active' : undefined}
             onclick={() => choose(item.code)}

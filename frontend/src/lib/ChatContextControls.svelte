@@ -73,6 +73,7 @@
       limit: MAX_SELECTED_ASSISTANTS,
     }),
   );
+  let supervisorPasswordError = $derived(deleteError === copy.wrongPassword ? deleteError : '');
   let controlsDisabled = $derived(disabled || $teamContext.phase === 'loading');
   let requiresTeam = $derived(
     $teamContext.phase === 'ready' && $teamContext.teams.length === 0,
@@ -435,8 +436,9 @@
         autocomplete="current-password"
         required
         disabled={deleting}
+        error={supervisorPasswordError}
       />
-    {#if deleteError}
+    {#if deleteError && !supervisorPasswordError}
       <Notice variant="error">
         <strong>{deleteError}</strong>
         {#if deleteErrorDetail}<code>{copy.technicalDetail}: {deleteErrorDetail}</code>{/if}

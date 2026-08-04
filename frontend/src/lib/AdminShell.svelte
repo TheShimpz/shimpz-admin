@@ -9,7 +9,7 @@
   let { active = '', authenticated = false, children } = $props();
 </script>
 
-<TextLink class="skip-link" href="#admin-content">Skip to content</TextLink>
+<TextLink class="skip-link" href="#admin-content">{$t('shell.skipContent')}</TextLink>
 
 <div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
   {#if !authenticated}
@@ -28,7 +28,7 @@
   {#if authenticated}
     <aside class="shell-sidebar">
       <div class="sidebar-brand">
-        <ShimpzBrand product="Admin" href="/chat/" ariaLabel="Shimpz Admin home" />
+        <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
         <NotificationCenter />
       </div>
       <div class="sidebar-controls">
@@ -58,7 +58,7 @@
     </aside>
   {/if}
 
-  <main id="admin-content" class="workspace">
+  <main id="admin-content" class="workspace" tabindex="-1">
     {#if authenticated}<AdminNotice />{/if}
     <div class="content-stage">
       <div class="content-frame">
