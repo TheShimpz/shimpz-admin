@@ -1,4 +1,5 @@
 <script>
+  import { Button, Modal, Notice, Panel } from '@shimpz/frontend';
   let {
     open = $bindable(false),
     title,
@@ -19,7 +20,7 @@
     oncancel = () => {},
   } = $props();
 
-  let dialog;
+  let dialog = $state();
 
   $effect(() => {
     if (!dialog) return;
@@ -38,7 +39,8 @@
   }
 </script>
 
-<dialog bind:this={dialog} aria-labelledby="assistant-action-title" oncancel={cancel}>
+<Modal bind:element={dialog} labelledBy="assistant-action-title" oncancel={cancel}>
+  <Panel tone="accent">
   <form class="dialog-panel" onsubmit={submit}>
     <header>
       <p class="dialog-kicker">Assistant // local admission</p>
@@ -54,39 +56,28 @@
     {/if}
     {#if progress}<p class="dialog-progress" role="status">{progress}</p>{/if}
     {#if hint}<p class="dialog-route-hint">{hint}</p>{/if}
-    {#if error}<p class="dialog-error" role="alert">{error}</p>{/if}
+    {#if error}<Notice variant="error">{error}</Notice>{/if}
     <footer>
-      <button type="button" class="dialog-secondary" disabled={busy} onclick={oncancel}>
+      <Button type="button" variant="secondary" disabled={busy} onclick={oncancel}>
         {secondaryLabel}
-      </button>
+      </Button>
       {#if primaryVisible}
-        <button
+        <Button
           type="submit"
-          class:dialog-danger={destructive}
-          class="dialog-primary"
+          variant={destructive ? 'danger' : 'primary'}
           disabled={busy || primaryDisabled}>
           {primaryLabel}
-        </button>
+        </Button>
       {/if}
     </footer>
   </form>
-</dialog>
+  </Panel>
+</Modal>
 
 <style>
-  dialog {
-    width: min(34rem, calc(100vw - 2rem));
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--text);
-  }
-  dialog::backdrop { background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); }
   .dialog-panel {
     --dialog-pad: clamp(1.4rem, 4vw, 2.2rem);
     padding: var(--dialog-pad);
-    background: var(--surface-1);
-    box-shadow: inset 0 0 0 1px var(--border-strong), 0 24px 80px rgba(0, 0, 0, 0.65);
-    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
   }
   .dialog-kicker {
     margin: 0 0 0.9rem;
@@ -105,30 +96,10 @@
   .dialog-target code { color: var(--accent); font-size: 0.65rem; }
   .dialog-progress { margin: 1rem 0 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .dialog-route-hint { margin: 1rem 0 0; border-inline-start: 2px solid var(--accent); padding: 0.7rem 0.85rem; color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
-  .dialog-error { margin: 0.8rem 0 0; color: var(--danger); font-size: 0.78rem; line-height: 1.5; }
   footer {
     display: flex;
     gap: 0;
     margin: 1.5rem calc(0px - var(--dialog-pad)) calc(0px - var(--dialog-pad));
   }
-  .dialog-primary,
-  .dialog-secondary {
-    min-height: 2.8rem;
-    width: 100%;
-    flex: 1 1 0;
-    border: 0;
-    padding: 0 1rem;
-    background: var(--accent);
-    color: #001013;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .dialog-secondary { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--text-dim); }
-  footer button + button { box-shadow: inset 1px 0 0 var(--border-strong); }
-  .dialog-danger { background: var(--danger); color: #160007; }
-  button:disabled { cursor: not-allowed; opacity: 0.42; }
+  footer :global(.shimpz-button) { width: 100%; flex: 1 1 0; }
 </style>

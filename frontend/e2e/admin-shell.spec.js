@@ -33,3 +33,37 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
 });
+
+test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ files: [] }),
+  }));
+
+  await page.goto('/assistants/');
+  const destination = page.getByRole('button', { name: /marketing/i });
+  await expect(destination).toBeVisible();
+  await destination.click();
+
+  await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /marketing/i }).last()).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeHidden();
+});

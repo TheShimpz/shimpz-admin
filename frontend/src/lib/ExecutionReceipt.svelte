@@ -1,4 +1,5 @@
 <script>
+  import { Disclosure } from '@shimpz/frontend';
   import {
     executionSteps,
     executionStepCount,
@@ -30,8 +31,8 @@
 </script>
 
 {#if events.length > 0}
-  <details class="receipt" bind:open>
-    <summary>{summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}</summary>
+  <Disclosure class="receipt" bind:open>
+    {#snippet summary()}{summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}{/snippet}
     {#if open}
       <ol>
         {#each steps as step, index (step.key)}
@@ -43,11 +44,11 @@
         {/each}
       </ol>
     {/if}
-  </details>
+  </Disclosure>
 {/if}
 
 <style>
-  .receipt {
+  :global(.receipt) {
     margin-block-start: 0.85rem;
     border-block-start: 1px solid var(--admin-divider);
     padding-block-start: 0.65rem;
@@ -56,7 +57,7 @@
     font-size: 0.58rem;
   }
 
-  summary {
+  :global(.receipt summary) {
     width: fit-content;
     color: var(--text-dim);
     cursor: pointer;

@@ -1,4 +1,5 @@
 <script>
+  import { Button, Drawer } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
@@ -75,13 +76,13 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<aside id="assistant-integrations-drawer" aria-labelledby="assistant-integrations-title" hidden={!open}>
+<Drawer id="assistant-integrations-drawer" labelledBy="assistant-integrations-title" {open}>
   <header>
     <div>
       <p>{copy.drawerKicker}</p>
       <h2 id="assistant-integrations-title">{copy.drawerTitle}</h2>
     </div>
-    <button bind:this={closeButton} type="button" onclick={() => onclose?.()} aria-label={copy.closeDrawer}>×</button>
+    <Button bind:element={closeButton} variant="ghost" size="icon" type="button" onclick={() => onclose?.()} aria-label={copy.closeDrawer}>×</Button>
   </header>
 
   <p class="drawer-lead">{copy.drawerLead}</p>
@@ -91,11 +92,11 @@
       <section class="pending">
         <strong>{copy.pendingTitle}</strong>
         <p>{$t('assistantIntegrations.pendingLead', { provider: providerLabel })}</p>
-        <button type="button" disabled={working === 'connect'} onclick={() => connect(pending.challenge_id)}>
+        <Button type="button" disabled={working === 'connect'} onclick={() => connect(pending.challenge_id)}>
           {working === 'connect'
             ? $t('assistantIntegrations.connecting', { provider: providerLabel })
             : copy.connect}
-        </button>
+        </Button>
       </section>
     {/if}
 
@@ -126,12 +127,12 @@
                     <div><dt>{copy.scopes}</dt><dd>{integration.scopes.join(' · ')}</dd></div>
                   </dl>
                   {#if !pendingIdentities.has(itemIdentity) && integration.status !== 'missing'}
-                    <button
-                      class="disconnect"
+                    <Button
+                      variant="danger"
                       type="button"
                       disabled={working === itemIdentity}
                       onclick={() => ondisconnect?.(integration)}
-                    >{working === itemIdentity ? copy.disconnecting : copy.disconnect}</button>
+                    >{working === itemIdentity ? copy.disconnecting : copy.disconnect}</Button>
                   {/if}
                 </li>
               {/each}
@@ -141,23 +142,19 @@
       </div>
     {/if}
   </div>
-</aside>
+</Drawer>
 
 <style>
-  aside { display: grid; width: min(27rem, 37vw); height: 100vh; height: 100dvh; min-width: 20rem; min-height: 0; max-height: 100dvh; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; border-inline-start: 1px solid var(--admin-divider); border-bottom: 1px solid var(--admin-divider); padding: 1rem; background: #050708; overflow: hidden; }
-  aside[hidden] { display: none; }
-  aside > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
-  aside > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
-  aside > header h2 { margin: 0; font-size: 1rem; }
-  aside > header button { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border: 1px solid var(--border-strong); padding: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 1.1rem; }
+  :global(#assistant-integrations-drawer) { display: grid; min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
+  :global(#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
+  :global(#assistant-integrations-drawer) > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  :global(#assistant-integrations-drawer) > header h2 { margin: 0; font-size: 1rem; }
   .drawer-lead { margin: 0; color: var(--text-faint); font-size: 0.68rem; line-height: 1.5; }
   .integration-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-inline-end: 0.25rem; }
   .empty { margin: 1rem 0; color: var(--text-faint); font-size: 0.72rem; }
   .pending { display: grid; gap: 0.45rem; margin-bottom: 0.9rem; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border-strong)); padding: 0.8rem; background: color-mix(in srgb, var(--warn) 5%, #050708); }
   .pending strong { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   .pending p { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
-  .pending button, li > button { min-height: 2.5rem; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; text-transform: uppercase; }
-  .pending button { border: 0; background: var(--warn); color: #131100; }
   .assistant-groups { display: grid; gap: 0.8rem; }
   .assistant-group { border: 1px solid var(--border-strong); background: #020405; }
   .assistant-group > header { display: grid; gap: 0.15rem; padding: 0.75rem; border-bottom: 1px solid var(--border-strong); background: var(--surface-2); }
@@ -175,7 +172,4 @@
   dl div { display: grid; gap: 0.18rem; }
   dt { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.08em; text-transform: uppercase; }
   dd { margin: 0; color: var(--text); font-size: 0.62rem; overflow-wrap: anywhere; }
-  li > button.disconnect { border-color: var(--danger); color: var(--danger); }
-  button:disabled { cursor: not-allowed; opacity: 0.42; }
-  @media (max-width: 820px) { aside { position: fixed; z-index: 110; inset-block: 0; inset-inline-end: 0; width: min(92vw, 27rem); min-width: 0; box-shadow: -1rem 0 2rem rgba(0, 0, 0, 0.65); } }
 </style>

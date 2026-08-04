@@ -1,4 +1,5 @@
 <script>
+  import { Disclosure } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import {
     executionSteps,
@@ -47,8 +48,8 @@
   </div>
 
   {#if visibleSteps.length > 0}
-    <details class="ledger-details">
-      <summary>{stagesText} <span>{visibleSteps.length}</span></summary>
+    <Disclosure class="ledger-details">
+      {#snippet summary()}{stagesText} <span>{visibleSteps.length}</span>{/snippet}
       <ol class="ledger" aria-label={stagesText}>
         {#each visibleSteps as step (step.key)}
           <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
@@ -62,7 +63,7 @@
           </li>
         {/each}
       </ol>
-    </details>
+    </Disclosure>
   {/if}
 </div>
 
@@ -135,13 +136,13 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .ledger-details {
+  :global(.ledger-details) {
     min-width: 0;
     border-block-start: 1px solid var(--admin-divider);
     padding-block-start: 0.65rem;
   }
 
-  .ledger-details summary {
+  :global(.ledger-details summary) {
     width: fit-content;
     color: var(--text-dim);
     cursor: pointer;
@@ -150,7 +151,7 @@
     text-transform: uppercase;
   }
 
-  .ledger-details summary span {
+  :global(.ledger-details summary) span {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }

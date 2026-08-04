@@ -1,5 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
+  import { Button, ShimpzBrand, TextAreaField } from '@shimpz/frontend';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
@@ -9,7 +10,6 @@
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
-  import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
   import { teamContext } from '$lib/teamContext.js';
   import {
@@ -669,24 +669,29 @@
             {/if}
             <ChatContextControls disabled={busy || syncing || stopping} />
             <div class="composer-input">
-              <textarea
-                bind:this={composerInput}
+              <TextAreaField
+                id="chat-composer"
+                label={copy.send}
+                visuallyHiddenLabel
+                class="composer-field"
+                bind:element={composerInput}
                 bind:value={draft}
                 maxlength="16000"
                 rows="2"
                 placeholder={placeholder}
                 disabled={busy || syncing}
                 onkeydown={handleComposerKeydown}
-              ></textarea>
+              />
               <div class="composer-actions">
               {#if busy && !syncing}
-                <button bind:this={stopButton} class="stop" type="button" onclick={stop} disabled={stopping}>
+                <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
-                </button>
+                </Button>
               {/if}
-              <button
-                bind:this={integrationsButton}
-                class="integrations"
+              <Button
+                bind:element={integrationsButton}
+                variant="ghost"
+                size="icon"
                 type="button"
                 onclick={toggleIntegrations}
                 disabled={$teamContext.installedAssistants.length === 0 && !integrationChallenge}
@@ -698,14 +703,13 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
                 </svg>
-              </button>
-              <button
-                class="send"
+              </Button>
+              <Button
                 type="submit"
                 disabled={busy || syncing || !socketReady || !draft.trim()}
               >
                 {socketReady ? copy.send : copy.connecting}
-              </button>
+              </Button>
               </div>
             </div>
           </form>
@@ -942,7 +946,7 @@
     margin-block-end: clamp(0.75rem, 2dvh, 1.5rem);
   }
 
-  textarea {
+  :global(.composer-field textarea) {
     width: 100%;
     height: 3.2rem;
     min-height: 0;
@@ -969,58 +973,17 @@
     gap: 0.5rem;
   }
 
-  .composer button {
+  .composer :global(.shimpz-button) {
     height: 3.2rem;
     min-height: 0;
   }
 
-  button {
-    min-height: 3rem;
-    border: 1px solid var(--border-strong);
-    padding: 0 0.9rem;
-    background: transparent;
-    color: var(--accent);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  button.send {
-    border: 0;
-    background: var(--accent);
-    color: #001013;
-  }
-
-  button.integrations {
-    width: 3.2rem;
-    padding: 0;
-    font-size: 0.9rem;
-  }
-
-  button.integrations {
-    position: relative;
-    display: grid;
-    place-items: center;
-  }
-
-  button.integrations svg {
+  .composer-actions :global(.shimpz-button svg) {
     width: 1rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: square;
     stroke-width: 1.6;
-  }
-
-  button.stop {
-    border-color: var(--danger);
-    color: var(--danger);
-  }
-
-  button:disabled {
-    cursor: not-allowed;
-    opacity: 0.4;
   }
 
   .empty-state {
@@ -1077,6 +1040,6 @@
     .composer { gap: 0.45rem; padding: 0.6rem 0; }
     .composer-input { gap: 0.45rem; }
     .composer-actions { gap: 0.3rem; }
-    button { padding-inline: 0.65rem; }
+    .composer :global(.shimpz-button) { padding-inline: 0.65rem; }
   }
 </style>

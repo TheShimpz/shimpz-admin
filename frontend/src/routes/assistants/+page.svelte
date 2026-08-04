@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
+  import { ActionLink, Button, EmbedFrame, Modal, Notice, Panel, TextField } from '@shimpz/frontend';
   import {
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
@@ -515,8 +516,9 @@
 <header class="store-destination" aria-labelledby="store-destination-team">
   <p>{$t('store.destinationKicker')}</p>
   <h2 id="store-destination-team">
-    <button
-      bind:this={destinationTrigger}
+    <Button
+      bind:element={destinationTrigger}
+      variant="ghost"
       class="destination-trigger"
       type="button"
       onclick={openDestinationDialog}
@@ -526,7 +528,7 @@
     >
       <span>{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</span>
       <small>{destinationCopy.change}<b aria-hidden="true">↘</b></small>
-    </button>
+    </Button>
   </h2>
   <span>
     {activeTeamRecord
@@ -537,15 +539,15 @@
 
 <section class="store-frame" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
-        <iframe
-          bind:this={iframeElement}
+        <EmbedFrame
+          bind:element={iframeElement}
           src={storeUrl}
           title={$t('store.frameTitle')}
-          class:frame-ready={framePhase === 'ready'}
+          class={framePhase === 'ready' ? 'frame-ready' : undefined}
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           onload={storeFrameLoaded}
-        ></iframe>
+        />
         {#if framePhase === 'loading'}
           <div class="frame-state frame-loading" role="status">
             <div class="frame-spinner" aria-hidden="true"><span></span></div>
@@ -559,8 +561,8 @@
               <p>{copy.frameFailureLead}</p>
             </div>
             <div class="frame-actions">
-              <button type="button" onclick={reloadStoreFrame}>{copy.retryStore}</button>
-              <a href={storePageUrl} target="_blank" rel="noopener noreferrer">{copy.openStore}<span aria-hidden="true">↗</span></a>
+              <Button variant="secondary" type="button" onclick={reloadStoreFrame}>{copy.retryStore}</Button>
+              <ActionLink href={storePageUrl} target="_blank" rel="noopener noreferrer">{copy.openStore}<span aria-hidden="true">↗</span></ActionLink>
             </div>
           </div>
         {/if}
@@ -569,14 +571,14 @@
 
 <p class="trust-boundary"><span aria-hidden="true">◇</span>{$t('store.boundary')}</p>
 
-<dialog
+<Modal
   id="store-team-destination-dialog"
   class="destination-dialog"
-  bind:this={destinationDialog}
-  aria-labelledby="store-team-destination-title"
+  bind:element={destinationDialog}
+  labelledBy="store-team-destination-title"
   oncancel={cancelDestinationDialog}
 >
-  <div class="destination-dialog-panel">
+  <Panel class="destination-dialog-panel" tone="accent">
     <header>
       <p>{$t('store.destinationKicker')}</p>
       <h2 id="store-team-destination-title">{destinationCopy.chooseTitle}</h2>
@@ -587,7 +589,8 @@
       <ul class="destination-team-list">
         {#each runningTeams as team (team.id)}
           <li>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onclick={() => chooseDestinationTeam(team.id)}
               disabled={destinationBusy}
@@ -596,7 +599,7 @@
               <i aria-hidden="true"></i>
               <span><strong>{team.name}</strong><small>{team.id}</small></span>
               {#if team.id === activeTeamRecord?.id}<b>{destinationCopy.current}</b>{/if}
-            </button>
+            </Button>
           </li>
         {/each}
       </ul>
@@ -604,36 +607,36 @@
       <p class="destination-empty">{destinationCopy.empty}</p>
     {/if}
 
-    {#if destinationError}<p class="destination-error" role="alert">{destinationError}</p>{/if}
+    {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
 
     <footer>
-      <button class="dialog-secondary" type="button" onclick={closeDestinationDialog} disabled={destinationBusy}>
+      <Button variant="secondary" type="button" onclick={closeDestinationDialog} disabled={destinationBusy}>
         {$t('integration.close')}
-      </button>
-      <button class="dialog-primary" type="button" onclick={openCreateTeamDialog} disabled={destinationBusy}>
+      </Button>
+      <Button type="button" onclick={openCreateTeamDialog} disabled={destinationBusy}>
         {$t('teams.create')}
-      </button>
+      </Button>
     </footer>
-  </div>
-</dialog>
+  </Panel>
+</Modal>
 
-<dialog
+<Modal
   class="destination-dialog"
-  bind:this={createTeamDialog}
-  aria-labelledby="store-create-team-title"
+  bind:element={createTeamDialog}
+  labelledBy="store-create-team-title"
   oncancel={cancelCreateTeamDialog}
 >
-  <form class="destination-dialog-panel" onsubmit={submitDestinationTeam}>
+  <Panel class="destination-dialog-panel" tone="accent">
+  <form onsubmit={submitDestinationTeam}>
     <header>
       <p>{$t('store.destinationKicker')}</p>
       <h2 id="store-create-team-title">{$t('teams.createTitle')}</h2>
       <span>{$t('teams.createLead')}</span>
     </header>
 
-    <label class="destination-field" for="store-create-team-name">
-      <span>{$t('teams.name')}</span>
-      <input
+    <TextField
         id="store-create-team-name"
+        label={$t('teams.name')}
         type="text"
         bind:value={newTeamName}
         placeholder={$t('teams.placeholder')}
@@ -644,20 +647,20 @@
         required
         disabled={destinationBusy}
       />
-    </label>
 
-    {#if destinationError}<p class="destination-error" role="alert">{destinationError}</p>{/if}
+    {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
 
     <footer>
-      <button class="dialog-secondary" type="button" onclick={closeCreateTeamDialog} disabled={destinationBusy}>
+      <Button variant="secondary" type="button" onclick={closeCreateTeamDialog} disabled={destinationBusy}>
         {$t('teams.cancel')}
-      </button>
-      <button class="dialog-primary" type="submit" disabled={destinationBusy || !newTeamName.trim()}>
+      </Button>
+      <Button type="submit" disabled={destinationBusy || !newTeamName.trim()}>
         {destinationBusy ? $t('teams.creating') : $t('teams.createAction')}
-      </button>
+      </Button>
     </footer>
   </form>
-</dialog>
+  </Panel>
+</Modal>
 
 <AssistantActionDialog
   bind:open={dialogOpen}
@@ -711,7 +714,7 @@
     line-height: 1.55;
   }
 
-  .destination-trigger {
+  :global(.destination-trigger) {
     display: inline-grid;
     max-width: 100%;
     grid-template-columns: minmax(0, auto) auto;
@@ -725,7 +728,7 @@
     text-align: start;
   }
 
-  .destination-trigger > span {
+  :global(.destination-trigger > span > span) {
     overflow-wrap: anywhere;
     color: inherit;
     font-family: var(--font-display);
@@ -735,7 +738,7 @@
     line-height: 1.1;
   }
 
-  .destination-trigger small {
+  :global(.destination-trigger) small {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
@@ -748,12 +751,12 @@
     white-space: nowrap;
   }
 
-  .destination-trigger small b { font-size: 0.75rem; }
-  .destination-trigger:hover > span { color: var(--accent); }
-  .destination-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.35rem; }
-  .destination-trigger:disabled { cursor: wait; opacity: 0.55; }
+  :global(.destination-trigger) small b { font-size: 0.75rem; }
+  :global(.destination-trigger:hover > span) { color: var(--accent); }
+  :global(.destination-trigger:focus-visible) { outline: 2px solid var(--accent); outline-offset: 0.35rem; }
+  :global(.destination-trigger:disabled) { cursor: wait; opacity: 0.55; }
 
-  .destination-dialog {
+  :global(.destination-dialog) {
     width: min(34rem, calc(100dvw - 1rem));
     max-height: calc(100dvh - 2rem);
     border: 0;
@@ -762,12 +765,12 @@
     color: var(--text);
   }
 
-  .destination-dialog::backdrop {
+  :global(.destination-dialog::backdrop) {
     background: rgba(0, 0, 0, 0.84);
     backdrop-filter: blur(8px);
   }
 
-  .destination-dialog-panel {
+  :global(.destination-dialog-panel) {
     --dialog-pad: clamp(1.25rem, 4vw, 2rem);
     display: grid;
     max-height: calc(100dvh - 2rem);
@@ -778,11 +781,12 @@
     clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
     overflow: auto;
   }
+  :global(.destination-dialog-panel) form { display: grid; gap: 1.1rem; }
 
-  .destination-dialog-panel > header { display: grid; gap: 0.45rem; }
-  .destination-dialog-panel > header p { margin: 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-  .destination-dialog-panel > header h2 { margin: 0; font-size: clamp(1.4rem, 4vw, 2.1rem); letter-spacing: -0.05em; }
-  .destination-dialog-panel > header span { color: var(--text-dim); font-size: 0.74rem; line-height: 1.55; }
+  :global(.destination-dialog-panel) > header { display: grid; gap: 0.45rem; }
+  :global(.destination-dialog-panel) > header p { margin: 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  :global(.destination-dialog-panel) > header h2 { margin: 0; font-size: clamp(1.4rem, 4vw, 2.1rem); letter-spacing: -0.05em; }
+  :global(.destination-dialog-panel) > header span { color: var(--text-dim); font-size: 0.74rem; line-height: 1.55; }
 
   .destination-team-list {
     display: grid;
@@ -794,7 +798,7 @@
   }
 
   .destination-team-list li { min-width: 0; }
-  .destination-team-list button {
+  .destination-team-list :global(.shimpz-button) {
     display: grid;
     width: 100%;
     min-height: 3.7rem;
@@ -809,92 +813,29 @@
     text-align: start;
   }
 
-  .destination-team-list button:hover,
-  .destination-team-list button[aria-current='true'] { background: rgba(0, 240, 255, 0.065); }
-  .destination-team-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-  .destination-team-list button:disabled { cursor: wait; opacity: 0.55; }
+  .destination-team-list :global(.shimpz-button):hover,
+  :global(.destination-team-list .shimpz-button[aria-current='true']) { background: rgba(0, 240, 255, 0.065); }
+  .destination-team-list :global(.shimpz-button):focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .destination-team-list :global(.shimpz-button):disabled { cursor: wait; opacity: 0.55; }
   .destination-team-list i { width: 0.48rem; height: 0.48rem; border: 1px solid var(--accent); transform: rotate(45deg); }
-  .destination-team-list button[aria-current='true'] i { background: var(--accent); box-shadow: 0 0 10px rgba(0, 240, 255, 0.55); }
+  :global(.destination-team-list .shimpz-button[aria-current='true']) i { background: var(--accent); box-shadow: 0 0 10px rgba(0, 240, 255, 0.55); }
   .destination-team-list span { display: grid; min-width: 0; gap: 0.15rem; }
   .destination-team-list strong { overflow: hidden; font-family: var(--font-mono); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
   .destination-team-list small { overflow: hidden; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.53rem; text-overflow: ellipsis; white-space: nowrap; }
   .destination-team-list b { color: var(--accent); font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.08em; text-transform: uppercase; }
 
-  .destination-empty,
-  .destination-error { margin: 0; font-size: 0.7rem; line-height: 1.5; }
+  .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
   .destination-empty { color: var(--text-dim); }
-  .destination-error { color: var(--danger); }
 
-  .destination-dialog-panel footer {
+  :global(.destination-dialog-panel) footer {
     display: flex;
     gap: 0;
     margin: 0 calc(0px - var(--dialog-pad)) calc(0px - var(--dialog-pad));
   }
 
-  .destination-dialog-panel footer button {
-    min-height: 2.7rem;
+  :global(.destination-dialog-panel footer .shimpz-button) {
     width: 100%;
     flex: 1 1 0;
-    border: 1px solid var(--border-strong);
-    padding: 0 1rem;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .destination-dialog-panel footer button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .destination-dialog-panel footer button + button { box-shadow: inset 1px 0 0 var(--border-strong); }
-  .destination-dialog-panel footer button:disabled { cursor: wait; opacity: 0.45; }
-  .dialog-secondary { background: transparent; color: var(--text-dim); }
-  .dialog-primary { border-color: var(--accent) !important; background: var(--accent); color: #001013; }
-
-  .destination-field { display: grid; gap: 0.4rem; }
-  .destination-field > span { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.56rem; letter-spacing: 0.1em; text-transform: uppercase; }
-  .destination-field input { width: 100%; min-height: 3.2rem; border: 1px solid var(--border-strong); padding: 0 0.85rem; background: #020304; color: var(--text); font-family: var(--font-mono); }
-
-  .frame-actions a {
-    display: inline-flex;
-    min-height: 2.5rem;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.3rem;
-    padding: 0 1rem;
-    background: var(--surface-1);
-    box-shadow: inset 0 0 0 1px var(--accent);
-    clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-decoration: none;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .frame-actions a:hover {
-    filter: drop-shadow(0 0 9px rgba(0, 240, 255, 0.32));
-  }
-
-  .frame-actions button {
-    min-height: 2.8rem;
-    border: 0;
-    padding: 0 1rem;
-    background: var(--accent);
-    color: #001013;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  button:disabled {
-    cursor: not-allowed;
-    opacity: 0.42;
   }
 
   .store-frame {
@@ -903,8 +844,8 @@
     box-shadow: inset 0 0 0 1px var(--border), 0 20px 60px rgba(0, 0, 0, 0.3);
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
-  iframe { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
-  iframe.frame-ready { opacity: 1; }
+  :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
+  :global(.shimpz-embed.frame-ready) { opacity: 1; }
   .frame-state { position: absolute; z-index: 1; inset: 0; display: flex; min-height: 20rem; align-items: center; justify-content: center; padding: clamp(1.2rem, 4vw, 2.5rem); background: radial-gradient(circle at 50% 42%, rgba(0, 240, 255, 0.06), transparent 38%), #000; }
   .frame-loading { flex-direction: column; gap: 1rem; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .frame-loading p { margin: 0; }
@@ -917,7 +858,6 @@
   .frame-error strong { font-family: var(--font-mono); font-size: 0.95rem; }
   .frame-error p { max-width: 52rem; margin: 0.3rem 0 0; color: var(--text-dim); font-size: 0.76rem; line-height: 1.55; }
   .frame-actions { display: flex; align-items: center; gap: 0.55rem; }
-  .frame-actions button { min-height: 2.5rem; }
   .trust-boundary { display: flex; max-width: 78ch; align-items: flex-start; gap: 0.65rem; margin: 1rem 0 0; color: var(--text-faint); font-size: 0.76rem; line-height: 1.6; }
   .trust-boundary span { color: var(--accent-alt); }
 
@@ -929,6 +869,6 @@
     .frame-error { grid-template-columns: 1fr; text-align: center; }
     .frame-error-mark { margin: 0 auto; }
     .frame-actions { display: grid; }
-    .frame-actions a, .frame-actions button { width: 100%; }
+    .frame-actions :global(.shimpz-action-link), .frame-actions :global(.shimpz-button) { width: 100%; }
   }
 </style>

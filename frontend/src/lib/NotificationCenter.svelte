@@ -1,4 +1,5 @@
 <script>
+  import { Button, Modal, Panel } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import Markdown from '$lib/Markdown.svelte';
   import { locale, t } from '$lib/i18n.js';
@@ -12,8 +13,8 @@
   } from '$lib/notifications.js';
 
 
-  let dialog;
-  let trigger;
+  let dialog = $state();
+  let trigger = $state();
   let open = $state(false);
   let view = $state('list');
   let selectedId = $state('');
@@ -130,10 +131,11 @@
   });
 </script>
 
-<button
-  bind:this={trigger}
-  class="notification-trigger"
-  class:has-unread={unreadCount > 0}
+<Button
+  bind:element={trigger}
+  variant="ghost"
+  size="icon"
+  class={`notification-trigger${unreadCount > 0 ? ' has-unread' : ''}`}
   type="button"
   aria-label={openLabel}
   aria-haspopup="dialog"
@@ -147,26 +149,27 @@
   {#if unreadCount > 0}
     <span class="notification-badge" aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>
   {/if}
-</button>
+</Button>
 
-<dialog
-  bind:this={dialog}
-  aria-labelledby="notification-center-title"
+<Modal
+  bind:element={dialog}
+  class="notification-modal"
+  labelledBy="notification-center-title"
   oncancel={cancel}
   onclose={() => { open = false; }}
 >
-  <section class="notification-drawer">
+  <Panel class="notification-drawer" tone="accent">
     <header>
       <div>
         <p>{copy.kicker}</p>
         <h2 id="notification-center-title">{copy.label}</h2>
       </div>
-      <button class="icon-button" type="button" aria-label={copy.close} title={copy.close} onclick={closeDrawer}>×</button>
+      <Button variant="ghost" size="icon" type="button" aria-label={copy.close} title={copy.close} onclick={closeDrawer}>×</Button>
     </header>
 
     {#if view === 'detail' && selected}
       <div class="detail-toolbar">
-        <button type="button" onclick={() => { view = 'list'; selectedId = ''; }}>← {copy.back}</button>
+        <Button variant="ghost" size="compact" type="button" onclick={() => { view = 'list'; selectedId = ''; }}>← {copy.back}</Button>
       </div>
       <article class="notification-detail">
         <p class="assistant-id">{copy.assistant} // {selected.assistant_id}</p>
@@ -178,16 +181,16 @@
       </article>
     {:else}
       <div class="notification-actions">
-        <button type="button" disabled={actionBusy || unreadCount === 0} onclick={markAllRead}>{copy.markAll}</button>
-        <button class="clear-button" type="button" disabled={actionBusy || notifications.length === 0} onclick={clearAll}>{copy.clear}</button>
+        <Button variant="secondary" size="compact" type="button" disabled={actionBusy || unreadCount === 0} onclick={markAllRead}>{copy.markAll}</Button>
+        <Button variant="danger" size="compact" type="button" disabled={actionBusy || notifications.length === 0} onclick={clearAll}>{copy.clear}</Button>
       </div>
 
       <div class="notification-list" aria-busy={!ready} aria-live="polite">
         {#if notifications.length > 0}
           {#each notifications as notification (notification.id)}
-            <button
-              class="notification-item"
-              class:unread={notification.read_at === null}
+            <Button
+              variant="ghost"
+              class={`notification-item${notification.read_at === null ? ' unread' : ''}`}
               type="button"
               onclick={() => choose(notification)}
             >
@@ -197,23 +200,18 @@
                 <small>{notification.assistant_id} · {formatDate(notification.published_at)}</small>
               </span>
               <span class="read-state">{notification.read_at === null ? copy.unread : copy.read}</span>
-            </button>
+            </Button>
           {/each}
         {:else if ready}
           <p class="empty-state">{unavailable ? copy.unavailable : copy.empty}</p>
         {/if}
       </div>
     {/if}
-  </section>
-</dialog>
+  </Panel>
+</Modal>
 
 <style>
-  .notification-trigger,
-  button {
-    font: inherit;
-  }
-
-  .notification-trigger {
+  :global(.notification-trigger) {
     position: relative;
     display: grid;
     width: 2.5rem;
@@ -227,12 +225,12 @@
     cursor: pointer;
   }
 
-  .notification-trigger:hover,
-  .notification-trigger.has-unread {
+  :global(.notification-trigger:hover),
+  :global(.notification-trigger.has-unread) {
     color: var(--accent);
   }
 
-  .notification-trigger svg {
+  :global(.notification-trigger) svg {
     width: 1.1rem;
     height: 1.1rem;
     fill: none;
@@ -260,40 +258,25 @@
     line-height: 1;
   }
 
-  dialog {
-    position: fixed;
-    inset-block: 0;
-    inset-inline-end: 0;
-    width: min(31rem, 100vw);
-    height: 100vh;
-    height: 100dvh;
-    max-width: 100vw;
-    max-height: none;
-    margin: 0;
-    margin-inline-start: auto;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--text);
-  }
-
-  dialog::backdrop {
-    background: rgba(0, 0, 0, 0.76);
-    backdrop-filter: blur(5px);
-  }
-
-  .notification-drawer {
+  :global(.notification-drawer) {
     display: grid;
     height: 100%;
     min-height: 0;
     grid-template-rows: auto auto minmax(0, 1fr);
     border-inline-start: 1px solid var(--border-strong);
-    background:
-      linear-gradient(rgba(0, 240, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 240, 255, 0.025) 1px, transparent 1px),
-      #030506;
-    background-size: 48px 48px;
+    background: var(--surface-1);
     box-shadow: -1rem 0 3rem rgba(0, 0, 0, 0.7);
+  }
+
+  :global(.notification-modal) {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: min(31rem, 100vw);
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    margin-inline-start: auto;
   }
 
   header {
@@ -321,19 +304,6 @@
   h2 { font-size: clamp(1.55rem, 4vw, 2.25rem); letter-spacing: -0.05em; }
   h3 { margin-top: 0.35rem; font-size: 1.35rem; line-height: 1.2; }
 
-  .icon-button {
-    display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
-    place-items: center;
-    border: 1px solid var(--border-strong);
-    padding: 0;
-    background: #030506;
-    color: var(--accent);
-    cursor: pointer;
-    font-size: 1.15rem;
-  }
-
   .notification-actions,
   .detail-toolbar {
     display: flex;
@@ -344,24 +314,7 @@
     padding: 0.8rem 1.4rem;
   }
 
-  .notification-actions button,
-  .detail-toolbar button {
-    min-height: 2.25rem;
-    border: 1px solid var(--border-strong);
-    padding: 0 0.75rem;
-    background: #030506;
-    color: var(--accent);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-  }
-
   .detail-toolbar { justify-content: flex-start; }
-  .notification-actions .clear-button { color: var(--danger); }
-  button:disabled { cursor: not-allowed; opacity: 0.38; }
 
   .notification-list,
   .notification-detail {
@@ -372,7 +325,7 @@
 
   .notification-list { padding: 0.75rem 0; }
 
-  .notification-item {
+  :global(.notification-item) {
     display: grid;
     width: 100%;
     min-width: 0;
@@ -388,13 +341,13 @@
     text-align: start;
   }
 
-  .notification-item:hover,
-  .notification-item:focus-visible {
+  :global(.notification-item:hover),
+  :global(.notification-item:focus-visible) {
     background: rgba(0, 240, 255, 0.055);
     color: var(--text);
   }
 
-  .notification-item.unread {
+  :global(.notification-item.unread) {
     border-inline-start-color: var(--accent);
     color: var(--text);
   }
@@ -407,7 +360,7 @@
     border-radius: 50%;
   }
 
-  .unread .status-dot {
+  :global(.notification-item.unread) .status-dot {
     background: var(--accent);
     box-shadow: 0 0 0.5rem rgba(0, 240, 255, 0.8);
   }
@@ -430,16 +383,11 @@
   .notification-detail time { display: block; margin-top: 0.6rem; }
   .changelog { margin-top: 1.5rem; border-top: 1px solid var(--border-strong); padding-top: 1.25rem; }
 
-  button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
   @media (max-width: 520px) {
-    dialog { width: 100vw; }
+    :global(.notification-modal) { width: 100vw; }
     .notification-actions { justify-content: stretch; }
-    .notification-actions button { flex: 1 1 auto; }
-    .notification-item { padding-inline: 1rem; }
+    .notification-actions :global(.shimpz-button) { flex: 1 1 auto; }
+    :global(.notification-item) { padding-inline: 1rem; }
     header, .notification-detail { padding-inline: 1rem; }
   }
 </style>

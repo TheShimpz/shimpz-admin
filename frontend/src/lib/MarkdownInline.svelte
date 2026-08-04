@@ -1,4 +1,5 @@
 <script>
+  import { TextLink } from '@shimpz/frontend';
   let { tokens = [] } = $props();
 </script>
 
@@ -10,7 +11,7 @@
   {:else if token.type === 'emphasis'}
     <em>{token.text}</em>
   {:else if token.type === 'link'}
-    <a href={token.href} target="_blank" rel="noopener noreferrer">{token.text}</a>
+    <TextLink href={token.href} external>{token.text}</TextLink>
   {:else}
     {token.text}
   {/if}
