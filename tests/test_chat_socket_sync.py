@@ -247,6 +247,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
+
                 def resume_integrations(_team_id, _challenge_id, progress):
                     for event in _MEASURED_PROGRESS:
                         progress(dict(event))

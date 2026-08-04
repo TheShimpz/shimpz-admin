@@ -100,8 +100,7 @@ def canonical_public_progress(value: object) -> dict[str, object]:
         if set(event) != expected or state not in progress_contract.STATES:
             raise ValueError("invalid Admin progress event")
         if state == "finished" and (
-            type(event["elapsed_ms"]) is not int
-            or not 0 <= event["elapsed_ms"] <= progress_contract.MAX_ELAPSED_MS
+            type(event["elapsed_ms"]) is not int or not 0 <= event["elapsed_ms"] <= progress_contract.MAX_ELAPSED_MS
         ):
             raise ValueError("invalid Admin progress duration")
     else:

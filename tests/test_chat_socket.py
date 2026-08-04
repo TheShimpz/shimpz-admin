@@ -41,8 +41,7 @@ def _emit_measured_progress(callback) -> None:
 
 def _progress_frames() -> list[dict[str, object]]:
     return [
-        {"type": "progress", "seq": sequence, **event}
-        for sequence, event in enumerate(_MEASURED_PROGRESS, start=1)
+        {"type": "progress", "seq": sequence, **event} for sequence, event in enumerate(_MEASURED_PROGRESS, start=1)
     ]
 
 
@@ -396,9 +395,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 await asyncio.sleep(0.05)
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)
-                await websocket.send_json(
-                    {"type": "chat", "message": "next", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "next", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
                     _progress_frames(),
@@ -442,9 +439,7 @@ class ChatWebSocketTests(unittest.TestCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "race", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "race", "files": [], "assistant_ids": []})
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual(
@@ -495,9 +490,7 @@ class ChatWebSocketTests(unittest.TestCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "bounded", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "bounded", "files": [], "assistant_ids": []})
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual((await websocket.next_json())["type"], "done")
@@ -539,9 +532,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 pending_getters = [
                     task
                     for task in asyncio.all_tasks()
-                    if task is not asyncio.current_task()
-                    and not task.done()
-                    and "Queue.get" in repr(task.get_coro())
+                    if task is not asyncio.current_task() and not task.done() and "Queue.get" in repr(task.get_coro())
                 ]
                 self.assertEqual(pending_getters, [])
 
@@ -559,9 +550,7 @@ class ChatWebSocketTests(unittest.TestCase):
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "hello", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "hello", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
                     _progress_frames(),
