@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import chat_socket_fixtures
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -54,6 +56,7 @@ class _Socket:
         origin: str = "http://localhost:7777",
         protocols: list[str] | None = None,
         team_id: str = "team_1",
+        fail_send_type: str = "",
     ) -> None:
         offered = ["shimpz.chat.v3"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
@@ -82,9 +85,19 @@ class _Socket:
         self._incoming: asyncio.Queue = asyncio.Queue()
         self._outgoing: asyncio.Queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
+        self._fail_send_type = fail_send_type
+        self.send_failed = threading.Event()
+
+    async def _send(self, message: dict) -> None:
+        if message.get("type") == "websocket.send" and "text" in message:
+            event = json.loads(message["text"])
+            if event.get("type") == self._fail_send_type:
+                self.send_failed.set()
+                raise RuntimeError("simulated peer send failure")
+        await self._outgoing.put(message)
 
     async def start(self) -> dict:
-        self._task = asyncio.create_task(self._application(self._scope, self._incoming.get, self._outgoing.put))
+        self._task = asyncio.create_task(self._application(self._scope, self._incoming.get, self._send))
         await self._incoming.put({"type": "websocket.connect"})
         return await self.next_message()
 
@@ -535,6 +548,78 @@ class ChatWebSocketTests(unittest.TestCase):
                     if task is not asyncio.current_task() and not task.done() and "Queue.get" in repr(task.get_coro())
                 ]
                 self.assertEqual(pending_getters, [])
+
+        asyncio.run(scenario())
+
+    def test_progress_send_failure_stops_a_running_turn_once(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            release = threading.Event()
+
+            def turn(_team_id, _payload, progress):
+                started.set()
+                progress(dict(_MEASURED_PROGRESS[0]))
+                release.wait(timeout=2)
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
+                )
+
+            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "chat", "message": "running", "files": [], "assistant_ids": []})
+                await _wait_for_thread(started)
+                await _wait_for_thread(websocket.send_failed)
+                await websocket.disconnect()
+                self.assertEqual(stop_mock.call_count, 1)
+                release.set()
+                await asyncio.sleep(0.05)
+
+        asyncio.run(scenario())
+
+    def test_progress_send_failure_does_not_stop_a_completed_turn(self) -> None:
+        async def scenario() -> None:
+            def turn(_team_id, _payload, progress):
+                progress(dict(_MEASURED_PROGRESS[0]))
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "already committed"},
+                )
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "chat", "message": "running", "files": [], "assistant_ids": []})
+                await _wait_for_thread(websocket.send_failed)
+                await websocket.disconnect()
+                stop.assert_not_called()
+
+        asyncio.run(scenario())
+
+    def test_paused_integration_gate_survives_disconnect(self) -> None:
+        async def scenario() -> None:
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "turn",
+                    return_value=chat_socket_fixtures.integration_challenge(),
+                ),
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "chat", "message": "connect", "files": [], "assistant_ids": []})
+                self.assertEqual((await websocket.next_json())["type"], "integrations-required")
+                await websocket.disconnect()
+                stop.assert_not_called()
 
         asyncio.run(scenario())
 

@@ -281,6 +281,23 @@ async def _await_turn_response(
     return team.TeamResponse(502, {}) if result is None else result
 
 
+async def _stop_closed_turn(
+    websocket: WebSocket,
+    connection: _Connection,
+    turn: _Turn,
+    team_id: str,
+) -> None:
+    if not connection.closed or turn.terminal_sent or turn.future is None or turn.future.done():
+        return
+    stop_task = _request_stop(websocket, connection, turn, team_id, emit=False)
+    if stop_task is not None:
+        with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+            await asyncio.wait_for(
+                asyncio.shield(stop_task),
+                timeout=STOP_RESULT_WAIT_SECONDS,
+            )
+
+
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
         response = team.TeamResponse(502, {})
@@ -300,6 +317,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                     asyncio.shield(turn.stop_task),
                     timeout=STOP_RESULT_WAIT_SECONDS,
                 )
+        await _stop_closed_turn(websocket, connection, turn, team_id)
         if connection.closed or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
@@ -691,7 +709,10 @@ async def serve(
                     stop_task = _request_stop(websocket, connection, active, canonical_id, emit=False)
                 if stop_task is not None:
                     with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-                        await asyncio.wait_for(asyncio.shield(stop_task), timeout=15)
+                        await asyncio.wait_for(
+                            asyncio.shield(stop_task),
+                            timeout=STOP_RESULT_WAIT_SECONDS,
+                        )
                 if active.delivery is not None:
                     active.delivery.cancel()
                     await asyncio.gather(active.delivery, return_exceptions=True)

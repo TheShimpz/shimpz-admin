@@ -278,6 +278,47 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_disconnect_does_not_cancel_an_oauth_resumed_turn(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            release = threading.Event()
+            finished = threading.Event()
+
+            def resume_integrations(_team_id, _challenge_id, _progress):
+                started.set()
+                release.wait(timeout=2)
+                finished.set()
+                return self.chat_socket.local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Team-authoritative."},
+                )
+
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "pending_integrations",
+                    return_value=_integration_challenge(status=200),
+                ),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "resume_integrations",
+                    side_effect=resume_integrations,
+                ),
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                await _wait_for_thread(started)
+                await websocket.disconnect()
+                stop.assert_not_called()
+                self.assertFalse(finished.is_set())
+                release.set()
+                await _wait_for_thread(finished)
+                stop.assert_not_called()
+
+        asyncio.run(scenario())
+
     def test_sync_delivery_exception_fails_closed_with_one_terminal(self) -> None:
         async def scenario() -> None:
             empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
