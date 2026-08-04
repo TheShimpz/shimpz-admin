@@ -174,12 +174,40 @@
     {
       "name": "finished_without_duration",
       "valid": false,
-      "record": {"type": "progress", "seq": 4, "phase": "reply-validation", "state": "finished"}
+      "record": {"type": "progress", "seq": 4, "phase": "power-delivery", "state": "finished"}
     },
     {
       "name": "boolean_terminal_status",
       "valid": false,
       "record": {"type": "terminal", "status": true, "body": {}}
+    }
+  ],
+  "chat_stream_lines": [
+    {
+      "name": "canonical_terminal_line",
+      "valid": true,
+      "line": "{\"body\":{\"reply\":\"done\",\"team_id\":\"team_1\"},\"status\":200,\"type\":\"terminal\"}\n",
+      "record": {"type": "terminal", "status": 200, "body": {"reply": "done", "team_id": "team_1"}}
+    },
+    {
+      "name": "duplicate_field_line",
+      "valid": false,
+      "line": "{\"type\":\"terminal\",\"type\":\"terminal\",\"status\":200,\"body\":{}}\n"
+    },
+    {
+      "name": "non_finite_line",
+      "valid": false,
+      "line": "{\"type\":\"terminal\",\"status\":NaN,\"body\":{}}\n"
+    },
+    {
+      "name": "missing_newline",
+      "valid": false,
+      "line": "{\"type\":\"terminal\",\"status\":200,\"body\":{}}"
+    },
+    {
+      "name": "over_max_line",
+      "valid": false,
+      "generated": "over-max-line"
     }
   ],
   "identifiers": {
