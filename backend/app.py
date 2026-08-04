@@ -10,11 +10,14 @@ process holds no Docker socket and has no host configuration write surface.
 """
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import os
 import sys
 from contextlib import asynccontextmanager, suppress
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -70,6 +73,44 @@ MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = 4 * 1024
 MAX_ACCOUNT_USERNAME_CHARS = 32
 ACCOUNT_COOKIE_TTL = 14 * 24 * 60 * 60
+
+
+class _InlineScriptCollector(HTMLParser):
+    """Collect only SvelteKit's generated inline bootstrap scripts."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._collecting = False
+        self._chunks: list[str] = []
+        self.scripts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._collecting = tag == "script" and not any(name == "src" for name, _value in attrs)
+        if self._collecting:
+            self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._collecting:
+            self._chunks.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._collecting:
+            self.scripts.append("".join(self._chunks))
+            self._collecting = False
+
+
+def _spa_script_sources() -> tuple[str, ...]:
+    index = UI_DIR / "index.html"
+    if not index.is_file():
+        return ()
+    collector = _InlineScriptCollector()
+    collector.feed(index.read_text(encoding="utf-8"))
+    return tuple(
+        "'sha256-"
+        + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+        + "'"
+        for script in collector.scripts
+    )
 
 # Open surface: the SPA shell (served for any non-/api path) + these auth endpoints. Everything
 # else under /api/ needs a session.
@@ -260,6 +301,35 @@ def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
     return response
 
 
+_SPA_SCRIPT_POLICY = " ".join(("'self'", *_spa_script_sources()))
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "frame-src https://shimpz.com",
+        "form-action 'self'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        f"script-src {_SPA_SCRIPT_POLICY}",
+        # Svelte uses inline style attributes for runtime frame sizing. Scripts remain hash-bound.
+        "style-src 'self' 'unsafe-inline'",
+        "connect-src 'self' ws: wss:",
+    )
+)
+PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
+
+
+def _secure_response(response: Response) -> Response:
+    """Apply the browser boundary consistently to SPA, API, and failure responses."""
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @app.middleware("http")
 async def _gate(request: Request, call_next):
     """Keep static/auth routes open and validate the profile's current Supervisor on every API call."""
@@ -271,29 +341,24 @@ async def _gate(request: Request, call_next):
         if path == "/api/session":
             response.headers["Cache-Control"] = "no-store"
             response.headers["Vary"] = "Origin"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+        return _secure_response(response)
     # Everything else under /api/ requires a valid session.
     try:
         evidence = await _session_evidence(request.cookies)
     except SessionEvidenceUnavailableError:
         response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+        return _secure_response(response)
     if evidence is None:
         response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+        return _secure_response(response)
     request.state.supervisor = evidence
     try:
         with _team_session_scope(request.cookies):
             response = await call_next(request)
-            response.headers["Referrer-Policy"] = "no-referrer"
-            return response
+            return _secure_response(response)
     except supervisor.SupervisorAuthorityError, team.TeamRequestError:
         response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+        return _secure_response(response)
 
 
 @app.post("/api/session")
