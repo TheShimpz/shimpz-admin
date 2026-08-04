@@ -42,10 +42,18 @@ test('static supply chain: shared frontend is pinned to one immutable commit', (
 test('static presentation: every Admin surface composes the canonical layout primitives', () => {
   const contracts = new Map([
     ['../src/lib/AdminShell.svelte', ['WorkspaceShell']],
+    ['../src/lib/AdminNotice.svelte', ['Toast']],
+    ['../src/lib/AssistantActionDialog.svelte', ['Card', 'DialogFrame', 'Modal']],
+    ['../src/lib/AssistantIntegrationsDialog.svelte', ['Card', 'DialogFrame', 'Modal', 'ScrollArea', 'StatusBadge']],
+    ['../src/lib/AssistantIntegrationsDrawer.svelte', ['Card', 'Drawer', 'EmptyState', 'ScrollArea', 'StatusBadge', 'Toolbar']],
     ['../src/lib/AuthScreen.svelte', ['Card']],
+    ['../src/lib/ChatContextControls.svelte', ['ChoiceItem', 'DialogFrame', 'Modal']],
+    ['../src/lib/ExecutionReceipt.svelte', ['Disclosure']],
     ['../src/lib/LocaleMenu.svelte', ['DropdownMenu']],
-    ['../src/lib/NotificationCenter.svelte', ['Card', 'ScrollArea', 'Toolbar']],
+    ['../src/lib/NotificationCenter.svelte', ['Card', 'EmptyState', 'ScrollArea', 'Toolbar']],
     ['../src/lib/ProviderSetupGate.svelte', ['Card']],
+    ['../src/lib/ShimpzThinking.svelte', ['Disclosure']],
+    ['../src/lib/TeamSidebar.svelte', ['Notice']],
     ['../src/routes/chat/+page.svelte', ['EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
     ['../src/routes/assistants/+page.svelte', ['Card', 'EmptyState', 'PageIntro', 'Skeleton', 'Toolbar']],
   ]);

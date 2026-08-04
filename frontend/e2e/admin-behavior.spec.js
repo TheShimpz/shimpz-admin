@@ -62,7 +62,20 @@ async function routeReadyChat(page) {
   }));
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ integrations: [] }),
+    body: JSON.stringify({
+      integrations: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_name: 'Shimpz Cloudflare',
+        id: 'cloudflare',
+        provider: 'cloudflare',
+        name: 'Cloudflare',
+        summary: 'Reads reviewed zone and DNS metadata.',
+        scopes: ['dns.read', 'offline_access', 'zone.read'],
+        status: 'connected',
+        integration: { id: 'account-1', name: 'Shimpz', username: null },
+        expires_at: '2026-08-31T12:00:00.000Z',
+      }],
+    }),
   }));
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
     socket.onMessage((message) => {
@@ -128,6 +141,14 @@ test('compiled Chat renders Markdown, execution receipt, and the integrations dr
   await integrations.click();
   const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
+  await expect(drawer.getByText('Connected', { exact: true })).toBeVisible();
+  const drawerAxe = await new AxeBuilder({ page }).include('#assistant-integrations-drawer').analyze();
+  expect(drawerAxe.violations).toEqual([]);
+  await expect(drawer).toHaveScreenshot('integrations-drawer.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
 

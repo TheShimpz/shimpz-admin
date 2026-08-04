@@ -1,5 +1,5 @@
 <script>
-  import { Button, Card, Modal, ScrollArea, Toolbar } from '@shimpz/frontend';
+  import { Button, Card, EmptyState, Modal, ScrollArea, Toolbar } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import Markdown from '$lib/Markdown.svelte';
   import { locale, t } from '$lib/i18n.js';
@@ -205,7 +205,7 @@
             </Button>
           {/each}
         {:else if ready}
-          <p class="empty-state">{unavailable ? copy.unavailable : copy.empty}</p>
+          <EmptyState compact title={unavailable ? copy.unavailable : copy.empty} />
         {/if}
       </ScrollArea>
     {/if}
@@ -382,7 +382,6 @@
   }
 
   .read-state { color: inherit; text-transform: uppercase; }
-  .empty-state { margin: 2rem 1.4rem; color: var(--text-faint); font-size: 0.75rem; line-height: 1.6; }
 
   :global(.notification-detail article) { padding: 1.4rem; }
   :global(.notification-detail time) { display: block; margin-top: 0.6rem; }

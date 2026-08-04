@@ -1,5 +1,14 @@
 <script>
-  import { Button, DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import {
+    Button,
+    Card,
+    DialogFrame,
+    Modal,
+    Notice,
+    ScrollArea,
+    StatusBadge,
+    TextField,
+  } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
@@ -89,9 +98,12 @@
     lead={$t('assistantIntegrations.dialogLead', { provider: providerLabel })}
   >
     {#if awaitingCompletion}
-      <section class="completion" aria-labelledby="assistant-integration-completion-title">
-        <h3 id="assistant-integration-completion-title">{copy.completionTitle}</h3>
-        <p id="assistant-integration-completion-lead">{copy.completionLead}</p>
+      <Card
+        class="completion"
+        title={copy.completionTitle}
+        description={copy.completionLead}
+        tone="accent"
+      >
         <TextField
           id="assistant-integration-completion-code"
           label={copy.completionLabel}
@@ -101,20 +113,23 @@
           spellcheck="false"
           disabled={submitting}
         />
-      </section>
+      </Card>
     {:else}
-      <div class="requirements">
+      <ScrollArea class="requirements">
         {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.integration_id}`)}
-          <article>
-            <header>
-              <div>
+          <Card
+            class="requirement"
+            title={requirement.name}
+            description={requirement.summary}
+            padding="compact"
+          >
+            {#snippet header()}
+              <div class="assistant-identity">
                 <strong>{requirement.assistant_name}</strong>
                 <code>{requirement.assistant_id}</code>
               </div>
-              <span>{providerLabel}</span>
-            </header>
-            <h3>{requirement.name}</h3>
-            <p>{requirement.summary}</p>
+            {/snippet}
+            {#snippet action()}<StatusBadge tone="info">{providerLabel}</StatusBadge>{/snippet}
             <section aria-label={copy.scopesTitle}>
               <span>{copy.scopesTitle}</span>
               <div class="chips">
@@ -129,9 +144,9 @@
                 {/each}
               </ul>
             </section>
-          </article>
+          </Card>
         {/each}
-      </div>
+      </ScrollArea>
     {/if}
 
     {#if submitError}<Notice variant="error">{submitError}</Notice>{/if}
@@ -154,20 +169,15 @@
 </Modal>
 
 <style>
-  .requirements { display: grid; min-height: 0; gap: 0.8rem; overflow-y: auto; overscroll-behavior: contain; }
-  .completion { display: grid; align-content: center; gap: 0.7rem; min-height: 13rem; border: 1px solid var(--border-strong); padding: clamp(0.9rem, 3vw, 1.5rem); background: #030506; }
-  .completion h3, .completion p { margin: 0; }
-  .completion h3 { font-size: clamp(1.1rem, 3vw, 1.6rem); }
-  .completion p { color: var(--text-dim); font-size: 0.72rem; line-height: 1.6; }
-  article { display: grid; gap: 0.65rem; border: 1px solid var(--border-strong); padding: 0.85rem; background: #030506; }
-  article > header { display: flex; align-items: start; justify-content: space-between; gap: 0.75rem; }
-  article > header div { display: grid; gap: 0.18rem; }
-  article > header code { color: var(--accent); font-size: 0.56rem; }
-  article > header span { color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; }
-  article h3 { margin: 0; font-size: 0.86rem; }
-  article > p, li p { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
-  article section { display: grid; gap: 0.4rem; }
-  article section > span { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.54rem; letter-spacing: 0.1em; text-transform: uppercase; }
+  :global(.requirements) { display: grid; min-height: 0; gap: 0.8rem; }
+  :global(.completion) { min-height: 13rem; align-content: center; }
+  :global(.completion > .content) { display: grid; align-content: center; }
+  :global(.requirement > .content) { display: grid; gap: 0.65rem; }
+  .assistant-identity { display: grid; gap: 0.18rem; }
+  .assistant-identity code { color: var(--accent); font-size: 0.56rem; }
+  :global(.requirement section) { display: grid; gap: 0.4rem; }
+  :global(.requirement section > span) { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.54rem; letter-spacing: 0.1em; text-transform: uppercase; }
+  li p { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
   .chips code { border: 1px solid var(--border-strong); padding: 0.18rem 0.4rem; color: var(--accent); font-size: 0.56rem; }
   ul { display: grid; margin: 0; border: 1px solid var(--border); padding: 0; list-style: none; }
