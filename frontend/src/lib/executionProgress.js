@@ -14,8 +14,11 @@ function identity(event) {
 function annotateNarrative(steps) {
   const powerOccurrences = new Map();
   let observedPowers = 0;
+  let observedModels = 0;
   for (const step of steps) {
     step.observedPowersBefore = observedPowers;
+    step.observedModelsBefore = observedModels;
+    if (step.phase === 'model') observedModels += 1;
     if (step.phase !== 'power') continue;
     const key = `${step.assistant_id}\u0000${step.power}`;
     const occurrence = (powerOccurrences.get(key) ?? 0) + 1;
@@ -113,13 +116,13 @@ function fillNarrative(template, values) {
 
 function displayAssistant(step, context) {
   const names = context.assistantNames;
-  const reviewed = names instanceof Map ? names.get(step.assistant_id) : names?.[step.assistant_id];
+  const reviewed = names instanceof Map ? names.get(step.assistant_id) : undefined;
   return reviewed ?? humanizeIdentifier(step.assistant_id);
 }
 
 function narrativeKey(step) {
   if (step.phase === 'team-context') {
-    return step.observedPowersBefore > 0 ? 'teamContextFinal' : 'teamContextInitial';
+    return step.observedModelsBefore > 0 ? 'teamContextFinal' : 'teamContextInitial';
   }
   if (step.phase === 'model') {
     return step.observedPowersBefore > 0 ? 'modelAfterPower' : 'modelInitial';
