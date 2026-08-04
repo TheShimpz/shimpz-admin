@@ -28,3 +28,13 @@ test('static presentation: Admin uses only shared interactive primitives', () =>
     assert.equal(existsSync(new URL(`../src/lib/${retiredShadow}`, import.meta.url)), false);
   }
 });
+
+test('static supply chain: shared frontend is pinned to one immutable commit', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const packageLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
+  const dependency = packageJson.dependencies['@shimpz/frontend'];
+  const resolved = packageLock.packages['node_modules/@shimpz/frontend'].resolved;
+  const immutableCodeload = /^https:\/\/codeload\.github\.com\/TheShimpz\/shimpz-frontend\/tar\.gz\/[0-9a-f]{40}$/;
+  assert.match(dependency, immutableCodeload);
+  assert.equal(resolved, dependency);
+});
