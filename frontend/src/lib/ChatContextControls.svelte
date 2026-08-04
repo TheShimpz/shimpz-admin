@@ -329,8 +329,10 @@
               disabled={$modelContext.phase === 'saving'}
               onclick={() => chooseBrain(brain)}
             >
-              <span><strong>{brain.title}</strong><small>{brain.providerTitle}</small></span>
-              {#if brain.value === selectedBrain?.value}<small>{copy.current}</small>{/if}
+              <span class="choice-copy">
+                <strong>{brain.title}</strong>
+                <small>{brain.providerTitle}</small>
+              </span>
             </Button>
           </li>
         {/each}
@@ -503,7 +505,9 @@
   .choice-list { display: grid; min-height: 0; gap: 0.4rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
   .choice-list > li { min-width: 0; }
   :global(.choice-button) { width: 100%; justify-content: space-between; text-align: start; }
+  :global(.choice-button > span) { width: 100%; }
   :global(.choice-button.active) { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface-2)); }
+  .choice-copy { display: grid; min-width: 0; gap: 0.25rem; justify-items: center; }
   .choice-list strong { font-size: 0.75rem; }
   .choice-list small { color: var(--accent); font: 500 0.5rem/1.2 var(--font-mono); letter-spacing: 0.07em; text-transform: uppercase; }
   .team-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem; }

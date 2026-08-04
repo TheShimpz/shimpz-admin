@@ -859,10 +859,20 @@
   }
 
   article.user {
-    align-self: flex-end;
+    justify-self: end;
     width: fit-content;
     max-width: min(80%, 46rem);
+    border: 1px solid var(--border-strong);
+    padding: 0.65rem 0.8rem;
+    background: var(--surface-3);
     color: var(--accent);
+    clip-path: polygon(
+      0 0,
+      calc(100% - var(--cut)) 0,
+      100% var(--cut),
+      100% 100%,
+      0 100%
+    );
   }
 
   article.assistant {

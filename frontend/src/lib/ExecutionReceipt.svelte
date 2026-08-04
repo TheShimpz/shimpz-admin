@@ -48,10 +48,10 @@
 {/if}
 
 <style>
-  :global(.receipt) {
+  :global(.receipt.shimpz-disclosure) {
     margin-block-start: 0.85rem;
-    border-block-start: 1px solid var(--admin-divider);
-    padding-block-start: 0.65rem;
+    border-block-start: 0;
+    padding-block-start: 0;
     color: var(--text-faint);
     font-family: var(--font-mono);
     font-size: 0.58rem;

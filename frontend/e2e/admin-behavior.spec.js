@@ -149,4 +149,41 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
   await expect(page).toHaveScreenshot('chat-ready.png', visualContract);
+
+  await page.getByRole('button', { name: /Brain GPT-5\.6 Terra/i }).click();
+  const brainDialog = page.getByRole('dialog', { name: 'Choose a Brain' });
+  await expect(brainDialog).toBeVisible();
+  await expect(brainDialog.getByText('Current', { exact: true })).toHaveCount(0);
+  const selectedModel = brainDialog.getByText('GPT-5.6 Terra', { exact: true });
+  const selectedProvider = brainDialog.getByText('OpenAI', { exact: true }).nth(1);
+  const [modelBox, providerBox] = await Promise.all([
+    selectedModel.boundingBox(),
+    selectedProvider.boundingBox(),
+  ]);
+  expect(modelBox).not.toBeNull();
+  expect(providerBox).not.toBeNull();
+  expect(providerBox.y).toBeGreaterThanOrEqual(modelBox.y + modelBox.height);
+  await page.mouse.move(0, 0);
+  await expect(page).toHaveScreenshot('brain-chooser.png', visualContract);
+
+  await brainDialog.getByRole('button', { name: 'Close' }).click();
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Show the rendered response');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  const userMessage = page.getByRole('article', { name: 'You' });
+  await expect(userMessage).toBeVisible();
+  expect(await userMessage.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .not.toBe('rgba(0, 0, 0, 0)');
+  const [messageBox, exchangeBox] = await Promise.all([
+    userMessage.boundingBox(),
+    userMessage.locator('xpath=..').boundingBox(),
+  ]);
+  expect(messageBox).not.toBeNull();
+  expect(exchangeBox).not.toBeNull();
+  expect(Math.abs((messageBox.x + messageBox.width) - (exchangeBox.x + exchangeBox.width)))
+    .toBeLessThanOrEqual(1);
+  const receipt = page.locator('.receipt');
+  await expect(receipt).toHaveCSS('border-top-width', '0px');
+  await expect(page).toHaveScreenshot('chat-completed.png', visualContract);
 });
