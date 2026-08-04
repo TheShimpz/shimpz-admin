@@ -77,20 +77,20 @@
 
 <style>
   .dialog-panel {
-    --dialog-pad: clamp(1.4rem, 4vw, 2.2rem);
+    --dialog-pad: clamp(1.1rem, 3vw, 1.6rem);
     padding: var(--dialog-pad);
   }
   .dialog-kicker {
-    margin: 0 0 0.9rem;
+    margin: 0 0 0.6rem;
     color: var(--accent);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 600;
-    letter-spacing: 0.19em;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
   }
-  .dialog-panel h2 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.5rem); letter-spacing: -0.05em; }
-  .dialog-panel header > p:last-child { margin: 0.8rem 0 1.5rem; color: var(--text-dim); line-height: 1.6; }
+  .dialog-panel h2 { margin: 0; font-size: clamp(1.35rem, 3.5vw, 1.9rem); letter-spacing: -0.045em; }
+  .dialog-panel header > p:last-child { margin: 0.6rem 0 1rem; color: var(--text-dim); font-size: 0.85rem; line-height: 1.5; }
   .dialog-target { display: grid; gap: 0.2rem; border: 1px solid var(--border-strong); padding: 0.8rem; background: #050708; }
   .dialog-target span { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .dialog-target strong { font-size: 0.9rem; }
@@ -100,7 +100,7 @@
   footer {
     display: flex;
     gap: 0;
-    margin: 1.5rem calc(0px - var(--dialog-pad)) calc(0px - var(--dialog-pad));
+    margin: 1rem calc(0px - var(--dialog-pad)) calc(0px - var(--dialog-pad));
   }
   footer :global(.shimpz-button) { width: 100%; flex: 1 1 0; }
 </style>

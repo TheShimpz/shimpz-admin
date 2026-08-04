@@ -98,10 +98,10 @@
     position: relative;
     z-index: 5;
     display: grid;
-    min-height: 3.75rem;
+    min-height: 3.25rem;
     place-items: center;
     overflow: hidden;
-    padding: 0.8rem 3.7rem;
+    padding: 0.6rem 3.25rem;
     border-bottom: 1px solid var(--admin-divider);
     background: rgba(0, 240, 255, 0.045);
     isolation: isolate;
@@ -127,11 +127,11 @@
   .error .notice-progress { background: linear-gradient(90deg, rgba(255, 96, 125, 0.025), rgba(255, 96, 125, 0.1)); }
   .success .notice-progress { background: linear-gradient(90deg, rgba(5, 255, 161, 0.025), rgba(5, 255, 161, 0.1)); }
   .paused .notice-progress { animation-play-state: paused; }
-  .notice-copy { display: flex; max-width: min(72rem, 100%); align-items: baseline; justify-content: center; gap: 0.8rem; text-align: center; }
-  .notice-copy span { color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; }
+  .notice-copy { display: flex; max-width: min(72rem, 100%); align-items: baseline; justify-content: center; gap: 0.6rem; text-align: center; }
+  .notice-copy span { color: var(--accent); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
   .error .notice-copy span { color: var(--danger); }
   .success .notice-copy span { color: var(--success); }
-  .notice-copy strong { color: var(--text); font-size: clamp(0.82rem, 1.2vw, 0.96rem); line-height: 1.45; }
+  .notice-copy strong { color: var(--text); font-size: clamp(0.78rem, 1.1vw, 0.9rem); line-height: 1.4; }
   :global(.notice-close) { position: absolute; top: 50%; inset-inline-end: 1rem; width: 2rem; min-height: 2rem; transform: translateY(-50%); }
   @keyframes notice-progress { to { transform: scaleX(1); } }
   @media (prefers-reduced-motion: reduce) { .notice-progress { animation-name: none; transform: none; } }

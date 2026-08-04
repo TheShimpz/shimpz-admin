@@ -88,18 +88,18 @@
 <style>
   :global(.provider-gate) {
     display: grid;
-    width: min(34rem, calc(100% - 2rem));
+    width: min(30rem, calc(100% - 1.5rem));
     justify-items: center;
     margin: auto;
-    padding: clamp(1.3rem, 4vw, 2.2rem);
+    padding: clamp(1.1rem, 3vw, 1.6rem);
     text-align: center;
   }
-  .gate-mark { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; margin-bottom: 0.9rem; border: 1px solid var(--accent); transform: rotate(45deg); }
+  .gate-mark { display: grid; width: 2rem; height: 2rem; place-items: center; margin-bottom: 0.7rem; border: 1px solid var(--accent); transform: rotate(45deg); }
   .gate-mark span { width: 0.55rem; height: 0.55rem; background: var(--accent); box-shadow: 0 0 10px rgba(0, 240, 255, 0.6); }
   .eyebrow { margin: 0 0 0.45rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; }
-  h2 { margin: 0; font-size: clamp(1.45rem, 4vw, 2.15rem); letter-spacing: -0.05em; }
-  .lead { max-width: 29rem; margin: 0.75rem 0 0; color: var(--text-dim); font-size: 0.76rem; line-height: 1.55; }
-  form { display: grid; width: 100%; gap: 0.8rem; margin-top: 1.25rem; }
+  h2 { margin: 0; font-size: clamp(1.3rem, 3.5vw, 1.8rem); letter-spacing: -0.045em; }
+  .lead { max-width: 27rem; margin: 0.6rem 0 0; color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; }
+  form { display: grid; width: 100%; gap: 0.65rem; margin-top: 1rem; }
   dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border: 1px solid var(--admin-divider); }
   dl div { display: grid; gap: 0.25rem; padding: 0.7rem; text-align: start; }
   dl div + div { border-inline-start: 1px solid var(--admin-divider); }

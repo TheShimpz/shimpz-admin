@@ -699,7 +699,7 @@
   .store-destination {
     display: grid;
     gap: 0.35rem;
-    margin: 0 0 1rem;
+    margin: 0 0 0.75rem;
     padding: 0.25rem 0;
   }
 
@@ -733,7 +733,7 @@
     max-width: 100%;
     grid-template-columns: minmax(0, auto) auto;
     align-items: baseline;
-    gap: clamp(0.75rem, 2vw, 1.5rem);
+    gap: clamp(0.6rem, 1.5vw, 1rem);
     border: 0;
     padding: 0;
     background: transparent;
@@ -746,7 +746,7 @@
     overflow-wrap: anywhere;
     color: inherit;
     font-family: var(--font-mono);
-    font-size: clamp(1.35rem, 3vw, 2rem);
+    font-size: clamp(1.15rem, 2.5vw, 1.6rem);
     font-weight: 800;
     letter-spacing: -0.04em;
     line-height: 1.1;
@@ -785,22 +785,22 @@
   }
 
   :global(.destination-dialog-panel) {
-    --dialog-pad: clamp(1.25rem, 4vw, 2rem);
+    --dialog-pad: clamp(1rem, 3vw, 1.5rem);
     display: grid;
     max-height: calc(100dvh - 2rem);
-    gap: 1.1rem;
+    gap: 0.8rem;
     padding: var(--dialog-pad);
     background: var(--surface-1);
     box-shadow: inset 0 0 0 1px var(--border-strong), 0 24px 80px rgba(0, 0, 0, 0.65);
     clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
     overflow: auto;
   }
-  :global(.destination-dialog-panel) form { display: grid; gap: 1.1rem; }
+  :global(.destination-dialog-panel) form { display: grid; gap: 0.8rem; }
 
   :global(.destination-dialog-panel) > header { display: grid; gap: 0.45rem; }
   :global(.destination-dialog-panel) > header p { margin: 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-  :global(.destination-dialog-panel) > header h2 { margin: 0; font-size: clamp(1.4rem, 4vw, 2.1rem); letter-spacing: -0.05em; }
-  :global(.destination-dialog-panel) > header span { color: var(--text-dim); font-size: 0.74rem; line-height: 1.55; }
+  :global(.destination-dialog-panel) > header h2 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -0.04em; }
+  :global(.destination-dialog-panel) > header span { color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
 
   .destination-team-list {
     display: grid;
@@ -815,12 +815,12 @@
   .destination-team-list :global(.shimpz-button) {
     display: grid;
     width: 100%;
-    min-height: 3.7rem;
+    min-height: 3.25rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.8rem;
+    gap: 0.65rem;
     border: 0;
-    padding: 0.65rem 0.8rem;
+    padding: 0.55rem 0.7rem;
     background: #050708;
     color: var(--text);
     cursor: pointer;

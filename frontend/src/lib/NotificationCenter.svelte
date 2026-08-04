@@ -272,7 +272,7 @@
     position: fixed;
     inset-block: 0;
     inset-inline-end: 0;
-    width: min(31rem, 100vw);
+    width: min(28rem, 100vw);
     height: 100dvh;
     max-height: none;
     margin: 0;
@@ -283,9 +283,9 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
-    gap: 1rem;
+    gap: 0.75rem;
     border-bottom: 1px solid var(--border-strong);
-    padding: 1.4rem;
+    padding: 1.1rem;
   }
 
   header p,
@@ -301,17 +301,17 @@
 
   h2,
   h3 { margin: 0; }
-  h2 { font-size: clamp(1.55rem, 4vw, 2.25rem); letter-spacing: -0.05em; }
-  h3 { margin-top: 0.35rem; font-size: 1.35rem; line-height: 1.2; }
+  h2 { font-size: clamp(1.3rem, 3.5vw, 1.8rem); letter-spacing: -0.045em; }
+  h3 { margin-top: 0.3rem; font-size: 1.1rem; line-height: 1.25; }
 
   .notification-actions,
   .detail-toolbar {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 0.55rem;
+    gap: 0.45rem;
     border-bottom: 1px solid var(--border-strong);
-    padding: 0.8rem 1.4rem;
+    padding: 0.65rem 1.1rem;
   }
 
   .detail-toolbar { justify-content: flex-start; }
@@ -323,7 +323,7 @@
     overscroll-behavior: contain;
   }
 
-  .notification-list { padding: 0.75rem 0; }
+  .notification-list { padding: 0.5rem 0; }
 
   :global(.notification-item) {
     display: grid;
@@ -334,7 +334,7 @@
     gap: 0.7rem;
     border: 0;
     border-inline-start: 2px solid transparent;
-    padding: 0.9rem 1.4rem;
+    padding: 0.7rem 1.1rem;
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;

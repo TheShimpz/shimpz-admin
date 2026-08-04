@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 
+const visualContract = {
+  animations: 'disabled',
+  fullPage: true,
+  maxDiffPixels: 100,
+};
+
 test('renders the Local setup through the shared design system', async ({ page }) => {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -13,6 +19,7 @@ test('renders the Local setup through the shared design system', async ({ page }
   await expect(page.getByRole('button', { name: /create password/i })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page.locator('.shimpz-panel')).toHaveCount(1);
+  await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
 });
 
 test('renders authenticated navigation with canonical primitives', async ({ page }) => {
@@ -32,6 +39,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+  await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {

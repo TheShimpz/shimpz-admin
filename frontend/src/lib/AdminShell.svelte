@@ -106,7 +106,7 @@
     height: 100dvh;
     grid-template:
       'sidebar main' minmax(0, 1fr) /
-      minmax(18rem, 20rem) minmax(0, 1fr);
+      minmax(15.5rem, 17rem) minmax(0, 1fr);
     overflow: hidden;
   }
 
@@ -127,11 +127,11 @@
     display: grid;
     width: 100%;
     min-width: 0;
-    min-height: 5.25rem;
+    min-height: 4.25rem;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 1rem;
-    padding: 0 clamp(1rem, 2.4vw, 2rem);
+    gap: 0.75rem;
+    padding: 0 clamp(0.9rem, 2vw, 1.5rem);
   }
 
   .header-actions {
@@ -162,29 +162,29 @@
   .sidebar-brand {
     display: grid;
     min-width: 0;
-    min-height: 4.5rem;
+    min-height: 3.75rem;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0 1.15rem;
+    gap: 0.6rem;
+    padding: 0 0.9rem;
   }
 
   .sidebar-controls {
     display: grid;
     min-width: 0;
-    padding-bottom: 1rem;
+    padding-bottom: 0.75rem;
   }
 
   .sidebar-locale {
     min-width: 0;
-    padding: 0 1.15rem 0.65rem;
+    padding: 0 0.9rem 0.45rem;
   }
 
   .sidebar-navigation {
     display: grid;
     min-width: 0;
-    gap: 0.65rem;
-    padding: 0.65rem 1.15rem 0;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem 0;
     border-top: 1px solid var(--admin-divider);
   }
 
@@ -207,7 +207,7 @@
     min-width: 0;
     min-height: 0;
     grid-row: 2;
-    padding: clamp(1.75rem, 4vw, 3.25rem);
+    padding: clamp(1.25rem, 2.75vw, 2.25rem);
     overflow: auto;
   }
 
@@ -236,7 +236,7 @@
 
   @media (max-width: 760px) {
     .topbar-inner {
-      min-height: 4.75rem;
+      min-height: 4.25rem;
       grid-template-columns: minmax(0, 1fr) auto;
       row-gap: 0;
       padding: 0 0.75rem;
@@ -265,7 +265,7 @@
     }
 
     .content-stage {
-      padding: 1.25rem 0.75rem;
+      padding: 1rem 0.65rem;
     }
 
     .chat-mode .shell-sidebar {

@@ -1,6 +1,6 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import { Button, ShimpzBrand, TextAreaField } from '@shimpz/frontend';
+  import { Button, TextAreaField } from '@shimpz/frontend';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
@@ -610,6 +610,7 @@
 <svelte:head><title>{teamName} — Shimpz Admin</title></svelte:head>
 
 <div class="chat-route">
+  <h1 class="sr-only">{copy.title}</h1>
   {#if activeTeam}
     {#if chatTeamId}
       <div class="chat-workspace" class:drawer-open={integrationsOpen}>
@@ -662,11 +663,6 @@
         {/if}
 
           <form class="composer" onsubmit={send}>
-            {#if turns.length === 0}
-              <div class="empty-chat-brand">
-                <ShimpzBrand variant="symbol" product="" href="/chat/" ariaLabel="Shimpz" />
-              </div>
-            {/if}
             <ChatContextControls disabled={busy || syncing || stopping} />
             <div class="composer-input">
               <TextAreaField
@@ -785,7 +781,7 @@
 
   .conversation {
     --chat-rail-gutter: 0.8rem;
-    --chat-rail-width: 52rem;
+    --chat-rail-width: 48rem;
     position: relative;
     display: grid;
     height: 100%;
@@ -816,7 +812,7 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
-    gap: 1.4rem;
+    gap: 1.1rem;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-block: 1rem;
@@ -847,7 +843,7 @@
     display: grid;
     min-width: 0;
     align-content: start;
-    gap: 0.8rem;
+    gap: 0.65rem;
   }
 
   .exchange:last-child {
@@ -931,7 +927,7 @@
     align-items: end;
     justify-self: center;
     gap: 0.45rem;
-    padding: 0.8rem 0;
+    padding: 0.6rem 0;
     background: var(--surface-1);
   }
 
@@ -940,19 +936,13 @@
     align-self: center;
   }
 
-  .empty-chat-brand {
-    display: grid;
-    justify-self: center;
-    margin-block-end: clamp(0.75rem, 2dvh, 1.5rem);
-  }
-
   :global(.composer-field textarea) {
     width: 100%;
-    height: 3.2rem;
+    height: 2.75rem;
     min-height: 0;
     resize: none;
     border: 1px solid var(--border-strong);
-    padding: 0.7rem 0.75rem;
+    padding: 0.55rem 0.7rem;
     background: #050708;
     color: var(--text);
     font-family: var(--font-mono);
@@ -974,7 +964,7 @@
   }
 
   .composer :global(.shimpz-button) {
-    height: 3.2rem;
+    height: 2.75rem;
     min-height: 0;
   }
 
@@ -1029,9 +1019,9 @@
   }
 
   .context-dock {
-    width: min(calc(100% - 1.6rem), 52rem);
+    width: min(calc(100% - 1.6rem), 48rem);
     justify-self: center;
-    padding: 0.8rem 0;
+    padding: 0.6rem 0;
   }
 
   @media (max-width: 640px) {

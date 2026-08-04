@@ -113,15 +113,15 @@
 <style>
   .auth-stage {
     display: grid;
-    min-height: min(34rem, calc(100vh - 13rem));
-    grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
+    min-height: min(30rem, calc(100vh - 10rem));
+    grid-template-columns: minmax(0, 1.1fr) minmax(18.5rem, 0.9fr);
     align-items: center;
-    gap: clamp(2rem, 6vw, 5rem);
+    gap: clamp(1.5rem, 5vw, 4rem);
   }
 
   .welcome {
     position: relative;
-    padding: 2rem 0;
+    padding: 1rem 0;
   }
 
   .welcome::before {
@@ -136,25 +136,25 @@
   }
 
   .kicker {
-    margin: 0 0 1.2rem;
+    margin: 0 0 0.8rem;
     color: var(--accent);
     font-family: var(--font-mono);
     font-size: 0.7rem;
     font-weight: 600;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
   }
 
   .welcome-copy {
     max-width: 38rem;
-    margin-top: clamp(1.25rem, 3vw, 2rem);
+    margin-top: clamp(0.9rem, 2vw, 1.4rem);
   }
 
   .welcome-copy h2 {
     max-width: 13ch;
     margin: 0;
-    font-size: clamp(1.65rem, 3.4vw, 2.75rem);
-    line-height: 1.12;
+    font-size: clamp(1.5rem, 3vw, 2.3rem);
+    line-height: 1.14;
     letter-spacing: -0.045em;
     text-wrap: balance;
   }
@@ -164,27 +164,27 @@
     line-height: 1.7;
   }
 
-  :global(.auth-panel) { display: grid; gap: 1rem; padding: clamp(1.5rem, 4vw, 2.4rem); }
+  :global(.auth-panel) { display: grid; gap: 0.8rem; padding: clamp(1.25rem, 3vw, 1.75rem); }
 
   h1 {
     margin: 0;
-    font-size: clamp(1.65rem, 3vw, 2.3rem);
+    font-size: clamp(1.4rem, 2.6vw, 1.9rem);
     line-height: 1.18;
     letter-spacing: -0.045em;
     text-wrap: balance;
   }
 
   .lead {
-    margin: 0.8rem 0 1.6rem;
+    margin: 0.5rem 0 1.1rem;
   }
 
   form {
     display: grid;
-    gap: 0.65rem;
+    gap: 0.55rem;
   }
 
   .checking {
-    min-height: 18rem;
+    min-height: 14rem;
     display: flex;
     justify-content: center;
     flex-direction: column;

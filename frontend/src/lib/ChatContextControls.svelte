@@ -490,16 +490,16 @@
 
 <style>
   .context-controls { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; padding: 1px; background: var(--border-strong); }
-  :global(.context-trigger) { width: 100%; min-width: 0; justify-content: flex-start; padding: 0.55rem 0.7rem; text-align: start; clip-path: none; }
+  :global(.context-trigger) { width: 100%; min-width: 0; justify-content: flex-start; padding: 0.45rem 0.6rem; text-align: start; clip-path: none; }
   :global(.context-trigger > span) { display: grid; min-width: 0; gap: 0.1rem; justify-items: start; }
-  :global(.context-trigger > span > span) { color: var(--accent); font: 700 0.47rem/1.2 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  :global(.context-trigger > span > strong) { max-width: 100%; overflow: hidden; font: 500 0.62rem/1.3 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-  :global(.dialog-panel) { --dialog-pad: clamp(1.25rem, 4vw, 2rem); display: grid; max-height: calc(100dvh - 2rem); gap: 1rem; overflow: auto; }
-  form { display: grid; gap: 1rem; }
+  :global(.context-trigger > span > span) { color: var(--accent); font: 700 0.53rem/1.2 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
+  :global(.context-trigger > span > strong) { max-width: 100%; overflow: hidden; font: 500 0.68rem/1.3 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+  :global(.dialog-panel) { --dialog-pad: clamp(1rem, 3vw, 1.5rem); display: grid; max-height: calc(100dvh - 2rem); gap: 0.8rem; overflow: auto; }
+  form { display: grid; gap: 0.8rem; }
   header { display: grid; gap: 0.45rem; }
   header p { margin: 0; color: var(--accent); font: 600 0.58rem/1.3 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-  header h2 { margin: 0; font-size: clamp(1.4rem, 4vw, 2.1rem); letter-spacing: -0.05em; }
-  header span { color: var(--text-dim); font-size: 0.74rem; line-height: 1.55; }
+  header h2 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -0.04em; }
+  header span { color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
   .choice-list { display: grid; min-height: 0; gap: 0.4rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
   .choice-list > li { min-width: 0; }
   :global(.choice-button) { width: 100%; justify-content: space-between; text-align: start; }
@@ -519,5 +519,5 @@
   .dialog-status { margin: 0; color: var(--text-faint); font-size: 0.7rem; line-height: 1.5; }
   footer { display: flex; gap: 0.5rem; }
   footer :global(.shimpz-button) { width: 100%; flex: 1 1 0; }
-  @media (max-width: 640px) { :global(.context-trigger) { padding: 0.4rem; } :global(.context-trigger > span > span) { font-size: 0.4rem; } :global(.context-trigger > span > strong) { font-size: 0.52rem; } }
+  @media (max-width: 640px) { :global(.context-trigger) { padding: 0.4rem; } :global(.context-trigger > span > span) { font-size: 0.48rem; } :global(.context-trigger > span > strong) { font-size: 0.58rem; } }
 </style>

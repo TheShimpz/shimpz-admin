@@ -7,6 +7,12 @@ const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
 );
 
+const visualContract = {
+  animations: 'disabled',
+  fullPage: true,
+  maxDiffPixels: 100,
+};
+
 async function routeSetup(page) {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -130,4 +136,17 @@ test('compiled Chat renders Markdown, execution receipt, and the integrations dr
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/');
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+});
+
+test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+  ).toBe(true);
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+  await expect(page).toHaveScreenshot('chat-ready.png', visualContract);
 });

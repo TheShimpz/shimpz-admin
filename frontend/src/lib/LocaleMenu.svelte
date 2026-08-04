@@ -116,12 +116,12 @@
   :global(.locale-trigger) {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0 0.8rem;
+    gap: 0.45rem;
+    padding: 0 0.65rem;
     background: var(--surface-1);
     box-shadow: inset 0 0 0 1px var(--border-strong);
     clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
 
   :global(.locale-trigger:hover) {
@@ -153,10 +153,10 @@
   ul {
     position: absolute;
     z-index: 80;
-    top: calc(100% + 0.45rem);
+    top: calc(100% + 0.3rem);
     inset-inline-end: 0;
     min-width: 10.5rem;
-    padding: 0.35rem;
+    padding: 0.25rem;
     margin: 0;
     border: 1px solid var(--border-strong);
     background: var(--surface-2);
@@ -172,13 +172,13 @@
   li :global(.shimpz-button) {
     display: flex;
     width: 100%;
-    min-height: 2.5rem;
+    min-height: 2.25rem;
     align-items: center;
     justify-content: space-between;
-    padding: 0 0.7rem;
+    padding: 0 0.6rem;
     background: transparent;
     color: var(--text-dim);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-align: start;
   }
 
