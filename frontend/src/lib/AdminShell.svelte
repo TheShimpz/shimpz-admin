@@ -1,5 +1,5 @@
 <script>
-  import { NavItem, ShimpzBrand, TextLink } from '@shimpz/frontend';
+  import { NavItem, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import AdminNotice from '$lib/AdminNotice.svelte';
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
@@ -7,295 +7,61 @@
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, children } = $props();
+  let chat = $derived(active === 'chat');
 </script>
 
-<TextLink class="skip-link" href="#admin-content">{$t('shell.skipContent')}</TextLink>
-
-<div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
-  {#if !authenticated}
-    <header class="topbar">
-      <div class="topbar-inner">
-        <ShimpzBrand />
-
-        <div class="header-actions">
-          <div class="locale-full"><LocaleMenu /></div>
-          <div class="locale-compact"><LocaleMenu compact /></div>
-        </div>
-      </div>
-    </header>
-  {/if}
-
-  {#if authenticated}
-    <aside class="shell-sidebar">
-      <div class="sidebar-brand">
-        <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
-        <NotificationCenter />
-      </div>
-      <div class="sidebar-controls">
-        <div class="sidebar-locale">
-          <LocaleMenu wide />
-        </div>
-        <div class="sidebar-navigation">
-          <NavItem
-            href="/assistants/"
-            active={active === 'assistants'}
-            index="01"
-          >
-            {$t('store.nav')}
-          </NavItem>
-          <NavItem
-            href="/chat/"
-            active={active === 'chat'}
-            index="02"
-          >
-            {$t('chat.nav')}
-          </NavItem>
-        </div>
-      </div>
-      <div class="team-sidebar-region">
-        <TeamSidebar {active} />
-      </div>
-    </aside>
-  {/if}
-
-  <main id="admin-content" class="workspace" tabindex="-1">
-    {#if authenticated}<AdminNotice />{/if}
-    <div class="content-stage">
-      <div class="content-frame">
-        {@render children()}
-      </div>
+{#snippet sidebar()}
+  <div class="shell-sidebar">
+    <div class="sidebar-brand">
+      <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
+      <NotificationCenter />
     </div>
-  </main>
-</div>
+    <div class="sidebar-controls">
+      <LocaleMenu wide />
+      <nav aria-label={$t('shell.adminHome')}>
+        <NavItem href="/assistants/" active={active === 'assistants'} index="01">{$t('store.nav')}</NavItem>
+        <NavItem href="/chat/" active={active === 'chat'} index="02">{$t('chat.nav')}</NavItem>
+      </nav>
+    </div>
+    <div class="team-sidebar-region"><TeamSidebar {active} /></div>
+  </div>
+{/snippet}
+
+{#snippet header()}
+  <div class="topbar">
+    <ShimpzBrand />
+    <div class="locale-full"><LocaleMenu /></div>
+    <div class="locale-compact"><LocaleMenu compact /></div>
+  </div>
+{/snippet}
+
+<WorkspaceShell
+  class={[authenticated && 'authenticated', chat && 'chat-mode']}
+  sidebar={authenticated ? sidebar : undefined}
+  header={authenticated ? undefined : header}
+  skipLabel={$t('shell.skipContent')}
+  mainId="admin-content"
+  content={chat ? 'full' : 'contained'}
+  padding={chat ? 'none' : 'default'}
+  fixed={authenticated}
+  scroll={chat ? 'hidden' : 'auto'}
+>
+
+  {#if authenticated}<AdminNotice />{/if}
+  {@render children()}
+</WorkspaceShell>
 
 <style>
-  :global(.skip-link) {
-    position: fixed;
-    z-index: 120;
-    top: 0.75rem;
-    inset-inline-start: 1rem;
-    padding: 0.6rem 0.85rem;
-    background: var(--text);
-    color: var(--bg);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-decoration: none;
-    transform: translateY(-180%);
+  .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }
+  .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
+  .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
+  nav { display: grid; gap: var(--shimpz-space-2); }
+  .team-sidebar-region { min-width: 0; min-height: 0; overflow: auto; }
+  .topbar { display: grid; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-3); padding-inline: var(--shimpz-page-padding); }
+  .locale-compact { display: none; }
+  @media (max-width: 820px) {
+    .shell-sidebar { min-height: 0; }
+    .team-sidebar-region { max-height: 9rem; }
   }
-
-  :global(.skip-link:focus) {
-    transform: translateY(0);
-  }
-
-  .admin-shell {
-    --admin-divider: var(--border-strong);
-    display: grid;
-    width: 100%;
-    min-width: 0;
-    min-height: 100vh;
-    min-height: 100dvh;
-    grid-template:
-      'header' auto
-      'main' minmax(0, 1fr) /
-      minmax(0, 1fr);
-  }
-
-  .admin-shell.authenticated {
-    height: 100vh;
-    height: 100dvh;
-    grid-template:
-      'sidebar main' minmax(0, 1fr) /
-      minmax(15.5rem, 17rem) minmax(0, 1fr);
-    overflow: hidden;
-  }
-
-  .admin-shell.chat-mode {
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-  }
-
-  .topbar {
-    min-width: 0;
-    grid-area: header;
-    border-bottom: 1px solid var(--admin-divider);
-    background: rgba(0, 0, 0, 0.82);
-  }
-
-  .topbar-inner {
-    display: grid;
-    width: 100%;
-    min-width: 0;
-    min-height: 4.25rem;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0 clamp(0.9rem, 2vw, 1.5rem);
-  }
-
-  .header-actions {
-    display: flex;
-    min-width: 0;
-    grid-column: 2;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.55rem;
-    margin-inline-start: auto;
-  }
-
-  .locale-compact {
-    display: none;
-  }
-
-  .shell-sidebar {
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    grid-area: sidebar;
-    grid-template-rows: auto auto minmax(0, 1fr);
-    border-inline-end: 1px solid var(--admin-divider);
-    background: rgba(3, 3, 3, 0.76);
-    overflow: hidden;
-  }
-
-  .sidebar-brand {
-    display: grid;
-    min-width: 0;
-    min-height: 3.75rem;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0 0.9rem;
-  }
-
-  .sidebar-controls {
-    display: grid;
-    min-width: 0;
-    padding-bottom: 0.75rem;
-  }
-
-  .sidebar-locale {
-    min-width: 0;
-    padding: 0 0.9rem 0.45rem;
-  }
-
-  .sidebar-navigation {
-    display: grid;
-    min-width: 0;
-    gap: 0.4rem;
-    padding: 0.5rem 0.9rem 0;
-    border-top: 1px solid var(--admin-divider);
-  }
-
-  .team-sidebar-region {
-    min-width: 0;
-    min-height: 0;
-    overflow: auto;
-  }
-
-  .workspace {
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    grid-area: main;
-    grid-template-rows: auto minmax(0, 1fr);
-    overflow: hidden;
-  }
-
-  .content-stage {
-    min-width: 0;
-    min-height: 0;
-    grid-row: 2;
-    padding: clamp(1.25rem, 2.75vw, 2.25rem);
-    overflow: auto;
-  }
-
-  .content-frame {
-    width: min(100%, 1180px);
-    min-width: 0;
-    min-height: 0;
-    margin: 0 auto;
-  }
-
-  .chat-mode .workspace {
-    overflow: hidden;
-  }
-
-  .chat-mode .content-stage {
-    padding: 0;
-    overflow: hidden;
-  }
-
-  .chat-mode .content-frame {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    margin: 0;
-  }
-
-  @media (max-width: 760px) {
-    .topbar-inner {
-      min-height: 4.25rem;
-      grid-template-columns: minmax(0, 1fr) auto;
-      row-gap: 0;
-      padding: 0 0.75rem;
-    }
-
-    .header-actions {
-      grid-row: 1;
-      grid-column: 2;
-    }
-
-    .admin-shell.authenticated {
-      grid-template:
-        'sidebar' auto
-        'main' minmax(0, 1fr) /
-        minmax(0, 1fr);
-    }
-
-    .shell-sidebar {
-      grid-template-rows: auto auto minmax(0, auto);
-      border-inline-end: 0;
-      overflow: visible;
-    }
-
-    .team-sidebar-region {
-      max-height: 10rem;
-    }
-
-    .content-stage {
-      padding: 1rem 0.65rem;
-    }
-
-    .chat-mode .shell-sidebar {
-      overflow: hidden;
-    }
-  }
-
-  @media (max-width: 760px) and (max-height: 600px) {
-    .chat-mode .shell-sidebar {
-      grid-template-rows: auto auto minmax(0, 1fr);
-    }
-
-    .chat-mode .team-sidebar-region {
-      max-height: 5.25rem;
-    }
-  }
-
-  @media (max-width: 380px) {
-    .locale-full {
-      display: none;
-    }
-
-    .locale-compact {
-      display: block;
-    }
-  }
-
-  @media (max-width: 420px) {
-    .header-actions { gap: 0.3rem; }
-    .sidebar-locale,
-    .sidebar-navigation { padding-inline: 0.75rem; }
-  }
+  @media (max-width: 380px) { .locale-full { display: none; } .locale-compact { display: block; } }
 </style>
