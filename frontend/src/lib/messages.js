@@ -171,6 +171,7 @@ export const messages = {
       "sending": "Your Team is thinking…",
       "elapsed": "Elapsed time",
       "progressStages": "Execution stages",
+      "progressStagesExecuted": "{count} execution stages completed",
       "progress": {
         "awaiting": "Waiting for execution",
         "origins": { "admin": "Admin", "team": "Team" },
@@ -496,6 +497,7 @@ export const messages = {
       "sending": "Seu Time está pensando…",
       "elapsed": "Tempo decorrido",
       "progressStages": "Etapas da execução",
+      "progressStagesExecuted": "{count} etapas executadas",
       "progress": {
         "awaiting": "Aguardando a execução",
         "origins": { "admin": "Admin", "team": "Time" },
@@ -821,6 +823,7 @@ export const messages = {
       "sending": "Tu equipo está pensando…",
       "elapsed": "Tiempo transcurrido",
       "progressStages": "Etapas de ejecución",
+      "progressStagesExecuted": "{count} etapas ejecutadas",
       "progress": {
         "awaiting": "Esperando la ejecución",
         "origins": { "admin": "Admin", "team": "Equipo" },
@@ -1146,6 +1149,7 @@ export const messages = {
       "sending": "你的团队正在思考…",
       "elapsed": "已用时间",
       "progressStages": "执行阶段",
+      "progressStagesExecuted": "已执行 {count} 个阶段",
       "progress": {
         "awaiting": "等待执行",
         "origins": { "admin": "Admin", "team": "团队" },
@@ -1471,6 +1475,7 @@ export const messages = {
       "sending": "Votre équipe réfléchit…",
       "elapsed": "Temps écoulé",
       "progressStages": "Étapes d’exécution",
+      "progressStagesExecuted": "{count} étapes exécutées",
       "progress": {
         "awaiting": "En attente de l’exécution",
         "origins": { "admin": "Admin", "team": "Équipe" },
@@ -1796,6 +1801,7 @@ export const messages = {
       "sending": "Dein Team denkt nach…",
       "elapsed": "Vergangene Zeit",
       "progressStages": "Ausführungsphasen",
+      "progressStagesExecuted": "{count} Ausführungsschritte abgeschlossen",
       "progress": {
         "awaiting": "Warten auf die Ausführung",
         "origins": { "admin": "Admin", "team": "Team" },
@@ -2121,6 +2127,7 @@ export const messages = {
       "sending": "チームが考えています…",
       "elapsed": "経過時間",
       "progressStages": "実行ステージ",
+      "progressStagesExecuted": "{count} 件の実行ステップが完了",
       "progress": {
         "awaiting": "実行を待機中",
         "origins": { "admin": "Admin", "team": "チーム" },
@@ -2446,6 +2453,7 @@ export const messages = {
       "sending": "فريقك يفكر…",
       "elapsed": "الوقت المنقضي",
       "progressStages": "مراحل التنفيذ",
+      "progressStagesExecuted": "تم تنفيذ {count} مراحل",
       "progress": {
         "awaiting": "في انتظار التنفيذ",
         "origins": { "admin": "Admin", "team": "الفريق" },

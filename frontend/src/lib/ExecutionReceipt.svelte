@@ -8,7 +8,7 @@
 
   let {
     events = [],
-    label = 'Execution stages',
+    label = '{count} execution stages completed',
     progressLabels = {},
     teamName = 'Team',
     assistantNames = new Map(),
@@ -16,15 +16,27 @@
   let open = $state(false);
   let steps = $derived(open ? executionSteps(events) : []);
   let stepCount = $derived(executionStepCount(events));
+  let summaryLabel = $derived(countLabelParts(label));
+
+  function countLabelParts(template) {
+    const token = '{count}';
+    const position = template.indexOf(token);
+    if (position === -1) return { before: '', after: ` ${template}` };
+    return {
+      before: template.slice(0, position),
+      after: template.slice(position + token.length),
+    };
+  }
 </script>
 
 {#if events.length > 0}
   <details class="receipt" bind:open>
-    <summary>{label} <span>{stepCount}</span></summary>
+    <summary>{summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}</summary>
     {#if open}
       <ol>
-        {#each steps as step (step.key)}
+        {#each steps as step, index (step.key)}
           <li>
+            <span class="step-number" aria-hidden="true">{index + 1}</span>
             <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
             <time>{formatExecutionDuration(step.elapsed_ms)}</time>
           </li>
@@ -52,7 +64,11 @@
     text-transform: uppercase;
   }
 
-  summary span { color: var(--accent); }
+  .step-count,
+  .step-number {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
 
   ol {
     display: grid;
@@ -63,11 +79,14 @@
   }
 
   li {
-    display: flex;
+    display: grid;
     min-width: 0;
-    justify-content: space-between;
+    grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+    align-items: baseline;
     gap: 1rem;
   }
+
+  .step-number { text-align: end; }
 
   .step-copy {
     color: var(--text-dim);

@@ -633,7 +633,7 @@
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
                   <ExecutionReceipt
                     events={exchange.assistant.receipt ?? []}
-                    label={copy.progressStages}
+                    label={copy.progressStagesExecuted}
                     progressLabels={copy.progress}
                     teamName={exchange.assistant.author}
                     {assistantNames}
