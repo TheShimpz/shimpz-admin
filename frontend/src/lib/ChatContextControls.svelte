@@ -2,7 +2,16 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
 
-  import { AssistantIcon, Button, CheckboxField, Modal, Notice, Panel, TextField } from '@shimpz/frontend';
+  import {
+    AssistantIcon,
+    Button,
+    CheckboxField,
+    ChoiceItem,
+    DialogFrame,
+    Modal,
+    Notice,
+    TextField,
+  } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { LocalApiError } from '$lib/localApi.js';
   import { modelContext, selectTeamBrain } from '$lib/modelContext.js';
@@ -272,25 +281,18 @@
 </div>
 
 <Modal bind:element={teamDialog} labelledBy="chat-team-dialog-title" oncancel={(event) => cancelDialog(event, teamDialog, teamTrigger)}>
-  <Panel class="dialog-panel" tone="accent">
-    <header>
-      <p>{copy.teamKicker}</p>
-      <h2 id="chat-team-dialog-title">{copy.teamTitle}</h2>
-      <span>{copy.teamLead}</span>
-    </header>
+  <DialogFrame kicker={copy.teamKicker} title={copy.teamTitle} titleId="chat-team-dialog-title" lead={copy.teamLead}>
     <ul class="choice-list" aria-labelledby="chat-team-dialog-title">
       {#each $teamContext.teams as team (team.id)}
         <li class="team-choice">
-          <Button
-            variant="ghost"
-            class={`choice-button${team.id === $teamContext.selectedTeamId ? ' active' : ''}`}
-            type="button"
+          <ChoiceItem
+            title={team.name}
+            description={team.id}
+            meta={team.id === $teamContext.selectedTeamId ? copy.current : undefined}
+            selected={team.id === $teamContext.selectedTeamId}
             aria-pressed={team.id === $teamContext.selectedTeamId}
             onclick={() => chooseTeam(team.id)}
-          >
-            <strong>{team.name}</strong>
-            {#if team.id === $teamContext.selectedTeamId}<small>{copy.current}</small>{/if}
-          </Button>
+          />
           <Button
             variant="danger"
             size="compact"
@@ -301,55 +303,40 @@
         </li>
       {/each}
     </ul>
-    <footer>
+    {#snippet footer()}
       <Button variant="secondary" type="button" onclick={() => close(teamDialog, teamTrigger)}>{copy.close}</Button>
       <Button type="button" onclick={openCreate}>{copy.addTeam}</Button>
-    </footer>
-  </Panel>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <Modal bind:element={brainDialog} labelledBy="chat-brain-dialog-title" oncancel={(event) => cancelDialog(event, brainDialog, brainTrigger)}>
-  <Panel class="dialog-panel" tone="accent">
-    <header>
-      <p>{copy.brainKicker}</p>
-      <h2 id="chat-brain-dialog-title">{copy.brainTitle}</h2>
-      <span>{copy.brainLead}</span>
-    </header>
+  <DialogFrame kicker={copy.brainKicker} title={copy.brainTitle} titleId="chat-brain-dialog-title" lead={copy.brainLead}>
     {#if $modelContext.phase === 'loading' || $modelContext.phase === 'idle'}
       <p class="dialog-status" role="status">{copy.modelLoading}</p>
     {:else}
       <ul class="choice-list" aria-labelledby="chat-brain-dialog-title">
         {#each brainOptions as brain (brain.value)}
           <li>
-            <Button
-              variant="ghost"
-              class={`choice-button${brain.value === selectedBrain?.value ? ' active' : ''}`}
-              type="button"
+            <ChoiceItem
+              title={brain.title}
+              description={brain.providerTitle}
+              selected={brain.value === selectedBrain?.value}
               aria-pressed={brain.value === selectedBrain?.value}
               disabled={$modelContext.phase === 'saving'}
               onclick={() => chooseBrain(brain)}
-            >
-              <span class="choice-copy">
-                <strong>{brain.title}</strong>
-                <small>{brain.providerTitle}</small>
-              </span>
-            </Button>
+            />
           </li>
         {/each}
       </ul>
     {/if}
     {#if $modelContext.error}<Notice variant="error">{copy.modelFailed}</Notice>{/if}
-    <footer><Button variant="secondary" type="button" onclick={() => close(brainDialog, brainTrigger)}>{copy.close}</Button></footer>
-  </Panel>
+    {#snippet footer()}<Button variant="secondary" type="button" onclick={() => close(brainDialog, brainTrigger)}>{copy.close}</Button>{/snippet}
+  </DialogFrame>
 </Modal>
 
-<Modal bind:element={assistantDialog} labelledBy="chat-assistant-dialog-title" oncancel={(event) => cancelDialog(event, assistantDialog, assistantTrigger)}>
-  <Panel class="dialog-panel" tone="accent">
-    <header>
-      <p>{copy.assistantKicker}</p>
-      <h2 id="chat-assistant-dialog-title">{copy.assistantTitle}</h2>
-      <span>{copy.assistantLead}</span>
-    </header>
+<Modal size="lg" bind:element={assistantDialog} labelledBy="chat-assistant-dialog-title" oncancel={(event) => cancelDialog(event, assistantDialog, assistantTrigger)}>
+  <DialogFrame kicker={copy.assistantKicker} title={copy.assistantTitle} titleId="chat-assistant-dialog-title" lead={copy.assistantLead}>
     {#if runningAssistants.length > 0}
       <div class="bulk-actions">
         <Button variant="secondary" size="compact" type="button" onclick={selectAllTeamAssistants}>
@@ -393,28 +380,25 @@
     {:else}
       <p class="dialog-status">{copy.assistantEmpty}</p>
     {/if}
-    <footer>
+    {#snippet footer()}
       <Button variant="secondary" type="button" onclick={() => close(assistantDialog, assistantTrigger)}>{copy.close}</Button>
       <Button type="button" onclick={openAssistantStore}>{copy.openStore}</Button>
-    </footer>
-  </Panel>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <Modal
   bind:element={deleteDialog}
   labelledBy="chat-delete-team-title"
-  aria-describedby="chat-delete-team-lead"
   oncancel={cancelDelete}
 >
-  <Panel class="dialog-panel delete-panel" tone="accent">
   <form onsubmit={submitDelete}>
-    <header>
-      <p>{copy.deleteKicker}</p>
-      <h2 id="chat-delete-team-title">{copy.deleteTitle}</h2>
-      <span id="chat-delete-team-lead">
-        {$t('chatContext.deleteLead', { name: deletingTeam?.name ?? '' })}
-      </span>
-    </header>
+    <DialogFrame
+      kicker={copy.deleteKicker}
+      title={copy.deleteTitle}
+      titleId="chat-delete-team-title"
+      lead={$t('chatContext.deleteLead', { name: deletingTeam?.name ?? '' })}
+    >
     <TextField
         id="chat-delete-team-name"
         label={copy.deleteName}
@@ -446,26 +430,21 @@
         {#if deleteErrorDetail}<code>{copy.technicalDetail}: {deleteErrorDetail}</code>{/if}
       </Notice>
     {/if}
-    <footer>
+    {#snippet footer()}
       <Button variant="secondary" type="button" onclick={closeDelete} disabled={deleting}>{copy.cancel}</Button>
       <Button
         variant="danger"
         type="submit"
         disabled={deleting || !deletingTeam || deleteName !== deletingTeam.name || !supervisorPassword}
       >{deleting ? copy.deleting : copy.deleteAction}</Button>
-    </footer>
+    {/snippet}
+    </DialogFrame>
   </form>
-  </Panel>
 </Modal>
 
 <Modal bind:element={createDialog} labelledBy="chat-create-team-title" oncancel={cancelCreate}>
-  <Panel class="dialog-panel" tone="accent">
   <form onsubmit={submitCreate}>
-    <header>
-      <p>{copy.createKicker}</p>
-      <h2 id="chat-create-team-title">{copy.createTitle}</h2>
-      <span>{copy.createLead}</span>
-    </header>
+    <DialogFrame kicker={copy.createKicker} title={copy.createTitle} titleId="chat-create-team-title" lead={copy.createLead}>
     <TextField
         id="chat-create-team-name"
         label={copy.teamName}
@@ -480,14 +459,14 @@
         disabled={creating}
       />
     {#if dialogError}<Notice variant="error">{dialogError}</Notice>{/if}
-    <footer>
+    {#snippet footer()}
       {#if !requiresTeam}
         <Button variant="secondary" type="button" onclick={closeCreate} disabled={creating}>{copy.cancel}</Button>
       {/if}
       <Button type="submit" disabled={creating || !teamName.trim()}>{creating ? copy.creating : copy.create}</Button>
-    </footer>
+    {/snippet}
+    </DialogFrame>
   </form>
-  </Panel>
 </Modal>
 
 <style>
@@ -496,20 +475,9 @@
   :global(.context-trigger > span) { display: grid; min-width: 0; gap: 0.1rem; justify-items: start; }
   :global(.context-trigger > span > span) { color: var(--accent); font: 700 0.53rem/1.2 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   :global(.context-trigger > span > strong) { max-width: 100%; overflow: hidden; font: 500 0.68rem/1.3 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-  :global(.dialog-panel) { --dialog-pad: clamp(1rem, 3vw, 1.5rem); display: grid; max-height: calc(100dvh - 2rem); gap: 0.8rem; overflow: auto; }
-  form { display: grid; gap: 0.8rem; }
-  header { display: grid; gap: 0.45rem; }
-  header p { margin: 0; color: var(--accent); font: 600 0.58rem/1.3 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-  header h2 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -0.04em; }
-  header span { color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
+  form { margin: 0; }
   .choice-list { display: grid; min-height: 0; gap: 0.4rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
   .choice-list > li { min-width: 0; }
-  :global(.choice-button) { width: 100%; justify-content: space-between; text-align: start; }
-  :global(.choice-button > span) { width: 100%; }
-  :global(.choice-button.active) { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--surface-2)); }
-  .choice-copy { display: grid; min-width: 0; gap: 0.25rem; justify-items: center; }
-  .choice-list strong { font-size: 0.75rem; }
-  .choice-list small { color: var(--accent); font: 500 0.5rem/1.2 var(--font-mono); letter-spacing: 0.07em; text-transform: uppercase; }
   .team-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem; }
   .bulk-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
   .selection-limit { margin: -0.45rem 0 0; color: var(--text-faint); font-size: 0.64rem; line-height: 1.45; }
@@ -521,7 +489,5 @@
   .selection-mark.visible { opacity: 1; }
   .selection-mark svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; }
   .dialog-status { margin: 0; color: var(--text-faint); font-size: 0.7rem; line-height: 1.5; }
-  footer { display: flex; gap: 0.5rem; }
-  footer :global(.shimpz-button) { width: 100%; flex: 1 1 0; }
   @media (max-width: 640px) { :global(.context-trigger) { padding: 0.4rem; } :global(.context-trigger > span > span) { font-size: 0.48rem; } :global(.context-trigger > span > strong) { font-size: 0.58rem; } }
 </style>
