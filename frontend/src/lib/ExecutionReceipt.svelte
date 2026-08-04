@@ -1,6 +1,7 @@
 <script>
   import {
     executionSteps,
+    executionStepCount,
     formatExecutionDuration,
     technicalStepLabel,
   } from './executionProgress.js';
@@ -8,7 +9,7 @@
   let { events = [], label = 'Execution stages' } = $props();
   let open = $state(false);
   let steps = $derived(open ? executionSteps(events) : []);
-  let stepCount = $derived(Math.floor(events.length / 2));
+  let stepCount = $derived(executionStepCount(events));
 </script>
 
 {#if events.length > 0}

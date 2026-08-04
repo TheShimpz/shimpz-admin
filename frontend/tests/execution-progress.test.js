@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   executionSteps,
+  executionStepCount,
   formatExecutionDuration,
   technicalStepLabel,
 } from '../src/lib/executionProgress.js';
@@ -27,4 +28,13 @@ test('formats only bounded measured durations', () => {
   assert.equal(formatExecutionDuration(1200), '1.2 s');
   assert.equal(formatExecutionDuration(65_000), '1m 05s');
   assert.equal(formatExecutionDuration(-1), '');
+});
+
+test('counts the same observed rows when a finish has no observed start', () => {
+  const events = [
+    { seq: 1, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 5 },
+  ];
+
+  assert.equal(executionStepCount(events), executionSteps(events).length);
+  assert.equal(executionStepCount(events), 1);
 });

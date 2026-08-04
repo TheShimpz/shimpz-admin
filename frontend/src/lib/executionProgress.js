@@ -46,6 +46,24 @@ export function executionSteps(events) {
   return steps;
 }
 
+export function executionStepCount(events) {
+  const active = new Map();
+  let count = 0;
+  for (const event of events) {
+    const key = identity(event);
+    if (event.state === 'started') {
+      active.set(key, (active.get(key) ?? 0) + 1);
+      count += 1;
+      continue;
+    }
+    const depth = active.get(key) ?? 0;
+    if (depth > 1) active.set(key, depth - 1);
+    else if (depth === 1) active.delete(key);
+    else count += 1;
+  }
+  return count;
+}
+
 export function technicalStepLabel(step) {
   const position = step.phase === 'power' ? ` ${step.index}/${step.total}` : '';
   return `${step.origin} · ${step.phase}${position}`;
