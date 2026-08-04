@@ -6,9 +6,13 @@ function identity(event) {
 
 export function executionSteps(events) {
   const steps = [];
+  const active = new Map();
   for (const event of events) {
     const key = identity(event);
     if (event.state === 'started') {
+      const positions = active.get(key) ?? [];
+      positions.push(steps.length);
+      active.set(key, positions);
       steps.push({
         key: `${event.seq}:${key}`,
         identity: key,
@@ -21,9 +25,11 @@ export function executionSteps(events) {
       });
       continue;
     }
-    const matching = steps.findLast((step) => step.identity === key && step.elapsed_ms === null);
-    if (matching) {
-      matching.elapsed_ms = event.elapsed_ms;
+    const positions = active.get(key);
+    const matchingIndex = positions?.pop();
+    if (matchingIndex !== undefined) {
+      steps[matchingIndex].elapsed_ms = event.elapsed_ms;
+      if (positions.length === 0) active.delete(key);
       continue;
     }
     steps.push({

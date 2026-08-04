@@ -74,7 +74,7 @@
   let currentProgress = $derived(progressEvents.at(-1));
   let liveStatus = $derived(
     currentProgress
-      ? `${thinking} ${currentProgress.origin} ${currentProgress.phase}`
+      ? `${thinking} ${currentProgress.origin} ${currentProgress.phase} ${currentProgress.state}`
       : busy ? thinking : '',
   );
   let contextLoading = $derived(

@@ -22,15 +22,16 @@ const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const CHAT_PROGRESS_PHASES = new Set([
   'admin-preparation',
+  'reply-validation',
   'team-context',
   'model',
   'power-preparation',
   'power',
-  'power-result',
-  'reply-validation',
+  'power-delivery',
 ]);
+const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation']);
 const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
-const MAX_CHAT_PROGRESS_EVENTS = 2050;
+const MAX_CHAT_PROGRESS_EVENTS = 2052;
 const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
@@ -692,8 +693,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     if (finished) expected.push('elapsed_ms');
     if (power) expected.push('index', 'total');
     const validAuthority = (
-      (value.origin === 'admin' && value.phase === 'admin-preparation') ||
-      (value.origin === 'team' && value.phase !== 'admin-preparation')
+      (value.origin === 'admin' && ADMIN_PROGRESS_PHASES.has(value.phase)) ||
+      (value.origin === 'team' && !ADMIN_PROGRESS_PHASES.has(value.phase))
     );
     if (
       !exactKeys(value, expected) ||

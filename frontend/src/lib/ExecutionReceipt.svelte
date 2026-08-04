@@ -6,20 +6,24 @@
   } from './executionProgress.js';
 
   let { events = [], label = 'Execution stages' } = $props();
-  let steps = $derived(executionSteps(events));
+  let open = $state(false);
+  let steps = $derived(open ? executionSteps(events) : []);
+  let stepCount = $derived(Math.floor(events.length / 2));
 </script>
 
-{#if steps.length > 0}
-  <details class="receipt">
-    <summary>{label} <span>{steps.length}</span></summary>
-    <ol>
-      {#each steps as step (step.key)}
-        <li>
-          <code>{technicalStepLabel(step)}</code>
-          <time>{formatExecutionDuration(step.elapsed_ms)}</time>
-        </li>
-      {/each}
-    </ol>
+{#if events.length > 0}
+  <details class="receipt" bind:open>
+    <summary>{label} <span>{stepCount}</span></summary>
+    {#if open}
+      <ol>
+        {#each steps as step (step.key)}
+          <li>
+            <code>{technicalStepLabel(step)}</code>
+            <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+          </li>
+        {/each}
+      </ol>
+    {/if}
   </details>
 {/if}
 

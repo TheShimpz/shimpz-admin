@@ -206,6 +206,7 @@ const progressEvents = [
     state: 'finished', elapsed_ms: 4,
   },
   { type: 'progress', seq: 3, origin: 'team', phase: 'model', state: 'started' },
+  { type: 'progress', seq: 2052, origin: 'admin', phase: 'reply-validation', state: 'started' },
   {
     type: 'progress', seq: 4, origin: 'team', phase: 'power', state: 'finished',
     elapsed_ms: 19, index: 1, total: 2,
@@ -217,6 +218,8 @@ for (const event of progressEvents) {
 for (const invalid of [
   { type: 'progress', seq: 1, origin: 'team', phase: 'admin-preparation', state: 'started' },
   { type: 'progress', seq: 1, origin: 'admin', phase: 'model', state: 'started' },
+  { type: 'progress', seq: 1, origin: 'team', phase: 'reply-validation', state: 'started' },
+  { type: 'progress', seq: 2053, origin: 'admin', phase: 'reply-validation', state: 'started' },
   { type: 'progress', seq: 0, origin: 'team', phase: 'model', state: 'started' },
   { type: 'progress', seq: 1, origin: 'team', phase: 'model', state: 'finished' },
   {
