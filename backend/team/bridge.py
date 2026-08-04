@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections.abc import Callable
 
 import models
@@ -41,7 +42,9 @@ MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
 
 def to_team_id(team_name: object) -> str:
     """A Team name -> the Docker/Postgres-safe id used by team."""
-    return re.sub(r"[^a-z0-9_]+", "_", str(team_name).lower()).strip("_")[:40]
+    folded = unicodedata.normalize("NFKD", str(team_name).casefold())
+    ascii_name = folded.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9_]+", "_", ascii_name).strip("_")[:40]
 
 
 def canonical_team_id(value: object) -> str:

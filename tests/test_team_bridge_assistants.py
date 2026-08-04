@@ -125,6 +125,16 @@ class _LiveTeamCase(unittest.TestCase):
 
 
 class TeamAssistantBridgeTest(_LiveTeamCase):
+    def test_team_id_transliterates_latin_names_before_canonicalizing(self):
+        cases = {
+            "Gestão": "gestao",
+            "Ação & Operações": "acao_operacoes",
+            "Straße Europa": "strasse_europa",
+        }
+        for team_name, expected in cases.items():
+            with self.subTest(team_name=team_name):
+                self.assertEqual(team.to_team_id(team_name), expected)
+
     def setUp(self):
         super().setUp()
         self.original_token_file = transport.TOKEN_FILE
