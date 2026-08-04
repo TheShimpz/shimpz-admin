@@ -15,6 +15,7 @@ from typing import ClassVar
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+import supervisor as local_supervisor
 from team import bridge as team
 from team import transport
 
@@ -133,6 +134,31 @@ class PrivateChatTransportTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_full_multibyte_message_crosses_the_local_supervisor_boundary(self) -> None:
+        identity = local_supervisor.new_identity()
+        session = "v1:9999999999:0123456789abcdef:" + "a" * 64
+        message = "🧠" * 16_000
+        files = [f"{index:032x}" for index in range(1, 9)]
+        assistant_ids = []
+        for index in range(16):
+            prefix = f"a{index}"
+            assistant_ids.append(prefix + ("x" * (80 - len(prefix))))
+
+        with team.supervisor_session(session, account=False, local_identity=identity):
+            team.chat(
+                "team_1",
+                {"message": message, "files": files, "assistant_ids": assistant_ids},
+                provider="openai",
+                api_key="sk-test-0123456789",
+                progress=lambda _event: None,
+            )
+
+        request = _ControllerHandler.request
+        self.assertGreater(len(request["body"]), 64 * 1024)
+        self.assertLessEqual(len(request["body"]), team.MAX_CHAT_JSON_BODY_BYTES)
+        self.assertEqual(json.loads(request["body"])["message"], message)
+        self.assertIn("x-shimpz-supervisor", request["headers"])
 
     def test_integration_resume_uses_private_model_header_and_exact_challenge(self) -> None:
         model_key = "sk-test-0123456789"
