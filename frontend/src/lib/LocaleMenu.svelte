@@ -1,4 +1,5 @@
 <script>
+  import { Button } from '@shimpz/frontend';
   import { locale, setLocale, LOCALES } from '$lib/i18n.js';
 
   let { compact = false, wide = false } = $props();
@@ -19,8 +20,10 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="locale-menu" class:wide>
-  <button
+  <Button
     class="locale-trigger"
+    variant="ghost"
+    size="compact"
     type="button"
     onclick={() => (open = !open)}
     aria-haspopup="menu"
@@ -33,22 +36,24 @@
     </svg>
     {#if !compact}<span>{current.name}</span>{/if}
     <span class="chevron" aria-hidden="true">⌄</span>
-  </button>
+  </Button>
 
   {#if open}
     <ul role="menu" aria-label="Language">
       {#each LOCALES as item (item.code)}
         <li role="presentation">
-          <button
+          <Button
+            variant="ghost"
+            size="compact"
             type="button"
             role="menuitemradio"
             aria-checked={item.code === currentLocale}
-            class:active={item.code === currentLocale}
+            class={item.code === currentLocale ? 'active' : undefined}
             onclick={() => choose(item.code)}
           >
             <span>{item.name}</span>
             {#if item.code === currentLocale}<span aria-hidden="true">●</span>{/if}
-          </button>
+          </Button>
         </li>
       {/each}
     </ul>
@@ -64,15 +69,7 @@
     width: 100%;
   }
 
-  button {
-    min-height: 2.75rem;
-    border: 0;
-    color: var(--text);
-    cursor: pointer;
-    font-family: var(--font-mono);
-  }
-
-  .locale-trigger {
+  :global(.locale-trigger) {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -83,12 +80,12 @@
     font-size: 0.75rem;
   }
 
-  .locale-trigger:hover {
+  :global(.locale-trigger:hover) {
     color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
   }
 
-  .wide .locale-trigger {
+  .wide :global(.locale-trigger) {
     width: 100%;
     justify-content: flex-start;
   }
@@ -128,7 +125,7 @@
     min-width: 0;
   }
 
-  li button {
+  li :global(.shimpz-button) {
     display: flex;
     width: 100%;
     min-height: 2.5rem;
@@ -141,8 +138,8 @@
     text-align: start;
   }
 
-  li button:hover,
-  li button.active {
+  li :global(.shimpz-button:hover),
+  li :global(.shimpz-button.active) {
     background: var(--surface-3);
     color: var(--accent);
   }

@@ -1,4 +1,5 @@
 <script>
+  import { Button, Notice } from '@shimpz/frontend';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
@@ -82,46 +83,25 @@
 </script>
 
 {#if $teamContext.phase === 'error' && active !== 'chat'}
-  <div class="context-error" role="alert">
+  <Notice class="context-error" variant="error">
     <p>{$teamContext.error}</p>
-    <button type="button" onclick={retry}>{$t('teamSidebar.retry')}</button>
-  </div>
+    <Button variant="secondary" size="compact" type="button" onclick={retry}>{$t('teamSidebar.retry')}</Button>
+  </Notice>
 {/if}
 
 <style>
-  .context-error {
+  :global(.context-error) {
     display: grid;
     min-width: 0;
     gap: 0.6rem;
     padding: 0.75rem 1.15rem;
   }
 
-  .context-error {
-    border-inline-start: 2px solid var(--danger);
-    background: rgba(255, 96, 125, 0.045);
-  }
-
-  .context-error p {
+  :global(.context-error) p {
     margin: 0;
     color: var(--danger);
     font-size: 0.67rem;
     line-height: 1.45;
   }
 
-  .context-error button {
-    min-height: 2.35rem;
-    border: 1px solid var(--border-strong);
-    padding: 0 0.7rem;
-    background: transparent;
-    color: var(--accent);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .context-error button:hover { background: rgba(0, 240, 255, 0.055); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

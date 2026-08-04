@@ -1,5 +1,5 @@
 <script>
-  import ShimpzBrand from '$lib/ShimpzBrand.svelte';
+  import { Button, Notice, Panel, ShimpzBrand, TextField } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
 
   let {
@@ -28,14 +28,14 @@
     </div>
   </div>
 
-  <div class="auth-panel">
+  <Panel class="auth-panel" tone="accent">
     {#if phase === 'checking'}
       <div class="checking" aria-live="polite">
         <div class="scanner" aria-hidden="true"><span></span></div>
         <h1 id="auth-title">{$t('auth.checking')}</h1>
         {#if error}
-          <p class="message error" role="alert">{error}</p>
-          <button class="secondary" type="button" onclick={onRetry}>{$t('auth.retry')}</button>
+          <Notice variant="error">{error}</Notice>
+          <Button variant="secondary" type="button" onclick={onRetry}>{$t('auth.retry')}</Button>
         {/if}
       </div>
     {:else}
@@ -60,9 +60,9 @@
 
       <form onsubmit={(event) => (event.preventDefault(), onSubmit())}>
         {#if hosted}
-          <label for="account-username">{$t('auth.username')}</label>
-          <input
+          <TextField
             id="account-username"
+            label={$t('auth.username')}
             type="text"
             bind:value={username}
             autocomplete="username"
@@ -71,23 +71,22 @@
             disabled={busy}
           />
         {/if}
-        <label for="admin-password">{$t('auth.password')}</label>
-        <input
+        <TextField
           id="admin-password"
+          label={$t('auth.password')}
           type="password"
           bind:value={password}
           autocomplete={setup ? 'new-password' : 'current-password'}
-          aria-describedby={setup ? 'password-hint' : undefined}
+          hint={setup ? $t('auth.passwordHint') : undefined}
           required
           minlength={setup ? 12 : undefined}
           disabled={busy}
         />
 
         {#if setup}
-          <p id="password-hint" class="hint">{$t('auth.passwordHint')}</p>
-          <label for="admin-password-confirm">{$t('auth.confirm')}</label>
-          <input
+          <TextField
             id="admin-password-confirm"
+            label={$t('auth.confirm')}
             type="password"
             bind:value={confirmation}
             autocomplete="new-password"
@@ -97,15 +96,15 @@
           />
         {/if}
 
-        {#if error}<p class="message error" role="alert">{error}</p>{/if}
+        {#if error}<Notice variant="error">{error}</Notice>{/if}
 
-        <button class="primary" type="submit" disabled={busy || !password || (hosted && !username)}>
+        <Button type="submit" disabled={busy || !password || (hosted && !username)}>
           <span>{busy ? $t('auth.checking') : setup ? $t('auth.create') : $t('auth.signIn')}</span>
           <span aria-hidden="true">→</span>
-        </button>
+        </Button>
       </form>
     {/if}
-  </div>
+  </Panel>
 </section>
 
 <style>
@@ -162,24 +161,7 @@
     line-height: 1.7;
   }
 
-  .auth-panel {
-    position: relative;
-    padding: clamp(1.5rem, 4vw, 2.4rem);
-    background: linear-gradient(145deg, var(--surface-2), var(--surface-1));
-    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
-    box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow);
-  }
-
-  .auth-panel::before {
-    position: absolute;
-    top: 0;
-    right: var(--cut);
-    left: var(--cut);
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), var(--accent-alt), transparent);
-    content: '';
-    opacity: 0.8;
-  }
+  :global(.auth-panel) { display: grid; gap: 1rem; padding: clamp(1.5rem, 4vw, 2.4rem); }
 
   h1 {
     margin: 0;
@@ -196,102 +178,6 @@
   form {
     display: grid;
     gap: 0.65rem;
-  }
-
-  label {
-    margin-top: 0.35rem;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  input {
-    width: 100%;
-    min-height: 3.2rem;
-    border: 0;
-    padding: 0.75rem 1rem;
-    background: var(--bg);
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-    clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
-    color: var(--text);
-    font-family: var(--font-mono);
-    outline: 0;
-  }
-
-  input:hover {
-    box-shadow: inset 0 0 0 1px var(--text-faint);
-  }
-
-  input:focus {
-    box-shadow: inset 0 0 0 1px var(--accent);
-    filter: drop-shadow(0 0 7px rgba(0, 240, 255, 0.2));
-  }
-
-  .hint {
-    margin: -0.1rem 0 0.25rem;
-    color: var(--text-faint);
-    font-size: 0.75rem;
-  }
-
-  button {
-    min-height: 2.75rem;
-    border: 0;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  button:disabled {
-    cursor: default;
-    opacity: 0.48;
-  }
-
-  .primary {
-    position: relative;
-    display: flex;
-    min-height: 3.15rem;
-    align-items: center;
-    justify-content: center;
-    padding: 0 1.1rem;
-    margin-top: 0.75rem;
-    background: linear-gradient(100deg, var(--accent), var(--accent-alt));
-    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    color: var(--accent-ink);
-    text-align: center;
-  }
-
-  .primary span:last-child {
-    position: absolute;
-    inset-inline-end: 1.1rem;
-  }
-
-  .primary:hover:not(:disabled) {
-    filter: brightness(1.08) drop-shadow(0 0 12px rgba(0, 240, 255, 0.35));
-  }
-
-  .secondary {
-    padding: 0 0.9rem;
-    background: var(--bg);
-    box-shadow: inset 0 0 0 1px var(--accent);
-    color: var(--accent);
-  }
-
-  .message {
-    padding: 0.7rem 0.8rem;
-    margin: 0.55rem 0 0;
-    border-inline-start: 2px solid currentColor;
-    background: rgba(255, 96, 125, 0.07);
-    font-size: 0.82rem;
-  }
-
-  .error {
-    color: var(--danger);
   }
 
   .checking {
@@ -355,7 +241,7 @@
       padding-bottom: 1rem;
     }
 
-    .auth-panel {
+    :global(.auth-panel) {
       width: min(100%, 34rem);
       margin: 0 auto;
     }

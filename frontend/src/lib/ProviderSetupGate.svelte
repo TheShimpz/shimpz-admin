@@ -1,4 +1,5 @@
 <script>
+  import { Button, Notice, Panel, StatusBadge, TextField } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
 
@@ -28,7 +29,7 @@
   }
 </script>
 
-<section class="provider-gate" aria-labelledby="provider-gate-title">
+<Panel class="provider-gate" tone="accent" aria-labelledby="provider-gate-title">
   <div class="gate-mark" aria-hidden="true"><span></span></div>
   <p class="eyebrow">{copy.eyebrow}</p>
   <h2 id="provider-gate-title">{copy.title}</h2>
@@ -37,10 +38,10 @@
   {#if $modelContext.phase === 'loading' || $modelContext.phase === 'idle'}
     <p class="loading" role="status">{copy.loading}</p>
   {:else if !selected || !selectedModel}
-    <div class="gate-error" role="alert">
+    <Notice class="gate-error" variant="error">
       <span>{$modelContext.error || copy.loading}</span>
-      <button type="button" onclick={retry}>{copy.retry}</button>
-    </div>
+      <Button variant="secondary" size="compact" type="button" onclick={retry}>{copy.retry}</Button>
+    </Notice>
   {:else}
     <form onsubmit={submit}>
       <dl>
@@ -49,16 +50,13 @@
       </dl>
 
       {#if selected.configured}
-        <p class="verification">
-          <span aria-hidden="true">✓</span>
-          {copy.verified}
-        </p>
+        <StatusBadge tone="success">{copy.verified}</StatusBadge>
       {/if}
 
       {#if !selected.configured}
-        <label>
-          <span>{copy.key}</span>
-          <input
+        <TextField
+            id="provider-api-key"
+            label={copy.key}
             type="password"
             bind:value={apiKey}
             placeholder={copy.keyPlaceholder}
@@ -72,25 +70,23 @@
             required
             disabled={submitting || $modelContext.phase === 'saving'}
           />
-        </label>
       {/if}
 
-      {#if $modelContext.error}<p class="gate-error" role="alert">{$modelContext.error}</p>{/if}
-      <button
-        class="unlock"
+      {#if $modelContext.error}<Notice variant="error">{$modelContext.error}</Notice>{/if}
+      <Button
         type="submit"
         disabled={submitting || $modelContext.phase === 'saving' || (!selected.configured && apiKey.trim().length < 16)}
       >
         {submitting || $modelContext.phase === 'saving'
           ? copy.validating
           : copy.startChatting}
-      </button>
+      </Button>
     </form>
   {/if}
-</section>
+</Panel>
 
 <style>
-  .provider-gate {
+  :global(.provider-gate) {
     display: grid;
     width: min(34rem, calc(100% - 2rem));
     justify-items: center;
@@ -107,16 +103,8 @@
   dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border: 1px solid var(--admin-divider); }
   dl div { display: grid; gap: 0.25rem; padding: 0.7rem; text-align: start; }
   dl div + div { border-inline-start: 1px solid var(--admin-divider); }
-  dt, label > span { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.5rem; letter-spacing: 0.09em; text-transform: uppercase; }
+  dt { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.5rem; letter-spacing: 0.09em; text-transform: uppercase; }
   dd { min-width: 0; margin: 0; overflow: hidden; font-family: var(--font-mono); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
-  .verification { margin: 0; color: var(--success); font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.05em; text-transform: uppercase; }
-  label { display: grid; gap: 0.35rem; text-align: start; }
-  input { width: 100%; min-height: 2.8rem; border: 1px solid var(--border-strong); padding: 0 0.8rem; background: #020304; color: var(--text); font-family: var(--font-mono); }
-  input:focus-visible { border-color: var(--border-strong); }
-  button { min-height: 2.7rem; border: 1px solid var(--border-strong); padding: 0 0.85rem; background: transparent; color: var(--accent); cursor: pointer; font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; text-transform: uppercase; }
-  button.unlock { border: 0; background: linear-gradient(90deg, var(--accent), #8feaf3 55%, var(--accent-alt)); color: #001013; }
-  button:disabled { cursor: not-allowed; opacity: 0.42; }
   .loading { margin: 1rem 0 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.68rem; }
-  .gate-error { display: flex; width: 100%; align-items: center; justify-content: center; gap: 0.7rem; margin: 0; color: var(--danger); font-size: 0.66rem; line-height: 1.45; }
   @media (max-width: 520px) { dl { grid-template-columns: 1fr; } dl div + div { border-inline-start: 0; border-top: 1px solid var(--admin-divider); } }
 </style>

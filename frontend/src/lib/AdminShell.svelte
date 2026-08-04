@@ -1,15 +1,15 @@
 <script>
+  import { NavItem, ShimpzBrand, TextLink } from '@shimpz/frontend';
   import AdminNotice from '$lib/AdminNotice.svelte';
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import NotificationCenter from '$lib/NotificationCenter.svelte';
-  import ShimpzBrand from '$lib/ShimpzBrand.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, children } = $props();
 </script>
 
-<a class="skip-link" href="#admin-content">Skip to content</a>
+<TextLink class="skip-link" href="#admin-content">Skip to content</TextLink>
 
 <div class="admin-shell" class:authenticated class:chat-mode={active === 'chat'}>
   {#if !authenticated}
@@ -36,31 +36,20 @@
           <LocaleMenu wide />
         </div>
         <div class="sidebar-navigation">
-          <a
-            class="rail-button"
-            class:active={active === 'assistants'}
+          <NavItem
             href="/assistants/"
-            aria-current={active === 'assistants' ? 'page' : undefined}
+            active={active === 'assistants'}
+            index="01"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z"></path>
-            </svg>
-            <span>{$t('store.nav')}</span>
-            <small aria-hidden="true">// 01</small>
-          </a>
-          <a
-            class="rail-button"
-            class:active={active === 'chat'}
+            {$t('store.nav')}
+          </NavItem>
+          <NavItem
             href="/chat/"
-            aria-current={active === 'chat' ? 'page' : undefined}
+            active={active === 'chat'}
+            index="02"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 5.5h14v10H9l-4 3v-13Z"></path>
-              <path d="M8.5 9h7M8.5 12h4.5"></path>
-            </svg>
-            <span>{$t('chat.nav')}</span>
-            <small aria-hidden="true">// 02</small>
-          </a>
+            {$t('chat.nav')}
+          </NavItem>
         </div>
       </div>
       <div class="team-sidebar-region">
@@ -80,7 +69,7 @@
 </div>
 
 <style>
-  .skip-link {
+  :global(.skip-link) {
     position: fixed;
     z-index: 120;
     top: 0.75rem;
@@ -95,7 +84,7 @@
     transform: translateY(-180%);
   }
 
-  .skip-link:focus {
+  :global(.skip-link:focus) {
     transform: translateY(0);
   }
 
@@ -197,75 +186,6 @@
     gap: 0.65rem;
     padding: 0.65rem 1.15rem 0;
     border-top: 1px solid var(--admin-divider);
-  }
-
-  .rail-button {
-    position: relative;
-    display: grid;
-    min-width: 0;
-    min-height: 3.15rem;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0 0.8rem;
-    background:
-      linear-gradient(100deg, rgba(0, 240, 255, 0.1), transparent 58%),
-      #050708;
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-decoration: none;
-    text-transform: uppercase;
-    transition: color 0.16s ease, filter 0.16s ease;
-  }
-
-  .rail-button::before {
-    position: absolute;
-    inset-block: 0.4rem;
-    inset-inline-start: 0;
-    width: 2px;
-    background: var(--accent);
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
-    content: '';
-  }
-
-  .rail-button:hover,
-  .rail-button.active {
-    color: var(--accent);
-    filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.2));
-  }
-
-  .rail-button.active {
-    background:
-      linear-gradient(100deg, rgba(0, 240, 255, 0.17), transparent 68%),
-      #050708;
-    box-shadow: inset 0 0 0 1px var(--accent);
-  }
-
-  .rail-button svg {
-    width: 1.1rem;
-    height: 1.1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: square;
-    stroke-linejoin: miter;
-    stroke-width: 1.6;
-  }
-
-  .rail-button span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .rail-button small {
-    color: var(--text-faint);
-    font-size: 0.48rem;
-    letter-spacing: 0.08em;
   }
 
   .team-sidebar-region {

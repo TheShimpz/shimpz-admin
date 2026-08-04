@@ -1,4 +1,5 @@
 <script>
+  import { Button } from '@shimpz/frontend';
   import { onMount } from 'svelte';
 
   import {
@@ -87,7 +88,7 @@
         {#if $adminNotice.label}<span>{$adminNotice.label}</span>{/if}
         <strong>{$adminNotice.message}</strong>
       </div>
-      <button type="button" onclick={dismissCurrentNotice} aria-label={closeLabel}>×</button>
+      <Button class="notice-close" variant="ghost" size="icon" type="button" onclick={dismissCurrentNotice} aria-label={closeLabel}>×</Button>
     </section>
   {/key}
 {/if}
@@ -131,10 +132,8 @@
   .error .notice-copy span { color: var(--danger); }
   .success .notice-copy span { color: var(--success); }
   .notice-copy strong { color: var(--text); font-size: clamp(0.82rem, 1.2vw, 0.96rem); line-height: 1.45; }
-  button { position: absolute; top: 50%; inset-inline-end: 1rem; display: grid; width: 2rem; height: 2rem; place-items: center; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; font-family: var(--font-mono); font-size: 1.2rem; transform: translateY(-50%); }
-  button:hover { background: rgba(255, 255, 255, 0.055); color: var(--accent); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(255, 255, 255, 0.075); color: var(--accent); }
+  :global(.notice-close) { position: absolute; top: 50%; inset-inline-end: 1rem; width: 2rem; min-height: 2rem; transform: translateY(-50%); }
   @keyframes notice-progress { to { transform: scaleX(1); } }
   @media (prefers-reduced-motion: reduce) { .notice-progress { animation-name: none; transform: none; } }
-  @media (max-width: 620px) { .admin-notice { padding-inline: 2.8rem; } .notice-copy { align-items: center; flex-direction: column; gap: 0.2rem; } button { inset-inline-end: 0.45rem; } }
+  @media (max-width: 620px) { .admin-notice { padding-inline: 2.8rem; } .notice-copy { align-items: center; flex-direction: column; gap: 0.2rem; } :global(.notice-close) { inset-inline-end: 0.45rem; } }
 </style>

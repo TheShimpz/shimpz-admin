@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "preview": "vite preview",
     "check": "svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
-    "test": "node tests/run-tests.mjs"
+    "test": "node tests/run-tests.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/89d55e996de5a609adceab840fd172d9cfba2fe9"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.0",
     "@types/node": "24.13.3",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.70.1",
