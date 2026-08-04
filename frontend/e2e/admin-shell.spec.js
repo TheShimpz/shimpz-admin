@@ -39,6 +39,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
+  await expect(page.getByText('Loading the Assistant Store…', { exact: true })).toBeVisible();
   await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
 
   const localeTrigger = page.getByRole('button', { name: 'Language: English' });
