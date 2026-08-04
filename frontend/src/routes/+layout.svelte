@@ -1,4 +1,5 @@
 <script>
+  import '@shimpz/frontend/theme.css';
   import '../app.css';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';

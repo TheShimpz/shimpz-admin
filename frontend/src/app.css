@@ -1,35 +1,29 @@
-@import '@fontsource-variable/inter';
-@import '@fontsource/ibm-plex-mono/latin-400.css';
-@import '@fontsource/ibm-plex-mono/latin-600.css';
-@import '@fontsource/ibm-plex-mono/latin-700.css';
-
 :root {
-  color-scheme: dark;
-  --bg: #000000;
-  --surface-1: #060606;
-  --surface-2: #0b0b0b;
-  --surface-3: #121212;
-  --border: #1a1a1a;
-  --border-strong: #2b2b2b;
-  --text: #f4f4f5;
-  --text-dim: #a1a1aa;
-  --text-faint: #85858d;
-  --accent: #00f0ff;
-  --accent-strong: #00cbd8;
-  --accent-alt: #ff2a6d;
-  --accent-ink: #001114;
-  --success: #05ffa1;
-  --danger: #ff607d;
-  --warn: #fcee0a;
-  --info: #00f0ff;
-  --cut: 10px;
+  --bg: var(--shimpz-color-bg);
+  --surface-1: var(--shimpz-color-surface);
+  --surface-2: var(--shimpz-color-surface-raised);
+  --surface-3: var(--shimpz-color-surface-high);
+  --border: var(--shimpz-color-border-subtle);
+  --border-strong: var(--shimpz-color-border);
+  --text: var(--shimpz-color-text);
+  --text-dim: var(--shimpz-color-text-muted);
+  --text-faint: var(--shimpz-color-text-dim);
+  --accent: var(--shimpz-color-cyan);
+  --accent-strong: var(--shimpz-color-cyan);
+  --accent-alt: var(--shimpz-color-magenta);
+  --accent-ink: var(--shimpz-color-bg);
+  --success: var(--shimpz-color-green);
+  --danger: var(--shimpz-color-danger);
+  --warn: var(--shimpz-color-yellow);
+  --info: var(--shimpz-color-cyan);
+  --cut: var(--shimpz-cut);
   --r-sm: 0;
   --r-md: 0;
   --r-lg: 0;
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  --ring: 0 0 0 3px rgba(0, 240, 255, 0.2);
+  --font-sans: var(--shimpz-font-sans);
+  --font-mono: var(--shimpz-font-mono);
+  --shadow: 0 20px 60px rgb(0 0 0 / 55%);
+  --ring: var(--shimpz-focus-ring);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -50,10 +44,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
-  background-color: var(--bg);
-  background-image:
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 46px),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 46px);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 15px;
@@ -61,16 +52,6 @@ body {
   letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-}
-
-body::after {
-  position: fixed;
-  z-index: 100;
-  inset: 0;
-  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0 1px, transparent 1px 3px);
-  content: '';
-  opacity: 0.18;
-  pointer-events: none;
 }
 
 button,
