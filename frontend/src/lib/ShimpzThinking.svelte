@@ -47,19 +47,22 @@
   </div>
 
   {#if visibleSteps.length > 0}
-    <ol class="ledger" aria-label={stagesText}>
-      {#each visibleSteps as step (step.key)}
-        <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
-          <i aria-hidden="true"></i>
-          <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
-          {#if step.elapsed_ms === null}
-            <span class="activity" aria-hidden="true"></span>
-          {:else}
-            <time>{formatExecutionDuration(step.elapsed_ms)}</time>
-          {/if}
-        </li>
-      {/each}
-    </ol>
+    <details class="ledger-details">
+      <summary>{stagesText} <span>{visibleSteps.length}</span></summary>
+      <ol class="ledger" aria-label={stagesText}>
+        {#each visibleSteps as step (step.key)}
+          <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
+            <i aria-hidden="true"></i>
+            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
+            {#if step.elapsed_ms === null}
+              <span class="activity" aria-hidden="true"></span>
+            {:else}
+              <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+            {/if}
+          </li>
+        {/each}
+      </ol>
+    </details>
   {/if}
 </div>
 
@@ -132,10 +135,30 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .ledger-details {
+    min-width: 0;
+    border-block-start: 1px solid var(--admin-divider);
+    padding-block-start: 0.65rem;
+  }
+
+  .ledger-details summary {
+    width: fit-content;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.58rem;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+  }
+
+  .ledger-details summary span {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
   .ledger {
     display: grid;
     min-width: 0;
-    margin: 0;
+    margin: 0.7rem 0 0;
     padding: 0;
     gap: 0.45rem;
     list-style: none;
