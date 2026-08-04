@@ -9,6 +9,7 @@ import {
   localizedStepLabel,
   technicalStepLabel,
 } from '../src/lib/executionProgress.js';
+import { CHAT_PROGRESS_PHASES } from '../src/lib/localChat.js';
 import { messages } from '../src/lib/messages.js';
 
 test('pairs repeated measured operations without inventing workflow stages', () => {
@@ -34,17 +35,13 @@ test('formats only bounded measured durations', () => {
 });
 
 test('humanizes every observed phase in every supported Admin locale', () => {
-  const phases = [
-    'admin-preparation',
-    'reply-validation',
-    'team-context',
-    'model',
-    'power-preparation',
-    'power',
-  ];
-
   for (const [locale, copy] of Object.entries(messages)) {
-    for (const phase of phases) {
+    assert.deepEqual(
+      Object.keys(copy.chatPage.progress.phases).sort(),
+      [...CHAT_PROGRESS_PHASES].sort(),
+      locale,
+    );
+    for (const phase of CHAT_PROGRESS_PHASES) {
       const step = {
         origin: phase.startsWith('admin') || phase === 'reply-validation' ? 'admin' : 'team',
         phase,

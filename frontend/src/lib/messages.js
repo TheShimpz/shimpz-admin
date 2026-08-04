@@ -180,7 +180,8 @@ export const messages = {
           "team-context": "Team context",
           "model": "Model reasoning",
           "power-preparation": "Power preparation",
-          "power": "Power {index} of {total}"
+          "power": "Power {index} of {total}",
+          "power-delivery": "Power delivery confirmation"
         },
         "states": { "started": "In progress", "finished": "Complete" }
       },
@@ -490,7 +491,8 @@ export const messages = {
           "team-context": "Contexto do Time",
           "model": "Raciocínio do modelo",
           "power-preparation": "Preparação dos Powers",
-          "power": "Power {index} de {total}"
+          "power": "Power {index} de {total}",
+          "power-delivery": "Confirmação da entrega dos Powers"
         },
         "states": { "started": "Em andamento", "finished": "Concluído" }
       },
@@ -800,7 +802,8 @@ export const messages = {
           "team-context": "Contexto del equipo",
           "model": "Razonamiento del modelo",
           "power-preparation": "Preparación de Powers",
-          "power": "Power {index} de {total}"
+          "power": "Power {index} de {total}",
+          "power-delivery": "Confirmación de entrega de Powers"
         },
         "states": { "started": "En curso", "finished": "Completado" }
       },
@@ -1110,7 +1113,8 @@ export const messages = {
           "team-context": "团队上下文",
           "model": "模型推理",
           "power-preparation": "Power 准备",
-          "power": "Power {index}/{total}"
+          "power": "Power {index}/{total}",
+          "power-delivery": "Power 交付确认"
         },
         "states": { "started": "进行中", "finished": "已完成" }
       },
@@ -1420,7 +1424,8 @@ export const messages = {
           "team-context": "Contexte de l’équipe",
           "model": "Raisonnement du modèle",
           "power-preparation": "Préparation des Powers",
-          "power": "Power {index} sur {total}"
+          "power": "Power {index} sur {total}",
+          "power-delivery": "Confirmation de livraison des Powers"
         },
         "states": { "started": "En cours", "finished": "Terminé" }
       },
@@ -1730,7 +1735,8 @@ export const messages = {
           "team-context": "Teamkontext",
           "model": "Modellverarbeitung",
           "power-preparation": "Power-Vorbereitung",
-          "power": "Power {index} von {total}"
+          "power": "Power {index} von {total}",
+          "power-delivery": "Bestätigung der Power-Übergabe"
         },
         "states": { "started": "Läuft", "finished": "Abgeschlossen" }
       },
@@ -2040,7 +2046,8 @@ export const messages = {
           "team-context": "チームコンテキスト",
           "model": "モデル推論",
           "power-preparation": "Power の準備",
-          "power": "Power {index}/{total}"
+          "power": "Power {index}/{total}",
+          "power-delivery": "Power 配信の確認"
         },
         "states": { "started": "実行中", "finished": "完了" }
       },
@@ -2350,7 +2357,8 @@ export const messages = {
           "team-context": "سياق الفريق",
           "model": "استدلال النموذج",
           "power-preparation": "إعداد Powers",
-          "power": "Power {index} من {total}"
+          "power": "Power {index} من {total}",
+          "power-delivery": "تأكيد تسليم Powers"
         },
         "states": { "started": "قيد التنفيذ", "finished": "مكتمل" }
       },

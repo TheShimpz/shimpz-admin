@@ -20,7 +20,7 @@ const MAX_INTEGRATION_POWERS = 128;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
-const CHAT_PROGRESS_PHASES = new Set([
+export const CHAT_PROGRESS_PHASES = Object.freeze([
   'admin-preparation',
   'reply-validation',
   'team-context',
@@ -29,6 +29,7 @@ const CHAT_PROGRESS_PHASES = new Set([
   'power',
   'power-delivery',
 ]);
+const CHAT_PROGRESS_PHASE_SET = new Set(CHAT_PROGRESS_PHASES);
 const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation']);
 const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
 const MAX_CHAT_PROGRESS_EVENTS = 2052;
@@ -702,7 +703,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       value.seq < 1 ||
       value.seq > MAX_CHAT_PROGRESS_EVENTS ||
       !validAuthority ||
-      !CHAT_PROGRESS_PHASES.has(value.phase) ||
+      !CHAT_PROGRESS_PHASE_SET.has(value.phase) ||
       !CHAT_PROGRESS_STATES.has(value.state) ||
       (finished && (
         !Number.isSafeInteger(value.elapsed_ms) ||
