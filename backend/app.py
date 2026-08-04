@@ -10,14 +10,11 @@ process holds no Docker socket and has no host configuration write surface.
 """
 
 import asyncio
-import base64
-import hashlib
 import json
 import logging
 import os
 import sys
 from contextlib import asynccontextmanager, suppress
-from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -35,6 +32,7 @@ import state
 import supervisor
 from team import bridge as team
 
+import browser
 from chat import socket as chat_socket
 from integrations import account as account_identity
 from integrations import assistants as integrations
@@ -73,44 +71,7 @@ MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = 4 * 1024
 MAX_ACCOUNT_USERNAME_CHARS = 32
 ACCOUNT_COOKIE_TTL = 14 * 24 * 60 * 60
-
-
-class _InlineScriptCollector(HTMLParser):
-    """Collect only SvelteKit's generated inline bootstrap scripts."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._collecting = False
-        self._chunks: list[str] = []
-        self.scripts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._collecting = tag == "script" and not any(name == "src" for name, _value in attrs)
-        if self._collecting:
-            self._chunks = []
-
-    def handle_data(self, data: str) -> None:
-        if self._collecting:
-            self._chunks.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "script" and self._collecting:
-            self.scripts.append("".join(self._chunks))
-            self._collecting = False
-
-
-def _spa_script_sources() -> tuple[str, ...]:
-    index = UI_DIR / "index.html"
-    if not index.is_file():
-        return ()
-    collector = _InlineScriptCollector()
-    collector.feed(index.read_text(encoding="utf-8"))
-    return tuple(
-        "'sha256-"
-        + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
-        + "'"
-        for script in collector.scripts
-    )
+BROWSER_SECURITY_HEADERS = browser.security_headers(UI_DIR)
 
 # Open surface: the SPA shell (served for any non-/api path) + these auth endpoints. Everything
 # else under /api/ needs a session.
@@ -301,32 +262,10 @@ def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
     return response
 
 
-_SPA_SCRIPT_POLICY = " ".join(("'self'", *_spa_script_sources()))
-CONTENT_SECURITY_POLICY = "; ".join(
-    (
-        "default-src 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "frame-src https://shimpz.com",
-        "form-action 'self'",
-        "img-src 'self' data:",
-        "font-src 'self'",
-        f"script-src {_SPA_SCRIPT_POLICY}",
-        # Svelte uses inline style attributes for runtime frame sizing. Scripts remain hash-bound.
-        "style-src 'self' 'unsafe-inline'",
-        "connect-src 'self' ws: wss:",
-    )
-)
-PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
-
-
 def _secure_response(response: Response) -> Response:
     """Apply the browser boundary consistently to SPA, API, and failure responses."""
-    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-    response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["X-Content-Type-Options"] = "nosniff"
+    for name, value in BROWSER_SECURITY_HEADERS.items():
+        response.headers[name] = value
     return response
 
 
