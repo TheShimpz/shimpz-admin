@@ -64,7 +64,10 @@ test('opens the Store destination workflow through shared modal controls', async
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+    body: JSON.stringify({ teams: [
+      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+      { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
+    ] }),
   }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -100,8 +103,30 @@ test('opens the Store destination workflow through shared modal controls', async
   });
   await destination.click();
 
-  await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /marketing/i }).last()).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Choose a destination Team' });
+  await expect(dialog).toBeVisible();
+  const currentChoice = dialog.getByRole('button', { name: /marketing.*current/i });
+  await expect(currentChoice).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /gestão.*gestao/i })).toBeVisible();
+  const [dialogBox, markerBox, copyBox, metaBox] = await Promise.all([
+    dialog.boundingBox(),
+    currentChoice.locator('.marker').boundingBox(),
+    currentChoice.locator('.copy').boundingBox(),
+    currentChoice.locator('.meta').boundingBox(),
+  ]);
+  expect(dialogBox).not.toBeNull();
+  expect(markerBox).not.toBeNull();
+  expect(copyBox).not.toBeNull();
+  expect(metaBox).not.toBeNull();
+  expect(dialogBox.width).toBeLessThanOrEqual(512);
+  expect(Math.abs((dialogBox.x + (dialogBox.width / 2)) - (page.viewportSize().width / 2)))
+    .toBeLessThanOrEqual(1);
+  expect(copyBox.x - (markerBox.x + markerBox.width)).toBeGreaterThanOrEqual(10);
+  expect(metaBox.x).toBeGreaterThan(copyBox.x + copyBox.width);
+  await expect(dialog).toHaveScreenshot('store-destination-dialog.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeHidden();
 

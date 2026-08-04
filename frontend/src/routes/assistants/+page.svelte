@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { ActionLink, Button, EmbedFrame, Modal, Notice, Panel, TextField } from '@shimpz/frontend';
+  import { ActionLink, Button, ChoiceItem, DialogFrame, EmbedFrame, Modal, Notice, TextField } from '@shimpz/frontend';
   import {
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
@@ -592,28 +592,25 @@
   labelledBy="store-team-destination-title"
   oncancel={cancelDestinationDialog}
 >
-  <Panel class="destination-dialog-panel" tone="accent">
-    <header>
-      <p>{$t('store.destinationKicker')}</p>
-      <h2 id="store-team-destination-title">{destinationCopy.chooseTitle}</h2>
-      <span>{destinationCopy.chooseLead}</span>
-    </header>
-
+  <DialogFrame
+    kicker={$t('store.destinationKicker')}
+    title={destinationCopy.chooseTitle}
+    titleId="store-team-destination-title"
+    lead={destinationCopy.chooseLead}
+  >
     {#if runningTeams.length > 0}
       <ul class="destination-team-list">
         {#each runningTeams as team (team.id)}
           <li>
-            <Button
-              variant="ghost"
-              type="button"
+            <ChoiceItem
+              title={team.name}
+              description={team.id}
+              meta={team.id === activeTeamRecord?.id ? destinationCopy.current : undefined}
+              selected={team.id === activeTeamRecord?.id}
               onclick={() => chooseDestinationTeam(team.id)}
               disabled={destinationBusy}
               aria-current={team.id === activeTeamRecord?.id ? 'true' : undefined}
-            >
-              <i aria-hidden="true"></i>
-              <span><strong>{team.name}</strong><small>{team.id}</small></span>
-              {#if team.id === activeTeamRecord?.id}<b>{destinationCopy.current}</b>{/if}
-            </Button>
+            />
           </li>
         {/each}
       </ul>
@@ -623,15 +620,15 @@
 
     {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
 
-    <footer>
+    {#snippet footer()}
       <Button variant="secondary" type="button" onclick={closeDestinationDialog} disabled={destinationBusy}>
         {$t('integration.close')}
       </Button>
       <Button type="button" onclick={openCreateTeamDialog} disabled={destinationBusy}>
         {$t('teams.create')}
       </Button>
-    </footer>
-  </Panel>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <Modal
@@ -640,14 +637,13 @@
   labelledBy="store-create-team-title"
   oncancel={cancelCreateTeamDialog}
 >
-  <Panel class="destination-dialog-panel" tone="accent">
   <form onsubmit={submitDestinationTeam}>
-    <header>
-      <p>{$t('store.destinationKicker')}</p>
-      <h2 id="store-create-team-title">{$t('teams.createTitle')}</h2>
-      <span>{$t('teams.createLead')}</span>
-    </header>
-
+    <DialogFrame
+      kicker={$t('store.destinationKicker')}
+      title={$t('teams.createTitle')}
+      titleId="store-create-team-title"
+      lead={$t('teams.createLead')}
+    >
     <TextField
         id="store-create-team-name"
         label={$t('teams.name')}
@@ -664,16 +660,16 @@
 
     {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
 
-    <footer>
+    {#snippet footer()}
       <Button variant="secondary" type="button" onclick={closeCreateTeamDialog} disabled={destinationBusy}>
         {$t('teams.cancel')}
       </Button>
       <Button type="submit" disabled={destinationBusy || !newTeamName.trim()}>
         {destinationBusy ? $t('teams.creating') : $t('teams.createAction')}
       </Button>
-    </footer>
+    {/snippet}
+    </DialogFrame>
   </form>
-  </Panel>
 </Modal>
 
 <AssistantActionDialog
@@ -776,87 +772,20 @@
   :global(.destination-trigger:focus-visible) { outline: 2px solid var(--accent); outline-offset: 0.35rem; }
   :global(.destination-trigger:disabled) { cursor: wait; opacity: 0.55; }
 
-  :global(.destination-dialog) {
-    width: min(34rem, calc(100dvw - 1rem));
-    max-height: calc(100dvh - 2rem);
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--text);
-  }
-
-  :global(.destination-dialog::backdrop) {
-    background: rgba(0, 0, 0, 0.84);
-    backdrop-filter: blur(8px);
-  }
-
-  :global(.destination-dialog-panel) {
-    --dialog-pad: clamp(1rem, 3vw, 1.5rem);
-    display: grid;
-    max-height: calc(100dvh - 2rem);
-    gap: 0.8rem;
-    padding: var(--dialog-pad);
-    background: var(--surface-1);
-    box-shadow: inset 0 0 0 1px var(--border-strong), 0 24px 80px rgba(0, 0, 0, 0.65);
-    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
-    overflow: auto;
-  }
-  :global(.destination-dialog-panel) form { display: grid; gap: 0.8rem; }
-
-  :global(.destination-dialog-panel) > header { display: grid; gap: 0.45rem; }
-  :global(.destination-dialog-panel) > header p { margin: 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-  :global(.destination-dialog-panel) > header h2 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -0.04em; }
-  :global(.destination-dialog-panel) > header span { color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
+  :global(.destination-dialog form) { margin: 0; }
 
   .destination-team-list {
     display: grid;
-    gap: 1px;
+    gap: 0.25rem;
     margin: 0;
-    padding: 1px;
-    background: var(--border-strong);
+    padding: 0;
     list-style: none;
   }
 
   .destination-team-list li { min-width: 0; }
-  .destination-team-list :global(.shimpz-button) {
-    display: grid;
-    width: 100%;
-    min-height: 3.25rem;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.65rem;
-    border: 0;
-    padding: 0.55rem 0.7rem;
-    background: #050708;
-    color: var(--text);
-    cursor: pointer;
-    text-align: start;
-  }
-
-  .destination-team-list :global(.shimpz-button):hover,
-  :global(.destination-team-list .shimpz-button[aria-current='true']) { background: rgba(0, 240, 255, 0.065); }
-  .destination-team-list :global(.shimpz-button):focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-  .destination-team-list :global(.shimpz-button):disabled { cursor: wait; opacity: 0.55; }
-  .destination-team-list i { width: 0.48rem; height: 0.48rem; border: 1px solid var(--accent); transform: rotate(45deg); }
-  :global(.destination-team-list .shimpz-button[aria-current='true']) i { background: var(--accent); box-shadow: 0 0 10px rgba(0, 240, 255, 0.55); }
-  .destination-team-list span { display: grid; min-width: 0; gap: 0.15rem; }
-  .destination-team-list strong { overflow: hidden; font-family: var(--font-mono); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
-  .destination-team-list small { overflow: hidden; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.53rem; text-overflow: ellipsis; white-space: nowrap; }
-  .destination-team-list b { color: var(--accent); font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.08em; text-transform: uppercase; }
 
   .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
   .destination-empty { color: var(--text-dim); }
-
-  :global(.destination-dialog-panel) footer {
-    display: flex;
-    gap: 0;
-    margin: 0 calc(0px - var(--dialog-pad)) calc(0px - var(--dialog-pad));
-  }
-
-  :global(.destination-dialog-panel footer .shimpz-button) {
-    width: 100%;
-    flex: 1 1 0;
-  }
 
   .store-frame {
     position: relative;
