@@ -124,6 +124,12 @@
     font-size: 0.7rem;
   }
 
+  :global(.locale-trigger > span) {
+    width: 100%;
+    gap: 0.55rem;
+    justify-content: flex-start;
+  }
+
   :global(.locale-trigger:hover) {
     color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
@@ -175,11 +181,19 @@
     min-height: 2.25rem;
     align-items: center;
     justify-content: space-between;
+    border: 0;
     padding: 0 0.6rem;
     background: transparent;
     color: var(--text-dim);
+    clip-path: none;
     font-size: 0.7rem;
     text-align: start;
+  }
+
+  li :global(.shimpz-button > span) {
+    width: 100%;
+    gap: 0.75rem;
+    justify-content: space-between;
   }
 
   li :global(.shimpz-button:hover),

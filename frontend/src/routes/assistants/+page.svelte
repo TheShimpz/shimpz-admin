@@ -540,8 +540,8 @@
       aria-haspopup="dialog"
       aria-controls="store-team-destination-dialog"
     >
-      <span>{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</span>
-      <small>{destinationCopy.change}<b aria-hidden="true">↘</b></small>
+      <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
+      <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
     </Button>
   </h2>
   <span>
@@ -728,31 +728,37 @@
     line-height: 1.55;
   }
 
-  :global(.destination-trigger) {
-    display: inline-grid;
+  :global(.destination-trigger.shimpz-button) {
     max-width: 100%;
-    grid-template-columns: minmax(0, auto) auto;
-    align-items: baseline;
-    gap: clamp(0.6rem, 1.5vw, 1rem);
     border: 0;
     padding: 0;
     background: transparent;
+    box-shadow: none;
     color: var(--text);
     cursor: pointer;
+    clip-path: none;
     text-align: start;
   }
 
-  :global(.destination-trigger > span > span) {
+  :global(.destination-trigger > span) {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: clamp(0.85rem, 2vw, 1.35rem);
+    justify-content: flex-start;
+  }
+
+  :global(.destination-trigger .destination-name) {
     overflow-wrap: anywhere;
     color: inherit;
     font-family: var(--font-mono);
-    font-size: clamp(1.15rem, 2.5vw, 1.6rem);
+    font-size: clamp(1.35rem, 3vw, 1.9rem);
     font-weight: 800;
     letter-spacing: -0.04em;
     line-height: 1.1;
   }
 
-  :global(.destination-trigger) small {
+  :global(.destination-trigger .destination-change) {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
@@ -765,7 +771,7 @@
     white-space: nowrap;
   }
 
-  :global(.destination-trigger) small b { font-size: 0.75rem; }
+  :global(.destination-trigger .destination-change b) { font-size: 0.75rem; }
   :global(.destination-trigger:hover > span) { color: var(--accent); }
   :global(.destination-trigger:focus-visible) { outline: 2px solid var(--accent); outline-offset: 0.35rem; }
   :global(.destination-trigger:disabled) { cursor: wait; opacity: 0.55; }
@@ -855,7 +861,6 @@
   .store-frame {
     position: relative;
     background: #000;
-    box-shadow: inset 0 0 0 1px var(--border), 0 20px 60px rgba(0, 0, 0, 0.3);
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }

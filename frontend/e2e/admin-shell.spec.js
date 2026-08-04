@@ -40,6 +40,20 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
+
+  const localeTrigger = page.getByRole('button', { name: 'Language: English' });
+  await localeTrigger.click();
+  const localeMenu = page.getByRole('menu', { name: 'Language' });
+  await expect(localeMenu).toBeVisible();
+  const [iconBox, labelBox] = await Promise.all([
+    localeTrigger.locator('svg').boundingBox(),
+    localeTrigger.getByText('English', { exact: true }).boundingBox(),
+  ]);
+  expect(iconBox).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(labelBox.x - (iconBox.x + iconBox.width)).toBeGreaterThanOrEqual(7);
+  await expect(localeMenu.getByRole('menuitemradio').first()).toHaveCSS('border-top-width', '0px');
+  await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
@@ -68,6 +82,22 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.goto('/assistants/');
   const destination = page.getByRole('button', { name: /marketing/i });
   await expect(destination).toBeVisible();
+  await expect(destination).toHaveCSS('border-top-width', '0px');
+  await expect(destination).toHaveCSS('box-shadow', 'none');
+  const [teamBox, changeBox] = await Promise.all([
+    destination.locator('.destination-name').boundingBox(),
+    destination.locator('.destination-change').boundingBox(),
+  ]);
+  expect(teamBox).not.toBeNull();
+  expect(changeBox).not.toBeNull();
+  expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
+  expect(Number.parseFloat(await destination.locator('.destination-name').evaluate(
+    (element) => getComputedStyle(element).fontSize,
+  ))).toBeGreaterThanOrEqual(20);
+  await expect(page.locator('.store-destination')).toHaveScreenshot('store-destination.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
   await destination.click();
 
   await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeVisible();
