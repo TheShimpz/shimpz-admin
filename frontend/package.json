@@ -10,7 +10,7 @@
     "test": "node tests/run-tests.mjs"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/d808d8493bd8025eb58d2936775353d7f636840d"
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/89d55e996de5a609adceab840fd172d9cfba2fe9"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
