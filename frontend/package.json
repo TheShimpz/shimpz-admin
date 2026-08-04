@@ -12,15 +12,15 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/240a36224395e672ccc05787ab33557de2d1a099"
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c6da8df38dbb12aeea77677234e7a13f43978e5f"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
     "@playwright/test": "1.62.0",
-    "@types/node": "24.13.3",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.70.1",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@types/node": "24.13.3",
     "svelte": "5.56.8",
     "svelte-check": "4.7.3",
     "vite": "8.1.5"
