@@ -275,7 +275,6 @@
         }
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
-          if (stopping) return;
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
           progressSequence = incoming.seq;
           progressEvents = [...progressEvents, incoming];
@@ -568,7 +567,6 @@
     const teamId = $teamContext.selectedTeamId;
     if (!busy || syncing || stopping || !teamId || !socketReady || !socket) return;
     stopping = true;
-    resetProgress();
     clearError();
     try {
       socket.send(JSON.stringify(createStopFrame(teamId)));

@@ -221,7 +221,6 @@ async def _await_progress_result(
     future: concurrent.futures.Future,
     progress: asyncio.Queue[dict[str, object]],
     inactive: Callable[[], bool],
-    suppress_progress: Callable[[], bool],
 ) -> object | None:
     response = asyncio.wrap_future(future)
     pending_progress: asyncio.Task[dict[str, object]] | None = None
@@ -238,8 +237,6 @@ async def _await_progress_result(
                 pending_progress = None
                 if inactive():
                     return None
-                if suppress_progress():
-                    continue
                 sequence += 1
                 if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
                     connection.closed = True
@@ -255,8 +252,6 @@ async def _await_progress_result(
             if inactive():
                 return None
             event = progress.get_nowait()
-            if suppress_progress():
-                continue
             sequence += 1
             if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
                 connection.closed = True
@@ -282,7 +277,6 @@ async def _await_turn_response(
         turn.future,
         turn.progress,
         lambda: connection.closed or turn.terminal_sent,
-        lambda: turn.stop_requested,
     )
     return team.TeamResponse(502, {}) if result is None else result
 
@@ -432,7 +426,6 @@ async def _load_sync_snapshot(
             future,
             progress,
             lambda: connection.closed,
-            lambda: False,
         )
     if snapshot is None and not connection.closed:
         await _send_event(websocket, _error_terminal(502))
@@ -692,10 +685,6 @@ async def serve(
                 sync_task.cancel()
                 await asyncio.gather(sync_task, return_exceptions=True)
             active = connection.active
-            if active is None and connection.pending_challenge_type == "secret":
-                active = _Turn(future=None, operation="pending-stop")
-                connection.active = active
-                _request_stop(websocket, connection, active, canonical_id, emit=False)
             if active is not None:
                 stop_task = active.stop_task
                 if active.future is not None and not active.future.done():

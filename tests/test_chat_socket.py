@@ -449,6 +449,10 @@ class ChatWebSocketTests(unittest.TestCase):
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual(
                     await websocket.next_json(),
+                    {"type": "progress", "seq": 1, **_MEASURED_PROGRESS[-1]},
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
                     {
                         "type": "done",
                         "team_id": "team_1",
