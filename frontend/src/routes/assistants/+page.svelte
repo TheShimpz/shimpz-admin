@@ -609,7 +609,6 @@
               selected={team.id === activeTeamRecord?.id}
               onclick={() => chooseDestinationTeam(team.id)}
               disabled={destinationBusy}
-              aria-current={team.id === activeTeamRecord?.id ? 'true' : undefined}
             />
           </li>
         {/each}

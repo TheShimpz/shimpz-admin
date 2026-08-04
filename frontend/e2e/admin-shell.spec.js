@@ -134,4 +134,17 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.getByRole('menuitemradio', { name: 'Português' }).click();
   await expect(page.locator('iframe')).toHaveAttribute('src', /\/pt\/assistants\/embed/);
   await expect(page.getByText('Carregando a Store de Assistants…')).toBeVisible();
+
+  await page.getByRole('button', { name: /Português/ }).click();
+  await page.getByRole('menuitemradio', { name: 'العربية' }).click();
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await page.locator('.destination-trigger').click();
+  const rtlChoice = page.locator('dialog.destination-dialog[open] .shimpz-choice-item.is-selected');
+  const [rtlCopyBox, rtlMetaBox] = await Promise.all([
+    rtlChoice.locator('.copy').boundingBox(),
+    rtlChoice.locator('.meta').boundingBox(),
+  ]);
+  expect(rtlCopyBox).not.toBeNull();
+  expect(rtlMetaBox).not.toBeNull();
+  expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
 });

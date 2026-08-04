@@ -136,6 +136,13 @@
     closeCreate();
   }
 
+  function recoverRequiredCreate() {
+    if (!requiresTeam || creating) return;
+    queueMicrotask(() => {
+      if (requiresTeam && !creating && !createDialog?.open) open(createDialog);
+    });
+  }
+
   async function submitCreate(event) {
     event.preventDefault();
     if (creating || !teamName.trim()) return;
@@ -290,7 +297,6 @@
             description={team.id}
             meta={team.id === $teamContext.selectedTeamId ? copy.current : undefined}
             selected={team.id === $teamContext.selectedTeamId}
-            aria-pressed={team.id === $teamContext.selectedTeamId}
             onclick={() => chooseTeam(team.id)}
           />
           <Button
@@ -322,7 +328,6 @@
               title={brain.title}
               description={brain.providerTitle}
               selected={brain.value === selectedBrain?.value}
-              aria-pressed={brain.value === selectedBrain?.value}
               disabled={$modelContext.phase === 'saving'}
               onclick={() => chooseBrain(brain)}
             />
@@ -442,7 +447,7 @@
   </form>
 </Modal>
 
-<Modal bind:element={createDialog} labelledBy="chat-create-team-title" oncancel={cancelCreate}>
+<Modal bind:element={createDialog} labelledBy="chat-create-team-title" oncancel={cancelCreate} onclose={recoverRequiredCreate}>
   <form onsubmit={submitCreate}>
     <DialogFrame kicker={copy.createKicker} title={copy.createTitle} titleId="chat-create-team-title" lead={copy.createLead}>
     <TextField
