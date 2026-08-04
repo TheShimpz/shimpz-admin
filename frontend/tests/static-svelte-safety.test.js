@@ -17,7 +17,7 @@ test('static security: Svelte templates expose no raw HTML sink', () => {
   }
 });
 
-test('Admin presentation uses only shared interactive primitives', () => {
+test('static presentation: Admin uses only shared interactive primitives', () => {
   const nativePresentationTag = /<(?:a|button|details|dialog|iframe|input|textarea)(?:\s|>)/;
   for (const path of svelteFiles(new URL('../src/', import.meta.url))) {
     const source = readFileSync(path, 'utf8');
