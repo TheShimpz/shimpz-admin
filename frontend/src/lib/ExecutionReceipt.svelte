@@ -3,10 +3,10 @@
     executionSteps,
     executionStepCount,
     formatExecutionDuration,
-    technicalStepLabel,
+    localizedStepLabel,
   } from './executionProgress.js';
 
-  let { events = [], label = 'Execution stages' } = $props();
+  let { events = [], label = 'Execution stages', progressLabels = {} } = $props();
   let open = $state(false);
   let steps = $derived(open ? executionSteps(events) : []);
   let stepCount = $derived(executionStepCount(events));
@@ -19,7 +19,7 @@
       <ol>
         {#each steps as step (step.key)}
           <li>
-            <code>{technicalStepLabel(step)}</code>
+            <code>{localizedStepLabel(step, progressLabels)}</code>
             <time>{formatExecutionDuration(step.elapsed_ms)}</time>
           </li>
         {/each}

@@ -5,8 +5,11 @@ import {
   executionSteps,
   executionStepCount,
   formatExecutionDuration,
+  localizedEventLabel,
+  localizedStepLabel,
   technicalStepLabel,
 } from '../src/lib/executionProgress.js';
+import { messages } from '../src/lib/messages.js';
 
 test('pairs repeated measured operations without inventing workflow stages', () => {
   const steps = executionSteps([
@@ -28,6 +31,39 @@ test('formats only bounded measured durations', () => {
   assert.equal(formatExecutionDuration(1200), '1.2 s');
   assert.equal(formatExecutionDuration(65_000), '1m 05s');
   assert.equal(formatExecutionDuration(-1), '');
+});
+
+test('humanizes every observed phase in every supported Admin locale', () => {
+  const phases = [
+    'admin-preparation',
+    'reply-validation',
+    'team-context',
+    'model',
+    'power-preparation',
+    'power',
+  ];
+
+  for (const [locale, copy] of Object.entries(messages)) {
+    for (const phase of phases) {
+      const step = {
+        origin: phase.startsWith('admin') || phase === 'reply-validation' ? 'admin' : 'team',
+        phase,
+        index: phase === 'power' ? 1 : undefined,
+        total: phase === 'power' ? 2 : undefined,
+      };
+      const label = localizedStepLabel(step, copy.chatPage.progress);
+      assert.doesNotMatch(label, /admin-preparation|reply-validation|team-context|power-preparation/);
+      assert.doesNotMatch(label, /\{index\}|\{total\}/);
+      assert.ok(label.includes(' · '), `${locale}: ${label}`);
+    }
+
+    const event = { origin: 'team', phase: 'model', state: 'started' };
+    assert.equal(
+      localizedEventLabel(event, copy.chatPage.progress),
+      `${copy.chatPage.progress.origins.team} · ${copy.chatPage.progress.phases.model} · ${copy.chatPage.progress.states.started}`,
+      locale,
+    );
+  }
 });
 
 test('counts the same observed rows when a finish has no observed start', () => {

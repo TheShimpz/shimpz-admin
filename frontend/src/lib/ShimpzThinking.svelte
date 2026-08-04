@@ -3,7 +3,7 @@
   import {
     executionSteps,
     formatExecutionDuration,
-    technicalStepLabel,
+    localizedStepLabel,
   } from './executionProgress.js';
 
   let {
@@ -11,6 +11,7 @@
     events = [],
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
+    progressLabels = {},
   } = $props();
   let elapsed = $state(0);
 
@@ -38,7 +39,7 @@
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="copy">
       <strong>{label}</strong>
-      <code>{current ? technicalStepLabel(current) : 'awaiting execution event'}</code>
+      <code>{current ? localizedStepLabel(current, progressLabels) : (progressLabels.awaiting ?? 'Waiting for execution')}</code>
     </span>
     <span class="elapsed" aria-hidden="true">{elapsedText} · {formattedElapsed}</span>
   </div>
@@ -48,7 +49,7 @@
       {#each visibleSteps as step (step.key)}
         <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
           <i aria-hidden="true"></i>
-          <code>{technicalStepLabel(step)}</code>
+          <code>{localizedStepLabel(step, progressLabels)}</code>
           {#if step.elapsed_ms === null}
             <span class="activity" aria-hidden="true"></span>
           {:else}

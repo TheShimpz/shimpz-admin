@@ -69,6 +69,26 @@ export function technicalStepLabel(step) {
   return `${step.origin} · ${step.phase}${position}`;
 }
 
+function fillStepPosition(template, step) {
+  return template
+    .replaceAll('{index}', String(step.index ?? ''))
+    .replaceAll('{total}', String(step.total ?? ''));
+}
+
+export function localizedStepLabel(step, labels = {}) {
+  const origin = labels.origins?.[step.origin] ?? step.origin;
+  const phaseTemplate = labels.phases?.[step.phase];
+  const phase = typeof phaseTemplate === 'string'
+    ? fillStepPosition(phaseTemplate, step)
+    : technicalStepLabel({ ...step, origin: '' }).replace(/^ · /, '');
+  return `${origin} · ${phase}`;
+}
+
+export function localizedEventLabel(event, labels = {}) {
+  const state = labels.states?.[event.state] ?? event.state;
+  return `${localizedStepLabel(event, labels)} · ${state}`;
+}
+
 export function formatExecutionDuration(value) {
   if (!Number.isSafeInteger(value) || value < 0 || value > MAX_DISPLAY_DURATION_MS) return '';
   if (value < 1000) return `${value} ms`;

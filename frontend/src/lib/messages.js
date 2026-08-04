@@ -171,6 +171,19 @@ export const messages = {
       "sending": "Your Team is thinking…",
       "elapsed": "Elapsed time",
       "progressStages": "Execution stages",
+      "progress": {
+        "awaiting": "Waiting for execution",
+        "origins": { "admin": "Admin", "team": "Team" },
+        "phases": {
+          "admin-preparation": "Turn preparation",
+          "reply-validation": "Response validation",
+          "team-context": "Team context",
+          "model": "Model reasoning",
+          "power-preparation": "Power preparation",
+          "power": "Power {index} of {total}"
+        },
+        "states": { "started": "In progress", "finished": "Complete" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -468,6 +481,19 @@ export const messages = {
       "sending": "Seu Time está pensando…",
       "elapsed": "Tempo decorrido",
       "progressStages": "Etapas da execução",
+      "progress": {
+        "awaiting": "Aguardando a execução",
+        "origins": { "admin": "Admin", "team": "Time" },
+        "phases": {
+          "admin-preparation": "Preparação do turno",
+          "reply-validation": "Validação da resposta",
+          "team-context": "Contexto do Time",
+          "model": "Raciocínio do modelo",
+          "power-preparation": "Preparação dos Powers",
+          "power": "Power {index} de {total}"
+        },
+        "states": { "started": "Em andamento", "finished": "Concluído" }
+      },
       "you": "Você",
       "stop": "Parar",
       "stopped": "O turno ativo foi interrompido.",
@@ -765,6 +791,19 @@ export const messages = {
       "sending": "Tu equipo está pensando…",
       "elapsed": "Tiempo transcurrido",
       "progressStages": "Etapas de ejecución",
+      "progress": {
+        "awaiting": "Esperando la ejecución",
+        "origins": { "admin": "Admin", "team": "Equipo" },
+        "phases": {
+          "admin-preparation": "Preparación del turno",
+          "reply-validation": "Validación de la respuesta",
+          "team-context": "Contexto del equipo",
+          "model": "Razonamiento del modelo",
+          "power-preparation": "Preparación de Powers",
+          "power": "Power {index} de {total}"
+        },
+        "states": { "started": "En curso", "finished": "Completado" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -1062,6 +1101,19 @@ export const messages = {
       "sending": "你的团队正在思考…",
       "elapsed": "已用时间",
       "progressStages": "执行阶段",
+      "progress": {
+        "awaiting": "等待执行",
+        "origins": { "admin": "Admin", "team": "团队" },
+        "phases": {
+          "admin-preparation": "回合准备",
+          "reply-validation": "响应验证",
+          "team-context": "团队上下文",
+          "model": "模型推理",
+          "power-preparation": "Power 准备",
+          "power": "Power {index}/{total}"
+        },
+        "states": { "started": "进行中", "finished": "已完成" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -1359,6 +1411,19 @@ export const messages = {
       "sending": "Votre équipe réfléchit…",
       "elapsed": "Temps écoulé",
       "progressStages": "Étapes d’exécution",
+      "progress": {
+        "awaiting": "En attente de l’exécution",
+        "origins": { "admin": "Admin", "team": "Équipe" },
+        "phases": {
+          "admin-preparation": "Préparation du tour",
+          "reply-validation": "Validation de la réponse",
+          "team-context": "Contexte de l’équipe",
+          "model": "Raisonnement du modèle",
+          "power-preparation": "Préparation des Powers",
+          "power": "Power {index} sur {total}"
+        },
+        "states": { "started": "En cours", "finished": "Terminé" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -1656,6 +1721,19 @@ export const messages = {
       "sending": "Dein Team denkt nach…",
       "elapsed": "Vergangene Zeit",
       "progressStages": "Ausführungsphasen",
+      "progress": {
+        "awaiting": "Warten auf die Ausführung",
+        "origins": { "admin": "Admin", "team": "Team" },
+        "phases": {
+          "admin-preparation": "Turnvorbereitung",
+          "reply-validation": "Antwortvalidierung",
+          "team-context": "Teamkontext",
+          "model": "Modellverarbeitung",
+          "power-preparation": "Power-Vorbereitung",
+          "power": "Power {index} von {total}"
+        },
+        "states": { "started": "Läuft", "finished": "Abgeschlossen" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -1953,6 +2031,19 @@ export const messages = {
       "sending": "チームが考えています…",
       "elapsed": "経過時間",
       "progressStages": "実行ステージ",
+      "progress": {
+        "awaiting": "実行を待機中",
+        "origins": { "admin": "Admin", "team": "チーム" },
+        "phases": {
+          "admin-preparation": "ターンの準備",
+          "reply-validation": "応答の検証",
+          "team-context": "チームコンテキスト",
+          "model": "モデル推論",
+          "power-preparation": "Power の準備",
+          "power": "Power {index}/{total}"
+        },
+        "states": { "started": "実行中", "finished": "完了" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",
@@ -2250,6 +2341,19 @@ export const messages = {
       "sending": "فريقك يفكر…",
       "elapsed": "الوقت المنقضي",
       "progressStages": "مراحل التنفيذ",
+      "progress": {
+        "awaiting": "في انتظار التنفيذ",
+        "origins": { "admin": "Admin", "team": "الفريق" },
+        "phases": {
+          "admin-preparation": "إعداد الدور",
+          "reply-validation": "التحقق من الرد",
+          "team-context": "سياق الفريق",
+          "model": "استدلال النموذج",
+          "power-preparation": "إعداد Powers",
+          "power": "Power {index} من {total}"
+        },
+        "states": { "started": "قيد التنفيذ", "finished": "مكتمل" }
+      },
       "you": "You",
       "stop": "Stop",
       "stopped": "The active turn was stopped.",

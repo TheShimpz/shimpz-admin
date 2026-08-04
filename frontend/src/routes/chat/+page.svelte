@@ -4,6 +4,7 @@
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
+  import { localizedEventLabel } from '$lib/executionProgress.js';
   import Markdown from '$lib/Markdown.svelte';
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
@@ -74,7 +75,7 @@
   let currentProgress = $derived(progressEvents.at(-1));
   let liveStatus = $derived(
     currentProgress
-      ? `${thinking} ${currentProgress.origin} ${currentProgress.phase} ${currentProgress.state}`
+      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress)}`
       : busy ? thinking : '',
   );
   let contextLoading = $derived(
@@ -632,6 +633,7 @@
                   <ExecutionReceipt
                     events={exchange.assistant.receipt ?? []}
                     label={copy.progressStages}
+                    progressLabels={copy.progress}
                   />
                 </article>
               {:else if index === exchanges.length - 1 && busy && !integrationChallenge}
@@ -640,6 +642,7 @@
                   events={progressEvents}
                   elapsedText={copy.elapsed}
                   stagesText={copy.progressStages}
+                  progressLabels={copy.progress}
                 />
               {/if}
             </section>
