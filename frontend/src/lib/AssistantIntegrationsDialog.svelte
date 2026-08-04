@@ -1,5 +1,5 @@
 <script>
-  import { Button, Modal, Notice, Panel, TextField } from '@shimpz/frontend';
+  import { Button, DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
@@ -81,14 +81,13 @@
   });
 </script>
 
-<Modal bind:element={dialog} labelledBy="assistant-integrations-dialog-title" oncancel={close}>
-  <Panel class="dialog-panel" tone="accent">
-    <header>
-      <p>{copy.dialogKicker}</p>
-      <h2 id="assistant-integrations-dialog-title">{copy.dialogTitle}</h2>
-      <span>{$t('assistantIntegrations.dialogLead', { provider: providerLabel })}</span>
-    </header>
-
+<Modal size="lg" bind:element={dialog} labelledBy="assistant-integrations-dialog-title" oncancel={close}>
+  <DialogFrame
+    kicker={copy.dialogKicker}
+    title={copy.dialogTitle}
+    titleId="assistant-integrations-dialog-title"
+    lead={$t('assistantIntegrations.dialogLead', { provider: providerLabel })}
+  >
     {#if awaitingCompletion}
       <section class="completion" aria-labelledby="assistant-integration-completion-title">
         <h3 id="assistant-integration-completion-title">{copy.completionTitle}</h3>
@@ -136,7 +135,7 @@
     {/if}
 
     {#if submitError}<Notice variant="error">{submitError}</Notice>{/if}
-    <footer>
+    {#snippet footer()}
       <Button type="button" variant="secondary" disabled={submitting} onclick={close}>{copy.cancel}</Button>
       {#if awaitingCompletion}
         <Button type="button" disabled={submitting || !completionCode.trim()} onclick={complete}>
@@ -150,15 +149,11 @@
           )}
         </Button>
       {/if}
-    </footer>
-  </Panel>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <style>
-  :global(.dialog-panel) { --pad: clamp(1rem, 2.5vw, 1.5rem); display: grid; max-height: 90dvh; grid-template-rows: auto minmax(0, 1fr) auto auto; overflow: hidden; }
-  :global(.dialog-panel) > header p { margin: 0 0 0.5rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
-  :global(.dialog-panel) > header h2 { margin: 0; font-size: clamp(1.3rem, 3.5vw, 1.85rem); letter-spacing: -0.045em; }
-  :global(.dialog-panel) > header span { display: block; margin: 0.55rem 0 0.85rem; color: var(--text-dim); font-size: 0.78rem; line-height: 1.5; }
   .requirements { display: grid; min-height: 0; gap: 0.8rem; overflow-y: auto; overscroll-behavior: contain; }
   .completion { display: grid; align-content: center; gap: 0.7rem; min-height: 13rem; border: 1px solid var(--border-strong); padding: clamp(0.9rem, 3vw, 1.5rem); background: #030506; }
   .completion h3, .completion p { margin: 0; }
@@ -179,7 +174,4 @@
   li { display: grid; gap: 0.2rem; padding: 0.55rem; }
   li + li { border-top: 1px solid var(--border); }
   li strong { font-size: 0.7rem; }
-  footer { display: flex; margin: 0.75rem calc(0px - var(--pad)) calc(0px - var(--pad)); }
-  footer :global(.shimpz-button) { width: 50%; flex: 1 1 0; }
-  @media (max-width: 640px) { :global(.dialog-panel) { --pad: 1rem; max-height: 94dvh; } }
 </style>
