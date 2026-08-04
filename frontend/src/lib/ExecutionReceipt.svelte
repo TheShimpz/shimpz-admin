@@ -6,7 +6,13 @@
     localizedStepLabel,
   } from './executionProgress.js';
 
-  let { events = [], label = 'Execution stages', progressLabels = {} } = $props();
+  let {
+    events = [],
+    label = 'Execution stages',
+    progressLabels = {},
+    teamName = 'Team',
+    assistantNames = new Map(),
+  } = $props();
   let open = $state(false);
   let steps = $derived(open ? executionSteps(events) : []);
   let stepCount = $derived(executionStepCount(events));
@@ -19,7 +25,7 @@
       <ol>
         {#each steps as step (step.key)}
           <li>
-            <code>{localizedStepLabel(step, progressLabels)}</code>
+            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
             <time>{formatExecutionDuration(step.elapsed_ms)}</time>
           </li>
         {/each}
@@ -63,7 +69,7 @@
     gap: 1rem;
   }
 
-  code {
+  .step-copy {
     color: var(--text-dim);
     overflow-wrap: anywhere;
   }

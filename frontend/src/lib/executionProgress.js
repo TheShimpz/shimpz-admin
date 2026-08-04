@@ -1,7 +1,29 @@
 const MAX_DISPLAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function identity(event) {
-  return `${event.origin}\u0000${event.phase}\u0000${event.index ?? 0}\u0000${event.total ?? 0}`;
+  return [
+    event.origin,
+    event.phase,
+    event.assistant_id ?? '',
+    event.power ?? '',
+    event.index ?? 0,
+    event.total ?? 0,
+  ].join('\u0000');
+}
+
+function annotateNarrative(steps) {
+  const powerOccurrences = new Map();
+  let observedPowers = 0;
+  for (const step of steps) {
+    step.observedPowersBefore = observedPowers;
+    if (step.phase !== 'power') continue;
+    const key = `${step.assistant_id}\u0000${step.power}`;
+    const occurrence = (powerOccurrences.get(key) ?? 0) + 1;
+    powerOccurrences.set(key, occurrence);
+    step.powerOccurrence = occurrence;
+    observedPowers += 1;
+  }
+  return steps;
 }
 
 export function executionSteps(events) {
@@ -19,6 +41,8 @@ export function executionSteps(events) {
         seq: event.seq,
         origin: event.origin,
         phase: event.phase,
+        assistant_id: event.assistant_id,
+        power: event.power,
         index: event.index,
         total: event.total,
         elapsed_ms: null,
@@ -38,12 +62,14 @@ export function executionSteps(events) {
       seq: event.seq,
       origin: event.origin,
       phase: event.phase,
+      assistant_id: event.assistant_id,
+      power: event.power,
       index: event.index,
       total: event.total,
       elapsed_ms: event.elapsed_ms,
     });
   }
-  return steps;
+  return annotateNarrative(steps);
 }
 
 export function executionStepCount(events) {
@@ -69,13 +95,74 @@ export function technicalStepLabel(step) {
   return `${step.origin} · ${step.phase}${position}`;
 }
 
+function humanizeIdentifier(value) {
+  if (typeof value !== 'string') return '';
+  return value.split('-').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ');
+}
+
+function isolate(value) {
+  return `\u2068${value}\u2069`;
+}
+
+function fillNarrative(template, values) {
+  return Object.entries(values).reduce(
+    (copy, [key, value]) => copy.replaceAll(`{${key}}`, isolate(String(value))),
+    template,
+  );
+}
+
+function displayAssistant(step, context) {
+  const names = context.assistantNames;
+  const reviewed = names instanceof Map ? names.get(step.assistant_id) : names?.[step.assistant_id];
+  return reviewed ?? humanizeIdentifier(step.assistant_id);
+}
+
+function narrativeKey(step) {
+  if (step.phase === 'team-context') {
+    return step.observedPowersBefore > 0 ? 'teamContextFinal' : 'teamContextInitial';
+  }
+  if (step.phase === 'model') {
+    return step.observedPowersBefore > 0 ? 'modelAfterPower' : 'modelInitial';
+  }
+  if (step.phase === 'power-preparation') {
+    return step.observedPowersBefore > 0 ? 'powerPreparationAgain' : 'powerPreparation';
+  }
+  if (step.phase === 'power') {
+    return step.powerOccurrence > 1 ? 'powerAgain' : 'power';
+  }
+  return {
+    'admin-preparation': 'adminPreparation',
+    'power-delivery': 'powerDelivery',
+    'reply-validation': 'replyValidation',
+  }[step.phase];
+}
+
+function narrativeLabel(step, labels, context) {
+  const template = labels.narrative?.[narrativeKey(step)];
+  if (typeof template !== 'string') return '';
+  let label = fillNarrative(template, {
+    team: context.teamName ?? labels.origins?.team ?? 'Team',
+    assistant: displayAssistant(step, context),
+    power: humanizeIdentifier(step.power),
+  });
+  if (step.phase === 'power' && step.total > 1 && typeof labels.narrative.powerPosition === 'string') {
+    label += ` ${fillNarrative(labels.narrative.powerPosition, {
+      index: step.index,
+      total: step.total,
+    })}`;
+  }
+  return label;
+}
+
 function fillStepPosition(template, step) {
   return template
     .replaceAll('{index}', String(step.index ?? ''))
     .replaceAll('{total}', String(step.total ?? ''));
 }
 
-export function localizedStepLabel(step, labels = {}) {
+export function localizedStepLabel(step, labels = {}, context = {}) {
+  const narrative = narrativeLabel(step, labels, context);
+  if (narrative) return narrative;
   const origin = labels.origins?.[step.origin] ?? step.origin;
   const phaseTemplate = labels.phases?.[step.phase];
   const phase = typeof phaseTemplate === 'string'
@@ -84,9 +171,9 @@ export function localizedStepLabel(step, labels = {}) {
   return `${origin} · ${phase}`;
 }
 
-export function localizedEventLabel(event, labels = {}) {
+export function localizedEventLabel(event, labels = {}, context = {}) {
   const state = labels.states?.[event.state] ?? event.state;
-  return `${localizedStepLabel(event, labels)} · ${state}`;
+  return `${localizedStepLabel(event, labels, context)} · ${state}`;
 }
 
 export function formatExecutionDuration(value) {

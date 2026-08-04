@@ -183,6 +183,20 @@ export const messages = {
           "power": "Power {index} of {total}",
           "power-delivery": "Power delivery confirmation"
         },
+        "narrative": {
+          "adminPreparation": "Admin prepares a secure request for {team}",
+          "replyValidation": "Admin checks the final response from {team} before displaying it",
+          "teamContextInitial": "{team} assembles the context needed for this turn",
+          "teamContextFinal": "{team} verifies that its context still matches the completed work",
+          "modelInitial": "{team} decides how to handle your request",
+          "modelAfterPower": "{team} evaluates the results returned by the Assistants",
+          "powerPreparation": "{team} prepares the Assistant actions requested by the model",
+          "powerPreparationAgain": "{team} prepares the next Assistant actions requested by the model",
+          "power": "{assistant} runs {power} for {team}",
+          "powerAgain": "{assistant} runs {power} again for {team}",
+          "powerPosition": "· action {index} of {total}",
+          "powerDelivery": "{team} records the Power results accepted by the model"
+        },
         "states": { "started": "In progress", "finished": "Complete" }
       },
       "you": "You",
@@ -493,6 +507,20 @@ export const messages = {
           "power-preparation": "Preparação dos Powers",
           "power": "Power {index} de {total}",
           "power-delivery": "Confirmação da entrega dos Powers"
+        },
+        "narrative": {
+          "adminPreparation": "O Admin prepara uma solicitação segura para {team}",
+          "replyValidation": "O Admin verifica a resposta final de {team} antes de exibi-la",
+          "teamContextInitial": "{team} reúne o contexto necessário para este turno",
+          "teamContextFinal": "{team} confirma que seu contexto ainda corresponde ao trabalho concluído",
+          "modelInitial": "{team} decide como tratar sua solicitação",
+          "modelAfterPower": "{team} avalia os resultados devolvidos pelos Assistants",
+          "powerPreparation": "{team} prepara as ações de Assistants solicitadas pelo modelo",
+          "powerPreparationAgain": "{team} prepara as próximas ações de Assistants solicitadas pelo modelo",
+          "power": "{assistant} executa {power} para {team}",
+          "powerAgain": "{assistant} executa {power} novamente para {team}",
+          "powerPosition": "· ação {index} de {total}",
+          "powerDelivery": "{team} registra os resultados de Powers aceitos pelo modelo"
         },
         "states": { "started": "Em andamento", "finished": "Concluído" }
       },
@@ -805,6 +833,20 @@ export const messages = {
           "power": "Power {index} de {total}",
           "power-delivery": "Confirmación de entrega de Powers"
         },
+        "narrative": {
+          "adminPreparation": "Admin prepara una solicitud segura para {team}",
+          "replyValidation": "Admin comprueba la respuesta final de {team} antes de mostrarla",
+          "teamContextInitial": "{team} reúne el contexto necesario para este turno",
+          "teamContextFinal": "{team} verifica que su contexto aún coincide con el trabajo completado",
+          "modelInitial": "{team} decide cómo atender tu solicitud",
+          "modelAfterPower": "{team} evalúa los resultados devueltos por los Assistants",
+          "powerPreparation": "{team} prepara las acciones de Assistants solicitadas por el modelo",
+          "powerPreparationAgain": "{team} prepara las siguientes acciones de Assistants solicitadas por el modelo",
+          "power": "{assistant} ejecuta {power} para {team}",
+          "powerAgain": "{assistant} vuelve a ejecutar {power} para {team}",
+          "powerPosition": "· acción {index} de {total}",
+          "powerDelivery": "{team} registra los resultados de Powers aceptados por el modelo"
+        },
         "states": { "started": "En curso", "finished": "Completado" }
       },
       "you": "You",
@@ -1115,6 +1157,20 @@ export const messages = {
           "power-preparation": "Power 准备",
           "power": "Power {index}/{total}",
           "power-delivery": "Power 交付确认"
+        },
+        "narrative": {
+          "adminPreparation": "Admin 为 {team} 准备安全请求",
+          "replyValidation": "Admin 在显示前检查 {team} 的最终响应",
+          "teamContextInitial": "{team} 汇集本轮所需的上下文",
+          "teamContextFinal": "{team} 确认上下文仍与已完成的工作一致",
+          "modelInitial": "{team} 决定如何处理你的请求",
+          "modelAfterPower": "{team} 评估 Assistants 返回的结果",
+          "powerPreparation": "{team} 准备模型请求的 Assistant 操作",
+          "powerPreparationAgain": "{team} 准备模型请求的下一组 Assistant 操作",
+          "power": "{assistant} 为 {team} 执行 {power}",
+          "powerAgain": "{assistant} 再次为 {team} 执行 {power}",
+          "powerPosition": "· 第 {index}/{total} 个操作",
+          "powerDelivery": "{team} 记录模型已接受的 Power 结果"
         },
         "states": { "started": "进行中", "finished": "已完成" }
       },
@@ -1427,6 +1483,20 @@ export const messages = {
           "power": "Power {index} sur {total}",
           "power-delivery": "Confirmation de livraison des Powers"
         },
+        "narrative": {
+          "adminPreparation": "Admin prépare une requête sécurisée pour {team}",
+          "replyValidation": "Admin vérifie la réponse finale de {team} avant de l’afficher",
+          "teamContextInitial": "{team} rassemble le contexte nécessaire à ce tour",
+          "teamContextFinal": "{team} vérifie que son contexte correspond toujours au travail accompli",
+          "modelInitial": "{team} décide comment traiter votre demande",
+          "modelAfterPower": "{team} évalue les résultats renvoyés par les Assistants",
+          "powerPreparation": "{team} prépare les actions d’Assistants demandées par le modèle",
+          "powerPreparationAgain": "{team} prépare les prochaines actions d’Assistants demandées par le modèle",
+          "power": "{assistant} exécute {power} pour {team}",
+          "powerAgain": "{assistant} exécute à nouveau {power} pour {team}",
+          "powerPosition": "· action {index} sur {total}",
+          "powerDelivery": "{team} enregistre les résultats de Powers acceptés par le modèle"
+        },
         "states": { "started": "En cours", "finished": "Terminé" }
       },
       "you": "You",
@@ -1737,6 +1807,20 @@ export const messages = {
           "power-preparation": "Power-Vorbereitung",
           "power": "Power {index} von {total}",
           "power-delivery": "Bestätigung der Power-Übergabe"
+        },
+        "narrative": {
+          "adminPreparation": "Admin bereitet eine sichere Anfrage für {team} vor",
+          "replyValidation": "Admin prüft die endgültige Antwort von {team}, bevor sie angezeigt wird",
+          "teamContextInitial": "{team} stellt den für diesen Turn benötigten Kontext zusammen",
+          "teamContextFinal": "{team} prüft, ob der Kontext weiterhin zur abgeschlossenen Arbeit passt",
+          "modelInitial": "{team} entscheidet, wie deine Anfrage bearbeitet wird",
+          "modelAfterPower": "{team} bewertet die von den Assistants gelieferten Ergebnisse",
+          "powerPreparation": "{team} bereitet die vom Modell angeforderten Assistant-Aktionen vor",
+          "powerPreparationAgain": "{team} bereitet die nächsten vom Modell angeforderten Assistant-Aktionen vor",
+          "power": "{assistant} führt {power} für {team} aus",
+          "powerAgain": "{assistant} führt {power} erneut für {team} aus",
+          "powerPosition": "· Aktion {index} von {total}",
+          "powerDelivery": "{team} erfasst die vom Modell akzeptierten Power-Ergebnisse"
         },
         "states": { "started": "Läuft", "finished": "Abgeschlossen" }
       },
@@ -2049,6 +2133,20 @@ export const messages = {
           "power": "Power {index}/{total}",
           "power-delivery": "Power 配信の確認"
         },
+        "narrative": {
+          "adminPreparation": "Admin が {team} のために安全なリクエストを準備します",
+          "replyValidation": "Admin が表示前に {team} の最終回答を確認します",
+          "teamContextInitial": "{team} がこのターンに必要なコンテキストをまとめます",
+          "teamContextFinal": "{team} が完了した作業とコンテキストの整合性を確認します",
+          "modelInitial": "{team} がリクエストの処理方法を判断します",
+          "modelAfterPower": "{team} が Assistants から返された結果を評価します",
+          "powerPreparation": "{team} がモデルの要求した Assistant アクションを準備します",
+          "powerPreparationAgain": "{team} がモデルの要求した次の Assistant アクションを準備します",
+          "power": "{assistant} が {team} のために {power} を実行します",
+          "powerAgain": "{assistant} が {team} のために {power} をもう一度実行します",
+          "powerPosition": "· {total} 件中 {index} 件目のアクション",
+          "powerDelivery": "{team} がモデルに受け入れられた Power の結果を記録します"
+        },
         "states": { "started": "実行中", "finished": "完了" }
       },
       "you": "You",
@@ -2359,6 +2457,20 @@ export const messages = {
           "power-preparation": "إعداد Powers",
           "power": "Power {index} من {total}",
           "power-delivery": "تأكيد تسليم Powers"
+        },
+        "narrative": {
+          "adminPreparation": "يُعِد Admin طلبًا آمنًا لـ {team}",
+          "replyValidation": "يتحقق Admin من الرد النهائي لـ {team} قبل عرضه",
+          "teamContextInitial": "يجمع {team} السياق اللازم لهذا الدور",
+          "teamContextFinal": "يتحقق {team} من أن سياقه ما زال مطابقًا للعمل المكتمل",
+          "modelInitial": "يقرر {team} كيفية معالجة طلبك",
+          "modelAfterPower": "يقيّم {team} النتائج التي أعادها Assistants",
+          "powerPreparation": "يُعِد {team} إجراءات Assistants التي طلبها النموذج",
+          "powerPreparationAgain": "يُعِد {team} إجراءات Assistants التالية التي طلبها النموذج",
+          "power": "ينفذ {assistant} الإجراء {power} لصالح {team}",
+          "powerAgain": "ينفذ {assistant} الإجراء {power} مرة أخرى لصالح {team}",
+          "powerPosition": "· الإجراء {index} من {total}",
+          "powerDelivery": "يسجل {team} نتائج Powers التي قبلها النموذج"
         },
         "states": { "started": "قيد التنفيذ", "finished": "مكتمل" }
       },

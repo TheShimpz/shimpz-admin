@@ -12,6 +12,8 @@
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
     progressLabels = {},
+    teamName = 'Team',
+    assistantNames = new Map(),
   } = $props();
   let elapsed = $state(0);
 
@@ -39,7 +41,7 @@
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="copy">
       <strong>{label}</strong>
-      <code>{current ? localizedStepLabel(current, progressLabels) : (progressLabels.awaiting ?? 'Waiting for execution')}</code>
+      <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? 'Waiting for execution')}</span>
     </span>
     <span class="elapsed" aria-hidden="true">{elapsedText} · {formattedElapsed}</span>
   </div>
@@ -49,7 +51,7 @@
       {#each visibleSteps as step (step.key)}
         <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
           <i aria-hidden="true"></i>
-          <code>{localizedStepLabel(step, progressLabels)}</code>
+          <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
           {#if step.elapsed_ms === null}
             <span class="activity" aria-hidden="true"></span>
           {:else}
@@ -118,7 +120,7 @@
     letter-spacing: 0.045em;
   }
 
-  .copy code,
+  .copy .step-copy,
   .elapsed {
     color: var(--text-dim);
     font-size: 0.62rem;
@@ -156,7 +158,7 @@
     background: var(--surface-1);
   }
 
-  .ledger code,
+  .ledger .step-copy,
   .ledger time {
     min-width: 0;
     font-size: 0.56rem;

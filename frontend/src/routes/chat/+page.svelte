@@ -73,9 +73,10 @@
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
   let currentProgress = $derived(progressEvents.at(-1));
+  let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
     currentProgress
-      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress)}`
+      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
       : busy ? thinking : '',
   );
   let contextLoading = $derived(
@@ -634,6 +635,8 @@
                     events={exchange.assistant.receipt ?? []}
                     label={copy.progressStages}
                     progressLabels={copy.progress}
+                    teamName={exchange.assistant.author}
+                    {assistantNames}
                   />
                 </article>
               {:else if index === exchanges.length - 1 && busy && !integrationChallenge}
@@ -643,6 +646,8 @@
                   elapsedText={copy.elapsed}
                   stagesText={copy.progressStages}
                   progressLabels={copy.progress}
+                  {teamName}
+                  {assistantNames}
                 />
               {/if}
             </section>
