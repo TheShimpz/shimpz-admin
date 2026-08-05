@@ -301,7 +301,7 @@ async def _gate(request: Request, call_next):
         with _team_session_scope(request.cookies):
             response = await call_next(request)
             return _secure_response(response)
-    except supervisor.SupervisorAuthorityError, team.TeamRequestError:
+    except (supervisor.SupervisorAuthorityError, team.TeamRequestError):
         response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
         return _secure_response(response)
 
