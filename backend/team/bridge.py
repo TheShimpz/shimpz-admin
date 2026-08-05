@@ -26,10 +26,12 @@ CONTROL_TIMEOUT_SECONDS = transport.CONTROL_TIMEOUT_SECONDS
 MAX_JSON_BODY_BYTES = transport.MAX_JSON_BODY_BYTES
 MAX_JSON_RESPONSE_BYTES = transport.MAX_JSON_RESPONSE_BYTES
 TeamResponse = transport.TeamResponse
+TeamAssetResponse = transport.TeamAssetResponse
 TeamRequestError = transport.TeamRequestError
 _call = transport._call
 _call_raw = transport._call_raw
 _call_stream = transport._call_stream
+_call_asset = transport._call_asset
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
@@ -295,6 +297,10 @@ def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
 
 def list_installed_assistants(team_id: object) -> TeamResponse:
     return _call("GET", _assistant_path(team_id))
+
+
+def assistant_icon(team_id: object, assistant_id: object) -> TeamAssetResponse:
+    return _call_asset(f"{_assistant_path(team_id, assistant_id)}/icon")
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:

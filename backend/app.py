@@ -469,6 +469,24 @@ def _team_response(action):
     return JSONResponse(status_code=response.status, content=response.body)
 
 
+def _team_asset_response(action):
+    try:
+        response = action()
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if response.contents is None:
+        return JSONResponse(status_code=response.status, content=response.error)
+    return Response(
+        content=response.contents,
+        status_code=response.status,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_BODY_BYTES) -> dict:
     """Read one JSON object without allowing a Power request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
@@ -899,6 +917,11 @@ def assistants_list():
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
     return _team_response(lambda: team.list_installed_assistants(team_id))
+
+
+@app.get("/api/teams/{team_id}/assistants/{assistant_id}/icon")
+def team_assistant_icon(team_id: str, assistant_id: str):
+    return _team_asset_response(lambda: team.assistant_icon(team_id, assistant_id))
 
 
 @app.post("/api/teams/{team_id}/assistants")

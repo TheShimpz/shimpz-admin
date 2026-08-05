@@ -30,6 +30,7 @@ TOKEN_FILE = os.environ.get("SHIMPZ_TEAM_TOKEN_FILE", "/run/shimpz-team/token")
 
 MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
+MAX_ASSISTANT_ICON_BYTES = 1024 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
 FILE_NAME_HEADER = "X-Shimpz-Filename"
 
@@ -55,6 +56,13 @@ class TeamRequestError(ValueError):
 class TeamResponse:
     status: int
     body: dict[str, object]
+
+
+@dataclass(frozen=True)
+class TeamAssetResponse:
+    status: int
+    contents: bytes | None
+    error: dict[str, object]
 
 
 ProgressSink = Callable[[dict[str, object]], None]
@@ -329,6 +337,55 @@ def _request(
     return result
 
 
+def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    if response.status != HTTPStatus.OK:
+        return TeamAssetResponse(response.status, None, _decode_response(response))
+    content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
+    raw_length = response.getheader("Content-Length")
+    if content_type != "image/png" or raw_length is None:
+        raise OSError("invalid Team asset response")
+    try:
+        length = int(raw_length)
+    except ValueError as exc:
+        raise OSError("invalid Team asset response") from exc
+    if not 1 <= length <= MAX_ASSISTANT_ICON_BYTES:
+        raise OSError("invalid Team asset response")
+    contents = response.read(MAX_ASSISTANT_ICON_BYTES + 1)
+    if len(contents) != length:
+        raise OSError("invalid Team asset response")
+    return TeamAssetResponse(HTTPStatus.OK, contents, {})
+
+
+def _request_asset(method: str, path: str) -> TeamAssetResponse:
+    connection = None
+    try:
+        host, port = _endpoint()
+        headers = _request_headers(
+            method,
+            path,
+            None,
+            accept="image/png",
+            content_type=None,
+            filename=None,
+            model_credential=None,
+        )
+        connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
+        connection.request(method, path, headers=headers)
+        response = connection.getresponse()
+        if not 200 <= response.status <= 599:
+            raise OSError("invalid Team status")
+        result = _decode_asset(response)
+    except OSError, UnicodeError, http.client.HTTPException:
+        log.warning("Team asset request failed (%s)", method)
+        return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
+    finally:
+        if connection is not None:
+            with contextlib.suppress(OSError):
+                connection.close()
+    log.info("Team asset %s %s -> HTTP %s", method, path, result.status)
+    return result
+
+
 def _decode_stream(
     response: http.client.HTTPResponse,
     progress: ProgressSink,
@@ -424,6 +481,10 @@ def _call(
         timeout=timeout,
         model_credential=model_credential,
     )
+
+
+def _call_asset(path: str) -> TeamAssetResponse:
+    return _request_asset("GET", path)
 
 
 def _call_stream(

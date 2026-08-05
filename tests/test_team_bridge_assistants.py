@@ -191,6 +191,29 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             team.TeamResponse(409, {"detail": "assistant already installed"}),
         )
 
+    def test_fetches_an_installed_assistant_icon_as_bounded_png(self):
+        icon = b"\x89PNG\r\n\x1a\ncanonical"
+        _TeamHandler.response_headers = {"Content-Type": "image/png"}
+        _TeamHandler.response_body = icon
+
+        response = team.assistant_icon("team_1", "hello-pulse")
+
+        self.assertEqual(response, team.TeamAssetResponse(200, icon, {}))
+        request = _TeamHandler.requests[-1]
+        self.assertEqual(request["path"], "/v1/teams/team_1/assistants/hello-pulse/icon")
+        self.assertEqual(request["headers"]["accept"], "image/png")
+
+    def test_rejects_an_invalid_assistant_icon_response(self):
+        _TeamHandler.response_headers = {"Content-Type": "application/octet-stream"}
+        _TeamHandler.response_body = b"not an admitted icon"
+
+        response = team.assistant_icon("team_1", "hello-pulse")
+
+        self.assertEqual(
+            response,
+            team.TeamAssetResponse(502, None, {"detail": "team unavailable"}),
+        )
+
     def test_projects_only_bounded_integration_status_metadata(self):
         integration = {
             "assistant_id": "shimpz-cloudflare",
@@ -678,6 +701,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         ("/api/teams/{team_id}", "DELETE"),
         ("/api/teams/{team_id}/assistants", "GET"),
         ("/api/teams/{team_id}/assistants", "POST"),
+        ("/api/teams/{team_id}/assistants/{assistant_id}/icon", "GET"),
         ("/api/teams/{team_id}/assistants/{assistant_id}", "DELETE"),
         ("/api/teams/{team_id}/files", "GET"),
         ("/api/teams/{team_id}/files", "POST"),
