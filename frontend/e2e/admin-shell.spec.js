@@ -22,6 +22,19 @@ test('renders the Local setup through the shared design system', async ({ page }
   await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
 });
 
+test('uses the compact locale control at 360 pixels', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 720 });
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: false, initialized: false }),
+  }));
+  await page.goto('/');
+  await expect(page.locator('.locale-full')).toBeHidden();
+  await expect(page.locator('.locale-compact')).toBeVisible();
+  await page.locator('.locale-compact').getByRole('button', { name: 'Language: English' }).click();
+  await expect(page.getByRole('menu', { name: 'Language' })).toBeVisible();
+});
+
 test('renders authenticated navigation with canonical primitives', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,

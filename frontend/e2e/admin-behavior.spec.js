@@ -20,7 +20,7 @@ async function routeSetup(page) {
   }));
 }
 
-async function routeReadyChat(page) {
+async function routeReadyChat(page, { integrationChallenge = false, reply } = {}) {
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -83,6 +83,24 @@ async function routeReadyChat(page) {
       if (frame.type === 'sync') {
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat') {
+        if (integrationChallenge) {
+          socket.send(JSON.stringify({
+            type: 'integrations-required',
+            challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            expires_in: 300,
+            requirements: [{
+              assistant_id: 'shimpz-cloudflare',
+              assistant_name: 'Shimpz Cloudflare',
+              integration_id: 'cloudflare',
+              provider: 'cloudflare',
+              name: 'Cloudflare',
+              summary: 'Reads reviewed zone and DNS metadata.',
+              scopes: ['dns.read', 'offline_access', 'zone.read'],
+              powers: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+            }],
+          }));
+          return;
+        }
         socket.send(JSON.stringify({
           type: 'progress',
           seq: 1,
@@ -95,7 +113,7 @@ async function routeReadyChat(page) {
           type: 'done',
           team_id: 'marketing',
           team_name: 'Marketing',
-          reply: '**Rendered answer** with a [safe link](https://example.com).',
+          reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
         }));
       }
     });
@@ -130,19 +148,32 @@ test('language menu implements keyboard navigation and RTL direction', async ({ 
   await expect(page.getByRole('button', { name: 'اللغة: العربية' })).toBeFocused();
 });
 
-test('compiled Chat renders Markdown, execution receipt, and the integrations drawer', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'The desktop project owns this full workflow.');
+test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {
   await routeReadyChat(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await expect(composer).toBeEnabled();
-  const integrations = page.getByRole('button', { name: 'Assistant integrations' });
-  await integrations.click();
+  await composer.fill('Show the rendered response');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/');
+  await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+});
+
+test('renders the integrations drawer as a responsive Sheet surface', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
   const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
   await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute('data-slot', 'drawer');
   await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
   await expect(drawer.getByText('Connected', { exact: true })).toBeVisible();
+  const drawerBox = await drawer.boundingBox();
+  expect(drawerBox).not.toBeNull();
+  expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
   const drawerAxe = await new AxeBuilder({ page }).include('#assistant-integrations-drawer').analyze();
   expect(drawerAxe.violations).toEqual([]);
   await expect(drawer).toHaveScreenshot('integrations-drawer.png', {
@@ -151,12 +182,65 @@ test('compiled Chat renders Markdown, execution receipt, and the integrations dr
   });
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
+});
 
-  await composer.fill('Show the rendered response');
+test('renders the fail-closed Integration challenge dialog', async ({ page }) => {
+  await routeReadyChat(page, { integrationChallenge: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('List the Cloudflare zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/');
-  await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
+  await expect(dialog).toBeVisible();
+  const requirement = dialog.locator('[data-slot="card"]', { hasText: 'Shimpz Cloudflare' });
+  await expect(requirement).toBeVisible();
+  await expect(requirement.getByText('dns.read', { exact: true })).toBeVisible();
+  const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+  expect(results.violations).toEqual([]);
+  await expect(dialog).toHaveScreenshot('integration-required-dialog.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+});
+
+test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {
+  const longReply = Array.from({ length: 60 }, (_, index) => `Result ${index + 1}: validated DNS record.`).join('\n\n');
+  await routeReadyChat(page, { reply: longReply });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Return the complete DNS inventory');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Result 60: validated DNS record.')).toBeVisible();
+  const turns = page.locator('.turns');
+  await expect(turns).toHaveAttribute('tabindex', '0');
+  const dimensions = await turns.evaluate((element) => ({ client: element.clientHeight, scroll: element.scrollHeight }));
+  expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
+  await turns.evaluate((element) => { element.scrollTop = 0; });
+  await turns.focus();
+  await page.keyboard.press('PageDown');
+  await expect.poll(() => turns.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test('keeps compact controls and stacked dialog actions usable at 360 pixels', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 720 });
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: /Team Marketing/i }).click();
+  const dialog = page.getByRole('dialog', { name: 'Choose a Team' });
+  const [closeBox, addBox, dialogBox] = await Promise.all([
+    dialog.getByRole('button', { name: 'Close' }).boundingBox(),
+    dialog.getByRole('button', { name: 'Add Team' }).boundingBox(),
+    dialog.boundingBox(),
+  ]);
+  expect(closeBox).not.toBeNull();
+  expect(addBox).not.toBeNull();
+  expect(dialogBox).not.toBeNull();
+  expect(dialogBox.width).toBeLessThanOrEqual(328);
+  expect(Math.abs(closeBox.width - addBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(closeBox.x - addBox.x)).toBeLessThanOrEqual(1);
+  expect(addBox.y).toBeLessThan(closeBox.y);
 });
 
 test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
