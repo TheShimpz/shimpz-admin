@@ -234,8 +234,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         power_events = [event for event in events if event["phase"] == "power"]
         self.assertTrue(
             all(
-                (event["assistant_id"], event["power"]) == ("shimpz-cloudflare", "list-zones")
-                for event in power_events
+                (event["assistant_id"], event["power"]) == ("shimpz-cloudflare", "list-zones") for event in power_events
             )
         )
         self.assertIsInstance(events[-1]["elapsed_ms"], int)

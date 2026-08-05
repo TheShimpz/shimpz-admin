@@ -41,9 +41,7 @@ def _spa_script_sources(ui_dir: Path) -> tuple[str, ...]:
     collector = _InlineScriptCollector()
     collector.feed(index.read_text(encoding="utf-8"))
     return tuple(
-        "'sha256-"
-        + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
-        + "'"
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
         for script in collector.scripts
     )
 
