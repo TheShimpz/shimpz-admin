@@ -107,16 +107,34 @@ test('opens the Store destination workflow through shared modal controls', async
   await expect(destination).toBeVisible();
   await expect(destination).toHaveCSS('border-top-width', '0px');
   await expect(destination).toHaveCSS('box-shadow', 'none');
-  const [teamBox, changeBox] = await Promise.all([
+  const [teamBox, changeBox, destinationBox, headingBox] = await Promise.all([
     destination.locator('.destination-name').boundingBox(),
     destination.locator('.destination-change').boundingBox(),
+    destination.boundingBox(),
+    page.getByRole('heading', { level: 1, name: 'Assistants' }).boundingBox(),
   ]);
   expect(teamBox).not.toBeNull();
   expect(changeBox).not.toBeNull();
+  expect(destinationBox).not.toBeNull();
+  expect(headingBox).not.toBeNull();
   expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
+  if (page.viewportSize().width <= 680) {
+    expect(destinationBox.y).toBeLessThan(headingBox.y);
+  } else {
+    expect(destinationBox.x).toBeLessThan(headingBox.x);
+  }
   expect(Number.parseFloat(await destination.locator('.destination-name').evaluate(
     (element) => getComputedStyle(element).fontSize,
   ))).toBeGreaterThanOrEqual(20);
+  const trustBoundary = page.locator('.trust-boundary');
+  await expect(trustBoundary).toHaveCSS('border-top-width', '0px');
+  await expect(trustBoundary).toHaveCSS('border-right-width', '0px');
+  await expect(trustBoundary).toHaveCSS('border-bottom-width', '0px');
+  await expect(trustBoundary).toHaveCSS('border-left-width', '3px');
+  await expect(trustBoundary.locator('[data-slot="notice-icon"]')).toBeVisible();
+  expect(await trustBoundary.evaluate((element) => (
+    Math.abs(element.getBoundingClientRect().width - element.parentElement.getBoundingClientRect().width) < 1
+  ))).toBe(true);
   await expect(page.locator('.shimpz-page-intro')).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
