@@ -163,21 +163,21 @@
 </Drawer>
 
 <style>
-  :global(#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
-  :global(#assistant-integrations-drawer:not([hidden])) { display: grid; }
-  :global(#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
-  :global(#assistant-integrations-drawer) > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
-  :global(#assistant-integrations-drawer) > header h2 { margin: 0; font-size: 1rem; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer:not([hidden])) { display: grid; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) > header h2 { margin: 0; font-size: 1rem; }
   .drawer-lead { margin: 0; color: var(--text-faint); font-size: 0.68rem; line-height: 1.5; }
   :global(.integration-content) { min-height: 0; padding-inline-end: 0.25rem; }
   :global(.pending) { display: grid; gap: 0.45rem; margin-bottom: 0.9rem; }
   :global(.pending strong) { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   :global(.pending p) { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
   .assistant-groups { display: grid; gap: 0.8rem; }
-  :global(.assistant-group > header) { border-bottom: 1px solid var(--border); background: var(--surface-2); }
-  :global(.assistant-group > header h2) { font-size: 0.82rem; }
-  :global(.assistant-group > header p) { color: var(--accent); font-family: var(--font-mono); font-size: 0.56rem; overflow-wrap: anywhere; }
-  :global(.assistant-group > .content) { padding: 0; }
+  :global(.assistant-group > [data-slot="card-header"]) { border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  :global(.assistant-group [data-slot="card-title"]) { font-size: 0.82rem; }
+  :global(.assistant-group [data-slot="card-description"]) { color: var(--accent); font-family: var(--font-mono); font-size: 0.56rem; overflow-wrap: anywhere; }
+  :global(.assistant-group > [data-slot="card-content"]) { padding: 0; }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
   li { display: grid; gap: 0.55rem; padding: 0.75rem; }
   li + li { border-top: 1px solid var(--border); }

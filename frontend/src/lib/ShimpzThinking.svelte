@@ -142,7 +142,7 @@
     padding-block-start: 0.65rem;
   }
 
-  :global(.ledger-details summary) {
+  :global(.ledger-details [data-slot="disclosure-trigger"]) {
     width: fit-content;
     color: var(--text-dim);
     cursor: pointer;
@@ -151,7 +151,7 @@
     text-transform: uppercase;
   }
 
-  :global(.ledger-details summary) span {
+  :global(.ledger-details [data-slot="disclosure-trigger"]) span {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }

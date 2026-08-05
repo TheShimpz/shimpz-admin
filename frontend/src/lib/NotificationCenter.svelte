@@ -270,7 +270,7 @@
     box-shadow: -1rem 0 3rem rgba(0, 0, 0, 0.7);
   }
 
-  :global(.notification-drawer > .content) {
+  :global(.notification-drawer > [data-slot="card-content"]) {
     display: grid;
     height: 100%;
     min-height: 0;

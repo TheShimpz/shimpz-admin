@@ -57,7 +57,7 @@
     font-size: 0.58rem;
   }
 
-  :global(.receipt summary) {
+  :global(.receipt [data-slot="disclosure-trigger"]) {
     width: fit-content;
     color: var(--text-dim);
     cursor: pointer;

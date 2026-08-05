@@ -102,6 +102,7 @@
         class="completion"
         title={copy.completionTitle}
         description={copy.completionLead}
+        descriptionId="assistant-integration-completion-lead"
         tone="accent"
       >
         <TextField
@@ -171,8 +172,8 @@
 <style>
   :global(.requirements) { display: grid; min-height: 0; gap: 0.8rem; }
   :global(.completion) { min-height: 13rem; align-content: center; }
-  :global(.completion > .content) { display: grid; align-content: center; }
-  :global(.requirement > .content) { display: grid; gap: 0.65rem; }
+  :global(.completion > [data-slot="card-content"]) { display: grid; align-content: center; }
+  :global(.requirement > [data-slot="card-content"]) { display: grid; gap: 0.65rem; }
   .assistant-identity { display: grid; gap: 0.18rem; }
   .assistant-identity code { color: var(--accent); font-size: 0.56rem; }
   :global(.requirement section) { display: grid; gap: 0.4rem; }

@@ -164,7 +164,7 @@
     line-height: 1.7;
   }
 
-  :global(.auth-panel .content) { display: grid; gap: 0.8rem; }
+  :global(.auth-panel [data-slot="card-content"]) { display: grid; gap: 0.8rem; }
 
   h1 {
     margin: 0;

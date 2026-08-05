@@ -90,7 +90,7 @@
     width: min(30rem, calc(100% - 1.5rem));
     margin: auto;
   }
-  :global(.provider-gate .content) {
+  :global(.provider-gate [data-slot="card-content"]) {
     display: grid;
     justify-items: center;
     text-align: center;

@@ -613,7 +613,7 @@
   <h1 class="sr-only">{copy.title}</h1>
   {#if activeTeam}
     {#if chatTeamId}
-      <div class="chat-workspace" class:drawer-open={integrationsOpen}>
+      <div class="chat-workspace">
         <section
           class="conversation"
           class:empty-conversation={turns.length === 0}
@@ -678,7 +678,7 @@
                 disabled={busy || syncing}
                 onkeydown={handleComposerKeydown}
               />
-              <Toolbar class="composer-actions" aria-label={copy.send}>
+              <Toolbar class="composer-actions">
               {#if busy && !syncing}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
@@ -774,10 +774,6 @@
     overflow: hidden;
   }
 
-  .chat-workspace.drawer-open {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
   .conversation {
     --chat-rail-gutter: 0.8rem;
     --chat-rail-width: 48rem;
@@ -851,7 +847,7 @@
 
   :global(.turns .shimpz-message--assistant) { align-self: stretch; color: var(--accent-alt); }
   :global(.turns .shimpz-message--user) { max-width: min(80%, 46rem); color: var(--accent); }
-  :global(.turns .shimpz-message .content p) {
+  :global(.turns [data-slot="message-content"] p) {
     margin: 0;
     color: var(--text);
     white-space: pre-wrap;

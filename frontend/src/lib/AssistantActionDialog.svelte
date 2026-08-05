@@ -77,7 +77,7 @@
 
 <style>
   form { margin: 0; }
-  :global(.dialog-target > .content) { display: grid; gap: 0.2rem; }
+  :global(.dialog-target > [data-slot="card-content"]) { display: grid; gap: 0.2rem; }
   .target-label { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
   :global(.dialog-target strong) { font-size: 0.9rem; }
   :global(.dialog-target code) { color: var(--accent); font-size: 0.65rem; }
