@@ -42,6 +42,13 @@ async function routeReadyChat(page, { integrationChallenge = false, reply } = {}
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [{ assistant: 'shimpz-cloudflare', status: 'running' }] }),
   }));
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  }));
   await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
@@ -182,6 +189,36 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   });
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
+});
+
+test('uses text actions and one semantic selected state in the Assistant chooser', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  await page.locator('.context-controls').getByRole('button').nth(2).click();
+  const dialog = page.getByRole('dialog', { name: 'Choose Assistants' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input[type="checkbox"]')).toHaveCount(0);
+  const selectAll = dialog.getByRole('button', { name: 'Select all', exact: true });
+  const unselectAll = dialog.getByRole('button', { name: 'Unselect all', exact: true });
+  await expect(selectAll).toHaveClass(/shimpz-text-action/);
+  await expect(unselectAll).toHaveClass(/shimpz-text-action/);
+  await expect(selectAll.locator('[data-slot="text-action-icon"]')).toBeVisible();
+  const choice = dialog.getByRole('button', { name: 'Shimpz Cloudflare' });
+  await expect(choice).toHaveAttribute('aria-pressed', 'true');
+  await expect(choice.locator('img')).toHaveAttribute(
+    'src',
+    '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
+  );
+  await expect(dialog).toHaveScreenshot('assistant-chooser.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+  await unselectAll.click();
+  await expect(choice).toHaveAttribute('aria-pressed', 'false');
+  await expect(choice.locator('.selection-mark')).toHaveCount(0);
+  const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+  expect(results.violations).toEqual([]);
 });
 
 test('renders the fail-closed Integration challenge dialog', async ({ page }) => {

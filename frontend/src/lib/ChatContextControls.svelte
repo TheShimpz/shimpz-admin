@@ -5,11 +5,11 @@
   import {
     AssistantIcon,
     Button,
-    CheckboxField,
     ChoiceItem,
     DialogFrame,
     Modal,
     Notice,
+    TextAction,
     TextField,
   } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
@@ -344,12 +344,20 @@
   <DialogFrame kicker={copy.assistantKicker} title={copy.assistantTitle} titleId="chat-assistant-dialog-title" lead={copy.assistantLead}>
     {#if runningAssistants.length > 0}
       <div class="bulk-actions">
-        <Button variant="secondary" size="compact" type="button" onclick={selectAllTeamAssistants}>
+        <TextAction type="button" onclick={selectAllTeamAssistants}>
+          {#snippet icon()}
+            <svg viewBox="0 0 24 24" focusable="false"><path d="m4 12 4 4L19 5"/><path d="M4 20h16"/></svg>
+          {/snippet}
           {assistantLimitApplies
             ? $t('chatContext.selectMaximum', { limit: MAX_SELECTED_ASSISTANTS })
             : copy.selectAll}
-        </Button>
-        <Button variant="secondary" size="compact" type="button" onclick={unselectAllTeamAssistants}>{copy.unselectAll}</Button>
+        </TextAction>
+        <TextAction type="button" onclick={unselectAllTeamAssistants}>
+          {#snippet icon()}
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M5 5l14 14M19 5 5 19"/></svg>
+          {/snippet}
+          {copy.unselectAll}
+        </TextAction>
       </div>
     {/if}
     {#if assistantLimitApplies}
@@ -362,24 +370,28 @@
         <legend class="sr-only">{copy.assistantTitle}</legend>
         {#each runningAssistants as assistant (assistant.id)}
           {@const selected = $teamContext.selectedAssistantIds.includes(assistant.id)}
-          <div
-            class="assistant-choice"
-            class:selected
-          >
-            <AssistantIcon assistant={assistant.id} size={34} />
-            <CheckboxField
-                id={`assistant-choice-${assistant.id}`}
-                label={assistant.name}
-                checked={selected}
-                disabled={!selected && selectedCount >= MAX_SELECTED_ASSISTANTS}
-                onchange={() => toggleTeamAssistant(assistant.id)}
+          {#snippet leading()}
+            <AssistantIcon
+              assistant={assistant.id}
+              src={`/api/teams/${$teamContext.selectedTeamId}/assistants/${assistant.id}/icon`}
+              size={34}
             />
-            <span class="selection-mark" class:visible={selected} aria-hidden="true">
+          {/snippet}
+          {#snippet trailing()}
+            {#if selected}<span class="selection-mark" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false">
                 <path d="m5 12.5 4.2 4.2L19 7" />
               </svg>
-            </span>
-          </div>
+            </span>{/if}
+          {/snippet}
+          <ChoiceItem
+            title={assistant.name}
+            {selected}
+            {leading}
+            {trailing}
+            disabled={!selected && selectedCount >= MAX_SELECTED_ASSISTANTS}
+            onclick={() => toggleTeamAssistant(assistant.id)}
+          />
         {/each}
       </fieldset>
     {:else}
@@ -484,14 +496,11 @@
   .choice-list { display: grid; min-height: 0; gap: 0.4rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
   .choice-list > li { min-width: 0; }
   .team-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem; }
-  .bulk-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .bulk-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .bulk-actions :global(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: square; stroke-linejoin: bevel; }
   .selection-limit { margin: -0.45rem 0 0; color: var(--text-faint); font-size: 0.64rem; line-height: 1.45; }
   .assistant-choices { display: grid; min-width: 0; gap: 1px; margin: 0; border: 0; padding: 0.45rem 0; }
-  .assistant-choice { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) 2.5rem; align-items: center; gap: 0.7rem; padding: 0.55rem 0.7rem; }
-  .assistant-choice.selected { background: color-mix(in srgb, var(--accent) 7%, transparent); }
-  .assistant-choice :global(.shimpz-checkbox) { min-width: 0; }
-  .selection-mark { display: grid; place-items: center; color: var(--success); opacity: 0; }
-  .selection-mark.visible { opacity: 1; }
+  .selection-mark { display: grid; place-items: center; color: var(--success); }
   .selection-mark svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; }
   .dialog-status { margin: 0; color: var(--text-faint); font-size: 0.7rem; line-height: 1.5; }
   @media (max-width: 640px) { :global(.context-trigger) { padding: 0.4rem; } :global(.context-trigger > span > span) { font-size: 0.48rem; } :global(.context-trigger > span > strong) { font-size: 0.58rem; } }
