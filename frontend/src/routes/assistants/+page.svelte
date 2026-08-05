@@ -718,11 +718,15 @@
   }
 
   :global(.shimpz-page-intro.actions-start) {
-    align-items: center;
+    align-items: flex-end;
+    border-block-end: 0;
   }
 
   :global(.destination-trigger.shimpz-button) {
+    width: fit-content;
     max-width: 100%;
+    justify-content: flex-start;
+    justify-self: start;
     border: 0;
     padding: 0;
     background: transparent;

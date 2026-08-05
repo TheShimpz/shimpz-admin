@@ -133,12 +133,22 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(headingBox).not.toBeNull();
   expect(kickerBox.y + kickerBox.height).toBeLessThanOrEqual(teamBox.y);
   expect(leadBox.y).toBeGreaterThanOrEqual(teamBox.y + teamBox.height);
+  expect(Math.abs(teamBox.x - kickerBox.x)).toBeLessThan(1);
+  expect(Math.abs(leadBox.x - kickerBox.x)).toBeLessThan(1);
   expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
   if (page.viewportSize().width <= 680) {
     expect(destinationBox.y).toBeLessThan(headingBox.y);
   } else {
     expect(destinationBox.x).toBeLessThan(headingBox.x);
+    expect(Math.abs(
+      (headingBox.y + headingBox.height) - (leadBox.y + leadBox.height),
+    )).toBeLessThan(1);
   }
+  const intro = page.locator('.shimpz-page-intro');
+  await expect(intro).toHaveCSS('border-bottom-width', '0px');
+  expect(Number.parseFloat(await intro.evaluate(
+    (element) => getComputedStyle(element).paddingBottom,
+  ))).toBeGreaterThan(0);
   const [teamFontSize, headingFontSize] = await Promise.all([
     destination.locator('.destination-name').evaluate(
       (element) => Number.parseFloat(getComputedStyle(element).fontSize),
@@ -157,7 +167,7 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(await trustBoundary.evaluate((element) => (
     Math.abs(element.getBoundingClientRect().width - element.parentElement.getBoundingClientRect().width) < 1
   ))).toBe(true);
-  await expect(page.locator('.shimpz-page-intro')).toHaveScreenshot('store-destination.png', {
+  await expect(intro).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
   });
