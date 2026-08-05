@@ -26,7 +26,7 @@
     <p class="kicker">{phase === 'login' ? $t('auth.returning') : $t('auth.firstRun')}</p>
     <ShimpzBrand variant="hero" />
     <div class="welcome-copy">
-      <h2>{$t('auth.heroTitle')}</h2>
+      <p class="hero-title">{$t('auth.heroTitle')}</p>
     </div>
   </div>
 
@@ -150,7 +150,7 @@
     margin-top: clamp(0.9rem, 2vw, 1.4rem);
   }
 
-  .welcome-copy h2 {
+  .welcome-copy .hero-title {
     max-width: 13ch;
     margin: 0;
     font-size: clamp(1.5rem, 3vw, 2.3rem);

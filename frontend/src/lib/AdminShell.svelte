@@ -18,7 +18,7 @@
     </div>
     <div class="sidebar-controls">
       <LocaleMenu wide />
-      <nav aria-label={$t('shell.adminHome')}>
+      <nav aria-label={$t('shell.primaryNav')}>
         <NavItem href="/assistants/" active={active === 'assistants'} index="01">{$t('store.nav')}</NavItem>
         <NavItem href="/chat/" active={active === 'chat'} index="02">{$t('chat.nav')}</NavItem>
       </nav>

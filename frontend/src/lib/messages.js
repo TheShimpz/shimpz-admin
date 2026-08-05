@@ -40,6 +40,7 @@ export const messages = {
     shell: {
       skipContent: 'Skip to content',
       adminHome: 'Shimpz Admin home',
+      primaryNav: 'Primary navigation',
       languageCurrent: 'Language: {name}',
       languageMenu: 'Language',
     },
@@ -372,6 +373,7 @@ export const messages = {
     shell: {
       skipContent: 'Pular para o conteúdo',
       adminHome: 'Início do Admin Shimpz',
+      primaryNav: 'Navegação principal',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
     },
@@ -704,6 +706,7 @@ export const messages = {
     shell: {
       skipContent: 'Saltar al contenido',
       adminHome: 'Inicio del Admin de Shimpz',
+      primaryNav: 'Navegación principal',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
     },
@@ -1036,6 +1039,7 @@ export const messages = {
     shell: {
       skipContent: '跳到内容',
       adminHome: 'Shimpz Admin 首页',
+      primaryNav: '主导航',
       languageCurrent: '语言：{name}',
       languageMenu: '语言',
     },
@@ -1368,6 +1372,7 @@ export const messages = {
     shell: {
       skipContent: 'Aller au contenu',
       adminHome: 'Accueil de l’Admin Shimpz',
+      primaryNav: 'Navigation principale',
       languageCurrent: 'Langue : {name}',
       languageMenu: 'Langue',
     },
@@ -1700,6 +1705,7 @@ export const messages = {
     shell: {
       skipContent: 'Zum Inhalt springen',
       adminHome: 'Startseite des Shimpz Admin',
+      primaryNav: 'Hauptnavigation',
       languageCurrent: 'Sprache: {name}',
       languageMenu: 'Sprache',
     },
@@ -2032,6 +2038,7 @@ export const messages = {
     shell: {
       skipContent: 'コンテンツへ移動',
       adminHome: 'Shimpz Admin ホーム',
+      primaryNav: 'メインナビゲーション',
       languageCurrent: '言語：{name}',
       languageMenu: '言語',
     },
@@ -2364,6 +2371,7 @@ export const messages = {
     shell: {
       skipContent: 'الانتقال إلى المحتوى',
       adminHome: 'صفحة Shimpz Admin الرئيسية',
+      primaryNav: 'التنقل الرئيسي',
       languageCurrent: 'اللغة: {name}',
       languageMenu: 'اللغة',
     },
