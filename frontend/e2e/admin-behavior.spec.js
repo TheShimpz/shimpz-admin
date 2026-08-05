@@ -174,7 +174,7 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   const drawerBox = await drawer.boundingBox();
   expect(drawerBox).not.toBeNull();
   expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
-  const drawerAxe = await new AxeBuilder({ page }).include('#assistant-integrations-drawer').analyze();
+  const drawerAxe = await new AxeBuilder({ page }).analyze();
   expect(drawerAxe.violations).toEqual([]);
   await expect(drawer).toHaveScreenshot('integrations-drawer.png', {
     animations: 'disabled',
