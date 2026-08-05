@@ -123,9 +123,15 @@ test('opens the Store destination workflow through shared modal controls', async
   } else {
     expect(destinationBox.x).toBeLessThan(headingBox.x);
   }
-  expect(Number.parseFloat(await destination.locator('.destination-name').evaluate(
-    (element) => getComputedStyle(element).fontSize,
-  ))).toBeGreaterThanOrEqual(20);
+  const [teamFontSize, headingFontSize] = await Promise.all([
+    destination.locator('.destination-name').evaluate(
+      (element) => Number.parseFloat(getComputedStyle(element).fontSize),
+    ),
+    page.getByRole('heading', { level: 1, name: 'Assistants' }).evaluate(
+      (element) => Number.parseFloat(getComputedStyle(element).fontSize),
+    ),
+  ]);
+  expect(teamFontSize).toBeGreaterThan(headingFontSize);
   const trustBoundary = page.locator('.trust-boundary');
   await expect(trustBoundary).toHaveCSS('border-top-width', '0px');
   await expect(trustBoundary).toHaveCSS('border-right-width', '0px');

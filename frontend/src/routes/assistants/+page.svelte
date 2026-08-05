@@ -712,10 +712,14 @@
     overflow-wrap: anywhere;
     color: inherit;
     font-family: var(--font-mono);
-    font-size: clamp(1.35rem, 3vw, 1.9rem);
+    font-size: clamp(1.65rem, 4vw, 3rem);
     font-weight: 800;
     letter-spacing: -0.04em;
     line-height: 1.1;
+  }
+
+  :global(.shimpz-page-intro.actions-start h1) {
+    font-size: clamp(1.35rem, 3vw, 1.9rem);
   }
 
   :global(.destination-trigger .destination-change) {
