@@ -39,7 +39,7 @@ test('static supply chain: shared frontend is pinned to one immutable commit', (
   assert.equal(resolved, dependency);
 });
 
-test('static presentation: every Admin surface composes the canonical layout primitives', () => {
+test('static presentation: declared Admin sources instantiate the canonical primitives', () => {
   const contracts = new Map([
     ['../src/lib/AdminShell.svelte', ['WorkspaceShell']],
     ['../src/lib/AdminNotice.svelte', ['Toast']],
@@ -59,6 +59,6 @@ test('static presentation: every Admin surface composes the canonical layout pri
   ]);
   for (const [path, primitives] of contracts) {
     const source = readFileSync(new URL(path, import.meta.url), 'utf8');
-    for (const primitive of primitives) assert.match(source, new RegExp(`\\b${primitive}\\b`));
+    for (const primitive of primitives) assert.match(source, new RegExp(`<${primitive}(?:\\s|>)`));
   }
 });
