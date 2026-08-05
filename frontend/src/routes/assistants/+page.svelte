@@ -526,25 +526,29 @@
 </svelte:head>
 
 <PageIntro
-  kicker={$t('store.destinationKicker')}
   title={$t('store.nav')}
-  lead={activeTeamRecord ? $t('store.destinationLead', { team: activeTeamRecord.name }) : destinationCopy.empty}
   actionsPosition="start"
 >
   {#snippet actions()}
-    <Button
-      bind:element={destinationTrigger}
-      variant="ghost"
-      class="destination-trigger"
-      type="button"
-      onclick={openDestinationDialog}
-      disabled={destinationBusy || $teamContext.phase === 'loading'}
-      aria-haspopup="dialog"
-      aria-controls="store-team-destination-dialog"
-    >
-      <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
-      <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
-    </Button>
+    <div class="destination-context">
+      <p class="destination-kicker">{$t('store.destinationKicker')}</p>
+      <Button
+        bind:element={destinationTrigger}
+        variant="ghost"
+        class="destination-trigger"
+        type="button"
+        onclick={openDestinationDialog}
+        disabled={destinationBusy || $teamContext.phase === 'loading'}
+        aria-haspopup="dialog"
+        aria-controls="store-team-destination-dialog"
+      >
+        <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
+        <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
+      </Button>
+      <p class="destination-lead">
+        {activeTeamRecord ? $t('store.destinationLead', { team: activeTeamRecord.name }) : destinationCopy.empty}
+      </p>
+    </div>
   {/snippet}
 </PageIntro>
 
@@ -688,6 +692,35 @@
   oncancel={cancelAssistantDialog} />
 
 <style>
+  .destination-context {
+    display: grid;
+    min-width: 0;
+    max-width: 54rem;
+    gap: var(--shimpz-space-2);
+  }
+
+  .destination-kicker,
+  .destination-lead {
+    margin: 0;
+  }
+
+  .destination-kicker {
+    color: var(--accent);
+    font: 600 0.68rem/1.4 var(--font-mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .destination-lead {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  :global(.shimpz-page-intro.actions-start) {
+    align-items: center;
+  }
+
   :global(.destination-trigger.shimpz-button) {
     max-width: 100%;
     border: 0;
@@ -741,6 +774,10 @@
   :global(.destination-trigger:disabled) { cursor: wait; opacity: 0.55; }
 
   :global(.destination-dialog form) { margin: 0; }
+
+  @media (max-width: 680px) {
+    :global(.shimpz-page-intro.actions-start) { align-items: stretch; }
+  }
 
   .destination-team-list {
     display: grid;

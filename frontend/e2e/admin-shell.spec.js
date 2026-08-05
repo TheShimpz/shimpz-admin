@@ -104,19 +104,35 @@ test('opens the Store destination workflow through shared modal controls', async
   await expect(storeFrame).toHaveCSS('border-left-width', '0px');
   await expect(storeFrame).toHaveCSS('clip-path', 'none');
   const destination = page.getByRole('button', { name: /marketing/i });
+  const destinationContext = page.locator('.destination-context');
+  const destinationKicker = destinationContext.getByText('Installation destination', { exact: true });
+  const destinationLead = destinationContext.getByText(
+    'Assistants listed below will be installed only in Team Marketing.',
+    { exact: true },
+  );
+  const titleBlock = page.locator('.shimpz-page-intro > div').first();
   await expect(destination).toBeVisible();
+  await expect(destinationKicker).toBeVisible();
+  await expect(destinationLead).toBeVisible();
+  await expect(titleBlock).toHaveText('Assistants');
   await expect(destination).toHaveCSS('border-top-width', '0px');
   await expect(destination).toHaveCSS('box-shadow', 'none');
-  const [teamBox, changeBox, destinationBox, headingBox] = await Promise.all([
+  const [kickerBox, teamBox, changeBox, destinationBox, leadBox, headingBox] = await Promise.all([
+    destinationKicker.boundingBox(),
     destination.locator('.destination-name').boundingBox(),
     destination.locator('.destination-change').boundingBox(),
     destination.boundingBox(),
+    destinationLead.boundingBox(),
     page.getByRole('heading', { level: 1, name: 'Assistants' }).boundingBox(),
   ]);
+  expect(kickerBox).not.toBeNull();
   expect(teamBox).not.toBeNull();
   expect(changeBox).not.toBeNull();
   expect(destinationBox).not.toBeNull();
+  expect(leadBox).not.toBeNull();
   expect(headingBox).not.toBeNull();
+  expect(kickerBox.y + kickerBox.height).toBeLessThanOrEqual(teamBox.y);
+  expect(leadBox.y).toBeGreaterThanOrEqual(teamBox.y + teamBox.height);
   expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
   if (page.viewportSize().width <= 680) {
     expect(destinationBox.y).toBeLessThan(headingBox.y);
