@@ -97,6 +97,12 @@ test('opens the Store destination workflow through shared modal controls', async
   }));
 
   await page.goto('/assistants/');
+  const storeFrame = page.locator('.store-frame');
+  await expect(storeFrame).toHaveCSS('border-top-width', '0px');
+  await expect(storeFrame).toHaveCSS('border-right-width', '0px');
+  await expect(storeFrame).toHaveCSS('border-bottom-width', '0px');
+  await expect(storeFrame).toHaveCSS('border-left-width', '0px');
+  await expect(storeFrame).toHaveCSS('clip-path', 'none');
   const destination = page.getByRole('button', { name: /marketing/i });
   await expect(destination).toBeVisible();
   await expect(destination).toHaveCSS('border-top-width', '0px');

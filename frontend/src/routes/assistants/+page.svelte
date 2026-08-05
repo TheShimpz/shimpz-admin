@@ -750,10 +750,12 @@
   .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
   .destination-empty { color: var(--text-dim); }
 
-  :global(.store-frame) {
+  :global(.shimpz-card.store-frame) {
     position: relative;
     margin-block-start: var(--shimpz-space-4);
+    border: 0;
     background: #000;
+    clip-path: none;
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
