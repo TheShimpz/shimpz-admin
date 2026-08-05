@@ -60,7 +60,7 @@
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
-      /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest),
+      (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
   );
   let activeTeamRecord = $derived(
     runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,

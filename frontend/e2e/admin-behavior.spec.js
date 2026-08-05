@@ -243,6 +243,47 @@ test('keeps compact controls and stacked dialog actions usable at 360 pixels', a
   expect(addBox.y).toBeLessThan(closeBox.y);
 });
 
+test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><html><body><button type="button">Uninstall</button><script>
+      parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
+      document.querySelector('button').addEventListener('click', () => parent.postMessage({
+        type: 'shimpz:assistant-uninstall', version: 2, assistant: 'shimpz-cloudflare'
+      }, '*'));
+    </script></body></html>`,
+  }));
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: true }),
+  }));
+
+  await page.goto('/assistants/');
+  await page.frameLocator('iframe').getByRole('button', { name: 'Uninstall' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
+  const toast = page.locator('[data-slot="toast"]');
+  await expect(toast).toContainText('Shimpz Cloudflare was removed from Marketing.');
+  await page.getByRole('link', { name: 'Chat' }).click();
+  await expect(page).toHaveURL(/\/chat\/?$/);
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const [toastBox, actionsBox] = await Promise.all([
+    toast.boundingBox(),
+    page.locator('.composer-actions').boundingBox(),
+  ]);
+  expect(toastBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  const intersectsActions = (
+    toastBox.x < actionsBox.x + actionsBox.width &&
+    toastBox.x + toastBox.width > actionsBox.x &&
+    toastBox.y < actionsBox.y + actionsBox.height &&
+    toastBox.y + toastBox.height > actionsBox.y
+  );
+  expect(intersectsActions).toBe(false);
+});
+
 test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
   await routeReadyChat(page);
   await page.goto('/chat/');
