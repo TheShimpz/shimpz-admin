@@ -254,6 +254,30 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_unprojectable_human_gate_fails_closed(self) -> None:
+        async def scenario() -> None:
+            valid = human_challenge("approval")
+            body = json.loads(json.dumps(valid.body))
+            body["request"]["title"] = "tampered"
+            invalid = self.chat_socket.team.TeamResponse(428, body)
+            with mock.patch.object(self.chat_socket.local, "turn", return_value=invalid):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "Continue", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "error",
+                        "status": 502,
+                        "detail": "the Assistant challenge was invalid",
+                    },
+                )
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_sync_restores_pending_metadata_without_replaying_a_response(self) -> None:
         async def scenario() -> None:
             empty = self.chat_socket.local.PublicResponse(

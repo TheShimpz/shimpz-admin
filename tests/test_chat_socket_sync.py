@@ -369,7 +369,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     {
                         "type": "error",
                         "status": 409,
-                        "detail": "an Integration synchronization is already active",
+                        "detail": "a chat continuation is already active",
                     },
                 )
                 self.assertEqual(

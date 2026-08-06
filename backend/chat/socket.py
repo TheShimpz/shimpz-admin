@@ -392,7 +392,10 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             return
         if isinstance(response, team.TeamResponse) and (
             response.status == 428
-            or (isinstance(response.body, dict) and response.body.get("status") == "integrations-required")
+            or (
+                isinstance(response.body, dict)
+                and response.body.get("status") in {"human-required", "integrations-required"}
+            )
         ):
             event = _error_terminal(502, "the Assistant challenge was invalid")
         else:
@@ -488,7 +491,10 @@ async def _deliver_integration_sync(
 
     if isinstance(resumed_response, team.TeamResponse) and (
         resumed_response.status == 428
-        or (isinstance(resumed_response.body, dict) and resumed_response.body.get("status") == "integrations-required")
+        or (
+            isinstance(resumed_response.body, dict)
+            and resumed_response.body.get("status") in {"human-required", "integrations-required"}
+        )
     ):
         event = _error_terminal(502, "the Assistant integration challenge was invalid")
     else:
@@ -848,7 +854,7 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
         sent = await _send_sync_terminal_once(
             websocket,
             connection,
-            _error_terminal(409, "an Integration synchronization is already active"),
+            _error_terminal(409, "a chat continuation is already active"),
         )
         if sent:
             connection.closed = True
