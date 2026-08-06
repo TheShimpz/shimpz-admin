@@ -366,6 +366,80 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     )
         transport.assert_not_called()
 
+    def test_human_resume_projects_denial_without_reflecting_private_values(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        denied = team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "status": "human-denied",
+                "reason": "denied",
+                "trace_id": TRACE_ID,
+            },
+        )
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(team, "resume_chat_human", return_value=denied) as resume,
+        ):
+            response = local.resume_human(
+                "team_1",
+                {"challenge_id": CHALLENGE_ID, "decision": "deny"},
+            )
+
+        self.assertEqual(
+            response,
+            team.TeamResponse(409, {"code": "human-request-denied"}),
+        )
+        self.assertNotIn("assurance", resume.call_args.kwargs)
+        self.assertNotIn("sk-test-0123456789", json.dumps(response.body))
+
+    def test_human_resume_forwards_exact_authentication_assurance(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        completed = team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Authorized.",
+                "trace_id": TRACE_ID,
+            },
+        )
+        assurance = {"kind": "auth:reauth", "challenge_id": CHALLENGE_ID}
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(team, "resume_chat_human", return_value=completed) as resume,
+        ):
+            response = local.resume_human(
+                "team_1",
+                {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True},
+                assurance=assurance,
+            )
+
+        self.assertEqual(response.body["reply"], "Authorized.")
+        self.assertEqual(resume.call_args.kwargs["assurance"], assurance)
+
+    def test_human_denial_rejects_unknown_or_augmented_controller_reasons(self) -> None:
+        valid = {
+            "team_id": "team_1",
+            "status": "human-denied",
+            "reason": "denied",
+            "trace_id": TRACE_ID,
+        }
+        invalid = (
+            {**valid, "reason": "private detail"},
+            {**valid, "secret": "must-not-cross"},
+            {**valid, "team_id": "team_2"},
+        )
+        for body in invalid:
+            with self.subTest(body=body):
+                response = local._project_human_denial(team.TeamResponse(200, body), "team_1")
+            self.assertEqual(
+                response,
+                team.TeamResponse(502, {"code": "human-response-invalid"}),
+            )
+
     def test_browser_payload_rejects_ambient_authority_and_invalid_scopes(self) -> None:
         payloads = (
             {"message": "Hi", "files": [], "assistant_ids": [], "assistant": "hello-pulse"},

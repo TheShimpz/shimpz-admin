@@ -35,6 +35,7 @@ _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirme
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
+_HUMAN_DENIED_RESPONSE_FIELDS = frozenset({"team_id", "status", "reason", "trace_id"})
 MAX_INTEGRATION_REQUIREMENTS = 64
 MAX_INTEGRATION_SCOPES = 32
 MAX_INTEGRATION_POWERS = 128
@@ -384,6 +385,22 @@ def _project_pending_challenge(response: team.TeamResponse, team_id: str) -> tea
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
+def _project_human_denial(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
+    if (
+        set(response.body) != _HUMAN_DENIED_RESPONSE_FIELDS
+        or response.body.get("team_id") != team_id
+        or response.body.get("status") != "human-denied"
+        or not _valid_trace_id(response.body.get("trace_id"))
+    ):
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-response-invalid"})
+    reason = response.body.get("reason")
+    if reason == "denied":
+        return PublicResponse(HTTPStatus.CONFLICT, {"code": "human-request-denied"})
+    if reason == "authentication-unavailable":
+        return PublicResponse(HTTPStatus.CONFLICT, {"code": "human-authentication-unavailable"})
+    return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-response-invalid"})
+
+
 def _project_turn(
     response: team.TeamResponse,
     team_id: str,
@@ -417,6 +434,7 @@ def _submit(
     canonicalize: Callable[[object], dict[str, object]],
     request: Callable[..., team.TeamResponse],
     progress: Callable[[dict[str, object]], None],
+    assurance: dict[str, str] | None = None,
 ) -> team.TeamResponse:
     with _admin_span(progress, "admin-preparation"):
         canonical_id = team.canonical_team_id(team_id)
@@ -426,17 +444,24 @@ def _submit(
         return credential
     provider, api_key = credential
 
+    request_arguments: dict[str, object] = {
+        "provider": provider,
+        "api_key": api_key,
+        "progress": lambda event: _relay_team_progress(progress, event),
+    }
+    if assurance is not None:
+        request_arguments["assurance"] = assurance
     response = request(
         canonical_id,
         body,
-        provider=provider,
-        api_key=api_key,
-        progress=lambda event: _relay_team_progress(progress, event),
+        **request_arguments,
     )
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
         return _project_pending_challenge(response, canonical_id)
+    if response.body.get("status") == "human-denied":
+        return _project_human_denial(response, canonical_id)
     if not 200 <= response.status < 300:
         return _safe_error(response)
 
@@ -463,6 +488,23 @@ def resume_integrations(
         team.canonical_integration_resume,
         team.resume_chat_integrations,
         progress,
+    )
+
+
+def resume_human(
+    team_id: object,
+    payload: object,
+    progress: Callable[[dict[str, object]], None] = _ignore_progress,
+    *,
+    assurance: dict[str, str] | None = None,
+) -> team.TeamResponse:
+    return _submit(
+        team_id,
+        payload,
+        team.canonical_human_resume,
+        team.resume_chat_human,
+        progress,
+        assurance,
     )
 
 
