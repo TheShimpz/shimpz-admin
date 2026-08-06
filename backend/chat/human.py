@@ -215,3 +215,62 @@ def _fingerprint(request: dict[str, object], supplied: str) -> bool:
 
 def _trace_id(value: object) -> bool:
     return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
+
+
+def browser_value(request: object, value: object) -> bool:
+    """Validate a browser response against the exact already-projected request descriptor."""
+    valid = False
+    if isinstance(request, dict):
+        kind = request.get("kind")
+        if kind == "approval":
+            valid = value is True
+        elif kind in AUTH_KINDS:
+            valid = isinstance(value, str) and 1 <= len(value) <= 4096
+        elif kind in CHOICE_KINDS:
+            valid = _browser_choice(request, value)
+        elif kind == "input:choices":
+            valid = _browser_choices(request, value)
+        elif kind in LENGTH_KINDS:
+            valid = _browser_text(request, value)
+    return valid
+
+
+def _browser_choice(request: dict[str, object], value: object) -> bool:
+    options = request.get("options")
+    allowed = (
+        {option["value"] for option in options if isinstance(option, dict)}
+        if isinstance(options, list)
+        else set()
+    )
+    return isinstance(value, str) and (
+        value in allowed or (value == "" and request.get("required") is False)
+    )
+
+
+def _browser_text(request: dict[str, object], value: object) -> bool:
+    minimum = request.get("min_length")
+    maximum = request.get("max_length")
+    return (
+        isinstance(value, str)
+        and type(minimum) is int
+        and type(maximum) is int
+        and (request.get("required") is False or bool(value))
+        and minimum <= len(value) <= maximum
+    )
+
+
+def _browser_choices(request: dict[str, object], value: object) -> bool:
+    options = request.get("options")
+    minimum = request.get("min_selections")
+    maximum = request.get("max_selections")
+    if (
+        not isinstance(options, list)
+        or not isinstance(value, list)
+        or not all(isinstance(item, str) for item in value)
+        or len(value) != len(set(value))
+        or type(minimum) is not int
+        or type(maximum) is not int
+    ):
+        return False
+    allowed = {option["value"] for option in options if isinstance(option, dict)}
+    return minimum <= len(value) <= maximum and set(value) <= allowed

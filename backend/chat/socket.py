@@ -1,6 +1,6 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
-The browser speaks only ``shimpz.chat.v3``. Provider and Assistant secrets stay behind
+The browser speaks only ``shimpz.chat.v4``. Provider and Assistant secrets stay behind
 :mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
-from chat import local
+from chat import human, local
 from protocol.http.v1 import websocket as chat_ws_common
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v3"
+CHAT_SUBPROTOCOL = "shimpz.chat.v4"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 STOP_RESULT_WAIT_SECONDS = 15
@@ -36,9 +36,9 @@ class ExecutorSaturatedError(RuntimeError):
     """The local chat worker and queue budget has no free admission slot."""
 
 
-def _submit_in_context(executor, function, /, *args):
+def _submit_in_context(executor, function, /, *args, **kwargs):
     context = contextvars.copy_context()
-    return executor.submit(context.run, function, *args)
+    return executor.submit(context.run, function, *args, **kwargs)
 
 
 class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
@@ -133,9 +133,16 @@ def integration_challenge_event(response: object, team_id: str) -> dict[str, obj
     return _projected_event(response, team_id, frozenset({"integrations-required"}))
 
 
+def human_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
+    return _projected_event(response, team_id, frozenset({"human-required"}))
+
+
 def _first_challenge(response: object, team_id: str) -> tuple[dict[str, object] | None, str | None]:
     challenge = integration_challenge_event(response, team_id)
-    return (challenge, "integration") if challenge is not None else (None, None)
+    if challenge is not None:
+        return challenge, "integration"
+    challenge = human_challenge_event(response, team_id)
+    return (challenge, "human") if challenge is not None else (None, None)
 
 
 def _stop_accepted(response: object, team_id: str) -> bool | None:
@@ -163,9 +170,31 @@ class _Connection:
     active: _Turn | None = None
     pending_challenge_id: str | None = None
     pending_challenge_type: str | None = None
+    pending_human_request: dict[str, object] | None = None
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
     closed: bool = False
+
+
+def _remember_challenge(
+    connection: _Connection,
+    challenge: dict[str, object],
+    challenge_type: str,
+) -> None:
+    connection.pending_challenge_id = challenge["challenge_id"]
+    connection.pending_challenge_type = challenge_type
+    request = challenge.get("request")
+    connection.pending_human_request = (
+        dict(request)
+        if challenge_type == "human" and isinstance(request, dict)
+        else None
+    )
+
+
+def _forget_challenge(connection: _Connection) -> None:
+    connection.pending_challenge_id = None
+    connection.pending_challenge_type = None
+    connection.pending_human_request = None
 
 
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
@@ -349,9 +378,8 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         if connection.closed or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
-        if challenge is not None:
-            connection.pending_challenge_id = challenge["challenge_id"]
-            connection.pending_challenge_type = challenge_type
+        if challenge is not None and challenge_type is not None:
+            _remember_challenge(connection, challenge, challenge_type)
             if not await _send_event(websocket, challenge):
                 connection.closed = True
             return
@@ -363,8 +391,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         else:
             event = turn_terminal(response, team_id)
         if event.get("type") == "done":
-            connection.pending_challenge_id = None
-            connection.pending_challenge_type = None
+            _forget_challenge(connection)
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -418,8 +445,7 @@ async def _deliver_integration_sync(
     pending = integration_challenge_event(pending_response, team_id)
     if pending is None:
         if _is_empty_pending(pending_response, team_id):
-            connection.pending_challenge_id = None
-            connection.pending_challenge_type = None
+            _forget_challenge(connection)
             await _send_sync_event(websocket, connection, {"type": "sync-empty"})
             return
         await _send_sync_terminal_once(
@@ -437,7 +463,7 @@ async def _deliver_integration_sync(
         return
 
     resumed, challenge_type = _first_challenge(resumed_response, team_id)
-    if resumed is not None:
+    if resumed is not None and challenge_type is not None:
         pending_turn_id = pending_response.body.get("turn_id")
         resumed_turn_id = resumed_response.body.get("turn_id")
         if pending_turn_id != resumed_turn_id:
@@ -447,8 +473,7 @@ async def _deliver_integration_sync(
                 _error_terminal(502, "the Assistant integration challenge was invalid"),
             )
             return
-        connection.pending_challenge_id = resumed["challenge_id"]
-        connection.pending_challenge_type = challenge_type
+        _remember_challenge(connection, resumed, challenge_type)
         await _send_sync_event(websocket, connection, resumed)
         return
 
@@ -459,8 +484,7 @@ async def _deliver_integration_sync(
         event = _error_terminal(502, "the Assistant integration challenge was invalid")
     else:
         event = turn_terminal(resumed_response, team_id)
-    connection.pending_challenge_id = None
-    connection.pending_challenge_type = None
+    _forget_challenge(connection)
     await _send_sync_terminal_once(websocket, connection, event)
 
 
@@ -548,8 +572,7 @@ async def _run_stop(
         if not emit or connection.closed or turn.terminal_sent:
             return
         if accepted is True:
-            connection.pending_challenge_id = None
-            connection.pending_challenge_type = None
+            _forget_challenge(connection)
             await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
         elif accepted is None:
             status = response.status if isinstance(response, team.TeamResponse) else 502
@@ -609,6 +632,147 @@ async def _dispatch_sync(websocket: WebSocket, connection: _Connection, team_id:
     connection.sync_task = asyncio.create_task(_deliver_sync(websocket, connection, team_id))
 
 
+def _authenticated_denial(response: object) -> bool:
+    return (
+        isinstance(response, local.PublicResponse)
+        and response.status == 409
+        and response.body == {"code": "human-request-denied"}
+    )
+
+
+async def _deliver_human_response(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    future: concurrent.futures.Future,
+    progress: asyncio.Queue[dict[str, object]],
+    authentication_failure: tuple[int, str] | None,
+) -> None:
+    task = asyncio.current_task()
+    try:
+        response = None
+        with contextlib.suppress(Exception):
+            response = await _await_progress_result(
+                websocket,
+                connection,
+                future,
+                progress,
+                lambda: connection.closed or connection.sync_terminal_sent,
+            )
+        if response is None or connection.closed:
+            if not connection.closed:
+                await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
+            return
+        _forget_challenge(connection)
+        if authentication_failure is not None:
+            event = (
+                _error_terminal(*authentication_failure)
+                if _authenticated_denial(response)
+                else turn_terminal(response, team_id)
+            )
+            await _send_sync_terminal_once(websocket, connection, event)
+            return
+        challenge, challenge_type = _first_challenge(response, team_id)
+        if challenge is not None and challenge_type is not None:
+            _remember_challenge(connection, challenge, challenge_type)
+            await _send_sync_event(websocket, connection, challenge)
+            return
+        await _send_sync_terminal_once(websocket, connection, turn_terminal(response, team_id))
+    finally:
+        if connection.sync_task is task:
+            connection.sync_task = None
+
+
+async def _human_payload(
+    frame: dict[str, object],
+    request: dict[str, object],
+    authenticate: Callable[[str, str], Awaitable[str]],
+) -> tuple[dict[str, object], dict[str, str] | None, tuple[int, str] | None]:
+    canonical = chat_ws_common.canonical_human_response(frame)
+    challenge_id = canonical["challenge_id"]
+    if canonical["decision"] == "deny":
+        return {"challenge_id": challenge_id, "decision": "deny"}, None, None
+    value = canonical.pop("value")
+    if not human.browser_value(request, value):
+        raise FrameError(400, "human response does not match its request")
+    kind = request.get("kind")
+    if kind not in human.AUTH_KINDS:
+        return {
+            "challenge_id": challenge_id,
+            "decision": "submit",
+            "value": value,
+        }, None, None
+    frame.pop("value", None)
+    password = value
+    if not isinstance(password, str):
+        raise FrameError(400, "authentication response is invalid")
+    result = "unavailable"
+    with contextlib.suppress(Exception):
+        result = await authenticate(kind, password)
+    del password
+    del value
+    if result == "verified":
+        return {
+            "challenge_id": challenge_id,
+            "decision": "submit",
+            "value": True,
+        }, {"kind": kind, "challenge_id": challenge_id}, None
+    failure = (
+        (403, "authentication was not confirmed")
+        if result == "denied"
+        else (503, "authentication is unavailable")
+    )
+    return {"challenge_id": challenge_id, "decision": "deny"}, None, failure
+
+
+async def _dispatch_human_response(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+    authenticate: Callable[[str, str], Awaitable[str]],
+) -> None:
+    if connection.active is not None or connection.sync_task is not None:
+        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
+        return
+    request = connection.pending_human_request
+    if (
+        connection.pending_challenge_type != "human"
+        or connection.pending_challenge_id != frame.get("challenge_id")
+        or request is None
+    ):
+        await _send_event(websocket, _error_terminal(409, "the human challenge is not pending"))
+        return
+    try:
+        payload, assurance, authentication_failure = await _human_payload(frame, request, authenticate)
+        progress, report = _progress_channel()
+        future = _submit_in_context(
+            _SYNC_EXECUTOR,
+            local.resume_human,
+            team_id,
+            payload,
+            report,
+            assurance=assurance,
+        )
+    except FrameError as exc:
+        await _send_event(websocket, _error_terminal(exc.status, exc.detail))
+        return
+    except ExecutorSaturatedError:
+        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+        return
+    connection.sync_terminal_sent = False
+    connection.sync_task = asyncio.create_task(
+        _deliver_human_response(
+            websocket,
+            connection,
+            team_id,
+            future,
+            progress,
+            authentication_failure,
+        )
+    )
+
+
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -666,7 +830,13 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
     _request_stop(websocket, connection, connection.active, team_id, emit=True)
 
 
-async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str, frame: dict[str, object]) -> None:
+async def _dispatch(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+    authenticate: Callable[[str, str], Awaitable[str]],
+) -> None:
     frame_type = frame.get("type")
     if frame_type == "sync" and set(frame) == {"type"}:
         await _dispatch_sync(websocket, connection, team_id)
@@ -674,6 +844,8 @@ async def _dispatch(websocket: WebSocket, connection: _Connection, team_id: str,
         await _dispatch_chat(websocket, connection, team_id, frame)
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
+    elif frame_type == "human-response":
+        await _dispatch_human_response(websocket, connection, team_id, frame, authenticate)
     else:
         await _send_event(websocket, _error_terminal(400, "unsupported chat frame"))
 
@@ -732,6 +904,7 @@ async def serve(
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
     allowed_origins: Callable[[], frozenset[str]],
+    authenticate: Callable[[str, str], Awaitable[str]],
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session."""
     canonical_id = await _admit(websocket, team_id, session_ok, allowed_origins)
@@ -757,7 +930,7 @@ async def serve(
                     connection.closed = True
                     await websocket.close(code=1013 if session_status == "unavailable" else 4401)
                     return
-                await _dispatch(websocket, connection, canonical_id, frame)
+                await _dispatch(websocket, connection, canonical_id, frame, authenticate)
         except WebSocketDisconnect, RuntimeError, OSError:
             connection.closed = True
         finally:

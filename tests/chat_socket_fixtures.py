@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 
 TURN_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
@@ -37,5 +39,44 @@ def integration_challenge(status: int = 428) -> object:
             "challenge_id": CHALLENGE_ID,
             "expires_in": 300,
             "requirements": integration_requirements(),
+        },
+    )
+
+
+def human_challenge(kind: str, status: int = 428) -> object:
+    local_module = importlib.import_module("chat.local")
+    request: dict[str, object] = {
+        "kind": kind,
+        "ordinal": 0,
+        "title": "Confirm this Power",
+        "description": "The Power is waiting for your response.",
+    }
+    if kind == "input:password":
+        request.update(
+            label="API secret",
+            required=True,
+            placeholder="Enter the secret",
+            min_length=1,
+            max_length=1024,
+        )
+    canonical = json.dumps(
+        request,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    request["fingerprint"] = hashlib.sha256(canonical).hexdigest()
+    return local_module.PublicResponse(
+        status,
+        {
+            "team_id": "team_1",
+            "status": "human-required",
+            "turn_id": CHALLENGE_ID,
+            "challenge_id": CHALLENGE_ID,
+            "expires_in": 300,
+            "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
+            "power": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
+            "request": request,
         },
     )

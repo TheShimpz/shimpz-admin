@@ -58,7 +58,7 @@ class _Socket:
         team_id: str = "team_1",
         fail_send_type: str = "",
     ) -> None:
-        offered = ["shimpz.chat.v3"] if protocols is None else protocols
+        offered = ["shimpz.chat.v4"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
         if offered:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
@@ -169,7 +169,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v3", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v4", "headers": []}
 
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
@@ -188,7 +188,7 @@ class ChatWebSocketTests(unittest.TestCase):
             extra_protocol = _Socket(
                 self.admin_app.app,
                 token=self.token,
-                protocols=["shimpz.chat.v3", "shimpz.chat.v2"],
+                protocols=["shimpz.chat.v4", "shimpz.chat.v3"],
             )
             self.assertEqual(
                 await extra_protocol.start(),

@@ -240,6 +240,24 @@ async def _session_ok(cookies) -> bool:
     return await _session_evidence(cookies) is not None
 
 
+async def _authenticate_power_request(kind: str, secret: str) -> str:
+    """Return one bounded assurance outcome without exposing authentication material."""
+    if ADMIN_PROFILE != "local" or kind != "auth:reauth" or not 1 <= len(secret) <= MAX_PASSWORD_CHARS:
+        return "unavailable"
+    try:
+        record = state.get()
+        verified = await asyncio.to_thread(
+            auth.verify_password,
+            secret,
+            record.get("salt", ""),
+            record.get("password_hash", ""),
+        )
+    except (TypeError, ValueError, RuntimeError, OSError):
+        log.warning("Power reauthentication authority is unavailable")
+        return "unavailable"
+    return "verified" if verified else "denied"
+
+
 def _team_session_scope(cookies):
     token = cookies.get(COOKIE, "")
     if ADMIN_PROFILE == "hosted":
@@ -696,6 +714,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         session_ok=_session_ok,
         request_scope=_team_session_scope,
         allowed_origins=_allowed_browser_origins,
+        authenticate=_authenticate_power_request,
     )
 
 
