@@ -3,9 +3,8 @@
     Button,
     Card,
     CheckboxField,
-    DialogFrame,
-    Modal,
     Notice,
+    PromptDialog,
     RadioField,
     SelectField,
     TextAreaField,
@@ -20,7 +19,6 @@
     onrespond = () => {},
   } = $props();
 
-  let dialog = $state();
   let challengeId = $state('');
   let textValue = $state('');
   let singleValue = $state('');
@@ -45,12 +43,6 @@
     singleValue = '';
     selectedValues = [];
     validationError = '';
-  });
-
-  $effect(() => {
-    if (!dialog) return;
-    if (open && challenge && !dialog.open) dialog.showModal();
-    if ((!open || !challenge) && dialog.open) dialog.close();
   });
 
   function deny(event) {
@@ -103,15 +95,17 @@
   }
 </script>
 
-<Modal bind:element={dialog} labelledBy="human-request-title" size="md" oncancel={deny}>
-  {#if challenge && request}
-    <form onsubmit={submit} autocomplete="off">
-      <DialogFrame
-        {kicker}
-        title={request.title}
-        titleId="human-request-title"
-        lead={request.description}
-      >
+{#if challenge && request}
+  <PromptDialog
+    bind:open
+    {kicker}
+    title={request.title}
+    titleId="human-request-title"
+    lead={request.description}
+    size="md"
+    oncancel={deny}
+    onsubmit={submit}
+  >
         <p class="paused">{copy.paused} <span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span></p>
         <Card class="request-origin" padding="compact">
           <div><span>{copy.assistant}</span><strong>{challenge.assistant.name}</strong><code>{challenge.assistant.id}</code></div>
@@ -212,17 +206,14 @@
         {/if}
 
         {#if validationError}<Notice variant="error">{validationError}</Notice>{/if}
-        {#snippet footer()}
-          <Button type="button" variant="secondary" disabled={working} onclick={deny}>{copy.cancel}</Button>
-          <Button type="submit" disabled={working}>{primaryLabel}</Button>
-        {/snippet}
-      </DialogFrame>
-    </form>
-  {/if}
-</Modal>
+    {#snippet footer()}
+      <Button type="button" variant="secondary" disabled={working} onclick={deny}>{copy.cancel}</Button>
+      <Button type="submit" disabled={working}>{primaryLabel}</Button>
+    {/snippet}
+  </PromptDialog>
+{/if}
 
 <style>
-  form { margin: 0; }
   .paused { margin: 0; color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
   .paused span { color: var(--accent); font-family: var(--font-mono); }
   :global(.request-origin > [data-slot="card-content"]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--shimpz-space-4); }

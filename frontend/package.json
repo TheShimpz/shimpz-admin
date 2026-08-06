@@ -12,7 +12,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/bee01c3a6302abdf5fb67af1b05a612ef78634ba"
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/dd0a26589ada6c4adae6f3b34ec91bc1e1bfbde4"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
