@@ -20,7 +20,8 @@ async function routeSetup(page) {
   }));
 }
 
-async function routeReadyChat(page, { integrationChallenge = false, reply } = {}) {
+async function routeReadyChat(page, { integrationChallenge = false, missingInference = false, reply } = {}) {
+  let inferenceWrites = 0;
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -63,10 +64,20 @@ async function routeReadyChat(page, { integrationChallenge = false, reply } = {}
       })),
     }),
   }));
-  await page.route('**/api/teams/marketing/inference', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' }),
-  }));
+  await page.route('**/api/teams/marketing/inference', (route) => {
+    if (missingInference && route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'not configured' }),
+      });
+    }
+    if (route.request().method() === 'PUT') inferenceWrites += 1;
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' }),
+    });
+  });
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -125,6 +136,7 @@ async function routeReadyChat(page, { integrationChallenge = false, reply } = {}
       }
     });
   });
+  return { inferenceWrites: () => inferenceWrites };
 }
 
 test('setup surface is accessible and never overflows its viewport', async ({ page }) => {
@@ -153,6 +165,15 @@ test('language menu implements keyboard navigation and RTL direction', async ({ 
 
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   await expect(page.getByRole('button', { name: 'اللغة: العربية' })).toBeFocused();
+});
+
+test('opens Chat directly when the provider key already exists', async ({ page }) => {
+  const requests = await routeReadyChat(page, { missingInference: true });
+  await page.goto('/chat/');
+
+  await expect(page.locator('.provider-gate')).toBeHidden();
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  expect(requests.inferenceWrites()).toBe(1);
 });
 
 test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {

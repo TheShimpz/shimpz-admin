@@ -87,13 +87,23 @@ export async function loadModelContext(fetcher, teamId) {
     if (!selected) throw new LocalApiError('Model provider settings are invalid.');
     const model = inference?.model ?? selected.default_model;
     if (!selectedModel(selected, model)) throw new LocalApiError('Team model settings are invalid.');
+    let selectionReady = Boolean(inference && selected.configured);
+    if (!inference && selected.configured) {
+      await saveModelSetup(
+        fetcher,
+        teamId,
+        { provider: selected.id, model, apiKey: '' },
+        providers,
+      );
+      selectionReady = true;
+    }
     const snapshot = {
       phase: 'ready',
       teamId,
       providers,
       provider: selected.id,
       model,
-      ready: Boolean(inference && selected.configured),
+      ready: selectionReady,
       error: '',
     };
     if (attempt === generation) modelContext.set(snapshot);

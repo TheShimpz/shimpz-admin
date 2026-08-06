@@ -97,10 +97,33 @@ test('provider preload is shared with model hydration and cached across Team swi
   assert.equal(get(modelContext).teamId, 'support');
 });
 
-test('keeps Chat locked when the Team has no inference selection', async () => {
-  await loadModelContext(fixtureFetcher('marketing', null), 'marketing');
+test('opens Chat by persisting the default Brain when its provider key already exists', async () => {
+  const calls = [];
+  const base = fixtureFetcher('marketing', null);
+  const fetcher = async (url, options = {}) => {
+    calls.push({ url, options });
+    return base(url, options);
+  };
+
+  await loadModelContext(fetcher, 'marketing');
+
+  assert.deepEqual(calls.map((entry) => `${entry.options.method ?? 'GET'} ${entry.url}`), [
+    'GET /api/model-providers',
+    'GET /api/teams/marketing/inference',
+    'PUT /api/teams/marketing/inference',
+  ]);
+  assert.deepEqual(JSON.parse(calls[2].options.body), {
+    provider: 'openai',
+    model: 'gpt-5.6-terra',
+  });
   assert.equal(get(modelContext).provider, 'openai');
   assert.equal(get(modelContext).model, 'gpt-5.6-terra');
+  assert.equal(get(modelContext).ready, true);
+});
+
+test('keeps Chat locked when no provider key exists', async () => {
+  const unconfigured = providers.map((provider) => ({ ...provider, configured: false, masked: null }));
+  await loadModelContext(fixtureFetcher('marketing', null, unconfigured), 'marketing');
   assert.equal(get(modelContext).ready, false);
 });
 
