@@ -192,9 +192,7 @@ def _remember_challenge(
     connection.pending_challenge_type = challenge_type
     request = challenge.get("request")
     connection.pending_human_request = (
-        dict(request)
-        if challenge_type == "human" and isinstance(request, dict)
-        else None
+        dict(request) if challenge_type == "human" and isinstance(request, dict) else None
     )
 
 
@@ -736,11 +734,15 @@ async def _human_payload(
         raise FrameError(400, "human response does not match its request")
     kind = request.get("kind")
     if kind not in human.AUTH_KINDS:
-        return {
-            "challenge_id": challenge_id,
-            "decision": "submit",
-            "value": value,
-        }, None, None
+        return (
+            {
+                "challenge_id": challenge_id,
+                "decision": "submit",
+                "value": value,
+            },
+            None,
+            None,
+        )
     frame.pop("value", None)
     password = value
     if not isinstance(password, str):
@@ -751,15 +753,17 @@ async def _human_payload(
     del password
     del value
     if result == "verified":
-        return {
-            "challenge_id": challenge_id,
-            "decision": "submit",
-            "value": True,
-        }, {"kind": kind, "challenge_id": challenge_id}, None
+        return (
+            {
+                "challenge_id": challenge_id,
+                "decision": "submit",
+                "value": True,
+            },
+            {"kind": kind, "challenge_id": challenge_id},
+            None,
+        )
     failure = (
-        (403, "authentication was not confirmed")
-        if result == "denied"
-        else (503, "authentication is unavailable")
+        (403, "authentication was not confirmed") if result == "denied" else (503, "authentication is unavailable")
     )
     return {"challenge_id": challenge_id, "decision": "deny"}, None, failure
 

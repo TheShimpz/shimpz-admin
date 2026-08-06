@@ -78,10 +78,14 @@ def canonical_human_resume(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict) or payload.get("decision") not in {"submit", "deny"}:
         raise TeamRequestError("human continuation requires a submit or deny decision")
     decision = payload["decision"]
-    expected = {"challenge_id", "decision", "value"} if decision == "submit" else {
-        "challenge_id",
-        "decision",
-    }
+    expected = (
+        {"challenge_id", "decision", "value"}
+        if decision == "submit"
+        else {
+            "challenge_id",
+            "decision",
+        }
+    )
     if set(payload) != expected:
         raise TeamRequestError("human continuation fields are invalid")
     result: dict[str, object] = {

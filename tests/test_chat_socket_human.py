@@ -39,9 +39,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         previous_store = cls.admin_app.state.STORE_PATH
         previous_origins = cls.chat_socket.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.chat_socket.STATIC_ORIGINS = frozenset(
-            {"http://localhost:7777", "http://127.0.0.1:7777"}
-        )
+        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
         cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 
@@ -62,9 +60,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
     async def _open_challenge(self, kind: str) -> _Socket:
         websocket = _Socket(self.admin_app.app, token=self.token)
         self.assertTrue(self._accepted(await websocket.start()))
-        await websocket.send_json(
-            {"type": "chat", "message": "Continue", "files": [], "assistant_ids": []}
-        )
+        await websocket.send_json({"type": "chat", "message": "Continue", "files": [], "assistant_ids": []})
         challenge = await websocket.next_json()
         self.assertEqual(challenge["type"], "human-required")
         self.assertEqual(challenge["request"]["kind"], kind)
@@ -263,9 +259,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
             with mock.patch.object(self.chat_socket.local, "turn", return_value=invalid):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "Continue", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "Continue", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_json(),
                     {

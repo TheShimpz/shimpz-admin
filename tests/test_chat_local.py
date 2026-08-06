@@ -326,9 +326,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         with mock.patch.object(team, "_call_stream") as transport:
             for payload, evidence in invalid:
-                with self.subTest(payload=payload, evidence=evidence), self.assertRaises(
-                    team.TeamRequestError
-                ):
+                with self.subTest(payload=payload, evidence=evidence), self.assertRaises(team.TeamRequestError):
                     team.resume_chat_human(
                         "team_1",
                         payload,

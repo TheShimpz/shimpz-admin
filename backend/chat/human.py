@@ -70,7 +70,7 @@ async def authenticate_local(
             record.get("salt", ""),
             record.get("password_hash", ""),
         )
-    except (TypeError, ValueError, RuntimeError, OSError):
+    except TypeError, ValueError, RuntimeError, OSError:
         log.warning("Power reauthentication authority is unavailable")
         return "unavailable"
     return "verified" if verified else "denied"
@@ -198,11 +198,7 @@ def _choices(request: dict[str, object], *, multiple: bool) -> bool:
         return True
     minimum = request.get("min_selections")
     maximum = request.get("max_selections")
-    return (
-        type(minimum) is int
-        and type(maximum) is int
-        and 0 <= minimum <= maximum <= len(options)
-    )
+    return type(minimum) is int and type(maximum) is int and 0 <= minimum <= maximum <= len(options)
 
 
 def _input_base(request: dict[str, object]) -> bool:
@@ -220,12 +216,7 @@ def _option(value: object) -> bool:
 
 
 def _text(value: object, maximum: int) -> bool:
-    return (
-        isinstance(value, str)
-        and value == value.strip()
-        and 0 < len(value) <= maximum
-        and value.isprintable()
-    )
+    return isinstance(value, str) and value == value.strip() and 0 < len(value) <= maximum and value.isprintable()
 
 
 def _fingerprint(request: dict[str, object], supplied: str) -> bool:
@@ -268,13 +259,9 @@ def browser_value(request: object, value: object) -> bool:
 def _browser_choice(request: dict[str, object], value: object) -> bool:
     options = request.get("options")
     allowed = (
-        {option["value"] for option in options if isinstance(option, dict)}
-        if isinstance(options, list)
-        else set()
+        {option["value"] for option in options if isinstance(option, dict)} if isinstance(options, list) else set()
     )
-    return isinstance(value, str) and (
-        value in allowed or (value == "" and request.get("required") is False)
-    )
+    return isinstance(value, str) and (value in allowed or (value == "" and request.get("required") is False))
 
 
 def _browser_text(request: dict[str, object], value: object) -> bool:
