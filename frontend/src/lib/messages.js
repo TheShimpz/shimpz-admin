@@ -1,3 +1,5 @@
+import { humanRequestMessages } from './humanRequestMessages.js';
+
 // Admin UI copy, one object per locale. `en` is the canonical baseline that every other locale
 // falls back to key-by-key (see i18n.js).
 //
@@ -225,6 +227,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.en,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -560,6 +563,7 @@ export const messages = {
       "requestFailed": "O Time não conseguiu concluir este turno.",
       "technicalDetail": "Detalhe técnico"
     },
+    humanRequest: humanRequestMessages.pt,
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
     },
@@ -895,6 +899,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.es,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -1230,6 +1235,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.zh,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -1565,6 +1571,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.fr,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -1900,6 +1907,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.de,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -2235,6 +2243,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.ja,
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -2570,6 +2579,7 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "technicalDetail": "Technical detail"
     },
+    humanRequest: humanRequestMessages.ar,
     teamSidebar: {
       "retry": "Retry local data"
     },

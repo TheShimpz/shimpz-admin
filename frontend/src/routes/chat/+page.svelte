@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { Button, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
+  import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
@@ -19,6 +20,7 @@
     chatSocketUrl,
     completeAssistantIntegration,
     createChatFrame,
+    createHumanResponseFrame,
     createStopFrame,
     createSyncFrame,
     disconnectAssistantIntegration,
@@ -50,6 +52,8 @@
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
   let integrationChallenge = $state();
+  let humanChallenge = $state();
+  let humanWorking = $state(false);
   let integrations = $state([]);
   let integrationsReady = $state(false);
   let integrationWorking = $state('');
@@ -143,7 +147,7 @@
 
   async function focusStop() {
     await tick();
-    if (mounted && busy && !syncing && !integrationChallenge) {
+    if (mounted && busy && !syncing && !integrationChallenge && !humanChallenge) {
       stopButton?.focus({ preventScroll: true });
     }
   }
@@ -170,6 +174,8 @@
 
   function resetChallengeState({ includeInventory = false } = {}) {
     integrationChallenge = undefined;
+    humanChallenge = undefined;
+    humanWorking = false;
     integrationsDialogOpen = false;
     integrationsReady = false;
     integrationWorking = '';
@@ -200,6 +206,20 @@
     integrationChallenge = incoming;
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
+    integrationsOpen = false;
+    busy = true;
+    syncing = false;
+    stopping = false;
+    resetProgress();
+  }
+
+  function acceptHumanChallenge(incoming) {
+    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
+    if (!installed.has(incoming.assistant.id)) {
+      throw new Error('unexpected Assistant human request');
+    }
+    humanChallenge = incoming;
+    humanWorking = false;
     integrationsOpen = false;
     busy = true;
     syncing = false;
@@ -273,6 +293,10 @@
         );
         if (incoming.type === 'integrations-required') {
           acceptIntegrationChallenge(incoming);
+          return;
+        }
+        if (incoming.type === 'human-required') {
+          acceptHumanChallenge(incoming);
           return;
         }
         if (incoming.type === 'progress') {
@@ -579,6 +603,28 @@
     }
   }
 
+  function respondToHuman(response) {
+    const teamId = chatTeamId;
+    const challenge = humanChallenge;
+    if (!teamId || !challenge || humanWorking || !socketReady || !socket) return;
+    let frame;
+    try {
+      frame = createHumanResponseFrame(
+        teamId,
+        challenge.challenge_id,
+        response.decision,
+        response.value,
+      );
+      socket.send(JSON.stringify(frame));
+      humanWorking = true;
+      clearError();
+    } catch (reason) {
+      humanWorking = false;
+      setError(reason instanceof Error ? reason.message : copy.loadFailed);
+      socket.close();
+    }
+  }
+
   $effect(() => {
     const nextTeamId = chatTeamId;
     if (!mounted || nextTeamId === socketTeamId) return;
@@ -618,7 +664,7 @@
           class="conversation"
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
-          aria-busy={(busy || syncing) && !integrationChallenge}
+          aria-busy={(busy || syncing) && !integrationChallenge && !humanChallenge}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         <ScrollArea class="turns" bind:element={turnsViewport}>
@@ -640,7 +686,7 @@
                     {assistantNames}
                   />
                 </Message>
-              {:else if index === exchanges.length - 1 && busy && !integrationChallenge}
+              {:else if index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge}
                 <ShimpzThinking
                   label={thinking}
                   events={progressEvents}
@@ -727,6 +773,12 @@
           onauthorize={authorizeIntegration}
           oncomplete={completeIntegration}
           oncancel={cancelIntegrationAuthorization}
+        />
+        <AssistantHumanRequestDialog
+          open={Boolean(humanChallenge)}
+          challenge={humanChallenge}
+          working={humanWorking}
+          onrespond={respondToHuman}
         />
       </div>
     {:else}

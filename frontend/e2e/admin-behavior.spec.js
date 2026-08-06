@@ -34,8 +34,47 @@ async function routeSetup(page) {
   }));
 }
 
-async function routeReadyChat(page, { integrationChallenge = false, missingInference = false, reply } = {}) {
+function humanRequest(kind) {
+  const base = {
+    kind,
+    ordinal: 0,
+    title: {
+      approval: 'Publish reviewed DNS changes?',
+      'auth:reauth': 'Confirm with your Supervisor password',
+      'auth:second-factor': 'Confirm with your second factor',
+      'auth:phishing-resistant': 'Confirm with your passkey',
+    }[kind] ?? 'Provide the missing Power context',
+    description: 'Shimpz Cloudflare paused before continuing this exact Power.',
+    fingerprint: 'c'.repeat(64),
+  };
+  if (['input:text', 'input:textarea', 'input:password', 'input:phone'].includes(kind)) {
+    return {
+      ...base,
+      label: kind === 'input:password' ? 'Cloudflare API secret' : kind === 'input:phone' ? 'Contact phone' : 'Response',
+      required: true,
+      placeholder: kind === 'input:phone' ? '+1 415 555 0123' : 'Enter the reviewed value',
+      min_length: 1,
+      max_length: kind === 'input:textarea' ? 16_000 : kind === 'input:password' ? 128 : 64,
+    };
+  }
+  const options = [
+    { value: 'safe', label: 'Safe mode', description: 'Review every DNS change.' },
+    { value: 'fast', label: 'Fast mode', description: 'Apply the complete reviewed batch.' },
+  ];
+  if (['input:select', 'input:choice'].includes(kind)) {
+    return { ...base, label: 'Execution mode', required: true, options };
+  }
+  if (kind === 'input:choices') {
+    return { ...base, label: 'Zones', required: true, options, min_selections: 1, max_selections: 2 };
+  }
+  return base;
+}
+
+async function routeReadyChat(page, {
+  humanKind = '', integrationChallenge = false, missingInference = false, reply,
+} = {}) {
   let inferenceWrites = 0;
+  const humanResponses = [];
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -133,6 +172,17 @@ async function routeReadyChat(page, { integrationChallenge = false, missingInfer
           }));
           return;
         }
+        if (humanKind) {
+          socket.send(JSON.stringify({
+            type: 'human-required',
+            challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            expires_in: 300,
+            assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
+            power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+            request: humanRequest(humanKind),
+          }));
+          return;
+        }
         socket.send(JSON.stringify({
           type: 'progress',
           seq: 1,
@@ -147,10 +197,18 @@ async function routeReadyChat(page, { integrationChallenge = false, missingInfer
           team_name: 'Marketing',
           reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
         }));
+      } else if (frame.type === 'human-response') {
+        humanResponses.push(frame);
+        socket.send(JSON.stringify({
+          type: 'done',
+          team_id: 'marketing',
+          team_name: 'Marketing',
+          reply: 'The reviewed human response was accepted.',
+        }));
       }
     });
   });
-  return { inferenceWrites: () => inferenceWrites };
+  return { humanResponses: () => humanResponses, inferenceWrites: () => inferenceWrites };
 }
 
 test('setup surface is accessible and never overflows its viewport', async ({ page }) => {
@@ -275,6 +333,86 @@ test('renders the fail-closed Integration challenge dialog', async ({ page }) =>
     animations: 'disabled',
     maxDiffPixels: 100,
   });
+});
+
+const humanPresentations = [
+  ['approval', 'Publish reviewed DNS changes?'],
+  ['input:text', 'Provide the missing Power context'],
+  ['input:textarea', 'Provide the missing Power context'],
+  ['input:password', 'Provide the missing Power context'],
+  ['input:phone', 'Provide the missing Power context'],
+  ['input:select', 'Provide the missing Power context'],
+  ['input:choice', 'Provide the missing Power context'],
+  ['input:choices', 'Provide the missing Power context'],
+  ['auth:reauth', 'Confirm with your Supervisor password'],
+  ['auth:second-factor', 'Confirm with your second factor'],
+  ['auth:phishing-resistant', 'Confirm with your passkey'],
+];
+
+for (const [kind, title] of humanPresentations) {
+  test(`renders and completes the ${kind} Power request`, async ({ page }) => {
+    const contract = await routeReadyChat(page, { humanKind: kind });
+    await page.goto('/chat/');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await composer.fill('Continue with the reviewed Power');
+    await page.getByRole('button', { name: 'Send' }).click();
+    const dialog = page.getByRole('dialog', { name: title });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Shimpz Cloudflare');
+    await expect(dialog).toContainText('List reviewed Cloudflare zones.');
+    const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+    expect(results.violations).toEqual([]);
+    await expect(dialog).toHaveScreenshot(`human-${kind.replaceAll(':', '-')}.png`, {
+      animations: 'disabled',
+      maxDiffPixels: 100,
+    });
+
+    if (kind === 'input:text' || kind === 'input:textarea') {
+      await dialog.getByLabel(/Response/).fill('Reviewed value');
+    } else if (kind === 'input:password') {
+      await dialog.getByLabel(/Cloudflare API secret/).fill('third-party-secret');
+    } else if (kind === 'input:phone') {
+      await dialog.getByLabel(/Contact phone/).fill('+1 415 555 0123');
+    } else if (kind === 'input:select') {
+      await dialog.getByRole('combobox').selectOption('safe');
+    } else if (kind === 'input:choice') {
+      await dialog.getByRole('radio', { name: /Safe mode/ }).check();
+    } else if (kind === 'input:choices') {
+      await dialog.getByRole('checkbox', { name: /Safe mode/ }).check();
+    } else if (kind === 'auth:reauth') {
+      await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+    } else if (kind === 'auth:second-factor') {
+      await dialog.getByLabel('Verification code').fill('123456');
+    }
+    await dialog.getByRole('button', {
+      name: kind === 'approval'
+        ? 'Approve action'
+        : kind === 'auth:phishing-resistant'
+          ? 'Use passkey'
+          : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send response',
+    }).click();
+    await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+    expect(contract.humanResponses()).toHaveLength(1);
+    expect(contract.humanResponses()[0]).toMatchObject({
+      type: 'human-response',
+      challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      decision: 'submit',
+    });
+  });
+}
+
+test('treats dismissing a human request as a terminal denial', async ({ page }) => {
+  const contract = await routeReadyChat(page, { humanKind: 'approval' });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => contract.humanResponses()).toEqual([{
+    type: 'human-response',
+    challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    decision: 'deny',
+  }]);
 });
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {
