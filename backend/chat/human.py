@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
+import logging
+from collections.abc import Callable
 
+import auth
 from team import bridge as team
 
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_TTL_SECONDS = 300
+MAX_AUTH_SECRET_CHARS = 4096
 MAX_REQUESTS_PER_POWER = 8
 LENGTH_KINDS = {
     "input:text": 4096,
@@ -40,10 +45,35 @@ RESPONSE_FIELDS = frozenset(
     }
 )
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
+log = logging.getLogger("shimpz-admin")
 
 
 class HumanChallengeError(ValueError):
     """The Team response is not one exact public human challenge."""
+
+
+async def authenticate_local(
+    kind: str,
+    secret: str,
+    *,
+    profile: str,
+    record_get: Callable[[], dict[str, object]],
+) -> str:
+    """Return one bounded Local assurance outcome without exposing factor material."""
+    if profile != "local" or kind != "auth:reauth" or not 1 <= len(secret) <= MAX_AUTH_SECRET_CHARS:
+        return "unavailable"
+    try:
+        record = record_get()
+        verified = await asyncio.to_thread(
+            auth.verify_password,
+            secret,
+            record.get("salt", ""),
+            record.get("password_hash", ""),
+        )
+    except (TypeError, ValueError, RuntimeError, OSError):
+        log.warning("Power reauthentication authority is unavailable")
+        return "unavailable"
+    return "verified" if verified else "denied"
 
 
 def project(body: object, team_id: str) -> dict[str, object]:

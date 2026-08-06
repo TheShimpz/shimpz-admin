@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager, suppress
+from functools import partial
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -34,6 +35,7 @@ from team import assets as team_assets
 from team import bridge as team
 
 import browser
+from chat import human as chat_human
 from chat import socket as chat_socket
 from integrations import account as account_identity
 from integrations import assistants as integrations
@@ -52,6 +54,11 @@ def _admin_profile() -> str:
 
 
 ADMIN_PROFILE = _admin_profile()
+_AUTHENTICATE_POWER_REQUEST = partial(
+    chat_human.authenticate_local,
+    profile=ADMIN_PROFILE,
+    record_get=state.get,
+)
 TEAM_CREDENTIALS_ENABLED = (
     ADMIN_PROFILE == "local" and os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 )
@@ -62,6 +69,11 @@ OAUTH_COOKIE = "shimpz_oauth_binding"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
+_OAUTH_CHAT_REDIRECT = partial(
+    browser.oauth_chat_redirect,
+    cookie_name=OAUTH_COOKIE,
+    cookie_path=OAUTH_COOKIE_PATH,
+)
 _ADMIN_SETUP_LOCK = asyncio.Lock()
 OAUTH_ORIGINS = {
     "loopback": "http://127.0.0.1:7777",
@@ -208,16 +220,16 @@ async def _bind_browser_origin(origin: str | None) -> None:
 
 def _local_session_evidence(cookies) -> dict[str, object] | None:
     record = state.get()
-    if not auth.verify_session(record.get("session_secret", ""), cookies.get(COOKIE, "")):
-        return None
     try:
-        identity = supervisor.identity_from_record(record)
+        return supervisor.local_session_evidence(
+            record,
+            session_valid=auth.verify_session(
+                record.get("session_secret", ""),
+                cookies.get(COOKIE, ""),
+            ),
+        )
     except supervisor.SupervisorAuthorityError as exc:
         raise SessionEvidenceUnavailableError from exc
-    return {
-        "profile": "local",
-        "supervisor_id": identity.supervisor_id,
-    }
 
 
 async def _session_evidence(cookies) -> dict[str, object] | None:
@@ -240,24 +252,6 @@ async def _session_ok(cookies) -> bool:
     return await _session_evidence(cookies) is not None
 
 
-async def _authenticate_power_request(kind: str, secret: str) -> str:
-    """Return one bounded assurance outcome without exposing authentication material."""
-    if ADMIN_PROFILE != "local" or kind != "auth:reauth" or not 1 <= len(secret) <= MAX_PASSWORD_CHARS:
-        return "unavailable"
-    try:
-        record = state.get()
-        verified = await asyncio.to_thread(
-            auth.verify_password,
-            secret,
-            record.get("salt", ""),
-            record.get("password_hash", ""),
-        )
-    except (TypeError, ValueError, RuntimeError, OSError):
-        log.warning("Power reauthentication authority is unavailable")
-        return "unavailable"
-    return "verified" if verified else "denied"
-
-
 def _team_session_scope(cookies):
     token = cookies.get(COOKIE, "")
     if ADMIN_PROFILE == "hosted":
@@ -272,18 +266,6 @@ def _team_session_scope(cookies):
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("cf-connecting-ip", "").strip()
     return forwarded or (request.client.host if request.client else "")
-
-
-def _oauth_chat_redirect(failure: str = "") -> RedirectResponse:
-    """Leave provider query data behind and return to the token-free SPA URL."""
-    if failure not in {"", "start-failed", "callback-failed"}:
-        raise RuntimeError("invalid OAuth redirect failure")
-    location = "/chat" if not failure else f"/chat?oauth={failure}"
-    response = RedirectResponse(location, status_code=303)
-    response.delete_cookie(OAUTH_COOKIE, path=OAUTH_COOKIE_PATH)
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    return response
 
 
 def _secure_response(response: Response) -> Response:
@@ -714,7 +696,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         session_ok=_session_ok,
         request_scope=_team_session_scope,
         allowed_origins=_allowed_browser_origins,
-        authenticate=_authenticate_power_request,
+        authenticate=_AUTHENTICATE_POWER_REQUEST,
     )
 
 
@@ -871,11 +853,11 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     if request_mode is None:
         with suppress(handoff_store.OAuthHandoffError):
             OAUTH_HANDOFFS.discard(handoff)
-        return _oauth_chat_redirect("start-failed")
+        return _OAUTH_CHAT_REDIRECT("start-failed")
     try:
         pending = OAUTH_HANDOFFS.consume(handoff, request_mode)
     except handoff_store.OAuthHandoffError:
-        return _oauth_chat_redirect("start-failed")
+        return _OAUTH_CHAT_REDIRECT("start-failed")
     response = RedirectResponse(pending.authorization_url, status_code=303)
     hosted_callback = pending.callback_mode == "hosted"
     response.set_cookie(
@@ -895,10 +877,10 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
 @app.get("/api/oauth/cloudflare/callback")
 async def oauth_cloudflare_callback(request: Request):
     if not _is_oauth_origin(request):
-        return _oauth_chat_redirect("callback-failed")
+        return _OAUTH_CHAT_REDIRECT("callback-failed")
     pairs = list(request.query_params.multi_items())
     if len(pairs) != 2 or {key for key, _value in pairs} != {"state", "claim"}:
-        return _oauth_chat_redirect("callback-failed")
+        return _OAUTH_CHAT_REDIRECT("callback-failed")
     query = dict(pairs)
     binding = request.cookies.get(OAUTH_COOKIE, "")
     try:
@@ -909,11 +891,11 @@ async def oauth_cloudflare_callback(request: Request):
             session_binding=binding,
         )
     except team.TeamRequestError:
-        return _oauth_chat_redirect("callback-failed")
+        return _OAUTH_CHAT_REDIRECT("callback-failed")
     if result.status != 200:
         log.info("OAuth callback rejected (HTTP %s)", result.status)
-        return _oauth_chat_redirect("callback-failed")
-    return _oauth_chat_redirect()
+        return _OAUTH_CHAT_REDIRECT("callback-failed")
+    return _OAUTH_CHAT_REDIRECT()
 
 
 @app.get("/api/assistants")

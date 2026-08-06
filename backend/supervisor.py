@@ -85,6 +85,14 @@ def identity_from_record(record: object) -> LocalIdentity:
     return LocalIdentity(supervisor_id, private_key_hex)
 
 
+def local_session_evidence(record: object, *, session_valid: bool) -> dict[str, object] | None:
+    """Project only authenticated Local Supervisor identity into Admin session evidence."""
+    if not session_valid:
+        return None
+    identity = identity_from_record(record)
+    return {"profile": "local", "supervisor_id": identity.supervisor_id}
+
+
 def _private_key(identity: LocalIdentity) -> Ed25519PrivateKey:
     validated = identity_from_record(
         {

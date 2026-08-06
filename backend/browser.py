@@ -7,6 +7,8 @@ import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
 
+from fastapi.responses import RedirectResponse
+
 PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
 
 
@@ -71,3 +73,20 @@ def security_headers(ui_dir: Path) -> dict[str, str]:
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
+
+
+def oauth_chat_redirect(
+    failure: str = "",
+    *,
+    cookie_name: str,
+    cookie_path: str,
+) -> RedirectResponse:
+    """Return to the token-free Chat URL after discarding the OAuth browser binding."""
+    if failure not in {"", "start-failed", "callback-failed"}:
+        raise RuntimeError("invalid OAuth redirect failure")
+    location = "/chat" if not failure else f"/chat?oauth={failure}"
+    response = RedirectResponse(location, status_code=303)
+    response.delete_cookie(cookie_name, path=cookie_path)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
