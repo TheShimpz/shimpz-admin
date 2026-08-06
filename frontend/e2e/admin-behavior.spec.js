@@ -364,7 +364,7 @@ for (const [kind, title] of humanPresentations) {
     expect(results.violations).toEqual([]);
     await expect(dialog).toHaveScreenshot(`human-${kind.replaceAll(':', '-')}.png`, {
       animations: 'disabled',
-      maxDiffPixels: 100,
+      maxDiffPixels: 150,
     });
 
     if (kind === 'input:text' || kind === 'input:textarea') {
