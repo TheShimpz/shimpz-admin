@@ -21,6 +21,7 @@ from http import HTTPStatus
 import models
 from team import bridge as team
 
+from chat import human
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -178,7 +179,7 @@ class PublicResponse(team.TeamResponse):
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
         challenge_status = body.get("status")
-        if challenge_status == "integrations-required":
+        if challenge_status in {"human-required", "integrations-required"}:
             if body.get("team_id") != team_id:
                 return None
             event = {"type": challenge_status, **body}
@@ -374,6 +375,12 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
 def _project_pending_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
     if response.body.get("status") == "integrations-required":
         return _project_integration_challenge(response, team_id)
+    if response.body.get("status") == "human-required":
+        try:
+            body = human.project(response.body, team_id)
+        except human.HumanChallengeError:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-challenge-response-invalid"})
+        return PublicResponse(response.status, body)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
@@ -488,6 +495,15 @@ def pending_integrations(team_id: object) -> team.TeamResponse:
         team.pending_chat_integrations,
         _project_integration_challenge,
         "integration-challenge-response-invalid",
+    )
+
+
+def pending_human(team_id: object) -> team.TeamResponse:
+    return _pending(
+        team_id,
+        team.pending_chat_human,
+        _project_pending_challenge,
+        "human-challenge-response-invalid",
     )
 
 
