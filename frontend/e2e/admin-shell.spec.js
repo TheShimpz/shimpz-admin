@@ -167,6 +167,23 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(await trustBoundary.evaluate((element) => (
     Math.abs(element.getBoundingClientRect().width - element.parentElement.getBoundingClientRect().width) < 1
   ))).toBe(true);
+  const [introBox, trustBox, storeBox, noticeIconBox, noticeBodyBox] = await Promise.all([
+    intro.boundingBox(),
+    trustBoundary.boundingBox(),
+    storeFrame.boundingBox(),
+    trustBoundary.locator('[data-slot="notice-icon"]').boundingBox(),
+    trustBoundary.locator('[data-slot="notice-body"]').boundingBox(),
+  ]);
+  expect(introBox).not.toBeNull();
+  expect(trustBox).not.toBeNull();
+  expect(storeBox).not.toBeNull();
+  expect(noticeIconBox).not.toBeNull();
+  expect(noticeBodyBox).not.toBeNull();
+  expect(trustBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
+  expect(storeBox.y).toBeGreaterThanOrEqual(trustBox.y + trustBox.height);
+  expect(Math.abs(
+    (noticeIconBox.y + noticeIconBox.height / 2) - (noticeBodyBox.y + noticeBodyBox.height / 2),
+  )).toBeLessThan(1);
   await expect(intro).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,

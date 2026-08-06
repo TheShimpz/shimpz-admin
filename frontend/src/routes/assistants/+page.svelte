@@ -552,6 +552,8 @@
   {/snippet}
 </PageIntro>
 
+<Notice class="trust-boundary" variant="info">{$t('store.boundary')}</Notice>
+
 <Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
         <EmbedFrame
@@ -583,8 +585,6 @@
         {/if}
       </div>
 </Card>
-
-<Notice class="trust-boundary" variant="info">{$t('store.boundary')}</Notice>
 
 <Modal
   id="store-team-destination-dialog"
