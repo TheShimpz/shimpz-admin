@@ -277,6 +277,22 @@ def _progress_channel() -> tuple[
     return progress, report
 
 
+async def _deliver_progress_event(
+    websocket: WebSocket,
+    connection: _Connection,
+    response: asyncio.Future,
+    event: Mapping[str, object],
+) -> tuple[bool, object | None]:
+    if await _send_event(websocket, event):
+        return True, None
+    connection.closed = True
+    # The worker schedules each progress callback before completing its Future. Let the completion
+    # callback already queued behind this delivery run before deciding whether the still-active
+    # operation must be stopped.
+    await asyncio.sleep(0)
+    return False, await response if response.done() else None
+
+
 async def _await_progress_result(
     websocket: WebSocket,
     connection: _Connection,
@@ -300,9 +316,14 @@ async def _await_progress_result(
                 if inactive():
                     return None
                 sequence += 1
-                if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
-                    connection.closed = True
-                    return None
+                delivered, result = await _deliver_progress_event(
+                    websocket,
+                    connection,
+                    response,
+                    {"type": "progress", "seq": sequence, **event},
+                )
+                if not delivered:
+                    return result
                 continue
             with contextlib.suppress(asyncio.CancelledError):
                 pending_progress.cancel()
@@ -310,14 +331,23 @@ async def _await_progress_result(
             pending_progress = None
         if inactive():
             return None
+        # ``report`` crosses from the worker with ``call_soon_threadsafe``. The worker can complete
+        # before the event loop has materialized that final callback in the queue, so yield once at
+        # the ordered boundary before draining progress ahead of the terminal response.
+        await asyncio.sleep(0)
         while not progress.empty():
             if inactive():
                 return None
             event = progress.get_nowait()
             sequence += 1
-            if not await _send_event(websocket, {"type": "progress", "seq": sequence, **event}):
-                connection.closed = True
-                return None
+            delivered, result = await _deliver_progress_event(
+                websocket,
+                connection,
+                response,
+                {"type": "progress", "seq": sequence, **event},
+            )
+            if not delivered:
+                return result
         return await response
     finally:
         if pending_progress is not None:

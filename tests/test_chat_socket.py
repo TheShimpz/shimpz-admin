@@ -652,3 +652,56 @@ class ChatWebSocketTests(unittest.TestCase):
                 await websocket.disconnect()
 
         asyncio.run(scenario())
+
+    def test_completed_worker_flushes_its_scheduled_progress_before_returning(self) -> None:
+        async def scenario() -> None:
+            loop = asyncio.get_running_loop()
+            response = loop.create_future()
+            response.set_result("completed")
+            progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+            loop.call_soon(progress.put_nowait, dict(_MEASURED_PROGRESS[0]))
+            websocket = mock.AsyncMock()
+            connection = self.chat_socket._Connection()
+
+            with mock.patch.object(self.chat_socket.asyncio, "wrap_future", return_value=response):
+                result = await self.chat_socket._await_progress_result(
+                    websocket,
+                    connection,
+                    mock.sentinel.worker_future,
+                    progress,
+                    lambda: False,
+                )
+
+            self.assertEqual(result, "completed")
+            websocket.send_json.assert_awaited_once_with(
+                {"type": "progress", "seq": 1, **_MEASURED_PROGRESS[0]},
+            )
+
+        asyncio.run(scenario())
+
+    def test_failed_progress_delivery_observes_an_already_completed_worker(self) -> None:
+        async def scenario() -> None:
+            loop = asyncio.get_running_loop()
+            response = loop.create_future()
+            progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+            progress.put_nowait(dict(_MEASURED_PROGRESS[0]))
+            connection = self.chat_socket._Connection()
+
+            class FailingWebSocket:
+                async def send_json(self, _event) -> None:
+                    loop.call_soon(response.set_result, "completed")
+                    raise RuntimeError("simulated peer send failure")
+
+            with mock.patch.object(self.chat_socket.asyncio, "wrap_future", return_value=response):
+                result = await self.chat_socket._await_progress_result(
+                    FailingWebSocket(),
+                    connection,
+                    mock.sentinel.worker_future,
+                    progress,
+                    lambda: False,
+                )
+
+            self.assertEqual(result, "completed")
+            self.assertTrue(connection.closed)
+
+        asyncio.run(scenario())
