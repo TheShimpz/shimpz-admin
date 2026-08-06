@@ -254,6 +254,50 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_sync_restores_pending_metadata_without_replaying_a_response(self) -> None:
+        async def scenario() -> None:
+            empty = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "status": "none"},
+            )
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "pending_integrations",
+                    return_value=empty,
+                ),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "pending_human",
+                    return_value=human_challenge("approval", status=200),
+                ),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "resume_human",
+                    return_value=self.completed,
+                ) as resume,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "sync"})
+                challenge = await websocket.next_json()
+                self.assertEqual(challenge["type"], "human-required")
+                resume.assert_not_called()
+
+                await websocket.send_json(
+                    {
+                        "type": "human-response",
+                        "challenge_id": CHALLENGE_ID,
+                        "decision": "submit",
+                        "value": True,
+                    }
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                resume.assert_called_once()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
 
 if __name__ == "__main__":
     unittest.main()

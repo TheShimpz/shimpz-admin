@@ -147,6 +147,14 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         self.admin_app.state.set_password("correct horse battery staple")
         store = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(store["session_secret"])
+        empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+        pending_human = mock.patch.object(
+            self.chat_socket.local,
+            "pending_human",
+            return_value=empty,
+        )
+        pending_human.start()
+        self.addCleanup(pending_human.stop)
 
     @staticmethod
     def _accepted(message: dict) -> bool:
@@ -414,7 +422,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(
                     self.chat_socket,
-                    "_deliver_integration_sync",
+                    "_deliver_human_sync",
                     side_effect=RuntimeError("must not escape"),
                 ),
             ):

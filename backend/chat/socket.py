@@ -176,6 +176,13 @@ class _Connection:
     closed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class _SyncSnapshot:
+    challenge_type: str
+    pending: object
+    resumed: object | None = None
+
+
 def _remember_challenge(
     connection: _Connection,
     challenge: dict[str, object],
@@ -401,15 +408,17 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 def _sync_snapshot(
     team_id: str,
     progress: Callable[[dict[str, object]], None],
-) -> tuple[object, object | None]:
+) -> _SyncSnapshot:
     pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
         # exact pending challenge remains the controller-owned binding for the paused turn.
         resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"], progress)
-        return pending_integration, resumed
-    return pending_integration, None
+        return _SyncSnapshot("integration", pending_integration, resumed)
+    if not _is_empty_pending(pending_integration, team_id):
+        return _SyncSnapshot("integration", pending_integration)
+    return _SyncSnapshot("human", local.pending_human(team_id))
 
 
 def _is_empty_pending(response: object, team_id: str) -> bool:
@@ -488,11 +497,33 @@ async def _deliver_integration_sync(
     await _send_sync_terminal_once(websocket, connection, event)
 
 
+async def _deliver_human_sync(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    pending_response: object,
+) -> None:
+    pending = human_challenge_event(pending_response, team_id)
+    if pending is not None:
+        _remember_challenge(connection, pending, "human")
+        await _send_sync_event(websocket, connection, pending)
+        return
+    if _is_empty_pending(pending_response, team_id):
+        _forget_challenge(connection)
+        await _send_sync_event(websocket, connection, {"type": "sync-empty"})
+        return
+    await _send_sync_terminal_once(
+        websocket,
+        connection,
+        _pending_error(pending_response, team_id, "human"),
+    )
+
+
 async def _load_sync_snapshot(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
-) -> tuple[object, object | None] | None:
+) -> _SyncSnapshot | None:
     progress, report = _progress_channel()
     try:
         future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
@@ -525,16 +556,18 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
             snapshot = await _load_sync_snapshot(websocket, connection, team_id)
             if snapshot is None:
                 return
-            pending_integration_response, resumed_integration_response = snapshot
             if connection.closed:
                 return
-            await _deliver_integration_sync(
-                websocket,
-                connection,
-                team_id,
-                pending_integration_response,
-                resumed_integration_response,
-            )
+            if snapshot.challenge_type == "human":
+                await _deliver_human_sync(websocket, connection, team_id, snapshot.pending)
+            else:
+                await _deliver_integration_sync(
+                    websocket,
+                    connection,
+                    team_id,
+                    snapshot.pending,
+                    snapshot.resumed,
+                )
             completed = True
         if (
             not completed
