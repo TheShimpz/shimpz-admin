@@ -303,15 +303,32 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   const toast = page.locator('[data-slot="toast"]');
   await expect(toast).toContainText('Shimpz Cloudflare was removed from Marketing.');
+  await expect(toast).toHaveCSS('position', 'relative');
+  const [toastOnStoreBox, introBox, contentBox] = await Promise.all([
+    toast.boundingBox(),
+    page.locator('.shimpz-page-intro').boundingBox(),
+    page.locator('.authenticated-content').boundingBox(),
+  ]);
+  expect(toastOnStoreBox).not.toBeNull();
+  expect(introBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect(Math.abs(toastOnStoreBox.x - contentBox.x)).toBeLessThan(1);
+  expect(Math.abs(toastOnStoreBox.width - contentBox.width)).toBeLessThan(1);
+  expect(toastOnStoreBox.y + toastOnStoreBox.height).toBeLessThanOrEqual(introBox.y);
+  await expect(page).toHaveScreenshot('assistant-lifecycle-alert.png', visualContract);
   await page.getByRole('link', { name: 'Chat' }).click();
   await expect(page).toHaveURL(/\/chat\/?$/);
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const [toastBox, actionsBox] = await Promise.all([
+  const [toastBox, actionsBox, chatBox] = await Promise.all([
     toast.boundingBox(),
     page.locator('.composer-actions').boundingBox(),
+    page.locator('.chat-route').boundingBox(),
   ]);
   expect(toastBox).not.toBeNull();
   expect(actionsBox).not.toBeNull();
+  expect(chatBox).not.toBeNull();
+  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(chatBox.y);
+  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(page.viewportSize().height);
   const intersectsActions = (
     toastBox.x < actionsBox.x + actionsBox.width &&
     toastBox.x + toastBox.width > actionsBox.x &&

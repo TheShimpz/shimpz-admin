@@ -46,12 +46,23 @@
   fixed={authenticated}
   scroll={chat ? 'hidden' : 'auto'}
 >
-
-  {#if authenticated}<AdminNotice />{/if}
-  {@render children()}
+  {#if authenticated}
+    <div class:chat-layout={chat} class="authenticated-content">
+      <div class="admin-notice-region"><AdminNotice /></div>
+      <div class="authenticated-page">{@render children()}</div>
+    </div>
+  {:else}
+    {@render children()}
+  {/if}
 </WorkspaceShell>
 
 <style>
+  .authenticated-content,
+  .authenticated-page { min-width: 0; }
+  .authenticated-content { min-height: 100%; }
+  .admin-notice-region { width: 100%; }
+  .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+  .chat-layout .authenticated-page { min-height: 0; overflow: hidden; }
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }
   .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
   .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
