@@ -42,6 +42,12 @@ class _SupervisorSession:
     local_identity: local_supervisor.LocalIdentity | None
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _RequestBindings:
+    model_credential: tuple[str, str] | None = None
+    human_assurance: dict[str, str] | None = None
+
+
 _SUPERVISOR_SESSION: ContextVar[_SupervisorSession | None] = ContextVar(
     "shimpz_supervisor_session",
     default=None,
@@ -129,7 +135,7 @@ def _local_assertion(
     *,
     content_type: str | None,
     filename: str | None,
-    model_credential: tuple[str, str] | None,
+    bindings: _RequestBindings,
 ) -> str:
     binding = _SUPERVISOR_SESSION.get()
     if binding is None or binding.account:
@@ -147,10 +153,13 @@ def _local_assertion(
     return local_supervisor.sign_request(
         binding.local_identity,
         binding.value,
-        method=method,
-        path=path,
-        body=body_binding,
-        model=local_supervisor.model_binding(model_credential),
+        request=local_supervisor.RequestBinding(
+            method=method,
+            path=path,
+            body=body_binding,
+            model=local_supervisor.model_binding(bindings.model_credential),
+            assurance=bindings.human_assurance,
+        ),
     )
 
 
@@ -257,7 +266,7 @@ def _request_headers(
     accept: str,
     content_type: str | None,
     filename: str | None,
-    model_credential: tuple[str, str] | None,
+    bindings: _RequestBindings,
 ) -> dict[str, str]:
     headers = {"Accept": accept, "Authorization": f"Bearer {_team_token()}"}
     account_session = _account_session()
@@ -267,8 +276,8 @@ def _request_headers(
         headers["Content-Type"] = content_type
     if filename is not None:
         headers[FILE_NAME_HEADER] = quote(filename, safe="")
-    if model_credential is not None:
-        provider, api_key = model_credential
+    if bindings.model_credential is not None:
+        provider, api_key = bindings.model_credential
         encoded_key = api_key.encode("ascii") if isinstance(api_key, str) and api_key.isascii() else b""
         if (
             provider not in models.PROVIDERS
@@ -284,7 +293,7 @@ def _request_headers(
         body,
         content_type=content_type,
         filename=filename,
-        model_credential=model_credential,
+        bindings=bindings,
     )
     if assertion:
         headers[supervisor_contract.ASSERTION_HEADER] = f"Bearer {assertion}"
@@ -311,7 +320,7 @@ def _request(
             accept="application/json",
             content_type=content_type,
             filename=filename,
-            model_credential=model_credential,
+            bindings=_RequestBindings(model_credential),
         )
         # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
         # socket would require serialization and could retain an authenticated connection across
@@ -367,7 +376,7 @@ def _request_asset(method: str, path: str) -> TeamAssetResponse:
             accept="image/png",
             content_type=None,
             filename=None,
-            model_credential=None,
+            bindings=_RequestBindings(),
         )
         connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
         connection.request(method, path, headers=headers)
@@ -428,7 +437,7 @@ def _stream_request(
     body: bytes,
     *,
     timeout: int,
-    model_credential: tuple[str, str],
+    bindings: _RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
     connection = None
@@ -441,7 +450,7 @@ def _stream_request(
             accept="application/x-ndjson",
             content_type="application/json",
             filename=None,
-            model_credential=model_credential,
+            bindings=bindings,
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
         connection.request(method, path, body=body, headers=headers)
@@ -494,7 +503,7 @@ def _call_stream(
     *,
     timeout: int,
     max_body_bytes: int = MAX_JSON_BODY_BYTES,
-    model_credential: tuple[str, str],
+    bindings: _RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
     body = _encode_payload(payload, max_bytes=max_body_bytes)
@@ -505,7 +514,7 @@ def _call_stream(
         path,
         body,
         timeout=timeout,
-        model_credential=model_credential,
+        bindings=bindings,
         progress=progress,
     )
 

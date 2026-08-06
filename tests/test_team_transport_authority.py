@@ -159,7 +159,36 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             },
         )
         self.assertEqual(claims["session_sha256"], hashlib.sha256(session.encode()).hexdigest())
+        self.assertNotIn("assurance", claims)
         self.assertNotIn(api_key, json.dumps(claims))
+
+    def test_local_assertion_binds_exact_human_assurance(self) -> None:
+        session = "v1:9999999999:0123456789abcdef:" + "a" * 64
+        assurance = {
+            "kind": "auth:reauth",
+            "challenge_id": "d" * 32,
+        }
+        with transport.supervisor_session(
+            session,
+            account=False,
+            local_identity=self.local_identity,
+        ):
+            encoded = transport._local_assertion(
+                "POST",
+                "/v1/teams/team_1/chat/human",
+                b'{"challenge_id":"dddddddddddddddddddddddddddddddd","decision":"submit","value":true}',
+                content_type="application/json",
+                filename=None,
+                bindings=transport._RequestBindings(
+                    ("openai", "sk-test-0123456789"),
+                    assurance,
+                ),
+            )
+
+        payload = encoded.split(".")[1]
+        raw = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        claims = contract.canonical_claims(json.loads(raw))
+        self.assertEqual(claims["assurance"], assurance)
 
     def test_local_file_assertion_binds_metadata_without_embedding_content(self) -> None:
         content = b"private Team file"

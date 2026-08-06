@@ -249,7 +249,7 @@ def chat(
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
-        model_credential=(provider, api_key),
+        bindings=transport._RequestBindings((provider, api_key)),
         progress=progress,
     )
 
@@ -279,7 +279,7 @@ def resume_chat_integrations(
         f"/v1/teams/{canonical_id}/chat/integrations",
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
-        model_credential=(provider, api_key),
+        bindings=transport._RequestBindings((provider, api_key)),
         progress=progress,
     )
 

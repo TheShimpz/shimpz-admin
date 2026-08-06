@@ -76,10 +76,16 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         encoded = supervisor.sign_request(
             identity,
             session,
-            method="POST",
-            path="/v1/teams/marketing/create",
-            body=body,
-            model=model,
+            request=supervisor.RequestBinding(
+                method="POST",
+                path="/v1/teams/marketing/create",
+                body=body,
+                model=model,
+                assurance={
+                    "kind": "auth:reauth",
+                    "challenge_id": "b" * 32,
+                },
+            ),
             now=2_200_000_000,
         )
 
@@ -93,6 +99,10 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         self.assertEqual(claims["path"], "/v1/teams/marketing/create")
         self.assertEqual(claims["body"], body)
         self.assertEqual(claims["model"], model)
+        self.assertEqual(
+            claims["assurance"],
+            {"kind": "auth:reauth", "challenge_id": "b" * 32},
+        )
         public = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(identity.private_key_hex)).public_key()
         public.verify(
             _decode(signature_segment),

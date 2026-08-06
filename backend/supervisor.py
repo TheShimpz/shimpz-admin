@@ -47,6 +47,17 @@ class LocalIdentity:
     private_key_hex: str
 
 
+@dataclass(frozen=True, slots=True)
+class RequestBinding:
+    """Exact Local Team request authorized by one short-lived assertion."""
+
+    method: str
+    path: str
+    body: dict[str, object]
+    model: dict[str, str] | None
+    assurance: dict[str, str] | None = None
+
+
 def new_identity() -> LocalIdentity:
     """Generate one installation-scoped Supervisor identity and signing key."""
     private_key = Ed25519PrivateKey.generate()
@@ -212,10 +223,7 @@ def sign_request(
     identity: LocalIdentity,
     session_token: str,
     *,
-    method: str,
-    path: str,
-    body: dict[str, object],
-    model: dict[str, str] | None,
+    request: RequestBinding,
     now: int | None = None,
 ) -> str:
     """Sign one canonical, short-lived assertion for one exact Team request."""
@@ -228,12 +236,14 @@ def sign_request(
         "jti": secrets.token_hex(16),
         "iat": issued_at,
         "exp": issued_at + contract.ASSERTION_MAX_TTL_SECONDS,
-        "method": method,
-        "path": path,
-        "body": body,
+        "method": request.method,
+        "path": request.path,
+        "body": request.body,
     }
-    if model is not None:
-        claims["model"] = model
+    if request.model is not None:
+        claims["model"] = request.model
+    if request.assurance is not None:
+        claims["assurance"] = request.assurance
     header = _segment(contract.canonical_json(contract.JWT_HEADER))
     payload = _segment(contract.claims_json(claims))
     signing_input = f"{header}.{payload}".encode("ascii")
