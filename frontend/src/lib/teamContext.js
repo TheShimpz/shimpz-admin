@@ -17,8 +17,10 @@ const MAX_PASSWORD_CHARS = 4096;
 const MAX_SELECTED_FILES = 8;
 const MAX_STORED_INTENT_BYTES = 16 * 1024;
 const MAX_INSTALLED_ASSISTANTS = 128;
+const MAX_TEAM_RESIDUE_CLASSES = 32;
 const ASSISTANT_INTENT_VERSION = 2;
 const ASSISTANT_INTENT_KEY_PREFIX = 'shimpz.admin.chat.assistant-intent.v2:';
+const TEAM_RESIDUE_CLASS_RE = /^[a-z][a-z0-9_]{0,63}$/;
 export const MAX_SELECTED_ASSISTANTS = 16;
 
 function emptyContext() {
@@ -155,6 +157,19 @@ function hasExactEnvelopeKeys(value, expected) {
   }
   const payloadKeys = keys.filter((key) => key !== 'trace_id').sort();
   return payloadKeys.length === expected.length && expected.every((key, index) => key === payloadKeys[index]);
+}
+
+function validTeamResidueProof(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= MAX_TEAM_RESIDUE_CLASSES &&
+    value.every((entry, index) => (
+      typeof entry === 'string' &&
+      TEAM_RESIDUE_CLASS_RE.test(entry) &&
+      (index === 0 || value[index - 1] < entry)
+    ))
+  );
 }
 
 function requireFetcher(fetcher) {
@@ -580,12 +595,16 @@ export async function deleteTeam(fetcher, id, name, password) {
       throw new LocalApiError(safeApiError(body, 'The Team could not be deleted.'), response.status);
     }
     if (
-      !hasExactEnvelopeKeys(body, ['assistants_removed', 'destroyed', 'storage_removed', 'team_id']) ||
+      !hasExactEnvelopeKeys(
+        body,
+        ['assistants_removed', 'destroyed', 'residue_absent', 'storage_removed', 'team_id'],
+      ) ||
       body.team_id !== canonicalId ||
       typeof body.destroyed !== 'boolean' ||
       !Number.isSafeInteger(body.assistants_removed) ||
       body.assistants_removed < 0 ||
-      typeof body.storage_removed !== 'boolean'
+      typeof body.storage_removed !== 'boolean' ||
+      !validTeamResidueProof(body.residue_absent)
     ) {
       throw new LocalApiError('The Team deletion returned an invalid response.', response.status);
     }
@@ -593,6 +612,7 @@ export async function deleteTeam(fetcher, id, name, password) {
       teamId: body.team_id,
       destroyed: body.destroyed,
       assistantsRemoved: body.assistants_removed,
+      residueAbsent: [...body.residue_absent],
       storageRemoved: body.storage_removed,
     };
   } catch (error) {

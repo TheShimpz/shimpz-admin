@@ -22,6 +22,23 @@ sys.path.insert(0, str(BACKEND))
 
 ACCOUNT_ID = "a" * 32
 SESSION = "a1:" + ACCOUNT_ID + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
+HOSTED_TEAM_RESIDUES = [
+    "assistant_containers",
+    "brain_checkpoints",
+    "cleanup_authority",
+    "database",
+    "database_role",
+    "egress_policies",
+    "inference_configuration",
+    "integration_credentials",
+    "power_checkpoints",
+    "publication_bindings",
+    "runtime_container",
+    "runtime_state",
+    "team_networks",
+    "team_storage",
+    "team_volumes",
+]
 
 
 def _request(
@@ -354,7 +371,13 @@ class HostedAuthRouteTests(unittest.TestCase):
         )
         destroyed = self.admin_app.team.TeamResponse(
             200,
-            {"team_id": "team_1", "destroyed": True, "assistants_removed": 0, "storage_removed": True},
+            {
+                "team_id": "team_1",
+                "destroyed": True,
+                "assistants_removed": 0,
+                "residue_absent": HOSTED_TEAM_RESIDUES,
+                "storage_removed": True,
+            },
         )
 
         async def run_inline(function, *args):

@@ -13,6 +13,20 @@ const visualContract = {
   maxDiffPixels: 100,
 };
 
+const localTeamResidues = [
+  'assistant_containers',
+  'brain_checkpoints',
+  'chat_continuations',
+  'egress_policies',
+  'inference_configuration',
+  'integration_credentials',
+  'power_checkpoints',
+  'publication_bindings',
+  'runtime_state',
+  'team_networks',
+  'team_storage',
+];
+
 async function routeSetup(page) {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -299,6 +313,69 @@ test('keeps compact controls and stacked dialog actions usable at 360 pixels', a
   expect(Math.abs(closeBox.width - addBox.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(closeBox.x - addBox.x)).toBeLessThanOrEqual(1);
   expect(addBox.y).toBeLessThan(closeBox.y);
+});
+
+test('reports confirmed Team deletion as animated success above Chat', async ({ page }) => {
+  await routeReadyChat(page);
+  let deleted = false;
+  let deletionBody;
+  await page.unroute('**/api/teams');
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      teams: deleted
+        ? [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }]
+        : [
+            { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+            { team_id: 'support', team_name: 'Support', status: 'running' },
+          ],
+    }),
+  }));
+  await page.route('**/api/teams/support', async (route) => {
+    deletionBody = route.request().postDataJSON();
+    deleted = true;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        team_id: 'support',
+        destroyed: true,
+        assistants_removed: 0,
+        residue_absent: localTeamResidues,
+        storage_removed: true,
+      }),
+    });
+  });
+
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: /Team Marketing/i }).click();
+  await page.getByRole('dialog', { name: 'Choose a Team' })
+    .getByRole('button', { name: 'Delete Support' })
+    .click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete Team' });
+  await deleteDialog.getByLabel('Confirm Team name').fill('Support');
+  await deleteDialog.getByLabel('Supervisor password').fill('private-password');
+  await deleteDialog.getByRole('button', { name: 'Delete Team' }).click();
+
+  await expect(deleteDialog).toBeHidden();
+  expect(deletionBody).toEqual({ team_name: 'Support', password: 'private-password' });
+  const toast = page.locator('[data-slot="toast"]');
+  await expect(toast).toContainText('Team deleted');
+  await expect(toast).toContainText('Support and all of its data were securely deleted.');
+  const progressStyle = await toast.locator('[data-slot="toast-progress"]')
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { duration: style.animationDuration, name: style.animationName };
+    });
+  expect(progressStyle.name).not.toBe('none');
+  expect(progressStyle.duration).toBe('10s');
+  const [toastBox, chatBox] = await Promise.all([
+    toast.boundingBox(),
+    page.locator('.chat-route').boundingBox(),
+  ]);
+  expect(toastBox).not.toBeNull();
+  expect(chatBox).not.toBeNull();
+  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(chatBox.y);
+  await expect(page).toHaveScreenshot('team-deletion-alert.png', visualContract);
 });
 
 test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }) => {

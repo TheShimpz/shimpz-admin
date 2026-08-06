@@ -22,6 +22,19 @@ import { LocalApiError } from '../src/lib/localApi.js';
 
 const FILE_A = 'a'.repeat(32);
 const FILE_B = 'b'.repeat(32);
+const LOCAL_TEAM_RESIDUES = [
+  'assistant_containers',
+  'brain_checkpoints',
+  'chat_continuations',
+  'egress_policies',
+  'inference_configuration',
+  'integration_credentials',
+  'power_checkpoints',
+  'publication_bindings',
+  'runtime_state',
+  'team_networks',
+  'team_storage',
+];
 
 function response(status, body) {
   return {
@@ -364,6 +377,7 @@ test('deletes a Team with exact credentials, clears its stored scope, and select
         team_id: 'marketing',
         destroyed: true,
         assistants_removed: 1,
+        residue_absent: LOCAL_TEAM_RESIDUES,
         storage_removed: false,
         trace_id: 'c'.repeat(32),
       });
@@ -386,6 +400,7 @@ test('deletes a Team with exact credentials, clears its stored scope, and select
       teamId: 'marketing',
       destroyed: true,
       assistantsRemoved: 1,
+      residueAbsent: LOCAL_TEAM_RESIDUES,
       storageRemoved: false,
     });
     assert.equal(values.has(key), false);
@@ -418,6 +433,7 @@ test('Team deletion fails closed on an inexact name or malformed success envelop
         team_id: 'marketing',
         destroyed: true,
         assistants_removed: 1,
+        residue_absent: LOCAL_TEAM_RESIDUES,
         storage_removed: true,
         redirect: 'https://example.test',
       }),
@@ -426,6 +442,38 @@ test('Team deletion fails closed on an inexact name or malformed success envelop
   );
   assert.equal(get(teamContext).phase, 'ready');
   assert.equal(get(teamContext).selectedTeamId, 'marketing');
+});
+
+test('Team deletion rejects missing, ambiguous, or malformed residue proofs', async () => {
+  const invalidProofs = [
+    undefined,
+    [],
+    [...LOCAL_TEAM_RESIDUES].reverse(),
+    [...LOCAL_TEAM_RESIDUES, 'team_storage'],
+    [...LOCAL_TEAM_RESIDUES.slice(0, -1), 'TeamStorage'],
+  ];
+  for (const residueAbsent of invalidProofs) {
+    clearTeamContext();
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    const body = {
+      team_id: 'marketing',
+      destroyed: true,
+      assistants_removed: 1,
+      storage_removed: true,
+    };
+    if (residueAbsent !== undefined) body.residue_absent = residueAbsent;
+    await assert.rejects(
+      deleteTeam(fixtureFetcher({
+        '/api/teams/marketing': async () => response(200, body),
+      }), 'marketing', 'Marketing', 'secret'),
+      (error) => (
+        error instanceof LocalApiError &&
+        error.message === 'The Team deletion returned an invalid response.'
+      ),
+    );
+    assert.equal(get(teamContext).phase, 'ready');
+    assert.equal(get(teamContext).selectedTeamId, 'marketing');
+  }
 });
 
 test('Team deletion preserves the bounded API reason and status for safe diagnostics', async () => {
@@ -459,6 +507,7 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
         team_id: 'marketing',
         destroyed: true,
         assistants_removed: 1,
+        residue_absent: LOCAL_TEAM_RESIDUES,
         storage_removed: true,
       });
     },

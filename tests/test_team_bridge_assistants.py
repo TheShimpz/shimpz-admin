@@ -23,6 +23,20 @@ from team import transport
 
 from integrations import assistants as integrations
 
+LOCAL_TEAM_RESIDUES = [
+    "assistant_containers",
+    "brain_checkpoints",
+    "chat_continuations",
+    "egress_policies",
+    "inference_configuration",
+    "integration_credentials",
+    "power_checkpoints",
+    "publication_bindings",
+    "runtime_state",
+    "team_networks",
+    "team_storage",
+]
+
 
 class _TeamHandler(BaseHTTPRequestHandler):
     requests: ClassVar[list[dict[str, object]]] = []
@@ -272,7 +286,16 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 "/v1/teams/team_1",
             ): (
                 200,
-                b'{"team_id":"team_1","destroyed":true,"assistants_removed":1,"storage_removed":true}',
+                json.dumps(
+                    {
+                        "team_id": "team_1",
+                        "destroyed": True,
+                        "assistants_removed": 1,
+                        "residue_absent": LOCAL_TEAM_RESIDUES,
+                        "storage_removed": True,
+                    },
+                    separators=(",", ":"),
+                ).encode(),
             ),
         }
 
@@ -535,7 +558,19 @@ class TeamAssistantRouteTest(_LiveTeamCase):
             (
                 "DELETE",
                 "/v1/teams/team_1",
-            ): (200, b'{"team_id":"team_1","destroyed":true,"assistants_removed":1,"storage_removed":true}'),
+            ): (
+                200,
+                json.dumps(
+                    {
+                        "team_id": "team_1",
+                        "destroyed": True,
+                        "assistants_removed": 1,
+                        "residue_absent": LOCAL_TEAM_RESIDUES,
+                        "storage_removed": True,
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+            ),
         }
 
         document = self._run_asgi_probe("team-delete")
