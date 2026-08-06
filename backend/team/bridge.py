@@ -230,6 +230,8 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
 
 canonical_chat_payload = payloads.canonical_chat_payload
 canonical_integration_resume = payloads.canonical_integration_resume
+canonical_human_resume = payloads.canonical_human_resume
+canonical_human_assurance = payloads.canonical_human_assurance
 
 
 def chat(
@@ -264,6 +266,11 @@ def pending_chat_integrations(team_id: object) -> TeamResponse:
     return _call("GET", f"/v1/teams/{canonical_id}/chat/integrations")
 
 
+def pending_chat_human(team_id: object) -> TeamResponse:
+    canonical_id = canonical_team_id(team_id)
+    return _call("GET", f"/v1/teams/{canonical_id}/chat/human")
+
+
 def resume_chat_integrations(
     team_id: object,
     payload: object,
@@ -280,6 +287,41 @@ def resume_chat_integrations(
         body,
         timeout=CONTROL_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings((provider, api_key)),
+        progress=progress,
+    )
+
+
+def resume_chat_human(
+    team_id: object,
+    payload: object,
+    *,
+    provider: str,
+    api_key: str,
+    progress: Callable[[dict[str, object]], None],
+    assurance: dict[str, str] | None = None,
+) -> TeamResponse:
+    canonical_id = canonical_team_id(team_id)
+    body = canonical_human_resume(payload)
+    if assurance is not None:
+        canonical_assurance = canonical_human_assurance(assurance)
+        if (
+            body.get("decision") != "submit"
+            or body.get("value") is not True
+            or canonical_assurance["challenge_id"] != body["challenge_id"]
+        ):
+            raise TeamRequestError("human assurance does not match the continuation")
+    else:
+        canonical_assurance = None
+    return _call_stream(
+        "POST",
+        f"/v1/teams/{canonical_id}/chat/human",
+        body,
+        timeout=CONTROL_TIMEOUT_SECONDS,
+        max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
+        bindings=transport._RequestBindings(
+            (provider, api_key),
+            canonical_assurance,
+        ),
         progress=progress,
     )
 

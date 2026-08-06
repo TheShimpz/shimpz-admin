@@ -290,6 +290,82 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     )
         transport.assert_not_called()
 
+    def test_human_resume_binds_only_exact_successful_assurance(self) -> None:
+        response = team.TeamResponse(200, {})
+        assurance = {"kind": "auth:reauth", "challenge_id": CHALLENGE_ID}
+        with mock.patch.object(team, "_call_stream", return_value=response) as transport:
+            result = team.resume_chat_human(
+                "team_1",
+                {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True},
+                provider="openai",
+                api_key="sk-test-0123456789",
+                progress=lambda _event: None,
+                assurance=assurance,
+            )
+
+        self.assertEqual(result, response)
+        bindings = transport.call_args.kwargs["bindings"]
+        self.assertEqual(bindings.human_assurance, assurance)
+        self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
+        self.assertEqual(transport.call_args.args[1], "/v1/teams/team_1/chat/human")
+
+        invalid = (
+            ({"challenge_id": CHALLENGE_ID, "decision": "deny"}, assurance),
+            (
+                {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True},
+                {**assurance, "challenge_id": "c" * 32},
+            ),
+            (
+                {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": "password"},
+                assurance,
+            ),
+            (
+                {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True},
+                {"kind": "auth:unknown", "challenge_id": CHALLENGE_ID},
+            ),
+        )
+        with mock.patch.object(team, "_call_stream") as transport:
+            for payload, evidence in invalid:
+                with self.subTest(payload=payload, evidence=evidence), self.assertRaises(
+                    team.TeamRequestError
+                ):
+                    team.resume_chat_human(
+                        "team_1",
+                        payload,
+                        provider="openai",
+                        api_key="sk-test-0123456789",
+                        progress=lambda _event: None,
+                        assurance=evidence,
+                    )
+        transport.assert_not_called()
+
+    def test_human_resume_accepts_only_bounded_browser_values(self) -> None:
+        valid_values = (True, "", "notes\nwith detail", ["one", "two"])
+        with mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as transport:
+            for value in valid_values:
+                with self.subTest(value=value):
+                    team.resume_chat_human(
+                        "team_1",
+                        {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": value},
+                        provider="openai",
+                        api_key="sk-test-0123456789",
+                        progress=lambda _event: None,
+                    )
+        self.assertEqual(transport.call_count, len(valid_values))
+
+        invalid_values = (False, None, 1, {}, ["duplicate", "duplicate"], "x" * 16_001)
+        with mock.patch.object(team, "_call_stream") as transport:
+            for value in invalid_values:
+                with self.subTest(value=value), self.assertRaises(team.TeamRequestError):
+                    team.resume_chat_human(
+                        "team_1",
+                        {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": value},
+                        provider="openai",
+                        api_key="sk-test-0123456789",
+                        progress=lambda _event: None,
+                    )
+        transport.assert_not_called()
+
     def test_browser_payload_rejects_ambient_authority_and_invalid_scopes(self) -> None:
         payloads = (
             {"message": "Hi", "files": [], "assistant_ids": [], "assistant": "hello-pulse"},

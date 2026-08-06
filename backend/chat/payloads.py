@@ -7,12 +7,16 @@ import re
 from team.transport import TeamRequestError
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import supervisor as supervisor_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_CHAT_MESSAGE_CHARS = team_contract.MAX_CHAT_MESSAGE_CHARS
 MAX_CHAT_FILES = team_contract.MAX_CHAT_FILES
 MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
+MAX_HUMAN_TEXT_CHARS = 16_000
+MAX_HUMAN_CHOICES = 32
+MAX_HUMAN_CHOICE_CHARS = 128
 
 
 def canonical_assistant_id(value: object) -> str:
@@ -67,3 +71,52 @@ def canonical_integration_resume(payload: object) -> dict[str, str]:
     if not isinstance(payload, dict) or set(payload) != {"challenge_id"}:
         raise TeamRequestError("integration continuation requires only challenge_id")
     return {"challenge_id": canonical_challenge_id(payload["challenge_id"])}
+
+
+def canonical_human_resume(payload: object) -> dict[str, object]:
+    """Admit one bounded human response without interpreting the pending Team request."""
+    if not isinstance(payload, dict) or payload.get("decision") not in {"submit", "deny"}:
+        raise TeamRequestError("human continuation requires a submit or deny decision")
+    decision = payload["decision"]
+    expected = {"challenge_id", "decision", "value"} if decision == "submit" else {
+        "challenge_id",
+        "decision",
+    }
+    if set(payload) != expected:
+        raise TeamRequestError("human continuation fields are invalid")
+    result: dict[str, object] = {
+        "challenge_id": canonical_challenge_id(payload["challenge_id"]),
+        "decision": decision,
+    }
+    if decision == "submit":
+        value = payload["value"]
+        if not _human_value(value):
+            raise TeamRequestError("human continuation value is invalid")
+        result["value"] = value
+    return result
+
+
+def canonical_human_assurance(value: object) -> dict[str, str]:
+    """Bind successful Admin authentication to one exact Team challenge."""
+    if not isinstance(value, dict) or set(value) != {"kind", "challenge_id"}:
+        raise TeamRequestError("human assurance is invalid")
+    kind = value["kind"]
+    if not isinstance(kind, str) or kind not in supervisor_contract.ASSURANCE_KINDS:
+        raise TeamRequestError("human assurance kind is invalid")
+    return {
+        "kind": kind,
+        "challenge_id": canonical_challenge_id(value["challenge_id"]),
+    }
+
+
+def _human_value(value: object) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return len(value) <= MAX_HUMAN_TEXT_CHARS
+    return (
+        isinstance(value, list)
+        and len(value) <= MAX_HUMAN_CHOICES
+        and len(value) == len(set(value))
+        and all(isinstance(item, str) and len(item) <= MAX_HUMAN_CHOICE_CHARS for item in value)
+    )
