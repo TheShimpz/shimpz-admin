@@ -17,6 +17,9 @@ const MAX_INTEGRATIONS = 512;
 const MAX_INTEGRATION_REQUIREMENTS = 64;
 const MAX_INTEGRATION_SCOPES = 32;
 const MAX_INTEGRATION_POWERS = 128;
+const MAX_HUMAN_OPTIONS = 32;
+const MAX_HUMAN_REQUESTS_PER_POWER = 8;
+const MAX_HUMAN_RESPONSE_CHARS = 16_000;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
@@ -41,7 +44,28 @@ const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
 const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 
-export const CHAT_WS_PROTOCOL = 'shimpz.chat.v3';
+export const CHAT_WS_PROTOCOL = 'shimpz.chat.v4';
+export const HUMAN_REQUEST_KINDS = Object.freeze([
+  'approval',
+  'input:text',
+  'input:textarea',
+  'input:password',
+  'input:phone',
+  'input:select',
+  'input:choice',
+  'input:choices',
+  'auth:reauth',
+  'auth:second-factor',
+  'auth:phishing-resistant',
+]);
+const HUMAN_AUTH_KINDS = new Set(HUMAN_REQUEST_KINDS.filter((kind) => kind.startsWith('auth:')));
+const HUMAN_LENGTH_LIMITS = new Map([
+  ['input:text', 4096],
+  ['input:textarea', 16_000],
+  ['input:password', 1024],
+  ['input:phone', 64],
+]);
+const HUMAN_SINGLE_CHOICE_KINDS = new Set(['input:select', 'input:choice']);
 
 export function assistantIntegrationProviderLabel(provider) {
   if (typeof provider !== 'string' || !ASSISTANT_ID_RE.test(provider)) return '';
@@ -266,6 +290,121 @@ function canonicalIntegrationRequirement(value) {
   };
 }
 
+function canonicalHumanOption(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, ['value', 'label', 'description'])
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    value: canonicalPublicText(value.value, 128),
+    label: canonicalPublicText(value.label, 80),
+    description: canonicalOptionalPublicText(value.description, 160),
+  };
+}
+
+function canonicalHumanOptions(values) {
+  if (!Array.isArray(values) || values.length < 2 || values.length > MAX_HUMAN_OPTIONS) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const options = values.map(canonicalHumanOption);
+  if (new Set(options.map((option) => option.value)).size !== options.length) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return options;
+}
+
+function canonicalHumanRequestBase(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !HUMAN_REQUEST_KINDS.includes(value.kind) ||
+    !Number.isSafeInteger(value.ordinal) ||
+    value.ordinal < 0 ||
+    value.ordinal >= MAX_HUMAN_REQUESTS_PER_POWER ||
+    typeof value.fingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(value.fingerprint)
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    kind: value.kind,
+    ordinal: value.ordinal,
+    title: canonicalPublicText(value.title, 80),
+    description: canonicalPublicText(value.description, 500),
+    fingerprint: value.fingerprint,
+  };
+}
+
+function canonicalHumanInputBase(value, base) {
+  if (typeof value.required !== 'boolean') {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return { ...base, label: canonicalPublicText(value.label, 80), required: value.required };
+}
+
+function canonicalHumanRequest(value) {
+  const base = canonicalHumanRequestBase(value);
+  const baseKeys = ['kind', 'ordinal', 'title', 'description', 'fingerprint'];
+  if (base.kind === 'approval' || HUMAN_AUTH_KINDS.has(base.kind)) {
+    if (!exactKeys(value, baseKeys)) throw new LocalApiError('The local chat response is invalid.');
+    return base;
+  }
+  const input = canonicalHumanInputBase(value, base);
+  if (HUMAN_LENGTH_LIMITS.has(base.kind)) {
+    const limit = HUMAN_LENGTH_LIMITS.get(base.kind);
+    if (
+      !exactKeys(value, [...baseKeys, 'label', 'required', 'placeholder', 'min_length', 'max_length']) ||
+      (value.placeholder !== null && typeof value.placeholder !== 'string') ||
+      (typeof value.placeholder === 'string' && canonicalPublicText(value.placeholder, 120) !== value.placeholder) ||
+      !Number.isSafeInteger(value.min_length) ||
+      !Number.isSafeInteger(value.max_length) ||
+      value.min_length < 0 ||
+      value.max_length < value.min_length ||
+      value.max_length > limit
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      ...input,
+      placeholder: value.placeholder,
+      min_length: value.min_length,
+      max_length: value.max_length,
+    };
+  }
+  if (HUMAN_SINGLE_CHOICE_KINDS.has(base.kind)) {
+    if (!exactKeys(value, [...baseKeys, 'label', 'required', 'options'])) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    return { ...input, options: canonicalHumanOptions(value.options) };
+  }
+  if (
+    !exactKeys(value, [...baseKeys, 'label', 'required', 'options', 'min_selections', 'max_selections']) ||
+    !Number.isSafeInteger(value.min_selections) ||
+    !Number.isSafeInteger(value.max_selections)
+  ) throw new LocalApiError('The local chat response is invalid.');
+  const options = canonicalHumanOptions(value.options);
+  if (
+    value.min_selections < 0 ||
+    value.max_selections < value.min_selections ||
+    value.max_selections > options.length
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    ...input,
+    options,
+    min_selections: value.min_selections,
+    max_selections: value.max_selections,
+  };
+}
+
+function canonicalHumanIdentity(value, expectedKeys, maximum) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !exactKeys(value, expectedKeys)) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return Object.fromEntries(expectedKeys.map((key) => [
+    key,
+    key === 'id' ? canonicalId(value[key]) : canonicalPublicText(value[key], maximum),
+  ]));
+}
+
 function canonicalIntegrationIntegration(value) {
   if (value === null) return null;
   if (
@@ -452,7 +591,7 @@ export async function listTeamFiles(fetcher, teamId) {
   });
 }
 
-/** Build the only chat frame accepted by shimpz.chat.v3. Provider/model/keys remain server-owned. */
+/** Build the only chat frame accepted by shimpz.chat.v4. Provider/model/keys remain server-owned. */
 export function createChatFrame(teamId, turn) {
   requireTeam(teamId);
   if (
@@ -497,6 +636,35 @@ export function createStopFrame(teamId) {
 export function createSyncFrame(teamId) {
   requireTeam(teamId);
   return { type: 'sync' };
+}
+
+function canonicalHumanResponseValue(value) {
+  if (value === true) return true;
+  if (typeof value === 'string' && value.length <= MAX_HUMAN_RESPONSE_CHARS) return value;
+  if (
+    Array.isArray(value) &&
+    value.length <= MAX_HUMAN_OPTIONS &&
+    value.every((item) => typeof item === 'string' && item.length <= 128) &&
+    new Set(value).size === value.length
+  ) return [...value];
+  throw new LocalApiError('Invalid human response.');
+}
+
+export function createHumanResponseFrame(teamId, challengeId, decision, value) {
+  requireTeam(teamId);
+  if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
+    throw new LocalApiError('Invalid human response.');
+  }
+  if (decision === 'deny' && value === undefined) {
+    return { type: 'human-response', challenge_id: challengeId, decision: 'deny' };
+  }
+  if (decision !== 'submit') throw new LocalApiError('Invalid human response.');
+  return {
+    type: 'human-response',
+    challenge_id: challengeId,
+    decision: 'submit',
+    value: canonicalHumanResponseValue(value),
+  };
 }
 
 export async function listAssistantIntegrations(fetcher, teamId) {
@@ -772,6 +940,24 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       challenge_id: value.challenge_id,
       expires_in: value.expires_in,
       requirements,
+    };
+  }
+  if (value.type === 'human-required') {
+    if (
+      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'power', 'request']) ||
+      typeof value.challenge_id !== 'string' ||
+      !OPAQUE_ID_RE.test(value.challenge_id) ||
+      !Number.isSafeInteger(value.expires_in) ||
+      value.expires_in < 1 ||
+      value.expires_in > 300
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'human-required',
+      challenge_id: value.challenge_id,
+      expires_in: value.expires_in,
+      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name'], 80),
+      power: canonicalHumanIdentity(value.power, ['id', 'summary'], 160),
+      request: canonicalHumanRequest(value.request),
     };
   }
   throw new LocalApiError('The local chat response is invalid.');

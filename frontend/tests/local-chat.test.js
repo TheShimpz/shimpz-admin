@@ -8,6 +8,7 @@ import {
   chatSocketUrl,
   completeAssistantIntegration,
   createChatFrame,
+  createHumanResponseFrame,
   createStopFrame,
   createSyncFrame,
   disconnectAssistantIntegration,
@@ -127,7 +128,7 @@ test('chat builds only the versioned WebSocket contract', () => {
   assert.doesNotMatch(JSON.stringify(frame), /power|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
-  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v3');
+  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v4');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
     'ws://127.0.0.1:7777/api/teams/team_1/chat/ws',
@@ -136,6 +137,121 @@ test('chat builds only the versioned WebSocket contract', () => {
     chatSocketUrl({ protocol: 'https:', host: 'shimpz.com' }, 'team_1'),
     'wss://shimpz.com/api/teams/team_1/chat/ws',
   );
+});
+
+function humanRequest(kind) {
+  const base = {
+    kind,
+    ordinal: 0,
+    title: 'Confirm this Power',
+    description: 'The Power is waiting for your response.',
+    fingerprint: 'c'.repeat(64),
+  };
+  if (['input:text', 'input:textarea', 'input:password', 'input:phone'].includes(kind)) {
+    return {
+      ...base,
+      label: 'Response',
+      required: true,
+      placeholder: 'Enter a value',
+      min_length: 1,
+      max_length: kind === 'input:textarea' ? 16_000 : 64,
+    };
+  }
+  if (['input:select', 'input:choice'].includes(kind)) {
+    return {
+      ...base,
+      label: 'Mode',
+      required: true,
+      options: [
+        { value: 'safe', label: 'Safe', description: 'Review every change.' },
+        { value: 'fast', label: 'Fast', description: null },
+      ],
+    };
+  }
+  if (kind === 'input:choices') {
+    return {
+      ...base,
+      label: 'Zones',
+      required: true,
+      options: [
+        { value: 'one', label: 'One', description: null },
+        { value: 'two', label: 'Two', description: null },
+      ],
+      min_selections: 1,
+      max_selections: 2,
+    };
+  }
+  return base;
+}
+
+function humanChallenge(kind) {
+  return {
+    type: 'human-required',
+    challenge_id: CHALLENGE_ID,
+    expires_in: 300,
+    assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
+    power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+    request: humanRequest(kind),
+  };
+}
+
+test('chat builds only exact bounded human response frames', () => {
+  assert.deepEqual(
+    createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', true),
+    { type: 'human-response', challenge_id: CHALLENGE_ID, decision: 'submit', value: true },
+  );
+  assert.deepEqual(
+    createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', ['one', 'two']),
+    { type: 'human-response', challenge_id: CHALLENGE_ID, decision: 'submit', value: ['one', 'two'] },
+  );
+  assert.deepEqual(
+    createHumanResponseFrame('team_1', CHALLENGE_ID, 'deny'),
+    { type: 'human-response', challenge_id: CHALLENGE_ID, decision: 'deny' },
+  );
+  for (const args of [
+    ['team_1', 'challenge', 'submit', true],
+    ['team_1', CHALLENGE_ID, 'deny', true],
+    ['team_1', CHALLENGE_ID, 'submit', false],
+    ['team_1', CHALLENGE_ID, 'submit', ['one', 'one']],
+    ['team_1', CHALLENGE_ID, 'submit', 'x'.repeat(16_001)],
+  ]) assert.throws(() => createHumanResponseFrame(...args), /Invalid human response/);
+});
+
+test('chat accepts every exact bounded public human request presentation', () => {
+  for (const kind of [
+    'approval',
+    'input:text',
+    'input:textarea',
+    'input:password',
+    'input:phone',
+    'input:select',
+    'input:choice',
+    'input:choices',
+    'auth:reauth',
+    'auth:second-factor',
+    'auth:phishing-resistant',
+  ]) {
+    const challenge = humanChallenge(kind);
+    const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
+    assert.deepEqual(parsed, challenge);
+    assert.notEqual(parsed.request, challenge.request);
+  }
+});
+
+test('chat rejects augmented, sensitive, and out-of-bounds human requests', () => {
+  const base = humanChallenge('input:choices');
+  for (const invalid of [
+    { ...base, access_token: 'must-not-cross' },
+    { ...base, challenge_id: 'challenge' },
+    { ...base, expires_in: 301 },
+    { ...base, assistant: { ...base.assistant, token: 'must-not-cross' } },
+    { ...base, power: { ...base.power, input: 'must-not-cross' } },
+    { ...base, request: { ...base.request, ordinal: 8 } },
+    { ...base, request: { ...base.request, fingerprint: 'not-a-fingerprint' } },
+    { ...base, request: { ...base.request, min_selections: 3 } },
+    { ...base, request: { ...base.request, options: [...base.request.options, base.request.options[0]] } },
+    { ...humanChallenge('approval'), request: { ...humanRequest('approval'), secret: 'must-not-cross' } },
+  ]) assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
 });
 
 
