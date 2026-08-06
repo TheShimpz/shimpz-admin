@@ -21,6 +21,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
 from chat import human, local
+from chat import progress as progress_transport
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v4"
@@ -252,45 +253,11 @@ async def _send_sync_event(
     return True
 
 
-def _enqueue_progress(queue: asyncio.Queue[dict[str, object]], value: dict[str, object]) -> None:
-    try:
-        event = local.canonical_public_progress(value)
-    except ValueError:
-        return
-    with contextlib.suppress(asyncio.QueueFull):
-        queue.put_nowait(event)
-
-
 def _progress_channel() -> tuple[
     asyncio.Queue[dict[str, object]],
     Callable[[dict[str, object]], None],
 ]:
-    progress: asyncio.Queue[dict[str, object]] = asyncio.Queue(
-        maxsize=local.MAX_PUBLIC_PROGRESS_EVENTS,
-    )
-    loop = asyncio.get_running_loop()
-
-    def report(event: dict[str, object]) -> None:
-        with contextlib.suppress(RuntimeError):
-            loop.call_soon_threadsafe(_enqueue_progress, progress, event)
-
-    return progress, report
-
-
-async def _deliver_progress_event(
-    websocket: WebSocket,
-    connection: _Connection,
-    response: asyncio.Future,
-    event: Mapping[str, object],
-) -> tuple[bool, object | None]:
-    if await _send_event(websocket, event):
-        return True, None
-    connection.closed = True
-    # The worker schedules each progress callback before completing its Future. Let the completion
-    # callback already queued behind this delivery run before deciding whether the still-active
-    # operation must be stopped.
-    await asyncio.sleep(0)
-    return False, await response if response.done() else None
+    return progress_transport.channel()
 
 
 async def _await_progress_result(
@@ -300,60 +267,13 @@ async def _await_progress_result(
     progress: asyncio.Queue[dict[str, object]],
     inactive: Callable[[], bool],
 ) -> object | None:
-    response = asyncio.wrap_future(future)
-    pending_progress: asyncio.Task[dict[str, object]] | None = None
-    sequence = 0
-    try:
-        while not response.done():
-            pending_progress = asyncio.create_task(progress.get())
-            completed, _pending = await asyncio.wait(
-                {response, pending_progress},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if pending_progress in completed:
-                event = pending_progress.result()
-                pending_progress = None
-                if inactive():
-                    return None
-                sequence += 1
-                delivered, result = await _deliver_progress_event(
-                    websocket,
-                    connection,
-                    response,
-                    {"type": "progress", "seq": sequence, **event},
-                )
-                if not delivered:
-                    return result
-                continue
-            with contextlib.suppress(asyncio.CancelledError):
-                pending_progress.cancel()
-                await pending_progress
-            pending_progress = None
-        if inactive():
-            return None
-        # ``report`` crosses from the worker with ``call_soon_threadsafe``. The worker can complete
-        # before the event loop has materialized that final callback in the queue, so yield once at
-        # the ordered boundary before draining progress ahead of the terminal response.
-        await asyncio.sleep(0)
-        while not progress.empty():
-            if inactive():
-                return None
-            event = progress.get_nowait()
-            sequence += 1
-            delivered, result = await _deliver_progress_event(
-                websocket,
-                connection,
-                response,
-                {"type": "progress", "seq": sequence, **event},
-            )
-            if not delivered:
-                return result
-        return await response
-    finally:
-        if pending_progress is not None:
-            pending_progress.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await pending_progress
+    return await progress_transport.await_result(
+        future,
+        progress,
+        inactive,
+        lambda event: _send_event(websocket, event),
+        lambda: setattr(connection, "closed", True),
+    )
 
 
 async def _await_turn_response(

@@ -663,7 +663,7 @@ class ChatWebSocketTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = self.chat_socket._Connection()
 
-            with mock.patch.object(self.chat_socket.asyncio, "wrap_future", return_value=response):
+            with mock.patch.object(self.chat_socket.progress_transport.asyncio, "wrap_future", return_value=response):
                 result = await self.chat_socket._await_progress_result(
                     websocket,
                     connection,
@@ -692,7 +692,7 @@ class ChatWebSocketTests(unittest.TestCase):
                     loop.call_soon(response.set_result, "completed")
                     raise RuntimeError("simulated peer send failure")
 
-            with mock.patch.object(self.chat_socket.asyncio, "wrap_future", return_value=response):
+            with mock.patch.object(self.chat_socket.progress_transport.asyncio, "wrap_future", return_value=response):
                 result = await self.chat_socket._await_progress_result(
                     FailingWebSocket(),
                     connection,
