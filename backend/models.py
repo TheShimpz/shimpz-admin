@@ -129,8 +129,6 @@ def _validation_headers(provider: str, secret: str) -> dict[str, str]:
 def _validate_api_key(provider: str, secret: str) -> None:
     """Confirm one key against its fixed TLS endpoint without consuming response data."""
     host, path = _VALIDATION_ENDPOINTS[provider]
-    connection = None
-    response = None
     try:
         connection = http.client.HTTPSConnection(
             host,
@@ -138,6 +136,10 @@ def _validate_api_key(provider: str, secret: str) -> None:
             timeout=VALIDATION_TIMEOUT_SECONDS,
             context=ssl.create_default_context(),
         )
+    except (OSError, TimeoutError, http.client.HTTPException):
+        raise ModelProviderUnavailableError("model provider validation is temporarily unavailable") from None
+    response = None
+    try:
         connection.request("GET", path, headers=_validation_headers(provider, secret))
         response = connection.getresponse()
         status_code = response.status
@@ -146,8 +148,7 @@ def _validate_api_key(provider: str, secret: str) -> None:
     finally:
         if response is not None:
             response.close()
-        if connection is not None:
-            connection.close()
+        connection.close()
 
     if 200 <= status_code < 300:
         return
