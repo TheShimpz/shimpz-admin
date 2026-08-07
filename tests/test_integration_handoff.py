@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -246,6 +247,62 @@ class OAuthHandoffStoreTest(unittest.TestCase):
                 admin_session=self.session,
             )
         )
+
+    def test_closed_helpers_and_limits_reject_invalid_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "limits"):
+            handoff_store.OAuthHandoffStore(capacity=0, ttl_seconds=30)
+        for operation in (
+            lambda: self.store.issue(
+                team_id="marketing",
+                challenge_id="a" * 32,
+                admin_session="short",
+                callback_mode="loopback",
+            ),
+            lambda: self.store.issue(
+                team_id="marketing",
+                challenge_id="a" * 32,
+                admin_session=self.session,
+                callback_mode="invalid",
+            ),
+            lambda: self.store.consume("bad", "loopback"),
+            lambda: handoff_store._completion_code(None),
+            lambda: handoff_store._completion_code("bad"),
+        ):
+            with self.assertRaises(handoff_store.OAuthHandoffError):
+                operation()
+
+    def test_authorization_url_parser_rejects_invalid_query_and_port(self) -> None:
+        invalid = (
+            "https://shimpz.com:bad/api/oauth/cloudflare/start?x=1",
+            self._authorization_url(state="bad"),
+            self._authorization_url(callback="hosted"),
+        )
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(handoff_store.OAuthHandoffError):
+                handoff_store._authorization_url(value, "loopback")
+
+    def test_token_collision_discard_and_automatic_mode_are_closed(self) -> None:
+        duplicate = "a" * 64
+        unique = "b" * 64
+        with mock.patch.object(handoff_store.secrets, "token_hex", side_effect=[duplicate, duplicate, unique]):
+            first = self.store.issue(
+                team_id="marketing",
+                challenge_id="a" * 32,
+                admin_session=self.session,
+                callback_mode="loopback",
+            )
+            second = self.store.issue(
+                team_id="sales",
+                challenge_id="b" * 32,
+                admin_session=self.session,
+                callback_mode="out-of-band",
+            )
+        self.assertEqual((first.token, second.token), (duplicate, unique))
+        self.store.authorize(second.token, self._authorization_url("out-of-band"))
+        with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
+            self.store.consume(second.token, "out-of-band")
+        self.assertTrue(self.store.discard(first.token))
+        self.assertFalse(self.store.discard(first.token))
 
 
 if __name__ == "__main__":
