@@ -16,6 +16,13 @@ import browser
 
 
 class BrowserPolicyTests(unittest.TestCase):
+    def test_missing_spa_uses_no_inline_script_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            policy = browser.security_headers(Path(directory))["Content-Security-Policy"]
+
+        script_directive = next(part.strip() for part in policy.split(";") if part.strip().startswith("script-src"))
+        self.assertEqual(script_directive, "script-src 'self'")
+
     def test_inline_bootstrap_is_bound_by_hash_without_unsafe_script(self) -> None:
         bootstrap = "console.log('compiled bootstrap')"
         digest = base64.b64encode(hashlib.sha256(bootstrap.encode()).digest()).decode()
@@ -31,6 +38,14 @@ class BrowserPolicyTests(unittest.TestCase):
         self.assertIn(f"'sha256-{digest}'", script_directive)
         self.assertNotIn("'unsafe-inline'", script_directive)
         self.assertIn("style-src 'self' 'unsafe-inline'", policy)
+
+    def test_oauth_redirect_rejects_unknown_failure_values(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "invalid OAuth redirect failure"):
+            browser.oauth_chat_redirect(
+                "unexpected",
+                cookie_name="binding",
+                cookie_path="/api/oauth",
+            )
 
 
 if __name__ == "__main__":
