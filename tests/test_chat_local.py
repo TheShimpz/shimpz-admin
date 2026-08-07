@@ -12,9 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import models
-from team import bridge as team
-
 from chat import local
+from team import bridge as team
 
 TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
@@ -695,6 +694,101 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 response,
                 team.TeamResponse(502, {"code": "chat-stop-response-invalid"}),
             )
+
+    def test_public_progress_and_websocket_projection_reject_invalid_authority(self) -> None:
+        invalid = (
+            None,
+            {"origin": "admin", "phase": "model", "state": "started"},
+            {"origin": "admin", "phase": "admin-preparation", "state": "unknown"},
+            {
+                "origin": "admin",
+                "phase": "admin-preparation",
+                "state": "finished",
+                "elapsed_ms": True,
+            },
+        )
+        for event in invalid:
+            with self.assertRaises(ValueError):
+                local.canonical_public_progress(event)
+
+        response = local.PublicResponse(200, {"team_id": "team_1", "team_name": "Marketing", "reply": "Done"})
+        self.assertIsNone(response.websocket_event("team_2"))
+
+    def test_inference_and_credential_failures_are_reduced_to_public_codes(self) -> None:
+        with mock.patch.object(team, "get_inference", return_value=team.TeamResponse(500, {"private": "value"})):
+            response = local._inference("team_1")
+        self.assertEqual(response, team.TeamResponse(500, {"code": "chat-request-failed"}))
+
+        with (
+            mock.patch.object(
+                team,
+                "get_inference",
+                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"}),
+            ),
+            mock.patch.object(models, "resolve_api_key", side_effect=models.ModelProviderError("invalid")),
+        ):
+            response = local._model_credential("team_1")
+        self.assertEqual(response, team.TeamResponse(502, {"code": "model-credential-store-invalid"}))
+
+        self.assertEqual(
+            local._safe_error(team.TeamResponse(500, {"code": "BAD CODE"})),
+            team.TeamResponse(500, {"code": "chat-request-failed"}),
+        )
+
+    def test_integration_challenge_rejects_missing_identity_capabilities_and_power(self) -> None:
+        requirement = integration_requirement()
+        base = {
+            "team_id": "team_1",
+            "status": "integrations-required",
+            "turn_id": CHALLENGE_ID,
+            "challenge_id": CHALLENGE_ID,
+            "expires_in": 300,
+            "requirements": [requirement],
+            "trace_id": TRACE_ID,
+        }
+        invalid = (
+            {**base, "turn_id": "c" * 32},
+            {**base, "requirements": [{**requirement, "scopes": []}]},
+            {**base, "requirements": [{**requirement, "powers": [{}]}]},
+        )
+        for body in invalid:
+            projected = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
+            self.assertEqual(projected.status, 502)
+
+        self.assertEqual(
+            local._project_pending_challenge(team.TeamResponse(428, {"status": "unknown"}), "team_1").status,
+            502,
+        )
+        denial = {
+            "team_id": "team_1",
+            "status": "human-denied",
+            "reason": "authentication-unavailable",
+            "trace_id": TRACE_ID,
+        }
+        projected = local._project_human_denial(team.TeamResponse(409, denial), "team_1")
+        self.assertEqual(projected.body["code"], "human-authentication-unavailable")
+
+    def test_runtime_missing_pending_errors_and_stop_errors_are_projected(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"})
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(team, "chat", return_value=team.TeamResponse(404, {})),
+        ):
+            self.assertEqual(local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}).status, 503)
+
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(team, "resume_chat_integrations", return_value=team.TeamResponse(404, {})),
+        ):
+            self.assertEqual(local.resume_integrations("team_1", CHALLENGE_ID).status, 503)
+
+        for status, expected in ((404, 503), (500, 500)):
+            with mock.patch.object(team, "pending_chat_integrations", return_value=team.TeamResponse(status, {})):
+                self.assertEqual(local.pending_integrations("team_1").status, expected)
+            with mock.patch.object(team, "stop_chat", return_value=team.TeamResponse(status, {})):
+                self.assertEqual(local.stop("team_1").status, expected)
 
 
 if __name__ == "__main__":
