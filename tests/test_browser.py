@@ -29,7 +29,7 @@ class BrowserPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             ui_dir = Path(directory)
             (ui_dir / "index.html").write_text(
-                f'<script src="/external.js"></script><script>{bootstrap}</script>',
+                f'<p>compiled shell</p><script src="/external.js"></script><script>{bootstrap}</script>',
                 encoding="utf-8",
             )
             policy = browser.security_headers(ui_dir)["Content-Security-Policy"]
