@@ -20,7 +20,6 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     PublicFormat,
 )
-
 from protocol.http.v1 import supervisor as contract
 
 PUBLIC_KEY_FILE = Path(
@@ -78,10 +77,9 @@ def identity_from_record(record: object) -> LocalIdentity:
         or _HEX_64.fullmatch(private_key_hex) is None
     ):
         raise SupervisorAuthorityError("Local Supervisor identity is unavailable")
-    try:
-        Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex))
-    except ValueError as exc:
-        raise SupervisorAuthorityError("Local Supervisor signing key is invalid") from exc
+    # The exact 64-character lowercase-hex contract above always decodes to the 32 raw bytes
+    # required by Ed25519PrivateKey.from_private_bytes.
+    Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex))
     return LocalIdentity(supervisor_id, private_key_hex)
 
 

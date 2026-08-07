@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import stat
 import sys
 import tempfile
 import types
@@ -20,7 +21,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import supervisor
-
 from protocol.http.v1 import supervisor as contract
 
 
@@ -66,6 +66,7 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
             public.public_bytes(Encoding.Raw, PublicFormat.Raw),
             expected_public.public_bytes(Encoding.Raw, PublicFormat.Raw),
         )
+        supervisor.materialize_public_key(identity)
 
     def test_request_assertion_is_canonical_short_lived_and_exactly_bound(self) -> None:
         identity = supervisor.new_identity()
@@ -116,6 +117,82 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
             supervisor.materialize_public_key(identity)
         with self.assertRaises(supervisor.SupervisorAuthorityError):
             supervisor.identity_from_record({"supervisor_id": identity.supervisor_id})
+
+    def test_identity_evidence_and_record_shape_are_closed(self) -> None:
+        identity = supervisor.new_identity()
+        record = {
+            "supervisor_id": identity.supervisor_id,
+            "supervisor_signing_key": identity.private_key_hex,
+        }
+        self.assertEqual(
+            supervisor.local_session_evidence(record, session_valid=True),
+            {"profile": "local", "supervisor_id": identity.supervisor_id},
+        )
+        with self.assertRaises(supervisor.SupervisorAuthorityError):
+            supervisor.identity_from_record(None)
+
+    def test_public_key_helpers_reject_races_and_incomplete_writes(self) -> None:
+        metadata = types.SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o440,
+            st_nlink=1,
+            st_gid=os.getgid(),
+            st_size=1,
+        )
+        path = mock.Mock()
+        path.lstat.return_value = metadata
+        path.read_bytes.return_value = b"too-long"
+        with self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "changed while reading"):
+            supervisor._safe_public_file(path, os.getgid())
+
+        with (
+            mock.patch.object(supervisor.os, "write", return_value=0),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "write was incomplete"),
+        ):
+            supervisor._write_all(1, b"key")
+
+    def test_public_key_materialization_rejects_each_custody_failure(self) -> None:
+        identity = supervisor.new_identity()
+        with (
+            mock.patch.object(supervisor.grp, "getgrnam", side_effect=KeyError("missing")),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "volume is unavailable"),
+        ):
+            supervisor.materialize_public_key(identity)
+
+        unsafe_parent = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o770, st_gid=os.getgid())
+        with (
+            mock.patch.object(Path, "lstat", return_value=unsafe_parent),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "unsafe metadata"),
+        ):
+            supervisor.materialize_public_key(identity)
+
+        unsafe_target = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_gid=os.getgid() + 1)
+        with (
+            mock.patch.object(supervisor.os, "fstat", return_value=unsafe_target),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "could not be materialized"),
+        ):
+            supervisor.materialize_public_key(identity)
+
+        with (
+            mock.patch.object(supervisor, "_safe_public_file", side_effect=[None, b"different"]),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "could not be materialized"),
+        ):
+            supervisor.materialize_public_key(identity)
+
+        with (
+            mock.patch.object(supervisor.os, "open", side_effect=OSError("denied")),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "could not be materialized"),
+        ):
+            supervisor.materialize_public_key(supervisor.new_identity())
+
+        with (
+            mock.patch.object(
+                supervisor,
+                "_write_all",
+                side_effect=supervisor.SupervisorAuthorityError("incomplete"),
+            ),
+            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "could not be materialized"),
+        ):
+            supervisor.materialize_public_key(supervisor.new_identity())
 
 
 if __name__ == "__main__":
