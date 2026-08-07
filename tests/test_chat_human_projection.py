@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sys
@@ -12,9 +13,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge as team
-
 from chat import human, local
+from team import bridge as team
 
 TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
@@ -77,6 +77,30 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
 
 
 class HumanChallengeProjectionTests(unittest.TestCase):
+    def test_local_reauthentication_is_bounded_and_maps_authority_failure(self) -> None:
+        self.assertEqual(
+            asyncio.run(
+                human.authenticate_local(
+                    "auth:second-factor",
+                    "secret",
+                    profile="local",
+                    record_get=dict,
+                )
+            ),
+            "unavailable",
+        )
+        self.assertEqual(
+            asyncio.run(
+                human.authenticate_local(
+                    "auth:reauth",
+                    "secret",
+                    profile="local",
+                    record_get=lambda: (_ for _ in ()).throw(OSError("offline")),
+                )
+            ),
+            "unavailable",
+        )
+
     def test_every_reviewed_kind_projects_without_internal_metadata(self) -> None:
         kinds = {
             "approval",
@@ -127,6 +151,44 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
             )
             self.assertNotIn("must-not-cross", json.dumps(projected.body))
+
+    def test_projection_helpers_reject_invalid_nested_shapes(self) -> None:
+        invalid_bodies = (
+            _response(_request("approval"), trace_id="bad"),
+            _response(_request("approval"), assistant=None),
+            _response(_request("approval"), power=None),
+            _response(_request("approval"), power={"id": "Bad", "summary": "summary"}),
+            _response(None),
+            _response(_fingerprinted({"kind": "unknown", "ordinal": 0, "title": "Title", "description": "Text"})),
+        )
+        for body in invalid_bodies:
+            with self.assertRaises(human.HumanChallengeError):
+                human.project(body, "team_1")
+
+        duplicate = _request("input:select")
+        duplicate["options"] = [duplicate["options"][0], duplicate["options"][0]]
+        duplicate = _fingerprinted({key: value for key, value in duplicate.items() if key != "fingerprint"})
+        with self.assertRaises(human.HumanChallengeError):
+            human.project(_response(duplicate), "team_1")
+
+        invalid_options = _request("input:select")
+        invalid_options["options"] = []
+        invalid_options = _fingerprinted({key: value for key, value in invalid_options.items() if key != "fingerprint"})
+        with self.assertRaises(human.HumanChallengeError):
+            human.project(_response(invalid_options), "team_1")
+
+        self.assertFalse(human._fingerprint({"bad": object()}, "a" * 64))
+
+    def test_browser_values_follow_each_projected_request_kind(self) -> None:
+        self.assertTrue(human.browser_value(_request("input:select"), "one"))
+        self.assertFalse(human.browser_value(_request("input:select"), "missing"))
+        self.assertTrue(human.browser_value(_request("input:choices"), ["one", "two"]))
+        self.assertFalse(human.browser_value(_request("input:choices"), ["one", "one"]))
+        self.assertTrue(human.browser_value(_request("input:text"), "value"))
+        self.assertFalse(human.browser_value(_request("input:text"), ""))
+        self.assertFalse(human.browser_value(None, True))
+        self.assertFalse(human.browser_value({"kind": "unknown"}, True))
+        self.assertFalse(human._browser_choices({}, None))
 
     def test_pending_human_is_team_bound_and_none_is_closed(self) -> None:
         pending = team.TeamResponse(200, _response(_request("approval")))
