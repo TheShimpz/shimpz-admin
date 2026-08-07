@@ -85,22 +85,23 @@ def _endpoint() -> tuple[str, int]:
 
 
 def _session_capability() -> str:
-    descriptor: int | None = None
     try:
         descriptor = os.open(
             SESSION_TOKEN_FILE,
             os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
         )
+    except (OSError, ValueError):
+        return ""
+    try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o440:
             return ""
         raw = os.read(descriptor, 65)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return ""
     finally:
-        if descriptor is not None:
-            with suppress(OSError):
-                os.close(descriptor)
+        with suppress(OSError):
+            os.close(descriptor)
     return raw.decode("ascii") if _CAPABILITY.fullmatch(raw) is not None else ""
 
 
@@ -142,7 +143,6 @@ def _call(
     capability: bool = False,
     client_ip: str = "",
 ) -> AccountResponse:
-    connection = None
     try:
         host, port = _endpoint()
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -155,6 +155,10 @@ def _call(
             headers["X-Forwarded-For"] = client_ip
         body = _payload(payload)
         connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
+    except (OSError, UnicodeError, http.client.HTTPException):
+        log.warning("Account identity request failed")
+        return AccountResponse(502, {"error": "Account identity is unavailable"})
+    try:
         connection.request("POST", path, body=body, headers=headers)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
@@ -164,9 +168,8 @@ def _call(
         log.warning("Account identity request failed")
         return AccountResponse(502, {"error": "Account identity is unavailable"})
     finally:
-        if connection is not None:
-            with suppress(OSError):
-                connection.close()
+        with suppress(OSError):
+            connection.close()
     return result
 
 
