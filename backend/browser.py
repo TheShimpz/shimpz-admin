@@ -22,7 +22,7 @@ class _InlineScriptCollector(HTMLParser):
         self.scripts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._collecting = tag == "script" and not any(name == "src" for name, _value in attrs)
+        self._collecting = tag == "script" and "src" not in dict(attrs)
         if self._collecting:
             self._chunks = []
 
