@@ -23,8 +23,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from protocol.http.v1 import websocket as chat_ws_common
 from team import bridge as team
+
+from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 

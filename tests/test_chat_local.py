@@ -12,8 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import models
-from chat import local
 from team import bridge as team
+
+from chat import local
 
 TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32

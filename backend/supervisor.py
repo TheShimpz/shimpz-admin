@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     PublicFormat,
 )
+
 from protocol.http.v1 import supervisor as contract
 
 PUBLIC_KEY_FILE = Path(

@@ -18,6 +18,7 @@ from urllib.parse import quote, urlparse
 
 import models
 import supervisor as local_supervisor
+
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract

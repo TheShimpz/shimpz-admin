@@ -17,11 +17,12 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
+from fastapi import WebSocket, WebSocketDisconnect
+from team import bridge as team
+
 from chat import human, local
 from chat import progress as progress_transport
-from fastapi import WebSocket, WebSocketDisconnect
 from protocol.http.v1 import websocket as chat_ws_common
-from team import bridge as team
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v4"
 MAX_FRAME_BYTES = 128 * 1024
