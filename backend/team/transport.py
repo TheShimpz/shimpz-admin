@@ -18,7 +18,6 @@ from urllib.parse import quote, urlparse
 
 import models
 import supervisor as local_supervisor
-
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
@@ -310,7 +309,6 @@ def _request(
     timeout: int,
     model_credential: tuple[str, str] | None = None,
 ) -> TeamResponse:
-    connection = None
     try:
         host, port = _endpoint()
         headers = _request_headers(
@@ -322,10 +320,14 @@ def _request(
             filename=filename,
             bindings=_RequestBindings(model_credential),
         )
+        connection = http.client.HTTPConnection(host, port, timeout=timeout)
+    except (OSError, UnicodeError, http.client.HTTPException):
+        log.warning("team request failed (%s)", method)
+        return TeamResponse(502, {"detail": "team unavailable"})
+    try:
         # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
         # socket would require serialization and could retain an authenticated connection across
         # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
-        connection = http.client.HTTPConnection(host, port, timeout=timeout)
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
@@ -336,11 +338,10 @@ def _request(
         log.warning("team request failed (%s)", method)
         return TeamResponse(502, {"detail": "team unavailable"})
     finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except OSError:
-                log.warning("team connection close failed (%s)", method)
+        try:
+            connection.close()
+        except OSError:
+            log.warning("team connection close failed (%s)", method)
 
     log.info("team %s %s -> HTTP %s", method, path, result.status)
     return result
@@ -366,7 +367,6 @@ def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
 
 
 def _request_asset(method: str, path: str) -> TeamAssetResponse:
-    connection = None
     try:
         host, port = _endpoint()
         headers = _request_headers(
@@ -379,6 +379,10 @@ def _request_asset(method: str, path: str) -> TeamAssetResponse:
             bindings=_RequestBindings(),
         )
         connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
+    except (OSError, UnicodeError, http.client.HTTPException):
+        log.warning("Team asset request failed (%s)", method)
+        return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
+    try:
         connection.request(method, path, headers=headers)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
@@ -388,9 +392,8 @@ def _request_asset(method: str, path: str) -> TeamAssetResponse:
         log.warning("Team asset request failed (%s)", method)
         return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
     finally:
-        if connection is not None:
-            with contextlib.suppress(OSError):
-                connection.close()
+        with contextlib.suppress(OSError):
+            connection.close()
     log.info("Team asset %s %s -> HTTP %s", method, path, result.status)
     return result
 
@@ -440,7 +443,6 @@ def _stream_request(
     bindings: _RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
-    connection = None
     try:
         host, port = _endpoint()
         headers = _request_headers(
@@ -453,6 +455,10 @@ def _stream_request(
             bindings=bindings,
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
+    except (OSError, UnicodeError, http.client.HTTPException):
+        log.warning("team chat stream failed (%s)", method)
+        return TeamResponse(502, {"detail": "team unavailable"})
+    try:
         connection.request(method, path, body=body, headers=headers)
         result = _decode_stream(connection.getresponse(), progress)
     except (
@@ -464,9 +470,8 @@ def _stream_request(
         log.warning("team chat stream failed (%s)", method)
         return TeamResponse(502, {"detail": "team unavailable"})
     finally:
-        if connection is not None:
-            with contextlib.suppress(OSError):
-                connection.close()
+        with contextlib.suppress(OSError):
+            connection.close()
     log.info("team %s %s -> HTTP %s", method, path, result.status)
     return result
 
