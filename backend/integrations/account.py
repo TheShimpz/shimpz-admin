@@ -90,14 +90,14 @@ def _session_capability() -> str:
             SESSION_TOKEN_FILE,
             os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
         )
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return ""
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o440:
             return ""
         raw = os.read(descriptor, 65)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return ""
     finally:
         with suppress(OSError):
@@ -155,7 +155,7 @@ def _call(
             headers["X-Forwarded-For"] = client_ip
         body = _payload(payload)
         connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
-    except (OSError, UnicodeError, http.client.HTTPException):
+    except OSError, UnicodeError, http.client.HTTPException:
         log.warning("Account identity request failed")
         return AccountResponse(502, {"error": "Account identity is unavailable"})
     try:

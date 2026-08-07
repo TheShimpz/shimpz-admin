@@ -82,9 +82,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
                 return_value=unavailable,
             ),
         ):
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request)
-            )
+            response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
         self.assertEqual(response.status_code, 503)
         discard.assert_called_once_with(preparation.token)
 
@@ -145,9 +143,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel", return_value=None),
         ):
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request)
-            )
+            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request))
         self.assertEqual(response.status_code, 204)
 
         with mock.patch.object(
@@ -183,9 +179,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
                 return_value=rejected,
             ),
         ):
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request)
-            )
+            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request))
         self.assertEqual(response.status_code, 409)
 
     def test_disconnect_and_callback_map_invalid_team_responses(self) -> None:

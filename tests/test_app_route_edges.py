@@ -144,9 +144,7 @@ class AppRouteEdgeTests(unittest.TestCase):
                 )
         self.assert_async_status(
             400,
-            self.admin_app._bounded_json_object(
-                _request(body=b"[]", headers=[(b"content-type", b"application/json")])
-            ),
+            self.admin_app._bounded_json_object(_request(body=b"[]", headers=[(b"content-type", b"application/json")])),
         )
 
     def test_team_creation_validates_shape_and_logs_only_successful_creation(self) -> None:

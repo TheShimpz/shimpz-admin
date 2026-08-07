@@ -322,7 +322,7 @@ def _request(
             bindings=_RequestBindings(model_credential),
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
-    except (OSError, UnicodeError, http.client.HTTPException):
+    except OSError, UnicodeError, http.client.HTTPException:
         log.warning("team request failed (%s)", method)
         return TeamResponse(502, {"detail": "team unavailable"})
     try:
@@ -380,7 +380,7 @@ def _request_asset(method: str, path: str) -> TeamAssetResponse:
             bindings=_RequestBindings(),
         )
         connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
-    except (OSError, UnicodeError, http.client.HTTPException):
+    except OSError, UnicodeError, http.client.HTTPException:
         log.warning("Team asset request failed (%s)", method)
         return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
     try:
@@ -456,7 +456,7 @@ def _stream_request(
             bindings=bindings,
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
-    except (OSError, UnicodeError, http.client.HTTPException):
+    except OSError, UnicodeError, http.client.HTTPException:
         log.warning("team chat stream failed (%s)", method)
         return TeamResponse(502, {"detail": "team unavailable"})
     try:

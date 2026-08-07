@@ -144,9 +144,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         with self.assertRaises(self.admin_app.HTTPException) as inexact:
             self.admin_app._request_browser_origin(_request("/login", origin="https://EXAMPLE.test"))
         self.assertEqual(inexact.exception.status_code, 403)
-        self.assertIsNone(
-            self.admin_app._request_browser_origin(_request("/login", origin="http://localhost:7777"))
-        )
+        self.assertIsNone(self.admin_app._request_browser_origin(_request("/login", origin="http://localhost:7777")))
 
         with mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value="unchanged")):
             asyncio.run(self.admin_app._bind_browser_origin("https://developer.example.test"))
@@ -267,9 +265,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         with mock.patch.object(self.admin_app.asyncio, "to_thread", side_effect=ValueError("corrupt")):
             self.assert_status(
                 503,
-                self.admin_app.local_space_reset(
-                    _request("/space", {"password": "correct horse battery staple"})
-                ),
+                self.admin_app.local_space_reset(_request("/space", {"password": "correct horse battery staple"})),
             )
 
 

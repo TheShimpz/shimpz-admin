@@ -129,9 +129,7 @@ class AppMultipartEdgeTests(unittest.TestCase):
         )
         self.assert_status(
             400,
-            self.admin_app._bounded_multipart_file(
-                _request(self.multipart_headers((b"content-length", b"invalid")))
-            ),
+            self.admin_app._bounded_multipart_file(_request(self.multipart_headers((b"content-length", b"invalid")))),
         )
         self.assert_status(
             413,
@@ -155,9 +153,7 @@ class AppMultipartEdgeTests(unittest.TestCase):
         ):
             self.assert_status(
                 413,
-                self.admin_app._bounded_multipart_file(
-                    _request(self.multipart_headers(), chunks=[b"four"])
-                ),
+                self.admin_app._bounded_multipart_file(_request(self.multipart_headers(), chunks=[b"four"])),
             )
 
         with mock.patch.object(

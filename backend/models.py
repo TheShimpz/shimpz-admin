@@ -136,7 +136,7 @@ def _validate_api_key(provider: str, secret: str) -> None:
             timeout=VALIDATION_TIMEOUT_SECONDS,
             context=ssl.create_default_context(),
         )
-    except (OSError, TimeoutError, http.client.HTTPException):
+    except OSError, TimeoutError, http.client.HTTPException:
         raise ModelProviderUnavailableError("model provider validation is temporarily unavailable") from None
     response = None
     try:
