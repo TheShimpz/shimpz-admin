@@ -23,9 +23,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from team import bridge as team
-
 from protocol.http.v1 import websocket as chat_ws_common
+from team import bridge as team
 
 log = logging.getLogger("shimpz-admin")
 
@@ -86,11 +85,9 @@ def _canonical_timestamp(value: object, *, field: str) -> str:
     if not isinstance(value, str) or _RFC3339_RE.fullmatch(value) is None:
         raise ValueError(f"invalid {field}")
     try:
-        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError as exc:
         raise ValueError(f"invalid {field}") from exc
-    if parsed.strftime("%Y-%m-%dT%H:%M:%SZ") != value:
-        raise ValueError(f"invalid {field}")
     return value
 
 
