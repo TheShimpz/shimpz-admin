@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import importlib
 import json
 import os
@@ -591,8 +592,14 @@ class ChatWebSocketTests(unittest.TestCase):
                     {"team_id": "team_1", "team_name": "Marketing", "reply": "already committed"},
                 )
 
+            def submit_completed(_executor, function, /, *args, **kwargs):
+                future = concurrent.futures.Future()
+                future.set_result(function(*args, **kwargs))
+                return future
+
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket, "_submit_in_context", side_effect=submit_completed),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
