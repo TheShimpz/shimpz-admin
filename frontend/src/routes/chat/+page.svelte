@@ -428,14 +428,8 @@
       !integrationChallenge ||
       integrationChallenge.challenge_id !== challengeId
     ) throw new Error(integrationsCopy.authorizationFailed);
-    const needsSeparateTab = (
-      location.protocol === 'https:' &&
-      !(location.hostname === 'local.shimpz.com' && !location.port)
-    );
-    const authorizationWindow = needsSeparateTab ? window.open('about:blank', '_blank') : null;
-    if (needsSeparateTab && !authorizationWindow) {
-      throw new Error(integrationsCopy.authorizationFailed);
-    }
+    // Open synchronously while this click still owns transient browser activation.
+    const authorizationWindow = window.open('about:blank', '_blank');
     if (authorizationWindow) authorizationWindow.opener = null;
     integrationWorking = 'connect';
     let authorizationStarted = false;
@@ -447,7 +441,9 @@
       }
       stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
       if (authorization.completion_mode === 'code') {
-        if (!authorizationWindow) throw new Error(integrationsCopy.authorizationFailed);
+        if (!authorizationWindow || authorizationWindow.closed) {
+          throw new Error(integrationsCopy.authorizationFailed);
+        }
         authorizationWindow.location.replace(authorization.authorization_url);
         integrationWorking = '';
         return authorization;

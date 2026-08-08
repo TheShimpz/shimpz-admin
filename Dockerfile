@@ -48,7 +48,8 @@ COPY backend/app.py backend/auth.py backend/browser.py backend/models.py backend
     backend/state.py backend/supervisor.py ./
 COPY backend/chat/human.py backend/chat/local.py backend/chat/payloads.py backend/chat/progress.py \
     backend/chat/socket.py ./chat/
-COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/handoff.py ./integrations/
+COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
+    backend/integrations/handoff.py ./integrations/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py backend/protocol/http/v1/supervisor.py \
     backend/protocol/http/v1/websocket.py ./protocol/http/v1/

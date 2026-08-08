@@ -16,7 +16,7 @@ from integrations import assistants
 
 def _authorization_url(**overrides: str) -> str:
     fields = {
-        "scope": "dns.read offline_access zone.read",
+        "scope": "dns.read dns.write offline_access zone.read",
         "state": "a" * 43,
         "code_challenge": "b" * 43,
         "callback": "hosted",
@@ -103,11 +103,20 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             "https://shimpz.com:bad/api/oauth/cloudflare/start?x=1",
             wrong_fields,
             _authorization_url(callback="loopback"),
-            _authorization_url(scope="dns.read"),
+            _authorization_url(scope="dns.write dns.read"),
+            _authorization_url(scope="dns.read dns.read"),
+            _authorization_url(scope="account.write"),
+            _authorization_url(scope=""),
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 assistants._trusted_cloudflare_authorization_url(value, "hosted")
+
+        read_only = _authorization_url(scope="dns.read offline_access zone.read")
+        self.assertEqual(
+            assistants._trusted_cloudflare_authorization_url(read_only, "hosted"),
+            read_only,
+        )
 
         upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(assistants._project_authorization_response(upstream_error, "hosted"), upstream_error)

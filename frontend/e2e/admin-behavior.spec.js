@@ -141,7 +141,7 @@ async function routeReadyChat(page, {
         provider: 'cloudflare',
         name: 'Cloudflare',
         summary: 'Reads reviewed zone and DNS metadata.',
-        scopes: ['dns.read', 'offline_access', 'zone.read'],
+        scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
         status: 'connected',
         integration: { id: 'account-1', name: 'Shimpz', username: null },
         expires_at: '2026-08-31T12:00:00.000Z',
@@ -166,7 +166,7 @@ async function routeReadyChat(page, {
               provider: 'cloudflare',
               name: 'Cloudflare',
               summary: 'Reads reviewed zone and DNS metadata.',
-              scopes: ['dns.read', 'offline_access', 'zone.read'],
+              scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
               powers: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
             }],
           }));
@@ -333,6 +333,72 @@ test('renders the fail-closed Integration challenge dialog', async ({ page }) =>
     animations: 'disabled',
     maxDiffPixels: 100,
   });
+});
+
+test('navigates the built Local app through its exact OAuth handoff', async ({ page }) => {
+  const challengeId = 'b'.repeat(32);
+  const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
+    + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
+    + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
+  await routeReadyChat(page, { integrationChallenge: true });
+  await page.route(
+    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
+    (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
+    }),
+  );
+  await page.context().route(authorizationUrl, (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Cloudflare OAuth authorization</title>',
+  }));
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('List the Cloudflare zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
+  await expect(dialog.getByText('dns.write', { exact: true })).toBeVisible();
+  const popupPromise = page.waitForEvent('popup');
+  await dialog.getByRole('button', { name: 'Continue to Cloudflare' }).click();
+  const popup = await popupPromise;
+  await popup.waitForURL(authorizationUrl);
+  await expect(popup).toHaveTitle('Cloudflare OAuth authorization');
+  await expect(dialog.getByRole('heading', { name: 'Paste the completion code' })).toBeVisible();
+  expect(await popup.evaluate(() => window.opener)).toBeNull();
+});
+
+test('cancels code-mode OAuth when the browser blocks its separate tab', async ({ page }) => {
+  const challengeId = 'b'.repeat(32);
+  const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
+    + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
+    + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
+  let canceled = false;
+  await page.addInitScript(() => {
+    window.open = () => null;
+  });
+  await routeReadyChat(page, { integrationChallenge: true });
+  await page.route(
+    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
+    (route) => {
+      if (route.request().method() === 'DELETE') {
+        canceled = true;
+        return route.fulfill({ status: 204, body: '' });
+      }
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
+      });
+    },
+  );
+  await page.goto('/chat/');
+
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
+  await dialog.getByRole('button', { name: 'Continue to Cloudflare' }).click();
+  await expect.poll(() => canceled).toBe(true);
+  await expect(dialog).toContainText('The secure authorization could not start.');
 });
 
 const humanPresentations = [

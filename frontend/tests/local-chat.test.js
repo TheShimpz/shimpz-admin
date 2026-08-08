@@ -449,9 +449,11 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   const calls = [];
   const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
     + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
-    + '&scope=dns.read+offline_access+zone.read&callback=out-of-band';
+    + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
   const previousLocation = globalThis.location;
-  globalThis.location = { protocol: 'https:', hostname: 'developer.example', port: '' };
+  globalThis.location = {
+    origin: 'https://developer.example', protocol: 'https:', hostname: 'developer.example', port: '',
+  };
   try {
     assert.deepEqual(
       await authorizeAssistantIntegration(async (url, options) => {
@@ -471,6 +473,16 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body, '{}');
 
+  const readOnlyUrl = authorizationUrl.replace('dns.read+dns.write', 'dns.read');
+  assert.deepEqual(
+    await authorizeAssistantIntegration(
+      async () => response(200, { authorization_url: readOnlyUrl, completion_mode: 'code' }),
+      'team_1',
+      CHALLENGE_ID,
+    ),
+    { authorization_url: readOnlyUrl, completion_mode: 'code' },
+  );
+
   for (const body of [
     { authorization_url: 'https://evil.example/oauth2/auth', completion_mode: 'code' },
     { authorization_url: authorizationUrl.replace('shimpz.com', 'shimpz.com.evil.example'), completion_mode: 'code' },
@@ -478,7 +490,10 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     { authorization_url: `${authorizationUrl}&next=https://evil.example`, completion_mode: 'code' },
     { authorization_url: `${authorizationUrl}#claim=must-not-cross`, completion_mode: 'code' },
     { authorization_url: authorizationUrl.replace('callback=out-of-band', 'callback=https://evil.example'), completion_mode: 'code' },
-    { authorization_url: authorizationUrl.replace('dns.read+offline_access+zone.read', 'zone.read'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('dns.read+dns.write', 'dns.write+dns.read'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('dns.read+dns.write', 'dns.read+dns.read'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('dns.read+dns.write', 'account.write'), completion_mode: 'code' },
+    { authorization_url: authorizationUrl.replace('dns.read+dns.write+offline_access+zone.read', ''), completion_mode: 'code' },
     { authorization_url: authorizationUrl, completion_mode: 'automatic' },
     { authorization_url: authorizationUrl, completion_mode: 'redirect' },
     { authorization_url: authorizationUrl },
@@ -513,7 +528,9 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     const handoff = 'a'.repeat(64);
     const loopbackUrl = `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${handoff}`;
     const hostedUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${handoff}`;
-    globalThis.location = { protocol: 'http:', hostname: '127.0.0.1', port: '7777' };
+    globalThis.location = {
+      origin: 'http://127.0.0.1:7777', protocol: 'http:', hostname: '127.0.0.1', port: '7777',
+    };
     assert.deepEqual(
       await authorizeAssistantIntegration(
         async () => response(200, { authorization_url: loopbackUrl, completion_mode: 'automatic' }),
@@ -531,7 +548,9 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
       /authorization response is invalid/,
     );
 
-    globalThis.location = { protocol: 'https:', hostname: 'local.shimpz.com', port: '' };
+    globalThis.location = {
+      origin: 'https://local.shimpz.com', protocol: 'https:', hostname: 'local.shimpz.com', port: '',
+    };
     assert.deepEqual(
       await authorizeAssistantIntegration(
         async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),

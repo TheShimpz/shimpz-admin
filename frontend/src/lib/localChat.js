@@ -43,6 +43,8 @@ const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
 const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
+const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
+const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export const CHAT_WS_PROTOCOL = 'shimpz.chat.v4';
 export const HUMAN_REQUEST_KINDS = Object.freeze([
@@ -231,6 +233,18 @@ function canonicalIntegrationScopes(values) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   return scopes;
+}
+
+function trustedCloudflareScopes(value) {
+  if (typeof value !== 'string') return false;
+  const scopes = value.split(' ');
+  return (
+    scopes.length >= 1 &&
+    scopes.length <= CLOUDFLARE_SCOPES.size &&
+    scopes.every((scope) => OAUTH_SCOPE_RE.test(scope) && CLOUDFLARE_SCOPES.has(scope)) &&
+    new Set(scopes).size === scopes.length &&
+    scopes.every((scope, index) => index === 0 || scopes[index - 1] < scope)
+  );
 }
 
 function canonicalIntegrationPower(value) {
@@ -503,23 +517,10 @@ function trustedAuthorizationUrl(value, completionMode) {
   } catch {
     throw new LocalApiError('The Assistant authorization response is invalid.');
   }
-  const browserLocation = globalThis.location;
-  const loopbackPage = (
-    browserLocation?.protocol === 'http:' &&
-    browserLocation?.hostname === '127.0.0.1' &&
-    browserLocation?.port === '7777'
-  );
-  const hostedLocalPage = (
-    browserLocation?.protocol === 'https:' &&
-    browserLocation?.hostname === 'local.shimpz.com' &&
-    !browserLocation?.port
-  );
-  const namedHandoffOrigin = (
-    (loopbackPage && url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port === '7777') ||
-    (hostedLocalPage && url.protocol === 'https:' && url.hostname === 'local.shimpz.com' && !url.port)
-  );
+  const browserOrigin = globalThis.location?.origin;
   const localHandoff = (
-    namedHandoffOrigin &&
+    typeof browserOrigin === 'string' &&
+    url.origin === browserOrigin &&
     url.pathname === '/api/oauth/cloudflare/start' &&
     [...url.searchParams.keys()].length === 1 &&
     /^[0-9a-f]{64}$/.test(url.searchParams.get('handoff') ?? '')
@@ -532,7 +533,7 @@ function trustedAuthorizationUrl(value, completionMode) {
     [...url.searchParams.keys()].length === 4 &&
     /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state') ?? '') &&
     /^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code_challenge') ?? '') &&
-    url.searchParams.get('scope') === 'dns.read offline_access zone.read' &&
+    trustedCloudflareScopes(url.searchParams.get('scope')) &&
     url.searchParams.get('callback') === 'out-of-band'
   );
   const trusted = (

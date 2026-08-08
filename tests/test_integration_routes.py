@@ -103,7 +103,7 @@ class OAuthRoutesTest(unittest.TestCase):
     def _cloudflare_authorization_url(callback: str = "loopback") -> str:
         return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(
             {
-                "scope": "dns.read offline_access zone.read",
+                "scope": "dns.read dns.write offline_access zone.read",
                 "state": "b" * 43,
                 "code_challenge": "c" * 43,
                 "callback": callback,

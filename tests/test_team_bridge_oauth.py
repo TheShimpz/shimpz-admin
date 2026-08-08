@@ -86,7 +86,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
     @staticmethod
     def _authorization_url(**overrides: str) -> str:
         fields = {
-            "scope": "dns.read offline_access zone.read",
+            "scope": "dns.read dns.write offline_access zone.read",
             "state": "a" * 43,
             "code_challenge": "b" * 43,
             "callback": "hosted",
@@ -120,6 +120,19 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         )
         self.assertNotRegex(bytes(request["body"]).decode(), r"token|code|verifier|client")
 
+        read_only_url = self._authorization_url(scope="dns.read offline_access zone.read")
+        _TeamHandler.response_body = json.dumps(
+            {"authorization_url": read_only_url, "trace_id": "f" * 32},
+            separators=(",", ":"),
+        ).encode()
+        read_only = integrations.start_local_assistant_integration_authorization(
+            "team_1",
+            "c" * 32,
+            "d" * 43,
+            "hosted",
+        )
+        self.assertEqual(read_only, team.TeamResponse(200, {"authorization_url": read_only_url}))
+
         out_of_band_url = self._authorization_url(callback="out-of-band")
         _TeamHandler.response_body = json.dumps(
             {"authorization_url": out_of_band_url, "trace_id": "f" * 32},
@@ -138,7 +151,10 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         )
 
         for invalid_url in (
-            self._authorization_url(scope="dns.read zone.read"),
+            self._authorization_url(scope="dns.write dns.read"),
+            self._authorization_url(scope="dns.read dns.read"),
+            self._authorization_url(scope="account.write"),
+            self._authorization_url(scope=""),
             self._authorization_url(state="short"),
             self._authorization_url() + "&state=duplicate",
             self._authorization_url().replace("https://shimpz.com/", "https://shimpz.com.evil.example/"),

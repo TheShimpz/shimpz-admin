@@ -26,10 +26,14 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         self.authorization_url = self._authorization_url()
 
     @staticmethod
-    def _authorization_url(callback: str = "loopback", state: str = "b" * 43) -> str:
+    def _authorization_url(
+        callback: str = "loopback",
+        state: str = "b" * 43,
+        scope: str = "dns.read dns.write offline_access zone.read",
+    ) -> str:
         return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(
             {
-                "scope": "dns.read offline_access zone.read",
+                "scope": scope,
                 "state": state,
                 "code_challenge": "c" * 43,
                 "callback": callback,
@@ -276,10 +280,19 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             "https://shimpz.com:bad/api/oauth/cloudflare/start?x=1",
             self._authorization_url(state="bad"),
             self._authorization_url(callback="hosted"),
+            self._authorization_url(scope="dns.write dns.read"),
+            self._authorization_url(scope="dns.read dns.read"),
+            self._authorization_url(scope="account.write"),
+            self._authorization_url(scope=""),
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(handoff_store.OAuthHandoffError):
                 handoff_store._authorization_url(value, "loopback")
+        read_only = self._authorization_url(scope="dns.read offline_access zone.read")
+        self.assertEqual(
+            handoff_store._authorization_url(read_only, "loopback"),
+            (read_only, "b" * 43),
+        )
 
     def test_token_collision_discard_and_automatic_mode_are_closed(self) -> None:
         duplicate = "a" * 64

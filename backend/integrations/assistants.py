@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlparse
 from team import transport
 
 from chat import payloads
+from integrations import cloudflare
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -25,7 +26,6 @@ _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
 _OAUTH_SCOPE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
-_CLOUDFLARE_SCOPES = ("dns.read", "offline_access", "zone.read")
 
 
 def _canonical_team_id(value: object) -> str:
@@ -192,9 +192,7 @@ def _trusted_cloudflare_authorization_url(value: object, callback_mode: str) -> 
         or fields["callback"] != callback_mode
     ):
         raise ValueError("invalid OAuth authorization URL")
-    scopes = fields["scope"].split(" ")
-    if tuple(_integration_scopes(scopes)) != _CLOUDFLARE_SCOPES:
-        raise ValueError("invalid OAuth authorization URL")
+    cloudflare.canonical_authorization_scopes(fields["scope"])
     return value
 
 
