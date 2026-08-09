@@ -93,9 +93,7 @@ class PlatformReleaseStatusTests(unittest.TestCase):
             path = Path(self.directory.name) / f"invalid-{index}.json"
             path.write_bytes(payload)
             path.chmod(0o600)
-            with self.subTest(payload=payload), self.assertRaises(
-                platform_release.PlatformReleaseUnavailableError
-            ):
+            with self.subTest(payload=payload), self.assertRaises(platform_release.PlatformReleaseUnavailableError):
                 platform_release.read_status(path)
 
 
