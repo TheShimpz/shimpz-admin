@@ -38,13 +38,13 @@
 {/snippet}
 
 <WorkspaceShell
-  class={[authenticated && 'authenticated', chat && 'chat-mode']}
+  class={['admin-workspace-shell', authenticated && 'authenticated', chat && 'chat-mode']}
   sidebar={authenticated ? sidebar : undefined}
   header={authenticated ? undefined : header}
   skipLabel={$t('shell.skipContent')}
   mainId="admin-content"
-  content={chat ? 'full' : 'contained'}
-  padding={chat ? 'none' : 'default'}
+  content={authenticated ? 'full' : 'contained'}
+  padding={authenticated ? 'none' : 'default'}
   fixed={authenticated}
   scroll={chat ? 'hidden' : 'auto'}
 >
@@ -63,8 +63,17 @@
   .authenticated-page { min-width: 0; }
   .authenticated-content { min-height: 100%; }
   .admin-notice-region { width: 100%; }
+  .admin-notice-region :global(.admin-toast) { margin-block-end: 0; border: 0; }
+  .authenticated-page {
+    width: min(
+      calc(100% - var(--shimpz-page-padding) - var(--shimpz-page-padding)),
+      var(--shimpz-content-width)
+    );
+    margin-inline: auto;
+    padding-block: var(--shimpz-page-padding);
+  }
   .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
-  .chat-layout .authenticated-page { min-height: 0; overflow: hidden; }
+  .chat-layout .authenticated-page { width: 100%; min-height: 0; margin: 0; padding: 0; overflow: hidden; }
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr) auto; }
   .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
   .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
@@ -73,6 +82,7 @@
   .topbar { display: grid; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-3); padding-inline: var(--shimpz-page-padding); }
   .locale-compact { display: none; }
   @media (max-width: 820px) {
+    :global(.admin-workspace-shell.authenticated) { grid-template-rows: auto minmax(0, 1fr); }
     .shell-sidebar { min-height: 0; }
     .team-sidebar-region { max-height: 9rem; }
   }

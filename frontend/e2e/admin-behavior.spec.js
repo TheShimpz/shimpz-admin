@@ -572,12 +572,29 @@ test('reports confirmed Team deletion as animated success above Chat', async ({ 
     });
   expect(progressStyle.name).not.toBe('none');
   expect(progressStyle.duration).toBe('10s');
-  const [toastBox, chatBox] = await Promise.all([
+  const [toastBox, chatBox, mainBox, sidebarBox] = await Promise.all([
     toast.boundingBox(),
     page.locator('.chat-route').boundingBox(),
+    page.locator('[data-slot="workspace-main"]').boundingBox(),
+    page.locator('[data-slot="workspace-sidebar"]').boundingBox(),
   ]);
   expect(toastBox).not.toBeNull();
   expect(chatBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(sidebarBox).not.toBeNull();
+  expect(Math.abs(toastBox.x - mainBox.x)).toBeLessThan(1);
+  expect(Math.abs(toastBox.y - mainBox.y)).toBeLessThan(1);
+  expect(Math.abs(toastBox.width - mainBox.width)).toBeLessThan(1);
+  if (page.viewportSize().width <= 820) {
+    expect(Math.abs(toastBox.x)).toBeLessThan(1);
+    expect(Math.abs(toastBox.y - (sidebarBox.y + sidebarBox.height))).toBeLessThan(1);
+  } else {
+    expect(Math.abs(toastBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
+    expect(Math.abs(toastBox.y)).toBeLessThan(1);
+  }
+  for (const side of ['top', 'right', 'bottom', 'left']) {
+    await expect(toast).toHaveCSS(`border-${side}-width`, '0px');
+  }
   expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(chatBox.y);
   await expect(page).toHaveScreenshot('team-deletion-alert.png', visualContract);
 });
@@ -606,16 +623,29 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   const toast = page.locator('[data-slot="toast"]');
   await expect(toast).toContainText('Shimpz Cloudflare was removed from Marketing.');
   await expect(toast).toHaveCSS('position', 'relative');
-  const [toastOnStoreBox, introBox, contentBox] = await Promise.all([
+  const [toastOnStoreBox, introBox, mainBox, sidebarBox] = await Promise.all([
     toast.boundingBox(),
     page.locator('.shimpz-page-intro').boundingBox(),
-    page.locator('.authenticated-content').boundingBox(),
+    page.locator('[data-slot="workspace-main"]').boundingBox(),
+    page.locator('[data-slot="workspace-sidebar"]').boundingBox(),
   ]);
   expect(toastOnStoreBox).not.toBeNull();
   expect(introBox).not.toBeNull();
-  expect(contentBox).not.toBeNull();
-  expect(Math.abs(toastOnStoreBox.x - contentBox.x)).toBeLessThan(1);
-  expect(Math.abs(toastOnStoreBox.width - contentBox.width)).toBeLessThan(1);
+  expect(mainBox).not.toBeNull();
+  expect(sidebarBox).not.toBeNull();
+  expect(Math.abs(toastOnStoreBox.x - mainBox.x)).toBeLessThan(1);
+  expect(Math.abs(toastOnStoreBox.y - mainBox.y)).toBeLessThan(1);
+  expect(Math.abs(toastOnStoreBox.width - mainBox.width)).toBeLessThan(1);
+  if (page.viewportSize().width <= 820) {
+    expect(Math.abs(toastOnStoreBox.x)).toBeLessThan(1);
+    expect(Math.abs(toastOnStoreBox.y - (sidebarBox.y + sidebarBox.height))).toBeLessThan(1);
+  } else {
+    expect(Math.abs(toastOnStoreBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
+    expect(Math.abs(toastOnStoreBox.y)).toBeLessThan(1);
+  }
+  for (const side of ['top', 'right', 'bottom', 'left']) {
+    await expect(toast).toHaveCSS(`border-${side}-width`, '0px');
+  }
   expect(toastOnStoreBox.y + toastOnStoreBox.height).toBeLessThanOrEqual(introBox.y);
   await expect(page).toHaveScreenshot('assistant-lifecycle-alert.png', visualContract);
   await page.getByRole('link', { name: 'Chat' }).click();

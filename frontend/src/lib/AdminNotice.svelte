@@ -51,6 +51,7 @@
   {#key $adminNotice.id}
     <Toast
       bind:element={host}
+      class="admin-toast"
       tone={$adminNotice.tone === 'error' ? 'error' : $adminNotice.tone === 'success' ? 'success' : 'info'}
       label={$adminNotice.label}
       {durationMs}
