@@ -623,8 +623,10 @@
         response.value,
       );
       socket.send(JSON.stringify(frame));
-      humanWorking = true;
+      humanChallenge = undefined;
+      humanWorking = false;
       clearError();
+      void focusStop();
     } catch (reason) {
       humanWorking = false;
       setError(reason instanceof Error ? reason.message : copy.loadFailed);

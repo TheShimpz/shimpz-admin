@@ -71,10 +71,19 @@ function humanRequest(kind) {
 }
 
 async function routeReadyChat(page, {
-  humanFailure, humanKind = '', integrationChallenge = false, missingInference = false, reply,
+  disconnectHumanResponse = false,
+  holdHumanResponse = false,
+  humanFailure,
+  humanKind = '',
+  integrationChallenge = false,
+  missingInference = false,
+  reply,
 } = {}) {
   let inferenceWrites = 0;
   const humanResponses = [];
+  let chatConnections = 0;
+  let disconnectHumanSocket = () => {};
+  let humanPending = false;
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -149,9 +158,25 @@ async function routeReadyChat(page, {
     }),
   }));
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    const connection = chatConnections;
+    chatConnections += 1;
+
+    const sendHumanChallenge = () => socket.send(JSON.stringify({
+      type: 'human-required',
+      challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      expires_in: 300,
+      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
+      power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+      request: humanRequest(humanKind),
+    }));
+
     socket.onMessage((message) => {
       const frame = JSON.parse(message);
       if (frame.type === 'sync') {
+        if (disconnectHumanResponse && connection > 0 && humanPending) {
+          sendHumanChallenge();
+          return;
+        }
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat') {
         if (integrationChallenge) {
@@ -173,14 +198,8 @@ async function routeReadyChat(page, {
           return;
         }
         if (humanKind) {
-          socket.send(JSON.stringify({
-            type: 'human-required',
-            challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-            expires_in: 300,
-            assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
-            power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-            request: humanRequest(humanKind),
-          }));
+          humanPending = true;
+          sendHumanChallenge();
           return;
         }
         socket.send(JSON.stringify({
@@ -199,10 +218,20 @@ async function routeReadyChat(page, {
         }));
       } else if (frame.type === 'human-response') {
         humanResponses.push(frame);
+        if (disconnectHumanResponse) {
+          disconnectHumanSocket = () => socket.close({
+            code: 1011,
+            reason: 'Synthetic interrupted delivery',
+          });
+          return;
+        }
+        if (holdHumanResponse) return;
         if (humanFailure) {
+          humanPending = false;
           socket.send(JSON.stringify({ type: 'error', ...humanFailure }));
           return;
         }
+        humanPending = false;
         socket.send(JSON.stringify({
           type: 'done',
           team_id: 'marketing',
@@ -212,7 +241,11 @@ async function routeReadyChat(page, {
       }
     });
   });
-  return { humanResponses: () => humanResponses, inferenceWrites: () => inferenceWrites };
+  return {
+    disconnectHumanSocket: () => disconnectHumanSocket(),
+    humanResponses: () => humanResponses,
+    inferenceWrites: () => inferenceWrites,
+  };
 }
 
 test('setup surface is accessible and never overflows its viewport', async ({ page }) => {
@@ -504,6 +537,39 @@ test('explains failed Supervisor reauthentication without exposing the wire erro
   )).toBeVisible();
   await expect(page.getByText(/authentication was not confirmed/)).toHaveCount(0);
   await expect(page.getByText(/Detalhe técnico/)).toHaveCount(0);
+  expect(contract.humanResponses()).toHaveLength(1);
+});
+
+test('returns to visible Team progress immediately after submitting reauthentication', async ({ page }) => {
+  const contract = await routeReadyChat(page, { humanKind: 'auth:reauth', holdHumanResponse: true });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+  await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+  await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toBeVisible();
+  expect(contract.humanResponses()).toHaveLength(1);
+});
+
+test('reopens the Team-owned human request when reconnect sync proves it is still pending', async ({ page }) => {
+  const contract = await routeReadyChat(page, {
+    disconnectHumanResponse: true,
+    humanKind: 'auth:reauth',
+  });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+  await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+  await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toBeVisible();
+  contract.disconnectHumanSocket();
+  await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
 });
 
