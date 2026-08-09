@@ -160,7 +160,7 @@ test('file selection accepts only current files and enforces the chat limit', as
   assert.equal(get(teamContext).selectedFileIds.length, 7);
 });
 
-test('Team and Assistant catalogs load in parallel and the validated catalog is reused', async () => {
+test('Team and Assistant catalogs load in parallel and each context load refreshes the catalog', async () => {
   let releaseTeams;
   let releaseCatalog;
   let teamRequests = 0;
@@ -198,7 +198,8 @@ test('Team and Assistant catalogs load in parallel and the validated catalog is 
       return response(200, { assistants: [] });
     },
   }), 'support');
-  assert.equal(catalogRequests, 1);
+  assert.equal(catalogRequests, 2);
+  assert.deepEqual(get(teamContext).catalog, []);
   assert.equal(get(teamContext).selectedTeamId, 'support');
 });
 
@@ -272,21 +273,47 @@ test('accepts only the backend trace identifier as optional Team envelope metada
   }
 });
 
-test('refresh clears an invalid installed Assistant instead of presenting it as trusted', async () => {
+test('refresh accepts authoritative installed inventory while display metadata catches up', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
-  const invalidFetcher = fixtureFetcher({
+  const refreshed = fixtureFetcher({
+    '/api/assistants': async () => response(200, { assistants: [] }),
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [{ assistant: 'not-in-catalog', status: 'running' }],
     }),
   });
 
-  await assert.rejects(
-    refreshTeamInventory(invalidFetcher),
-    (error) => error instanceof LocalApiError && error.message === 'The installed Assistant inventory is invalid.',
-  );
-  assert.equal(get(teamContext).phase, 'error');
-  assert.deepEqual(get(teamContext).installedAssistants, []);
-  assert.deepEqual(get(teamContext).files, []);
+  await refreshTeamInventory(refreshed);
+
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.deepEqual(get(teamContext).catalog, []);
+  assert.deepEqual(get(teamContext).installedAssistants, [
+    { assistant: 'not-in-catalog', status: 'running' },
+  ]);
+  assert.deepEqual(get(teamContext).files, [{ id: FILE_A, name: 'brief.pdf', size: 42 }]);
+});
+
+test('refresh exposes a first install and its newly projected display metadata together', async () => {
+  await loadTeamContext(fixtureFetcher({
+    '/api/assistants': async () => response(200, { assistants: [] }),
+    '/api/teams/marketing/assistants': async () => response(200, { assistants: [] }),
+  }), 'marketing');
+
+  await refreshTeamInventory(fixtureFetcher({
+    '/api/assistants': async () => response(200, {
+      assistants: [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }],
+    }),
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [{ assistant: 'shimpz-cloudflare', status: 'running' }],
+    }),
+  }));
+
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.deepEqual(get(teamContext).catalog, [
+    { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
+  ]);
+  assert.deepEqual(get(teamContext).installedAssistants, [
+    { assistant: 'shimpz-cloudflare', status: 'running' },
+  ]);
 });
 
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {

@@ -640,6 +640,100 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   expect(intersectsActions).toBe(false);
 });
 
+test('keeps a first Store install ready while local display metadata catches up', async ({ page }) => {
+  let installed = false;
+  let catalogReads = 0;
+  await page.route('**/api/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'Unavailable outside this rendered contract.' }),
+  }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+    }),
+  }));
+  await page.route('**/api/assistants', async (route) => {
+    catalogReads += 1;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistants: installed
+          ? [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }]
+          : [],
+      }),
+    });
+  });
+  await page.route('**/api/teams/marketing/assistants', async (route) => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({
+        assistant_id: 'shimpz-cloudflare',
+        source_digest: `sha256:${'4'.repeat(64)}`,
+      });
+      installed = true;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ assistant: 'shimpz-cloudflare', installed: true }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistants: installed
+          ? [{ assistant: 'shimpz-cloudflare', status: 'running' }]
+          : [],
+      }),
+    });
+  });
+  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ files: [] }),
+  }));
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><html><body data-status="loading" data-installed="">
+      <button type="button">Install</button>
+      <script>
+        parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
+        window.addEventListener('message', (event) => {
+          if (event.data?.type !== 'shimpz:assistant-store-state') return;
+          document.body.dataset.status = event.data.status;
+          document.body.dataset.installed = event.data.installed.join(',');
+        });
+        document.querySelector('button').addEventListener('click', () => parent.postMessage({
+          type: 'shimpz:assistant-install',
+          version: 2,
+          assistant: 'shimpz-cloudflare',
+          source_digest: 'sha256:${'4'.repeat(64)}'
+        }, '*'));
+      </script>
+    </body></html>`,
+  }));
+
+  await page.goto('/assistants/');
+  await page.frameLocator('iframe').getByRole('button', { name: 'Install' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Install this Assistant?' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Confirm install' }).click();
+
+  await expect(page.locator('[data-slot="toast"]')).toContainText(
+    'Shimpz Cloudflare is ready in Marketing.',
+  );
+  await expect(page.getByText('The installed Assistant inventory is invalid.', { exact: true })).toHaveCount(0);
+  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-status', 'ready');
+  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute(
+    'data-installed',
+    'shimpz-cloudflare',
+  );
+  expect(catalogReads).toBeGreaterThanOrEqual(2);
+});
+
 test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
   await routeReadyChat(page);
   await page.goto('/chat/');

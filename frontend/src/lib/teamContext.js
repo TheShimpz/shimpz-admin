@@ -41,24 +41,6 @@ export const teamContext = writable(emptyContext());
 
 let generation = 0;
 const assistantIntents = new Map();
-let assistantCatalogCache = null;
-let assistantCatalogRequest = null;
-
-function cachedAssistantCatalog(fetcher) {
-  if (assistantCatalogCache) return Promise.resolve(assistantCatalogCache);
-  if (assistantCatalogRequest) return assistantCatalogRequest;
-  const request = listAssistantCatalog(fetcher)
-    .then((catalog) => {
-      if (assistantCatalogRequest === request) assistantCatalogCache = catalog;
-      return catalog;
-    })
-    .finally(() => {
-      if (assistantCatalogRequest === request) assistantCatalogRequest = null;
-    });
-  assistantCatalogRequest = request;
-  return request;
-}
-
 function intentStorage() {
   try {
     return typeof globalThis.sessionStorage === 'undefined' ? null : globalThis.sessionStorage;
@@ -225,16 +207,12 @@ function selectAvailableTeam(teams, preferredId, previousId) {
   return teams[0]?.id ?? '';
 }
 
-async function inventorySnapshot(fetcher, teamId, catalog) {
+async function inventorySnapshot(fetcher, teamId) {
   if (!teamId) return { installedAssistants: [], files: [] };
   const [installedAssistants, files] = await Promise.all([
     listInstalledAssistants(fetcher, teamId),
     listTeamFiles(fetcher, teamId),
   ]);
-  const catalogIds = new Set(catalog.map((assistant) => assistant.id));
-  if (installedAssistants.some((entry) => !catalogIds.has(entry.assistant))) {
-    throw new LocalApiError('The installed Assistant inventory is invalid.');
-  }
   if (new Set(files.map((file) => file.id)).size !== files.length) {
     throw new LocalApiError('Team file inventory is invalid.');
   }
@@ -260,7 +238,7 @@ function markFailure(attempt, error, fallback, clearAuthority) {
 async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   const [teams, catalog] = await Promise.all([
     listTeams(fetcher),
-    cachedAssistantCatalog(fetcher),
+    listAssistantCatalog(fetcher),
   ]);
   const selectedTeamId = selectAvailableTeam(teams, preferredId, previousId);
   if (!selectedTeamId) {
@@ -283,7 +261,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
     return snapshot;
   }
 
-  const inventory = await inventorySnapshot(fetcher, selectedTeamId, catalog);
+  const inventory = await inventorySnapshot(fetcher, selectedTeamId);
   const selectedAssistantIds = reconcileAssistantIntent(
     selectedTeamId,
     inventory.installedAssistants,
@@ -348,7 +326,10 @@ export async function selectTeam(fetcher, id) {
     error: '',
   });
   try {
-    const inventory = await inventorySnapshot(fetcher, canonicalId, current.catalog);
+    const [catalog, inventory] = await Promise.all([
+      listAssistantCatalog(fetcher),
+      inventorySnapshot(fetcher, canonicalId),
+    ]);
     const selectedAssistantIds = reconcileAssistantIntent(
       canonicalId,
       inventory.installedAssistants,
@@ -358,6 +339,7 @@ export async function selectTeam(fetcher, id) {
         ...current,
         phase: 'ready',
         selectedTeamId: canonicalId,
+        catalog,
         ...inventory,
         selectedAssistantIds,
         selectedFileIds: [],
@@ -412,7 +394,10 @@ export async function refreshTeamInventory(fetcher) {
     error: '',
   });
   try {
-    const inventory = await inventorySnapshot(fetcher, current.selectedTeamId, current.catalog);
+    const [catalog, inventory] = await Promise.all([
+      listAssistantCatalog(fetcher),
+      inventorySnapshot(fetcher, current.selectedTeamId),
+    ]);
     const selectedAssistantIds = reconcileAssistantIntent(
       current.selectedTeamId,
       inventory.installedAssistants,
@@ -421,6 +406,7 @@ export async function refreshTeamInventory(fetcher) {
       teamContext.set({
         ...current,
         phase: 'ready',
+        catalog,
         ...inventory,
         selectedAssistantIds,
         selectedFileIds: [],
@@ -511,8 +497,6 @@ export function selectOnlyTeamAssistant(id) {
 
 export function clearTeamContext() {
   generation += 1;
-  assistantCatalogCache = null;
-  assistantCatalogRequest = null;
   assistantIntents.clear();
   teamContext.set(emptyContext());
 }
