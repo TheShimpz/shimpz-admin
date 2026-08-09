@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from backend import platform_release
 
@@ -39,6 +40,7 @@ class PlatformReleaseStatusTests(unittest.TestCase):
             lambda value: value.update({"ordinal": True}),
             lambda value: value.update({"ordinal": 0}),
             lambda value: value.update({"checked_at": "tomorrow"}),
+            lambda value: value.update({"checked_at": "2026-13-08T22:52:21Z"}),
             lambda value: value.update({"outcome": "installing"}),
         )
         for mutate in mutations:
@@ -58,6 +60,43 @@ class PlatformReleaseStatusTests(unittest.TestCase):
         oversized.chmod(0o600)
         with self.assertRaises(platform_release.PlatformReleaseUnavailableError):
             platform_release.read_status(oversized)
+
+    def test_rejects_open_read_and_file_identity_failures(self) -> None:
+        missing = Path(self.directory.name) / "missing.json"
+        with self.assertRaises(platform_release.PlatformReleaseUnavailableError):
+            platform_release.read_status(missing)
+
+        directory = Path(self.directory.name) / "directory"
+        directory.mkdir()
+        with self.assertRaises(platform_release.PlatformReleaseUnavailableError):
+            platform_release.read_status(directory)
+
+        empty = Path(self.directory.name) / "empty.json"
+        empty.touch(mode=0o600)
+        with self.assertRaises(platform_release.PlatformReleaseUnavailableError):
+            platform_release.read_status(empty)
+
+        status = self._status()
+        with (
+            mock.patch.object(platform_release.os, "geteuid", return_value=os.geteuid() + 1),
+            self.assertRaises(platform_release.PlatformReleaseUnavailableError),
+        ):
+            platform_release.read_status(status)
+        with (
+            mock.patch.object(platform_release.os, "read", return_value=b"{}"),
+            self.assertRaises(platform_release.PlatformReleaseUnavailableError),
+        ):
+            platform_release.read_status(status)
+
+    def test_rejects_invalid_json_and_utf8(self) -> None:
+        for index, payload in enumerate((b"{", b'"\xff"')):
+            path = Path(self.directory.name) / f"invalid-{index}.json"
+            path.write_bytes(payload)
+            path.chmod(0o600)
+            with self.subTest(payload=payload), self.assertRaises(
+                platform_release.PlatformReleaseUnavailableError
+            ):
+                platform_release.read_status(path)
 
 
 if __name__ == "__main__":

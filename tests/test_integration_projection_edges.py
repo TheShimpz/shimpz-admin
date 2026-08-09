@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from integrations import assistants
+from integrations import assistants, cloudflare
 
 
 def _authorization_url(**overrides: str) -> str:
@@ -54,6 +54,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             lambda: assistants._integration_identity({}),
             lambda: assistants._integration_expiry("bad"),
             lambda: assistants._integration_expiry("2026-13-01T00:00:00Z"),
+            lambda: cloudflare.canonical_authorization_scopes(None),
         )
         for operation in operations:
             with self.assertRaises((assistants.TeamRequestError, ValueError)):
