@@ -116,7 +116,7 @@
   >
     <p class="paused">
       {copy.paused}
-      <span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span>
+      {#if !rejected}<span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span>{/if}
     </p>
     <Card class="request-origin" padding="compact">
       <div><span>{copy.assistant}</span><strong>{challenge.assistant.name}</strong><code>{challenge.assistant.id}</code></div>
@@ -126,7 +126,7 @@
     {#if rejected}
       <Notice variant="error">
         <p>{rejectionMessage}</p>
-        {#if locked}<p>{copy.mayExpire}</p>{/if}
+        <p>{copy.mayExpire}</p>
       </Notice>
     {:else}
       <PowerRequestFields
