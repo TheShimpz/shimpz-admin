@@ -172,6 +172,19 @@
     return copy.requestFailed;
   }
 
+  function projectedChatError(status, detail) {
+    if (status === 403 && detail === 'authentication was not confirmed') {
+      return { message: copy.authenticationDenied, detail: '' };
+    }
+    if (status === 503 && detail === 'authentication is unavailable') {
+      return { message: copy.authenticationUnavailable, detail: '' };
+    }
+    return {
+      message: friendlyChatError(status),
+      detail: `HTTP ${status} · ${detail}`,
+    };
+  }
+
   function resetChallengeState({ includeInventory = false } = {}) {
     integrationChallenge = undefined;
     humanChallenge = undefined;
@@ -347,10 +360,8 @@
       } else if (incoming.type === 'stopped') {
         setError(copy.stopped);
       } else {
-        setError(
-          friendlyChatError(incoming.status),
-          `HTTP ${incoming.status} · ${incoming.detail}`,
-        );
+        const projectedError = projectedChatError(incoming.status, incoming.detail);
+        setError(projectedError.message, projectedError.detail);
       }
       resetProgress();
     };

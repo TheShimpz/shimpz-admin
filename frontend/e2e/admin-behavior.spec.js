@@ -71,7 +71,7 @@ function humanRequest(kind) {
 }
 
 async function routeReadyChat(page, {
-  humanKind = '', integrationChallenge = false, missingInference = false, reply,
+  humanFailure, humanKind = '', integrationChallenge = false, missingInference = false, reply,
 } = {}) {
   let inferenceWrites = 0;
   const humanResponses = [];
@@ -199,6 +199,10 @@ async function routeReadyChat(page, {
         }));
       } else if (frame.type === 'human-response') {
         humanResponses.push(frame);
+        if (humanFailure) {
+          socket.send(JSON.stringify({ type: 'error', ...humanFailure }));
+          return;
+        }
         socket.send(JSON.stringify({
           type: 'done',
           team_id: 'marketing',
@@ -479,6 +483,28 @@ test('treats dismissing a human request as a terminal denial', async ({ page }) 
     challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     decision: 'deny',
   }]);
+});
+
+test('explains failed Supervisor reauthentication without exposing the wire error', async ({ page }) => {
+  const contract = await routeReadyChat(page, {
+    humanKind: 'auth:reauth',
+    humanFailure: { status: 403, detail: 'authentication was not confirmed' },
+  });
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Crie o registro DNS revisado');
+  await page.getByRole('button', { name: 'Enviar' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+  await dialog.getByLabel('Confirmar autorização').fill('senha-incorreta');
+  await dialog.getByRole('button', { name: 'Confirmar autorização' }).click();
+
+  await expect(page.getByText(
+    'A senha do Supervisor não foi confirmada. Esta ação não foi executada. Inicie a ação novamente para tentar outra vez.',
+  )).toBeVisible();
+  await expect(page.getByText(/authentication was not confirmed/)).toHaveCount(0);
+  await expect(page.getByText(/Detalhe técnico/)).toHaveCount(0);
+  expect(contract.humanResponses()).toHaveLength(1);
 });
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {
