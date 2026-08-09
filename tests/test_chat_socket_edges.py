@@ -13,10 +13,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import human, local, socket
 from team import bridge as team
-
 from tests.chat_socket_fixtures import human_challenge
+
+from chat import human, local, socket
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
