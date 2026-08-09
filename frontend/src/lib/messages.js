@@ -45,6 +45,9 @@ export const messages = {
       primaryNav: 'Primary navigation',
       languageCurrent: 'Language: {name}',
       languageMenu: 'Language',
+      platformCurrent: 'System updated',
+      platformRollback: 'Update rolled back',
+      platformOrdinal: 'Local platform release {ordinal}',
     },
     teams: {
       kicker: 'Teams // isolated runtimes',
@@ -381,6 +384,9 @@ export const messages = {
       primaryNav: 'Navegação principal',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
+      platformCurrent: 'Sistema atualizado',
+      platformRollback: 'Atualização revertida',
+      platformOrdinal: 'Versão local da plataforma {ordinal}',
     },
     teams: {
       kicker: 'Times // runtimes isolados',
@@ -717,6 +723,9 @@ export const messages = {
       primaryNav: 'Navegación principal',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
+      platformCurrent: 'Sistema actualizado',
+      platformRollback: 'Actualización revertida',
+      platformOrdinal: 'Versión local de la plataforma {ordinal}',
     },
     teams: {
       kicker: 'Equipos // entornos aislados',
@@ -1053,6 +1062,9 @@ export const messages = {
       primaryNav: '主导航',
       languageCurrent: '语言：{name}',
       languageMenu: '语言',
+      platformCurrent: '系统已更新',
+      platformRollback: '更新已回滚',
+      platformOrdinal: '本地平台版本 {ordinal}',
     },
     teams: {
       kicker: '团队 // 隔离运行环境',
@@ -1389,6 +1401,9 @@ export const messages = {
       primaryNav: 'Navigation principale',
       languageCurrent: 'Langue : {name}',
       languageMenu: 'Langue',
+      platformCurrent: 'Système à jour',
+      platformRollback: 'Mise à jour annulée',
+      platformOrdinal: 'Version locale de la plateforme {ordinal}',
     },
     teams: {
       kicker: 'Équipes // environnements isolés',
@@ -1725,6 +1740,9 @@ export const messages = {
       primaryNav: 'Hauptnavigation',
       languageCurrent: 'Sprache: {name}',
       languageMenu: 'Sprache',
+      platformCurrent: 'System aktualisiert',
+      platformRollback: 'Aktualisierung zurückgesetzt',
+      platformOrdinal: 'Lokale Plattformversion {ordinal}',
     },
     teams: {
       kicker: 'Teams // isolierte Laufzeitumgebungen',
@@ -2061,6 +2079,9 @@ export const messages = {
       primaryNav: 'メインナビゲーション',
       languageCurrent: '言語：{name}',
       languageMenu: '言語',
+      platformCurrent: 'システムは最新です',
+      platformRollback: '更新をロールバックしました',
+      platformOrdinal: 'ローカルプラットフォーム版 {ordinal}',
     },
     teams: {
       kicker: 'チーム // 分離ランタイム',
@@ -2397,6 +2418,9 @@ export const messages = {
       primaryNav: 'التنقل الرئيسي',
       languageCurrent: 'اللغة: {name}',
       languageMenu: 'اللغة',
+      platformCurrent: 'النظام محدّث',
+      platformRollback: 'تم التراجع عن التحديث',
+      platformOrdinal: 'إصدار المنصة المحلية {ordinal}',
     },
     teams: {
       kicker: 'الفرق // بيئات تشغيل معزولة',

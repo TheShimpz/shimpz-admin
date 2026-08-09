@@ -129,7 +129,7 @@
 </script>
 
 {#if phase === 'ready'}
-  <AdminShell {active} authenticated>
+  <AdminShell {active} authenticated {profile}>
     {@render children()}
   </AdminShell>
 {:else}

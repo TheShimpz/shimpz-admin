@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import auth
 import models
 import notifications
+import platform_release
 import state
 import supervisor
 from team import assets as team_assets
@@ -322,6 +323,16 @@ async def session(request: Request):
     else:
         response["account_id"] = evidence.get("account_id") if evidence is not None else None
     return response
+
+
+if ADMIN_PROFILE == "local":
+
+    @app.get("/api/platform-release")
+    def platform_release_status():
+        try:
+            return platform_release.read_status()
+        except platform_release.PlatformReleaseUnavailableError as exc:
+            raise HTTPException(status_code=503, detail="Local platform release status is unavailable") from exc
 
 
 async def _local_login(request: Request, payload: dict) -> JSONResponse:

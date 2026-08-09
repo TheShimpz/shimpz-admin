@@ -109,6 +109,22 @@ class AppRouteEdgeTests(unittest.TestCase):
         ):
             self.assert_sync_status(400, lambda: self.admin_app.model_provider_delete("invalid"))
 
+    def test_platform_release_route_is_a_read_only_local_projection(self) -> None:
+        status = {
+            "release": f"ghcr.io/theshimpz/shimpz-local-release@sha256:{'a' * 64}",
+            "ordinal": 42,
+            "checked_at": "2026-08-08T22:52:21Z",
+            "outcome": "current",
+        }
+        with mock.patch.object(self.admin_app.platform_release, "read_status", return_value=status):
+            self.assertEqual(self.admin_app.platform_release_status(), status)
+        with mock.patch.object(
+            self.admin_app.platform_release,
+            "read_status",
+            side_effect=self.admin_app.platform_release.PlatformReleaseUnavailableError,
+        ):
+            self.assert_sync_status(503, self.admin_app.platform_release_status)
+
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
         self.assert_async_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
         self.assert_async_status(

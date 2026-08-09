@@ -70,6 +70,32 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
 });
 
+test('projects the read-only Local platform update status in the authenticated shell', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+  }));
+  await page.route('**/api/platform-release', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
+      ordinal: 42,
+      checked_at: '2026-08-08T22:52:21Z',
+      outcome: 'updated',
+    }),
+  }));
+
+  await page.goto('/assistants/');
+
+  const status = page.getByText('System updated', { exact: true });
+  await expect(status).toBeVisible();
+  await expect(status.locator('..')).toHaveAttribute('title', 'Local platform release 42');
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await expect(page.getByText('Sistema atualizado', { exact: true })).toBeVisible();
+});
+
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({

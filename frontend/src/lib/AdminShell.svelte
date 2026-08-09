@@ -4,9 +4,10 @@
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import NotificationCenter from '$lib/NotificationCenter.svelte';
+  import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
-  let { active = '', authenticated = false, children } = $props();
+  let { active = '', authenticated = false, profile = '', children } = $props();
   let chat = $derived(active === 'chat');
 </script>
 
@@ -24,6 +25,7 @@
       </nav>
     </div>
     <div class="team-sidebar-region"><TeamSidebar {active} /></div>
+    {#if profile === 'local'}<PlatformReleaseStatus />{/if}
   </div>
 {/snippet}
 
@@ -63,7 +65,7 @@
   .admin-notice-region { width: 100%; }
   .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
   .chat-layout .authenticated-page { min-height: 0; overflow: hidden; }
-  .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }
+  .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr) auto; }
   .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
   .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
   nav { display: grid; gap: var(--shimpz-space-2); }

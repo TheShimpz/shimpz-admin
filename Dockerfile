@@ -45,7 +45,7 @@ RUN groupadd -g 1000 admin && \
 
 WORKDIR /app/backend
 COPY backend/app.py backend/auth.py backend/browser.py backend/models.py backend/model_catalog.json backend/notifications.py \
-    backend/state.py backend/supervisor.py ./
+    backend/platform_release.py backend/state.py backend/supervisor.py ./
 COPY backend/chat/human.py backend/chat/local.py backend/chat/payloads.py backend/chat/progress.py \
     backend/chat/socket.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
@@ -57,8 +57,9 @@ COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py ba
 COPY --from=ui /w/build /app/frontend/build
 
 # /data → named volume (admin.json 0600); the public verifier volume contains no private key.
-RUN mkdir -p /data /run/shimpz-local-supervisor && \
+RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-supervisor && \
     chown 1000:1000 /data && \
+    chown 1000:1000 /run/shimpz-local-release && \
     chown root:shimpzsupervisor-key /run/shimpz-local-supervisor && \
     chmod 2770 /run/shimpz-local-supervisor
 ENV PATH="/opt/venv/bin:$PATH" \
