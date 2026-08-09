@@ -13,10 +13,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge as team
-from tests.chat_socket_fixtures import human_challenge
-
 from chat import human, local, socket
+from team import bridge as team
+
+from tests.chat_socket_fixtures import human_challenge
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
@@ -402,6 +402,98 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
             blocked = socket._Connection(sync_task=mock.Mock(), sync_terminal_sent=True)
             await socket._dispatch_stop(websocket, blocked, "team_1")
+
+        asyncio.run(scenario())
+
+    def test_human_authentication_failure_edges_remain_fail_closed(self) -> None:
+        async def unavailable(_kind: str, _secret: str) -> human.AuthenticationResult:
+            return human.AuthenticationResult("unavailable")
+
+        async def denied(_kind: str, _secret: str) -> human.AuthenticationResult:
+            return human.AuthenticationResult("denied", attempts_remaining=2)
+
+        async def scenario() -> None:
+            auth_request = human_challenge("auth:reauth").websocket_event("team_1")["request"]
+            frame = {
+                "type": "human-response",
+                "challenge_id": "b" * 32,
+                "decision": "submit",
+                "value": "password",
+            }
+            payload, assurance, rejection, failure = await socket._human_payload(
+                dict(frame),
+                auth_request,
+                unavailable,
+            )
+            self.assertEqual(payload, {"challenge_id": "b" * 32, "decision": "deny"})
+            self.assertIsNone(assurance)
+            self.assertIsNone(rejection)
+            self.assertEqual(failure, (503, "authentication is unavailable"))
+
+            denied_response = local.PublicResponse(409, {"code": "human-request-denied"})
+            self.assertTrue(socket._authenticated_denial(denied_response))
+            self.assertFalse(socket._authenticated_denial(object()))
+            self.assertFalse(socket._authenticated_denial(local.PublicResponse(200, denied_response.body)))
+            self.assertFalse(socket._authenticated_denial(local.PublicResponse(409, {})))
+
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+            send_terminal = mock.AsyncMock(return_value=True)
+            with (
+                mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=denied_response)),
+                mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
+            ):
+                await socket._deliver_human_response(
+                    mock.AsyncMock(),
+                    socket._Connection(),
+                    "team_1",
+                    future,
+                    progress,
+                    failure,
+                )
+            self.assertEqual(send_terminal.await_args.args[2]["status"], 503)
+
+            completed = local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed."},
+            )
+            send_terminal.reset_mock()
+            with (
+                mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=completed)),
+                mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
+            ):
+                await socket._deliver_human_response(
+                    mock.AsyncMock(),
+                    socket._Connection(),
+                    "team_1",
+                    future,
+                    progress,
+                    failure,
+                )
+            self.assertEqual(send_terminal.await_args.args[2]["type"], "done")
+
+            pending = socket._Connection(
+                pending_challenge_id="b" * 32,
+                pending_challenge_type="human",
+                pending_human_request=auth_request,
+            )
+            with mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=False)):
+                await socket._dispatch_human_response(mock.AsyncMock(), pending, "team_1", dict(frame), denied)
+            self.assertTrue(pending.closed)
+
+            malformed = socket._Connection(
+                pending_challenge_id="b" * 32,
+                pending_challenge_type="human",
+                pending_human_request=auth_request,
+            )
+            websocket = mock.AsyncMock()
+            with mock.patch.object(
+                socket,
+                "_human_payload",
+                new=mock.AsyncMock(return_value=(None, None, None, None)),
+            ):
+                await socket._dispatch_human_response(websocket, malformed, "team_1", dict(frame), unavailable)
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
 
         asyncio.run(scenario())
 
