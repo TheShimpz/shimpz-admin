@@ -102,7 +102,7 @@ class LocalReauthenticationAuthority:
             self._failures += 1
             remaining = MAX_REAUTHENTICATION_ATTEMPTS - self._failures
             if remaining > 0:
-                log.info("Power reauthentication was rejected; %d attempts remain", remaining)
+                log.info("Power reauthentication was rejected; remaining attempts: %d", remaining)
                 return AuthenticationResult("denied", attempts_remaining=remaining)
 
             self._locked_until = self._clock() + REAUTHENTICATION_LOCK_SECONDS
