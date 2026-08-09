@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import {
     Button,
     Card,
@@ -22,6 +23,8 @@
   let fieldValid = $state(false);
   let validationError = $state('');
   let retrySeconds = $state(0);
+  let fieldsContainer = $state();
+  let stateStatus = $state();
 
   let request = $derived(challenge?.request);
   let kind = $derived(request?.kind ?? '');
@@ -30,6 +33,7 @@
   let copy = $derived($t('humanRequest'));
   let rejected = $derived(Boolean(rejection));
   let locked = $derived(rejection?.reason === 'authentication-locked');
+  let validating = $derived(working && kind === 'auth:reauth' && !rejected);
   let kicker = $derived(rejected ? copy.validationKicker : isAuth ? copy.authKicker : isInput ? copy.inputKicker : copy.approvalKicker);
   let title = $derived(rejected ? (locked ? copy.lockedTitle : copy.deniedTitle) : request?.title);
   let rejectionMessage = $derived(
@@ -67,6 +71,23 @@
   });
 
   $effect(() => {
+    const focusKey = challengeId && !working && !rejected ? challengeId : '';
+    if (focusKey) void focusFields(focusKey);
+  });
+
+  $effect(() => {
+    const stateKey = validating
+      ? `${challengeId}:validating`
+      : rejected ? `${challengeId}:${rejection?.reason}` : '';
+    if (!stateKey) return;
+    if (validating) {
+      fieldValue = undefined;
+      fieldValid = false;
+    }
+    void focusState(stateKey);
+  });
+
+  $effect(() => {
     const delay = rejection?.reason === 'authentication-locked' ? rejection.retry_after : 0;
     if (!delay) {
       retrySeconds = 0;
@@ -94,12 +115,31 @@
       return;
     }
     validationError = '';
-    onrespond({ decision: 'submit', value: fieldValue });
+    const responseValue = fieldValue;
+    if (kind === 'auth:reauth') {
+      fieldValue = undefined;
+      fieldValid = false;
+    }
+    onrespond({ decision: 'submit', value: responseValue });
   }
 
   function retry(event) {
     event.preventDefault();
     if (!working && (!locked || retrySeconds === 0)) onretry();
+  }
+
+  async function focusFields(expectedKey) {
+    await tick();
+    if (working || rejected || challengeId !== expectedKey) return;
+    fieldsContainer?.querySelector('input, select, textarea, button')?.focus({ preventScroll: true });
+  }
+
+  async function focusState(expectedKey) {
+    await tick();
+    const currentKey = validating
+      ? `${challengeId}:validating`
+      : rejected ? `${challengeId}:${rejection?.reason}` : '';
+    if (currentKey === expectedKey) stateStatus?.focus({ preventScroll: true });
   }
 </script>
 
@@ -124,19 +164,27 @@
     </Card>
 
     {#if rejected}
-      <Notice variant="error">
-        <p>{rejectionMessage}</p>
-        <p>{copy.mayExpire}</p>
-      </Notice>
+      <div class="request-state" bind:this={stateStatus} tabindex="-1">
+        <Notice variant="error">
+          <p>{rejectionMessage}</p>
+          <p>{copy.mayExpire}</p>
+        </Notice>
+      </div>
+    {:else if validating}
+      <div class="request-state" bind:this={stateStatus} tabindex="-1">
+        <Notice>{copy.validating}</Notice>
+      </div>
     {:else}
-      <PowerRequestFields
-        {request}
-        resetKey={challenge.challenge_id}
-        labels={fieldLabels}
-        bind:value={fieldValue}
-        bind:valid={fieldValid}
-      />
-      {#if validationError}<Notice variant="error">{validationError}</Notice>{/if}
+      <div bind:this={fieldsContainer}>
+        <PowerRequestFields
+          {request}
+          resetKey={challenge.challenge_id}
+          labels={fieldLabels}
+          bind:value={fieldValue}
+          bind:valid={fieldValid}
+        />
+        {#if validationError}<Notice variant="error">{validationError}</Notice>{/if}
+      </div>
     {/if}
     {#snippet footer()}
       <Button type="button" variant="secondary" disabled={working} onclick={deny}>{copy.cancel}</Button>
@@ -156,6 +204,7 @@
 <style>
   .paused { margin: 0; color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
   .paused span { color: var(--accent); font-family: var(--font-mono); }
+  .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
   :global(.request-origin > [data-slot="card-content"]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--shimpz-space-4); }
   :global(.request-origin [data-slot="card-content"] > div) { display: grid; min-width: 0; gap: 0.18rem; }
   :global(.request-origin span) { color: var(--text-faint); font: 600 0.58rem/1.2 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }

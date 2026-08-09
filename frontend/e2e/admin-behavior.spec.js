@@ -83,6 +83,7 @@ async function routeReadyChat(page, {
   const humanResponses = [];
   let chatConnections = 0;
   let disconnectHumanSocket = () => {};
+  let releaseHumanResponse = () => {};
   let humanPending = false;
   let humanRejectionIndex = 0;
   await page.route('**/api/**', (route) => route.fulfill({
@@ -171,6 +172,31 @@ async function routeReadyChat(page, {
       request: humanRequest(humanKind),
     }));
 
+    const deliverHumanResponse = (progressOnly = false) => {
+      if (humanRejectionIndex < humanRejections.length) {
+        socket.send(JSON.stringify(humanRejections[humanRejectionIndex]));
+        humanRejectionIndex += 1;
+        return;
+      }
+      humanPending = false;
+      if (progressOnly) {
+        socket.send(JSON.stringify({
+          type: 'progress',
+          seq: 1,
+          origin: 'admin',
+          phase: 'admin-preparation',
+          state: 'started',
+        }));
+        return;
+      }
+      socket.send(JSON.stringify({
+        type: 'done',
+        team_id: 'marketing',
+        team_name: 'Marketing',
+        reply: 'The reviewed human response was accepted.',
+      }));
+    };
+
     socket.onMessage((message) => {
       const frame = JSON.parse(message);
       if (frame.type === 'sync') {
@@ -226,19 +252,11 @@ async function routeReadyChat(page, {
           });
           return;
         }
-        if (holdHumanResponse) return;
-        if (humanRejectionIndex < humanRejections.length) {
-          socket.send(JSON.stringify(humanRejections[humanRejectionIndex]));
-          humanRejectionIndex += 1;
+        if (holdHumanResponse) {
+          releaseHumanResponse = () => deliverHumanResponse(true);
           return;
         }
-        humanPending = false;
-        socket.send(JSON.stringify({
-          type: 'done',
-          team_id: 'marketing',
-          team_name: 'Marketing',
-          reply: 'The reviewed human response was accepted.',
-        }));
+        deliverHumanResponse();
       }
     });
   });
@@ -246,6 +264,7 @@ async function routeReadyChat(page, {
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     inferenceWrites: () => inferenceWrites,
+    releaseHumanResponse: () => releaseHumanResponse(),
   };
 }
 
@@ -521,6 +540,7 @@ test('treats dismissing a human request as a terminal denial', async ({ page }) 
 
 test('restores Supervisor reauthentication as a focused validation modal', async ({ page }) => {
   const contract = await routeReadyChat(page, {
+    holdHumanResponse: true,
     humanKind: 'auth:reauth',
     humanRejections: [{
       type: 'human-response-rejected',
@@ -536,11 +556,28 @@ test('restores Supervisor reauthentication as a focused validation modal', async
   await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Crie o registro DNS revisado');
   await page.getByRole('button', { name: 'Enviar' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+  const originalDialog = await dialog.elementHandle();
+  expect(originalDialog).not.toBeNull();
   await dialog.getByLabel('Confirmar autorização').fill('senha-incorreta');
   await dialog.getByRole('button', { name: 'Confirmar autorização' }).click();
 
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Confirmando a senha do Supervisor…');
+  await expect(dialog.getByLabel('Confirmar autorização')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Negar e interromper' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Confirmar autorização' })).toBeDisabled();
+  await expect(page.getByRole('group', { name: 'Seu Time está pensando…' })).toHaveCount(0);
+  await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await expect(dialog).toHaveScreenshot('human-auth-reauth-validating.png', {
+    animations: 'disabled',
+    maxDiffPixels: 150,
+  });
+
+  contract.releaseHumanResponse();
+
   const validation = page.getByRole('dialog', { name: 'Senha do Supervisor não confirmada' });
   await expect(validation).toBeVisible();
+  await expect.poll(() => originalDialog?.evaluate((element) => element.isConnected)).toBe(true);
   await expect(validation).toContainText('Restam 2 tentativas antes de um bloqueio temporário.');
   await expect(validation.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
   await expect.poll(() => validation.evaluate((element) => element.contains(document.activeElement))).toBe(true);
@@ -584,7 +621,7 @@ test('blocks Supervisor reauthentication retry behind the server countdown', asy
   });
 });
 
-test('returns to visible Team progress immediately after submitting reauthentication', async ({ page }) => {
+test('keeps authorization modal until Team progress proves reauthentication continued', async ({ page }) => {
   const contract = await routeReadyChat(page, { humanKind: 'auth:reauth', holdHumanResponse: true });
   await page.goto('/chat/');
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
@@ -593,6 +630,11 @@ test('returns to visible Team progress immediately after submitting reauthentica
   await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
 
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Confirming your Supervisor password…');
+  await expect(dialog.getByLabel('Confirm authorization')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toHaveCount(0);
+  contract.releaseHumanResponse();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
@@ -610,8 +652,9 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
   await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
 
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Confirming your Supervisor password…');
+  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toHaveCount(0);
   contract.disconnectHumanSocket();
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
