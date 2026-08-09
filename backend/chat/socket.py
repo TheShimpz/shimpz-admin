@@ -673,12 +673,17 @@ async def _deliver_human_response(
 async def _human_payload(
     frame: dict[str, object],
     request: dict[str, object],
-    authenticate: Callable[[str, str], Awaitable[str]],
-) -> tuple[dict[str, object], dict[str, str] | None, tuple[int, str] | None]:
+    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
+) -> tuple[
+    dict[str, object] | None,
+    dict[str, str] | None,
+    dict[str, object] | None,
+    tuple[int, str] | None,
+]:
     canonical = chat_ws_common.canonical_human_response(frame)
     challenge_id = canonical["challenge_id"]
     if canonical["decision"] == "deny":
-        return {"challenge_id": challenge_id, "decision": "deny"}, None, None
+        return {"challenge_id": challenge_id, "decision": "deny"}, None, None, None
     value = canonical.pop("value")
     if not human.browser_value(request, value):
         raise FrameError(400, "human response does not match its request")
@@ -692,16 +697,17 @@ async def _human_payload(
             },
             None,
             None,
+            None,
         )
     frame.pop("value", None)
     password = value
     # human.browser_value already proves that authentication responses are bounded strings.
-    result = "unavailable"
+    result = human.AuthenticationResult("unavailable")
     with contextlib.suppress(Exception):
         result = await authenticate(kind, password)
     del password
     del value
-    if result == "verified":
+    if result.status == "verified":
         return (
             {
                 "challenge_id": challenge_id,
@@ -710,11 +716,28 @@ async def _human_payload(
             },
             {"kind": kind, "challenge_id": challenge_id},
             None,
+            None,
         )
-    failure = (
-        (403, "authentication was not confirmed") if result == "denied" else (503, "authentication is unavailable")
+    if result.status in {"denied", "locked"}:
+        reason = "authentication-denied" if result.status == "denied" else "authentication-locked"
+        return (
+            None,
+            None,
+            {
+                "type": "human-response-rejected",
+                "challenge_id": challenge_id,
+                "reason": reason,
+                "attempts_remaining": result.attempts_remaining,
+                "retry_after": result.retry_after,
+            },
+            None,
+        )
+    return (
+        {"challenge_id": challenge_id, "decision": "deny"},
+        None,
+        None,
+        (503, "authentication is unavailable"),
     )
-    return {"challenge_id": challenge_id, "decision": "deny"}, None, failure
 
 
 async def _dispatch_human_response(
@@ -722,7 +745,7 @@ async def _dispatch_human_response(
     connection: _Connection,
     team_id: str,
     frame: dict[str, object],
-    authenticate: Callable[[str, str], Awaitable[str]],
+    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     if connection.active is not None or connection.sync_task is not None:
         await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
@@ -736,7 +759,13 @@ async def _dispatch_human_response(
         await _send_event(websocket, _error_terminal(409, "the human challenge is not pending"))
         return
     try:
-        payload, assurance, authentication_failure = await _human_payload(frame, request, authenticate)
+        payload, assurance, rejection, authentication_failure = await _human_payload(frame, request, authenticate)
+        if rejection is not None:
+            if not await _send_event(websocket, rejection):
+                connection.closed = True
+            return
+        if payload is None:
+            raise FrameError(503, "authentication is unavailable")
         progress, report = _progress_channel()
         future = _submit_in_context(
             _SYNC_EXECUTOR,
@@ -827,7 +856,7 @@ async def _dispatch(
     connection: _Connection,
     team_id: str,
     frame: dict[str, object],
-    authenticate: Callable[[str, str], Awaitable[str]],
+    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
     if frame_type == "sync" and set(frame) == {"type"}:
@@ -896,7 +925,7 @@ async def serve(
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
     allowed_origins: Callable[[], frozenset[str]],
-    authenticate: Callable[[str, str], Awaitable[str]],
+    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session."""
     canonical_id = await _admit(websocket, team_id, session_ok, allowed_origins)

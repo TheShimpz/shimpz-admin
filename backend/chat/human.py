@@ -7,7 +7,10 @@ import hashlib
 import hmac
 import json
 import logging
-from collections.abc import Callable
+import math
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 import auth
 from team import bridge as team
@@ -17,6 +20,8 @@ from protocol.http.v1 import websocket as chat_ws_common
 MAX_TTL_SECONDS = 300
 MAX_AUTH_SECRET_CHARS = 4096
 MAX_REQUESTS_PER_POWER = 8
+MAX_REAUTHENTICATION_ATTEMPTS = 3
+REAUTHENTICATION_LOCK_SECONDS = 60
 LENGTH_KINDS = {
     "input:text": 4096,
     "input:textarea": 16_000,
@@ -50,6 +55,59 @@ log = logging.getLogger("shimpz-admin")
 
 class HumanChallengeError(ValueError):
     """The Team response is not one exact public human challenge."""
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticationResult:
+    status: str
+    attempts_remaining: int = 0
+    retry_after: int = 0
+
+
+class LocalReauthenticationAuthority:
+    """Serialize the one Local Supervisor's bounded Power reauthentication ceremony."""
+
+    def __init__(
+        self,
+        verify: Callable[[str, str], Awaitable[str]],
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._verify = verify
+        self._clock = clock
+        self._lock = asyncio.Lock()
+        self._failures = 0
+        self._locked_until = 0.0
+
+    async def __call__(self, kind: str, secret: str) -> AuthenticationResult:
+        async with self._lock:
+            now = self._clock()
+            if self._locked_until > now:
+                return AuthenticationResult(
+                    "locked",
+                    retry_after=max(1, math.ceil(self._locked_until - now)),
+                )
+            if self._locked_until:
+                self._failures = 0
+                self._locked_until = 0.0
+
+            result = await self._verify(kind, secret)
+            if result == "verified":
+                self._failures = 0
+                self._locked_until = 0.0
+                return AuthenticationResult("verified")
+            if result != "denied":
+                return AuthenticationResult("unavailable")
+
+            self._failures += 1
+            remaining = MAX_REAUTHENTICATION_ATTEMPTS - self._failures
+            if remaining > 0:
+                log.info("Power reauthentication was rejected; %d attempts remain", remaining)
+                return AuthenticationResult("denied", attempts_remaining=remaining)
+
+            self._locked_until = self._clock() + REAUTHENTICATION_LOCK_SECONDS
+            log.info("Power reauthentication was locked after repeated rejection")
+            return AuthenticationResult("locked", retry_after=REAUTHENTICATION_LOCK_SECONDS)
 
 
 async def authenticate_local(

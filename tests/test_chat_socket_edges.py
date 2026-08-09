@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
-from chat import local, socket
+from chat import human, local, socket
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
@@ -185,8 +185,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_cancel_human_payload_stop_and_unsupported_dispatch_edges(self) -> None:
-        async def authenticate(_kind: str, _secret: str) -> str:
-            return "denied"
+        async def authenticate(_kind: str, _secret: str) -> human.AuthenticationResult:
+            return human.AuthenticationResult("denied", attempts_remaining=2)
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -197,17 +197,18 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNotNone(task)
             await task
 
-            deny, assurance, failure = await socket._human_payload(
+            deny, assurance, rejection, failure = await socket._human_payload(
                 {"type": "human-response", "challenge_id": "a" * 32, "decision": "deny"},
                 {"kind": "approval"},
                 authenticate,
             )
             self.assertEqual(deny["decision"], "deny")
             self.assertIsNone(assurance)
+            self.assertIsNone(rejection)
             self.assertIsNone(failure)
 
             request = {"kind": "auth:reauth"}
-            payload, assurance, failure = await socket._human_payload(
+            payload, assurance, rejection, failure = await socket._human_payload(
                 {
                     "type": "human-response",
                     "challenge_id": "a" * 32,
@@ -217,8 +218,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 request,
                 authenticate,
             )
-            self.assertEqual(payload["decision"], "deny")
-            self.assertEqual(failure, (403, "authentication was not confirmed"))
+            self.assertIsNone(payload)
+            self.assertIsNone(assurance)
+            self.assertEqual(rejection["type"], "human-response-rejected")
+            self.assertEqual(rejection["attempts_remaining"], 2)
+            self.assertIsNone(failure)
 
             await socket._dispatch_stop(websocket, socket._Connection(), "team_1")
             pending = socket._Connection(pending_challenge_id="a" * 32)
@@ -423,7 +427,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     session_ok=mock.AsyncMock(return_value=True),
                     request_scope=lambda _cookies: contextlib.nullcontext(),
                     allowed_origins=lambda: frozenset(),
-                    authenticate=mock.AsyncMock(return_value="verified"),
+                    authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
                 )
 
         asyncio.run(scenario())

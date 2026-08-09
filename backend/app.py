@@ -50,10 +50,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 
 ADMIN_PROFILE = profile.require()
-_AUTHENTICATE_POWER_REQUEST = partial(
-    chat_human.authenticate_local,
-    profile=ADMIN_PROFILE,
-    record_get=state.get,
+_AUTHENTICATE_POWER_REQUEST = chat_human.LocalReauthenticationAuthority(
+    partial(
+        chat_human.authenticate_local,
+        profile=ADMIN_PROFILE,
+        record_get=state.get,
+    )
 )
 TEAM_CREDENTIALS_ENABLED = (
     ADMIN_PROFILE == "local" and os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"

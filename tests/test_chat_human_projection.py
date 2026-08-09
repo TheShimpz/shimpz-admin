@@ -90,6 +90,44 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             ),
             "unavailable",
         )
+
+    def test_local_reauthentication_authority_locks_and_resets_without_rechecking(self) -> None:
+        async def scenario() -> None:
+            now = [100.0]
+            verify = mock.AsyncMock(side_effect=["denied", "denied", "denied", "denied", "verified"])
+            authority = human.LocalReauthenticationAuthority(verify, clock=lambda: now[0])
+
+            first = await authority("auth:reauth", "wrong-1")
+            second = await authority("auth:reauth", "wrong-2")
+            third = await authority("auth:reauth", "wrong-3")
+            blocked = await authority("auth:reauth", "correct-but-locked")
+
+            self.assertEqual((first.status, first.attempts_remaining), ("denied", 2))
+            self.assertEqual((second.status, second.attempts_remaining), ("denied", 1))
+            self.assertEqual((third.status, third.retry_after), ("locked", 60))
+            self.assertEqual((blocked.status, blocked.retry_after), ("locked", 60))
+            self.assertEqual(verify.await_count, 3)
+
+            now[0] += 60
+            after_lock = await authority("auth:reauth", "wrong-after-lock")
+            success = await authority("auth:reauth", "correct")
+            self.assertEqual((after_lock.status, after_lock.attempts_remaining), ("denied", 2))
+            self.assertEqual(success.status, "verified")
+
+        asyncio.run(scenario())
+
+    def test_unavailable_local_reauthentication_does_not_consume_an_attempt(self) -> None:
+        async def scenario() -> None:
+            verify = mock.AsyncMock(side_effect=["unavailable", "denied"])
+            authority = human.LocalReauthenticationAuthority(verify)
+
+            unavailable = await authority("auth:reauth", "secret")
+            rejected = await authority("auth:reauth", "wrong")
+
+            self.assertEqual(unavailable.status, "unavailable")
+            self.assertEqual((rejected.status, rejected.attempts_remaining), ("denied", 2))
+
+        asyncio.run(scenario())
         self.assertEqual(
             asyncio.run(
                 human.authenticate_local(

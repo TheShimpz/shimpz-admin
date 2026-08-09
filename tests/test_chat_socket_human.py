@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from functools import partial
 from pathlib import Path
 from unittest import mock
 
@@ -48,6 +49,15 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         self.admin_app.state.set_password("correct horse battery staple")
         record = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(record["session_secret"])
+        self.auth_clock = [100.0]
+        self.admin_app._AUTHENTICATE_POWER_REQUEST = self.admin_app.chat_human.LocalReauthenticationAuthority(
+            partial(
+                self.admin_app.chat_human.authenticate_local,
+                profile="local",
+                record_get=self.admin_app.state.get,
+            ),
+            clock=lambda: self.auth_clock[0],
+        )
         self.completed = self.chat_socket.local.PublicResponse(
             200,
             {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed."},
@@ -141,12 +151,8 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_failed_reauthentication_denies_and_terminates_the_power(self) -> None:
+    def test_failed_reauthentication_stays_pending_and_can_then_succeed(self) -> None:
         async def scenario() -> None:
-            denied = self.chat_socket.local.PublicResponse(
-                409,
-                {"code": "human-request-denied"},
-            )
             with (
                 mock.patch.object(
                     self.chat_socket.local,
@@ -156,7 +162,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 mock.patch.object(
                     self.chat_socket.local,
                     "resume_human",
-                    return_value=denied,
+                    return_value=self.completed,
                 ) as resume,
             ):
                 websocket = await self._open_challenge("auth:reauth")
@@ -171,17 +177,92 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 self.assertEqual(
                     await websocket.next_json(),
                     {
-                        "type": "error",
-                        "status": 403,
-                        "detail": "authentication was not confirmed",
+                        "type": "human-response-rejected",
+                        "challenge_id": CHALLENGE_ID,
+                        "reason": "authentication-denied",
+                        "attempts_remaining": 2,
+                        "retry_after": 0,
                     },
                 )
-                self.assertEqual(
-                    resume.call_args.args[1],
-                    {"challenge_id": CHALLENGE_ID, "decision": "deny"},
+                resume.assert_not_called()
+
+                await websocket.send_json(
+                    {
+                        "type": "human-response",
+                        "challenge_id": CHALLENGE_ID,
+                        "decision": "submit",
+                        "value": "correct horse battery staple",
+                    }
                 )
-                self.assertIsNone(resume.call_args.kwargs["assurance"])
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                self.assertEqual(resume.call_args.args[1]["value"], True)
                 self.assertNotIn("incorrect password", repr(resume.call_args))
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_third_reauthentication_failure_locks_every_socket_until_one_minute(self) -> None:
+        async def scenario() -> None:
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "turn",
+                    return_value=human_challenge("auth:reauth"),
+                ),
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "resume_human",
+                    return_value=self.completed,
+                ) as resume,
+            ):
+                websocket = await self._open_challenge("auth:reauth")
+                for expected_remaining in (2, 1):
+                    await websocket.send_json(
+                        {
+                            "type": "human-response",
+                            "challenge_id": CHALLENGE_ID,
+                            "decision": "submit",
+                            "value": "incorrect password",
+                        }
+                    )
+                    event = await websocket.next_json()
+                    self.assertEqual(event["reason"], "authentication-denied")
+                    self.assertEqual(event["attempts_remaining"], expected_remaining)
+
+                await websocket.send_json(
+                    {
+                        "type": "human-response",
+                        "challenge_id": CHALLENGE_ID,
+                        "decision": "submit",
+                        "value": "incorrect password",
+                    }
+                )
+                locked = await websocket.next_json()
+                self.assertEqual((locked["reason"], locked["retry_after"]), ("authentication-locked", 60))
+
+                await websocket.send_json(
+                    {
+                        "type": "human-response",
+                        "challenge_id": CHALLENGE_ID,
+                        "decision": "submit",
+                        "value": "correct horse battery staple",
+                    }
+                )
+                still_locked = await websocket.next_json()
+                self.assertEqual((still_locked["reason"], still_locked["retry_after"]), ("authentication-locked", 60))
+                resume.assert_not_called()
+
+                self.auth_clock[0] += 60
+                await websocket.send_json(
+                    {
+                        "type": "human-response",
+                        "challenge_id": CHALLENGE_ID,
+                        "decision": "submit",
+                        "value": "correct horse battery staple",
+                    }
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                resume.assert_called_once()
                 await websocket.disconnect()
 
         asyncio.run(scenario())
