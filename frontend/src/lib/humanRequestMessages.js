@@ -13,7 +13,7 @@ export const humanRequestMessages = {
     lockedTitle: 'Password attempts temporarily blocked',
     lockedLead: 'Try again after the security delay.', retry: 'Try again',
     retryCountdown: 'Try again in {seconds} s',
-    mayExpire: 'The Power keeps its original deadline and may expire while attempts are blocked.',
+    mayExpire: 'The Power keeps its original deadline and may expire before reauthentication is completed.',
   },
   pt: {
     approvalKicker: 'Power // aprovação', inputKicker: 'Power // resposta necessária', authKicker: 'Power // autorização sensível',
@@ -29,7 +29,7 @@ export const humanRequestMessages = {
     lockedTitle: 'Tentativas de senha temporariamente bloqueadas',
     lockedLead: 'Tente novamente após o intervalo de segurança.', retry: 'Tentar novamente',
     retryCountdown: 'Tente novamente em {seconds} s',
-    mayExpire: 'O Power mantém o prazo original e pode expirar durante o bloqueio das tentativas.',
+    mayExpire: 'O Power mantém o prazo original e pode expirar antes da conclusão da reautenticação.',
   },
   es: {
     approvalKicker: 'Power // aprobación', inputKicker: 'Power // respuesta necesaria', authKicker: 'Power // autorización sensible',
@@ -45,7 +45,7 @@ export const humanRequestMessages = {
     lockedTitle: 'Intentos de contraseña bloqueados temporalmente',
     lockedLead: 'Vuelve a intentarlo después del intervalo de seguridad.', retry: 'Intentar de nuevo',
     retryCountdown: 'Intentar de nuevo en {seconds} s',
-    mayExpire: 'El Power conserva su plazo original y puede caducar mientras los intentos están bloqueados.',
+    mayExpire: 'El Power conserva su plazo original y puede caducar antes de completar la reautenticación.',
   },
   zh: {
     approvalKicker: 'Power // 审批', inputKicker: 'Power // 需要输入', authKicker: 'Power // 敏感授权',
@@ -61,7 +61,7 @@ export const humanRequestMessages = {
     lockedTitle: '密码尝试已暂时锁定',
     lockedLead: '请在安全等待时间结束后重试。', retry: '重试',
     retryCountdown: '{seconds} 秒后重试',
-    mayExpire: 'Power 保留原始期限，并可能在尝试被锁定期间过期。',
+    mayExpire: 'Power 保留原始期限，并可能在重新认证完成前过期。',
   },
   fr: {
     approvalKicker: 'Power // approbation', inputKicker: 'Power // réponse requise', authKicker: 'Power // autorisation sensible',
@@ -77,7 +77,7 @@ export const humanRequestMessages = {
     lockedTitle: 'Tentatives de mot de passe temporairement bloquées',
     lockedLead: 'Réessayez après le délai de sécurité.', retry: 'Réessayer',
     retryCountdown: 'Réessayer dans {seconds} s',
-    mayExpire: 'Le Power conserve son délai initial et peut expirer pendant le blocage des tentatives.',
+    mayExpire: 'Le Power conserve son délai initial et peut expirer avant la fin de la réauthentification.',
   },
   de: {
     approvalKicker: 'Power // Freigabe', inputKicker: 'Power // Eingabe erforderlich', authKicker: 'Power // sensible Autorisierung',
@@ -93,7 +93,7 @@ export const humanRequestMessages = {
     lockedTitle: 'Passwortversuche vorübergehend gesperrt',
     lockedLead: 'Versuche es nach der Sicherheitswartezeit erneut.', retry: 'Erneut versuchen',
     retryCountdown: 'In {seconds} s erneut versuchen',
-    mayExpire: 'Der Power behält seine ursprüngliche Frist und kann während der Sperre ablaufen.',
+    mayExpire: 'Der Power behält seine ursprüngliche Frist und kann vor Abschluss der erneuten Authentifizierung ablaufen.',
   },
   ja: {
     approvalKicker: 'Power // 承認', inputKicker: 'Power // 入力が必要', authKicker: 'Power // 機密性の高い認証',
@@ -109,7 +109,7 @@ export const humanRequestMessages = {
     lockedTitle: 'パスワード試行は一時的にロックされています',
     lockedLead: 'セキュリティ待機時間の後にもう一度お試しください。', retry: 'もう一度試す',
     retryCountdown: '{seconds} 秒後に再試行',
-    mayExpire: 'Power の元の期限は継続し、試行のロック中に期限切れになる場合があります。',
+    mayExpire: 'Power の元の期限は継続し、再認証が完了する前に期限切れになる場合があります。',
   },
   ar: {
     approvalKicker: 'Power // موافقة', inputKicker: 'Power // إدخال مطلوب', authKicker: 'Power // تفويض حساس',
@@ -125,6 +125,6 @@ export const humanRequestMessages = {
     lockedTitle: 'محاولات كلمة المرور محظورة مؤقتًا',
     lockedLead: 'حاول مرة أخرى بعد انتهاء مهلة الأمان.', retry: 'المحاولة مرة أخرى',
     retryCountdown: 'أعد المحاولة خلال {seconds} ث',
-    mayExpire: 'يحتفظ Power بمهلته الأصلية وقد تنتهي صلاحيته أثناء حظر المحاولات.',
+    mayExpire: 'يحتفظ Power بمهلته الأصلية وقد تنتهي صلاحيته قبل إكمال إعادة المصادقة.',
   },
 };

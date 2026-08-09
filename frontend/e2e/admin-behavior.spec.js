@@ -577,7 +577,7 @@ test('blocks Supervisor reauthentication retry behind the server countdown', asy
   const locked = page.getByRole('dialog', { name: 'Password attempts temporarily blocked' });
   await expect(locked).toBeVisible();
   await expect(locked.getByRole('button', { name: 'Try again in 60 s' })).toBeDisabled();
-  await expect(locked).toContainText('may expire while attempts are blocked');
+  await expect(locked).toContainText('may expire before reauthentication is completed');
   await expect(locked).toHaveScreenshot('human-auth-reauth-locked.png', {
     animations: 'disabled',
     maxDiffPixels: 150,
