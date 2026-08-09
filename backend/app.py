@@ -26,6 +26,8 @@ from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import profile
+
 import auth
 import models
 import notifications
@@ -47,14 +49,7 @@ log = logging.getLogger("shimpz-admin")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 
-def _admin_profile() -> str:
-    profile = os.environ.get("SHIMPZ_ADMIN_PROFILE", "").strip()
-    if profile not in {"local", "hosted"}:
-        raise RuntimeError("SHIMPZ_ADMIN_PROFILE must be exactly local or hosted")
-    return profile
-
-
-ADMIN_PROFILE = _admin_profile()
+ADMIN_PROFILE = profile.require()
 _AUTHENTICATE_POWER_REQUEST = partial(
     chat_human.authenticate_local,
     profile=ADMIN_PROFILE,
@@ -109,7 +104,7 @@ OPEN_API = frozenset(
 
 @asynccontextmanager
 async def _lifespan(_application: FastAPI):
-    if _admin_profile() != ADMIN_PROFILE:
+    if profile.require() != ADMIN_PROFILE:
         raise RuntimeError("Admin profile changed after route registration")
     if ADMIN_PROFILE == "local" and state.is_initialized():
         await asyncio.to_thread(_materialize_local_supervisor)
@@ -117,6 +112,7 @@ async def _lifespan(_application: FastAPI):
 
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
+platform_release.register(app, ADMIN_PROFILE)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,
@@ -323,16 +319,6 @@ async def session(request: Request):
     else:
         response["account_id"] = evidence.get("account_id") if evidence is not None else None
     return response
-
-
-if ADMIN_PROFILE == "local":
-
-    @app.get("/api/platform-release")
-    def platform_release_status():
-        try:
-            return platform_release.read_status()
-        except platform_release.PlatformReleaseUnavailableError as exc:
-            raise HTTPException(status_code=503, detail="Local platform release status is unavailable") from exc
 
 
 async def _local_login(request: Request, payload: dict) -> JSONResponse:

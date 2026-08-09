@@ -7,6 +7,8 @@ import stat
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fastapi import FastAPI, HTTPException
+
 STATUS_PATH = Path("/run/shimpz-local-release/status.json")
 MAX_STATUS_BYTES = 1024
 RELEASE = re.compile(r"ghcr\.io/theshimpz/shimpz-local-release@sha256:[0-9a-f]{64}")
@@ -75,3 +77,15 @@ def read_status(path: Path = STATUS_PATH) -> dict[str, object]:
     ):
         raise PlatformReleaseUnavailableError
     return document
+
+
+def status_response() -> dict[str, object]:
+    try:
+        return read_status()
+    except PlatformReleaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="Local platform release status is unavailable") from exc
+
+
+def register(application: FastAPI, profile: str) -> None:
+    if profile == "local":
+        application.add_api_route("/api/platform-release", status_response, methods=["GET"])

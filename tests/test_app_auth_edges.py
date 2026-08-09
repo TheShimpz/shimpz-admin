@@ -99,11 +99,11 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
             mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_PROFILE": "invalid"}),
             self.assertRaisesRegex(RuntimeError, "exactly local or hosted"),
         ):
-            self.admin_app._admin_profile()
+            self.admin_app.profile.require()
 
         async def mismatch() -> None:
             with (
-                mock.patch.object(self.admin_app, "_admin_profile", return_value="hosted"),
+                mock.patch.object(self.admin_app.profile, "require", return_value="hosted"),
                 self.assertRaisesRegex(RuntimeError, "changed after route registration"),
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
@@ -111,7 +111,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
 
         async def initialized() -> None:
             with (
-                mock.patch.object(self.admin_app, "_admin_profile", return_value="local"),
+                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=True),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
             ):
@@ -122,7 +122,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         async def hosted() -> None:
             with (
                 mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-                mock.patch.object(self.admin_app, "_admin_profile", return_value="hosted"),
+                mock.patch.object(self.admin_app.profile, "require", return_value="hosted"),
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     pass

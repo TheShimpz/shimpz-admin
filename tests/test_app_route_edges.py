@@ -117,13 +117,13 @@ class AppRouteEdgeTests(unittest.TestCase):
             "outcome": "current",
         }
         with mock.patch.object(self.admin_app.platform_release, "read_status", return_value=status):
-            self.assertEqual(self.admin_app.platform_release_status(), status)
+            self.assertEqual(self.admin_app.platform_release.status_response(), status)
         with mock.patch.object(
             self.admin_app.platform_release,
             "read_status",
             side_effect=self.admin_app.platform_release.PlatformReleaseUnavailableError,
         ):
-            self.assert_sync_status(503, self.admin_app.platform_release_status)
+            self.assert_sync_status(503, self.admin_app.platform_release.status_response)
 
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
         self.assert_async_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
