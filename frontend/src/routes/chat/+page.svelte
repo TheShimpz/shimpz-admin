@@ -53,6 +53,8 @@
   let integrationsDialogOpen = $state(false);
   let integrationChallenge = $state();
   let humanChallenge = $state();
+  let submittedHumanChallenge = $state();
+  let humanRejection = $state();
   let humanWorking = $state(false);
   let integrations = $state([]);
   let integrationsReady = $state(false);
@@ -188,6 +190,8 @@
   function resetChallengeState({ includeInventory = false } = {}) {
     integrationChallenge = undefined;
     humanChallenge = undefined;
+    submittedHumanChallenge = undefined;
+    humanRejection = undefined;
     humanWorking = false;
     integrationsDialogOpen = false;
     integrationsReady = false;
@@ -231,7 +235,9 @@
     if (!installed.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
-    humanChallenge = incoming;
+    humanChallenge = { ...incoming, deadline: Date.now() + (incoming.expires_in * 1000) };
+    submittedHumanChallenge = undefined;
+    humanRejection = undefined;
     humanWorking = false;
     integrationsOpen = false;
     busy = true;
@@ -312,11 +318,24 @@
           acceptHumanChallenge(incoming);
           return;
         }
+        if (incoming.type === 'human-response-rejected') {
+          if (
+            submittedHumanChallenge?.challenge_id !== incoming.challenge_id ||
+            submittedHumanChallenge?.request?.kind !== 'auth:reauth'
+          ) throw new Error('unexpected human response rejection');
+          humanChallenge = submittedHumanChallenge;
+          submittedHumanChallenge = undefined;
+          humanRejection = incoming;
+          humanWorking = false;
+          return;
+        }
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
           progressSequence = incoming.seq;
           progressEvents = [...progressEvents, incoming];
+          submittedHumanChallenge = undefined;
+          humanRejection = undefined;
           return;
         }
         if (incoming.type === 'sync-empty') {
@@ -623,7 +642,11 @@
         response.value,
       );
       socket.send(JSON.stringify(frame));
+      submittedHumanChallenge = response.decision === 'submit' && challenge.request.kind === 'auth:reauth'
+        ? challenge
+        : undefined;
       humanChallenge = undefined;
+      humanRejection = undefined;
       humanWorking = false;
       clearError();
       void focusStop();
@@ -632,6 +655,10 @@
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
     }
+  }
+
+  function retryHumanAuthentication() {
+    if (humanChallenge?.request?.kind === 'auth:reauth') humanRejection = undefined;
   }
 
   $effect(() => {
@@ -786,8 +813,10 @@
         <AssistantHumanRequestDialog
           open={Boolean(humanChallenge)}
           challenge={humanChallenge}
+          rejection={humanRejection}
           working={humanWorking}
           onrespond={respondToHuman}
+          onretry={retryHumanAuthentication}
         />
       </div>
     {:else}

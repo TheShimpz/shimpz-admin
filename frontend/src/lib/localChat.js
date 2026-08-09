@@ -915,6 +915,37 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
   if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };
+  if (value.type === 'human-response-rejected') {
+    const denied = value.reason === 'authentication-denied';
+    const locked = value.reason === 'authentication-locked';
+    if (
+      !exactKeys(value, [
+        'type', 'challenge_id', 'reason', 'attempts_remaining', 'retry_after',
+      ]) ||
+      typeof value.challenge_id !== 'string' ||
+      !OPAQUE_ID_RE.test(value.challenge_id) ||
+      (!denied && !locked) ||
+      !Number.isSafeInteger(value.attempts_remaining) ||
+      !Number.isSafeInteger(value.retry_after) ||
+      (denied && (
+        value.attempts_remaining < 1 ||
+        value.attempts_remaining > 2 ||
+        value.retry_after !== 0
+      )) ||
+      (locked && (
+        value.attempts_remaining !== 0 ||
+        value.retry_after < 1 ||
+        value.retry_after > 60
+      ))
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'human-response-rejected',
+      challenge_id: value.challenge_id,
+      reason: value.reason,
+      attempts_remaining: value.attempts_remaining,
+      retry_after: value.retry_after,
+    };
+  }
   if (value.type === 'integrations-required') {
     if (
       !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||

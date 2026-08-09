@@ -11,21 +11,35 @@
   let {
     open = $bindable(false),
     challenge,
+    rejection,
     working = false,
     onrespond = () => {},
+    onretry = () => {},
   } = $props();
 
   let challengeId = $state('');
   let fieldValue = $state();
   let fieldValid = $state(false);
   let validationError = $state('');
+  let retrySeconds = $state(0);
+  let expirySeconds = $state(0);
 
   let request = $derived(challenge?.request);
   let kind = $derived(request?.kind ?? '');
   let isAuth = $derived(kind.startsWith('auth:'));
   let isInput = $derived(kind.startsWith('input:'));
   let copy = $derived($t('humanRequest'));
-  let kicker = $derived(isAuth ? copy.authKicker : isInput ? copy.inputKicker : copy.approvalKicker);
+  let rejected = $derived(Boolean(rejection));
+  let locked = $derived(rejection?.reason === 'authentication-locked');
+  let kicker = $derived(rejected ? copy.validationKicker : isAuth ? copy.authKicker : isInput ? copy.inputKicker : copy.approvalKicker);
+  let title = $derived(rejected ? (locked ? copy.lockedTitle : copy.deniedTitle) : request?.title);
+  let rejectionMessage = $derived(
+    rejected
+      ? locked
+        ? copy.lockedLead
+        : $t('humanRequest.deniedLead', { remaining: String(rejection?.attempts_remaining ?? 0) })
+      : '',
+  );
   let primaryLabel = $derived(
     kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:phishing-resistant' ? copy.usePasskey : copy.authorize) : copy.submit,
   );
@@ -53,6 +67,35 @@
     validationError = '';
   });
 
+  $effect(() => {
+    const delay = rejection?.reason === 'authentication-locked' ? rejection.retry_after : 0;
+    if (!delay) {
+      retrySeconds = 0;
+      return;
+    }
+    const deadline = Date.now() + (delay * 1000);
+    const update = () => {
+      retrySeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    };
+    update();
+    const timer = setInterval(update, 250);
+    return () => clearInterval(timer);
+  });
+
+  $effect(() => {
+    if (!challenge) {
+      expirySeconds = 0;
+      return;
+    }
+    const deadline = challenge.deadline ?? (Date.now() + (challenge.expires_in * 1000));
+    const update = () => {
+      expirySeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    };
+    update();
+    const timer = setInterval(update, 250);
+    return () => clearInterval(timer);
+  });
+
   function deny(event) {
     event?.preventDefault();
     if (!working && challenge) onrespond({ decision: 'deny' });
@@ -68,13 +111,18 @@
     validationError = '';
     onrespond({ decision: 'submit', value: fieldValue });
   }
+
+  function retry(event) {
+    event.preventDefault();
+    if (!working && (!locked || retrySeconds === 0)) onretry();
+  }
 </script>
 
 {#if challenge && request}
   <PromptDialog
     bind:open
     {kicker}
-    title={request.title}
+    {title}
     titleId="human-request-title"
     lead={request.description}
     size="md"
@@ -83,25 +131,39 @@
   >
     <p class="paused">
       {copy.paused}
-      <span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span>
+      <span>{$t('humanRequest.expires', { seconds: String(expirySeconds) })}</span>
     </p>
     <Card class="request-origin" padding="compact">
       <div><span>{copy.assistant}</span><strong>{challenge.assistant.name}</strong><code>{challenge.assistant.id}</code></div>
       <div><span>{copy.power}</span><strong>{challenge.power.summary}</strong><code>{challenge.power.id}</code></div>
     </Card>
 
-    <PowerRequestFields
-      {request}
-      resetKey={challenge.challenge_id}
-      labels={fieldLabels}
-      bind:value={fieldValue}
-      bind:valid={fieldValid}
-    />
-
-    {#if validationError}<Notice variant="error">{validationError}</Notice>{/if}
+    {#if rejected}
+      <Notice variant="error">
+        <p>{rejectionMessage}</p>
+        {#if locked}<p>{copy.mayExpire}</p>{/if}
+      </Notice>
+    {:else}
+      <PowerRequestFields
+        {request}
+        resetKey={challenge.challenge_id}
+        labels={fieldLabels}
+        bind:value={fieldValue}
+        bind:valid={fieldValid}
+      />
+      {#if validationError}<Notice variant="error">{validationError}</Notice>{/if}
+    {/if}
     {#snippet footer()}
       <Button type="button" variant="secondary" disabled={working} onclick={deny}>{copy.cancel}</Button>
-      <Button type="submit" disabled={working}>{primaryLabel}</Button>
+      {#if rejected}
+        <Button type="button" disabled={working || (locked && retrySeconds > 0)} onclick={retry}>
+          {locked && retrySeconds > 0
+            ? $t('humanRequest.retryCountdown', { seconds: String(retrySeconds) })
+            : copy.retry}
+        </Button>
+      {:else}
+        <Button type="submit" disabled={working}>{primaryLabel}</Button>
+      {/if}
     {/snippet}
   </PromptDialog>
 {/if}

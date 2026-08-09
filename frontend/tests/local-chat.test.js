@@ -238,6 +238,35 @@ test('chat accepts every exact bounded public human request presentation', () =>
   }
 });
 
+test('chat accepts only exact challenge-bound human authentication rejections', () => {
+  const denied = {
+    type: 'human-response-rejected',
+    challenge_id: CHALLENGE_ID,
+    reason: 'authentication-denied',
+    attempts_remaining: 2,
+    retry_after: 0,
+  };
+  const locked = {
+    ...denied,
+    reason: 'authentication-locked',
+    attempts_remaining: 0,
+    retry_after: 60,
+  };
+  assert.deepEqual(parseChatEvent(denied, 'team_1', 'Marketing'), denied);
+  assert.deepEqual(parseChatEvent(locked, 'team_1', 'Marketing'), locked);
+
+  for (const invalid of [
+    { ...denied, challenge_id: 'challenge' },
+    { ...denied, attempts_remaining: 0 },
+    { ...denied, retry_after: 1 },
+    { ...denied, password: 'must-not-cross' },
+    { ...locked, attempts_remaining: 1 },
+    { ...locked, retry_after: 0 },
+    { ...locked, retry_after: 61 },
+    { ...locked, reason: 'authentication-unavailable' },
+  ]) assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
+});
+
 test('chat rejects augmented, sensitive, and out-of-bounds human requests', () => {
   const base = humanChallenge('input:choices');
   for (const invalid of [

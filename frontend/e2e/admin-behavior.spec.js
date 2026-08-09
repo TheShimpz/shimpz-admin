@@ -73,8 +73,8 @@ function humanRequest(kind) {
 async function routeReadyChat(page, {
   disconnectHumanResponse = false,
   holdHumanResponse = false,
-  humanFailure,
   humanKind = '',
+  humanRejections = [],
   integrationChallenge = false,
   missingInference = false,
   reply,
@@ -84,6 +84,7 @@ async function routeReadyChat(page, {
   let chatConnections = 0;
   let disconnectHumanSocket = () => {};
   let humanPending = false;
+  let humanRejectionIndex = 0;
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -226,9 +227,9 @@ async function routeReadyChat(page, {
           return;
         }
         if (holdHumanResponse) return;
-        if (humanFailure) {
-          humanPending = false;
-          socket.send(JSON.stringify({ type: 'error', ...humanFailure }));
+        if (humanRejectionIndex < humanRejections.length) {
+          socket.send(JSON.stringify(humanRejections[humanRejectionIndex]));
+          humanRejectionIndex += 1;
           return;
         }
         humanPending = false;
@@ -518,10 +519,16 @@ test('treats dismissing a human request as a terminal denial', async ({ page }) 
   }]);
 });
 
-test('explains failed Supervisor reauthentication without exposing the wire error', async ({ page }) => {
+test('restores Supervisor reauthentication as a focused validation modal', async ({ page }) => {
   const contract = await routeReadyChat(page, {
     humanKind: 'auth:reauth',
-    humanFailure: { status: 403, detail: 'authentication was not confirmed' },
+    humanRejections: [{
+      type: 'human-response-rejected',
+      challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      reason: 'authentication-denied',
+      attempts_remaining: 2,
+      retry_after: 0,
+    }],
   });
   await page.goto('/chat/');
   await page.getByRole('button', { name: 'Language: English' }).click();
@@ -532,12 +539,49 @@ test('explains failed Supervisor reauthentication without exposing the wire erro
   await dialog.getByLabel('Confirmar autorização').fill('senha-incorreta');
   await dialog.getByRole('button', { name: 'Confirmar autorização' }).click();
 
-  await expect(page.getByText(
-    'A senha do Supervisor não foi confirmada. Esta ação não foi executada. Inicie a ação novamente para tentar outra vez.',
-  )).toBeVisible();
-  await expect(page.getByText(/authentication was not confirmed/)).toHaveCount(0);
+  const validation = page.getByRole('dialog', { name: 'Senha do Supervisor não confirmada' });
+  await expect(validation).toBeVisible();
+  await expect(validation).toContainText('Restam 2 tentativas antes de um bloqueio temporário.');
+  await expect(validation.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
+  await expect.poll(() => validation.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await expect(validation).toHaveScreenshot('human-auth-reauth-validation.png', {
+    animations: 'disabled',
+    maxDiffPixels: 150,
+  });
   await expect(page.getByText(/Detalhe técnico/)).toHaveCount(0);
   expect(contract.humanResponses()).toHaveLength(1);
+
+  await validation.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
+});
+
+test('blocks Supervisor reauthentication retry behind the server countdown', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await routeReadyChat(page, {
+    humanKind: 'auth:reauth',
+    humanRejections: [{
+      type: 'human-response-rejected',
+      challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      reason: 'authentication-locked',
+      attempts_remaining: 0,
+      retry_after: 60,
+    }],
+  });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const request = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+  await request.getByLabel('Confirm authorization').fill('incorrect-password');
+  await request.getByRole('button', { name: 'Confirm authorization' }).click();
+
+  const locked = page.getByRole('dialog', { name: 'Password attempts temporarily blocked' });
+  await expect(locked).toBeVisible();
+  await expect(locked.getByRole('button', { name: 'Try again in 60 s' })).toBeDisabled();
+  await expect(locked).toContainText('may expire while attempts are blocked');
+  await expect(locked).toHaveScreenshot('human-auth-reauth-locked.png', {
+    animations: 'disabled',
+    maxDiffPixels: 150,
+  });
 });
 
 test('returns to visible Team progress immediately after submitting reauthentication', async ({ page }) => {
