@@ -22,7 +22,6 @@
   let fieldValid = $state(false);
   let validationError = $state('');
   let retrySeconds = $state(0);
-  let expirySeconds = $state(0);
 
   let request = $derived(challenge?.request);
   let kind = $derived(request?.kind ?? '');
@@ -82,20 +81,6 @@
     return () => clearInterval(timer);
   });
 
-  $effect(() => {
-    if (!challenge) {
-      expirySeconds = 0;
-      return;
-    }
-    const deadline = challenge.deadline ?? (Date.now() + (challenge.expires_in * 1000));
-    const update = () => {
-      expirySeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    };
-    update();
-    const timer = setInterval(update, 250);
-    return () => clearInterval(timer);
-  });
-
   function deny(event) {
     event?.preventDefault();
     if (!working && challenge) onrespond({ decision: 'deny' });
@@ -131,7 +116,7 @@
   >
     <p class="paused">
       {copy.paused}
-      <span>{$t('humanRequest.expires', { seconds: String(expirySeconds) })}</span>
+      <span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span>
     </p>
     <Card class="request-origin" padding="compact">
       <div><span>{copy.assistant}</span><strong>{challenge.assistant.name}</strong><code>{challenge.assistant.id}</code></div>

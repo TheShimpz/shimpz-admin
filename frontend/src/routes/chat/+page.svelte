@@ -235,7 +235,7 @@
     if (!installed.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
-    humanChallenge = { ...incoming, deadline: Date.now() + (incoming.expires_in * 1000) };
+    humanChallenge = incoming;
     submittedHumanChallenge = undefined;
     humanRejection = undefined;
     humanWorking = false;
