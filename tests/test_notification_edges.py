@@ -232,11 +232,7 @@ class NotificationEdgeTests(unittest.TestCase):
             _response(200, {"assistants": [{}]}),
             _response(
                 200,
-                {
-                    "assistants": [
-                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "unknown"}
-                    ]
-                },
+                {"assistants": [{"assistant": "assistant", "assistant_version": "1.0.0", "status": "unknown"}]},
             ),
             _response(
                 200,
