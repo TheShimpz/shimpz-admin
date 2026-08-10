@@ -92,17 +92,17 @@ test('loads the controller-owned installed Assistant inventory without weakening
     calls.push({ url, options });
     return response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status: 'running' },
-        { assistant: 'salesnator', status: 'created' },
-        { assistant: 'retired-assistant', status: 'invalid' },
+        { assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running' },
+        { assistant: 'salesnator', assistant_version: '2.0.0', status: 'created' },
+        { assistant: 'retired-assistant', assistant_version: '0.1.0', status: 'invalid' },
       ],
     });
   };
 
   assert.deepEqual(await listInstalledAssistants(fetcher, 'team_1'), [
-    { assistant: 'hello-pulse', status: 'running' },
-    { assistant: 'salesnator', status: 'created' },
-    { assistant: 'retired-assistant', status: 'invalid' },
+    { assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running' },
+    { assistant: 'salesnator', assistant_version: '2.0.0', status: 'created' },
+    { assistant: 'retired-assistant', assistant_version: '0.1.0', status: 'invalid' },
   ]);
   assert.deepEqual(calls, [{
     url: '/api/teams/team_1/assistants',
@@ -151,14 +151,19 @@ test('installed inventory errors and malformed records fail honestly instead of 
 
   for (const assistants of [
     null,
-    [{ assistant: '../escape', status: 'running' }],
-    [{ assistant: 'hello-pulse', status: 'RUNNING' }],
+    [{ assistant: '../escape', assistant_version: '1.2.3', status: 'running' }],
+    [{ assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'RUNNING' }],
+    [{ assistant: 'hello-pulse', status: 'running' }],
+    [{ assistant: 'hello-pulse', assistant_version: '01.2.3', status: 'running' }],
+    [{ assistant: 'hello-pulse', assistant_version: '1.2.3-beta', status: 'running' }],
+    [{ assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running', debug: true }],
     [
-      { assistant: 'hello-pulse', status: 'running' },
-      { assistant: 'hello-pulse', status: 'running' },
+      { assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running' },
+      { assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running' },
     ],
     Array.from({ length: 129 }, (_value, index) => ({
       assistant: `assistant-${index}`,
+      assistant_version: '1.2.3',
       status: 'running',
     })),
   ]) {
@@ -173,7 +178,9 @@ test('rejects consecutive and trailing hyphens in installed Assistant ids', asyn
   for (const assistant of ['hello--pulse', 'hello-pulse-']) {
     await assert.rejects(
       listInstalledAssistants(
-        async () => response(200, { assistants: [{ assistant, status: 'running' }] }),
+        async () => response(200, {
+          assistants: [{ assistant, assistant_version: '1.2.3', status: 'running' }],
+        }),
         'team_1',
       ),
       (error) => (

@@ -72,6 +72,7 @@
       .map((entry) => ({
         id: entry.assistant,
         name: catalog.get(entry.assistant) ?? entry.assistant,
+        version: entry.assistant_version,
       }));
   });
   let selectedCount = $derived($teamContext.selectedAssistantIds.length);
@@ -391,7 +392,7 @@
             </span>{/if}
           {/snippet}
           <ChoiceItem
-            title={assistant.name}
+            title={`${assistant.name} · v${assistant.version}`}
             {selected}
             {leading}
             {trailing}

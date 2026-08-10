@@ -230,13 +230,20 @@ class NotificationEdgeTests(unittest.TestCase):
             _response(503, {}),
             _response(200, {"assistants": "bad"}),
             _response(200, {"assistants": [{}]}),
-            _response(200, {"assistants": [{"assistant": "assistant", "status": "unknown"}]}),
             _response(
                 200,
                 {
                     "assistants": [
-                        {"assistant": "assistant", "status": "running"},
-                        {"assistant": "assistant", "status": "running"},
+                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "unknown"}
+                    ]
+                },
+            ),
+            _response(
+                200,
+                {
+                    "assistants": [
+                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "running"},
+                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "running"},
                     ]
                 },
             ),

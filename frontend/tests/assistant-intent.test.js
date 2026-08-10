@@ -191,8 +191,8 @@ test('posts only bounded canonical installed IDs to the Store frame', () => {
 
 test('projects every valid installed Assistant without a product allowlist', () => {
   const inventory = [
-    { assistant: 'example-assistant', status: 'running' },
-    { assistant: 'private-assistant', status: 'created' },
+    { assistant: 'example-assistant', assistant_version: '1.2.3', status: 'running' },
+    { assistant: 'private-assistant', assistant_version: '2.0.0', status: 'created' },
   ];
   assert.deepEqual(
     projectInstalledAssistantIds(inventory),

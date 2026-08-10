@@ -51,7 +51,10 @@ def _installed(**statuses: str) -> team.TeamResponse:
     return team.TeamResponse(
         200,
         {
-            "assistants": [{"assistant": assistant_id, "status": status} for assistant_id, status in statuses.items()],
+            "assistants": [
+                {"assistant": assistant_id, "assistant_version": "0.1.0", "status": status}
+                for assistant_id, status in statuses.items()
+            ],
             "trace_id": TRACE_ID,
         },
     )
@@ -113,6 +116,13 @@ class NotificationStateTests(unittest.TestCase):
             notifications._observe_outdated({"marketing": {"shimpz-cloudflare": "invalid"}}),
             (set(), set(), 0),
         )
+
+    def test_installed_inventory_rejects_a_noncanonical_semantic_version(self) -> None:
+        response = _installed(**{"shimpz-cloudflare": "running"})
+        response.body["assistants"][0]["assistant_version"] = "01.0.0"
+
+        with self.assertRaisesRegex(ValueError, "invalid Assistant inventory"):
+            notifications._installed(response)
 
     def test_release_changelog_preserves_canonical_markdown_final_newline(self) -> None:
         release = _release("shimpz-cloudflare", 1)

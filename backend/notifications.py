@@ -47,6 +47,7 @@ MAX_SEQUENCE = (1 << 63) - 1
 MAX_SYNC_WORKERS = 8
 
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+_SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _EXECUTABLE_REFERENCE_RE = re.compile(
     r"(?:sha256:[0-9a-f]{64}|\bdocker\s+(?:pull|run|compose)\b|"
     r"\b(?:curl|wget)\b[^\r\n|]{0,512}\|\s*(?:ba)?sh\b)",
@@ -453,11 +454,18 @@ def _installed(response: team.TeamResponse) -> dict[str, str]:
         raise ValueError("invalid Assistant inventory")
     result: dict[str, str] = {}
     for item in inventory:
-        if not isinstance(item, dict) or set(item) != {"assistant", "status"}:
+        if not isinstance(item, dict) or set(item) != {"assistant", "assistant_version", "status"}:
             raise ValueError("invalid Assistant inventory")
         assistant_id = team.canonical_assistant_id(item["assistant"])
+        assistant_version = item["assistant_version"]
         status = item["status"]
-        if assistant_id != item["assistant"] or not isinstance(status, str) or status not in _RUNTIME_STATUSES:
+        if (
+            assistant_id != item["assistant"]
+            or not isinstance(assistant_version, str)
+            or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None
+            or not isinstance(status, str)
+            or status not in _RUNTIME_STATUSES
+        ):
             raise ValueError("invalid Assistant inventory")
         if assistant_id in result:
             raise ValueError("duplicate Assistant inventory")

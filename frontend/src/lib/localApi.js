@@ -1,12 +1,14 @@
 import {
   ASSISTANT_ID_RE,
   CONTROL_RE,
+  exactKeys,
   jsonObject,
   LocalApiError,
   TEAM_ID_RE,
 } from './validate.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
+const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 
 export { LocalApiError };
@@ -80,20 +82,22 @@ export async function listInstalledAssistants(fetcher, teamId) {
   const seen = new Set();
   return body.assistants.map((entry) => {
     const assistant = entry?.assistant;
+    const assistantVersion = entry?.assistant_version;
     const status = entry?.status;
     if (
-      !entry ||
-      typeof entry !== 'object' ||
+      !exactKeys(entry, ['assistant', 'assistant_version', 'status']) ||
       typeof assistant !== 'string' ||
       assistant.length > 80 ||
       !ASSISTANT_ID_RE.test(assistant) ||
+      typeof assistantVersion !== 'string' ||
+      !SEMANTIC_VERSION_RE.test(assistantVersion) ||
       !RUNTIME_STATUS_RE.test(status) ||
       seen.has(assistant)
     ) {
       throw new LocalApiError('The installed Assistant inventory is invalid.', response.status);
     }
     seen.add(assistant);
-    return { assistant, status };
+    return { assistant, assistant_version: assistantVersion, status };
   });
 }
 

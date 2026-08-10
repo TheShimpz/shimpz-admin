@@ -44,6 +44,10 @@ function response(status, body) {
   };
 }
 
+function installedAssistant(assistant, status = 'running') {
+  return { assistant, assistant_version: '1.2.3', status };
+}
+
 function fixtureFetcher(overrides = {}) {
   return async (url, options = {}) => {
     if (overrides[url]) return overrides[url](options);
@@ -64,10 +68,10 @@ function fixtureFetcher(overrides = {}) {
       });
     }
     if (url === '/api/teams/marketing/assistants') {
-      return response(200, { assistants: [{ assistant: 'salesnator', status: 'running' }] });
+      return response(200, { assistants: [installedAssistant('salesnator')] });
     }
     if (url === '/api/teams/support/assistants') {
-      return response(200, { assistants: [{ assistant: 'hello-pulse', status: 'running' }] });
+      return response(200, { assistants: [installedAssistant('hello-pulse')] });
     }
     if (url === '/api/teams/marketing/files') {
       return response(200, { files: [{ id: FILE_A, name: 'brief.pdf', size: 42 }] });
@@ -96,7 +100,7 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
       { id: 'hello-pulse', name: 'Hello Pulse' },
       { id: 'salesnator', name: 'Salesnator' },
     ],
-    installedAssistants: [{ assistant: 'hello-pulse', status: 'running' }],
+    installedAssistants: [installedAssistant('hello-pulse')],
     selectedAssistantIds: ['hello-pulse'],
     files: [{ id: FILE_B, name: 'ticket.txt', size: 12 }],
     selectedFileIds: [],
@@ -120,7 +124,7 @@ test('switching Teams immediately selects the URL authority and clears stale inv
   assert.deepEqual(get(teamContext).selectedFileIds, []);
   assert.deepEqual(get(teamContext).installedAssistants, []);
   assert.deepEqual(get(teamContext).files, []);
-  releaseAssistants(response(200, { assistants: [{ assistant: 'hello-pulse', status: 'running' }] }));
+  releaseAssistants(response(200, { assistants: [installedAssistant('hello-pulse')] }));
   await pending;
   assert.equal(get(teamContext).selectedTeamId, 'support');
   assert.deepEqual(get(teamContext).files, [{ id: FILE_B, name: 'ticket.txt', size: 12 }]);
@@ -278,7 +282,7 @@ test('refresh accepts authoritative installed inventory while display metadata c
   const refreshed = fixtureFetcher({
     '/api/assistants': async () => response(200, { assistants: [] }),
     '/api/teams/marketing/assistants': async () => response(200, {
-      assistants: [{ assistant: 'not-in-catalog', status: 'running' }],
+      assistants: [installedAssistant('not-in-catalog')],
     }),
   });
 
@@ -287,7 +291,7 @@ test('refresh accepts authoritative installed inventory while display metadata c
   assert.equal(get(teamContext).phase, 'ready');
   assert.deepEqual(get(teamContext).catalog, []);
   assert.deepEqual(get(teamContext).installedAssistants, [
-    { assistant: 'not-in-catalog', status: 'running' },
+    installedAssistant('not-in-catalog'),
   ]);
   assert.deepEqual(get(teamContext).files, [{ id: FILE_A, name: 'brief.pdf', size: 42 }]);
 });
@@ -303,7 +307,7 @@ test('refresh exposes a first install and its newly projected display metadata t
       assistants: [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }],
     }),
     '/api/teams/marketing/assistants': async () => response(200, {
-      assistants: [{ assistant: 'shimpz-cloudflare', status: 'running' }],
+      assistants: [installedAssistant('shimpz-cloudflare')],
     }),
   }));
 
@@ -312,7 +316,7 @@ test('refresh exposes a first install and its newly projected display metadata t
     { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
   ]);
   assert.deepEqual(get(teamContext).installedAssistants, [
-    { assistant: 'shimpz-cloudflare', status: 'running' },
+    installedAssistant('shimpz-cloudflare'),
   ]);
 });
 
@@ -606,8 +610,8 @@ test('Assistant selection is Team-scoped, bounded to running inventory, and empt
   await loadTeamContext(fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status: 'running' },
-        { assistant: 'salesnator', status: 'running' },
+        installedAssistant('hello-pulse'),
+        installedAssistant('salesnator'),
       ],
     }),
   }), 'marketing');
@@ -632,8 +636,8 @@ test('a newly installed Assistant becomes active without overriding a manual des
   await refreshTeamInventory(fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status: 'running' },
-        { assistant: 'salesnator', status: 'running' },
+        installedAssistant('hello-pulse'),
+        installedAssistant('salesnator'),
       ],
     }),
   }));
@@ -644,8 +648,8 @@ test('selected Assistant intent survives outdated and unavailable runtime states
   const inventory = (status) => fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status },
-        { assistant: 'salesnator', status: 'running' },
+        installedAssistant('hello-pulse', status),
+        installedAssistant('salesnator'),
       ],
     }),
   });
@@ -665,8 +669,8 @@ test('a manually deselected Assistant stays deselected across refresh and auto-u
   const inventory = (status) => fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status },
-        { assistant: 'salesnator', status: 'running' },
+        installedAssistant('hello-pulse', status),
+        installedAssistant('salesnator'),
       ],
     }),
   });
@@ -685,14 +689,14 @@ test('a confirmed uninstall removes intent so reinstall defaults active', async 
     '/api/teams/marketing/assistants': async () => response(200, { assistants }),
   });
   const both = [
-    { assistant: 'hello-pulse', status: 'running' },
-    { assistant: 'salesnator', status: 'running' },
+    installedAssistant('hello-pulse'),
+    installedAssistant('salesnator'),
   ];
   await loadTeamContext(inventory(both), 'marketing');
   assert.equal(toggleTeamAssistant('hello-pulse'), true);
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
 
-  await refreshTeamInventory(inventory([{ assistant: 'salesnator', status: 'running' }]));
+  await refreshTeamInventory(inventory([installedAssistant('salesnator')]));
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
   await refreshTeamInventory(inventory(both));
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse', 'salesnator']);
@@ -710,8 +714,8 @@ test('Assistant intent survives reload and rejects malformed stored authority', 
   const twoAssistants = fixtureFetcher({
     '/api/teams/marketing/assistants': async () => response(200, {
       assistants: [
-        { assistant: 'hello-pulse', status: 'running' },
-        { assistant: 'salesnator', status: 'running' },
+        installedAssistant('hello-pulse'),
+        installedAssistant('salesnator'),
       ],
     }),
   });
@@ -753,7 +757,7 @@ test('Assistant scope enforces and exposes the exact protocol limit', async () =
     id: `assistant-${index}`,
     title: `Assistant ${index}`,
   }));
-  const installed = catalog.map((entry) => ({ assistant: entry.id, status: 'running' }));
+  const installed = catalog.map((entry) => installedAssistant(entry.id));
   await loadTeamContext(fixtureFetcher({
     '/api/assistants': async () => response(200, { assistants: catalog }),
     '/api/teams/marketing/assistants': async () => response(200, { assistants: installed }),

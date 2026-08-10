@@ -70,7 +70,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
 });
 
-test('projects the read-only Local platform update status in the authenticated shell', async ({ page }) => {
+test('shows the installed Admin version with the read-only Local release status', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -88,12 +88,25 @@ test('projects the read-only Local platform update status in the authenticated s
 
   await page.goto('/assistants/');
 
-  const status = page.getByText('System updated', { exact: true });
+  const status = page.getByText('Admin v0.1.0', { exact: true });
   await expect(status).toBeVisible();
   await expect(status.locator('..')).toHaveAttribute('title', 'Local platform release 42');
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
-  await expect(page.getByText('Sistema atualizado', { exact: true })).toBeVisible();
+  await expect(status).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeVisible();
+});
+
+test('shows the installed Admin version when Local release status is temporarily unavailable', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+  }));
+
+  await page.goto('/assistants/');
+
+  await expect(page.getByText('Admin v0.1.0', { exact: true })).toBeVisible();
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {

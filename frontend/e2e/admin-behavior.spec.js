@@ -105,7 +105,13 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ assistants: [{ assistant: 'shimpz-cloudflare', status: 'running' }] }),
+    body: JSON.stringify({
+      assistants: [{
+        assistant: 'shimpz-cloudflare',
+        assistant_version: '0.1.0',
+        status: 'running',
+      }],
+    }),
   }));
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({
     contentType: 'image/png',
@@ -354,7 +360,7 @@ test('uses text actions and one semantic selected state in the Assistant chooser
   await expect(selectAll).toHaveClass(/shimpz-text-action/);
   await expect(unselectAll).toHaveClass(/shimpz-text-action/);
   await expect(selectAll.locator('[data-slot="text-action-icon"]')).toBeVisible();
-  const choice = dialog.getByRole('button', { name: 'Shimpz Cloudflare' });
+  const choice = dialog.getByRole('button', { name: 'Shimpz Cloudflare · v0.1.0' });
   await expect(choice).toHaveAttribute('aria-pressed', 'true');
   await expect(choice.locator('img')).toHaveAttribute(
     'src',
@@ -895,7 +901,11 @@ test('keeps a first Store install ready while local display metadata catches up'
       contentType: 'application/json',
       body: JSON.stringify({
         assistants: installed
-          ? [{ assistant: 'shimpz-cloudflare', status: 'running' }]
+          ? [{
+            assistant: 'shimpz-cloudflare',
+            assistant_version: '0.1.0',
+            status: 'running',
+          }]
           : [],
       }),
     });
