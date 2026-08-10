@@ -45,7 +45,13 @@ test('pins the exact publication lifecycle protocol', () => {
     assistantStoreHref('en', 'example-assistant'),
     'https://shimpz.com/en/assistants?assistant=example-assistant',
   );
-  assert.equal(assistantStoreHref('es', 'example-assistant'), null);
+  for (const locale of ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']) {
+    assert.equal(
+      assistantStoreHref(locale, 'example-assistant'),
+      `https://shimpz.com/${locale}/assistants?assistant=example-assistant`,
+    );
+  }
+  assert.equal(assistantStoreHref('xx', 'example-assistant'), null);
   assert.equal(assistantStoreHref('en', '../escape'), null);
 });
 

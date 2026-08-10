@@ -52,7 +52,7 @@
   let currentLocale = $derived($locale);
   let copy = $derived($t('assistantStore'));
   let destinationCopy = $derived($t('assistantDestination'));
-  let storeLocale = $derived(currentLocale === 'pt' ? 'pt' : 'en');
+  let storeLocale = $derived(currentLocale);
   let storePageUrl = $derived(`https://shimpz.com/${storeLocale}/assistants`);
   let storeUrl = $derived(
     `${storePageUrl}/embed?store-protocol=${STORE_LIFECYCLE_PROTOCOL_VERSION}&admin-frame=${frameReload}`,

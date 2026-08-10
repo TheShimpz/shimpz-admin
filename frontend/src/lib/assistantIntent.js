@@ -18,7 +18,7 @@ const UNINSTALL_INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
 const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
 const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
-const STORE_LOCALES = new Set(['en', 'pt']);
+const STORE_LOCALES = new Set(['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']);
 const STORE_ACTIONS = new Set(['install', 'uninstall']);
 
 /** Build one canonical Store detail link without accepting an arbitrary origin or path. */
