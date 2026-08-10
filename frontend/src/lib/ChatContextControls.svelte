@@ -392,7 +392,8 @@
             </span>{/if}
           {/snippet}
           <ChoiceItem
-            title={`${assistant.name} · v${assistant.version}`}
+            title={assistant.name}
+            description={`v${assistant.version}`}
             {selected}
             {leading}
             {trailing}

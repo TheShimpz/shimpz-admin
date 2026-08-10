@@ -106,7 +106,35 @@ test('shows the installed Admin version when Local release status is temporarily
 
   await page.goto('/assistants/');
 
-  await expect(page.getByText('Admin v0.1.0', { exact: true })).toBeVisible();
+  const status = page.getByText('Admin v0.1.0', { exact: true });
+  await expect(status).toBeVisible();
+  await expect(status.locator('..').locator('.indicator')).toHaveCSS('background-color', 'rgb(161, 161, 170)');
+});
+
+test('keeps the Local rollback warning visibly textual and localized', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+  }));
+  await page.route('**/api/platform-release', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
+      ordinal: 42,
+      checked_at: '2026-08-08T22:52:21Z',
+      outcome: 'rollback-needed',
+    }),
+  }));
+
+  await page.goto('/assistants/');
+
+  const release = page.getByText('Admin v0.1.0', { exact: true }).locator('..');
+  await expect(release.getByText('Update rolled back', { exact: true })).toBeVisible();
+  await expect(release).toHaveCSS('color', 'rgb(255, 96, 125)');
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
