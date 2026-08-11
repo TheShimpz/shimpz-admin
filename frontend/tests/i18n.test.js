@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { messages } from '../src/lib/messages.js';
+import { humanRequestContextParts } from '../src/lib/humanRequestMessages.js';
 
 const expectedLocales = ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar'];
 
@@ -62,5 +63,28 @@ test('Admin copy names installable Team workloads as Assistants', () => {
         assert.doesNotMatch(message, retiredTerm, `${locale}: ${message}`);
       }
     }
+  }
+});
+
+test('human request context emphasizes only the Action and Assistant identity', () => {
+  const challenge = {
+    action: { id: 'change-dns-record' },
+    assistant: { name: 'Shimpz Cloudflare', version: '0.4.1' },
+    expires_in: 300,
+  };
+  for (const locale of expectedLocales) {
+    const template = messages[locale].humanRequest.context;
+    const parts = humanRequestContextParts(template, challenge);
+    assert.equal(parts.map(({ text }) => text).join(''), template
+      .replace('{action}', challenge.action.id)
+      .replace('{assistant}', challenge.assistant.name)
+      .replace('{version}', challenge.assistant.version)
+      .replace('{seconds}', String(challenge.expires_in)));
+    assert.deepEqual(
+      parts.filter(({ emphasized }) => emphasized).map(({ text }) => text),
+      locale === 'zh' || locale === 'ja'
+        ? [challenge.assistant.name, `v${challenge.assistant.version}`, challenge.action.id]
+        : [challenge.action.id, challenge.assistant.name, `v${challenge.assistant.version}`],
+    );
   }
 });

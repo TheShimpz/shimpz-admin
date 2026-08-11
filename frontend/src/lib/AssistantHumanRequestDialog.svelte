@@ -7,6 +7,7 @@
     PromptDialog,
   } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
+  import { humanRequestContextParts } from '$lib/humanRequestMessages.js';
 
   let {
     open = $bindable(false),
@@ -45,9 +46,8 @@
   let primaryLabel = $derived(
     kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:phishing-resistant' ? copy.usePasskey : copy.authorize) : copy.submit,
   );
+  let contextParts = $derived(challenge ? humanRequestContextParts(copy.context, challenge) : []);
   let fieldLabels = $derived({
-    required: copy.required,
-    optional: copy.optional,
     chooseOption: copy.chooseOption,
     selectionHint: $t('humanRequest.selectionHint', {
       minimum: String(request?.min_selections ?? 0),
@@ -148,14 +148,7 @@
     oncancel={deny}
     onsubmit={submit}
   >
-    <p class="request-context">
-      {$t('humanRequest.context', {
-        action: challenge.action.id,
-        assistant: challenge.assistant.name,
-        version: challenge.assistant.version,
-        seconds: String(challenge.expires_in),
-      })}
-    </p>
+    <p class="request-context">{#each contextParts as part}{#if part.emphasized}<strong><bdi>{part.text}</bdi></strong>{:else}{part.text}{/if}{/each}</p>
 
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
@@ -197,5 +190,6 @@
 
 <style>
   .request-context { margin: 0; color: var(--text-dim); font-size: 0.72rem; line-height: 1.55; }
+  .request-context strong { color: var(--shimpz-color-cyan); font-family: var(--shimpz-font-mono); font-weight: 700; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
 </style>

@@ -13,6 +13,15 @@ const visualContract = {
   maxDiffPixels: 100,
 };
 
+async function expectVisuallyHidden(locator) {
+  await expect(locator).toHaveClass(/visually-hidden/);
+  expect(await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return { width: bounds.width, height: bounds.height, clipPath: style.clipPath };
+  })).toEqual({ width: 1, height: 1, clipPath: 'inset(50%)' });
+}
+
 const localTeamResidues = [
   'action_checkpoints',
   'assistant_containers',
@@ -490,7 +499,21 @@ for (const [kind, title] of humanPresentations) {
     await expect(dialog).toContainText(
       'Action list-zones from Shimpz Cloudflare v0.4.1 needs human validation. Expires in 300 seconds.',
     );
+    await expect(dialog.locator('.request-context strong')).toHaveText([
+      'list-zones',
+      'Shimpz Cloudflare',
+      'v0.4.1',
+    ]);
+    await expect(dialog.locator('.request-context strong').first()).toHaveCSS('color', 'rgb(0, 240, 255)');
     await expect(dialog).not.toContainText('List reviewed Cloudflare zones.');
+    await expect(dialog.getByText('Required', { exact: true })).toHaveCount(0);
+    if (kind.startsWith('input:') && kind !== 'input:choice' && kind !== 'input:choices') {
+      await expectVisuallyHidden(dialog.locator('label[for="human-request-value"]'));
+    } else if (kind === 'input:choice' || kind === 'input:choices') {
+      await expectVisuallyHidden(dialog.locator('fieldset legend'));
+    } else if (kind === 'auth:reauth' || kind === 'auth:second-factor') {
+      await expectVisuallyHidden(dialog.locator('label[for="human-request-auth"]'));
+    }
     const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
     expect(results.violations).toEqual([]);
     await expect(dialog).toHaveScreenshot(`human-${kind.replaceAll(':', '-')}.png`, {
