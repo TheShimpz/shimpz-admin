@@ -14,13 +14,13 @@ const visualContract = {
 };
 
 const localTeamResidues = [
+  'action_checkpoints',
   'assistant_containers',
   'brain_checkpoints',
   'chat_continuations',
   'egress_policies',
   'inference_configuration',
   'integration_credentials',
-  'power_checkpoints',
   'publication_bindings',
   'runtime_state',
   'team_networks',
@@ -43,8 +43,8 @@ function humanRequest(kind) {
       'auth:reauth': 'Confirm with your Supervisor password',
       'auth:second-factor': 'Confirm with your second factor',
       'auth:phishing-resistant': 'Confirm with your passkey',
-    }[kind] ?? 'Provide the missing Power context',
-    description: 'Shimpz Cloudflare paused before continuing this exact Power.',
+    }[kind] ?? 'Provide the missing Action context',
+    description: 'Shimpz Cloudflare paused before continuing this exact Action.',
     fingerprint: 'c'.repeat(64),
   };
   if (['input:text', 'input:textarea', 'input:password', 'input:phone'].includes(kind)) {
@@ -173,8 +173,8 @@ async function routeReadyChat(page, {
       type: 'human-required',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       expires_in: 300,
-      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
-      power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+      action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
       request: humanRequest(humanKind),
     }));
 
@@ -225,7 +225,7 @@ async function routeReadyChat(page, {
               name: 'Cloudflare',
               summary: 'Reads reviewed zone and DNS metadata.',
               scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
-              powers: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+              actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
             }],
           }));
           return;
@@ -466,29 +466,31 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
 
 const humanPresentations = [
   ['approval', 'Publish reviewed DNS changes?'],
-  ['input:text', 'Provide the missing Power context'],
-  ['input:textarea', 'Provide the missing Power context'],
-  ['input:password', 'Provide the missing Power context'],
-  ['input:phone', 'Provide the missing Power context'],
-  ['input:select', 'Provide the missing Power context'],
-  ['input:choice', 'Provide the missing Power context'],
-  ['input:choices', 'Provide the missing Power context'],
+  ['input:text', 'Provide the missing Action context'],
+  ['input:textarea', 'Provide the missing Action context'],
+  ['input:password', 'Provide the missing Action context'],
+  ['input:phone', 'Provide the missing Action context'],
+  ['input:select', 'Provide the missing Action context'],
+  ['input:choice', 'Provide the missing Action context'],
+  ['input:choices', 'Provide the missing Action context'],
   ['auth:reauth', 'Confirm with your Supervisor password'],
   ['auth:second-factor', 'Confirm with your second factor'],
   ['auth:phishing-resistant', 'Confirm with your passkey'],
 ];
 
 for (const [kind, title] of humanPresentations) {
-  test(`renders and completes the ${kind} Power request`, async ({ page }) => {
+  test(`renders and completes the ${kind} Action request`, async ({ page }) => {
     const contract = await routeReadyChat(page, { humanKind: kind });
     await page.goto('/chat/');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-    await composer.fill('Continue with the reviewed Power');
+    await composer.fill('Continue with the reviewed Action');
     await page.getByRole('button', { name: 'Send' }).click();
     const dialog = page.getByRole('dialog', { name: title });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('Shimpz Cloudflare');
-    await expect(dialog).toContainText('List reviewed Cloudflare zones.');
+    await expect(dialog).toContainText(
+      'Action list-zones from Shimpz Cloudflare v0.4.1 assistant needs human validation. Expires in 300 seconds.',
+    );
+    await expect(dialog).not.toContainText('List reviewed Cloudflare zones.');
     const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
     expect(results.violations).toEqual([]);
     await expect(dialog).toHaveScreenshot(`human-${kind.replaceAll(':', '-')}.png`, {

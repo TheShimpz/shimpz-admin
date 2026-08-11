@@ -96,12 +96,12 @@ class ProgressEdges(unittest.TestCase):
             {"phase": "model", "state": "started", "seq": 1, "extra": True},
             {"phase": "model", "state": "started", "seq": True},
             {
-                "phase": "power",
+                "phase": "action",
                 "state": "started",
                 "seq": 1,
                 "assistant_id": "Bad",
                 "index": 1,
-                "power": "power",
+                "action": "action",
                 "total": 1,
             },
         )

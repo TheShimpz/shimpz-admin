@@ -84,7 +84,7 @@ function integrationRequirement() {
     name: 'X integration',
     summary: 'Publishes approved posts through your X integration.',
     scopes: ['tweet.read', 'tweet.write', 'users.read'],
-    powers: [
+    actions: [
       { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
     ],
   };
@@ -125,7 +125,7 @@ test('chat builds only the versioned WebSocket contract', () => {
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
   });
-  assert.doesNotMatch(JSON.stringify(frame), /power|provider|model|api_key|credential/);
+  assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
   assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v4');
@@ -143,8 +143,8 @@ function humanRequest(kind) {
   const base = {
     kind,
     ordinal: 0,
-    title: 'Confirm this Power',
-    description: 'The Power is waiting for your response.',
+    title: 'Confirm this Action',
+    description: 'The Action is waiting for your response.',
     fingerprint: 'c'.repeat(64),
   };
   if (['input:text', 'input:textarea', 'input:password', 'input:phone'].includes(kind)) {
@@ -189,8 +189,8 @@ function humanChallenge(kind) {
     type: 'human-required',
     challenge_id: CHALLENGE_ID,
     expires_in: 300,
-    assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare' },
-    power: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+    assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+    action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
     request: humanRequest(kind),
   };
 }
@@ -274,7 +274,7 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
     { ...base, challenge_id: 'challenge' },
     { ...base, expires_in: 301 },
     { ...base, assistant: { ...base.assistant, token: 'must-not-cross' } },
-    { ...base, power: { ...base.power, input: 'must-not-cross' } },
+    { ...base, action: { ...base.action, input: 'must-not-cross' } },
     { ...base, request: { ...base.request, ordinal: 8 } },
     { ...base, request: { ...base.request, fingerprint: 'not-a-fingerprint' } },
     { ...base, request: { ...base.request, min_selections: 3 } },
@@ -353,8 +353,8 @@ const progressEvents = [
   { type: 'progress', seq: 3, origin: 'team', phase: 'model', state: 'started' },
   { type: 'progress', seq: 2052, origin: 'admin', phase: 'reply-validation', state: 'started' },
   {
-    type: 'progress', seq: 4, origin: 'team', phase: 'power', state: 'finished',
-    elapsed_ms: 19, assistant_id: 'shimpz-cloudflare', index: 1, power: 'list-zones', total: 2,
+    type: 'progress', seq: 4, origin: 'team', phase: 'action', state: 'finished',
+    elapsed_ms: 19, assistant_id: 'shimpz-cloudflare', index: 1, action: 'list-zones', total: 2,
   },
 ];
 for (const event of progressEvents) {
@@ -372,16 +372,16 @@ for (const invalid of [
     detail: 'must-not-cross',
   },
   {
-    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
+    type: 'progress', seq: 1, origin: 'team', phase: 'action', state: 'started',
     index: 2, total: 1,
   },
   {
-    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
-    assistant_id: 'Shimpz-cloudflare', index: 1, power: 'list-zones', total: 1,
+    type: 'progress', seq: 1, origin: 'team', phase: 'action', state: 'started',
+    assistant_id: 'Shimpz-cloudflare', index: 1, action: 'list-zones', total: 1,
   },
   {
-    type: 'progress', seq: 1, origin: 'team', phase: 'power', state: 'started',
-    assistant_id: 'shimpz-cloudflare', index: 1, power: 'x'.repeat(81), total: 1,
+    type: 'progress', seq: 1, origin: 'team', phase: 'action', state: 'started',
+    assistant_id: 'shimpz-cloudflare', index: 1, action: 'x'.repeat(81), total: 1,
   },
 ]) {
     assert.throws(
@@ -407,7 +407,7 @@ test('chat accepts only exact bounded public integration requirements', () => {
   const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
   assert.deepEqual(parsed, challenge);
   assert.notEqual(parsed.requirements, challenge.requirements);
-  assert.notEqual(parsed.requirements[0].powers, challenge.requirements[0].powers);
+  assert.notEqual(parsed.requirements[0].actions, challenge.requirements[0].actions);
   assert.doesNotMatch(JSON.stringify(parsed), /token|code|verifier|client_secret/i);
 });
 
@@ -431,7 +431,7 @@ test('chat rejects augmented, duplicated, and sensitive integration requirements
       ...base,
       requirements: [{
         ...integrationRequirement(),
-        powers: [{ ...integrationRequirement().powers[0], token: 'must-not-cross' }],
+        actions: [{ ...integrationRequirement().actions[0], token: 'must-not-cross' }],
       }],
     },
   ]) {

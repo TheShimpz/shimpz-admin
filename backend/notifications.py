@@ -1,7 +1,7 @@
 """Private Assistant release notifications for the local Admin.
 
 The public shimpz.com feed is display metadata only.  It can never select an image,
-digest, Team, or Power.  Runtime upgrades continue to use the local controller's
+digest, Team, or Action.  Runtime upgrades continue to use the local controller's
 build-pinned Assistant registry and are requested only by canonical Assistant id.
 """
 

@@ -38,12 +38,12 @@ _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
 _HUMAN_DENIED_RESPONSE_FIELDS = frozenset({"team_id", "status", "reason", "trace_id"})
 MAX_INTEGRATION_REQUIREMENTS = 64
 MAX_INTEGRATION_SCOPES = 32
-MAX_INTEGRATION_POWERS = 128
+MAX_INTEGRATION_ACTIONS = 128
 MAX_INTEGRATION_SCOPE_CHARS = 128
 MAX_INTEGRATION_LABEL_CHARS = 80
 MAX_INTEGRATION_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
-    "assistant-power-blocked": "Assistant Power execution is blocked until it is reinstalled",
+    "assistant-action-blocked": "Assistant Action execution is blocked until it is reinstalled",
     "assistant-integration-challenge-expired": "the Assistant integration expired; retry the message",
     "assistant-integration-contract-invalid": "the Assistant integration contract changed; retry the message",
     "assistant-integration-state-unavailable": "Assistant integration state is unavailable",
@@ -60,11 +60,11 @@ _CHAT_ERROR_DETAILS = {
     "inference-provider-mismatch": "the configured model provider changed; retry",
     "inference-response-invalid": "the Team model configuration is invalid",
     "invalid-files": "the selected files are invalid",
-    "invalid-power-input": "an Assistant Power received invalid input",
+    "invalid-action-input": "an Assistant Action received invalid input",
     "model-credential-missing": "the selected model provider needs an API key",
     "model-credential-store-invalid": "the model credential store is invalid",
     "ownership-conflict": "the Team resource ownership check failed",
-    "power-state-unavailable": "Team Power execution state is unavailable",
+    "action-state-unavailable": "Team Action execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
     "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
@@ -307,7 +307,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                 "name",
                 "summary",
                 "scopes",
-                "powers",
+                "actions",
             }:
                 raise ValueError("invalid integration requirement")
             assistant_id = team.canonical_assistant_id(raw["assistant_id"])
@@ -318,32 +318,32 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             seen_integrations.add(identity)
 
             raw_scopes = raw["scopes"]
-            raw_powers = raw["powers"]
+            raw_actions = raw["actions"]
             if (
                 not isinstance(raw_scopes, list)
                 or not 1 <= len(raw_scopes) <= MAX_INTEGRATION_SCOPES
-                or not isinstance(raw_powers, list)
-                or not 1 <= len(raw_powers) <= MAX_INTEGRATION_POWERS
+                or not isinstance(raw_actions, list)
+                or not 1 <= len(raw_actions) <= MAX_INTEGRATION_ACTIONS
             ):
                 raise ValueError("invalid integration capabilities")
             scopes = [chat_ws_common.public_text(scope, MAX_INTEGRATION_SCOPE_CHARS) for scope in raw_scopes]
             if len(set(scopes)) != len(scopes):
                 raise ValueError("duplicate integration scope")
 
-            powers: list[dict[str, str]] = []
-            seen_powers: set[str] = set()
-            for raw_power in raw_powers:
-                if not isinstance(raw_power, dict) or set(raw_power) != {"id", "name", "summary"}:
-                    raise ValueError("invalid integration Power")
-                power_id = team.canonical_assistant_id(raw_power["id"])
-                if power_id in seen_powers:
-                    raise ValueError("duplicate integration Power")
-                seen_powers.add(power_id)
-                powers.append(
+            actions: list[dict[str, str]] = []
+            seen_actions: set[str] = set()
+            for raw_action in raw_actions:
+                if not isinstance(raw_action, dict) or set(raw_action) != {"id", "name", "summary"}:
+                    raise ValueError("invalid integration Action")
+                action_id = team.canonical_assistant_id(raw_action["id"])
+                if action_id in seen_actions:
+                    raise ValueError("duplicate integration Action")
+                seen_actions.add(action_id)
+                actions.append(
                     {
-                        "id": power_id,
-                        "name": chat_ws_common.public_text(raw_power["name"], MAX_INTEGRATION_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(raw_power["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
+                        "id": action_id,
+                        "name": chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS),
+                        "summary": chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     }
                 )
             requirements.append(
@@ -355,7 +355,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                     "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
                     "summary": chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     "scopes": scopes,
-                    "powers": powers,
+                    "actions": actions,
                 }
             )
     except KeyError, TypeError, ValueError, team.TeamRequestError:
@@ -584,5 +584,5 @@ def stop(team_id: object) -> team.TeamResponse:
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
     # ``accepted`` means the active turn token was cancelled and any late provider reply will be
-    # discarded. ``confirmed`` describes only a Power subprocess, not the whole turn.
+    # discarded. ``confirmed`` describes only a Action subprocess, not the whole turn.
     return PublicResponse(response.status, {"team_id": canonical_id, "stopped": accepted})

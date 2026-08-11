@@ -17,19 +17,19 @@ test('pairs repeated measured operations without inventing workflow stages', () 
     { seq: 1, origin: 'team', phase: 'model', state: 'started' },
     { seq: 2, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1200 },
     {
-      seq: 3, origin: 'team', phase: 'power', state: 'started',
-      assistant_id: 'shimpz-cloudflare', power: 'list-zones', index: 1, total: 2,
+      seq: 3, origin: 'team', phase: 'action', state: 'started',
+      assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 2,
     },
     {
-      seq: 4, origin: 'team', phase: 'power', state: 'finished', elapsed_ms: 25,
-      assistant_id: 'shimpz-cloudflare', power: 'list-zones', index: 1, total: 2,
+      seq: 4, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 25,
+      assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 2,
     },
     { seq: 5, origin: 'team', phase: 'model', state: 'started' },
   ]);
 
   assert.equal(steps.length, 3);
   assert.deepEqual(steps.map((step) => step.elapsed_ms), [1200, 25, null]);
-  assert.equal(technicalStepLabel(steps[1]), 'team · power 1/2');
+  assert.equal(technicalStepLabel(steps[1]), 'team · action 1/2');
 });
 
 test('formats only bounded measured durations', () => {
@@ -51,21 +51,21 @@ test('humanizes every observed phase in every supported Admin locale', () => {
       const step = {
         origin: phase.startsWith('admin') || phase === 'reply-validation' ? 'admin' : 'team',
         phase,
-        index: phase === 'power' ? 1 : undefined,
-        total: phase === 'power' ? 2 : undefined,
-        assistant_id: phase === 'power' ? 'shimpz-cloudflare' : undefined,
-        power: phase === 'power' ? 'list-zones' : undefined,
-        observedPowersBefore: phase === 'team-context' || phase === 'model' ? 0 : undefined,
-        powerOccurrence: phase === 'power' ? 1 : undefined,
+        index: phase === 'action' ? 1 : undefined,
+        total: phase === 'action' ? 2 : undefined,
+        assistant_id: phase === 'action' ? 'shimpz-cloudflare' : undefined,
+        action: phase === 'action' ? 'list-zones' : undefined,
+        observedActionsBefore: phase === 'team-context' || phase === 'model' ? 0 : undefined,
+        actionOccurrence: phase === 'action' ? 1 : undefined,
       };
       const label = localizedStepLabel(step, copy.chatPage.progress, {
         teamName: 'Marketing',
         assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
       });
-      assert.doesNotMatch(label, /admin-preparation|reply-validation|team-context|power-preparation/);
+      assert.doesNotMatch(label, /admin-preparation|reply-validation|team-context|action-preparation/);
       assert.doesNotMatch(label, /\{index\}|\{total\}/);
       assert.ok(label.length > 10, `${locale}: ${label}`);
-      assert.doesNotMatch(label, /\{team\}|\{assistant\}|\{power\}/);
+      assert.doesNotMatch(label, /\{team\}|\{assistant\}|\{action\}/);
     }
 
     const event = { origin: 'team', phase: 'model', state: 'started' };
@@ -82,7 +82,7 @@ test('humanizes every observed phase in every supported Admin locale', () => {
   }
 });
 
-test('turns repeated Power calls into one truthful contextual narrative', () => {
+test('turns repeated Action calls into one truthful contextual narrative', () => {
   const events = [
     { seq: 1, origin: 'admin', phase: 'admin-preparation', state: 'started' },
     { seq: 2, origin: 'admin', phase: 'admin-preparation', state: 'finished', elapsed_ms: 4 },
@@ -90,24 +90,24 @@ test('turns repeated Power calls into one truthful contextual narrative', () => 
     { seq: 4, origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 12 },
     { seq: 5, origin: 'team', phase: 'model', state: 'started' },
     { seq: 6, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 500 },
-    { seq: 7, origin: 'team', phase: 'power-preparation', state: 'started' },
-    { seq: 8, origin: 'team', phase: 'power-preparation', state: 'finished', elapsed_ms: 8 },
+    { seq: 7, origin: 'team', phase: 'action-preparation', state: 'started' },
+    { seq: 8, origin: 'team', phase: 'action-preparation', state: 'finished', elapsed_ms: 8 },
     {
-      seq: 9, origin: 'team', phase: 'power', state: 'started', assistant_id: 'shimpz-cloudflare',
-      power: 'list-zones', index: 1, total: 1,
+      seq: 9, origin: 'team', phase: 'action', state: 'started', assistant_id: 'shimpz-cloudflare',
+      action: 'list-zones', index: 1, total: 1,
     },
     {
-      seq: 10, origin: 'team', phase: 'power', state: 'finished', elapsed_ms: 90,
-      assistant_id: 'shimpz-cloudflare', power: 'list-zones', index: 1, total: 1,
+      seq: 10, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 90,
+      assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 1,
     },
     { seq: 11, origin: 'team', phase: 'model', state: 'started' },
     { seq: 12, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 200 },
-    { seq: 13, origin: 'team', phase: 'power-delivery', state: 'started' },
-    { seq: 14, origin: 'team', phase: 'power-delivery', state: 'finished', elapsed_ms: 1 },
-    { seq: 15, origin: 'team', phase: 'power-preparation', state: 'started' },
+    { seq: 13, origin: 'team', phase: 'action-delivery', state: 'started' },
+    { seq: 14, origin: 'team', phase: 'action-delivery', state: 'finished', elapsed_ms: 1 },
+    { seq: 15, origin: 'team', phase: 'action-preparation', state: 'started' },
     {
-      seq: 16, origin: 'team', phase: 'power', state: 'started', assistant_id: 'shimpz-cloudflare',
-      power: 'list-zones', index: 1, total: 1,
+      seq: 16, origin: 'team', phase: 'action', state: 'started', assistant_id: 'shimpz-cloudflare',
+      action: 'list-zones', index: 1, total: 1,
     },
   ];
   const labels = messages.pt.chatPage.progress;
@@ -122,18 +122,18 @@ test('turns repeated Power calls into one truthful contextual narrative', () => 
   assert.equal(narrative[2], 'Marketing decide como tratar sua solicitação');
   assert.equal(narrative[4], 'Shimpz Cloudflare executa List Zones para Marketing');
   assert.equal(narrative[5], 'Marketing avalia os resultados devolvidos pelos Assistants');
-  assert.equal(narrative[6], 'Marketing registra os resultados de Powers aceitos pelo modelo');
+  assert.equal(narrative[6], 'Marketing registra os resultados de Actions aceitos pelo modelo');
   assert.equal(narrative[7], 'Marketing prepara as próximas ações de Assistants solicitadas pelo modelo');
   assert.equal(narrative[8], 'Shimpz Cloudflare executa List Zones novamente para Marketing');
-  assert.ok(narrative.every((label) => !label.includes('Power 1')));
+  assert.ok(narrative.every((label) => !label.includes('Action 1')));
 });
 
 test('renders a resumed partial stream without inventing an absolute round', () => {
   const steps = executionSteps([
-    { seq: 1, origin: 'team', phase: 'power-preparation', state: 'started' },
+    { seq: 1, origin: 'team', phase: 'action-preparation', state: 'started' },
     {
-      seq: 2, origin: 'team', phase: 'power', state: 'started', assistant_id: 'helper',
-      power: 'lookup', index: 1, total: 1,
+      seq: 2, origin: 'team', phase: 'action', state: 'started', assistant_id: 'helper',
+      action: 'lookup', index: 1, total: 1,
     },
   ]);
   const labels = messages.en.chatPage.progress;
@@ -166,19 +166,19 @@ test('every locale resolves every narrative variant without placeholder remnants
     { origin: 'admin', phase: 'reply-validation' },
     { origin: 'team', phase: 'team-context', observedModelsBefore: 0 },
     { origin: 'team', phase: 'team-context', observedModelsBefore: 1 },
-    { origin: 'team', phase: 'model', observedPowersBefore: 0 },
-    { origin: 'team', phase: 'model', observedPowersBefore: 1 },
-    { origin: 'team', phase: 'power-preparation', observedPowersBefore: 0 },
-    { origin: 'team', phase: 'power-preparation', observedPowersBefore: 1 },
+    { origin: 'team', phase: 'model', observedActionsBefore: 0 },
+    { origin: 'team', phase: 'model', observedActionsBefore: 1 },
+    { origin: 'team', phase: 'action-preparation', observedActionsBefore: 0 },
+    { origin: 'team', phase: 'action-preparation', observedActionsBefore: 1 },
     {
-      origin: 'team', phase: 'power', assistant_id: 'shimpz-cloudflare', power: 'list-zones',
-      powerOccurrence: 1, index: 1, total: 2,
+      origin: 'team', phase: 'action', assistant_id: 'shimpz-cloudflare', action: 'list-zones',
+      actionOccurrence: 1, index: 1, total: 2,
     },
     {
-      origin: 'team', phase: 'power', assistant_id: 'shimpz-cloudflare', power: 'list-zones',
-      powerOccurrence: 2, index: 2, total: 2,
+      origin: 'team', phase: 'action', assistant_id: 'shimpz-cloudflare', action: 'list-zones',
+      actionOccurrence: 2, index: 2, total: 2,
     },
-    { origin: 'team', phase: 'power-delivery' },
+    { origin: 'team', phase: 'action-delivery' },
   ];
   const context = {
     teamName: 'Marketing',

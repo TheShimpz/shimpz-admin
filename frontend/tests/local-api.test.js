@@ -19,7 +19,7 @@ function response(status, body) {
   };
 }
 
-test('install is passive and never invokes an Assistant Power', async () => {
+test('install is passive and never invokes an Assistant Action', async () => {
   const calls = [];
   const fetcher = async (url, options) => {
     calls.push({ url, options });
@@ -37,7 +37,7 @@ test('install is passive and never invokes an Assistant Power', async () => {
       { assistant_id: 'hello-pulse', source_digest: SOURCE_DIGEST },
     ]],
   );
-  assert.equal(calls.some(({ url }) => url.includes('/powers/')), false);
+  assert.equal(calls.some(({ url }) => url.includes('/actions/')), false);
 });
 
 test('idempotent install reports an existing Assistant without executing it', async () => {
@@ -116,8 +116,8 @@ test('projects only bounded display identities from the local Assistant catalog'
     assert.deepEqual(options, { cache: 'no-store', headers: { Accept: 'application/json' } });
     return response(200, {
       assistants: [
-        { id: 'hello-pulse', title: 'Hello Pulse', summary: 'First', powers: ['hello'] },
-        { id: 'salesnator', title: 'Salesnator', summary: 'Second', powers: [] },
+        { id: 'hello-pulse', title: 'Hello Pulse', summary: 'First', actions: ['hello'] },
+        { id: 'salesnator', title: 'Salesnator', summary: 'Second', actions: [] },
       ],
     });
   };

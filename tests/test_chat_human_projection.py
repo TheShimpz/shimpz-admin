@@ -1,4 +1,4 @@
-"""Fail-closed public projections for every Power human request kind."""
+"""Fail-closed public projections for every Action human request kind."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def _request(kind: str) -> dict[str, object]:
         "kind": kind,
         "ordinal": 0,
         "title": "Need your decision",
-        "description": "This exact Power is waiting for you.",
+        "description": "This exact Action is waiting for you.",
     }
     if kind in human.LENGTH_KINDS:
         base.update(
@@ -68,8 +68,8 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
         "turn_id": CHALLENGE_ID,
         "challenge_id": CHALLENGE_ID,
         "expires_in": 300,
-        "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
-        "power": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
+        "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.1"},
+        "action": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
         "request": request,
         "trace_id": TRACE_ID,
     }
@@ -195,8 +195,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         invalid_bodies = (
             _response(_request("approval"), trace_id="bad"),
             _response(_request("approval"), assistant=None),
-            _response(_request("approval"), power=None),
-            _response(_request("approval"), power={"id": "Bad", "summary": "summary"}),
+            _response(_request("approval"), action=None),
+            _response(_request("approval"), action={"id": "Bad", "summary": "summary"}),
             _response(None),
             _response(_fingerprinted({"kind": "unknown", "ordinal": 0, "title": "Title", "description": "Text"})),
         )

@@ -18,9 +18,9 @@ def integration_requirements() -> list[dict[str, object]]:
             "integration_id": "x-integration",
             "provider": "x",
             "name": "X integration",
-            "summary": "Lets approved Powers access the connected X integration.",
+            "summary": "Lets approved Actions access the connected X integration.",
             "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
-            "powers": [
+            "actions": [
                 {"id": "profile-me", "name": "Read profile", "summary": "Read the connected X profile."},
                 {"id": "create-post", "name": "Create post", "summary": "Publish a post on X."},
             ],
@@ -48,8 +48,8 @@ def human_challenge(kind: str, status: int = 428) -> object:
     request: dict[str, object] = {
         "kind": kind,
         "ordinal": 0,
-        "title": "Confirm this Power",
-        "description": "The Power is waiting for your response.",
+        "title": "Confirm this Action",
+        "description": "The Action is waiting for your response.",
     }
     if kind == "input:password":
         request.update(
@@ -75,8 +75,8 @@ def human_challenge(kind: str, status: int = 428) -> object:
             "turn_id": CHALLENGE_ID,
             "challenge_id": CHALLENGE_ID,
             "expires_in": 300,
-            "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare"},
-            "power": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
+            "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.1"},
+            "action": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
             "request": request,
         },
     )

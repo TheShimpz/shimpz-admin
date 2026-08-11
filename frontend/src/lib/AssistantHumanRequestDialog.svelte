@@ -2,9 +2,8 @@
   import { tick } from 'svelte';
   import {
     Button,
-    Card,
     Notice,
-    PowerRequestFields,
+    ActionRequestFields,
     PromptDialog,
   } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
@@ -54,13 +53,9 @@
       minimum: String(request?.min_selections ?? 0),
       maximum: String(request?.max_selections ?? 0),
     }),
-    thirdPartySecret: $t('humanRequest.thirdPartySecret', { assistant: challenge?.assistant?.name ?? '' }),
-    reauthHint: copy.reauthHint,
     reauthLabel: copy.authorize,
-    secondFactorHint: copy.secondFactorHint,
     secondFactorLabel: copy.secondFactorLabel,
     secondFactorPlaceholder: copy.secondFactorPlaceholder,
-    passkeyHint: copy.passkeyHint,
   });
 
   $effect(() => {
@@ -149,19 +144,18 @@
     {kicker}
     {title}
     titleId="human-request-title"
-    lead={request.description}
     size="md"
     oncancel={deny}
     onsubmit={submit}
   >
-    <p class="paused">
-      {copy.paused}
-      {#if !rejected}<span>{$t('humanRequest.expires', { seconds: String(challenge.expires_in) })}</span>{/if}
+    <p class="request-context">
+      {$t('humanRequest.context', {
+        action: challenge.action.id,
+        assistant: challenge.assistant.name,
+        version: challenge.assistant.version,
+        seconds: String(challenge.expires_in),
+      })}
     </p>
-    <Card class="request-origin" padding="compact">
-      <div><span>{copy.assistant}</span><strong>{challenge.assistant.name}</strong><code>{challenge.assistant.id}</code></div>
-      <div><span>{copy.power}</span><strong>{challenge.power.summary}</strong><code>{challenge.power.id}</code></div>
-    </Card>
 
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
@@ -176,7 +170,7 @@
       </div>
     {:else}
       <div bind:this={fieldsContainer}>
-        <PowerRequestFields
+        <ActionRequestFields
           {request}
           resetKey={challenge.challenge_id}
           labels={fieldLabels}
@@ -202,13 +196,6 @@
 {/if}
 
 <style>
-  .paused { margin: 0; color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
-  .paused span { color: var(--accent); font-family: var(--font-mono); }
+  .request-context { margin: 0; color: var(--text-dim); font-size: 0.72rem; line-height: 1.55; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
-  :global(.request-origin > [data-slot="card-content"]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--shimpz-space-4); }
-  :global(.request-origin [data-slot="card-content"] > div) { display: grid; min-width: 0; gap: 0.18rem; }
-  :global(.request-origin span) { color: var(--text-faint); font: 600 0.58rem/1.2 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
-  :global(.request-origin strong) { overflow: hidden; font-size: 0.78rem; line-height: 1.4; text-overflow: ellipsis; }
-  :global(.request-origin code) { overflow: hidden; color: var(--accent); font-size: 0.6rem; text-overflow: ellipsis; }
-  @media (max-width: 520px) { :global(.request-origin > [data-slot="card-content"]) { grid-template-columns: 1fr; } }
 </style>

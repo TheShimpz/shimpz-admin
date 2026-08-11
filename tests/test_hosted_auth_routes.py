@@ -31,7 +31,7 @@ HOSTED_TEAM_RESIDUES = [
     "egress_policies",
     "inference_configuration",
     "integration_credentials",
-    "power_checkpoints",
+    "action_checkpoints",
     "publication_bindings",
     "runtime_container",
     "runtime_state",

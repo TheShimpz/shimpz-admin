@@ -17,7 +17,7 @@ const notification = Object.freeze({
   assistant_id: 'shimpz-cloudflare',
   sequence: 3,
   headline: 'Shimpz Cloudflare 0.3 is ready',
-  changelog: '# Faster forecasts\n\nThe weather Power now returns clearer results.',
+  changelog: '# Faster forecasts\n\nThe weather Action now returns clearer results.',
   published_at: '2026-07-19T12:30:00Z',
   read_at: null,
 });

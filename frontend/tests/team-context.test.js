@@ -23,13 +23,13 @@ import { LocalApiError } from '../src/lib/localApi.js';
 const FILE_A = 'a'.repeat(32);
 const FILE_B = 'b'.repeat(32);
 const LOCAL_TEAM_RESIDUES = [
+  'action_checkpoints',
   'assistant_containers',
   'brain_checkpoints',
   'chat_continuations',
   'egress_policies',
   'inference_configuration',
   'integration_credentials',
-  'power_checkpoints',
   'publication_bindings',
   'runtime_state',
   'team_networks',

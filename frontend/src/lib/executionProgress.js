@@ -5,26 +5,26 @@ function identity(event) {
     event.origin,
     event.phase,
     event.assistant_id ?? '',
-    event.power ?? '',
+    event.action ?? '',
     event.index ?? 0,
     event.total ?? 0,
   ].join('\u0000');
 }
 
 function annotateNarrative(steps) {
-  const powerOccurrences = new Map();
-  let observedPowers = 0;
+  const actionOccurrences = new Map();
+  let observedActions = 0;
   let observedModels = 0;
   for (const step of steps) {
-    step.observedPowersBefore = observedPowers;
+    step.observedActionsBefore = observedActions;
     step.observedModelsBefore = observedModels;
     if (step.phase === 'model') observedModels += 1;
-    if (step.phase !== 'power') continue;
-    const key = `${step.assistant_id}\u0000${step.power}`;
-    const occurrence = (powerOccurrences.get(key) ?? 0) + 1;
-    powerOccurrences.set(key, occurrence);
-    step.powerOccurrence = occurrence;
-    observedPowers += 1;
+    if (step.phase !== 'action') continue;
+    const key = `${step.assistant_id}\u0000${step.action}`;
+    const occurrence = (actionOccurrences.get(key) ?? 0) + 1;
+    actionOccurrences.set(key, occurrence);
+    step.actionOccurrence = occurrence;
+    observedActions += 1;
   }
   return steps;
 }
@@ -45,7 +45,7 @@ export function executionSteps(events) {
         origin: event.origin,
         phase: event.phase,
         assistant_id: event.assistant_id,
-        power: event.power,
+        action: event.action,
         index: event.index,
         total: event.total,
         elapsed_ms: null,
@@ -66,7 +66,7 @@ export function executionSteps(events) {
       origin: event.origin,
       phase: event.phase,
       assistant_id: event.assistant_id,
-      power: event.power,
+      action: event.action,
       index: event.index,
       total: event.total,
       elapsed_ms: event.elapsed_ms,
@@ -94,7 +94,7 @@ export function executionStepCount(events) {
 }
 
 export function technicalStepLabel(step) {
-  const position = step.phase === 'power' ? ` ${step.index}/${step.total}` : '';
+  const position = step.phase === 'action' ? ` ${step.index}/${step.total}` : '';
   return `${step.origin} · ${step.phase}${position}`;
 }
 
@@ -125,17 +125,17 @@ function narrativeKey(step) {
     return step.observedModelsBefore > 0 ? 'teamContextFinal' : 'teamContextInitial';
   }
   if (step.phase === 'model') {
-    return step.observedPowersBefore > 0 ? 'modelAfterPower' : 'modelInitial';
+    return step.observedActionsBefore > 0 ? 'modelAfterAction' : 'modelInitial';
   }
-  if (step.phase === 'power-preparation') {
-    return step.observedPowersBefore > 0 ? 'powerPreparationAgain' : 'powerPreparation';
+  if (step.phase === 'action-preparation') {
+    return step.observedActionsBefore > 0 ? 'actionPreparationAgain' : 'actionPreparation';
   }
-  if (step.phase === 'power') {
-    return step.powerOccurrence > 1 ? 'powerAgain' : 'power';
+  if (step.phase === 'action') {
+    return step.actionOccurrence > 1 ? 'actionAgain' : 'action';
   }
   return {
     'admin-preparation': 'adminPreparation',
-    'power-delivery': 'powerDelivery',
+    'action-delivery': 'actionDelivery',
     'reply-validation': 'replyValidation',
   }[step.phase];
 }
@@ -146,10 +146,10 @@ function narrativeLabel(step, labels, context) {
   let label = fillNarrative(template, {
     team: context.teamName ?? labels.origins?.team ?? 'Team',
     assistant: displayAssistant(step, context),
-    power: humanizeIdentifier(step.power),
+    action: humanizeIdentifier(step.action),
   });
-  if (step.phase === 'power' && step.total > 1 && typeof labels.narrative.powerPosition === 'string') {
-    label += ` ${fillNarrative(labels.narrative.powerPosition, {
+  if (step.phase === 'action' && step.total > 1 && typeof labels.narrative.actionPosition === 'string') {
+    label += ` ${fillNarrative(labels.narrative.actionPosition, {
       index: step.index,
       total: step.total,
     })}`;

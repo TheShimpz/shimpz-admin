@@ -137,11 +137,11 @@
                 {#each requirement.scopes as scope (scope)}<code>{scope}</code>{/each}
               </div>
             </section>
-            <section aria-label={copy.powers}>
-              <span>{copy.powers}</span>
+            <section aria-label={copy.actions}>
+              <span>{copy.actions}</span>
               <ul>
-                {#each requirement.powers as power (power.id)}
-                  <li><strong>{power.name}</strong><p>{power.summary}</p></li>
+                {#each requirement.actions as action (action.id)}
+                  <li><strong>{action.name}</strong><p>{action.summary}</p></li>
                 {/each}
               </ul>
             </section>

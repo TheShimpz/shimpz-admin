@@ -24,7 +24,7 @@ def secret_requirement() -> dict[str, object]:
     return {
         "assistant_id": "shimpz-cloudflare",
         "assistant_name": "Shimpz Cloudflare",
-        "power_ids": ["identity-me", "create-post"],
+        "action_ids": ["identity-me", "create-post"],
         "secrets": [
             {"id": "x-api-key", "name": "X API Key", "summary": "Identifies the X application."},
             {"id": "x-api-secret", "name": "X API Secret", "summary": "Authenticates the X application."},
@@ -37,7 +37,7 @@ def approval_requirements() -> list[dict[str, object]]:
         {
             "assistant_id": "shimpz-cloudflare",
             "assistant_name": "Shimpz Cloudflare",
-            "power_id": "create-post",
+            "action_id": "create-post",
             "title": "Publish post",
             "summary": "Publish this exact post on X.",
             "docs": "https://docs.example.com/publish",
@@ -53,9 +53,9 @@ def integration_requirement() -> dict[str, object]:
         "integration_id": "x-integration",
         "provider": "x",
         "name": "X integration",
-        "summary": "Lets approved Powers access the connected X integration.",
+        "summary": "Lets approved Actions access the connected X integration.",
         "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
-        "powers": [
+        "actions": [
             {"id": "identity-me", "name": "Read profile", "summary": "Read the connected X profile."},
             {"id": "create-post", "name": "Create post", "summary": "Publish a post on X."},
         ],
@@ -118,7 +118,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {**valid, "requirements": [{**requirement, "scopes": ["tweet.read", "tweet.read"]}]},
             {
                 **valid,
-                "requirements": [{**requirement, "powers": [requirement["powers"][0], requirement["powers"][0]]}],
+                "requirements": [{**requirement, "actions": [requirement["actions"][0], requirement["actions"][0]]}],
             },
             {**valid, "requirements": [{**requirement, "client_secret": "must-not-cross"}]},
         )
@@ -184,10 +184,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             progress(
                 {
                     "seq": 3,
-                    "phase": "power",
+                    "phase": "action",
                     "state": "started",
                     "assistant_id": "shimpz-cloudflare",
-                    "power": "list-zones",
+                    "action": "list-zones",
                     "index": 1,
                     "total": 1,
                 }
@@ -195,11 +195,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             progress(
                 {
                     "seq": 4,
-                    "phase": "power",
+                    "phase": "action",
                     "state": "finished",
                     "elapsed_ms": 6,
                     "assistant_id": "shimpz-cloudflare",
-                    "power": "list-zones",
+                    "action": "list-zones",
                     "index": 1,
                     "total": 1,
                 }
@@ -225,16 +225,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 ("admin", "admin-preparation", "finished"),
                 ("team", "model", "started"),
                 ("team", "model", "finished"),
-                ("team", "power", "started"),
-                ("team", "power", "finished"),
+                ("team", "action", "started"),
+                ("team", "action", "finished"),
                 ("admin", "reply-validation", "started"),
                 ("admin", "reply-validation", "finished"),
             ],
         )
-        power_events = [event for event in events if event["phase"] == "power"]
+        action_events = [event for event in events if event["phase"] == "action"]
         self.assertTrue(
             all(
-                (event["assistant_id"], event["power"]) == ("shimpz-cloudflare", "list-zones") for event in power_events
+                (event["assistant_id"], event["action"])
+                == ("shimpz-cloudflare", "list-zones")
+                for event in action_events
             )
         )
         self.assertIsInstance(events[-1]["elapsed_ms"], int)
@@ -649,7 +651,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
 
-    def test_stop_projects_an_accepted_turn_without_overclaiming_power_confirmation(self) -> None:
+    def test_stop_projects_an_accepted_turn_without_overclaiming_action_confirmation(self) -> None:
         controller = team.TeamResponse(
             200,
             {
@@ -679,7 +681,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {**valid, "requested": False},
             {**valid, "confirmed": "yes"},
             {**valid, "accepted": False, "requested": False, "confirmed": True},
-            {**valid, "power": "hello"},
+            {**valid, "action": "hello"},
         )
         for controller_body in invalid:
             with (
@@ -736,7 +738,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             team.TeamResponse(500, {"code": "chat-request-failed"}),
         )
 
-    def test_integration_challenge_rejects_missing_identity_capabilities_and_power(self) -> None:
+    def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()
         base = {
             "team_id": "team_1",
@@ -750,7 +752,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         invalid = (
             {**base, "turn_id": "c" * 32},
             {**base, "requirements": [{**requirement, "scopes": []}]},
-            {**base, "requirements": [{**requirement, "powers": [{}]}]},
+            {**base, "requirements": [{**requirement, "actions": [{}]}]},
         )
         for body in invalid:
             projected = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")

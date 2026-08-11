@@ -1,4 +1,4 @@
-"""Authenticated WebSocket lifecycle for Power human requests."""
+"""Authenticated WebSocket lifecycle for Action human requests."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         record = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(record["session_secret"])
         self.auth_clock = [100.0]
-        self.admin_app._AUTHENTICATE_POWER_REQUEST = self.admin_app.chat_human.LocalReauthenticationAuthority(
+        self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalReauthenticationAuthority(
             partial(
                 self.admin_app.chat_human.authenticate_local,
                 profile="local",

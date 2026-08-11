@@ -30,7 +30,7 @@ LOCAL_TEAM_RESIDUES = [
     "egress_policies",
     "inference_configuration",
     "integration_credentials",
-    "power_checkpoints",
+    "action_checkpoints",
     "publication_bindings",
     "runtime_state",
     "team_networks",
@@ -497,9 +497,9 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         self.assertTrue(document["routes_ok"])
         self.assertTrue(document["closed_api_ok"])
         self.assertTrue(document["retired_operations_absent"])
-        self.assertTrue(document["power_routes_absent"])
+        self.assertTrue(document["action_routes_absent"])
         self.assertTrue(document["help_route_absent"])
-        self.assertEqual(document["power_status"], 404)
+        self.assertEqual(document["action_status"], 404)
         self.assertEqual(document["help_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
@@ -743,11 +743,11 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         ("/api/teams/{team_id}/files/{file_id}", "DELETE"),
     }
     status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
-    power_status, _power_body = asyncio.run(
+    action_status, _action_body = asyncio.run(
         _asgi_request(
             admin_app,
             "POST",
-            "/api/teams/team_1/assistants/hello-pulse/powers/hello",
+            "/api/teams/team_1/assistants/hello-pulse/actions/hello",
             b'{"name":"Supervisor"}',
             token=token,
         )
@@ -764,13 +764,13 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         "routes_ok": expected.issubset(routes),
         "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
         "retired_operations_absent": not any("/operations/" in path for path, _method in routes),
-        "power_routes_absent": not any("/powers/" in path for path, _method in routes),
+        "action_routes_absent": not any("/actions/" in path for path, _method in routes),
         "help_route_absent": (
             "/api/teams/{team_id}/assistants/{assistant_id}/help",
             "GET",
         )
         not in routes,
-        "power_status": power_status,
+        "action_status": action_status,
         "help_status": help_status,
         "anonymous_status": status,
         "anonymous_body": body,

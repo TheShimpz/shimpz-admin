@@ -50,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 
 ADMIN_PROFILE = profile.require()
-_AUTHENTICATE_POWER_REQUEST = chat_human.LocalReauthenticationAuthority(
+_AUTHENTICATE_ACTION_REQUEST = chat_human.LocalReauthenticationAuthority(
     partial(
         chat_human.authenticate_local,
         profile=ADMIN_PROFILE,
@@ -475,7 +475,7 @@ def _team_response(action):
 
 
 async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_BODY_BYTES) -> dict:
-    """Read one JSON object without allowing a Power request to grow without bound."""
+    """Read one JSON object without allowing a Action request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise HTTPException(status_code=415, detail="content type must be application/json")
@@ -695,7 +695,7 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         session_ok=_session_ok,
         request_scope=_team_session_scope,
         allowed_origins=_allowed_browser_origins,
-        authenticate=_AUTHENTICATE_POWER_REQUEST,
+        authenticate=_AUTHENTICATE_ACTION_REQUEST,
     )
 
 

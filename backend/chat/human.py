@@ -1,4 +1,4 @@
-"""Fail-closed browser projection for Team-owned Power human challenges."""
+"""Fail-closed browser projection for Team-owned Action human challenges."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_TTL_SECONDS = 300
 MAX_AUTH_SECRET_CHARS = 4096
-MAX_REQUESTS_PER_POWER = 8
+MAX_REQUESTS_PER_ACTION = 8
 MAX_REAUTHENTICATION_ATTEMPTS = 3
 REAUTHENTICATION_LOCK_SECONDS = 60
 LENGTH_KINDS = {
@@ -44,7 +44,7 @@ RESPONSE_FIELDS = frozenset(
         "challenge_id",
         "expires_in",
         "assistant",
-        "power",
+        "action",
         "request",
         "trace_id",
     }
@@ -65,7 +65,7 @@ class AuthenticationResult:
 
 
 class LocalReauthenticationAuthority:
-    """Serialize the one Local Supervisor's bounded Power reauthentication ceremony."""
+    """Serialize the one Local Supervisor's bounded Action reauthentication ceremony."""
 
     def __init__(
         self,
@@ -102,11 +102,11 @@ class LocalReauthenticationAuthority:
             self._failures += 1
             remaining = MAX_REAUTHENTICATION_ATTEMPTS - self._failures
             if remaining > 0:
-                log.info("Power reauthentication was rejected; remaining attempts: %d", remaining)
+                log.info("Action reauthentication was rejected; remaining attempts: %d", remaining)
                 return AuthenticationResult("denied", attempts_remaining=remaining)
 
             self._locked_until = self._clock() + REAUTHENTICATION_LOCK_SECONDS
-            log.info("Power reauthentication was locked after repeated rejection")
+            log.info("Action reauthentication was locked after repeated rejection")
             return AuthenticationResult("locked", retry_after=REAUTHENTICATION_LOCK_SECONDS)
 
 
@@ -129,7 +129,7 @@ async def authenticate_local(
             record.get("password_hash", ""),
         )
     except TypeError, ValueError, RuntimeError, OSError:
-        log.warning("Power reauthentication authority is unavailable")
+        log.warning("Action reauthentication authority is unavailable")
         return "unavailable"
     return "verified" if verified else "denied"
 
@@ -148,7 +148,7 @@ def project(body: object, team_id: str) -> dict[str, object]:
     if type(expires_in) is not int or not 1 <= expires_in <= MAX_TTL_SECONDS:
         raise HumanChallengeError("invalid human challenge expiry")
     assistant = _assistant(body["assistant"])
-    power = _power(body["power"])
+    action = _action(body["action"])
     request = _request(body["request"])
     return {
         "team_id": team_id,
@@ -157,31 +157,32 @@ def project(body: object, team_id: str) -> dict[str, object]:
         "challenge_id": challenge_id,
         "expires_in": expires_in,
         "assistant": assistant,
-        "power": power,
+        "action": action,
         "request": request,
     }
 
 
 def _assistant(value: object) -> dict[str, str]:
-    if not isinstance(value, dict) or set(value) != {"id", "name"}:
+    if not isinstance(value, dict) or set(value) != {"id", "name", "version"}:
         raise HumanChallengeError("invalid human challenge Assistant")
     try:
         assistant_id = team.canonical_assistant_id(value["id"])
         name = chat_ws_common.public_text(value["name"], 80)
+        version = chat_ws_common.public_text(value["version"], 40, field="Assistant version")
     except (ValueError, team.TeamRequestError) as exc:
         raise HumanChallengeError("invalid human challenge Assistant") from exc
-    return {"id": assistant_id, "name": name}
+    return {"id": assistant_id, "name": name, "version": version}
 
 
-def _power(value: object) -> dict[str, str]:
+def _action(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or set(value) != {"id", "summary"}:
-        raise HumanChallengeError("invalid human challenge Power")
+        raise HumanChallengeError("invalid human challenge Action")
     try:
-        power_id = team.canonical_assistant_id(value["id"])
+        action_id = team.canonical_assistant_id(value["id"])
         summary = chat_ws_common.public_text(value["summary"], 160)
     except (ValueError, team.TeamRequestError) as exc:
-        raise HumanChallengeError("invalid human challenge Power") from exc
-    return {"id": power_id, "summary": summary}
+        raise HumanChallengeError("invalid human challenge Action") from exc
+    return {"id": action_id, "summary": summary}
 
 
 def _request(value: object) -> dict[str, object]:
@@ -196,7 +197,7 @@ def _request(value: object) -> dict[str, object]:
     if (
         not isinstance(kind, str)
         or type(ordinal) is not int
-        or not 0 <= ordinal < MAX_REQUESTS_PER_POWER
+        or not 0 <= ordinal < MAX_REQUESTS_PER_ACTION
         or not _text(request.get("title"), 80)
         or not _text(request.get("description"), 500)
         or not _kind(request, kind)

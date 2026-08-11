@@ -16,9 +16,9 @@ const MAX_ASSISTANTS = 16;
 const MAX_INTEGRATIONS = 512;
 const MAX_INTEGRATION_REQUIREMENTS = 64;
 const MAX_INTEGRATION_SCOPES = 32;
-const MAX_INTEGRATION_POWERS = 128;
+const MAX_INTEGRATION_ACTIONS = 128;
 const MAX_HUMAN_OPTIONS = 32;
-const MAX_HUMAN_REQUESTS_PER_POWER = 8;
+const MAX_HUMAN_REQUESTS_PER_ACTION = 8;
 const MAX_HUMAN_RESPONSE_CHARS = 16_000;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
@@ -28,9 +28,9 @@ export const CHAT_PROGRESS_PHASES = Object.freeze([
   'reply-validation',
   'team-context',
   'model',
-  'power-preparation',
-  'power',
-  'power-delivery',
+  'action-preparation',
+  'action',
+  'action-delivery',
 ]);
 const CHAT_PROGRESS_PHASE_SET = new Set(CHAT_PROGRESS_PHASES);
 const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation']);
@@ -38,7 +38,7 @@ const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
 const MAX_CHAT_PROGRESS_EVENTS = 2052;
 const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const MAX_PROGRESS_ASSISTANT_ID_CHARS = 40;
-const MAX_PROGRESS_POWER_ID_CHARS = 80;
+const MAX_PROGRESS_ACTION_ID_CHARS = 80;
 const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
 const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
 const MAX_OAUTH_CHAT_TURNS = 64;
@@ -247,7 +247,7 @@ function trustedCloudflareScopes(value) {
   );
 }
 
-function canonicalIntegrationPower(value) {
+function canonicalIntegrationAction(value) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -263,15 +263,15 @@ function canonicalIntegrationPower(value) {
   };
 }
 
-function canonicalIntegrationPowers(values) {
-  if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_POWERS) {
+function canonicalIntegrationActions(values) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_ACTIONS) {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  const powers = values.map(canonicalIntegrationPower);
-  if (new Set(powers.map((power) => power.id)).size !== powers.length) {
+  const actions = values.map(canonicalIntegrationAction);
+  if (new Set(actions.map((action) => action.id)).size !== actions.length) {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  return powers;
+  return actions;
 }
 
 function canonicalIntegrationRequirement(value) {
@@ -287,7 +287,7 @@ function canonicalIntegrationRequirement(value) {
       'name',
       'summary',
       'scopes',
-      'powers',
+      'actions',
     ])
   ) {
     throw new LocalApiError('The local chat response is invalid.');
@@ -300,7 +300,7 @@ function canonicalIntegrationRequirement(value) {
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 160),
     scopes: canonicalIntegrationScopes(value.scopes),
-    powers: canonicalIntegrationPowers(value.powers),
+    actions: canonicalIntegrationActions(value.actions),
   };
 }
 
@@ -337,7 +337,7 @@ function canonicalHumanRequestBase(value) {
     !HUMAN_REQUEST_KINDS.includes(value.kind) ||
     !Number.isSafeInteger(value.ordinal) ||
     value.ordinal < 0 ||
-    value.ordinal >= MAX_HUMAN_REQUESTS_PER_POWER ||
+    value.ordinal >= MAX_HUMAN_REQUESTS_PER_ACTION ||
     typeof value.fingerprint !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.fingerprint)
   ) throw new LocalApiError('The local chat response is invalid.');
@@ -859,11 +859,11 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     return { type: 'error', status: value.status, detail: value.detail };
   }
   if (value.type === 'progress') {
-    const power = value.phase === 'power';
+    const action = value.phase === 'action';
     const finished = value.state === 'finished';
     const expected = ['type', 'seq', 'origin', 'phase', 'state'];
     if (finished) expected.push('elapsed_ms');
-    if (power) expected.push('assistant_id', 'index', 'power', 'total');
+    if (action) expected.push('assistant_id', 'index', 'action', 'total');
     const validAuthority = (
       (value.origin === 'admin' && ADMIN_PROGRESS_PHASES.has(value.phase)) ||
       (value.origin === 'team' && !ADMIN_PROGRESS_PHASES.has(value.phase))
@@ -881,13 +881,13 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
         value.elapsed_ms < 0 ||
         value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
       )) ||
-      (power && (
+      (action && (
         typeof value.assistant_id !== 'string' ||
         value.assistant_id.length > MAX_PROGRESS_ASSISTANT_ID_CHARS ||
         !ASSISTANT_ID_RE.test(value.assistant_id) ||
-        typeof value.power !== 'string' ||
-        value.power.length > MAX_PROGRESS_POWER_ID_CHARS ||
-        !ASSISTANT_ID_RE.test(value.power) ||
+        typeof value.action !== 'string' ||
+        value.action.length > MAX_PROGRESS_ACTION_ID_CHARS ||
+        !ASSISTANT_ID_RE.test(value.action) ||
         !Number.isSafeInteger(value.index) ||
         !Number.isSafeInteger(value.total) ||
         value.index < 1 ||
@@ -905,10 +905,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       state: value.state,
     };
     if (finished) event.elapsed_ms = value.elapsed_ms;
-    if (power) {
+    if (action) {
       event.assistant_id = value.assistant_id;
       event.index = value.index;
-      event.power = value.power;
+      event.action = value.action;
       event.total = value.total;
     }
     return event;
@@ -976,7 +976,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'human-required') {
     if (
-      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'power', 'request']) ||
+      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request']) ||
       typeof value.challenge_id !== 'string' ||
       !OPAQUE_ID_RE.test(value.challenge_id) ||
       !Number.isSafeInteger(value.expires_in) ||
@@ -987,8 +987,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       type: 'human-required',
       challenge_id: value.challenge_id,
       expires_in: value.expires_in,
-      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name'], 80),
-      power: canonicalHumanIdentity(value.power, ['id', 'summary'], 160),
+      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80),
+      action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160),
       request: canonicalHumanRequest(value.request),
     };
   }
