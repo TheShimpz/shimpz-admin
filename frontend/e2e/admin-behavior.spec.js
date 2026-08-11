@@ -488,7 +488,7 @@ for (const [kind, title] of humanPresentations) {
     const dialog = page.getByRole('dialog', { name: title });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText(
-      'Action list-zones from Shimpz Cloudflare v0.4.1 assistant needs human validation. Expires in 300 seconds.',
+      'Action list-zones from Shimpz Cloudflare v0.4.1 needs human validation. Expires in 300 seconds.',
     );
     await expect(dialog).not.toContainText('List reviewed Cloudflare zones.');
     const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();

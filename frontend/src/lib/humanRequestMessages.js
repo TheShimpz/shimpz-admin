@@ -1,7 +1,7 @@
 export const humanRequestMessages = {
   en: {
     approvalKicker: 'Action // approval', inputKicker: 'Action // input required', authKicker: 'Action // sensitive authorization',
-    context: 'Action {action} from {assistant} v{version} assistant needs human validation. Expires in {seconds} seconds.',
+    context: 'Action {action} from {assistant} v{version} needs human validation. Expires in {seconds} seconds.',
     required: 'Required', optional: 'Optional', chooseOption: 'Choose an option', approve: 'Approve action', submit: 'Send response', authorize: 'Confirm authorization', cancel: 'Deny and stop', usePasskey: 'Use passkey',
     validating: 'Confirming your Supervisor password…',
     secondFactorLabel: 'Verification code', secondFactorPlaceholder: 'Enter your one-time code',
