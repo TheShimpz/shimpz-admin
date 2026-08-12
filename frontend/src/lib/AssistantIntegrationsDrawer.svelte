@@ -45,16 +45,9 @@
   });
 
   function statusLabel(status) {
-    if (status === 'connected') return copy.statusConnected;
     if (status === 'expired') return copy.statusExpired;
     if (status === 'reauthorization-required') return copy.statusReauthorization;
     return copy.statusMissing;
-  }
-
-  function integrationLabel(integration) {
-    if (!integration) return copy.noIntegration;
-    if (integration.username) return `@${integration.username}`;
-    return integration.name ?? integration.id;
   }
 
   function identity(integration) {
@@ -131,14 +124,12 @@
                 <li>
                   <div class="integration-heading">
                     <strong>{integration.name}</strong>
-                    <StatusBadge tone={integration.status === 'connected' ? 'success' : 'warning'}>
-                      {statusLabel(integration.status)}
-                    </StatusBadge>
+                    {#if integration.status !== 'connected'}
+                      <StatusBadge tone="warning">{statusLabel(integration.status)}</StatusBadge>
+                    {/if}
                   </div>
                   <p>{integration.summary}</p>
                   <dl>
-                    <div><dt>{copy.provider}</dt><dd>{assistantIntegrationProviderLabel(integration.provider)}</dd></div>
-                    <div><dt>{copy.integration}</dt><dd>{integrationLabel(integration.integration)}</dd></div>
                     <div><dt>{copy.scopes}</dt><dd>{integration.scopes.join(' · ')}</dd></div>
                   </dl>
                   <Toolbar align="end">

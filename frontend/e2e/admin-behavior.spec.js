@@ -85,6 +85,7 @@ async function routeReadyChat(page, {
   humanKind = '',
   humanRejections = [],
   integrationChallenge = false,
+  integrationStatus = 'connected',
   integrationRequirements,
   missingInference = false,
   oauthCompletionMode = 'automatic',
@@ -175,7 +176,7 @@ async function routeReadyChat(page, {
         name: 'Cloudflare',
         summary: 'Reads reviewed zone and DNS metadata.',
         scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
-        status: 'connected',
+        status: integrationStatus,
         integration: { id: 'account-1', name: 'Shimpz', username: null },
         expires_at: '2026-08-31T12:00:00.000Z',
       }],
@@ -349,7 +350,10 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute('data-slot', 'drawer');
   await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
-  await expect(drawer.getByText('Connected', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
+  await expect(drawer.locator('dt')).toHaveText(['Permissions']);
+  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
   const drawerBox = await drawer.boundingBox();
   expect(drawerBox).not.toBeNull();
   expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
@@ -362,6 +366,27 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
 });
+
+for (const [integrationStatus, statusLabel, disconnectCount] of [
+  ['missing', 'Missing', 0],
+  ['expired', 'Expired', 1],
+  ['reauthorization-required', 'Reconnect required', 1],
+]) {
+  test(`keeps the ${integrationStatus} Integration status actionable`, async ({ page }) => {
+    await routeReadyChat(page, { integrationStatus });
+    await page.goto('/chat/');
+
+    await page.getByRole('button', { name: 'Assistant integrations' }).click();
+    const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+    await expect(drawer.getByText(statusLabel, { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
+    await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(disconnectCount);
+    if (integrationStatus === 'reauthorization-required') {
+      const warningAxe = await new AxeBuilder({ page }).analyze();
+      expect(warningAxe.violations).toEqual([]);
+    }
+  });
+}
 
 test('uses text actions and one semantic selected state in the Assistant chooser', async ({ page }) => {
   await routeReadyChat(page);
