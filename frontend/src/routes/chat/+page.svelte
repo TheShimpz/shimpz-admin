@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { flushSync, onMount, tick } from 'svelte';
   import { Button, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
@@ -462,10 +462,11 @@
       !integrationChallenge ||
       integrationChallenge.challenge_id !== challengeId
     ) throw new Error(integrationsCopy.authorizationFailed);
+    integrationWorking = 'connect';
+    flushSync();
     // Open synchronously while this click still owns transient browser activation.
     const authorizationWindow = window.open('about:blank', '_blank');
     if (authorizationWindow) authorizationWindow.opener = null;
-    integrationWorking = 'connect';
     let authorizationStarted = false;
     try {
       const authorization = await authorizeAssistantIntegration(fetch, teamId, challengeId);

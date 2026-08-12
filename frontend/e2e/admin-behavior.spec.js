@@ -443,6 +443,18 @@ test('renders dynamic Integration data in the current language', async ({ page }
 });
 
 test('presents one dynamic authorization at a time for a shared provider', async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeOpen = window.open;
+    window.open = function captureAuthorizationState(...args) {
+      const buttons = document.querySelectorAll('dialog[open] button');
+      const authorizeButton = buttons.item(buttons.length - 1);
+      window.authorizationStateAtOpen = {
+        disabled: authorizeButton?.disabled ?? false,
+        text: authorizeButton?.textContent?.trim() ?? '',
+      };
+      return nativeOpen.apply(this, args);
+    };
+  });
   await routeReadyChat(page, {
     integrationChallenge: true,
     integrationRequirements: [
@@ -485,6 +497,10 @@ test('presents one dynamic authorization at a time for a shared provider', async
   const popupPromise = page.waitForEvent('popup');
   await authorize.click();
   const popup = await popupPromise;
+  expect(await page.evaluate(() => window.authorizationStateAtOpen)).toEqual({
+    disabled: true,
+    text: 'Opening Cloudflare…',
+  });
   await expect(dialog.getByRole('button', { name: 'Opening Cloudflare…' })).toBeDisabled();
   await expect.poll(() => Boolean(authorizeRoute)).toBe(true);
   await authorizeRoute.abort();
