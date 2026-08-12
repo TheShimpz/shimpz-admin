@@ -234,8 +234,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         action_events = [event for event in events if event["phase"] == "action"]
         self.assertTrue(
             all(
-                (event["assistant_id"], event["action"])
-                == ("shimpz-cloudflare", "list-zones")
+                (event["assistant_id"], event["action"]) == ("shimpz-cloudflare", "list-zones")
                 for event in action_events
             )
         )
