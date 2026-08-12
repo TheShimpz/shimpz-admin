@@ -1,0 +1,337 @@
+import { readFileSync } from 'node:fs';
+
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
+
+const modelCatalog = JSON.parse(
+  readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
+);
+const visualContract = {
+  animations: 'disabled',
+  fullPage: true,
+  maxDiffPixels: 100,
+};
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function json(route, body, status = 200) {
+  return route.fulfill({
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  });
+}
+
+async function routeSession(page, response, gate = null) {
+  const requested = deferred();
+  await page.route('**/api/session', async (route) => {
+    requested.resolve();
+    if (gate) await gate.promise;
+    await json(route, response.body, response.status);
+  });
+  return requested;
+}
+
+async function routeReadyChat(page, { teamGate, inferenceGate }) {
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: {
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    },
+  });
+  await page.route('**/api/teams', async (route) => {
+    await teamGate.promise;
+    await json(route, {
+      teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+    });
+  });
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/teams/marketing/files', (route) => json(route, { files: [] }));
+  await page.route('**/api/model-providers', (route) => json(route, {
+    providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
+      ...provider,
+      configured: true,
+      masked: '••••1234',
+    })),
+  }));
+  await page.route('**/api/teams/marketing/inference', async (route) => {
+    await inferenceGate.promise;
+    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' });
+  });
+  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    socket.onMessage((message) => {
+      if (JSON.parse(message).type === 'sync') {
+        socket.send(JSON.stringify({ type: 'sync-empty' }));
+      }
+    });
+  });
+}
+
+test('shows only the centered Shimpz binary boot screen while the session is unresolved', async ({ page }) => {
+  const sessionGate = deferred();
+  const sessionRequested = await routeSession(page, {
+    body: { profile: 'local', authenticated: false, initialized: false },
+  }, sessionGate);
+
+  await page.goto('/');
+  await sessionRequested.promise;
+
+  const boot = page.locator('[data-slot="boot-screen"]');
+  const mark = page.locator('[data-slot="boot-mark"]');
+  const markImage = mark.locator('img');
+  const glyphs = page.locator('[data-slot="binary-loader"] i');
+  await expect(boot).toBeVisible();
+  await expect(page.locator('.initial-content')).toHaveAttribute('inert', '');
+  await expect(page.locator('.auth-stage')).toBeHidden();
+  await expect(boot).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+  await expect(glyphs).toHaveText(['0', '1', '0', '1', '0', '1']);
+  await expect(glyphs.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect.poll(() => markImage.evaluate(
+    (image) => image.complete && image.naturalWidth > 0,
+  )).toBe(true);
+  expect(await glyphs.first().evaluate(
+    (element) => getComputedStyle(element).fontFamily.includes('IBM Plex Mono'),
+  )).toBe(true);
+  expect(await page.evaluate(async () => {
+    await document.fonts.load('600 14px "IBM Plex Mono"', '01');
+    return document.fonts.check('600 14px "IBM Plex Mono"', '01');
+  })).toBe(true);
+  const [markBox, viewport] = await Promise.all([
+    mark.boundingBox(),
+    page.evaluate(() => ({ width: innerWidth, height: innerHeight })),
+  ]);
+  expect(markBox).not.toBeNull();
+  expect(Math.abs(markBox.x + (markBox.width / 2) - (viewport.width / 2))).toBeLessThan(1);
+  expect(Math.abs(markBox.y + (markBox.height / 2) - (viewport.height / 2))).toBeLessThan(1);
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
+  await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
+  sessionGate.resolve();
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create password' })).toBeVisible();
+});
+
+test('keeps one boot surface through Team and model hydration, then focuses usable Chat', async ({ page }) => {
+  const teamGate = deferred();
+  const inferenceGate = deferred();
+  await routeReadyChat(page, { teamGate, inferenceGate });
+
+  await page.goto('/chat/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  await expect(page.locator('.chat-route')).toBeHidden();
+
+  const inferenceRequest = page.waitForRequest('**/api/teams/marketing/inference');
+  teamGate.resolve();
+  await inferenceRequest;
+  await expect(boot).toBeVisible();
+  await expect(page.locator('.chat-route')).toBeHidden();
+
+  inferenceGate.resolve();
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(boot).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+});
+
+test('releases to the empty-Team final state without waiting for a model request', async ({ page }) => {
+  const teamGate = deferred();
+  let inferenceRequests = 0;
+  page.on('request', (request) => {
+    if (/\/api\/teams\/[^/]+\/inference$/.test(new URL(request.url()).pathname)) {
+      inferenceRequests += 1;
+    }
+  });
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: {
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    },
+  });
+  await page.route('**/api/teams', async (route) => {
+    await teamGate.promise;
+    await json(route, { teams: [] });
+  });
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+
+  await page.goto('/chat/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  teamGate.resolve();
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByText('Create a Team below to start chatting.')).toBeVisible();
+  expect(inferenceRequests).toBe(0);
+});
+
+test('keeps boot visible across the authenticated root redirect', async ({ page }) => {
+  const teamGate = deferred();
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: {
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    },
+  });
+  await page.route('**/api/teams', async (route) => {
+    await teamGate.promise;
+    await json(route, { teams: [] });
+  });
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+
+  await page.goto('/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  await expect(page).toHaveURL(/\/chat\/?$/);
+  await expect(page.locator('.chat-route')).toBeHidden();
+  teamGate.resolve();
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByText('Create a Team below to start chatting.')).toBeVisible();
+});
+
+test('releases to the final Chat error when Team hydration fails', async ({ page }) => {
+  const teamGate = deferred();
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: {
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    },
+  });
+  await page.route('**/api/teams', async (route) => {
+    await teamGate.promise;
+    await json(route, { detail: 'Team catalog unavailable.' }, 503);
+  });
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+
+  await page.goto('/chat/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  teamGate.resolve();
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByText('Local chat data is unavailable.')).toBeVisible();
+  await expect(page.getByText('Technical detail: Team catalog unavailable.')).toBeVisible();
+});
+
+test('releases a non-Chat route after Team hydration without waiting for a model', async ({ page }) => {
+  const teamGate = deferred();
+  const inferenceGate = deferred();
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: {
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    },
+  });
+  await page.route('**/api/teams', async (route) => {
+    await teamGate.promise;
+    await json(route, {
+      teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+    });
+  });
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/teams/marketing/files', (route) => json(route, { files: [] }));
+  await page.route('**/api/model-providers', (route) => json(route, {
+    providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
+      ...provider,
+      configured: true,
+      masked: '••••1234',
+    })),
+  }));
+  await page.route('**/api/teams/marketing/inference', async (route) => {
+    await inferenceGate.promise;
+    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' });
+  });
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+  }));
+
+  await page.goto('/assistants/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  const inferenceRequest = page.waitForRequest('**/api/teams/marketing/inference');
+  teamGate.resolve();
+  await inferenceRequest;
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByText('Loading the Assistant Store…')).toBeVisible();
+  inferenceGate.resolve();
+});
+
+test('releases to retry when the session check reaches an error', async ({ page }) => {
+  const sessionGate = deferred();
+  const sessionRequested = await routeSession(page, {
+    status: 503,
+    body: { detail: 'Unavailable' },
+  }, sessionGate);
+
+  await page.goto('/');
+  await sessionRequested.promise;
+  const boot = page.locator('[data-slot="boot-screen"]');
+  await expect(boot).toBeVisible();
+  sessionGate.resolve();
+  await expect(boot).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+});
+
+test('keeps a stable binary composition when reduced motion is requested', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const sessionGate = deferred();
+  const sessionRequested = await routeSession(page, {
+    body: { profile: 'local', authenticated: false, initialized: false },
+  }, sessionGate);
+
+  await page.goto('/');
+  await sessionRequested.promise;
+  const columns = page.locator('[data-slot="binary-loader"] .binary-column');
+  await expect(columns).toHaveCount(2);
+  await expect(columns.first()).toHaveCSS('animation-name', 'none');
+  await expect(columns.last()).toHaveCSS('animation-name', 'none');
+  const [leftBox, rightBox] = await Promise.all([
+    columns.first().boundingBox(),
+    columns.last().boundingBox(),
+  ]);
+  expect(leftBox).not.toBeNull();
+  expect(rightBox).not.toBeNull();
+  expect(Math.abs(leftBox.x - rightBox.x)).toBeGreaterThanOrEqual(
+    Math.min(leftBox.width, rightBox.width),
+  );
+  sessionGate.resolve();
+});

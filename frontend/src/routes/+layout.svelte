@@ -6,11 +6,12 @@
   import { onMount } from 'svelte';
   import AdminShell from '$lib/AdminShell.svelte';
   import AuthScreen from '$lib/AuthScreen.svelte';
+  import BootScreen from '$lib/BootScreen.svelte';
   import { clearAdminNotice } from '$lib/adminNotice.js';
   import { locale, LOCALES, t } from '$lib/i18n.js';
-  import { clearModelContext } from '$lib/modelContext.js';
+  import { clearModelContext, modelContext } from '$lib/modelContext.js';
   import { clearSessionContext, setSessionContext } from '$lib/sessionContext.js';
-  import { clearTeamContext } from '$lib/teamContext.js';
+  import { clearTeamContext, teamContext } from '$lib/teamContext.js';
 
   let { children } = $props();
 
@@ -22,6 +23,7 @@
   let error = $state('');
   let busy = $state(false);
   let confirmOrigin = $state(false);
+  let initialBoot = $state(true);
 
   let active = $derived(
     page.url.pathname.startsWith('/chat')
@@ -30,6 +32,18 @@
         ? 'assistants'
         : '',
   );
+  let sessionSettled = $derived(phase !== 'checking' || error !== '');
+  let initialStateSettled = $derived.by(() => {
+    if (phase !== 'ready') return sessionSettled;
+    if ($teamContext.phase === 'error') return true;
+    if ($teamContext.phase !== 'ready') return false;
+    if (!$teamContext.selectedTeamId || active !== 'chat') return true;
+    return $modelContext.phase === 'ready' || $modelContext.phase === 'error';
+  });
+
+  $effect(() => {
+    if (initialBoot && initialStateSettled) initialBoot = false;
+  });
 
   async function checkSession(options = {}) {
     const redirectToChat = options.redirectToChat === true;
@@ -56,8 +70,8 @@
           phase = 'login';
         } else {
           if (profile === 'local') setSessionContext(session);
-          phase = 'ready';
           if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replaceState: true });
+          phase = 'ready';
         }
       } else if (profile === 'local' && session?.initialized === false) {
         phase = 'setup';
@@ -131,23 +145,40 @@
   });
 </script>
 
-{#if phase === 'ready'}
-  <AdminShell {active} authenticated {profile}>
-    {@render children()}
-  </AdminShell>
-{:else}
-  <AdminShell>
-    <AuthScreen
-      {phase}
-      {profile}
-      {confirmOrigin}
-      bind:username
-      bind:password
-      bind:confirmation
-      {error}
-      {busy}
-      onSubmit={submit}
-      onRetry={() => checkSession()}
-    />
-  </AdminShell>
+<div
+  class="initial-content"
+  class:initial-content-hidden={initialBoot}
+  inert={initialBoot ? true : undefined}
+  aria-hidden={initialBoot ? 'true' : undefined}
+>
+  {#if phase === 'ready'}
+    <AdminShell {active} authenticated {profile}>
+      {@render children()}
+    </AdminShell>
+  {:else}
+    <AdminShell>
+      <AuthScreen
+        {phase}
+        {profile}
+        {confirmOrigin}
+        bind:username
+        bind:password
+        bind:confirmation
+        {error}
+        {busy}
+        onSubmit={submit}
+        onRetry={() => checkSession()}
+      />
+    </AdminShell>
+  {/if}
+</div>
+
+{#if initialBoot}
+  <BootScreen label={$t('auth.checking')} />
 {/if}
+
+<style>
+  .initial-content-hidden {
+    visibility: hidden;
+  }
+</style>

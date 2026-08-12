@@ -45,6 +45,10 @@ test('renders authenticated navigation with canonical primitives', async ({ page
     contentType: 'application/json',
     body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+  }));
 
   await page.goto('/assistants/');
 
