@@ -26,13 +26,13 @@ function json(route, body, status = 200) {
   });
 }
 
-function expectCompactVerticalRhythm(boxes) {
-  const pitches = boxes.slice(1).map((box, index) => box.y - boxes[index].y);
+function expectCompactHorizontalRhythm(boxes) {
+  const pitches = boxes.slice(1).map((box, index) => box.x - boxes[index].x);
   expect(pitches).toHaveLength(5);
   expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThan(0.5);
   for (const pitch of pitches) {
-    expect(pitch).toBeGreaterThan(17.5);
-    expect(pitch).toBeLessThan(18.5);
+    expect(pitch).toBeGreaterThan(9.5);
+    expect(pitch).toBeLessThan(10.25);
   }
 }
 
@@ -101,6 +101,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   const boot = page.locator('[data-slot="boot-screen"]');
   const composition = page.locator('[data-slot="boot-composition"]');
   const mark = page.locator('[data-slot="boot-mark"]');
+  const wordmark = page.locator('[data-slot="boot-wordmark"]');
   const loader = page.locator('[data-slot="binary-loader"]');
   const markImage = mark.locator('img');
   const glyphs = page.locator('[data-slot="binary-glyph"]');
@@ -117,13 +118,19 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
     (element) => getComputedStyle(element).fontFamily.includes('IBM Plex Mono'),
   )).toBe(true);
   expect(await page.evaluate(async () => {
-    await document.fonts.load('600 14px "IBM Plex Mono"', '01');
-    return document.fonts.check('600 14px "IBM Plex Mono"', '01');
+    await Promise.all([
+      document.fonts.load('600 14px "IBM Plex Mono"', '01'),
+      document.fonts.load('700 24px "IBM Plex Mono"', 'SHIMPZ'),
+    ]);
+    return document.fonts.check('600 14px "IBM Plex Mono"', '01')
+      && document.fonts.check('700 24px "IBM Plex Mono"', 'SHIMPZ');
   })).toBe(true);
-  const [bootBox, compositionBox, markBox, loaderBox, glyphBoxes] = await Promise.all([
+  await expect(wordmark).toHaveText('SHIMPZ');
+  const [bootBox, compositionBox, markBox, wordmarkBox, loaderBox, glyphBoxes] = await Promise.all([
     boot.boundingBox(),
     composition.boundingBox(),
     mark.boundingBox(),
+    wordmark.boundingBox(),
     loader.boundingBox(),
     glyphs.evaluateAll((elements) => elements.map((element) => {
       const box = element.getBoundingClientRect();
@@ -133,6 +140,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   expect(bootBox).not.toBeNull();
   expect(compositionBox).not.toBeNull();
   expect(markBox).not.toBeNull();
+  expect(wordmarkBox).not.toBeNull();
   expect(loaderBox).not.toBeNull();
   expect(Math.abs(
     compositionBox.x + (compositionBox.width / 2) - bootBox.x - (bootBox.width / 2),
@@ -143,14 +151,29 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   expect(Math.abs(
     markBox.x + (markBox.width / 2) - loaderBox.x - (loaderBox.width / 2),
   )).toBeLessThan(1);
+  expect(Math.abs(
+    wordmarkBox.x + (wordmarkBox.width / 2) - loaderBox.x - (loaderBox.width / 2),
+  )).toBeLessThan(1);
   const animatedGlyphCenter = glyphBoxes.reduce(
-    (total, box) => total + box.x + (box.width / 2),
+    (total, box) => total + box.y + (box.height / 2),
     0,
   ) / glyphBoxes.length;
   expect(Math.abs(
-    animatedGlyphCenter - loaderBox.x - (loaderBox.width / 2),
+    animatedGlyphCenter - loaderBox.y - (loaderBox.height / 2),
   )).toBeLessThan(1);
-  expectCompactVerticalRhythm(glyphBoxes);
+  expectCompactHorizontalRhythm(glyphBoxes);
+  await page.evaluate(() => { document.documentElement.dir = 'rtl'; });
+  const rtlGlyphBoxes = await glyphs.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }));
+  expectCompactHorizontalRhythm(rtlGlyphBoxes);
+  const rtlWordmarkBox = await wordmark.boundingBox();
+  expect(rtlWordmarkBox).not.toBeNull();
+  expect(Math.abs(
+    rtlWordmarkBox.x + (rtlWordmarkBox.width / 2) - loaderBox.x - (loaderBox.width / 2),
+  )).toBeLessThan(1);
+  await page.evaluate(() => { document.documentElement.dir = 'ltr'; });
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
   await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
@@ -159,7 +182,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   await expect(page.getByRole('button', { name: 'Create password' })).toBeVisible();
 });
 
-test('moves all six binary glyphs in exact counterphase around the symbol axis', async ({ page }) => {
+test('moves all six binary glyphs vertically in exact counterphase', async ({ page }) => {
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
     body: { profile: 'local', authenticated: false, initialized: false },
@@ -181,24 +204,25 @@ test('moves all six binary glyphs in exact counterphase around the symbol axis',
       const loaderBox = loader.getBoundingClientRect();
       const centers = elements.map((element) => {
         const box = element.getBoundingClientRect();
-        return box.x + (box.width / 2);
+        return box.y + (box.height / 2);
       });
       return {
         centers,
         centroid: centers.reduce((total, center) => total + center, 0) / centers.length,
-        axis: loaderBox.x + (loaderBox.width / 2),
-        glyphWidth: elements[0].getBoundingClientRect().width,
+        axis: loaderBox.y + (loaderBox.height / 2),
+        glyphHeight: elements[0].getBoundingClientRect().height,
       };
     };
     const start = sample(0);
+    const midpoint = sample(250);
     const opposite = sample(500);
     animations.forEach((animation) => animation.cancel());
-    return { start, opposite };
+    return { start, midpoint, opposite };
   });
-  for (const sample of [motion.start, motion.opposite]) {
+  for (const sample of [motion.start, motion.midpoint, motion.opposite]) {
     expect(Math.abs(sample.centroid - sample.axis)).toBeLessThan(1);
     for (const center of sample.centers) {
-      expect(Math.abs(center - sample.axis)).toBeLessThan(sample.glyphWidth / 2);
+      expect(Math.abs(center - sample.axis)).toBeLessThan(sample.glyphHeight / 2);
     }
   }
   for (let index = 0; index < motion.start.centers.length; index += 1) {
@@ -427,15 +451,14 @@ test('keeps a stable binary composition when reduced motion is requested', async
     })),
   ]);
   expect(loaderBox).not.toBeNull();
-  const loaderCenter = loaderBox.x + (loaderBox.width / 2);
   for (const box of glyphBoxes) {
-    expect(Math.abs(box.x + (box.width / 2) - loaderCenter)).toBeLessThan(1);
+    expect(Math.abs(box.y + (box.height / 2) - (loaderBox.y + (loaderBox.height / 2)))).toBeLessThan(1);
   }
   for (let index = 1; index < glyphBoxes.length; index += 1) {
-    expect(glyphBoxes[index - 1].y + glyphBoxes[index - 1].height).toBeLessThanOrEqual(
-      glyphBoxes[index].y,
+    expect(glyphBoxes[index - 1].x + glyphBoxes[index - 1].width).toBeLessThanOrEqual(
+      glyphBoxes[index].x,
     );
   }
-  expectCompactVerticalRhythm(glyphBoxes);
+  expectCompactHorizontalRhythm(glyphBoxes);
   sessionGate.resolve();
 });

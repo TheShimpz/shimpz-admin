@@ -7,8 +7,11 @@
 <section class="boot-screen" data-slot="boot-screen" role="status" aria-live="polite">
   <span class="sr-only">{label}</span>
   <div class="boot-composition" data-slot="boot-composition" aria-hidden="true">
-    <div class="boot-mark" data-slot="boot-mark">
-      <ShimpzBrand variant="symbol" decorative />
+    <div class="boot-brand" data-slot="boot-brand">
+      <div class="boot-mark" data-slot="boot-mark">
+        <ShimpzBrand variant="symbol" decorative />
+      </div>
+      <span class="boot-wordmark" data-slot="boot-wordmark">SHIMPZ</span>
     </div>
     <span class="binary-loader" data-slot="binary-loader">
       <i class="binary-glyph binary-zero" data-slot="binary-glyph">0</i>
@@ -36,7 +39,16 @@
   .boot-composition {
     display: grid;
     justify-items: center;
-    gap: clamp(1.25rem, 3vw, 1.5rem);
+    gap: clamp(1.75rem, 4vw, 2.25rem);
+    direction: ltr;
+  }
+
+  .boot-brand {
+    --mark-size: clamp(5rem, 14vw, 7.5rem);
+
+    display: grid;
+    justify-items: center;
+    gap: 0.25rem;
   }
 
   .boot-mark {
@@ -45,26 +57,39 @@
   }
 
   .boot-mark :global([data-slot='shimpz-brand-mark']) {
-    width: clamp(5rem, 14vw, 7.5rem);
-    height: clamp(5rem, 14vw, 7.5rem);
+    width: var(--mark-size);
+    height: var(--mark-size);
+  }
+
+  .boot-wordmark {
+    padding-inline-start: 0.15em;
+    color: #fff;
+    font-family: var(--shimpz-font-mono);
+    font-size: calc(var(--mark-size) / 5);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    line-height: 1;
+    text-transform: uppercase;
   }
 
   .binary-loader {
     --size: 0.95px;
     --glyph-size: calc(15 * var(--size));
-    --glyph-gap: calc(4 * var(--size));
+    --glyph-advance: calc(8.4 * var(--size));
+    --glyph-gap: calc(2 * var(--size));
     --swing: calc(5 * var(--size));
 
     display: grid;
-    justify-items: center;
-    grid-auto-rows: var(--glyph-size);
+    grid-auto-flow: column;
+    grid-auto-columns: var(--glyph-advance);
+    place-items: center;
     gap: var(--glyph-gap);
-    width: calc(var(--glyph-size) + (2 * var(--swing)));
+    height: calc(var(--glyph-size) + (2 * var(--swing)));
   }
 
   .binary-glyph {
     display: grid;
-    width: var(--glyph-size);
+    width: var(--glyph-advance);
     height: var(--glyph-size);
     place-items: center;
     color: #fff;
@@ -77,29 +102,29 @@
   }
 
   .binary-zero {
-    transform: translateX(var(--swing));
+    transform: translateY(var(--swing));
     animation: binary-swing 1s infinite ease-in-out;
   }
 
   .binary-one {
-    transform: translateX(calc(-1 * var(--swing)));
+    transform: translateY(calc(-1 * var(--swing)));
     animation: binary-swing 1s -0.5s infinite ease-in-out;
   }
 
   @keyframes binary-swing {
     0%,
     100% {
-      transform: translateX(var(--swing));
+      transform: translateY(var(--swing));
     }
     50% {
-      transform: translateX(calc(-1 * var(--swing)));
+      transform: translateY(calc(-1 * var(--swing)));
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .binary-glyph {
       animation: none !important;
-      transform: translateX(0) !important;
+      transform: none !important;
     }
   }
 </style>
