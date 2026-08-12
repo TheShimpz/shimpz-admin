@@ -370,7 +370,7 @@ test('uses text actions and one semantic selected state in the Assistant chooser
   await expect(selectAll).toHaveClass(/shimpz-text-action/);
   await expect(unselectAll).toHaveClass(/shimpz-text-action/);
   await expect(selectAll.locator('[data-slot="text-action-icon"]')).toBeVisible();
-  const choice = dialog.getByRole('button', { name: 'Shimpz Cloudflare v0.1.0' });
+  const choice = dialog.getByRole('button', { name: 'Shimpz Cloudflare v0.4.1' });
   await expect(choice).toHaveAttribute('aria-pressed', 'true');
   await expect(choice.locator('img')).toHaveAttribute(
     'src',
