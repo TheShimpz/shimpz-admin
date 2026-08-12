@@ -128,13 +128,16 @@ test('integration confirmation identifies each Assistant by its installed versio
     { assistant_id: 'cloudflare-one', assistant_name: 'Shimpz Cloudflare' },
     { assistant_id: 'cloudflare-one', assistant_name: 'Shimpz Cloudflare' },
     { assistant_id: 'cloudflare-two', assistant_name: 'Shimpz Cloudflare' },
+    { assistant_id: 'local-only', assistant_name: 'Local Assistant' },
   ];
   const installed = [
     { assistant: 'cloudflare-one', assistant_version: '0.4.1' },
+    { assistant: 'cloudflare-two', assistant_version: '0.4.1' },
   ];
 
   assert.deepEqual(assistantIntegrationLabels(requirements, installed), [
-    'Shimpz Cloudflare v0.4.1',
-    'Shimpz Cloudflare',
+    'Shimpz Cloudflare v0.4.1 (cloudflare-one)',
+    'Shimpz Cloudflare v0.4.1 (cloudflare-two)',
+    'Local Assistant',
   ]);
 });

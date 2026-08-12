@@ -28,10 +28,18 @@ export function assistantIntegrationLabels(requirements, installedAssistants) {
     entry.assistant_version,
   ]));
   const seen = new Set();
-  return requirements.flatMap((requirement) => {
+  const identities = requirements.flatMap((requirement) => {
     if (seen.has(requirement.assistant_id)) return [];
     seen.add(requirement.assistant_id);
     const version = versions.get(requirement.assistant_id);
-    return [`${requirement.assistant_name}${version ? ` v${version}` : ''}`];
+    return [{
+      id: requirement.assistant_id,
+      label: `${requirement.assistant_name}${version ? ` v${version}` : ''}`,
+    }];
   });
+  const labelCounts = new Map();
+  for (const { label } of identities) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  return identities.map(({ id, label }) => (
+    labelCounts.get(label) > 1 ? `${label} (${id})` : label
+  ));
 }
