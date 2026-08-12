@@ -89,14 +89,16 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   await sessionRequested.promise;
 
   const boot = page.locator('[data-slot="boot-screen"]');
+  const composition = page.locator('[data-slot="boot-composition"]');
   const mark = page.locator('[data-slot="boot-mark"]');
+  const loader = page.locator('[data-slot="binary-loader"]');
   const markImage = mark.locator('img');
-  const glyphs = page.locator('[data-slot="binary-loader"] i');
+  const glyphs = page.locator('[data-slot="binary-glyph"]');
   await expect(boot).toBeVisible();
   await expect(page.locator('.initial-content')).toHaveAttribute('inert', '');
   await expect(page.locator('.auth-stage')).toBeHidden();
   await expect(boot).toHaveCSS('background-color', 'rgb(0, 0, 0)');
-  await expect(glyphs).toHaveText(['0', '1', '0', '1', '0', '1']);
+  await expect(glyphs).toHaveText(['0', '1']);
   await expect(glyphs.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect.poll(() => markImage.evaluate(
     (image) => image.complete && image.naturalWidth > 0,
@@ -108,19 +110,91 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
     await document.fonts.load('600 14px "IBM Plex Mono"', '01');
     return document.fonts.check('600 14px "IBM Plex Mono"', '01');
   })).toBe(true);
-  const [markBox, viewport] = await Promise.all([
+  const [bootBox, compositionBox, markBox, loaderBox, glyphBoxes] = await Promise.all([
+    boot.boundingBox(),
+    composition.boundingBox(),
     mark.boundingBox(),
-    page.evaluate(() => ({ width: innerWidth, height: innerHeight })),
+    loader.boundingBox(),
+    glyphs.evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    })),
   ]);
+  expect(bootBox).not.toBeNull();
+  expect(compositionBox).not.toBeNull();
   expect(markBox).not.toBeNull();
-  expect(Math.abs(markBox.x + (markBox.width / 2) - (viewport.width / 2))).toBeLessThan(1);
-  expect(Math.abs(markBox.y + (markBox.height / 2) - (viewport.height / 2))).toBeLessThan(1);
+  expect(loaderBox).not.toBeNull();
+  expect(Math.abs(
+    compositionBox.x + (compositionBox.width / 2) - bootBox.x - (bootBox.width / 2),
+  )).toBeLessThan(1);
+  expect(Math.abs(
+    compositionBox.y + (compositionBox.height / 2) - bootBox.y - (bootBox.height / 2),
+  )).toBeLessThan(1);
+  expect(Math.abs(
+    markBox.x + (markBox.width / 2) - loaderBox.x - (loaderBox.width / 2),
+  )).toBeLessThan(1);
+  const animatedGlyphCenter = glyphBoxes.reduce(
+    (total, box) => total + box.x + (box.width / 2),
+    0,
+  ) / glyphBoxes.length;
+  expect(Math.abs(
+    animatedGlyphCenter - loaderBox.x - (loaderBox.width / 2),
+  )).toBeLessThan(1);
+  expect(glyphBoxes[0].y + glyphBoxes[0].height).toBeLessThanOrEqual(glyphBoxes[1].y);
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
   await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
   sessionGate.resolve();
   await expect(boot).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Create password' })).toBeVisible();
+});
+
+test('moves both binary glyphs in exact counterphase around the symbol axis', async ({ page }) => {
+  const sessionGate = deferred();
+  const sessionRequested = await routeSession(page, {
+    body: { profile: 'local', authenticated: false, initialized: false },
+  }, sessionGate);
+
+  await page.goto('/');
+  await sessionRequested.promise;
+  const glyphs = page.locator('[data-slot="binary-glyph"]');
+  await expect(glyphs).toHaveCount(2);
+  await expect(glyphs.first()).toHaveCSS('animation-name', /binary-swing$/);
+  await expect(glyphs.last()).toHaveCSS('animation-name', /binary-swing$/);
+  const motion = await glyphs.evaluateAll((elements) => {
+    const loader = document.querySelector('[data-slot="binary-loader"]');
+    const animations = elements.map((element) => element.getAnimations()[0]);
+    animations.forEach((animation) => animation.pause());
+    const sample = (time) => {
+      animations.forEach((animation) => { animation.currentTime = time; });
+      const loaderBox = loader.getBoundingClientRect();
+      const centers = elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return box.x + (box.width / 2);
+      });
+      return {
+        centers,
+        centroid: centers.reduce((total, center) => total + center, 0) / centers.length,
+        axis: loaderBox.x + (loaderBox.width / 2),
+      };
+    };
+    const start = sample(0);
+    const opposite = sample(500);
+    animations.forEach((animation) => animation.cancel());
+    return { start, opposite };
+  });
+  for (const sample of [motion.start, motion.opposite]) {
+    expect(Math.abs(sample.centroid - sample.axis)).toBeLessThan(1);
+  }
+  expect(Math.abs(motion.start.centers[0] - motion.opposite.centers[0])).toBeGreaterThan(1);
+  expect(Math.abs(motion.start.centers[1] - motion.opposite.centers[1])).toBeGreaterThan(1);
+  expect(Math.sign(motion.start.centers[0] - motion.start.axis)).toBe(
+    -Math.sign(motion.start.centers[1] - motion.start.axis),
+  );
+  expect(Math.sign(motion.opposite.centers[0] - motion.opposite.axis)).toBe(
+    -Math.sign(motion.opposite.centers[1] - motion.opposite.axis),
+  );
+  sessionGate.resolve();
 });
 
 test('keeps one boot surface through Team and model hydration, then focuses usable Chat', async ({ page }) => {
@@ -320,18 +394,22 @@ test('keeps a stable binary composition when reduced motion is requested', async
 
   await page.goto('/');
   await sessionRequested.promise;
-  const columns = page.locator('[data-slot="binary-loader"] .binary-column');
-  await expect(columns).toHaveCount(2);
-  await expect(columns.first()).toHaveCSS('animation-name', 'none');
-  await expect(columns.last()).toHaveCSS('animation-name', 'none');
-  const [leftBox, rightBox] = await Promise.all([
-    columns.first().boundingBox(),
-    columns.last().boundingBox(),
+  const loader = page.locator('[data-slot="binary-loader"]');
+  const glyphs = page.locator('[data-slot="binary-glyph"]');
+  await expect(glyphs).toHaveCount(2);
+  await expect(glyphs.first()).toHaveCSS('animation-name', 'none');
+  await expect(glyphs.last()).toHaveCSS('animation-name', 'none');
+  const [loaderBox, zeroBox, oneBox] = await Promise.all([
+    loader.boundingBox(),
+    glyphs.first().boundingBox(),
+    glyphs.last().boundingBox(),
   ]);
-  expect(leftBox).not.toBeNull();
-  expect(rightBox).not.toBeNull();
-  expect(Math.abs(leftBox.x - rightBox.x)).toBeGreaterThanOrEqual(
-    Math.min(leftBox.width, rightBox.width),
-  );
+  expect(loaderBox).not.toBeNull();
+  expect(zeroBox).not.toBeNull();
+  expect(oneBox).not.toBeNull();
+  const loaderCenter = loaderBox.x + (loaderBox.width / 2);
+  expect(Math.abs(zeroBox.x + (zeroBox.width / 2) - loaderCenter)).toBeLessThan(1);
+  expect(Math.abs(oneBox.x + (oneBox.width / 2) - loaderCenter)).toBeLessThan(1);
+  expect(zeroBox.y + zeroBox.height).toBeLessThanOrEqual(oneBox.y);
   sessionGate.resolve();
 });
