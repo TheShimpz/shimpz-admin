@@ -13,6 +13,10 @@
     <span class="binary-loader" data-slot="binary-loader">
       <i class="binary-glyph binary-zero" data-slot="binary-glyph">0</i>
       <i class="binary-glyph binary-one" data-slot="binary-glyph">1</i>
+      <i class="binary-glyph binary-zero" data-slot="binary-glyph">0</i>
+      <i class="binary-glyph binary-one" data-slot="binary-glyph">1</i>
+      <i class="binary-glyph binary-zero" data-slot="binary-glyph">0</i>
+      <i class="binary-glyph binary-one" data-slot="binary-glyph">1</i>
     </span>
   </div>
 </section>
@@ -47,18 +51,21 @@
 
   .binary-loader {
     --size: 0.95px;
+    --glyph-size: calc(15 * var(--size));
+    --glyph-gap: calc(4 * var(--size));
+    --swing: calc(5 * var(--size));
 
     display: grid;
     justify-items: center;
-    grid-auto-rows: calc(15 * var(--size));
-    gap: calc(35 * var(--size));
-    width: calc(45 * var(--size));
+    grid-auto-rows: var(--glyph-size);
+    gap: var(--glyph-gap);
+    width: calc(var(--glyph-size) + (2 * var(--swing)));
   }
 
   .binary-glyph {
     display: grid;
-    width: calc(15 * var(--size));
-    height: calc(15 * var(--size));
+    width: var(--glyph-size);
+    height: var(--glyph-size);
     place-items: center;
     color: #fff;
     font-family: var(--shimpz-font-mono);
@@ -67,26 +74,25 @@
     font-style: normal;
     font-variant-numeric: tabular-nums;
     line-height: 1;
-    will-change: transform;
   }
 
   .binary-zero {
-    transform: translateX(calc(15 * var(--size)));
+    transform: translateX(var(--swing));
     animation: binary-swing 1s infinite ease-in-out;
   }
 
   .binary-one {
-    transform: translateX(calc(-15 * var(--size)));
+    transform: translateX(calc(-1 * var(--swing)));
     animation: binary-swing 1s -0.5s infinite ease-in-out;
   }
 
   @keyframes binary-swing {
     0%,
     100% {
-      transform: translateX(calc(15 * var(--size)));
+      transform: translateX(var(--swing));
     }
     50% {
-      transform: translateX(calc(-15 * var(--size)));
+      transform: translateX(calc(-1 * var(--swing)));
     }
   }
 

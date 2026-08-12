@@ -26,6 +26,16 @@ function json(route, body, status = 200) {
   });
 }
 
+function expectCompactVerticalRhythm(boxes) {
+  const pitches = boxes.slice(1).map((box, index) => box.y - boxes[index].y);
+  expect(pitches).toHaveLength(5);
+  expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThan(0.5);
+  for (const pitch of pitches) {
+    expect(pitch).toBeGreaterThan(17.5);
+    expect(pitch).toBeLessThan(18.5);
+  }
+}
+
 async function routeSession(page, response, gate = null) {
   const requested = deferred();
   await page.route('**/api/session', async (route) => {
@@ -98,7 +108,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   await expect(page.locator('.initial-content')).toHaveAttribute('inert', '');
   await expect(page.locator('.auth-stage')).toBeHidden();
   await expect(boot).toHaveCSS('background-color', 'rgb(0, 0, 0)');
-  await expect(glyphs).toHaveText(['0', '1']);
+  await expect(glyphs).toHaveText(['0', '1', '0', '1', '0', '1']);
   await expect(glyphs.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect.poll(() => markImage.evaluate(
     (image) => image.complete && image.naturalWidth > 0,
@@ -140,7 +150,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   expect(Math.abs(
     animatedGlyphCenter - loaderBox.x - (loaderBox.width / 2),
   )).toBeLessThan(1);
-  expect(glyphBoxes[0].y + glyphBoxes[0].height).toBeLessThanOrEqual(glyphBoxes[1].y);
+  expectCompactVerticalRhythm(glyphBoxes);
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
   await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
@@ -149,7 +159,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   await expect(page.getByRole('button', { name: 'Create password' })).toBeVisible();
 });
 
-test('moves both binary glyphs in exact counterphase around the symbol axis', async ({ page }) => {
+test('moves all six binary glyphs in exact counterphase around the symbol axis', async ({ page }) => {
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
     body: { profile: 'local', authenticated: false, initialized: false },
@@ -158,9 +168,10 @@ test('moves both binary glyphs in exact counterphase around the symbol axis', as
   await page.goto('/');
   await sessionRequested.promise;
   const glyphs = page.locator('[data-slot="binary-glyph"]');
-  await expect(glyphs).toHaveCount(2);
-  await expect(glyphs.first()).toHaveCSS('animation-name', /binary-swing$/);
-  await expect(glyphs.last()).toHaveCSS('animation-name', /binary-swing$/);
+  await expect(glyphs).toHaveCount(6);
+  expect(await glyphs.evaluateAll((elements) => elements.every(
+    (element) => getComputedStyle(element).animationName.endsWith('binary-swing'),
+  ))).toBe(true);
   const motion = await glyphs.evaluateAll((elements) => {
     const loader = document.querySelector('[data-slot="binary-loader"]');
     const animations = elements.map((element) => element.getAnimations()[0]);
@@ -176,6 +187,7 @@ test('moves both binary glyphs in exact counterphase around the symbol axis', as
         centers,
         centroid: centers.reduce((total, center) => total + center, 0) / centers.length,
         axis: loaderBox.x + (loaderBox.width / 2),
+        glyphWidth: elements[0].getBoundingClientRect().width,
       };
     };
     const start = sample(0);
@@ -185,15 +197,22 @@ test('moves both binary glyphs in exact counterphase around the symbol axis', as
   });
   for (const sample of [motion.start, motion.opposite]) {
     expect(Math.abs(sample.centroid - sample.axis)).toBeLessThan(1);
+    for (const center of sample.centers) {
+      expect(Math.abs(center - sample.axis)).toBeLessThan(sample.glyphWidth / 2);
+    }
   }
-  expect(Math.abs(motion.start.centers[0] - motion.opposite.centers[0])).toBeGreaterThan(1);
-  expect(Math.abs(motion.start.centers[1] - motion.opposite.centers[1])).toBeGreaterThan(1);
-  expect(Math.sign(motion.start.centers[0] - motion.start.axis)).toBe(
-    -Math.sign(motion.start.centers[1] - motion.start.axis),
-  );
-  expect(Math.sign(motion.opposite.centers[0] - motion.opposite.axis)).toBe(
-    -Math.sign(motion.opposite.centers[1] - motion.opposite.axis),
-  );
+  for (let index = 0; index < motion.start.centers.length; index += 1) {
+    expect(Math.abs(
+      motion.start.centers[index] - motion.opposite.centers[index],
+    )).toBeGreaterThan(1);
+  }
+  for (const sample of [motion.start, motion.opposite]) {
+    for (let index = 1; index < sample.centers.length; index += 1) {
+      expect(Math.sign(sample.centers[index - 1] - sample.axis)).toBe(
+        -Math.sign(sample.centers[index] - sample.axis),
+      );
+    }
+  }
   sessionGate.resolve();
 });
 
@@ -396,20 +415,27 @@ test('keeps a stable binary composition when reduced motion is requested', async
   await sessionRequested.promise;
   const loader = page.locator('[data-slot="binary-loader"]');
   const glyphs = page.locator('[data-slot="binary-glyph"]');
-  await expect(glyphs).toHaveCount(2);
-  await expect(glyphs.first()).toHaveCSS('animation-name', 'none');
-  await expect(glyphs.last()).toHaveCSS('animation-name', 'none');
-  const [loaderBox, zeroBox, oneBox] = await Promise.all([
+  await expect(glyphs).toHaveCount(6);
+  expect(await glyphs.evaluateAll((elements) => elements.every(
+    (element) => getComputedStyle(element).animationName === 'none',
+  ))).toBe(true);
+  const [loaderBox, glyphBoxes] = await Promise.all([
     loader.boundingBox(),
-    glyphs.first().boundingBox(),
-    glyphs.last().boundingBox(),
+    glyphs.evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    })),
   ]);
   expect(loaderBox).not.toBeNull();
-  expect(zeroBox).not.toBeNull();
-  expect(oneBox).not.toBeNull();
   const loaderCenter = loaderBox.x + (loaderBox.width / 2);
-  expect(Math.abs(zeroBox.x + (zeroBox.width / 2) - loaderCenter)).toBeLessThan(1);
-  expect(Math.abs(oneBox.x + (oneBox.width / 2) - loaderCenter)).toBeLessThan(1);
-  expect(zeroBox.y + zeroBox.height).toBeLessThanOrEqual(oneBox.y);
+  for (const box of glyphBoxes) {
+    expect(Math.abs(box.x + (box.width / 2) - loaderCenter)).toBeLessThan(1);
+  }
+  for (let index = 1; index < glyphBoxes.length; index += 1) {
+    expect(glyphBoxes[index - 1].y + glyphBoxes[index - 1].height).toBeLessThanOrEqual(
+      glyphBoxes[index].y,
+    );
+  }
+  expectCompactVerticalRhythm(glyphBoxes);
   sessionGate.resolve();
 });
