@@ -201,9 +201,7 @@ class AuthRouteTests(unittest.TestCase):
             )
         )
         loopback = asyncio.run(
-            self.admin_app.session(
-                self._request("/api/session", origin="http://127.0.0.1:7777", cookie=session_token)
-            )
+            self.admin_app.session(self._request("/api/session", origin="http://127.0.0.1:7777", cookie=session_token))
         )
         self.assertIs(admitted["origin_admitted"], True)
         self.assertEqual(admitted["oauth_completion_mode"], "code")
