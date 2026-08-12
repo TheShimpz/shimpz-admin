@@ -39,7 +39,7 @@
   .boot-composition {
     display: grid;
     justify-items: center;
-    gap: clamp(1.75rem, 4vw, 2.25rem);
+    gap: clamp(1.225rem, 2.8vw, 1.575rem);
     direction: ltr;
   }
 
@@ -48,7 +48,7 @@
 
     display: grid;
     justify-items: center;
-    gap: 0.25rem;
+    gap: 0.175rem;
   }
 
   .boot-mark {

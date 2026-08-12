@@ -100,6 +100,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
 
   const boot = page.locator('[data-slot="boot-screen"]');
   const composition = page.locator('[data-slot="boot-composition"]');
+  const brand = page.locator('[data-slot="boot-brand"]');
   const mark = page.locator('[data-slot="boot-mark"]');
   const wordmark = page.locator('[data-slot="boot-wordmark"]');
   const loader = page.locator('[data-slot="binary-loader"]');
@@ -126,9 +127,10 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
       && document.fonts.check('700 24px "IBM Plex Mono"', 'SHIMPZ');
   })).toBe(true);
   await expect(wordmark).toHaveText('SHIMPZ');
-  const [bootBox, compositionBox, markBox, wordmarkBox, loaderBox, glyphBoxes] = await Promise.all([
+  const [bootBox, compositionBox, brandBox, markBox, wordmarkBox, loaderBox, glyphBoxes] = await Promise.all([
     boot.boundingBox(),
     composition.boundingBox(),
+    brand.boundingBox(),
     mark.boundingBox(),
     wordmark.boundingBox(),
     loader.boundingBox(),
@@ -139,6 +141,7 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   ]);
   expect(bootBox).not.toBeNull();
   expect(compositionBox).not.toBeNull();
+  expect(brandBox).not.toBeNull();
   expect(markBox).not.toBeNull();
   expect(wordmarkBox).not.toBeNull();
   expect(loaderBox).not.toBeNull();
@@ -154,6 +157,23 @@ test('shows only the centered Shimpz binary boot screen while the session is unr
   expect(Math.abs(
     wordmarkBox.x + (wordmarkBox.width / 2) - loaderBox.x - (loaderBox.width / 2),
   )).toBeLessThan(1);
+  const markToWordmarkGap = wordmarkBox.y - markBox.y - markBox.height;
+  expect(Math.abs(markToWordmarkGap - 2.8)).toBeLessThan(0.25);
+  const viewportWidth = page.viewportSize().width;
+  const expectedLoaderGap = Math.min(Math.max(viewportWidth * 0.028, 19.6), 25.2);
+  const wordmarkToLoaderGap = loaderBox.y - brandBox.y - brandBox.height;
+  expect(Math.abs(wordmarkToLoaderGap - expectedLoaderGap)).toBeLessThan(0.25);
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 800, height: originalViewport.height });
+  const [fluidBrandBox, fluidLoaderBox] = await Promise.all([
+    brand.boundingBox(),
+    loader.boundingBox(),
+  ]);
+  expect(fluidBrandBox).not.toBeNull();
+  expect(fluidLoaderBox).not.toBeNull();
+  const fluidWordmarkToLoaderGap = fluidLoaderBox.y - fluidBrandBox.y - fluidBrandBox.height;
+  expect(Math.abs(fluidWordmarkToLoaderGap - 22.4)).toBeLessThan(0.25);
+  await page.setViewportSize(originalViewport);
   const animatedGlyphCenter = glyphBoxes.reduce(
     (total, box) => total + box.y + (box.height / 2),
     0,
