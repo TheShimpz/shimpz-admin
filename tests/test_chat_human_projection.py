@@ -177,7 +177,10 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             _response({**request, "fingerprint": "0" * 64}),
             _response({**request, "options": [request["options"][0], request["options"][0]]}),
             _response(request, expires_in=True),
-            _response(request, assistant={"id": "INVALID", "name": "Private"}),
+            _response(
+                request,
+                assistant={"id": "INVALID", "name": "Private", "version": "0.4.2"},
+            ),
         )
         for body in invalid:
             with self.subTest(body=body):
