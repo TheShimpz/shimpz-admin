@@ -43,7 +43,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
 
   await page.goto('/assistants/');
@@ -74,7 +74,7 @@ test('shows the installed Admin version with the read-only Local release status'
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
   await page.route('**/api/platform-release', (route) => route.fulfill({
     contentType: 'application/json',
@@ -101,7 +101,7 @@ test('shows the installed Admin version when Local release status is temporarily
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
 
   await page.goto('/assistants/');
@@ -115,7 +115,7 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
   await page.route('**/api/platform-release', (route) => route.fulfill({
     contentType: 'application/json',
@@ -141,7 +141,7 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',

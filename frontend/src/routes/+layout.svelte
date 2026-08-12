@@ -9,6 +9,7 @@
   import { clearAdminNotice } from '$lib/adminNotice.js';
   import { locale, LOCALES, t } from '$lib/i18n.js';
   import { clearModelContext } from '$lib/modelContext.js';
+  import { clearSessionContext, setSessionContext } from '$lib/sessionContext.js';
   import { clearTeamContext } from '$lib/teamContext.js';
 
   let { children } = $props();
@@ -34,6 +35,7 @@
     const redirectToChat = options.redirectToChat === true;
     clearAdminNotice();
     clearModelContext();
+    clearSessionContext();
     clearTeamContext();
     phase = 'checking';
     error = '';
@@ -53,6 +55,7 @@
           confirmOrigin = true;
           phase = 'login';
         } else {
+          if (profile === 'local') setSessionContext(session);
           phase = 'ready';
           if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replaceState: true });
         }

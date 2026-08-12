@@ -87,6 +87,7 @@ async function routeReadyChat(page, {
   integrationChallenge = false,
   integrationRequirements,
   missingInference = false,
+  oauthCompletionMode = 'automatic',
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -103,7 +104,12 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: oauthCompletionMode,
+    }),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
@@ -457,6 +463,7 @@ test('presents one dynamic authorization at a time for a shared provider', async
   });
   await routeReadyChat(page, {
     integrationChallenge: true,
+    oauthCompletionMode: 'code',
     integrationRequirements: [
       {
         assistant_id: 'shimpz-cloudflare',
@@ -507,12 +514,79 @@ test('presents one dynamic authorization at a time for a shared provider', async
   await popup.close();
 });
 
-test('navigates the built Local app through its exact OAuth handoff', async ({ page }) => {
+test('uses the automatic Local OAuth handoff without opening a blank tab', async ({ page }) => {
+  const challengeId = 'b'.repeat(32);
+  const authorizationUrl = `http://127.0.0.1:4173/api/oauth/cloudflare/start?handoff=${'a'.repeat(64)}`;
+  let popupCount = 0;
+  page.on('popup', () => { popupCount += 1; });
+  await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'automatic' });
+  await page.route(
+    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
+    (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'automatic' }),
+    }),
+  );
+  await page.route(authorizationUrl, (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Automatic Cloudflare OAuth handoff</title>',
+  }));
+  await page.goto('/chat/');
+
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
+  await Promise.all([
+    page.waitForURL(authorizationUrl),
+    dialog.getByRole('button', { name: 'Authorize on Cloudflare' }).click(),
+  ]);
+
+  await expect(page).toHaveTitle('Automatic Cloudflare OAuth handoff');
+  expect(popupCount).toBe(0);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('cancels an authorization response that disagrees with the projected session mode', async ({ page }) => {
   const challengeId = 'b'.repeat(32);
   const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
     + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
     + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
-  await routeReadyChat(page, { integrationChallenge: true });
+  let canceled = false;
+  let popupCount = 0;
+  page.on('popup', () => { popupCount += 1; });
+  await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'automatic' });
+  await page.route(
+    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
+    (route) => {
+      if (route.request().method() === 'DELETE') {
+        canceled = true;
+        return route.fulfill({ status: 204, body: '' });
+      }
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
+      });
+    },
+  );
+  await page.goto('/chat/');
+
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
+  await dialog.getByRole('button', { name: 'Authorize on Cloudflare' }).click();
+
+  await expect.poll(() => canceled).toBe(true);
+  await expect(dialog).toContainText('The secure authorization could not start.');
+  expect(popupCount).toBe(0);
+  expect(page.context().pages()).toHaveLength(1);
+});
+
+test('opens the built Local app code flow in a separate tab', async ({ page }) => {
+  const challengeId = 'b'.repeat(32);
+  const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
+    + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
+    + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
+  await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'code' });
   await page.route(
     `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
     (route) => route.fulfill({
@@ -549,7 +623,7 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
   await page.addInitScript(() => {
     window.open = () => null;
   });
-  await routeReadyChat(page, { integrationChallenge: true });
+  await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'code' });
   await page.route(
     `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
     (route) => {
@@ -990,7 +1064,12 @@ test('keeps a first Store install ready while local display metadata catches up'
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true }),
+    body: JSON.stringify({
+      profile: 'local',
+      authenticated: true,
+      origin_admitted: true,
+      oauth_completion_mode: 'automatic',
+    }),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',

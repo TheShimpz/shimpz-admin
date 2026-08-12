@@ -11,6 +11,7 @@
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
+  import { sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
   import { teamContext } from '$lib/teamContext.js';
   import {
@@ -464,14 +465,20 @@
     ) throw new Error(integrationsCopy.authorizationFailed);
     integrationWorking = 'connect';
     flushSync();
-    // Open synchronously while this click still owns transient browser activation.
-    const authorizationWindow = window.open('about:blank', '_blank');
+    const expectedCompletionMode = $sessionContext.oauthCompletionMode;
+    // Code completion needs a separate tab opened while this click still owns browser activation.
+    const authorizationWindow = expectedCompletionMode === 'code'
+      ? window.open('about:blank', '_blank')
+      : null;
     if (authorizationWindow) authorizationWindow.opener = null;
     let authorizationStarted = false;
     try {
       const authorization = await authorizeAssistantIntegration(fetch, teamId, challengeId);
       authorizationStarted = true;
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
+        throw new Error(integrationsCopy.authorizationFailed);
+      }
+      if (authorization.completion_mode !== expectedCompletionMode) {
         throw new Error(integrationsCopy.authorizationFailed);
       }
       stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
@@ -483,7 +490,6 @@
         integrationWorking = '';
         return authorization;
       }
-      authorizationWindow?.close();
       location.assign(authorization.authorization_url);
       return authorization;
     } catch (reason) {

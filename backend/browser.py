@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
 
+from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
@@ -73,6 +75,17 @@ def security_headers(ui_dir: Path) -> dict[str, str]:
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
+
+
+def oauth_completion_mode(request: Request, select_mode: Callable[[Request], str]) -> str | None:
+    """Project Admin's request-origin decision before the browser needs popup activation."""
+    try:
+        callback_mode = select_mode(request)
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            return None
+        raise
+    return "code" if callback_mode == "out-of-band" else "automatic"
 
 
 def oauth_chat_redirect(

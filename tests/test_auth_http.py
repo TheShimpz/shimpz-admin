@@ -89,6 +89,7 @@ class AuthHTTPTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertIs(payload["origin_admitted"], True)
+        self.assertIsNone(payload["oauth_completion_mode"])
 
         self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
         expired = auth.issue_session(record["session_secret"], ttl=-10)

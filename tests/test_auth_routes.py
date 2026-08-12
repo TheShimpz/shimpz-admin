@@ -200,8 +200,17 @@ class AuthRouteTests(unittest.TestCase):
                 self._request("/api/session", origin="https://previous.example.test", cookie=session_token)
             )
         )
+        loopback = asyncio.run(
+            self.admin_app.session(
+                self._request("/api/session", origin="http://127.0.0.1:7777", cookie=session_token)
+            )
+        )
         self.assertIs(admitted["origin_admitted"], True)
+        self.assertEqual(admitted["oauth_completion_mode"], "code")
         self.assertIs(stale["origin_admitted"], False)
+        self.assertNotIn("oauth_completion_mode", stale)
+        self.assertIs(loopback["origin_admitted"], True)
+        self.assertEqual(loopback["oauth_completion_mode"], "automatic")
 
     def test_external_origin_is_validated_before_password_verification(self) -> None:
         password = "correct horse battery staple"

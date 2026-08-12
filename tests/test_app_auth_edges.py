@@ -149,6 +149,53 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         with mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value="unchanged")):
             asyncio.run(self.admin_app._bind_browser_origin("https://developer.example.test"))
 
+    def test_oauth_completion_mode_projects_only_the_admin_origin_decision(self) -> None:
+        for callback_mode, completion_mode in (
+            ("loopback", "automatic"),
+            ("hosted", "automatic"),
+            ("out-of-band", "code"),
+        ):
+            with mock.patch.object(
+                self.admin_app,
+                "_local_oauth_authorization_mode",
+                return_value=callback_mode,
+            ):
+                self.assertEqual(
+                    self.admin_app.browser.oauth_completion_mode(
+                        _request("/api/session"),
+                        self.admin_app._local_oauth_authorization_mode,
+                    ),
+                    completion_mode,
+                )
+
+        unavailable = self.admin_app.HTTPException(status_code=409, detail="unavailable")
+        with mock.patch.object(
+            self.admin_app,
+            "_local_oauth_authorization_mode",
+            side_effect=unavailable,
+        ):
+            self.assertIsNone(
+                self.admin_app.browser.oauth_completion_mode(
+                    _request("/api/session"),
+                    self.admin_app._local_oauth_authorization_mode,
+                )
+            )
+
+        denied = self.admin_app.HTTPException(status_code=403, detail="denied")
+        with (
+            mock.patch.object(
+                self.admin_app,
+                "_local_oauth_authorization_mode",
+                side_effect=denied,
+            ),
+            self.assertRaises(self.admin_app.HTTPException) as caught,
+        ):
+            self.admin_app.browser.oauth_completion_mode(
+                _request("/api/session"),
+                self.admin_app._local_oauth_authorization_mode,
+            )
+        self.assertEqual(caught.exception.status_code, 403)
+
     def test_session_evidence_maps_corrupt_local_authority_and_hosted_denials(self) -> None:
         authority_error = self.admin_app.supervisor.SupervisorAuthorityError("invalid")
         with (

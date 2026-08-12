@@ -132,10 +132,6 @@ async def _session_evidence_unavailable(_request: Request, _exc: SessionEvidence
     return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
 
 
-def _oauth_origin(callback_mode: str) -> str:
-    return OAUTH_ORIGINS[callback_mode]
-
-
 def _local_oauth_authorization_mode(request: Request) -> str:
     origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
     if origin is None or origin not in _allowed_browser_origins():
@@ -317,7 +313,11 @@ async def session(request: Request):
         response["initialized"] = state.is_initialized()
         if evidence is not None:
             origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
-            response["origin_admitted"] = origin is not None and origin in _allowed_browser_origins()
+            origin_admitted = origin is not None and origin in _allowed_browser_origins()
+            response["origin_admitted"] = origin_admitted
+            if origin_admitted:
+                completion_mode = browser.oauth_completion_mode(request, _local_oauth_authorization_mode)
+                response["oauth_completion_mode"] = completion_mode
     else:
         response["account_id"] = evidence.get("account_id") if evidence is not None else None
     return response
@@ -750,7 +750,7 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
         completion_mode = "code"
     else:
         authorization_url = (
-            _oauth_origin(callback_mode) + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
+            OAUTH_ORIGINS[callback_mode] + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
         )
         completion_mode = "automatic"
     return JSONResponse(
