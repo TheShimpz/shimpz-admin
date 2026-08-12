@@ -584,5 +584,5 @@ def stop(team_id: object) -> team.TeamResponse:
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-stop-response-invalid"})
     # ``accepted`` means the active turn token was cancelled and any late provider reply will be
-    # discarded. ``confirmed`` describes only a Action subprocess, not the whole turn.
+    # discarded. ``confirmed`` describes only an Action subprocess, not the whole turn.
     return PublicResponse(response.status, {"team_id": canonical_id, "stopped": accepted})

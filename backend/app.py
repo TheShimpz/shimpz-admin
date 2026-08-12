@@ -475,7 +475,7 @@ def _team_response(action):
 
 
 async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_BODY_BYTES) -> dict:
-    """Read one JSON object without allowing a Action request to grow without bound."""
+    """Read one JSON object without allowing an Action request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise HTTPException(status_code=415, detail="content type must be application/json")

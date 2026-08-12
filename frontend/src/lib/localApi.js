@@ -101,7 +101,7 @@ export async function listInstalledAssistants(fetcher, teamId) {
   });
 }
 
-/** Install or reconcile one allowlisted Assistant without invoking a Action or starting a chat turn. */
+/** Install or reconcile one allowlisted Assistant without invoking an Action or starting a chat turn. */
 export async function installAssistant(fetcher, teamId, assistantId, sourceDigest) {
   if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
