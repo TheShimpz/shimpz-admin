@@ -8,6 +8,7 @@
   } from '@shimpz/frontend';
   import { locale, t } from '$lib/i18n.js';
   import {
+    assistantIntegrationLabels,
     assistantIntegrationMessageParts,
     localizedIntegrationList,
   } from '$lib/assistantIntegrationMessages.js';
@@ -16,6 +17,7 @@
   let {
     open = false,
     challenge = undefined,
+    installedAssistants = [],
     onclose = undefined,
     onauthorize = undefined,
     oncomplete = undefined,
@@ -32,7 +34,7 @@
   let actionIds = $derived([...new Set(requirements.flatMap((requirement) => (
     requirement.actions.map((action) => action.id)
   )))]);
-  let assistantNames = $derived([...new Set(requirements.map((requirement) => requirement.assistant_name))]);
+  let assistantLabels = $derived(assistantIntegrationLabels(requirements, installedAssistants));
   let providerLabels = $derived([...new Set(requirements.map((requirement) => (
     assistantIntegrationProviderLabel(requirement.provider)
   )))]);
@@ -43,13 +45,13 @@
   let scopes = $derived([...new Set(nextRequirement?.scopes ?? [])]);
   let messageValues = $derived({
     actions: localizedIntegrationList(actionIds, $locale),
-    assistants: localizedIntegrationList(assistantNames, $locale),
+    assistants: localizedIntegrationList(assistantLabels, $locale),
     provider: nextProviderLabel,
     providers: localizedIntegrationList(providerLabels, $locale),
   });
   let hasSingleRequirement = $derived(requirements.length === 1);
   let hasSingleAction = $derived(
-    actionIds.length === 1 && assistantNames.length === 1 && hasSingleRequirement,
+    actionIds.length === 1 && assistantLabels.length === 1 && hasSingleRequirement,
   );
   let dialogTitleKey = $derived(hasSingleRequirement
     ? 'assistantIntegrations.dialogTitle'

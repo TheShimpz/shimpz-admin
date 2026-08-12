@@ -811,6 +811,7 @@
         <AssistantIntegrationsDialog
           open={integrationsDialogOpen}
           challenge={integrationChallenge}
+          installedAssistants={$teamContext.installedAssistants}
           onclose={closeIntegrationsDialog}
           onauthorize={authorizeIntegration}
           oncomplete={completeIntegration}

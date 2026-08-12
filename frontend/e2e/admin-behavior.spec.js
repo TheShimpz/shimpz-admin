@@ -118,7 +118,7 @@ async function routeReadyChat(page, {
     body: JSON.stringify({
       assistants: [{
         assistant: 'shimpz-cloudflare',
-        assistant_version: '0.1.0',
+        assistant_version: '0.4.1',
         status: 'running',
       }],
     }),
@@ -398,7 +398,7 @@ test('renders the fail-closed Integration challenge dialog', async ({ page }) =>
   const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(
-    'Action list-zones from the Shimpz Cloudflare Assistant requires you to securely connect this Shimpz installation to your Cloudflare account, granting the Assistant these permissions:',
+    'Action list-zones from the Shimpz Cloudflare v0.4.1 Assistant requires you to securely connect this Shimpz installation to your Cloudflare account, granting the Assistant these permissions:',
     { exact: true },
   )).toBeVisible();
   await expect(dialog.getByText('dns.read', { exact: true })).toBeVisible();
@@ -436,7 +436,7 @@ test('renders dynamic Integration data in the current language', async ({ page }
   await page.getByRole('button', { name: 'Enviar', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Conecte sua conta X' });
   await expect(dialog).toContainText(
-    'A ação publish-post do assistente Social Publisher requer que você conecte esta instalação da Shimpz à sua conta X de forma segura',
+    'A ação publish-post do assistente Social Publisher v0.4.1 requer que você conecte esta instalação da Shimpz à sua conta X de forma segura',
   );
   await expect(dialog.getByText('tweet.write', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Autorizar no X' })).toBeVisible();

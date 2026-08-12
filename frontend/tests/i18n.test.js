@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { messages } from '../src/lib/messages.js';
 import {
+  assistantIntegrationLabels,
   assistantIntegrationMessageParts,
   localizedIntegrationList,
 } from '../src/lib/assistantIntegrationMessages.js';
@@ -120,4 +121,20 @@ test('integration confirmation formats unique dynamic lists for the active local
   assert.equal(localizedIntegrationList(['Cloudflare', 'Cloudflare'], 'en'), 'Cloudflare');
   assert.equal(localizedIntegrationList(['Cloudflare', 'GitHub'], 'en'), 'Cloudflare and GitHub');
   assert.equal(localizedIntegrationList([], 'pt'), '');
+});
+
+test('integration confirmation identifies each Assistant by its installed version', () => {
+  const requirements = [
+    { assistant_id: 'cloudflare-one', assistant_name: 'Shimpz Cloudflare' },
+    { assistant_id: 'cloudflare-one', assistant_name: 'Shimpz Cloudflare' },
+    { assistant_id: 'cloudflare-two', assistant_name: 'Shimpz Cloudflare' },
+  ];
+  const installed = [
+    { assistant: 'cloudflare-one', assistant_version: '0.4.1' },
+  ];
+
+  assert.deepEqual(assistantIntegrationLabels(requirements, installed), [
+    'Shimpz Cloudflare v0.4.1',
+    'Shimpz Cloudflare',
+  ]);
 });

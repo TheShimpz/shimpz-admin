@@ -21,3 +21,17 @@ export function localizedIntegrationList(values, locale) {
   if (unique.length < 2) return unique[0] ?? '';
   return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(unique);
 }
+
+export function assistantIntegrationLabels(requirements, installedAssistants) {
+  const versions = new Map(installedAssistants.map((entry) => [
+    entry.assistant,
+    entry.assistant_version,
+  ]));
+  const seen = new Set();
+  return requirements.flatMap((requirement) => {
+    if (seen.has(requirement.assistant_id)) return [];
+    seen.add(requirement.assistant_id);
+    const version = versions.get(requirement.assistant_id);
+    return [`${requirement.assistant_name}${version ? ` v${version}` : ''}`];
+  });
+}
