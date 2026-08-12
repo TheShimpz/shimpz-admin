@@ -1,15 +1,16 @@
 <script>
   import {
     Button,
-    Card,
     DialogFrame,
     Modal,
     Notice,
-    ScrollArea,
-    StatusBadge,
     TextField,
   } from '@shimpz/frontend';
-  import { t } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
+  import {
+    assistantIntegrationMessageParts,
+    localizedIntegrationList,
+  } from '$lib/assistantIntegrationMessages.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
   let {
@@ -26,9 +27,47 @@
   let activeChallengeId = $state('');
   let awaitingCompletion = $state(false);
   let completionCode = $state('');
-  let provider = $derived(challenge?.requirements?.[0]?.provider ?? '');
-  let providerLabel = $derived(assistantIntegrationProviderLabel(provider));
   let copy = $derived($t('assistantIntegrations'));
+  let requirements = $derived(challenge?.requirements ?? []);
+  let actionIds = $derived([...new Set(requirements.flatMap((requirement) => (
+    requirement.actions.map((action) => action.id)
+  )))]);
+  let assistantNames = $derived([...new Set(requirements.map((requirement) => requirement.assistant_name))]);
+  let providerLabels = $derived([...new Set(requirements.map((requirement) => (
+    assistantIntegrationProviderLabel(requirement.provider)
+  )))]);
+  let nextRequirement = $derived(requirements[0]);
+  let nextProviderLabel = $derived(nextRequirement
+    ? assistantIntegrationProviderLabel(nextRequirement.provider)
+    : '');
+  let scopes = $derived([...new Set(nextRequirement?.scopes ?? [])]);
+  let messageValues = $derived({
+    actions: localizedIntegrationList(actionIds, $locale),
+    assistants: localizedIntegrationList(assistantNames, $locale),
+    provider: nextProviderLabel,
+    providers: localizedIntegrationList(providerLabels, $locale),
+  });
+  let hasSingleRequirement = $derived(requirements.length === 1);
+  let hasSingleAction = $derived(
+    actionIds.length === 1 && assistantNames.length === 1 && hasSingleRequirement,
+  );
+  let dialogTitleKey = $derived(hasSingleRequirement
+    ? 'assistantIntegrations.dialogTitle'
+    : 'assistantIntegrations.dialogTitleMultiple');
+  let dialogTitle = $derived(awaitingCompletion
+    ? copy.completionTitle
+    : $t(dialogTitleKey, messageValues));
+  let dialogTitleParts = $derived(assistantIntegrationMessageParts(
+    awaitingCompletion ? copy.completionTitle : $t(dialogTitleKey),
+    messageValues,
+  ));
+  let dialogContextKey = $derived(hasSingleAction
+    ? 'assistantIntegrations.dialogContextSingle'
+    : 'assistantIntegrations.dialogContextMultiple');
+  let dialogContextParts = $derived(assistantIntegrationMessageParts(
+    $t(dialogContextKey),
+    messageValues,
+  ));
 
   async function close(event) {
     event?.preventDefault();
@@ -90,64 +129,39 @@
   });
 </script>
 
+{#snippet titleContent()}
+  {#each dialogTitleParts as part}
+    {#if part.emphasized}<strong class="dynamic"><bdi>{part.text}</bdi></strong>{:else}{part.text}{/if}
+  {/each}
+{/snippet}
+
 <Modal size="lg" bind:element={dialog} labelledBy="assistant-integrations-dialog-title" oncancel={close}>
   <DialogFrame
     kicker={copy.dialogKicker}
-    title={copy.dialogTitle}
+    title={dialogTitle}
+    {titleContent}
     titleId="assistant-integrations-dialog-title"
-    lead={$t('assistantIntegrations.dialogLead', { provider: providerLabel })}
   >
     {#if awaitingCompletion}
-      <Card
-        class="completion"
-        title={copy.completionTitle}
-        description={copy.completionLead}
-        descriptionId="assistant-integration-completion-lead"
-        tone="accent"
-      >
-        <TextField
-          id="assistant-integration-completion-code"
-          label={copy.completionLabel}
-          bind:value={completionCode}
-          aria-describedby="assistant-integration-completion-lead"
-          autocomplete="off"
-          spellcheck="false"
-          disabled={submitting}
-        />
-      </Card>
+      <p id="assistant-integration-completion-lead" class="context">{copy.completionLead}</p>
+      <TextField
+        id="assistant-integration-completion-code"
+        label={copy.completionLabel}
+        bind:value={completionCode}
+        autocomplete="off"
+        spellcheck="false"
+        disabled={submitting}
+        aria-describedby="assistant-integration-completion-lead"
+      />
     {:else}
-      <ScrollArea class="requirements">
-        {#each challenge?.requirements ?? [] as requirement (`${requirement.assistant_id}:${requirement.integration_id}`)}
-          <Card
-            class="requirement"
-            title={requirement.name}
-            description={requirement.summary}
-            padding="compact"
-          >
-            {#snippet header()}
-              <div class="assistant-identity">
-                <strong>{requirement.assistant_name}</strong>
-                <code>{requirement.assistant_id}</code>
-              </div>
-            {/snippet}
-            {#snippet action()}<StatusBadge tone="info">{providerLabel}</StatusBadge>{/snippet}
-            <section aria-label={copy.scopesTitle}>
-              <span>{copy.scopesTitle}</span>
-              <div class="chips">
-                {#each requirement.scopes as scope (scope)}<code>{scope}</code>{/each}
-              </div>
-            </section>
-            <section aria-label={copy.actions}>
-              <span>{copy.actions}</span>
-              <ul>
-                {#each requirement.actions as action (action.id)}
-                  <li><strong>{action.name}</strong><p>{action.summary}</p></li>
-                {/each}
-              </ul>
-            </section>
-          </Card>
+      <p class="context">
+        {#each dialogContextParts as part}
+          {#if part.emphasized}<strong class="dynamic"><bdi>{part.text}</bdi></strong>{:else}{part.text}{/if}
         {/each}
-      </ScrollArea>
+      </p>
+      <section class="chips" aria-label={copy.permissions}>
+        {#each scopes as scope (scope)}<strong><bdi>{scope}</bdi></strong>{/each}
+      </section>
     {/if}
 
     {#if submitError}<Notice variant="error">{submitError}</Notice>{/if}
@@ -160,8 +174,12 @@
       {:else}
         <Button type="button" disabled={submitting} onclick={authorize}>
           {$t(
-            submitting ? 'assistantIntegrations.authorizing' : 'assistantIntegrations.authorize',
-            { provider: providerLabel },
+            submitting
+              ? 'assistantIntegrations.authorizing'
+              : hasSingleRequirement
+                ? 'assistantIntegrations.authorize'
+                : 'assistantIntegrations.authorizeNext',
+            messageValues,
           )}
         </Button>
       {/if}
@@ -170,19 +188,8 @@
 </Modal>
 
 <style>
-  :global(.requirements) { display: grid; min-height: 0; gap: 0.8rem; }
-  :global(.completion) { min-height: 13rem; align-content: center; }
-  :global(.completion > [data-slot="card-content"]) { display: grid; align-content: center; }
-  :global(.requirement > [data-slot="card-content"]) { display: grid; gap: 0.65rem; }
-  .assistant-identity { display: grid; gap: 0.18rem; }
-  .assistant-identity code { color: var(--accent); font-size: 0.56rem; }
-  :global(.requirement section) { display: grid; gap: 0.4rem; }
-  :global(.requirement section > span) { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.54rem; letter-spacing: 0.1em; text-transform: uppercase; }
-  li p { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
+  .context { max-width: 74ch; margin: 0; color: var(--text-dim); font-size: 0.84rem; line-height: 1.55; }
+  .dynamic { color: var(--shimpz-color-cyan); font-weight: 700; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .chips code { border: 1px solid var(--border-strong); padding: 0.18rem 0.4rem; color: var(--accent); font-size: 0.56rem; }
-  ul { display: grid; margin: 0; border: 1px solid var(--border); padding: 0; list-style: none; }
-  li { display: grid; gap: 0.2rem; padding: 0.55rem; }
-  li + li { border-top: 1px solid var(--border); }
-  li strong { font-size: 0.7rem; }
+  .chips strong { border: 1px solid var(--border-strong); padding: 0.28rem 0.5rem; color: var(--shimpz-color-cyan); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; }
 </style>

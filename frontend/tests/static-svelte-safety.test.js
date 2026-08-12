@@ -44,7 +44,7 @@ test('static presentation: declared Admin sources instantiate the canonical prim
     ['../src/lib/AdminShell.svelte', ['WorkspaceShell']],
     ['../src/lib/AdminNotice.svelte', ['Toast']],
     ['../src/lib/AssistantActionDialog.svelte', ['Card', 'DialogFrame', 'Modal']],
-    ['../src/lib/AssistantIntegrationsDialog.svelte', ['Card', 'DialogFrame', 'Modal', 'ScrollArea', 'StatusBadge']],
+    ['../src/lib/AssistantIntegrationsDialog.svelte', ['DialogFrame', 'Modal']],
     ['../src/lib/AssistantIntegrationsDrawer.svelte', ['Card', 'Drawer', 'EmptyState', 'ScrollArea', 'StatusBadge', 'Toolbar']],
     ['../src/lib/AuthScreen.svelte', ['Card']],
     ['../src/lib/ChatContextControls.svelte', ['ChoiceItem', 'DialogFrame', 'Modal']],

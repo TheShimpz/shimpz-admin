@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { messages } from '../src/lib/messages.js';
+import {
+  assistantIntegrationMessageParts,
+  localizedIntegrationList,
+} from '../src/lib/assistantIntegrationMessages.js';
 import { humanRequestContextParts } from '../src/lib/humanRequestMessages.js';
 
 const expectedLocales = ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar'];
@@ -87,4 +91,33 @@ test('human request context emphasizes only the Action and Assistant identity', 
         : [challenge.action.id, challenge.assistant.name, `v${challenge.assistant.version}`],
     );
   }
+});
+
+test('integration confirmation emphasizes every dynamic authorization identity', () => {
+  const values = {
+    actions: 'list-zones',
+    assistants: 'Shimpz Cloudflare',
+    provider: 'Cloudflare',
+    providers: 'Cloudflare and GitHub',
+  };
+  for (const locale of expectedLocales) {
+    for (const key of ['dialogTitle', 'dialogContextSingle', 'dialogContextMultiple']) {
+      const template = messages[locale].assistantIntegrations[key];
+      const parts = assistantIntegrationMessageParts(template, values);
+      assert.equal(parts.map(({ text }) => text).join(''), template
+        .replaceAll('{actions}', values.actions)
+        .replaceAll('{assistants}', values.assistants)
+        .replaceAll('{provider}', values.provider)
+        .replaceAll('{providers}', values.providers));
+      assert.deepEqual(parts.filter(({ emphasized }) => emphasized).map(({ text }) => text), [
+        ...template.matchAll(/\{(actions|assistants|provider|providers)\}/gu),
+      ].map((match) => values[match[1]]));
+    }
+  }
+});
+
+test('integration confirmation formats unique dynamic lists for the active locale', () => {
+  assert.equal(localizedIntegrationList(['Cloudflare', 'Cloudflare'], 'en'), 'Cloudflare');
+  assert.equal(localizedIntegrationList(['Cloudflare', 'GitHub'], 'en'), 'Cloudflare and GitHub');
+  assert.equal(localizedIntegrationList([], 'pt'), '');
 });

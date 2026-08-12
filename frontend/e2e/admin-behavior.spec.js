@@ -85,6 +85,7 @@ async function routeReadyChat(page, {
   humanKind = '',
   humanRejections = [],
   integrationChallenge = false,
+  integrationRequirements,
   missingInference = false,
   reply,
 } = {}) {
@@ -226,7 +227,7 @@ async function routeReadyChat(page, {
             type: 'integrations-required',
             challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
             expires_in: 300,
-            requirements: [{
+            requirements: integrationRequirements ?? [{
               assistant_id: 'shimpz-cloudflare',
               assistant_name: 'Shimpz Cloudflare',
               integration_id: 'cloudflare',
@@ -394,17 +395,100 @@ test('renders the fail-closed Integration challenge dialog', async ({ page }) =>
   await expect(composer).toBeEnabled();
   await composer.fill('List the Cloudflare zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
+  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
   await expect(dialog).toBeVisible();
-  const requirement = dialog.locator('[data-slot="card"]', { hasText: 'Shimpz Cloudflare' });
-  await expect(requirement).toBeVisible();
-  await expect(requirement.getByText('dns.read', { exact: true })).toBeVisible();
+  await expect(dialog.getByText(
+    'Action list-zones from the Shimpz Cloudflare Assistant requires you to securely connect this Shimpz installation to your Cloudflare account, granting the Assistant these permissions:',
+    { exact: true },
+  )).toBeVisible();
+  await expect(dialog.getByText('dns.read', { exact: true })).toBeVisible();
+  const dynamicAction = dialog.locator('.context strong').first();
+  await expect(dynamicAction).toHaveText('list-zones');
+  await expect(dynamicAction).toHaveCSS('color', 'rgb(0, 240, 255)');
+  await expect(dynamicAction).toHaveCSS('font-weight', '700');
+  await expect(dialog.locator('[data-slot="card"]')).toHaveCount(0);
   const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
   expect(results.violations).toEqual([]);
   await expect(dialog).toHaveScreenshot('integration-required-dialog.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
   });
+});
+
+test('renders dynamic Integration data in the current language', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
+  await routeReadyChat(page, {
+    integrationChallenge: true,
+    integrationRequirements: [{
+      assistant_id: 'shimpz-cloudflare',
+      assistant_name: 'Social Publisher',
+      integration_id: 'x-integration',
+      provider: 'x',
+      name: 'X',
+      summary: 'Publica posts aprovados.',
+      scopes: ['tweet.read', 'tweet.write'],
+      actions: [{ id: 'publish-post', name: 'Publicar post', summary: 'Publica um post aprovado.' }],
+    }],
+  });
+  await page.goto('/chat/');
+
+  await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Publique o post');
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Conecte sua conta X' });
+  await expect(dialog).toContainText(
+    'A ação publish-post do assistente Social Publisher requer que você conecte esta instalação da Shimpz à sua conta X de forma segura',
+  );
+  await expect(dialog.getByText('tweet.write', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Autorizar no X' })).toBeVisible();
+});
+
+test('presents one dynamic authorization at a time for a shared provider', async ({ page }) => {
+  await routeReadyChat(page, {
+    integrationChallenge: true,
+    integrationRequirements: [
+      {
+        assistant_id: 'shimpz-cloudflare',
+        assistant_name: 'Shimpz Cloudflare',
+        integration_id: 'cloudflare-zones',
+        provider: 'cloudflare',
+        name: 'Cloudflare zones',
+        summary: 'Reads reviewed Cloudflare zones.',
+        scopes: ['zone.read'],
+        actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+      },
+      {
+        assistant_id: 'shimpz-cloudflare',
+        assistant_name: 'Shimpz Cloudflare',
+        integration_id: 'cloudflare-dns',
+        provider: 'cloudflare',
+        name: 'Cloudflare DNS',
+        summary: 'Changes reviewed Cloudflare DNS records.',
+        scopes: ['dns.write'],
+        actions: [{ id: 'change-dns', name: 'Change DNS', summary: 'Changes one DNS record.' }],
+      },
+    ],
+  });
+  let authorizeRoute;
+  await page.route(
+    '**/api/teams/marketing/assistant-integrations/challenges/*/authorize',
+    (route) => { authorizeRoute = route; },
+  );
+  await page.goto('/chat/');
+
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Review my DNS');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect a required account' });
+  await expect(dialog).toContainText('Start with Cloudflare, using only these reviewed permissions');
+  await expect(dialog.getByText('zone.read', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('dns.write', { exact: true })).toHaveCount(0);
+  const authorize = dialog.getByRole('button', { name: 'Authorize next integration' });
+  const popupPromise = page.waitForEvent('popup');
+  await authorize.click();
+  const popup = await popupPromise;
+  await expect(dialog.getByRole('button', { name: 'Opening Cloudflare…' })).toBeDisabled();
+  await expect.poll(() => Boolean(authorizeRoute)).toBe(true);
+  await authorizeRoute.abort();
+  await popup.close();
 });
 
 test('navigates the built Local app through its exact OAuth handoff', async ({ page }) => {
@@ -429,14 +513,14 @@ test('navigates the built Local app through its exact OAuth handoff', async ({ p
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('List the Cloudflare zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
+  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
   await expect(dialog.getByText('dns.write', { exact: true })).toBeVisible();
   const popupPromise = page.waitForEvent('popup');
-  await dialog.getByRole('button', { name: 'Continue to Cloudflare' }).click();
+  await dialog.getByRole('button', { name: 'Authorize on Cloudflare' }).click();
   const popup = await popupPromise;
   await popup.waitForURL(authorizationUrl);
   await expect(popup).toHaveTitle('Cloudflare OAuth authorization');
-  await expect(dialog.getByRole('heading', { name: 'Paste the completion code' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Paste the completion code' })).toBeVisible();
   expect(await popup.evaluate(() => window.opener)).toBeNull();
 });
 
@@ -467,8 +551,8 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
 
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect required integrations' });
-  await dialog.getByRole('button', { name: 'Continue to Cloudflare' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
+  await dialog.getByRole('button', { name: 'Authorize on Cloudflare' }).click();
   await expect.poll(() => canceled).toBe(true);
   await expect(dialog).toContainText('The secure authorization could not start.');
 });
