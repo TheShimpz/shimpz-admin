@@ -23,6 +23,8 @@
   let fieldValid = $state(false);
   let validationError = $state('');
   let retrySeconds = $state(0);
+  let countdownChallengeId = $state('');
+  let remainingSeconds = $state(0);
   let fieldsContainer = $state();
   let stateStatus = $state();
 
@@ -46,7 +48,14 @@
   let primaryLabel = $derived(
     kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:phishing-resistant' ? copy.usePasskey : copy.authorize) : copy.submit,
   );
-  let contextParts = $derived(challenge ? humanRequestContextParts(copy.context, challenge) : []);
+  let displayedSeconds = $derived(
+    challenge?.challenge_id === countdownChallengeId
+      ? remainingSeconds
+      : challenge?.expires_in ?? 0,
+  );
+  let contextParts = $derived(
+    challenge ? humanRequestContextParts(copy.context, challenge, displayedSeconds) : [],
+  );
   let fieldLabels = $derived({
     chooseOption: copy.chooseOption,
     selectionHint: $t('humanRequest.selectionHint', {
@@ -63,6 +72,21 @@
     if (nextId === challengeId) return;
     challengeId = nextId;
     validationError = '';
+  });
+
+  $effect(() => {
+    const nextId = challenge?.challenge_id ?? '';
+    const seconds = challenge?.expires_in ?? 0;
+    countdownChallengeId = nextId;
+    remainingSeconds = seconds;
+    if (!nextId || seconds < 1) return;
+    const deadline = Date.now() + (seconds * 1000);
+    const update = () => {
+      remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remainingSeconds === 0) clearInterval(timer);
+    };
+    const timer = setInterval(update, 250);
+    return () => clearInterval(timer);
   });
 
   $effect(() => {

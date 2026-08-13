@@ -782,6 +782,7 @@ const humanPresentations = [
 
 for (const [kind, title] of humanPresentations) {
   test(`renders and completes the ${kind} Action request`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
     const contract = await routeReadyChat(page, { humanKind: kind });
     await page.goto('/chat/');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -847,6 +848,21 @@ for (const [kind, title] of humanPresentations) {
     });
   });
 }
+
+test('updates the Action human request countdown without a page refresh', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await routeReadyChat(page, { humanKind: 'approval' });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+  await expect(dialog).toContainText('Expires in 300 seconds.');
+  await page.clock.fastForward(1_000);
+  await expect(dialog).toContainText('Expires in 299 seconds.');
+  await page.clock.fastForward(2_000);
+  await expect(dialog).toContainText('Expires in 297 seconds.');
+});
 
 test('treats dismissing a human request as a terminal denial', async ({ page }) => {
   const contract = await routeReadyChat(page, { humanKind: 'approval' });

@@ -113,13 +113,13 @@ export const humanRequestMessages = {
   },
 };
 
-export function humanRequestContextParts(template, challenge) {
+export function humanRequestContextParts(template, challenge, seconds) {
   const replacements = {
     '{action}': { text: challenge.action.id, emphasized: true },
     '{assistant}': { text: challenge.assistant.name, emphasized: true },
     'v{version}': { text: `v${challenge.assistant.version}`, emphasized: true },
     '{version}': { text: challenge.assistant.version, emphasized: true },
-    '{seconds}': { text: String(challenge.expires_in), emphasized: false },
+    '{seconds}': { text: String(seconds), emphasized: false },
   };
   return template
     .split(/(\{action\}|\{assistant\}|v\{version\}|\{version\}|\{seconds\})/u)

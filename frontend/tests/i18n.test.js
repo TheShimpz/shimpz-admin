@@ -79,12 +79,12 @@ test('human request context emphasizes only the Action and Assistant identity', 
   };
   for (const locale of expectedLocales) {
     const template = messages[locale].humanRequest.context;
-    const parts = humanRequestContextParts(template, challenge);
+    const parts = humanRequestContextParts(template, challenge, 42);
     assert.equal(parts.map(({ text }) => text).join(''), template
       .replace('{action}', challenge.action.id)
       .replace('{assistant}', challenge.assistant.name)
       .replace('{version}', challenge.assistant.version)
-      .replace('{seconds}', String(challenge.expires_in)));
+      .replace('{seconds}', '42'));
     assert.deepEqual(
       parts.filter(({ emphasized }) => emphasized).map(({ text }) => text),
       locale === 'zh' || locale === 'ja'
