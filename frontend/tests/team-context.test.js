@@ -11,7 +11,6 @@ import {
   MAX_SELECTED_ASSISTANTS,
   refreshTeamInventory,
   selectAllTeamAssistants,
-  selectOnlyTeamAssistant,
   selectTeam,
   teamContext,
   toggleTeamAssistant,
@@ -629,7 +628,8 @@ test('Assistant selection is Team-scoped, bounded to running inventory, and empt
   assert.deepEqual(get(teamContext).selectedAssistantIds, []);
   assert.equal(toggleTeamAssistant('salesnator'), true);
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['salesnator']);
-  assert.equal(selectOnlyTeamAssistant('hello-pulse'), true);
+  assert.equal(unselectAllTeamAssistants(), true);
+  assert.equal(toggleTeamAssistant('hello-pulse'), true);
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
   assert.equal(selectAllTeamAssistants(), true);
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse', 'salesnator']);
@@ -662,7 +662,7 @@ test('selected Assistant intent survives outdated and unavailable runtime states
     }),
   });
   await loadTeamContext(inventory('running'), 'marketing');
-  assert.equal(selectOnlyTeamAssistant('hello-pulse'), true);
+  assert.equal(toggleTeamAssistant('salesnator'), true);
   assert.deepEqual(get(teamContext).selectedAssistantIds, ['hello-pulse']);
 
   await refreshTeamInventory(inventory('outdated'));
@@ -731,7 +731,7 @@ test('Assistant intent survives reload and rejects malformed stored authority', 
   try {
     clearTeamContext();
     await loadTeamContext(twoAssistants, 'marketing');
-    assert.equal(selectOnlyTeamAssistant('salesnator'), true);
+    assert.equal(toggleTeamAssistant('hello-pulse'), true);
     assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: ['hello-pulse'] }));
 
     clearTeamContext();

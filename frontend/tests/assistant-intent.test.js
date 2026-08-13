@@ -17,9 +17,6 @@ import {
   acknowledgeStoreFrame,
   acknowledgeStoreInstallIntent,
   acknowledgeStoreUninstallIntent,
-  acceptsStoreInstallIntent,
-  acceptsStoreUninstallIntent,
-  assistantStoreHref,
   createStoreActionLatch,
   postStoreAssistantState,
   projectInstalledAssistantIds,
@@ -41,24 +38,12 @@ const UNINSTALL_INTENT = Object.freeze({
 
 test('pins the exact publication lifecycle protocol', () => {
   assert.equal(STORE_LIFECYCLE_PROTOCOL_VERSION, 2);
-  assert.equal(
-    assistantStoreHref('en', 'example-assistant'),
-    'https://shimpz.com/en/assistants?assistant=example-assistant',
-  );
-  for (const locale of ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']) {
-    assert.equal(
-      assistantStoreHref(locale, 'example-assistant'),
-      `https://shimpz.com/${locale}/assistants?assistant=example-assistant`,
-    );
-  }
-  assert.equal(assistantStoreHref('xx', 'example-assistant'), null);
-  assert.equal(assistantStoreHref('en', '../escape'), null);
 });
 
-test('accepts any canonical exact publication intent from only the Store frame', () => {
-  const iframeWindow = {};
+test('acknowledges any canonical exact publication intent from only the Store frame', () => {
+  const iframeWindow = { postMessage() {} };
   const event = { origin: STORE_ORIGIN, source: iframeWindow, data: INSTALL_INTENT };
-  assert.equal(acceptsStoreInstallIntent(event, iframeWindow), true);
+  assert.equal(acknowledgeStoreInstallIntent(event, iframeWindow), true);
 
   for (const data of [
     { ...INSTALL_INTENT, source_digest: 'sha256:bad' },
@@ -68,10 +53,13 @@ test('accepts any canonical exact publication intent from only the Store frame',
     { ...INSTALL_INTENT, team: 'private_team' },
     null,
   ]) {
-    assert.equal(acceptsStoreInstallIntent({ ...event, data }, iframeWindow), false);
+    assert.equal(acknowledgeStoreInstallIntent({ ...event, data }, iframeWindow), false);
   }
-  assert.equal(acceptsStoreInstallIntent({ ...event, origin: 'https://shimpz.com.evil' }, iframeWindow), false);
-  assert.equal(acceptsStoreInstallIntent({ ...event, source: {} }, iframeWindow), false);
+  assert.equal(
+    acknowledgeStoreInstallIntent({ ...event, origin: 'https://shimpz.com.evil' }, iframeWindow),
+    false,
+  );
+  assert.equal(acknowledgeStoreInstallIntent({ ...event, source: {} }, iframeWindow), false);
 });
 
 test('acknowledges accepted install and uninstall intents without local state', () => {
@@ -83,7 +71,6 @@ test('acknowledges accepted install and uninstall intents without local state', 
   const uninstall = { origin: STORE_ORIGIN, source: iframeWindow, data: UNINSTALL_INTENT };
 
   assert.equal(acknowledgeStoreInstallIntent(install, iframeWindow), true);
-  assert.equal(acceptsStoreUninstallIntent(uninstall, iframeWindow), true);
   assert.equal(acknowledgeStoreUninstallIntent(uninstall, iframeWindow), true);
   assert.deepEqual(messages, [
     {

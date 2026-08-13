@@ -4,7 +4,6 @@ import test from 'node:test';
 import {
   listModelProviders,
   loadInference,
-  removeModelKey,
   saveModelSetup,
 } from '../src/lib/modelProviders.js';
 
@@ -120,15 +119,6 @@ test('rejects inference models outside the provider catalog before saving', asyn
   assert.equal(called, false);
 });
 
-test('treats unconfigured inference as empty and removes keys through the fixed route', async () => {
+test('treats unconfigured inference as empty', async () => {
   assert.equal(await loadInference(async () => response(409, { detail: 'not configured' }), 'team_1'), null);
-  const removed = await removeModelKey(
-    async (url, options) => {
-      assert.equal(url, '/api/model-providers/openai');
-      assert.equal(options.method, 'DELETE');
-      return response(200, providers[0]);
-    },
-    'openai',
-  );
-  assert.equal(removed.configured, false);
 });

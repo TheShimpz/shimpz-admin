@@ -294,19 +294,6 @@ export async function loadTeamContext(fetcher, preferredId = '') {
   }
 }
 
-export async function refreshTeams(fetcher, preferredId = '') {
-  requireFetcher(fetcher);
-  const canonicalPreferredId = preferredTeamId(preferredId);
-  const current = get(teamContext);
-  const attempt = ++generation;
-  teamContext.set({ ...current, phase: 'loading', error: '', selectedFileIds: [] });
-  try {
-    return await hydrate(fetcher, canonicalPreferredId, attempt, current.selectedTeamId);
-  } catch (error) {
-    throw markFailure(attempt, error, 'The local Team context is unavailable.', true);
-  }
-}
-
 export async function selectTeam(fetcher, id) {
   requireFetcher(fetcher);
   const canonicalId = preferredTeamId(id);
@@ -487,12 +474,6 @@ export function selectAllTeamAssistants() {
 
 export function unselectAllTeamAssistants() {
   return updateAssistantIntent((installed) => [...installed]);
-}
-
-export function selectOnlyTeamAssistant(id) {
-  return updateAssistantIntent((installed, running, disabled) => (
-    running.includes(id) ? installed.filter((assistantId) => assistantId !== id) : disabled
-  ));
 }
 
 export function clearTeamContext() {

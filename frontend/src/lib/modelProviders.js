@@ -150,19 +150,3 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
   }
   return { providerState, inference: { provider: setup.provider, model: setup.model } };
 }
-
-export async function removeModelKey(fetcher, provider) {
-  if (typeof fetcher !== 'function' || !PROVIDER_IDS.has(provider)) {
-    throw new LocalApiError('Invalid model provider request.');
-  }
-  const response = await fetcher(`/api/model-providers/${encodeURIComponent(provider)}`, {
-    method: 'DELETE',
-    headers: { Accept: 'application/json' },
-  });
-  const body = await jsonObject(response);
-  if (!response.ok) throw new LocalApiError(safeApiError(body, 'The API key could not be removed.'), response.status);
-  if (!validProvider(body) || body.id !== provider || body.configured) {
-    throw new LocalApiError('The model provider response is invalid.', response.status);
-  }
-  return body;
-}

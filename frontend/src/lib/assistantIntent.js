@@ -18,14 +18,7 @@ const UNINSTALL_INTENT_KEYS = Object.freeze(['assistant', 'type', 'version']);
 const FRAME_KEYS = Object.freeze(['height', 'type', 'version']);
 const STATE_KEYS = Object.freeze(['installed', 'status', 'type', 'version']);
 const STATE_STATUSES = new Set(['error', 'loading', 'ready']);
-const STORE_LOCALES = new Set(['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar']);
 const STORE_ACTIONS = new Set(['install', 'uninstall']);
-
-/** Build one canonical Store detail link without accepting an arbitrary origin or path. */
-export function assistantStoreHref(locale, assistantId) {
-  if (!STORE_LOCALES.has(locale) || !ASSISTANT_ID_RE.test(assistantId)) return null;
-  return `${STORE_ORIGIN}/${locale}/assistants?assistant=${encodeURIComponent(assistantId)}`;
-}
 
 function isTrustedStoreEvent(event, iframeWindow) {
   return Boolean(event && event.origin === STORE_ORIGIN && event.source === iframeWindow && iframeWindow);
@@ -83,14 +76,6 @@ function acknowledgeStoreIntent(event, iframeWindow, expectedType, expectedKeys,
 }
 
 /**
- * Accept one inert Store intent. The Store can nominate the released Assistant, but it never gets
- * a local token, Team id, or authority to install; the Supervisor must select and confirm locally.
- */
-export function acceptsStoreInstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, INSTALL_INTENT_TYPE, INSTALL_INTENT_KEYS);
-}
-
-/**
  * Acknowledge only the exact inert Store intent. The response deliberately contains no Team,
  * inventory, token, runtime, or installation state; local admission remains entirely in the Admin.
  */
@@ -102,11 +87,6 @@ export function acknowledgeStoreInstallIntent(event, iframeWindow) {
     INSTALL_INTENT_KEYS,
     INSTALL_ACK_TYPE,
   );
-}
-
-/** Accept only the exact inert uninstall request; the Store still receives no local authority. */
-export function acceptsStoreUninstallIntent(event, iframeWindow) {
-  return acceptsStoreIntent(event, iframeWindow, UNINSTALL_INTENT_TYPE, UNINSTALL_INTENT_KEYS);
 }
 
 /** Acknowledge receipt without revealing whether, where, or how an Assistant is installed. */
