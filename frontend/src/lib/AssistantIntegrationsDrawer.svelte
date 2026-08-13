@@ -6,7 +6,6 @@
     EmptyState,
     Notice,
     ScrollArea,
-    StatusBadge,
     Toolbar,
   } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
@@ -15,13 +14,11 @@
   let {
     open = false,
     integrations = [],
-    installedAssistants = [],
     synced = false,
     pending = undefined,
     working = '',
     onclose = undefined,
     onconnect = undefined,
-    ondisconnect = undefined,
   } = $props();
 
   let closeButton = $state();
@@ -29,35 +26,19 @@
   let provider = $derived(pending?.requirements?.[0]?.provider ?? '');
   let providerLabel = $derived(assistantIntegrationProviderLabel(provider));
   let copy = $derived($t('assistantIntegrations'));
-  let pendingIdentities = $derived(new Set((pending?.requirements ?? []).map((requirement) => (
-    `${requirement.assistant_id}\u0000${requirement.integration_id}`
-  ))));
-  let assistantVersions = $derived(new Map(installedAssistants.map((assistant) => (
-    [assistant.assistant, assistant.assistant_version]
-  ))));
   let groups = $derived.by(() => {
     const grouped = new Map();
     for (const integration of integrations) {
-      const group = grouped.get(integration.assistant_id) ?? {
+      if (grouped.has(integration.assistant_id)) continue;
+      grouped.set(integration.assistant_id, {
         id: integration.assistant_id,
         name: integration.assistant_name,
-        version: assistantVersions.get(integration.assistant_id) ?? '',
-        integrations: [],
-      };
-      group.integrations.push(integration);
-      grouped.set(integration.assistant_id, group);
+        summary: integration.assistant_summary,
+        version: integration.assistant_version,
+      });
     }
     return [...grouped.values()];
   });
-
-  function statusLabel(status) {
-    if (status === 'reauthorization-required') return copy.statusReauthorization;
-    return copy.statusMissing;
-  }
-
-  function identity(integration) {
-    return `${integration.assistant_id}\u0000${integration.id}`;
-  }
 
   function toggleAssistant(assistantId) {
     expandedAssistantId = expandedAssistantId === assistantId ? '' : assistantId;
@@ -153,40 +134,13 @@
           <Card
             class="assistant-group"
             title={assistant.name}
-            description={`${assistant.id}${assistant.version ? ` v${assistant.version}` : ''}`}
+            description={`v${assistant.version}`}
             padding="compact"
             aria-label={assistant.name}
             {action}
           >
             <div id={detailsId} class="assistant-details" hidden={!expanded}>
-              <ul>
-                {#each assistant.integrations as integration (integration.id)}
-                  {@const itemIdentity = identity(integration)}
-                  <li>
-                    <div class="integration-heading">
-                      <strong>{integration.name}</strong>
-                      {#if integration.status !== 'connected' && integration.status !== 'expired'}
-                        <StatusBadge tone="warning">{statusLabel(integration.status)}</StatusBadge>
-                      {/if}
-                    </div>
-                    <p>{integration.summary}</p>
-                    <dl>
-                      <div><dt>{copy.scopes}</dt><dd>{integration.scopes.join(' · ')}</dd></div>
-                    </dl>
-                    <Toolbar align="end">
-                      {#if !pendingIdentities.has(itemIdentity) && integration.status !== 'missing'}
-                        <Button
-                          variant="danger"
-                          size="compact"
-                          type="button"
-                          disabled={working === itemIdentity}
-                          onclick={() => ondisconnect?.(integration)}
-                        >{working === itemIdentity ? copy.disconnecting : copy.disconnect}</Button>
-                      {/if}
-                    </Toolbar>
-                  </li>
-                {/each}
-              </ul>
+              <p>{assistant.summary}</p>
             </div>
           </Card>
         {/each}
@@ -216,16 +170,7 @@
   :global(.assistant-toggle svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.75; transition: transform var(--duration-fast) var(--ease); }
   :global(.assistant-toggle[aria-expanded="true"] svg) { transform: rotate(180deg); }
   .assistant-details[hidden] { display: none; }
-  ul { display: grid; margin: 0; padding: 0; list-style: none; }
-  li { display: grid; gap: 0.55rem; padding: 0.75rem; }
-  li + li { border-top: 1px solid var(--border); }
-  .integration-heading { display: flex; align-items: start; justify-content: space-between; gap: 0.6rem; }
-  .integration-heading strong { font-size: 0.74rem; }
-  li > p { margin: 0; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
-  dl { display: grid; gap: 0.45rem; margin: 0; }
-  dl div { display: grid; gap: 0.18rem; }
-  dt { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  dd { margin: 0; color: var(--text); font-size: 0.62rem; overflow-wrap: anywhere; }
+  .assistant-details p { margin: 0; padding: 0.75rem; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
   @media (max-width: 420px) {
     :global(.assistant-group > [data-slot="card-header"]) { flex-direction: row; align-items: center; }
   }

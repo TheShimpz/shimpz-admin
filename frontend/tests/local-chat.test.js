@@ -11,7 +11,6 @@ import {
   createHumanResponseFrame,
   createStopFrame,
   createSyncFrame,
-  disconnectAssistantIntegration,
   listAssistantIntegrations,
   listTeamFiles,
   oauthReturnFailure,
@@ -96,6 +95,8 @@ function integrationInventory(status = 'connected') {
       {
         assistant_id: 'social-publisher',
         assistant_name: 'Social Publisher',
+        assistant_version: '0.9.0',
+        assistant_summary: 'Publishes reviewed social updates.',
         id: 'x-integration',
         provider: 'x',
         name: 'X integration',
@@ -465,6 +466,14 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
     { integrations: [{ ...inventory.integrations[0], integration: { id: '1', name: null } }] },
     { integrations: [{ ...inventory.integrations[0], integration: { id: '', name: null, username: null } }] },
     { integrations: [{ ...inventory.integrations[0], expires_at: 'tomorrow' }] },
+    { integrations: [{ ...inventory.integrations[0], assistant_version: 'latest' }] },
+    { integrations: [{ ...inventory.integrations[0], assistant_summary: ' untrimmed' }] },
+    {
+      integrations: [
+        inventory.integrations[0],
+        { ...inventory.integrations[0], id: 'second', assistant_version: '1.0.0' },
+      ],
+    },
     { integrations: [...inventory.integrations, ...inventory.integrations] },
   ]) {
     await assert.rejects(
@@ -474,7 +483,7 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
   }
 });
 
-test('starts only a trusted Cloudflare authorization and disconnects with an empty 204', async () => {
+test('starts only a trusted Cloudflare authorization', async () => {
   const calls = [];
   const authorizationUrl = 'https://shimpz.com/api/oauth/cloudflare/start?'
     + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
@@ -534,21 +543,6 @@ test('starts only a trusted Cloudflare authorization and disconnects with an emp
     );
   }
 
-  await disconnectAssistantIntegration(
-    async (url, options) => {
-      calls.push({ url, options });
-      return response(204, {});
-    },
-    'team_1',
-    'social-publisher',
-    'x-integration',
-  );
-  assert.equal(calls[1].url, '/api/teams/team_1/assistant-integrations/social-publisher/x-integration');
-  assert.equal(calls[1].options.method, 'DELETE');
-  await assert.rejects(
-    disconnectAssistantIntegration(async () => response(200, {}), 'team_1', 'social-publisher', 'x-integration'),
-    /disintegration response is invalid/,
-  );
 });
 
 test('trusts an OAuth handoff only when it matches the exact Local page mode', async () => {

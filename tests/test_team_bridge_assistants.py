@@ -232,6 +232,8 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         integration = {
             "assistant_id": "shimpz-cloudflare",
             "assistant_name": "Shimpz Cloudflare",
+            "assistant_version": "0.4.2",
+            "assistant_summary": "Inspect Cloudflare zones and safely manage common DNS records through OAuth.",
             "id": "x-integration",
             "provider": "cloudflare",
             "name": "Cloudflare integration",

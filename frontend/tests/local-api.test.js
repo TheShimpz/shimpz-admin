@@ -123,18 +123,25 @@ test('projects only bounded display identities from the local Assistant catalog'
   };
 
   assert.deepEqual(await listAssistantCatalog(fetcher), [
-    { id: 'hello-pulse', name: 'Hello Pulse' },
-    { id: 'salesnator', name: 'Salesnator' },
+    { id: 'hello-pulse', name: 'Hello Pulse', summary: 'First' },
+    { id: 'salesnator', name: 'Salesnator', summary: 'Second' },
   ]);
 });
 
 test('rejects malformed or ambiguous Assistant catalog identities', async () => {
   for (const assistants of [
     null,
-    [{ id: '../escape', title: 'Escape' }],
-    [{ id: 'hello-pulse', title: ' Hello Pulse' }],
-    [{ id: 'hello-pulse', title: 'Hello\nPulse' }],
-    [{ id: 'hello-pulse', title: 'Hello Pulse' }, { id: 'hello-pulse', title: 'Duplicate' }],
+    [{ id: '../escape', title: 'Escape', summary: 'Invalid id.' }],
+    [{ id: 'hello-pulse', title: ' Hello Pulse', summary: 'Invalid title.' }],
+    [{ id: 'hello-pulse', title: 'Hello\nPulse', summary: 'Invalid title.' }],
+    [{ id: 'hello-pulse', title: 'Hello Pulse' }],
+    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: ' Summary' }],
+    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: 'Invalid\nsummary' }],
+    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: 'x'.repeat(161) }],
+    [
+      { id: 'hello-pulse', title: 'Hello Pulse', summary: 'First' },
+      { id: 'hello-pulse', title: 'Duplicate', summary: 'Second' },
+    ],
   ]) {
     await assert.rejects(
       listAssistantCatalog(async () => response(200, { assistants })),

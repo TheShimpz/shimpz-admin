@@ -24,7 +24,6 @@
     createHumanResponseFrame,
     createStopFrame,
     createSyncFrame,
-    disconnectAssistantIntegration,
     listAssistantIntegrations,
     parseChatEvent,
     oauthReturnFailure,
@@ -551,27 +550,6 @@
     }
   }
 
-  async function disconnectIntegration(integration) {
-    const teamId = chatTeamId;
-    if (!teamId || integrationWorking) return;
-    const identity = `${integration.assistant_id}\u0000${integration.id}`;
-    integrationWorking = identity;
-    try {
-      await disconnectAssistantIntegration(fetch, teamId, integration.assistant_id, integration.id);
-      if (chatTeamId !== teamId) return;
-      await refreshIntegrations(teamId);
-    } catch (reason) {
-      if (chatTeamId === teamId) {
-        setError(
-          integrationsCopy.disconnectFailed,
-          reason instanceof Error ? reason.message : integrationsCopy.disconnectFailed,
-        );
-      }
-    } finally {
-      if (chatTeamId === teamId) integrationWorking = '';
-    }
-  }
-
   function send(event) {
     event.preventDefault();
     const teamId = $teamContext.selectedTeamId;
@@ -808,13 +786,11 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           {integrations}
-          installedAssistants={$teamContext.installedAssistants}
           synced={integrationsReady}
           pending={integrationChallenge}
           working={integrationWorking}
           onclose={closeIntegrations}
           onconnect={authorizeIntegration}
-          ondisconnect={disconnectIntegration}
         />
         <AssistantIntegrationsDialog
           open={integrationsDialogOpen}

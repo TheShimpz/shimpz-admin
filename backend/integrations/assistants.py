@@ -26,6 +26,7 @@ _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
 _OAUTH_SCOPE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
+_SEMANTIC_VERSION_RE = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 def _canonical_team_id(value: object) -> str:
@@ -109,6 +110,8 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
             if not isinstance(item, dict) or set(item) != {
                 "assistant_id",
                 "assistant_name",
+                "assistant_version",
+                "assistant_summary",
                 "id",
                 "provider",
                 "name",
@@ -125,6 +128,12 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
             if identity in identities:
                 raise ValueError("duplicate Team integration")
             identities.add(identity)
+            assistant_version = item["assistant_version"]
+            if (
+                not isinstance(assistant_version, str)
+                or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None
+            ):
+                raise ValueError("invalid Assistant version")
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:
                 raise ValueError("invalid Team integration status")
@@ -132,6 +141,10 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                 {
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(item["assistant_name"], 80, field="Assistant name"),
+                    "assistant_version": assistant_version,
+                    "assistant_summary": chat_ws_common.public_text(
+                        item["assistant_summary"], 160, field="Assistant summary"
+                    ),
                     "id": integration_id,
                     "provider": payloads.canonical_assistant_id(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),

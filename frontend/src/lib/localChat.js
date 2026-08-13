@@ -10,6 +10,7 @@ import {
 
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /\p{C}/u;
+const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -205,6 +206,13 @@ function canonicalPublicText(value, maximum) {
     SECRET_CONTROL_RE.test(value)
   ) {
     throw new LocalApiError('The local chat response is invalid.');
+  }
+  return value;
+}
+
+function canonicalSemanticVersion(value) {
+  if (typeof value !== 'string' || !SEMANTIC_VERSION_RE.test(value)) {
+    throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   return value;
 }
@@ -479,6 +487,8 @@ function canonicalIntegrationInventoryItem(value) {
     !exactKeys(value, [
       'assistant_id',
       'assistant_name',
+      'assistant_version',
+      'assistant_summary',
       'id',
       'provider',
       'name',
@@ -496,6 +506,8 @@ function canonicalIntegrationInventoryItem(value) {
   return {
     assistant_id: canonicalId(value.assistant_id, 'The Assistant integration inventory is invalid.'),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
+    assistant_version: canonicalSemanticVersion(value.assistant_version),
+    assistant_summary: canonicalPublicText(value.assistant_summary, 160),
     id: canonicalId(value.id, 'The Assistant integration inventory is invalid.'),
     provider: canonicalId(value.provider, 'The Assistant integration inventory is invalid.'),
     name: canonicalPublicText(value.name, 80),
@@ -696,6 +708,15 @@ export async function listAssistantIntegrations(fetcher, teamId) {
   if (new Set(identities).size !== identities.length) {
     throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
   }
+  const assistantMetadata = new Map();
+  for (const integration of integrations) {
+    const current = assistantMetadata.get(integration.assistant_id);
+    const metadata = [integration.assistant_name, integration.assistant_version, integration.assistant_summary];
+    if (current && current.some((value, index) => value !== metadata[index])) {
+      throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
+    }
+    assistantMetadata.set(integration.assistant_id, metadata);
+  }
   return { integrations };
 }
 
@@ -787,24 +808,6 @@ export async function cancelAssistantIntegrationAuthorization(fetcher, teamId, c
   }
   if (response.status !== 204) {
     throw new LocalApiError('The Assistant cancellation response is invalid.', response.status);
-  }
-}
-
-export async function disconnectAssistantIntegration(fetcher, teamId, assistantId, integrationId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant integration request.');
-  requireTeam(teamId);
-  const canonicalAssistant = canonicalId(assistantId, 'Invalid Assistant integration request.');
-  const canonicalIntegration = canonicalId(integrationId, 'Invalid Assistant integration request.');
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/${canonicalAssistant}/${canonicalIntegration}`,
-    { method: 'DELETE', headers: { Accept: 'application/json' } },
-  );
-  if (!response.ok) {
-    const body = await jsonObject(response);
-    throw new LocalApiError(safeApiError(body, 'Assistant integration could not be disconnected.'), response.status);
-  }
-  if (response.status !== 204) {
-    throw new LocalApiError('The Assistant disintegration response is invalid.', response.status);
   }
 }
 

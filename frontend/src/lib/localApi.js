@@ -38,6 +38,7 @@ export async function listAssistantCatalog(fetcher) {
   return body.assistants.map((entry) => {
     const id = entry?.id;
     const name = entry?.title;
+    const summary = entry?.summary;
     if (
       !entry ||
       typeof entry !== 'object' ||
@@ -49,12 +50,17 @@ export async function listAssistantCatalog(fetcher) {
       !name ||
       name.length > 80 ||
       CONTROL_RE.test(name) ||
+      typeof summary !== 'string' ||
+      summary !== summary.trim() ||
+      !summary ||
+      summary.length > 160 ||
+      CONTROL_RE.test(summary) ||
       seen.has(id)
     ) {
       throw new LocalApiError('The local Assistant catalog is invalid.', response.status);
     }
     seen.add(id);
-    return { id, name };
+    return { id, name, summary };
   });
 }
 

@@ -121,8 +121,16 @@ async function routeReadyChat(page, {
     contentType: 'application/json',
     body: JSON.stringify({
       assistants: [
-        { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
-        ...(multipleIntegrations ? [{ id: 'shimpz-slack', title: 'Shimpz Slack' }] : []),
+        {
+          id: 'shimpz-cloudflare',
+          title: 'Shimpz Cloudflare',
+          summary: 'Safely manage Cloudflare DNS records through OAuth.',
+        },
+        ...(multipleIntegrations ? [{
+          id: 'shimpz-slack',
+          title: 'Shimpz Slack',
+          summary: 'Send reviewed Slack messages from your Team.',
+        }] : []),
       ],
     }),
   }));
@@ -185,6 +193,8 @@ async function routeReadyChat(page, {
         {
           assistant_id: 'shimpz-cloudflare',
           assistant_name: 'Shimpz Cloudflare',
+          assistant_version: '0.4.2',
+          assistant_summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
           id: 'cloudflare',
           provider: 'cloudflare',
           name: 'Cloudflare',
@@ -197,6 +207,8 @@ async function routeReadyChat(page, {
         ...(multipleIntegrations ? [{
           assistant_id: 'shimpz-slack',
           assistant_name: 'Shimpz Slack',
+          assistant_version: '0.1.0',
+          assistant_summary: 'Send reviewed messages to Slack.',
           id: 'slack',
           provider: 'slack',
           name: 'Slack',
@@ -377,7 +389,7 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute('data-slot', 'drawer');
   await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
-  await expect(drawer.getByText('shimpz-cloudflare v0.4.1', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('v0.4.2', { exact: true })).toBeVisible();
   await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
   await expect(drawer.locator('.integration-content')).not.toHaveAttribute('aria-live');
   await expect(drawer.locator('.integration-status')).toHaveAttribute('aria-live', 'polite');
@@ -387,8 +399,7 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(toggle).toHaveCSS('color', 'rgb(0, 240, 255)');
   await expect(toggle).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
-  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeHidden();
-  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeHidden();
+  await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.', { exact: true })).toBeHidden();
   const drawerBox = await drawer.boundingBox();
   expect(drawerBox).not.toBeNull();
   expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
@@ -401,9 +412,11 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(toggle).toHaveAccessibleName('Collapse Shimpz Cloudflare');
-  await expect(drawer.locator('dt')).toHaveText(['Permissions']);
-  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeVisible();
-  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('Safely manage Cloudflare DNS records through OAuth.', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByText('Reads reviewed zone and DNS metadata.', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByText('Permissions', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
   const expandedAxe = await new AxeBuilder({ page }).analyze();
   expect(expandedAxe.violations).toEqual([]);
   await expect(drawer).toHaveScreenshot('integrations-drawer-expanded.png', {
@@ -439,7 +452,7 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
   const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
   const cloudflareToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
   const slackToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-slack"]');
-  await expect(drawer.getByText('shimpz-slack v1.2.3', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('v0.1.0', { exact: true })).toBeVisible();
 
   await cloudflareToggle.click();
   await expect(cloudflareToggle).toHaveAttribute('aria-expanded', 'true');
@@ -448,43 +461,26 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
   await slackToggle.click();
   await expect(cloudflareToggle).toHaveAttribute('aria-expanded', 'false');
   await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(drawer.getByText('Reads reviewed zone and DNS metadata.')).toBeHidden();
-  await expect(drawer.getByText('Sends reviewed messages to Slack.')).toBeVisible();
+  await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.')).toBeHidden();
+  await expect(drawer.getByText('Send reviewed messages to Slack.')).toBeVisible();
 });
 
-for (const [integrationStatus, statusLabel, disconnectCount] of [
-  ['missing', 'Missing', 0],
-  ['reauthorization-required', 'Reconnect required', 1],
-]) {
-  test(`keeps the ${integrationStatus} Integration status actionable`, async ({ page }) => {
+for (const integrationStatus of ['missing', 'reauthorization-required', 'expired']) {
+  test(`keeps ${integrationStatus} Integration metadata out of the Assistant summary card`, async ({ page }) => {
     await routeReadyChat(page, { integrationStatus });
     await page.goto('/chat/');
 
     await page.getByRole('button', { name: 'Assistant integrations' }).click();
     const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
     await drawer.getByRole('button', { name: 'Expand Shimpz Cloudflare' }).click();
-    await expect(drawer.getByText(statusLabel, { exact: true })).toBeVisible();
+    await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.')).toBeVisible();
+    await expect(drawer.getByText('Missing', { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText('Reconnect required', { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText('Expired', { exact: true })).toHaveCount(0);
     await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
-    await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(disconnectCount);
-    if (integrationStatus === 'reauthorization-required') {
-      const warningAxe = await new AxeBuilder({ page }).analyze();
-      expect(warningAxe.violations).toEqual([]);
-    }
+    await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
   });
 }
-
-test('does not present a refreshable expired token as a disconnected Integration', async ({ page }) => {
-  await routeReadyChat(page, { integrationStatus: 'expired' });
-  await page.goto('/chat/');
-
-  await page.getByRole('button', { name: 'Assistant integrations' }).click();
-  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
-  await drawer.getByRole('button', { name: 'Expand Shimpz Cloudflare' }).click();
-  await expect(drawer.locator('.integration-heading .shimpz-status')).toHaveCount(0);
-  await expect(drawer.getByText('Expired', { exact: true })).toHaveCount(0);
-  await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
-  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
-});
 
 test('uses text actions and one semantic selected state in the Assistant chooser', async ({ page }) => {
   await routeReadyChat(page);
@@ -1206,7 +1202,11 @@ test('keeps a first Store install ready while local display metadata catches up'
       contentType: 'application/json',
       body: JSON.stringify({
         assistants: installed
-          ? [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }]
+          ? [{
+            id: 'shimpz-cloudflare',
+            title: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+          }]
           : [],
       }),
     });

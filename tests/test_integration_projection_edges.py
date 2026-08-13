@@ -29,6 +29,8 @@ def _integration(**overrides: object) -> dict[str, object]:
     value: dict[str, object] = {
         "assistant_id": "shimpz-cloudflare",
         "assistant_name": "Shimpz Cloudflare",
+        "assistant_version": "0.4.2",
+        "assistant_summary": "Inspect Cloudflare zones and safely manage common DNS records through OAuth.",
         "id": "cloudflare",
         "provider": "cloudflare",
         "name": "Cloudflare",
@@ -82,6 +84,16 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             {
                 "team_id": "team_1",
                 "integrations": [_integration(status="unknown")],
+                "trace_id": "a" * 32,
+            },
+            {
+                "team_id": "team_1",
+                "integrations": [_integration(assistant_version="latest")],
+                "trace_id": "a" * 32,
+            },
+            {
+                "team_id": "team_1",
+                "integrations": [_integration(assistant_summary=" untrimmed")],
                 "trace_id": "a" * 32,
             },
         )
