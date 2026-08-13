@@ -284,3 +284,30 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(rtlMetaBox).not.toBeNull();
   expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
 });
+
+test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+  }));
+
+  await page.goto('/assistants/');
+
+  await expect(page.locator('.destination-name')).toHaveText('Choose a destination Team');
+  await expect(page.locator('.destination-lead')).toHaveText(
+    'Create a Team to give new Assistants a private destination.',
+  );
+});
