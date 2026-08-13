@@ -88,6 +88,7 @@ async function routeReadyChat(page, {
   integrationStatus = 'connected',
   integrationRequirements,
   missingInference = false,
+  multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   reply,
 } = {}) {
@@ -118,16 +119,28 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ assistants: [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }] }),
+    body: JSON.stringify({
+      assistants: [
+        { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
+        ...(multipleIntegrations ? [{ id: 'shimpz-slack', title: 'Shimpz Slack' }] : []),
+      ],
+    }),
   }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      assistants: [{
-        assistant: 'shimpz-cloudflare',
-        assistant_version: '0.4.1',
-        status: 'running',
-      }],
+      assistants: [
+        {
+          assistant: 'shimpz-cloudflare',
+          assistant_version: '0.4.1',
+          status: 'running',
+        },
+        ...(multipleIntegrations ? [{
+          assistant: 'shimpz-slack',
+          assistant_version: '1.2.3',
+          status: 'running',
+        }] : []),
+      ],
     }),
   }));
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({
@@ -168,18 +181,32 @@ async function routeReadyChat(page, {
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      integrations: [{
-        assistant_id: 'shimpz-cloudflare',
-        assistant_name: 'Shimpz Cloudflare',
-        id: 'cloudflare',
-        provider: 'cloudflare',
-        name: 'Cloudflare',
-        summary: 'Reads reviewed zone and DNS metadata.',
-        scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
-        status: integrationStatus,
-        integration: { id: 'account-1', name: 'Shimpz', username: null },
-        expires_at: '2026-08-31T12:00:00.000Z',
-      }],
+      integrations: [
+        {
+          assistant_id: 'shimpz-cloudflare',
+          assistant_name: 'Shimpz Cloudflare',
+          id: 'cloudflare',
+          provider: 'cloudflare',
+          name: 'Cloudflare',
+          summary: 'Reads reviewed zone and DNS metadata.',
+          scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
+          status: integrationStatus,
+          integration: { id: 'account-1', name: 'Shimpz', username: null },
+          expires_at: '2026-08-31T12:00:00.000Z',
+        },
+        ...(multipleIntegrations ? [{
+          assistant_id: 'shimpz-slack',
+          assistant_name: 'Shimpz Slack',
+          id: 'slack',
+          provider: 'slack',
+          name: 'Slack',
+          summary: 'Sends reviewed messages to Slack.',
+          scopes: ['chat:write'],
+          status: 'connected',
+          integration: { id: 'account-2', name: 'Shimpz', username: null },
+          expires_at: '2026-08-31T12:00:00.000Z',
+        }] : []),
+      ],
     }),
   }));
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
@@ -350,21 +377,62 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute('data-slot', 'drawer');
   await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
+  await expect(drawer.getByText('shimpz-cloudflare v0.4.1', { exact: true })).toBeVisible();
   await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
-  await expect(drawer.locator('dt')).toHaveText(['Permissions']);
-  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeVisible();
-  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(drawer.locator('.integration-content')).not.toHaveAttribute('aria-live');
+  await expect(drawer.locator('.integration-status')).toHaveAttribute('aria-live', 'polite');
+  await expect(drawer.locator('.integration-status .assistant-groups')).toHaveCount(0);
+  const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
+  await expect(toggle).toHaveAccessibleName('Expand Shimpz Cloudflare');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveCSS('color', 'rgb(0, 240, 255)');
+  await expect(toggle).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeHidden();
+  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeHidden();
   const drawerBox = await drawer.boundingBox();
   expect(drawerBox).not.toBeNull();
   expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
-  const drawerAxe = await new AxeBuilder({ page }).analyze();
-  expect(drawerAxe.violations).toEqual([]);
+  const collapsedAxe = await new AxeBuilder({ page }).analyze();
+  expect(collapsedAxe.violations).toEqual([]);
   await expect(drawer).toHaveScreenshot('integrations-drawer.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAccessibleName('Collapse Shimpz Cloudflare');
+  await expect(drawer.locator('dt')).toHaveText(['Permissions']);
+  await expect(drawer.getByText('Cloudflare', { exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  const expandedAxe = await new AxeBuilder({ page }).analyze();
+  expect(expandedAxe.violations).toEqual([]);
+  await expect(drawer).toHaveScreenshot('integrations-drawer-expanded.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
   });
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
+});
+
+test('keeps only one Assistant integration card expanded', async ({ page }) => {
+  await routeReadyChat(page, { multipleIntegrations: true });
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const cloudflareToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
+  const slackToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-slack"]');
+  await expect(drawer.getByText('shimpz-slack v1.2.3', { exact: true })).toBeVisible();
+
+  await cloudflareToggle.click();
+  await expect(cloudflareToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(slackToggle).toHaveAttribute('aria-expanded', 'false');
+
+  await slackToggle.click();
+  await expect(cloudflareToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer.getByText('Reads reviewed zone and DNS metadata.')).toBeHidden();
+  await expect(drawer.getByText('Sends reviewed messages to Slack.')).toBeVisible();
 });
 
 for (const [integrationStatus, statusLabel, disconnectCount] of [
@@ -378,6 +446,7 @@ for (const [integrationStatus, statusLabel, disconnectCount] of [
 
     await page.getByRole('button', { name: 'Assistant integrations' }).click();
     const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+    await drawer.getByRole('button', { name: 'Expand Shimpz Cloudflare' }).click();
     await expect(drawer.getByText(statusLabel, { exact: true })).toBeVisible();
     await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
     await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(disconnectCount);

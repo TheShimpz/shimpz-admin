@@ -808,6 +808,7 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           {integrations}
+          installedAssistants={$teamContext.installedAssistants}
           synced={integrationsReady}
           pending={integrationChallenge}
           working={integrationWorking}
