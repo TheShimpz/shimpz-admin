@@ -41,7 +41,7 @@ function workloadMessages(locale) {
     copy.teams.createLead,
     copy.teams.emptyLead,
     copy.teams.destroyLead,
-    copy.store.destinationLead,
+    copy.assistantDestination.empty,
   ];
 }
 
@@ -52,13 +52,6 @@ test('every Admin locale implements the complete English message contract', () =
   for (const locale of expectedLocales) {
     assert.deepEqual(leafPaths(messages[locale]).sort(), englishPaths, locale);
   }
-});
-
-test('Store destination copy scopes the listed Assistants to one Team', () => {
-  assert.equal(
-    messages.pt.store.destinationLead,
-    'Os Assistants listados abaixo serão instalados somente no Time {team}.',
-  );
 });
 
 test('Admin copy names installable Team workloads as Assistants', () => {

@@ -177,42 +177,39 @@ test('opens the Store destination workflow through shared modal controls', async
   const destination = page.getByRole('button', { name: /marketing/i });
   const destinationContext = page.locator('.destination-context');
   const destinationKicker = destinationContext.getByText('Installation destination', { exact: true });
-  const destinationLead = destinationContext.getByText(
+  const removedDestinationLead = destinationContext.getByText(
     'Assistants listed below will be installed only in Team Marketing.',
     { exact: true },
   );
   const titleBlock = page.locator('.shimpz-page-intro > div').first();
   await expect(destination).toBeVisible();
   await expect(destinationKicker).toBeVisible();
-  await expect(destinationLead).toBeVisible();
+  await expect(removedDestinationLead).toHaveCount(0);
+  await expect(page.locator('.trust-boundary')).toHaveCount(0);
   await expect(titleBlock).toHaveText('Assistants');
   await expect(destination).toHaveCSS('border-top-width', '0px');
   await expect(destination).toHaveCSS('box-shadow', 'none');
-  const [kickerBox, teamBox, changeBox, destinationBox, leadBox, headingBox] = await Promise.all([
+  const [kickerBox, teamBox, changeBox, destinationBox, headingBox] = await Promise.all([
     destinationKicker.boundingBox(),
     destination.locator('.destination-name').boundingBox(),
     destination.locator('.destination-change').boundingBox(),
     destination.boundingBox(),
-    destinationLead.boundingBox(),
     page.getByRole('heading', { level: 1, name: 'Assistants' }).boundingBox(),
   ]);
   expect(kickerBox).not.toBeNull();
   expect(teamBox).not.toBeNull();
   expect(changeBox).not.toBeNull();
   expect(destinationBox).not.toBeNull();
-  expect(leadBox).not.toBeNull();
   expect(headingBox).not.toBeNull();
   expect(kickerBox.y + kickerBox.height).toBeLessThanOrEqual(teamBox.y);
-  expect(leadBox.y).toBeGreaterThanOrEqual(teamBox.y + teamBox.height);
   expect(Math.abs(teamBox.x - kickerBox.x)).toBeLessThan(1);
-  expect(Math.abs(leadBox.x - kickerBox.x)).toBeLessThan(1);
   expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
   if (page.viewportSize().width <= 680) {
     expect(destinationBox.y).toBeLessThan(headingBox.y);
   } else {
     expect(destinationBox.x).toBeLessThan(headingBox.x);
     expect(Math.abs(
-      (headingBox.y + headingBox.height) - (leadBox.y + leadBox.height),
+      (headingBox.y + headingBox.height) - (destinationBox.y + destinationBox.height),
     )).toBeLessThan(1);
   }
   const intro = page.locator('.shimpz-page-intro');
@@ -229,32 +226,13 @@ test('opens the Store destination workflow through shared modal controls', async
     ),
   ]);
   expect(teamFontSize).toBeGreaterThan(headingFontSize);
-  const trustBoundary = page.locator('.trust-boundary');
-  await expect(trustBoundary).toHaveCSS('border-top-width', '0px');
-  await expect(trustBoundary).toHaveCSS('border-right-width', '0px');
-  await expect(trustBoundary).toHaveCSS('border-bottom-width', '0px');
-  await expect(trustBoundary).toHaveCSS('border-left-width', '3px');
-  await expect(trustBoundary.locator('[data-slot="notice-icon"]')).toBeVisible();
-  expect(await trustBoundary.evaluate((element) => (
-    Math.abs(element.getBoundingClientRect().width - element.parentElement.getBoundingClientRect().width) < 1
-  ))).toBe(true);
-  const [introBox, trustBox, storeBox, noticeIconBox, noticeBodyBox] = await Promise.all([
+  const [introBox, storeBox] = await Promise.all([
     intro.boundingBox(),
-    trustBoundary.boundingBox(),
     storeFrame.boundingBox(),
-    trustBoundary.locator('[data-slot="notice-icon"]').boundingBox(),
-    trustBoundary.locator('[data-slot="notice-body"]').boundingBox(),
   ]);
   expect(introBox).not.toBeNull();
-  expect(trustBox).not.toBeNull();
   expect(storeBox).not.toBeNull();
-  expect(noticeIconBox).not.toBeNull();
-  expect(noticeBodyBox).not.toBeNull();
-  expect(trustBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
-  expect(storeBox.y).toBeGreaterThanOrEqual(trustBox.y + trustBox.height);
-  expect(Math.abs(
-    (noticeIconBox.y + noticeIconBox.height / 2) - (noticeBodyBox.y + noticeBodyBox.height / 2),
-  )).toBeLessThan(1);
+  expect(storeBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
   await expect(intro).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,

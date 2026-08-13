@@ -545,14 +545,10 @@
         <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
         <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
       </Button>
-      <p class="destination-lead">
-        {activeTeamRecord ? $t('store.destinationLead', { team: activeTeamRecord.name }) : destinationCopy.empty}
-      </p>
+      {#if !activeTeamRecord}<p class="destination-lead">{destinationCopy.empty}</p>{/if}
     </div>
   {/snippet}
 </PageIntro>
-
-<Notice class="trust-boundary" variant="info">{$t('store.boundary')}</Notice>
 
 <Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
@@ -807,7 +803,6 @@
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
   :global(.shimpz-embed.frame-ready) { opacity: 1; }
   .frame-state { position: absolute; z-index: 1; inset: 0; display: grid; min-height: 20rem; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 240, 255, 0.06), transparent 38%), #000; }
-  :global(.trust-boundary) { margin-block-start: var(--shimpz-space-4); }
   @media (max-width: 520px) {
     :global(.frame-actions) { display: grid; width: 100%; }
     :global(.frame-actions .shimpz-action-link), :global(.frame-actions .shimpz-button) { width: 100%; }
