@@ -84,7 +84,7 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
                 body=body,
                 model=model,
                 assurance={
-                    "kind": "auth:reauth",
+                    "kind": "auth:password",
                     "challenge_id": "b" * 32,
                 },
             ),
@@ -103,7 +103,7 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         self.assertEqual(claims["model"], model)
         self.assertEqual(
             claims["assurance"],
-            {"kind": "auth:reauth", "challenge_id": "b" * 32},
+            {"kind": "auth:password", "challenge_id": "b" * 32},
         )
         public = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(identity.private_key_hex)).public_key()
         public.verify(

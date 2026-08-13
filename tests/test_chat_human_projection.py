@@ -78,11 +78,11 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
 
 
 class HumanChallengeProjectionTests(unittest.TestCase):
-    def test_local_reauthentication_is_bounded_and_maps_authority_failure(self) -> None:
+    def test_local_password_authentication_is_bounded_and_maps_authority_failure(self) -> None:
         self.assertEqual(
             asyncio.run(
                 human.authenticate_local(
-                    "auth:second-factor",
+                    "auth:totp",
                     "secret",
                     profile="local",
                     record_get=dict,
@@ -91,16 +91,16 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             "unavailable",
         )
 
-    def test_local_reauthentication_authority_locks_and_resets_without_rechecking(self) -> None:
+    def test_local_password_authority_locks_and_resets_without_rechecking(self) -> None:
         async def scenario() -> None:
             now = [100.0]
             verify = mock.AsyncMock(side_effect=["denied", "denied", "denied", "denied", "verified"])
-            authority = human.LocalReauthenticationAuthority(verify, clock=lambda: now[0])
+            authority = human.LocalPasswordAuthority(verify, clock=lambda: now[0])
 
-            first = await authority("auth:reauth", "wrong-1")
-            second = await authority("auth:reauth", "wrong-2")
-            third = await authority("auth:reauth", "wrong-3")
-            blocked = await authority("auth:reauth", "correct-but-locked")
+            first = await authority("auth:password", "wrong-1")
+            second = await authority("auth:password", "wrong-2")
+            third = await authority("auth:password", "wrong-3")
+            blocked = await authority("auth:password", "correct-but-locked")
 
             self.assertEqual((first.status, first.attempts_remaining), ("denied", 2))
             self.assertEqual((second.status, second.attempts_remaining), ("denied", 1))
@@ -109,20 +109,20 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             self.assertEqual(verify.await_count, 3)
 
             now[0] += 60
-            after_lock = await authority("auth:reauth", "wrong-after-lock")
-            success = await authority("auth:reauth", "correct")
+            after_lock = await authority("auth:password", "wrong-after-lock")
+            success = await authority("auth:password", "correct")
             self.assertEqual((after_lock.status, after_lock.attempts_remaining), ("denied", 2))
             self.assertEqual(success.status, "verified")
 
         asyncio.run(scenario())
 
-    def test_unavailable_local_reauthentication_does_not_consume_an_attempt(self) -> None:
+    def test_unavailable_local_password_does_not_consume_an_attempt(self) -> None:
         async def scenario() -> None:
             verify = mock.AsyncMock(side_effect=["unavailable", "denied"])
-            authority = human.LocalReauthenticationAuthority(verify)
+            authority = human.LocalPasswordAuthority(verify)
 
-            unavailable = await authority("auth:reauth", "secret")
-            rejected = await authority("auth:reauth", "wrong")
+            unavailable = await authority("auth:password", "secret")
+            rejected = await authority("auth:password", "wrong")
 
             self.assertEqual(unavailable.status, "unavailable")
             self.assertEqual((rejected.status, rejected.attempts_remaining), ("denied", 2))
@@ -131,7 +131,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         self.assertEqual(
             asyncio.run(
                 human.authenticate_local(
-                    "auth:reauth",
+                    "auth:password",
                     "secret",
                     profile="local",
                     record_get=lambda: (_ for _ in ()).throw(OSError("offline")),

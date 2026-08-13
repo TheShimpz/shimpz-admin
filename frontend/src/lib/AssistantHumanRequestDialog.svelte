@@ -36,7 +36,7 @@
   let copy = $derived($t('humanRequest'));
   let rejected = $derived(Boolean(rejection));
   let locked = $derived(rejection?.reason === 'authentication-locked');
-  let validating = $derived(working && kind === 'auth:reauth' && !rejected);
+  let validating = $derived(working && kind === 'auth:password' && !rejected);
   let kicker = $derived(rejected ? copy.validationKicker : isAuth ? copy.authKicker : isInput ? copy.inputKicker : copy.approvalKicker);
   let title = $derived(rejected ? (locked ? copy.lockedTitle : copy.deniedTitle) : request?.title);
   let rejectionMessage = $derived(
@@ -47,7 +47,7 @@
       : '',
   );
   let primaryLabel = $derived(
-    kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:phishing-resistant' ? copy.usePasskey : copy.authorize) : copy.submit,
+    kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:passkey' ? copy.usePasskey : copy.authorize) : copy.submit,
   );
   let displayedSeconds = $derived(
     challenge?.challenge_id === countdownChallengeId
@@ -63,9 +63,9 @@
       minimum: String(request?.min_selections ?? 0),
       maximum: String(request?.max_selections ?? 0),
     }),
-    reauthLabel: copy.authorize,
-    secondFactorLabel: copy.secondFactorLabel,
-    secondFactorPlaceholder: copy.secondFactorPlaceholder,
+    passwordLabel: copy.passwordLabel,
+    totpLabel: copy.totpLabel,
+    totpPlaceholder: copy.totpPlaceholder,
   });
 
   $effect(() => {
@@ -143,7 +143,7 @@
     }
     validationError = '';
     const responseValue = fieldValue;
-    if (kind === 'auth:reauth') {
+    if (kind === 'auth:password') {
       fieldValue = undefined;
       fieldValid = false;
     }
@@ -175,6 +175,7 @@
     bind:open
     {kicker}
     {title}
+    lead={request.description}
     titleId="human-request-title"
     size="md"
     oncancel={deny}

@@ -57,9 +57,9 @@ export const HUMAN_REQUEST_KINDS = Object.freeze([
   'input:select',
   'input:choice',
   'input:choices',
-  'auth:reauth',
-  'auth:second-factor',
-  'auth:phishing-resistant',
+  'auth:password',
+  'auth:totp',
+  'auth:passkey',
 ]);
 const HUMAN_AUTH_KINDS = new Set(HUMAN_REQUEST_KINDS.filter((kind) => kind.startsWith('auth:')));
 const HUMAN_LENGTH_LIMITS = new Map([

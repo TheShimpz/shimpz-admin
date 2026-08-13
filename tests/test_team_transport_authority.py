@@ -165,7 +165,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
     def test_local_assertion_binds_exact_human_assurance(self) -> None:
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         assurance = {
-            "kind": "auth:reauth",
+            "kind": "auth:password",
             "challenge_id": "d" * 32,
         }
         with transport.supervisor_session(

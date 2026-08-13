@@ -49,9 +49,9 @@ function humanRequest(kind) {
     ordinal: 0,
     title: {
       approval: 'Publish reviewed DNS changes?',
-      'auth:reauth': 'Confirm with your Supervisor password',
-      'auth:second-factor': 'Confirm with your second factor',
-      'auth:phishing-resistant': 'Confirm with your passkey',
+      'auth:password': 'Confirm with your Supervisor password',
+      'auth:totp': 'Confirm with your TOTP code',
+      'auth:passkey': 'Confirm with your passkey',
     }[kind] ?? 'Provide the missing Action context',
     description: 'Shimpz Cloudflare paused before continuing this exact Action.',
     fingerprint: 'c'.repeat(64),
@@ -786,9 +786,9 @@ const humanPresentations = [
   ['input:select', 'Provide the missing Action context'],
   ['input:choice', 'Provide the missing Action context'],
   ['input:choices', 'Provide the missing Action context'],
-  ['auth:reauth', 'Confirm with your Supervisor password'],
-  ['auth:second-factor', 'Confirm with your second factor'],
-  ['auth:phishing-resistant', 'Confirm with your passkey'],
+  ['auth:password', 'Confirm with your Supervisor password'],
+  ['auth:totp', 'Confirm with your TOTP code'],
+  ['auth:passkey', 'Confirm with your passkey'],
 ];
 
 for (const [kind, title] of humanPresentations) {
@@ -810,13 +810,13 @@ for (const [kind, title] of humanPresentations) {
       'v0.4.1',
     ]);
     await expect(dialog.locator('.request-context strong').first()).toHaveCSS('color', 'rgb(0, 240, 255)');
-    await expect(dialog).not.toContainText('List reviewed Cloudflare zones.');
+    await expect(dialog).toContainText('Shimpz Cloudflare paused before continuing this exact Action.');
     await expect(dialog.getByText('Required', { exact: true })).toHaveCount(0);
     if (kind.startsWith('input:') && kind !== 'input:choice' && kind !== 'input:choices') {
       await expectVisuallyHidden(dialog.locator('label[for="human-request-value"]'));
     } else if (kind === 'input:choice' || kind === 'input:choices') {
       await expectVisuallyHidden(dialog.locator('fieldset legend'));
-    } else if (kind === 'auth:reauth' || kind === 'auth:second-factor') {
+    } else if (kind === 'auth:password' || kind === 'auth:totp') {
       await expectVisuallyHidden(dialog.locator('label[for="human-request-auth"]'));
     }
     const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
@@ -838,15 +838,15 @@ for (const [kind, title] of humanPresentations) {
       await dialog.getByRole('radio', { name: /Safe mode/ }).check();
     } else if (kind === 'input:choices') {
       await dialog.getByRole('checkbox', { name: /Safe mode/ }).check();
-    } else if (kind === 'auth:reauth') {
-      await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
-    } else if (kind === 'auth:second-factor') {
+    } else if (kind === 'auth:password') {
+      await dialog.getByLabel('Supervisor password').fill('supervisor-password');
+    } else if (kind === 'auth:totp') {
       await dialog.getByLabel('Verification code').fill('123456');
     }
     await dialog.getByRole('button', {
       name: kind === 'approval'
         ? 'Approve action'
-        : kind === 'auth:phishing-resistant'
+        : kind === 'auth:passkey'
           ? 'Use passkey'
           : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send response',
     }).click();
@@ -901,7 +901,7 @@ test('waits for in-flight Supervisor validation before reconciling expiry', asyn
   await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
   const contract = await routeReadyChat(page, {
     holdHumanResponse: true,
-    humanKind: 'auth:reauth',
+    humanKind: 'auth:password',
     humanExpiresIn: 3,
     humanRejections: [{
       type: 'human-response-rejected',
@@ -917,7 +917,7 @@ test('waits for in-flight Supervisor validation before reconciling expiry', asyn
   await page.getByRole('button', { name: 'Send' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
-  await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+  await dialog.getByLabel('Supervisor password').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
   await expect(dialog).toContainText('Confirming your Supervisor password…');
   await page.clock.fastForward(3_000);
@@ -971,10 +971,10 @@ test('treats dismissing a human request as a terminal denial', async ({ page }) 
   }]);
 });
 
-test('restores Supervisor reauthentication as a focused validation modal', async ({ page }) => {
+test('restores Supervisor password authorization as a focused validation modal', async ({ page }) => {
   const contract = await routeReadyChat(page, {
     holdHumanResponse: true,
-    humanKind: 'auth:reauth',
+    humanKind: 'auth:password',
     humanRejections: [{
       type: 'human-response-rejected',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -991,17 +991,17 @@ test('restores Supervisor reauthentication as a focused validation modal', async
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
   const originalDialog = await dialog.elementHandle();
   expect(originalDialog).not.toBeNull();
-  await dialog.getByLabel('Confirmar autorização').fill('senha-incorreta');
+  await dialog.getByLabel('Senha do Supervisor').fill('senha-incorreta');
   await dialog.getByRole('button', { name: 'Confirmar autorização' }).click();
 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Confirmando a senha do Supervisor…');
-  await expect(dialog.getByLabel('Confirmar autorização')).toHaveCount(0);
+  await expect(dialog.getByLabel('Senha do Supervisor')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Negar e interromper' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Confirmar autorização' })).toBeDisabled();
   await expect(page.getByRole('group', { name: 'Seu Time está pensando…' })).toHaveCount(0);
   await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await expect(dialog).toHaveScreenshot('human-auth-reauth-validating.png', {
+  await expect(dialog).toHaveScreenshot('human-auth-password-validating.png', {
     animations: 'disabled',
     maxDiffPixels: 150,
   });
@@ -1014,7 +1014,7 @@ test('restores Supervisor reauthentication as a focused validation modal', async
   await expect(validation).toContainText('Restam 2 tentativas antes de um bloqueio temporário.');
   await expect(validation.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
   await expect.poll(() => validation.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await expect(validation).toHaveScreenshot('human-auth-reauth-validation.png', {
+  await expect(validation).toHaveScreenshot('human-auth-password-validation.png', {
     animations: 'disabled',
     maxDiffPixels: 150,
   });
@@ -1025,10 +1025,10 @@ test('restores Supervisor reauthentication as a focused validation modal', async
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
 });
 
-test('blocks Supervisor reauthentication retry behind the server countdown', async ({ page }) => {
+test('blocks Supervisor password retry behind the server countdown', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
   await routeReadyChat(page, {
-    humanKind: 'auth:reauth',
+    humanKind: 'auth:password',
     humanRejections: [{
       type: 'human-response-rejected',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -1041,31 +1041,31 @@ test('blocks Supervisor reauthentication retry behind the server countdown', asy
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
   await page.getByRole('button', { name: 'Send' }).click();
   const request = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
-  await request.getByLabel('Confirm authorization').fill('incorrect-password');
+  await request.getByLabel('Supervisor password').fill('incorrect-password');
   await request.getByRole('button', { name: 'Confirm authorization' }).click();
 
   const locked = page.getByRole('dialog', { name: 'Password attempts temporarily blocked' });
   await expect(locked).toBeVisible();
   await expect(locked.getByRole('button', { name: 'Try again in 60 s' })).toBeDisabled();
-  await expect(locked).toContainText('may expire before reauthentication is completed');
-  await expect(locked).toHaveScreenshot('human-auth-reauth-locked.png', {
+  await expect(locked).toContainText('may expire before password confirmation is completed');
+  await expect(locked).toHaveScreenshot('human-auth-password-locked.png', {
     animations: 'disabled',
     maxDiffPixels: 150,
   });
 });
 
-test('keeps authorization modal until Team progress proves reauthentication continued', async ({ page }) => {
-  const contract = await routeReadyChat(page, { humanKind: 'auth:reauth', holdHumanResponse: true });
+test('keeps authorization modal until Team progress proves password continuation', async ({ page }) => {
+  const contract = await routeReadyChat(page, { humanKind: 'auth:password', holdHumanResponse: true });
   await page.goto('/chat/');
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
-  await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+  await dialog.getByLabel('Supervisor password').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Confirming your Supervisor password…');
-  await expect(dialog.getByLabel('Confirm authorization')).toHaveCount(0);
+  await expect(dialog.getByLabel('Supervisor password')).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toHaveCount(0);
   contract.releaseHumanResponse();
   await expect(dialog).toHaveCount(0);
@@ -1076,13 +1076,13 @@ test('keeps authorization modal until Team progress proves reauthentication cont
 test('reopens the Team-owned human request when reconnect sync proves it is still pending', async ({ page }) => {
   const contract = await routeReadyChat(page, {
     disconnectHumanResponse: true,
-    humanKind: 'auth:reauth',
+    humanKind: 'auth:password',
   });
   await page.goto('/chat/');
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
-  await dialog.getByLabel('Confirm authorization').fill('supervisor-password');
+  await dialog.getByLabel('Supervisor password').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
 
   await expect(dialog).toBeVisible();

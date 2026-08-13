@@ -50,7 +50,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         record = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(record["session_secret"])
         self.auth_clock = [100.0]
-        self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalReauthenticationAuthority(
+        self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalPasswordAuthority(
             partial(
                 self.admin_app.chat_human.authenticate_local,
                 profile="local",
@@ -118,7 +118,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 mock.patch.object(
                     self.chat_socket.local,
                     "turn",
-                    return_value=human_challenge("auth:reauth"),
+                    return_value=human_challenge("auth:password"),
                 ),
                 mock.patch.object(
                     self.chat_socket.local,
@@ -126,7 +126,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                     return_value=self.completed,
                 ) as resume,
             ):
-                websocket = await self._open_challenge("auth:reauth")
+                websocket = await self._open_challenge("auth:password")
                 await websocket.send_json(
                     {
                         "type": "human-response",
@@ -143,7 +143,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     resume.call_args.kwargs["assurance"],
-                    {"kind": "auth:reauth", "challenge_id": CHALLENGE_ID},
+                    {"kind": "auth:password", "challenge_id": CHALLENGE_ID},
                 )
                 self.assertNotIn("correct horse battery staple", repr(resume.call_args))
                 self.assertNotIn("correct horse battery staple", json.dumps(event))
@@ -151,13 +151,13 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_failed_reauthentication_stays_pending_and_can_then_succeed(self) -> None:
+    def test_failed_password_authentication_stays_pending_and_can_then_succeed(self) -> None:
         async def scenario() -> None:
             with (
                 mock.patch.object(
                     self.chat_socket.local,
                     "turn",
-                    return_value=human_challenge("auth:reauth"),
+                    return_value=human_challenge("auth:password"),
                 ),
                 mock.patch.object(
                     self.chat_socket.local,
@@ -165,7 +165,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                     return_value=self.completed,
                 ) as resume,
             ):
-                websocket = await self._open_challenge("auth:reauth")
+                websocket = await self._open_challenge("auth:password")
                 await websocket.send_json(
                     {
                         "type": "human-response",
@@ -201,13 +201,13 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_third_reauthentication_failure_locks_every_socket_until_one_minute(self) -> None:
+    def test_third_password_failure_locks_every_socket_until_one_minute(self) -> None:
         async def scenario() -> None:
             with (
                 mock.patch.object(
                     self.chat_socket.local,
                     "turn",
-                    return_value=human_challenge("auth:reauth"),
+                    return_value=human_challenge("auth:password"),
                 ),
                 mock.patch.object(
                     self.chat_socket.local,
@@ -215,7 +215,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                     return_value=self.completed,
                 ) as resume,
             ):
-                websocket = await self._open_challenge("auth:reauth")
+                websocket = await self._open_challenge("auth:password")
                 for expected_remaining in (2, 1):
                     await websocket.send_json(
                         {

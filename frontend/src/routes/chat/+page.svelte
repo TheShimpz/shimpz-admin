@@ -329,7 +329,7 @@
           if (
             !humanWorking ||
             humanChallenge?.challenge_id !== incoming.challenge_id ||
-            humanChallenge?.request?.kind !== 'auth:reauth'
+            humanChallenge?.request?.kind !== 'auth:password'
           ) throw new Error('unexpected human response rejection');
           humanWorking = false;
           if (humanExpiredId === incoming.challenge_id) {
@@ -649,7 +649,7 @@
         response.value,
       );
       socket.send(JSON.stringify(frame));
-      const waitForAuthentication = response.decision === 'submit' && challenge.request.kind === 'auth:reauth';
+      const waitForAuthentication = response.decision === 'submit' && challenge.request.kind === 'auth:password';
       if (waitForAuthentication) {
         humanWorking = true;
       } else {
@@ -667,7 +667,7 @@
   }
 
   function retryHumanAuthentication() {
-    if (humanChallenge?.request?.kind === 'auth:reauth') humanRejection = undefined;
+    if (humanChallenge?.request?.kind === 'auth:password') humanRejection = undefined;
   }
 
   function reconcileExpiredHuman(challengeId) {

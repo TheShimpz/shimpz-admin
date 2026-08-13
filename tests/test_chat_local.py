@@ -293,7 +293,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_human_resume_binds_only_exact_successful_assurance(self) -> None:
         response = team.TeamResponse(200, {})
-        assurance = {"kind": "auth:reauth", "challenge_id": CHALLENGE_ID}
+        assurance = {"kind": "auth:password", "challenge_id": CHALLENGE_ID}
         with mock.patch.object(team, "_call_stream", return_value=response) as transport:
             result = team.resume_chat_human(
                 "team_1",
@@ -404,7 +404,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "trace_id": TRACE_ID,
             },
         )
-        assurance = {"kind": "auth:reauth", "challenge_id": CHALLENGE_ID}
+        assurance = {"kind": "auth:password", "challenge_id": CHALLENGE_ID}
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),

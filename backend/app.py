@@ -50,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 
 ADMIN_PROFILE = profile.require()
-_AUTHENTICATE_ACTION_REQUEST = chat_human.LocalReauthenticationAuthority(
+_AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
     partial(
         chat_human.authenticate_local,
         profile=ADMIN_PROFILE,

@@ -12,7 +12,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/667878b81a89ad97f3b4303154ba711b3d760cb7"
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/31b6b088de4bc70ea2674b238e788c6227807771"
   },
   "overrides": {
     "cookie": "0.7.2"

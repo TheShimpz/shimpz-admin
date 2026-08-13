@@ -12,10 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "backend" / "protocol" / "http"
 EXPECTED_UPSTREAM = {
     "repository": "https://github.com/TheShimpz/shimpz-teams",
-    "commit": "14925943f74f49e581ac4ad8ba2e009aa54d9933",
+    "commit": "e86b696e7c0316efe0a19c0bad7c885615c2886f",
     "path": "protocol/http/v1",
-    "tree": "99d3012a79f075103163687ca6d4d5ff6c4ebd51",
-    "contract_files_sha256": "8ddb0601bf65c724a63d07326493f73ed43e0628b9cd9578beb6928de8d6f39b",
+    "tree": "5411726f0b20009855a915924a62f1104ed95699",
+    "contract_files_sha256": "1065a5a15c235697c277978816449883dde25c31a9749bf3fa5329d50b0cc6b3",
 }
 
 

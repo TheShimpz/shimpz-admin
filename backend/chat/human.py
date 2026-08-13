@@ -20,8 +20,8 @@ from protocol.http.v1 import websocket as chat_ws_common
 MAX_TTL_SECONDS = 300
 MAX_AUTH_SECRET_CHARS = 4096
 MAX_REQUESTS_PER_ACTION = 8
-MAX_REAUTHENTICATION_ATTEMPTS = 3
-REAUTHENTICATION_LOCK_SECONDS = 60
+MAX_PASSWORD_ATTEMPTS = 3
+PASSWORD_LOCK_SECONDS = 60
 LENGTH_KINDS = {
     "input:text": 4096,
     "input:textarea": 16_000,
@@ -31,9 +31,9 @@ LENGTH_KINDS = {
 CHOICE_KINDS = frozenset({"input:select", "input:choice"})
 AUTH_KINDS = frozenset(
     {
-        "auth:reauth",
-        "auth:second-factor",
-        "auth:phishing-resistant",
+        "auth:password",
+        "auth:totp",
+        "auth:passkey",
     }
 )
 RESPONSE_FIELDS = frozenset(
@@ -64,8 +64,8 @@ class AuthenticationResult:
     retry_after: int = 0
 
 
-class LocalReauthenticationAuthority:
-    """Serialize the one Local Supervisor's bounded Action reauthentication ceremony."""
+class LocalPasswordAuthority:
+    """Serialize the one Local Supervisor's bounded Action password ceremony."""
 
     def __init__(
         self,
@@ -100,14 +100,14 @@ class LocalReauthenticationAuthority:
                 return AuthenticationResult("unavailable")
 
             self._failures += 1
-            remaining = MAX_REAUTHENTICATION_ATTEMPTS - self._failures
+            remaining = MAX_PASSWORD_ATTEMPTS - self._failures
             if remaining > 0:
-                log.info("Action reauthentication was rejected; remaining attempts: %d", remaining)
+                log.info("Action password was rejected; remaining attempts: %d", remaining)
                 return AuthenticationResult("denied", attempts_remaining=remaining)
 
-            self._locked_until = self._clock() + REAUTHENTICATION_LOCK_SECONDS
-            log.info("Action reauthentication was locked after repeated rejection")
-            return AuthenticationResult("locked", retry_after=REAUTHENTICATION_LOCK_SECONDS)
+            self._locked_until = self._clock() + PASSWORD_LOCK_SECONDS
+            log.info("Action password was locked after repeated rejection")
+            return AuthenticationResult("locked", retry_after=PASSWORD_LOCK_SECONDS)
 
 
 async def authenticate_local(
@@ -118,7 +118,7 @@ async def authenticate_local(
     record_get: Callable[[], dict[str, object]],
 ) -> str:
     """Return one bounded Local assurance outcome without exposing factor material."""
-    if profile != "local" or kind != "auth:reauth" or not 1 <= len(secret) <= MAX_AUTH_SECRET_CHARS:
+    if profile != "local" or kind != "auth:password" or not 1 <= len(secret) <= MAX_AUTH_SECRET_CHARS:
         return "unavailable"
     try:
         record = record_get()
@@ -129,7 +129,7 @@ async def authenticate_local(
             record.get("password_hash", ""),
         )
     except TypeError, ValueError, RuntimeError, OSError:
-        log.warning("Action reauthentication authority is unavailable")
+        log.warning("Action password authority is unavailable")
         return "unavailable"
     return "verified" if verified else "denied"
 

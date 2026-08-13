@@ -226,9 +226,9 @@ test('chat accepts every exact bounded public human request presentation', () =>
     'input:select',
     'input:choice',
     'input:choices',
-    'auth:reauth',
-    'auth:second-factor',
-    'auth:phishing-resistant',
+    'auth:password',
+    'auth:totp',
+    'auth:passkey',
   ]) {
     const challenge = humanChallenge(kind);
     const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');

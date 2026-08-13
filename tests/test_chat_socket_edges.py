@@ -207,7 +207,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNone(rejection)
             self.assertIsNone(failure)
 
-            request = {"kind": "auth:reauth"}
+            request = {"kind": "auth:password"}
             payload, assurance, rejection, failure = await socket._human_payload(
                 {
                     "type": "human-response",
@@ -413,7 +413,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             return human.AuthenticationResult("denied", attempts_remaining=2)
 
         async def scenario() -> None:
-            auth_request = human_challenge("auth:reauth").websocket_event("team_1")["request"]
+            auth_request = human_challenge("auth:password").websocket_event("team_1")["request"]
             frame = {
                 "type": "human-response",
                 "challenge_id": "b" * 32,
