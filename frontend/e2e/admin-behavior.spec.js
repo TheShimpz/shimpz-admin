@@ -84,6 +84,7 @@ async function routeReadyChat(page, {
   holdHumanResponse = false,
   humanKind = '',
   humanExpiresIn = 300,
+  redeliverExpiredHuman = false,
   humanRejections = [],
   integrationChallenge = false,
   integrationStatus = 'connected',
@@ -101,6 +102,7 @@ async function routeReadyChat(page, {
   let humanPending = false;
   let humanRejectionIndex = 0;
   let syncFrames = 0;
+  let expiredHumanRedelivered = false;
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -227,10 +229,10 @@ async function routeReadyChat(page, {
     const connection = chatConnections;
     chatConnections += 1;
 
-    const sendHumanChallenge = () => socket.send(JSON.stringify({
+    const sendHumanChallenge = (expiresIn = humanExpiresIn) => socket.send(JSON.stringify({
       type: 'human-required',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      expires_in: humanExpiresIn,
+      expires_in: expiresIn,
       assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
       action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
       request: humanRequest(humanKind),
@@ -265,6 +267,11 @@ async function routeReadyChat(page, {
       const frame = JSON.parse(message);
       if (frame.type === 'sync') {
         syncFrames += 1;
+        if (redeliverExpiredHuman && humanPending && !expiredHumanRedelivered) {
+          expiredHumanRedelivered = true;
+          sendHumanChallenge(2);
+          return;
+        }
         if (disconnectHumanResponse && connection > 0 && humanPending) {
           sendHumanChallenge();
           return;
@@ -923,6 +930,31 @@ test('waits for in-flight Supervisor validation before reconciling expiry', asyn
   await expect(page.getByText('The local chat stream was invalid.')).toHaveCount(0);
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
+  expect(contract.syncFrames()).toBe(2);
+});
+
+test('reopens a server-authoritative human request redelivered after local expiry', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  const contract = await routeReadyChat(page, {
+    humanKind: 'approval',
+    humanExpiresIn: 3,
+    redeliverExpiredHuman: true,
+  });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Continue');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+  await expect(dialog).toContainText('Expires in 3 seconds.');
+  await page.clock.fastForward(3_000);
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Expires in 2 seconds.');
+  await expect(page.getByText('The Action request expired. Send the message again to retry.')).toHaveCount(0);
+  expect(contract.humanResponses()).toEqual([]);
+  expect(contract.syncFrames()).toBe(2);
+  await expect(composer).toBeDisabled();
 });
 
 test('treats dismissing a human request as a terminal denial', async ({ page }) => {

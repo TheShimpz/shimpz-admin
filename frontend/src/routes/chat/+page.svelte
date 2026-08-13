@@ -358,6 +358,8 @@
           syncing = false;
           resetProgress();
           if (humanExpiredId) {
+            busy = false;
+            stopping = false;
             resetChallengeState();
             return;
           }
@@ -673,6 +675,7 @@
     humanExpiredId = challengeId;
     busy = false;
     stopping = false;
+    humanChallenge = undefined;
     humanRejection = undefined;
     setError(humanRequestCopy.expired);
     if (!socketReady || !socket || syncing) return;
