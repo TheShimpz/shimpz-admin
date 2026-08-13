@@ -55,6 +55,7 @@
   let humanChallenge = $state();
   let humanRejection = $state();
   let humanWorking = $state(false);
+  let humanExpiredId = $state('');
   let integrations = $state([]);
   let integrationsReady = $state(false);
   let integrationWorking = $state('');
@@ -66,6 +67,7 @@
 
   let copy = $derived($t('chatPage'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
+  let humanRequestCopy = $derived($t('humanRequest'));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -191,6 +193,7 @@
     humanChallenge = undefined;
     humanRejection = undefined;
     humanWorking = false;
+    humanExpiredId = '';
     integrationsDialogOpen = false;
     integrationsReady = false;
     integrationWorking = '';
@@ -222,6 +225,7 @@
     humanChallenge = undefined;
     humanRejection = undefined;
     humanWorking = false;
+    humanExpiredId = '';
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
     integrationsOpen = false;
@@ -236,6 +240,9 @@
     if (!installed.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
+    const reconciledExpiry = humanExpiredId === incoming.challenge_id;
+    humanExpiredId = '';
+    if (reconciledExpiry) clearError();
     humanChallenge = incoming;
     humanRejection = undefined;
     humanWorking = false;
@@ -324,8 +331,12 @@
             humanChallenge?.challenge_id !== incoming.challenge_id ||
             humanChallenge?.request?.kind !== 'auth:reauth'
           ) throw new Error('unexpected human response rejection');
-          humanRejection = incoming;
           humanWorking = false;
+          if (humanExpiredId === incoming.challenge_id) {
+            reconcileExpiredHuman(incoming.challenge_id);
+            return;
+          }
+          humanRejection = incoming;
           return;
         }
         if (incoming.type === 'progress') {
@@ -337,6 +348,7 @@
           if (completedHumanTransition) {
             humanChallenge = undefined;
             humanWorking = false;
+            humanExpiredId = '';
           }
           humanRejection = undefined;
           if (completedHumanTransition) void focusStop();
@@ -345,6 +357,10 @@
         if (incoming.type === 'sync-empty') {
           syncing = false;
           resetProgress();
+          if (humanExpiredId) {
+            resetChallengeState();
+            return;
+          }
           if (busy && turns.length > 0) {
             busy = false;
             stopping = false;
@@ -652,6 +668,30 @@
     if (humanChallenge?.request?.kind === 'auth:reauth') humanRejection = undefined;
   }
 
+  function reconcileExpiredHuman(challengeId) {
+    if (humanChallenge?.challenge_id !== challengeId || humanWorking) return;
+    humanExpiredId = challengeId;
+    busy = false;
+    stopping = false;
+    humanRejection = undefined;
+    setError(humanRequestCopy.expired);
+    if (!socketReady || !socket || syncing) return;
+    syncing = true;
+    resetProgress();
+    try {
+      socket.send(JSON.stringify(createSyncFrame(chatTeamId)));
+    } catch {
+      syncing = false;
+      socket.close();
+    }
+  }
+
+  function expireHumanRequest(challengeId) {
+    if (humanChallenge?.challenge_id !== challengeId || humanExpiredId === challengeId) return;
+    humanExpiredId = challengeId;
+    if (!humanWorking) reconcileExpiredHuman(challengeId);
+  }
+
   $effect(() => {
     const nextTeamId = chatTeamId;
     if (!mounted || nextTeamId === socketTeamId) return;
@@ -802,12 +842,13 @@
           oncancel={cancelIntegrationAuthorization}
         />
         <AssistantHumanRequestDialog
-          open={Boolean(humanChallenge)}
+          open={Boolean(humanChallenge) && humanChallenge?.challenge_id !== humanExpiredId}
           challenge={humanChallenge}
           rejection={humanRejection}
           working={humanWorking}
           onrespond={respondToHuman}
           onretry={retryHumanAuthentication}
+          onexpire={expireHumanRequest}
         />
       </div>
     {:else}

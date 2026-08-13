@@ -16,6 +16,7 @@
     working = false,
     onrespond = () => {},
     onretry = () => {},
+    onexpire = () => {},
   } = $props();
 
   let challengeId = $state('');
@@ -81,9 +82,16 @@
     remainingSeconds = seconds;
     if (!nextId || seconds < 1) return;
     const deadline = Date.now() + (seconds * 1000);
+    let fired = false;
     const update = () => {
       remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      if (remainingSeconds === 0) clearInterval(timer);
+      if (remainingSeconds === 0) {
+        clearInterval(timer);
+        if (!fired) {
+          fired = true;
+          onexpire(nextId);
+        }
+      }
     };
     const timer = setInterval(update, 250);
     return () => clearInterval(timer);

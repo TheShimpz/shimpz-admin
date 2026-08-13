@@ -12,6 +12,7 @@ export const humanRequestMessages = {
     lockedLead: 'Try again after the security delay.', retry: 'Try again',
     retryCountdown: 'Try again in {seconds} s',
     mayExpire: 'The Action keeps its original deadline and may expire before reauthentication is completed.',
+    expired: 'The Action request expired. Send the message again to retry.',
   },
   pt: {
     approvalKicker: 'Action // aprovação', inputKicker: 'Action // resposta necessária', authKicker: 'Action // autorização sensível',
@@ -26,6 +27,7 @@ export const humanRequestMessages = {
     lockedLead: 'Tente novamente após o intervalo de segurança.', retry: 'Tentar novamente',
     retryCountdown: 'Tente novamente em {seconds} s',
     mayExpire: 'O Action mantém o prazo original e pode expirar antes da conclusão da reautenticação.',
+    expired: 'A solicitação do Action expirou. Envie a mensagem novamente para tentar de novo.',
   },
   es: {
     approvalKicker: 'Action // aprobación', inputKicker: 'Action // respuesta necesaria', authKicker: 'Action // autorización sensible',
@@ -40,6 +42,7 @@ export const humanRequestMessages = {
     lockedLead: 'Vuelve a intentarlo después del intervalo de seguridad.', retry: 'Intentar de nuevo',
     retryCountdown: 'Intentar de nuevo en {seconds} s',
     mayExpire: 'El Action conserva su plazo original y puede caducar antes de completar la reautenticación.',
+    expired: 'La solicitud de Action caducó. Envía el mensaje de nuevo para volver a intentarlo.',
   },
   zh: {
     approvalKicker: 'Action // 审批', inputKicker: 'Action // 需要输入', authKicker: 'Action // 敏感授权',
@@ -54,6 +57,7 @@ export const humanRequestMessages = {
     lockedLead: '请在安全等待时间结束后重试。', retry: '重试',
     retryCountdown: '{seconds} 秒后重试',
     mayExpire: 'Action 保留原始期限，并可能在重新认证完成前过期。',
+    expired: 'Action 请求已过期。请重新发送消息后再试。',
   },
   fr: {
     approvalKicker: 'Action // approbation', inputKicker: 'Action // réponse requise', authKicker: 'Action // autorisation sensible',
@@ -68,6 +72,7 @@ export const humanRequestMessages = {
     lockedLead: 'Réessayez après le délai de sécurité.', retry: 'Réessayer',
     retryCountdown: 'Réessayer dans {seconds} s',
     mayExpire: 'Le Action conserve son délai initial et peut expirer avant la fin de la réauthentification.',
+    expired: 'La demande d’Action a expiré. Renvoyez le message pour réessayer.',
   },
   de: {
     approvalKicker: 'Action // Freigabe', inputKicker: 'Action // Eingabe erforderlich', authKicker: 'Action // sensible Autorisierung',
@@ -82,6 +87,7 @@ export const humanRequestMessages = {
     lockedLead: 'Versuche es nach der Sicherheitswartezeit erneut.', retry: 'Erneut versuchen',
     retryCountdown: 'In {seconds} s erneut versuchen',
     mayExpire: 'Der Action behält seine ursprüngliche Frist und kann vor Abschluss der erneuten Authentifizierung ablaufen.',
+    expired: 'Die Action-Anfrage ist abgelaufen. Sende die Nachricht erneut, um es noch einmal zu versuchen.',
   },
   ja: {
     approvalKicker: 'Action // 承認', inputKicker: 'Action // 入力が必要', authKicker: 'Action // 機密性の高い認証',
@@ -96,6 +102,7 @@ export const humanRequestMessages = {
     lockedLead: 'セキュリティ待機時間の後にもう一度お試しください。', retry: 'もう一度試す',
     retryCountdown: '{seconds} 秒後に再試行',
     mayExpire: 'Action の元の期限は継続し、再認証が完了する前に期限切れになる場合があります。',
+    expired: 'Action リクエストの有効期限が切れました。再試行するにはメッセージをもう一度送信してください。',
   },
   ar: {
     approvalKicker: 'Action // موافقة', inputKicker: 'Action // إدخال مطلوب', authKicker: 'Action // تفويض حساس',
@@ -110,6 +117,7 @@ export const humanRequestMessages = {
     lockedLead: 'حاول مرة أخرى بعد انتهاء مهلة الأمان.', retry: 'المحاولة مرة أخرى',
     retryCountdown: 'أعد المحاولة خلال {seconds} ث',
     mayExpire: 'يحتفظ Action بمهلته الأصلية وقد تنتهي صلاحيته قبل إكمال إعادة المصادقة.',
+    expired: 'انتهت صلاحية طلب Action. أرسل الرسالة مرة أخرى لإعادة المحاولة.',
   },
 };
 
