@@ -454,7 +454,6 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
 
 for (const [integrationStatus, statusLabel, disconnectCount] of [
   ['missing', 'Missing', 0],
-  ['expired', 'Expired', 1],
   ['reauthorization-required', 'Reconnect required', 1],
 ]) {
   test(`keeps the ${integrationStatus} Integration status actionable`, async ({ page }) => {
@@ -473,6 +472,19 @@ for (const [integrationStatus, statusLabel, disconnectCount] of [
     }
   });
 }
+
+test('does not present a refreshable expired token as a disconnected Integration', async ({ page }) => {
+  await routeReadyChat(page, { integrationStatus: 'expired' });
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  await drawer.getByRole('button', { name: 'Expand Shimpz Cloudflare' }).click();
+  await expect(drawer.locator('.integration-heading .shimpz-status')).toHaveCount(0);
+  await expect(drawer.getByText('Expired', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+});
 
 test('uses text actions and one semantic selected state in the Assistant chooser', async ({ page }) => {
   await routeReadyChat(page);

@@ -51,7 +51,6 @@
   });
 
   function statusLabel(status) {
-    if (status === 'expired') return copy.statusExpired;
     if (status === 'reauthorization-required') return copy.statusReauthorization;
     return copy.statusMissing;
   }
@@ -166,7 +165,7 @@
                   <li>
                     <div class="integration-heading">
                       <strong>{integration.name}</strong>
-                      {#if integration.status !== 'connected'}
+                      {#if integration.status !== 'connected' && integration.status !== 'expired'}
                         <StatusBadge tone="warning">{statusLabel(integration.status)}</StatusBadge>
                       {/if}
                     </div>
