@@ -1,7 +1,6 @@
 import { get, writable } from 'svelte/store';
 
 import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
-import { listTeamFiles } from './localChat.js';
 import {
   ASSISTANT_ID_RE,
   canonicalTeamName,
@@ -14,7 +13,6 @@ import {
 
 const MAX_TEAMS = 128;
 const MAX_PASSWORD_CHARS = 4096;
-const MAX_SELECTED_FILES = 8;
 const MAX_STORED_INTENT_BYTES = 16 * 1024;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_TEAM_RESIDUE_CLASSES = 32;
@@ -31,8 +29,6 @@ function emptyContext() {
     catalog: [],
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   };
 }
@@ -208,15 +204,8 @@ function selectAvailableTeam(teams, preferredId, previousId) {
 }
 
 async function inventorySnapshot(fetcher, teamId) {
-  if (!teamId) return { installedAssistants: [], files: [] };
-  const [installedAssistants, files] = await Promise.all([
-    listInstalledAssistants(fetcher, teamId),
-    listTeamFiles(fetcher, teamId),
-  ]);
-  if (new Set(files.map((file) => file.id)).size !== files.length) {
-    throw new LocalApiError('Team file inventory is invalid.');
-  }
-  return { installedAssistants, files };
+  if (!teamId) return { installedAssistants: [] };
+  return { installedAssistants: await listInstalledAssistants(fetcher, teamId) };
 }
 
 function markFailure(attempt, error, fallback, clearAuthority) {
@@ -227,8 +216,6 @@ function markFailure(attempt, error, fallback, clearAuthority) {
       phase: 'error',
       installedAssistants: [],
       selectedAssistantIds: [],
-      files: [],
-      selectedFileIds: [],
       error: safe.message,
     }));
   }
@@ -248,13 +235,11 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       catalog,
       installedAssistants: [],
       selectedAssistantIds: [],
-      files: [],
     };
     if (attempt === generation) {
       teamContext.set({
         phase: 'ready',
         ...snapshot,
-        selectedFileIds: [],
         error: '',
       });
     }
@@ -274,7 +259,6 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       catalog,
       ...inventory,
       selectedAssistantIds,
-      selectedFileIds: [],
       error: '',
     });
   }
@@ -308,8 +292,6 @@ export async function selectTeam(fetcher, id) {
     selectedTeamId: canonicalId,
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   });
   try {
@@ -329,7 +311,6 @@ export async function selectTeam(fetcher, id) {
         catalog,
         ...inventory,
         selectedAssistantIds,
-        selectedFileIds: [],
         error: '',
       });
     }
@@ -342,8 +323,6 @@ export async function selectTeam(fetcher, id) {
         phase: 'error',
         installedAssistants: [],
         selectedAssistantIds: [],
-        files: [],
-        selectedFileIds: [],
         error: safe.message,
       });
     }
@@ -360,11 +339,9 @@ export async function refreshTeamInventory(fetcher) {
       phase: 'ready',
       installedAssistants: [],
       selectedAssistantIds: [],
-      files: [],
-      selectedFileIds: [],
       error: '',
     });
-    return { installedAssistants: [], files: [] };
+    return { installedAssistants: [] };
   }
   if (!current.teams.some((team) => team.id === current.selectedTeamId)) {
     throw new LocalApiError('Invalid local Team request.');
@@ -376,8 +353,6 @@ export async function refreshTeamInventory(fetcher) {
     phase: 'loading',
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   });
   try {
@@ -396,7 +371,6 @@ export async function refreshTeamInventory(fetcher) {
         catalog,
         ...inventory,
         selectedAssistantIds,
-        selectedFileIds: [],
         error: '',
       });
     }
@@ -404,21 +378,6 @@ export async function refreshTeamInventory(fetcher) {
   } catch (error) {
     throw markFailure(attempt, error, 'The selected Team is unavailable.', false);
   }
-}
-
-export function toggleTeamFile(id) {
-  let changed = false;
-  teamContext.update((state) => {
-    if (!state.files.some((file) => file.id === id)) return state;
-    if (state.selectedFileIds.includes(id)) {
-      changed = true;
-      return { ...state, selectedFileIds: state.selectedFileIds.filter((fileId) => fileId !== id) };
-    }
-    if (state.selectedFileIds.length >= MAX_SELECTED_FILES) return state;
-    changed = true;
-    return { ...state, selectedFileIds: [...state.selectedFileIds, id] };
-  });
-  return changed;
 }
 
 function updateAssistantIntent(project) {
@@ -494,7 +453,6 @@ export async function createTeam(fetcher, name) {
     phase: 'loading',
     error: '',
     selectedAssistantIds: [],
-    selectedFileIds: [],
   });
   let created;
   try {

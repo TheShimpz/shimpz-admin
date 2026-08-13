@@ -567,7 +567,7 @@
     try {
       frame = createChatFrame(teamId, {
         message,
-        files: $teamContext.selectedFileIds,
+        files: [],
         assistant_ids: $teamContext.selectedAssistantIds,
       });
     } catch (reason) {

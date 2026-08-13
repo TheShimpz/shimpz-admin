@@ -575,35 +575,6 @@ export function oauthReturnFailure(value) {
   );
 }
 
-export async function listTeamFiles(fetcher, teamId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local file request.');
-  requireTeam(teamId);
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/files`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  const body = await jsonObject(response);
-  if (!response.ok) throw new LocalApiError(safeApiError(body, 'Team files are unavailable.'), response.status);
-  if (!Array.isArray(body.files) || body.files.length > 256) {
-    throw new LocalApiError('Team file inventory is invalid.', response.status);
-  }
-  return body.files.map((file) => {
-    if (
-      !file ||
-      typeof file !== 'object' ||
-      !OPAQUE_ID_RE.test(file.id) ||
-      typeof file.name !== 'string' ||
-      !file.name ||
-      file.name.length > 255 ||
-      !Number.isSafeInteger(file.size) ||
-      file.size < 1
-    ) {
-      throw new LocalApiError('Team file inventory is invalid.', response.status);
-    }
-    return { id: file.id, name: file.name, size: file.size };
-  });
-}
-
 /** Build the only chat frame accepted by shimpz.chat.v4. Provider/model/keys remain server-owned. */
 export function createChatFrame(teamId, turn) {
   requireTeam(teamId);

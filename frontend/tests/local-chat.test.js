@@ -12,7 +12,6 @@ import {
   createStopFrame,
   createSyncFrame,
   listAssistantIntegrations,
-  listTeamFiles,
   oauthReturnFailure,
   parseChatEvent,
   restoreOAuthChatTurns,
@@ -33,7 +32,6 @@ test('recognizes only the closed OAuth failure return marker', () => {
     'not a URL',
   ]) assert.equal(oauthReturnFailure(value), false);
 });
-
 test('restores one bounded OAuth conversation from session storage exactly once', () => {
   const values = new Map();
   const storage = {
@@ -673,13 +671,4 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
       /response is invalid/,
     );
   }
-});
-
-
-test('lists bounded file metadata outside the chat socket', async () => {
-  const file = { id: 'b'.repeat(32), name: 'brief.txt', size: 42 };
-  assert.deepEqual(
-    await listTeamFiles(async () => response(200, { files: [file] }), 'team_1'),
-    [file],
-  );
 });

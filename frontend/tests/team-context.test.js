@@ -14,13 +14,10 @@ import {
   selectTeam,
   teamContext,
   toggleTeamAssistant,
-  toggleTeamFile,
   unselectAllTeamAssistants,
 } from '../src/lib/teamContext.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
-const FILE_A = 'a'.repeat(32);
-const FILE_B = 'b'.repeat(32);
 const LOCAL_TEAM_RESIDUES = [
   'action_checkpoints',
   'assistant_containers',
@@ -72,12 +69,6 @@ function fixtureFetcher(overrides = {}) {
     if (url === '/api/teams/support/assistants') {
       return response(200, { assistants: [installedAssistant('hello-pulse')] });
     }
-    if (url === '/api/teams/marketing/files') {
-      return response(200, { files: [{ id: FILE_A, name: 'brief.pdf', size: 42 }] });
-    }
-    if (url === '/api/teams/support/files') {
-      return response(200, { files: [{ id: FILE_B, name: 'ticket.txt', size: 12 }] });
-    }
     throw new Error(`Unexpected request: ${options.method ?? 'GET'} ${url}`);
   };
 }
@@ -101,16 +92,12 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
     ],
     installedAssistants: [installedAssistant('hello-pulse')],
     selectedAssistantIds: ['hello-pulse'],
-    files: [{ id: FILE_B, name: 'ticket.txt', size: 12 }],
-    selectedFileIds: [],
     error: '',
   });
 });
 
 test('switching Teams immediately selects the URL authority and clears stale inventory', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
-  assert.equal(toggleTeamFile(FILE_A), true);
-  assert.deepEqual(get(teamContext).selectedFileIds, [FILE_A]);
 
   let releaseAssistants;
   const assistants = new Promise((resolve) => { releaseAssistants = resolve; });
@@ -120,13 +107,11 @@ test('switching Teams immediately selects the URL authority and clears stale inv
   const pending = selectTeam(fetcher, 'support');
 
   assert.equal(get(teamContext).selectedTeamId, 'support');
-  assert.deepEqual(get(teamContext).selectedFileIds, []);
   assert.deepEqual(get(teamContext).installedAssistants, []);
-  assert.deepEqual(get(teamContext).files, []);
   releaseAssistants(response(200, { assistants: [installedAssistant('hello-pulse')] }));
   await pending;
   assert.equal(get(teamContext).selectedTeamId, 'support');
-  assert.deepEqual(get(teamContext).files, [{ id: FILE_B, name: 'ticket.txt', size: 12 }]);
+  assert.deepEqual(get(teamContext).installedAssistants, [installedAssistant('hello-pulse')]);
 });
 
 test('a failed Team switch keeps the last verified Team selected', async () => {
@@ -142,25 +127,6 @@ test('a failed Team switch keeps the last verified Team selected', async () => {
   assert.equal(get(teamContext).phase, 'error');
   assert.equal(get(teamContext).selectedTeamId, 'marketing');
   assert.deepEqual(get(teamContext).installedAssistants, []);
-  assert.deepEqual(get(teamContext).files, []);
-});
-
-test('file selection accepts only current files and enforces the chat limit', async () => {
-  const files = Array.from({ length: 9 }, (_value, index) => ({
-    id: index.toString(16).repeat(32),
-    name: `file-${index}.txt`,
-    size: index + 1,
-  }));
-  await loadTeamContext(fixtureFetcher({
-    '/api/teams/marketing/files': async () => response(200, { files }),
-  }), 'marketing');
-
-  for (const file of files.slice(0, 8)) assert.equal(toggleTeamFile(file.id), true);
-  assert.equal(toggleTeamFile(files[8].id), false);
-  assert.equal(toggleTeamFile('f'.repeat(32)), false);
-  assert.equal(get(teamContext).selectedFileIds.length, 8);
-  assert.equal(toggleTeamFile(files[0].id), true);
-  assert.equal(get(teamContext).selectedFileIds.length, 7);
 });
 
 test('Team and Assistant catalogs load in parallel and each context load refreshes the catalog', async () => {
@@ -230,8 +196,6 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
     ],
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   });
   assert.equal(catalogRequests, 1);
@@ -292,7 +256,6 @@ test('refresh accepts authoritative installed inventory while display metadata c
   assert.deepEqual(get(teamContext).installedAssistants, [
     installedAssistant('not-in-catalog'),
   ]);
-  assert.deepEqual(get(teamContext).files, [{ id: FILE_A, name: 'brief.pdf', size: 42 }]);
 });
 
 test('refresh exposes a first install and its newly projected display metadata together', async () => {
@@ -344,7 +307,6 @@ test('creates a Team with the exact payload, validates the response, and refresh
       return response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] });
     },
     '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
-    '/api/teams/growth/files': async () => response(200, { files: [] }),
   });
 
   const created = await createTeam(fetcher, '  Growth  ');
@@ -564,8 +526,6 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
     ],
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   });
 });
@@ -607,8 +567,6 @@ test('clear invalidates a late context response', async () => {
     catalog: [],
     installedAssistants: [],
     selectedAssistantIds: [],
-    files: [],
-    selectedFileIds: [],
     error: '',
   });
 });
