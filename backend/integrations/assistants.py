@@ -129,10 +129,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                 raise ValueError("duplicate Team integration")
             identities.add(identity)
             assistant_version = item["assistant_version"]
-            if (
-                not isinstance(assistant_version, str)
-                or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None
-            ):
+            if not isinstance(assistant_version, str) or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None:
                 raise ValueError("invalid Assistant version")
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:
