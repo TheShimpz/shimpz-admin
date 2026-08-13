@@ -208,11 +208,12 @@
   :global(.pending strong) { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   :global(.pending p) { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
   .assistant-groups { display: grid; gap: 0.8rem; }
-  :global(.assistant-group > [data-slot="card-header"]) { border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); background: var(--surface-2); }
   :global(.assistant-group [data-slot="card-title"]) { font-size: 0.82rem; }
   :global(.assistant-group [data-slot="card-description"]) { color: var(--accent); font-family: var(--font-mono); font-size: 0.56rem; overflow-wrap: anywhere; }
   :global(.assistant-group > [data-slot="card-content"]) { padding: 0; }
   :global(.assistant-toggle.shimpz-button) { color: var(--accent); border-color: transparent; }
+  :global(.assistant-toggle.shimpz-button::after) { content: ''; position: absolute; inset: 0; }
   :global(.assistant-toggle svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.75; transition: transform var(--duration-fast) var(--ease); }
   :global(.assistant-toggle[aria-expanded="true"] svg) { transform: rotate(180deg); }
   .assistant-details[hidden] { display: none; }

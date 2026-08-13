@@ -414,6 +414,23 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   await expect(drawer).toBeHidden();
 });
 
+test('opens and closes an Assistant integration from the whole card header', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
+  const cardHeader = drawer.locator('.assistant-group > [data-slot="card-header"]').first();
+  const cardHeaderBox = await cardHeader.boundingBox();
+  expect(cardHeaderBox).not.toBeNull();
+
+  await cardHeader.click({ position: { x: 24, y: cardHeaderBox.height / 2 } });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await cardHeader.click({ position: { x: cardHeaderBox.width * 0.6, y: cardHeaderBox.height / 2 } });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('keeps only one Assistant integration card expanded', async ({ page }) => {
   await routeReadyChat(page, { multipleIntegrations: true });
   await page.goto('/chat/');
