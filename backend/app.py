@@ -456,7 +456,17 @@ async def local_space_reset(request: Request):
     if not password_ok:
         log.info("Space reset password confirmation failed")
         raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
-    return await run_in_threadpool(_team_response, team.reset_space)
+    try:
+        response = await run_in_threadpool(team.reset_space)
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # Admin owns the bounded Supervisor success contract; Team owns operation failure semantics.
+    if not 200 <= response.status < 300:
+        return JSONResponse(status_code=response.status, content=response.body)
+    if not isinstance(response.body, dict) or response.body.get("reset") is not True:
+        log.warning("Team returned an invalid Space reset response")
+        raise HTTPException(status_code=502, detail="Team returned an invalid Space reset response")
+    return JSONResponse({"reset": True}, status_code=200)
 
 
 if ADMIN_PROFILE == "local":
