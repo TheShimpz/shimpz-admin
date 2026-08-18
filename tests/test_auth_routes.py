@@ -261,16 +261,7 @@ class AuthRouteTests(unittest.TestCase):
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
-        expected = self.admin_app.team.TeamResponse(
-            200,
-            {
-                "reset": True,
-                "assistants_removed": 1,
-                "teams_removed": 2,
-                "storage_removed": True,
-                "residue_absent": ["assistant_containers", "team_storage"],
-            },
-        )
+        expected = self.admin_app.team.TeamResponse(200, {"reset": True})
 
         with mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset:
             response = asyncio.run(self.admin_app.local_space_reset(reset))
@@ -288,57 +279,6 @@ class AuthRouteTests(unittest.TestCase):
             asyncio.run(self.admin_app.local_space_reset(wrong))
         self.assertEqual(caught.exception.status_code, 403)
         blocked.assert_not_called()
-
-    def test_local_space_reset_tolerates_additional_team_proof(self) -> None:
-        password = "correct horse battery staple"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
-        reset = self._request("/api/space", {"password": password})
-        reset.scope["method"] = "DELETE"
-        response = self.admin_app.team.TeamResponse(
-            200,
-            {"reset": True, "producer_metadata": {"version": 2}},
-        )
-
-        with mock.patch.object(self.admin_app.team, "reset_space", return_value=response):
-            actual = asyncio.run(self.admin_app.local_space_reset(reset))
-
-        self.assertEqual(actual.status_code, 200)
-        self.assertEqual(json.loads(actual.body), {"reset": True})
-
-    def test_local_space_reset_rejects_an_invalid_team_confirmation(self) -> None:
-        password = "correct horse battery staple"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
-
-        invalid_bodies = ({}, {"reset": False}, {"reset": 1}, [], "reset", None)
-        for body in invalid_bodies:
-            with self.subTest(body=body):
-                reset = self._request("/api/space", {"password": password})
-                reset.scope["method"] = "DELETE"
-                response = self.admin_app.team.TeamResponse(200, body)
-                with (
-                    self.assertRaises(self.admin_app.HTTPException) as caught,
-                    mock.patch.object(self.admin_app.team, "reset_space", return_value=response),
-                ):
-                    asyncio.run(self.admin_app.local_space_reset(reset))
-                self.assertEqual(caught.exception.status_code, 502)
-                self.assertEqual(caught.exception.detail, "Team returned an invalid Space reset response")
-
-    def test_local_space_reset_preserves_team_failure(self) -> None:
-        password = "correct horse battery staple"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
-
-        for status, body in (
-            (500, {"detail": "Space reset proof is incomplete", "code": "teardown-incomplete"}),
-            (503, {"detail": "Docker could not reset the Space", "code": "docker-reset-failed"}),
-        ):
-            with self.subTest(status=status):
-                reset = self._request("/api/space", {"password": password})
-                reset.scope["method"] = "DELETE"
-                response = self.admin_app.team.TeamResponse(status, body)
-                with mock.patch.object(self.admin_app.team, "reset_space", return_value=response):
-                    actual = asyncio.run(self.admin_app.local_space_reset(reset))
-                self.assertEqual(actual.status_code, status)
-                self.assertEqual(json.loads(actual.body), body)
 
     def test_local_space_reset_bounds_team_request_failure(self) -> None:
         password = "correct horse battery staple"

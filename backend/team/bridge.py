@@ -98,7 +98,15 @@ def list_teams() -> TeamResponse:
 
 
 def reset_space() -> TeamResponse:
-    return _call("DELETE", "/v1/space")
+    response = _call("DELETE", "/v1/space")
+    # Admin owns the bounded Supervisor success contract; Team owns operation failure semantics.
+    if not 200 <= response.status < 300:
+        return response
+    if not isinstance(response.body, dict) or response.body.get("reset") is not True:
+        # This gateway response is Admin-authored and never relays the malformed Team payload.
+        log.warning("team returned an invalid Space reset response")
+        return TeamResponse(502, {"detail": "Team returned an invalid Space reset response"})
+    return TeamResponse(200, {"reset": True})
 
 
 def create(team_id: object, team_name: object) -> TeamResponse:

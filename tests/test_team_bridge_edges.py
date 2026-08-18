@@ -43,7 +43,6 @@ class TeamBridgeEdgeTests(unittest.TestCase):
     def test_simple_lifecycle_routes_use_canonical_paths(self) -> None:
         expected = bridge.TeamResponse(200, {})
         with mock.patch.object(bridge, "_call", return_value=expected) as call:
-            self.assertEqual(bridge.reset_space(), expected)
             self.assertEqual(bridge.create("team_1", " Marketing "), expected)
             self.assertEqual(bridge.stop_chat("team_1"), expected)
             self.assertEqual(bridge.pending_chat_integrations("team_1"), expected)
@@ -51,7 +50,6 @@ class TeamBridgeEdgeTests(unittest.TestCase):
         self.assertEqual(
             call.call_args_list,
             [
-                mock.call("DELETE", "/v1/space"),
                 mock.call("POST", "/v1/teams/team_1/create", {"team_name": "Marketing"}),
                 mock.call("POST", "/v1/teams/team_1/chat/stop", {}),
                 mock.call("GET", "/v1/teams/team_1/chat/integrations"),
@@ -60,6 +58,45 @@ class TeamBridgeEdgeTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(bridge.TeamRequestError, "team name"):
             bridge.create("team_1", " ")
+
+    def test_space_reset_projects_only_the_admin_confirmation(self) -> None:
+        response = bridge.TeamResponse(
+            200,
+            {
+                "reset": True,
+                "assistants_removed": 1,
+                "teams_removed": 2,
+                "storage_removed": True,
+                "residue_absent": ["assistant_containers", "team_storage"],
+            },
+        )
+        with mock.patch.object(bridge, "_call", return_value=response) as call:
+            projected = bridge.reset_space()
+        self.assertEqual(projected, bridge.TeamResponse(200, {"reset": True}))
+        call.assert_called_once_with("DELETE", "/v1/space")
+
+        response = bridge.TeamResponse(200, {"reset": True, "producer_metadata": {"version": 2}})
+        with mock.patch.object(bridge, "_call", return_value=response):
+            self.assertEqual(bridge.reset_space(), bridge.TeamResponse(200, {"reset": True}))
+
+    def test_space_reset_rejects_invalid_success_and_preserves_failures(self) -> None:
+        for body in ({}, {"reset": False}, {"reset": 1}, [], "reset", None):
+            with self.subTest(body=body), mock.patch.object(
+                bridge,
+                "_call",
+                return_value=bridge.TeamResponse(200, body),
+            ):
+                self.assertEqual(
+                    bridge.reset_space(),
+                    bridge.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"}),
+                )
+
+        for response in (
+            bridge.TeamResponse(500, {"detail": "incomplete", "code": "teardown-incomplete"}),
+            bridge.TeamResponse(503, {"detail": "unavailable", "code": "docker-reset-failed"}),
+        ):
+            with self.subTest(status=response.status), mock.patch.object(bridge, "_call", return_value=response):
+                self.assertEqual(bridge.reset_space(), response)
 
     def test_authoritative_team_lookup_rejects_invalid_envelopes_and_identity(self) -> None:
         unavailable = bridge.TeamResponse(503, {"detail": "offline"})
