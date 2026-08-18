@@ -81,10 +81,13 @@ class TeamBridgeEdgeTests(unittest.TestCase):
 
     def test_space_reset_rejects_invalid_success_and_preserves_failures(self) -> None:
         for body in ({}, {"reset": False}, {"reset": 1}, [], "reset", None):
-            with self.subTest(body=body), mock.patch.object(
-                bridge,
-                "_call",
-                return_value=bridge.TeamResponse(200, body),
+            with (
+                self.subTest(body=body),
+                mock.patch.object(
+                    bridge,
+                    "_call",
+                    return_value=bridge.TeamResponse(200, body),
+                ),
             ):
                 self.assertEqual(
                     bridge.reset_space(),
