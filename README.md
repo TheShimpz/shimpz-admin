@@ -19,8 +19,9 @@ workload identity, Action execution, storage, Integration encryption, and Brain 
 - For a turn or challenge resume, Admin resolves the selected model key internally and sends it only
   through the controller's fixed `X-Shimpz-Model-Provider` and `X-Shimpz-Model-Api-Key` headers. The key
   is absent from browser JSON, iframe messages, logs, audit records, and responses.
-- OAuth authorization uses a loopback callback, PKCE, session binding, and the audited broker. Access
-  and refresh tokens are stored encrypted by the controller and never cross chat frames.
+- OAuth authorization uses request-scoped callback selection (loopback, hosted, or out-of-band completion code),
+  PKCE, session binding, and the audited broker. Access and refresh tokens are stored encrypted by the controller
+  and never cross chat frames.
 
 The production image runs as a non-root user with a read-only root filesystem and publishes only the
 configured loopback port. Backend, frontend, container, and browser contracts live under `tests/` and
