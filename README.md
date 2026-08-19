@@ -5,7 +5,7 @@ frontend and FastAPI backend provide password/session authentication, Team lifec
 install/uninstall, provider/model selection, local chat, and OAuth Integration connection management.
 The backend also exposes the private Team files API.
 
-Admin has no Docker socket. It calls the local Team controller over a private authenticated network
+Admin has no Docker socket. It calls the Team controller over a private authenticated network
 using a file-backed bearer mounted read-only. The controller remains authoritative for Team ownership,
 workload identity, Action execution, storage, Integration encryption, and Brain turns.
 
