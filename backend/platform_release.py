@@ -1,4 +1,4 @@
-"""Read the bounded Local platform-release status projected by the host reconciler."""
+"""Read the bounded Local platform-release status projected by the release-bound CLI."""
 
 import json
 import os
@@ -18,7 +18,7 @@ FIELDS = frozenset({"release", "ordinal", "checked_at", "outcome"})
 
 
 class PlatformReleaseUnavailableError(RuntimeError):
-    """The reconciler status is absent or fails its closed projection contract."""
+    """The CLI status is absent or fails its closed projection contract."""
 
 
 def _read_bounded(path: Path) -> bytes:
