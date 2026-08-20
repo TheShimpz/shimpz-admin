@@ -81,6 +81,20 @@ class AuthRouteTests(unittest.TestCase):
         )
         self.assertFalse(any("/api/teams" in path or "/assistants" in path for path in self.admin_app.OPEN_API))
 
+    def test_bootstrap_reset_open_gate_is_always_no_store(self) -> None:
+        async def response(_request):
+            return PlainTextResponse("bounded failure", status_code=400)
+
+        result = asyncio.run(
+            self.admin_app._gate(
+                self._request("/api/space/bootstrap", {}, method="DELETE"),
+                response,
+            )
+        )
+
+        self.assertEqual(result.headers["cache-control"], "no-store")
+        self.assertNotIn("vary", result.headers)
+
     @staticmethod
     def _request(
         path: str,

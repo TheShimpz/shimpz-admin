@@ -280,8 +280,9 @@ async def _gate(request: Request, call_next):
     # Static SPA + assets (login form has no secret) and the open auth endpoints.
     if not path.startswith("/api/") or path in OPEN_API:
         response = await call_next(request)
-        if path == "/api/session":
+        if path in {"/api/session", "/api/space/bootstrap"}:
             response.headers["Cache-Control"] = "no-store"
+        if path == "/api/session":
             response.headers["Vary"] = "Origin"
         return _secure_response(response)
     # Everything else under /api/ requires a valid session.
