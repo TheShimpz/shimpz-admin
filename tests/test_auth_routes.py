@@ -328,6 +328,19 @@ class AuthRouteTests(unittest.TestCase):
         )
         blocked.assert_not_called()
 
+    def test_bootstrap_reset_rejects_nonempty_body_before_team_cleanup(self) -> None:
+        request = self._request("/api/space/bootstrap", {"unexpected": True}, method="DELETE")
+
+        with (
+            mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked,
+            self.assertRaises(self.admin_app.HTTPException) as caught,
+        ):
+            asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
+
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.detail, "request body must be an empty object")
+        blocked.assert_not_called()
+
     def test_bootstrap_reset_fails_closed_while_setup_lock_is_held(self) -> None:
         async def exercise():
             await self.admin_app._ADMIN_SETUP_LOCK.acquire()
