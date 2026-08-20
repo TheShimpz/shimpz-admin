@@ -127,7 +127,7 @@ def bootstrap_reset_space() -> TeamResponse:
             status,
             {
                 "code": "bootstrap-reset-unavailable",
-                "detail": "Supervisor state could not be verified; nothing was deleted",
+                "detail": "The bootstrap Space reset did not complete; re-run shimpz reset",
             },
         )
     if not isinstance(response.body, dict) or response.body.get("reset") is not True:
@@ -136,7 +136,7 @@ def bootstrap_reset_space() -> TeamResponse:
             502,
             {
                 "code": "bootstrap-reset-unavailable",
-                "detail": "Team returned an invalid bootstrap reset response; nothing was deleted",
+                "detail": "The bootstrap Space reset did not complete; re-run shimpz reset",
             },
         )
     return TeamResponse(200, {"reset": True})

@@ -129,7 +129,10 @@ class TeamBridgeEdgeTests(unittest.TestCase):
                 projected = bridge.bootstrap_reset_space()
             self.assertEqual(projected.status, status)
             self.assertEqual(projected.body["code"], code)
-            self.assertIn("nothing was deleted", projected.body["detail"])
+            if status == 409:
+                self.assertIn("nothing was deleted", projected.body["detail"])
+            else:
+                self.assertIn("re-run shimpz reset", projected.body["detail"])
             self.assertNotIn(response.body.get("code"), projected.body.values())
 
     def test_authoritative_team_lookup_rejects_invalid_envelopes_and_identity(self) -> None:
