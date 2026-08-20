@@ -316,9 +316,7 @@ class AuthRouteTests(unittest.TestCase):
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
             configured = asyncio.run(
-                self.admin_app.local_space_bootstrap_reset(
-                    self._request("/api/space/bootstrap", {}, method="DELETE")
-                )
+                self.admin_app.local_space_bootstrap_reset(self._request("/api/space/bootstrap", {}, method="DELETE"))
             )
         self.assertEqual(configured.status_code, 409)
         self.assertEqual(
