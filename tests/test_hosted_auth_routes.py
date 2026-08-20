@@ -162,7 +162,13 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertNotIn((oauth_path + "/complete", "POST"), routes)
         self.assertNotIn((oauth_path + "/authorize", "DELETE"), routes)
         self.assertNotIn("/api/admin/setup", self.admin_app.OPEN_API)
+        self.assertNotIn(("/api/space/bootstrap", "DELETE"), routes)
+        self.assertNotIn("/api/space/bootstrap", self.admin_app.OPEN_API)
         self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/admin/setup")), 401)
+        self.assertEqual(
+            asyncio.run(_asgi_request(self.admin_app.app, "/api/space/bootstrap", method="DELETE")),
+            401,
+        )
         self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/model-providers")), 401)
         active = self.admin_app.account_identity.AccountResponse(
             200,

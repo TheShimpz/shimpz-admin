@@ -97,6 +97,7 @@ OPEN_API = frozenset(
             "/api/admin/setup",
             "/api/oauth/cloudflare/start",
             "/api/oauth/cloudflare/callback",
+            "/api/space/bootstrap",
         }
         if ADMIN_PROFILE == "local"
         else set()
@@ -433,6 +434,45 @@ async def admin_setup(request: Request):
 
 if ADMIN_PROFILE == "local":
     app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
+
+
+def _bootstrap_reset_response(status: int, body: dict[str, object]) -> JSONResponse:
+    response = JSONResponse(body, status_code=status)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+async def local_space_bootstrap_reset(request: Request):
+    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
+    if payload:
+        raise HTTPException(status_code=400, detail="request body must be an empty object")
+    if _ADMIN_SETUP_LOCK.locked():
+        return _bootstrap_reset_response(
+            409,
+            {
+                "code": "bootstrap-reset-busy",
+                "detail": "Supervisor setup or bootstrap reset is already in progress; nothing was deleted",
+            },
+        )
+    await _ADMIN_SETUP_LOCK.acquire()
+    try:
+        if state.is_initialized():
+            return _bootstrap_reset_response(
+                409,
+                {
+                    "code": "supervisor-password-required",
+                    "detail": "Supervisor password is configured",
+                },
+            )
+        response = await run_in_threadpool(_team_response, team.bootstrap_reset_space)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    finally:
+        _ADMIN_SETUP_LOCK.release()
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/space/bootstrap", local_space_bootstrap_reset, methods=["DELETE"])
 
 
 async def local_space_reset(request: Request):

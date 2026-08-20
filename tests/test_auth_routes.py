@@ -75,6 +75,7 @@ class AuthRouteTests(unittest.TestCase):
                     "/api/admin/setup",
                     "/api/oauth/cloudflare/start",
                     "/api/oauth/cloudflare/callback",
+                    "/api/space/bootstrap",
                 }
             ),
         )
@@ -87,6 +88,7 @@ class AuthRouteTests(unittest.TestCase):
         *,
         origin: str | None = None,
         cookie: str | None = None,
+        method: str | None = None,
     ) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
@@ -99,7 +101,7 @@ class AuthRouteTests(unittest.TestCase):
             "type": "http",
             "asgi": {"version": "3.0"},
             "http_version": "1.1",
-            "method": "POST" if body else "GET",
+            "method": method or ("POST" if body else "GET"),
             "scheme": "http",
             "path": raw_path,
             "raw_path": raw_path.encode(),
@@ -278,6 +280,56 @@ class AuthRouteTests(unittest.TestCase):
         ):
             asyncio.run(self.admin_app.local_space_reset(wrong))
         self.assertEqual(caught.exception.status_code, 403)
+        blocked.assert_not_called()
+
+    def test_bootstrap_reset_skips_password_only_before_supervisor_setup(self) -> None:
+        request = self._request("/api/space/bootstrap", {}, method="DELETE")
+        expected = self.admin_app.team.TeamResponse(200, {"reset": True})
+        with mock.patch.object(
+            self.admin_app.team,
+            "bootstrap_reset_space",
+            return_value=expected,
+        ) as team_reset:
+            response = asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.body), {"reset": True})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertNotIn("set-cookie", response.headers)
+        team_reset.assert_called_once_with()
+
+        password = "correct horse battery staple"
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
+            configured = asyncio.run(
+                self.admin_app.local_space_bootstrap_reset(
+                    self._request("/api/space/bootstrap", {}, method="DELETE")
+                )
+            )
+        self.assertEqual(configured.status_code, 409)
+        self.assertEqual(
+            json.loads(configured.body),
+            {
+                "code": "supervisor-password-required",
+                "detail": "Supervisor password is configured",
+            },
+        )
+        blocked.assert_not_called()
+
+    def test_bootstrap_reset_fails_closed_while_setup_lock_is_held(self) -> None:
+        async def exercise():
+            await self.admin_app._ADMIN_SETUP_LOCK.acquire()
+            try:
+                return await self.admin_app.local_space_bootstrap_reset(
+                    self._request("/api/space/bootstrap", {}, method="DELETE")
+                )
+            finally:
+                self.admin_app._ADMIN_SETUP_LOCK.release()
+
+        with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
+            response = asyncio.run(exercise())
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(json.loads(response.body)["code"], "bootstrap-reset-busy")
         blocked.assert_not_called()
 
     def test_local_space_reset_bounds_team_request_failure(self) -> None:

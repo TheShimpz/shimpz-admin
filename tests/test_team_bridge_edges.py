@@ -101,6 +101,37 @@ class TeamBridgeEdgeTests(unittest.TestCase):
             with self.subTest(status=response.status), mock.patch.object(bridge, "_call", return_value=response):
                 self.assertEqual(bridge.reset_space(), response)
 
+    def test_bootstrap_reset_reauthors_team_failures_and_projects_success(self) -> None:
+        success = bridge.TeamResponse(200, {"reset": True, "residue_absent": ["teams"]})
+        with mock.patch.object(bridge, "_call", return_value=success) as call:
+            self.assertEqual(bridge.bootstrap_reset_space(), bridge.TeamResponse(200, {"reset": True}))
+        call.assert_called_once_with("DELETE", "/v1/space/bootstrap")
+
+        cases = (
+            (
+                bridge.TeamResponse(409, {"code": "supervisor-established", "detail": "internal"}),
+                409,
+                "bootstrap-reset-refused",
+            ),
+            (
+                bridge.TeamResponse(503, {"code": "supervisor-unavailable", "detail": "internal"}),
+                503,
+                "bootstrap-reset-unavailable",
+            ),
+            (
+                bridge.TeamResponse(200, {"reset": False}),
+                502,
+                "bootstrap-reset-unavailable",
+            ),
+        )
+        for response, status, code in cases:
+            with self.subTest(status=response.status), mock.patch.object(bridge, "_call", return_value=response):
+                projected = bridge.bootstrap_reset_space()
+            self.assertEqual(projected.status, status)
+            self.assertEqual(projected.body["code"], code)
+            self.assertIn("nothing was deleted", projected.body["detail"])
+            self.assertNotIn(response.body.get("code"), projected.body.values())
+
     def test_authoritative_team_lookup_rejects_invalid_envelopes_and_identity(self) -> None:
         unavailable = bridge.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(bridge._authoritative_team_name(unavailable, "team_1"), unavailable)

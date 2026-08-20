@@ -109,6 +109,39 @@ def reset_space() -> TeamResponse:
     return TeamResponse(200, {"reset": True})
 
 
+def bootstrap_reset_space() -> TeamResponse:
+    response = _call("DELETE", "/v1/space/bootstrap")
+    if response.status == 409:
+        log.warning("Team refused bootstrap reset because Supervisor state already exists")
+        return TeamResponse(
+            409,
+            {
+                "code": "bootstrap-reset-refused",
+                "detail": "Supervisor identity exists but Admin is not initialized; nothing was deleted",
+            },
+        )
+    if not 200 <= response.status < 300:
+        log.warning("Team bootstrap reset is unavailable")
+        status = 503 if response.status == 503 else 502
+        return TeamResponse(
+            status,
+            {
+                "code": "bootstrap-reset-unavailable",
+                "detail": "Supervisor state could not be verified; nothing was deleted",
+            },
+        )
+    if not isinstance(response.body, dict) or response.body.get("reset") is not True:
+        log.warning("Team returned an invalid bootstrap reset response")
+        return TeamResponse(
+            502,
+            {
+                "code": "bootstrap-reset-unavailable",
+                "detail": "Team returned an invalid bootstrap reset response; nothing was deleted",
+            },
+        )
+    return TeamResponse(200, {"reset": True})
+
+
 def create(team_id: object, team_name: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     if not isinstance(team_name, str) or not team_name.strip() or len(team_name) > MAX_TEAM_NAME_CHARS:
