@@ -332,6 +332,19 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(json.loads(response.body)["code"], "bootstrap-reset-busy")
         blocked.assert_not_called()
 
+    def test_bootstrap_reset_releases_setup_lock_after_corrupt_admin_state(self) -> None:
+        self.admin_app.state.STORE_PATH.write_text("{", encoding="utf-8")
+        request = self._request("/api/space/bootstrap", {}, method="DELETE")
+
+        with (
+            mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked,
+            self.assertRaisesRegex(RuntimeError, "is corrupt"),
+        ):
+            asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
+
+        blocked.assert_not_called()
+        self.assertFalse(self.admin_app._ADMIN_SETUP_LOCK.locked())
+
     def test_local_space_reset_bounds_team_request_failure(self) -> None:
         password = "correct horse battery staple"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
