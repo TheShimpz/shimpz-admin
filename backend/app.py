@@ -32,6 +32,7 @@ import auth
 import models
 import notifications
 import platform_release
+import space_reset
 import state
 import supervisor
 from team import assets as team_assets
@@ -436,39 +437,13 @@ if ADMIN_PROFILE == "local":
     app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
 
 
-def _bootstrap_reset_response(status: int, body: dict[str, object]) -> JSONResponse:
-    response = JSONResponse(body, status_code=status)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
 async def local_space_bootstrap_reset(request: Request):
-    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
-    if payload:
-        raise HTTPException(status_code=400, detail="request body must be an empty object")
-    if _ADMIN_SETUP_LOCK.locked():
-        return _bootstrap_reset_response(
-            409,
-            {
-                "code": "bootstrap-reset-busy",
-                "detail": "Supervisor setup or bootstrap reset is already in progress; nothing was deleted",
-            },
-        )
-    await _ADMIN_SETUP_LOCK.acquire()
-    try:
-        if state.is_initialized():
-            return _bootstrap_reset_response(
-                409,
-                {
-                    "code": "supervisor-password-required",
-                    "detail": "Supervisor password is configured",
-                },
-            )
-        response = await run_in_threadpool(_team_response, team.bootstrap_reset_space)
-        response.headers["Cache-Control"] = "no-store"
-        return response
-    finally:
-        _ADMIN_SETUP_LOCK.release()
+    return await space_reset.bootstrap(
+        request,
+        setup_lock=_ADMIN_SETUP_LOCK,
+        read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
+        team_response=_team_response,
+    )
 
 
 if ADMIN_PROFILE == "local":
@@ -476,27 +451,12 @@ if ADMIN_PROFILE == "local":
 
 
 async def local_space_reset(request: Request):
-    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
-    if set(payload) != {"password"} or not isinstance(payload["password"], str):
-        raise HTTPException(status_code=400, detail="request body must contain only password")
-    password = payload["password"]
-    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
-        raise HTTPException(status_code=400, detail="Supervisor password is invalid")
-    record = state.get()
-    try:
-        password_ok = await asyncio.to_thread(
-            auth.verify_password,
-            password,
-            record.get("salt", ""),
-            record.get("password_hash", ""),
-        )
-    except TypeError, ValueError:
-        log.warning("Admin password record is invalid")
-        raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
-    if not password_ok:
-        log.info("Space reset password confirmation failed")
-        raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
-    return await run_in_threadpool(_team_response, team.reset_space)
+    return await space_reset.authenticated(
+        request,
+        max_password_chars=MAX_PASSWORD_CHARS,
+        read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
+        team_response=_team_response,
+    )
 
 
 if ADMIN_PROFILE == "local":

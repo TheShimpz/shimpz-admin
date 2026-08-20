@@ -45,7 +45,7 @@ RUN groupadd -g 1000 admin && \
 
 WORKDIR /app/backend
 COPY backend/app.py backend/auth.py backend/browser.py backend/models.py backend/model_catalog.json backend/notifications.py \
-    backend/platform_release.py backend/profile.py backend/state.py backend/supervisor.py ./
+    backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
 COPY backend/chat/human.py backend/chat/local.py backend/chat/payloads.py backend/chat/progress.py \
     backend/chat/socket.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \

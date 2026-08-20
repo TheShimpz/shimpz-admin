@@ -309,7 +309,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         )
         self.assert_status(400, self.admin_app.local_space_reset(_request("/space", {"password": 1})))
         self.assert_status(400, self.admin_app.local_space_reset(_request("/space", {"password": ""})))
-        with mock.patch.object(self.admin_app.asyncio, "to_thread", side_effect=ValueError("corrupt")):
+        with mock.patch.object(self.admin_app.space_reset.asyncio, "to_thread", side_effect=ValueError("corrupt")):
             self.assert_status(
                 503,
                 self.admin_app.local_space_reset(_request("/space", {"password": "correct horse battery staple"})),
