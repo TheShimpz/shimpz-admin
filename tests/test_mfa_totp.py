@@ -49,6 +49,8 @@ class TotpTests(unittest.TestCase):
         self.assertEqual(totp.state(restarted), "configured")
         self.assertIs(totp.verify(restarted, code, NOW), totp.Verification.INVALID)
         self.assertIs(totp.verify(restarted, code, NOW + totp.PERIOD_SECONDS), totp.Verification.INVALID)
+        fresh = self.code(1)
+        self.assertIs(totp.verify(restarted, fresh, NOW + totp.PERIOD_SECONDS), totp.Verification.ACCEPTED)
 
     def test_accepts_the_closed_clock_window_once_and_rejects_older_steps(self) -> None:
         previous = self.code(-1)
@@ -88,6 +90,43 @@ class TotpTests(unittest.TestCase):
             malformed[field] = value
             with self.subTest(field=field), self.assertRaises(totp.TotpStateError):
                 totp.state(malformed)
+
+    def test_primitive_and_shape_validation_fails_closed(self) -> None:
+        for timestamp in (True, totp.PERIOD_SECONDS - 1):
+            with self.subTest(timestamp=timestamp), self.assertRaises(ValueError):
+                totp.new_record(timestamp)
+
+        with (
+            mock.patch.object(totp.base64, "b32decode", side_effect=ValueError),
+            self.assertRaises(totp.TotpStateError),
+        ):
+            totp._decode_secret("A" * 32)
+        with (
+            mock.patch.object(totp.base64, "b32decode", return_value=b"short"),
+            self.assertRaises(totp.TotpStateError),
+        ):
+            totp._decode_secret("A" * 32)
+        with self.assertRaises(totp.TotpStateError):
+            totp.state({})
+
+    def test_pending_and_active_records_reject_cross_state_fields(self) -> None:
+        malformed_pending = copy.deepcopy(self.record)
+        malformed_pending["expires_at"] = NOW
+        with self.assertRaises(totp.TotpStateError):
+            totp.state(malformed_pending)
+
+        self.assertIs(totp.verify(self.record, self.code(), NOW), totp.Verification.ACCEPTED)
+        malformed_active = copy.deepcopy(self.record)
+        malformed_active["expires_at"] = NOW
+        with self.assertRaises(totp.TotpStateError):
+            totp.state(malformed_active)
+        with self.assertRaises(totp.TotpStateError):
+            totp.enrollment(self.record)
+        with self.assertRaises(totp.TotpStateError):
+            totp.resume(self.record, NOW + 1)
+
+    def test_non_text_code_is_rejected(self) -> None:
+        self.assertIs(totp.verify(self.record, None, NOW), totp.Verification.INVALID)
 
 
 if __name__ == "__main__":
