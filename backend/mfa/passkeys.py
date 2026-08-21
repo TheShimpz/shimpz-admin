@@ -108,7 +108,7 @@ class ChallengeStore:
             self._records.pop(key, None)
 
     def issue(self, binding: object, ceremony: str, origin: str, generation: int) -> Challenge:
-        if ceremony not in {"authentication", "registration"} or not isinstance(generation, int) or generation < 1:
+        if ceremony not in {"authentication", "registration"} or type(generation) is not int or generation < 1:
             raise ValueError("invalid passkey challenge binding")
         rp_id = rp_id_for_origin(origin)
         now = self._clock()
