@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,7 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import auth
 import local_auth
-from mfa import passkeys, totp
+from mfa import passkeys, tickets, totp
 
 ORIGIN = "http://localhost:7777"
 
@@ -205,6 +206,177 @@ class LocalAuthEdgeTests(unittest.TestCase):
             ),
         ):
             self.assertIs(local_auth.passkey_registered(ORIGIN), False)
+
+    def test_passkey_login_handles_success_conflict_unavailable_and_suspension(self) -> None:
+        with self.assertRaises(HTTPException) as shape:
+            asyncio.run(local_auth.confirm_login_passkey(_request({"extra": True}), local_auth.Context()))
+        self.assertEqual(shape.exception.status_code, 400)
+
+        ticket = tickets.Ticket("login", ORIGIN, 2, time.monotonic() + 30)
+        challenge = passkeys.Challenge(b"c" * 32, ORIGIN, "localhost", 2, time.monotonic() + 30)
+        original = {"credential_id": "credential"}
+        verified = passkeys.Authentication("credential", 2, False, False)
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(local_auth.passkeys, "credential_id", return_value="credential"),
+            mock.patch.object(local_auth.state, "passkey_for_authentication", return_value=original),
+            mock.patch.object(local_auth.passkeys, "verify_authentication", return_value=verified),
+            mock.patch.object(
+                local_auth.state,
+                "commit_passkey_authentication",
+                return_value=("a" * 64, None),
+            ),
+        ):
+            response = asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
+        self.assertEqual(json.loads(response.body), {"ok": True, "method": "passkey"})
+
+        changed = passkeys.Challenge(b"c" * 32, ORIGIN, "localhost", 3, time.monotonic() + 30)
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
+            mock.patch.object(context.challenge_store, "consume", return_value=changed),
+            self.assertRaises(HTTPException) as conflict,
+        ):
+            asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
+        self.assertEqual(conflict.exception.status_code, 409)
+
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(
+                local_auth.passkeys,
+                "credential_id",
+                side_effect=passkeys.PasskeyUnavailableError("invalid"),
+            ),
+            self.assertRaises(HTTPException) as unavailable,
+        ):
+            asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
+        self.assertEqual(unavailable.exception.status_code, 401)
+
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(local_auth.passkeys, "credential_id", return_value="credential"),
+            mock.patch.object(local_auth.state, "passkey_for_authentication", return_value=original),
+            mock.patch.object(local_auth.passkeys, "verify_authentication", return_value=verified),
+            mock.patch.object(
+                local_auth.state,
+                "commit_passkey_authentication",
+                return_value=("a" * 64, "counter-regression"),
+            ),
+            self.assertRaises(HTTPException) as suspended,
+        ):
+            asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
+        self.assertEqual(suspended.exception.status_code, 401)
+
+    def test_passkey_registration_begin_requires_empty_payload_available_origin_and_fresh_mfa(self) -> None:
+        with self.assertRaises(HTTPException) as shape:
+            asyncio.run(local_auth.begin_passkey_registration(_request({"extra": True}), local_auth.Context()))
+        self.assertEqual(shape.exception.status_code, 400)
+
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=False),
+            self.assertRaises(HTTPException) as unavailable,
+        ):
+            asyncio.run(local_auth.begin_passkey_registration(_request({}), local_auth.Context()))
+        self.assertEqual(unavailable.exception.status_code, 409)
+
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(local_auth.auth, "verify_session", return_value=None),
+            self.assertRaises(HTTPException) as stale,
+        ):
+            asyncio.run(local_auth.begin_passkey_registration(_request({}), local_auth.Context()))
+        self.assertEqual(stale.exception.status_code, 401)
+
+        token = "s" * 32
+        evidence = auth.SessionEvidence(int(time.time()) + auth.TTL, "totp")
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(local_auth.auth, "verify_session", return_value=evidence),
+            mock.patch.object(local_auth.state, "factor_generation", return_value=2),
+            mock.patch.object(local_auth.state, "passkeys_for_registration", return_value=[]),
+            mock.patch.object(local_auth.state, "webauthn_user_id", return_value="0" * 64),
+            mock.patch.object(local_auth.passkeys, "registration_options", return_value={"challenge": "exact"}),
+        ):
+            response = asyncio.run(
+                local_auth.begin_passkey_registration(
+                    _request({}, cookies={local_auth.SESSION_COOKIE: token}),
+                    context,
+                )
+            )
+        self.assertEqual(json.loads(response.body), {"options": {"challenge": "exact"}})
+
+    def test_passkey_registration_completion_rotates_sessions_and_maps_failures(self) -> None:
+        with self.assertRaises(HTTPException) as shape:
+            asyncio.run(local_auth.complete_passkey_registration(_request({"extra": True}), local_auth.Context()))
+        self.assertEqual(shape.exception.status_code, 400)
+
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=False),
+            self.assertRaises(HTTPException) as unavailable_origin,
+        ):
+            asyncio.run(local_auth.complete_passkey_registration(_request({"credential": {}}), local_auth.Context()))
+        self.assertEqual(unavailable_origin.exception.status_code, 409)
+
+        token = "s" * 32
+        challenge = passkeys.Challenge(b"c" * 32, ORIGIN, "localhost", 2, time.monotonic() + 30)
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(local_auth.state, "factor_generation", return_value=3),
+            self.assertRaises(HTTPException) as conflict,
+        ):
+            asyncio.run(
+                local_auth.complete_passkey_registration(
+                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
+                    context,
+                )
+            )
+        self.assertEqual(conflict.exception.status_code, 409)
+
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(local_auth.state, "factor_generation", return_value=2),
+            mock.patch.object(
+                local_auth.passkeys,
+                "verify_registration",
+                side_effect=passkeys.PasskeyUnavailableError("invalid"),
+            ),
+            self.assertRaises(HTTPException) as unavailable,
+        ):
+            asyncio.run(
+                local_auth.complete_passkey_registration(
+                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
+                    context,
+                )
+            )
+        self.assertEqual(unavailable.exception.status_code, 400)
+
+        record = {"credential_id": "credential"}
+        context = local_auth.Context()
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+            mock.patch.object(local_auth.state, "factor_generation", return_value=2),
+            mock.patch.object(local_auth.passkeys, "verify_registration", return_value=record),
+            mock.patch.object(local_auth.state, "add_passkey", return_value="a" * 64),
+        ):
+            response = asyncio.run(
+                local_auth.complete_passkey_registration(
+                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
+                    context,
+                )
+            )
+        self.assertEqual(json.loads(response.body), {"registered": True})
 
 
 if __name__ == "__main__":
