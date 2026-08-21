@@ -144,9 +144,7 @@ class AuthRouteTests(unittest.TestCase):
     def _cookie(response, name: str) -> str:
         prefix = name + "="
         return next(
-            part.removeprefix(prefix)
-            for part in response.headers["set-cookie"].split("; ")
-            if part.startswith(prefix)
+            part.removeprefix(prefix) for part in response.headers["set-cookie"].split("; ") if part.startswith(prefix)
         )
 
     def _configure(self, password: str, origin: str | None = None):

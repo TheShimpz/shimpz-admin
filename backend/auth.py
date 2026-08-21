@@ -26,9 +26,7 @@ _SCHEME = "scrypt-v1"
 _N, _R, _P, _DKLEN = 2**14, 8, 5, 32
 _MAXMEM = 128 * _N * _R * 4  # scrypt uses about 16 MiB; retain explicit OpenSSL headroom.
 _PARAMETERS = "ln=14,r=8,p=5,dk=32"
-_VERIFIER = re.compile(
-    rf"^{_SCHEME}\${re.escape(_PARAMETERS)}\$([0-9a-f]{{64}})\$([0-9a-f]{{64}})$"
-)
+_VERIFIER = re.compile(rf"^{_SCHEME}\${re.escape(_PARAMETERS)}\$([0-9a-f]{{64}})\$([0-9a-f]{{64}})$")
 _RETIRED_PASSWORD_FIELDS = frozenset({"salt", "password_hash"})
 _BLOCKLIST = frozenset(
     {

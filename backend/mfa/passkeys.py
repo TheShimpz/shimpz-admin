@@ -160,8 +160,7 @@ def rp_id_for_origin(origin: object) -> str:
 def _descriptors(records: list[dict[str, object]]) -> list[PublicKeyCredentialDescriptor]:
     try:
         return [
-            PublicKeyCredentialDescriptor(id=base64url_to_bytes(str(record["credential_id"])))
-            for record in records
+            PublicKeyCredentialDescriptor(id=base64url_to_bytes(str(record["credential_id"]))) for record in records
         ]
     except (KeyError, TypeError, ValueError) as exc:
         raise PasskeyError("stored passkey is invalid") from exc

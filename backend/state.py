@@ -237,6 +237,7 @@ def bind_browser_origin(origin: str) -> str:
     """Persist one exact external HTTPS origin, returning its material transition."""
     if canonical_origin(origin) != origin or not origin.startswith("https://"):
         raise ValueError("browser origin must be one exact HTTPS origin")
+
     def bind(data: dict) -> str:
         current = _validated_browser_origin(data)
         if current == origin:
@@ -249,6 +250,7 @@ def bind_browser_origin(origin: str) -> str:
 
 def begin_supervisor_setup(password: str, *, now: int | None = None) -> totp.Enrollment:
     """Create the password and resumable mandatory TOTP enrollment atomically."""
+
     def begin(data: dict) -> totp.Enrollment:
         if auth.password_state(data) != auth.RECORD_STATE_UNINITIALIZED:
             raise RuntimeError("Local Supervisor password is already configured")
@@ -280,6 +282,7 @@ def totp_enrollment() -> totp.Enrollment:
 
 def resume_totp_enrollment(*, now: int | None = None) -> totp.Enrollment:
     """Resume the same pending secret after bounded password verification."""
+
     def resume(data: dict) -> totp.Enrollment:
         if _authentication_state(data) != auth.RECORD_STATE_ENROLLMENT_REQUIRED:
             raise totp.TotpStateError("TOTP enrollment is unavailable")
@@ -323,11 +326,7 @@ def passkeys_for_registration(origin: str) -> list[dict[str, object]]:
     active = [record for record in records if record["status"] == "active"]
     if len(active) >= webauthn.MAX_PASSKEYS:
         raise webauthn.PasskeyUnavailableError("maximum passkey count reached")
-    return [
-        copy.deepcopy(record)
-        for record in active
-        if record["origin"] == origin and record["rp_id"] == rp_id
-    ]
+    return [copy.deepcopy(record) for record in active if record["origin"] == origin and record["rp_id"] == rp_id]
 
 
 def passkey_for_authentication(credential_id: str, origin: str) -> dict[str, object]:
@@ -377,9 +376,8 @@ def commit_passkey_authentication(
             raise webauthn.PasskeyConflictError("passkey changed; retry")
         record = matches[0]
         counter_regressed = int(record["sign_count"]) > 0 and result.new_sign_count <= int(record["sign_count"])
-        identity_changed = (
-            result.backup_eligible != record["backup_eligible"]
-            or (result.backup_state and not result.backup_eligible)
+        identity_changed = result.backup_eligible != record["backup_eligible"] or (
+            result.backup_state and not result.backup_eligible
         )
         record["last_used_at"] = now
         record["updated_at"] = now
@@ -479,6 +477,7 @@ def model_credentials():
 
 def set_model_api_key(provider, api_key):
     """Atomically persist one remotely verified provider key in the 0600 Admin store."""
+
     def set_key(data: dict) -> None:
         records = data.setdefault("model_credentials", {})
         if not isinstance(records, dict):
@@ -494,6 +493,7 @@ def set_model_api_key(provider, api_key):
 
 def delete_model_api_key(provider):
     """Delete one provider key without disturbing the Admin session or other providers."""
+
     def delete_key(data: dict) -> bool:
         records = data.get("model_credentials", {})
         if not isinstance(records, dict):

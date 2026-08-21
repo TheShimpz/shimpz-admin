@@ -155,9 +155,7 @@ class AppMultipartEdgeTests(unittest.TestCase):
         ):
             self.assert_status(
                 413,
-                self.admin_app.team_files.bounded_multipart_file(
-                    _request(self.multipart_headers(), chunks=[b"four"])
-                ),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers(), chunks=[b"four"])),
             )
 
         with mock.patch.object(

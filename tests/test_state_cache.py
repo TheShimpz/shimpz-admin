@@ -149,8 +149,7 @@ class AdminStoreCacheTests(unittest.TestCase):
                 state.consume_host_reset_capability(digest, expires_at, now=now)
 
         over_capacity = [
-            {"digest": f"{index:064x}", "expires_at": NOW + 1}
-            for index in range(state.MAX_CONSUMED_HOST_RESETS + 1)
+            {"digest": f"{index:064x}", "expires_at": NOW + 1} for index in range(state.MAX_CONSUMED_HOST_RESETS + 1)
         ]
         with self.assertRaisesRegex(RuntimeError, "invalid host reset evidence"):
             state._validated_consumed_host_resets(over_capacity)
