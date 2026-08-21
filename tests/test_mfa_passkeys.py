@@ -72,6 +72,7 @@ class PasskeyTests(unittest.TestCase):
     def test_registration_rotates_sessions_and_selects_only_the_exact_origin(self) -> None:
         generation = state.factor_generation()
         old_secret = state.get()["session_secret"]
+        self.assertEqual(state.passkeys_for_registration(ORIGIN), [])
 
         new_secret = state.add_passkey(credential(), generation)
 
@@ -80,6 +81,10 @@ class PasskeyTests(unittest.TestCase):
         self.assertEqual(state.active_passkeys("https://other.example.test"), [])
         with self.assertRaises(passkeys.PasskeyConflictError):
             state.add_passkey(credential(), generation)
+        with self.assertRaises(passkeys.PasskeyConflictError):
+            state.add_passkey(credential(), state.factor_generation())
+        with self.assertRaises(passkeys.PasskeyUnavailableError):
+            state.passkey_for_authentication("missing", ORIGIN)
 
     def test_counter_regression_suspends_the_credential_and_rotates_sessions(self) -> None:
         generation = state.factor_generation()
@@ -126,6 +131,8 @@ class PasskeyTests(unittest.TestCase):
         changed["sign_count"] = 99
         with self.assertRaises(passkeys.PasskeyConflictError):
             state.commit_passkey_authentication(changed, result, generation, now=NOW + 2)
+        with self.assertRaises(passkeys.PasskeyConflictError):
+            state.commit_passkey_authentication(original, result, generation + 1, now=NOW + 2)
 
     def test_impossible_backup_state_and_changed_eligibility_fail_closed(self) -> None:
         impossible = credential()
@@ -154,6 +161,24 @@ class PasskeyTests(unittest.TestCase):
             now=NOW + 2,
         )
         self.assertEqual(suspension_reason, "backup-identity-change")
+
+    def test_persisted_passkey_collections_fail_closed(self) -> None:
+        with self.assertRaises(passkeys.PasskeyError):
+            state._validated_passkey(None)
+        wrong_origin = credential()
+        wrong_origin["rp_id"] = "other.example"
+        with self.assertRaises(passkeys.PasskeyError):
+            state._validated_passkey(wrong_origin)
+        with self.assertRaises(passkeys.PasskeyError):
+            state._validated_passkeys(None)
+        with self.assertRaises(passkeys.PasskeyError):
+            state._validated_passkeys([credential(), credential()])
+
+        data = state.get()
+        data["passkeys"] = [{}]
+        state._write(data)
+        with self.assertRaises(state.auth.PasswordRecordError):
+            state.authentication_state()
 
 
 if __name__ == "__main__":
