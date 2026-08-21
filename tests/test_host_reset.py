@@ -105,6 +105,31 @@ class HostResetTests(unittest.TestCase):
         with self.assertRaises(host_reset.HostResetCapabilityError):
             host_reset.verify_capability(CAPABILITY)
 
+    def test_file_verifier_rejects_truncation_invalid_inputs_and_malformed_json(self) -> None:
+        with (
+            mock.patch.object(host_reset.os, "read", return_value=b"{}"),
+            self.assertRaises(host_reset.HostResetCapabilityError),
+        ):
+            host_reset.verify_capability(CAPABILITY)
+        with (
+            mock.patch.dict(os.environ, {"SHIMPZ_SPACE_ID": "invalid"}),
+            self.assertRaises(host_reset.HostResetCapabilityError),
+        ):
+            host_reset.verify_capability(CAPABILITY)
+        with self.assertRaises(host_reset.HostResetCapabilityError):
+            host_reset.verify_capability(None)
+        with self.assertRaises(ValueError):
+            host_reset.verify_capability(CAPABILITY, now=True)
+
+        self.capability_path.write_text("[]", encoding="utf-8")
+        self.capability_path.chmod(0o600)
+        with self.assertRaises(host_reset.HostResetCapabilityError):
+            host_reset.verify_capability(CAPABILITY)
+        self.capability_path.write_bytes(b"{")
+        self.capability_path.chmod(0o600)
+        with self.assertRaises(host_reset.HostResetCapabilityError):
+            host_reset.verify_capability(CAPABILITY)
+
         self.write_capability()
         link = self.capability_path.with_name("link.json")
         link.symlink_to(self.capability_path)
@@ -155,6 +180,52 @@ class HostResetTests(unittest.TestCase):
                 )
             )
         self.assertEqual(replay.exception.status_code, 403)
+
+    def test_reset_rejects_invalid_payloads_and_reports_busy_authority(self) -> None:
+        with self.assertRaises(HTTPException) as unavailable:
+            asyncio.run(
+                host_reset.reset(
+                    _request({"capability": None}),
+                    setup_lock=asyncio.Lock(),
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(),
+                    established_reset=mock.Mock(),
+                )
+            )
+        self.assertEqual(unavailable.exception.status_code, 403)
+
+        async def while_busy():
+            lock = asyncio.Lock()
+            await lock.acquire()
+            try:
+                return await host_reset.reset(
+                    _request({"capability": CAPABILITY}),
+                    setup_lock=lock,
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(),
+                    established_reset=mock.Mock(),
+                )
+            finally:
+                lock.release()
+
+        busy = asyncio.run(while_busy())
+        self.assertEqual(busy.status_code, 409)
+        self.assertEqual(json.loads(busy.body)["code"], "host-reset-busy")
+
+        with self.assertRaises(HTTPException) as extra:
+            asyncio.run(
+                host_reset.reset(
+                    _request({"capability": CAPABILITY, "password": "unexpected"}),
+                    setup_lock=asyncio.Lock(),
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(),
+                    established_reset=mock.Mock(),
+                )
+            )
+        self.assertEqual(extra.exception.status_code, 400)
 
     def test_consumption_remembers_every_unexpired_capability(self) -> None:
         now = int(time.time())
@@ -245,6 +316,58 @@ class HostResetTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         bootstrap.assert_called_once_with()
+
+    def test_recovery_reset_rejects_extra_fields_and_missing_action(self) -> None:
+        error = host_reset.auth.PasswordRecordError("corrupt")
+        with (
+            mock.patch.object(state, "authentication_state", side_effect=error),
+            self.assertRaises(HTTPException) as extra,
+        ):
+            asyncio.run(
+                host_reset.reset(
+                    _request({"capability": CAPABILITY, "extra": True}),
+                    setup_lock=asyncio.Lock(),
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(),
+                    established_reset=mock.Mock(),
+                )
+            )
+        self.assertEqual(extra.exception.status_code, 400)
+
+        with (
+            mock.patch.object(state, "authentication_state", side_effect=error),
+            mock.patch.object(host_reset, "_recovery_reset_action", return_value=(None, "")),
+            self.assertRaises(RuntimeError),
+        ):
+            asyncio.run(
+                host_reset.reset(
+                    _request({"capability": CAPABILITY}),
+                    setup_lock=asyncio.Lock(),
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(),
+                    established_reset=mock.Mock(),
+                )
+            )
+
+    def test_reset_logs_and_propagates_team_failure(self) -> None:
+        failure = RuntimeError("team reset failed")
+        with (
+            self.assertLogs("shimpz-admin", level="ERROR") as captured,
+            self.assertRaisesRegex(RuntimeError, "team reset failed"),
+        ):
+            asyncio.run(
+                host_reset.reset(
+                    _request({"capability": CAPABILITY}),
+                    setup_lock=asyncio.Lock(),
+                    read_json=_read_json,
+                    verify_password=mock.AsyncMock(),
+                    bootstrap_reset=mock.Mock(side_effect=failure),
+                    established_reset=mock.Mock(),
+                )
+            )
+        self.assertIn("host reset failed after host-capability authorization", "\n".join(captured.output))
 
     def test_reset_audit_names_only_the_authority_class_and_outcome(self) -> None:
         with self.assertLogs("shimpz-admin", level="INFO") as captured:
