@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import sys
 import threading
 import unittest
@@ -70,8 +72,30 @@ class PasswordVerifierTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             auth.issue_session(secret, "password")
 
+    def test_invalid_password_and_session_inputs_fail_closed(self) -> None:
+        with self.assertRaises(ValueError):
+            auth.new_password_verifier("short")
+        with self.assertRaises(auth.PasswordRecordError):
+            auth.password_state(None)
+        with self.assertRaises(ValueError):
+            auth.verify_password("", {})
+        with self.assertRaises(auth.PasswordRecordError):
+            auth.verify_password(GOOD_PASSWORD, {})
+
+        secret = auth.new_secret()
+        scheme = auth._SESSION_SCHEME
+        self.assertIsNone(auth.verify_session("not-hex", f"{scheme}:9999999999:nonce:pwd+totp:signature"))
+        body = f"{scheme}:not-a-time:nonce:pwd+totp"
+        signature = hmac.new(bytes.fromhex(secret), body.encode(), hashlib.sha256).hexdigest()
+        self.assertIsNone(auth.verify_session(secret, f"{body}:{signature}"))
+        self.assertIsNone(auth.verify_session(secret, auth.issue_session(secret, "totp", ttl=-1)))
+
 
 class LocalLoginLimiterTests(unittest.TestCase):
+    def test_unbalanced_permit_release_is_rejected(self) -> None:
+        with self.assertRaises(RuntimeError):
+            auth.LocalLoginLimiter().finish(rejected=None)
+
     def test_cancelled_attempt_retains_its_slot_until_the_worker_finishes(self) -> None:
         started = threading.Event()
         release = threading.Event()
