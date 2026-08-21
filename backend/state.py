@@ -214,6 +214,20 @@ def authentication_state() -> str:
     return _authentication_state(_read())
 
 
+def revoke_sessions_for_logout(session_token: object) -> bool:
+    """Rotate every Local session only when the presented session is currently valid."""
+
+    def revoke(data: dict) -> bool:
+        if _authentication_state(data) != auth.RECORD_STATE_CONFIGURED:
+            return False
+        if not isinstance(session_token, str) or auth.verify_session(data["session_secret"], session_token) is None:
+            return False
+        data["session_secret"] = auth.new_secret()
+        return True
+
+    return bool(_mutate(revoke, bool))
+
+
 def is_initialized():
     """True as soon as any strict password record has closed the bootstrap window."""
     return password_state() != auth.RECORD_STATE_UNINITIALIZED

@@ -392,6 +392,20 @@ async def login(request: Request):
 @app.post("/api/logout")
 async def logout(request: Request):
     session_token = request.cookies.get(COOKIE, "")
+    if ADMIN_PROFILE == "local":
+        raw_origin = request.headers.get("origin")
+        origin = chat_ws_common.canonical_origin(raw_origin)
+        if raw_origin is not None and (origin != raw_origin or origin not in _allowed_browser_origins()):
+            raise HTTPException(status_code=403, detail="logout origin is not admitted")
+        if session_token:
+            try:
+                await asyncio.to_thread(state.revoke_sessions_for_logout, session_token)
+            except OSError:
+                log.exception("Local Supervisor session revocation is unavailable")
+                return JSONResponse(
+                    {"ok": False, "detail": "Local session revocation is unavailable"},
+                    status_code=503,
+                )
     if session_token:
         with suppress(handoff_store.OAuthHandoffError):
             OAUTH_HANDOFFS.cancel_session(session_token)

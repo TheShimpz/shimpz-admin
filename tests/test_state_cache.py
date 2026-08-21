@@ -126,6 +126,22 @@ class AdminStoreCacheTests(unittest.TestCase):
         with self.assertRaises(state.totp.TotpStateError):
             state.verify_totp(code(enrollment.secret, NOW + 30), enrollment=True, now=NOW + 30)
 
+    def test_logout_rotates_sessions_only_for_current_evidence(self) -> None:
+        self.assertIs(state.revoke_sessions_for_logout("not-a-session"), False)
+        secret = configure_supervisor(state, "violet otter lantern quartz 92")
+        first = state.auth.issue_session(secret, "totp")
+        second = state.auth.issue_session(secret, "webauthn")
+
+        self.assertIs(state.revoke_sessions_for_logout("not-a-session"), False)
+        self.assertEqual(state.get()["session_secret"], secret)
+        self.assertIs(state.revoke_sessions_for_logout(first), True)
+
+        rotated = state.get()["session_secret"]
+        self.assertNotEqual(rotated, secret)
+        self.assertIsNone(state.auth.verify_session(rotated, first))
+        self.assertIsNone(state.auth.verify_session(rotated, second))
+        self.assertIs(state.revoke_sessions_for_logout(first), False)
+
     def test_corrupt_factor_state_requires_bounded_recovery(self) -> None:
         configure_supervisor(state, "violet otter lantern quartz 92")
         data = state.get()

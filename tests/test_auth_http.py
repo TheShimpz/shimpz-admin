@@ -157,9 +157,7 @@ class AuthHTTPTests(unittest.TestCase):
             request(port, "POST", "/api/admin/setup", {"password": "another good password"})[0],
             409,
         )
-        logout_status, _, logout_cookie = request(port, "POST", "/api/logout")
-        self.assertEqual(logout_status, 200)
-        self.assertRegex(logout_cookie, r"shimpz_admin=.*(?:Max-Age=0|01 Jan 1970)")
+        self._assert_logout_boundaries(port, session)
 
         self.assertEqual(request(port, "POST", "/api/login", {"password": "definitely wrong"})[0], 401)
         login_status, login_payload, login_cookie = request(
@@ -192,6 +190,27 @@ class AuthHTTPTests(unittest.TestCase):
         foreign = auth.issue_session(auth.new_secret(), "totp")
         self.assertEqual(request(port, "GET", "/api/model-providers", session=foreign)[0], 401)
         self.assertEqual(request(port, "GET", "/")[0], 200)
+
+    def _assert_logout_boundaries(self, port: int, session: str) -> None:
+        hostile_status, _, hostile_cookie = request(
+            port,
+            "POST",
+            "/api/logout",
+            session=session,
+            origin="https://hostile.example.test",
+        )
+        self.assertEqual(hostile_status, 403)
+        self.assertEqual(hostile_cookie, "")
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+
+        garbage_status, _, _ = request(port, "POST", "/api/logout", session="not-a-current-session")
+        self.assertEqual(garbage_status, 200)
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+
+        logout_status, _, logout_cookie = request(port, "POST", "/api/logout", session=session)
+        self.assertEqual(logout_status, 200)
+        self.assertRegex(logout_cookie, r"shimpz_admin=.*(?:Max-Age=0|01 Jan 1970)")
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 401)
 
     def _assert_authenticated_session(self, port: int, session: str) -> None:
         status, payload, _ = request(

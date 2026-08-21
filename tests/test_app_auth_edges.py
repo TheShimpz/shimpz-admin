@@ -385,6 +385,24 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         local_response = asyncio.run(self.admin_app.logout(_request("/api/logout")))
         self.assertEqual(local_response.status_code, 200)
 
+        with (
+            mock.patch.object(self.admin_app, "_allowed_browser_origins", return_value=frozenset()),
+            self.assertRaises(self.admin_app.HTTPException) as denied,
+        ):
+            asyncio.run(
+                self.admin_app.logout(_request("/api/logout", origin="https://hostile.example.test", cookie="token"))
+            )
+        self.assertEqual(denied.exception.status_code, 403)
+
+        with mock.patch.object(
+            self.admin_app.state,
+            "revoke_sessions_for_logout",
+            side_effect=OSError("read-only store"),
+        ):
+            unavailable = asyncio.run(self.admin_app.logout(_request("/api/logout", cookie="token")))
+        self.assertEqual(unavailable.status_code, 503)
+        self.assertNotIn("set-cookie", unavailable.headers)
+
         revoked = self.admin_app.account_identity.AccountResponse(503, {"error": "offline"})
         with (
             mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
