@@ -122,6 +122,13 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             transport.supervisor_session(account_session, account=False),
         ):
             pass
+        for authority_kind in ("invalid", "host-reset"):
+            with (
+                self.subTest(authority_kind=authority_kind),
+                self.assertRaises(transport.TeamRequestError),
+                transport.supervisor_session(account_session, account=True, authority_kind=authority_kind),
+            ):
+                pass
         self.assertEqual(_Connection.requests, [])
 
     def test_local_assertion_binds_json_model_and_session_without_disclosing_the_key(self) -> None:
