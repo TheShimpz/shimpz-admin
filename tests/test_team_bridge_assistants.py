@@ -18,6 +18,7 @@ from typing import ClassVar
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from mfa_helper import configure_supervisor
 from team import bridge as team
 from team import transport
 
@@ -785,8 +786,8 @@ def _probe_session():
 
     import app as admin_app
 
-    state.set_password("test-admin-password")
-    token = auth.issue_session(state.get()["session_secret"])
+    secret = configure_supervisor(state, "test-admin-password")
+    token = auth.issue_session(secret, "totp")
     return admin_app, token
 
 

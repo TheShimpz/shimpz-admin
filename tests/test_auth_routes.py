@@ -8,11 +8,13 @@ import json
 import os
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from mfa_helper import code, configure_supervisor
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
@@ -56,7 +58,7 @@ class AuthRouteTests(unittest.TestCase):
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
         self.admin_app.supervisor.PUBLIC_KEY_FILE.unlink(missing_ok=True)
-        self.admin_app._LOCAL_LOGIN_LIMITER = self.admin_app.auth.LocalLoginLimiter()
+        self.admin_app._LOCAL_AUTH_CONTEXT = self.admin_app.local_auth.Context()
         group = mock.patch.object(
             self.admin_app.supervisor.grp,
             "getgrnam",
@@ -74,21 +76,24 @@ class AuthRouteTests(unittest.TestCase):
                     "/api/login",
                     "/api/logout",
                     "/api/admin/setup",
+                    "/api/admin/setup/totp",
+                    "/api/login/totp",
+                    "/api/login/passkey",
                     "/api/oauth/cloudflare/start",
                     "/api/oauth/cloudflare/callback",
-                    "/api/space/bootstrap",
+                    "/api/space/host",
                 }
             ),
         )
         self.assertFalse(any("/api/teams" in path or "/assistants" in path for path in self.admin_app.OPEN_API))
 
-    def test_bootstrap_reset_open_gate_is_always_no_store(self) -> None:
+    def test_host_reset_open_gate_is_always_no_store(self) -> None:
         async def response(_request):
             return PlainTextResponse("bounded failure", status_code=400)
 
         result = asyncio.run(
             self.admin_app._gate(
-                self._request("/api/space/bootstrap", {}, method="DELETE"),
+                self._request("/api/space/host", {}, method="DELETE"),
                 response,
             )
         )
@@ -103,6 +108,7 @@ class AuthRouteTests(unittest.TestCase):
         *,
         origin: str | None = None,
         cookie: str | None = None,
+        ticket: str | None = None,
         method: str | None = None,
     ) -> Request:
         raw_path, _, query = path.partition("?")
@@ -112,6 +118,8 @@ class AuthRouteTests(unittest.TestCase):
             headers.append((b"origin", origin.encode("ascii")))
         if cookie is not None:
             headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
+        if ticket is not None:
+            headers.append((b"cookie", f"shimpz_admin_ticket={ticket}".encode("ascii")))
         scope = {
             "type": "http",
             "asgi": {"version": "3.0"},
@@ -131,6 +139,33 @@ class AuthRouteTests(unittest.TestCase):
             return {"type": "http.request", "body": body, "more_body": False}
 
         return Request(scope, receive)
+
+    @staticmethod
+    def _cookie(response, name: str) -> str:
+        prefix = name + "="
+        return next(
+            part.removeprefix(prefix)
+            for part in response.headers["set-cookie"].split("; ")
+            if part.startswith(prefix)
+        )
+
+    def _configure(self, password: str, origin: str | None = None):
+        setup = asyncio.run(
+            self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}, origin=origin))
+        )
+        enrollment = json.loads(setup.body)["enrollment"]
+        ticket = self._cookie(setup, "shimpz_admin_ticket")
+        confirmed = asyncio.run(
+            self.admin_app.admin_setup_totp(
+                self._request(
+                    "/api/admin/setup/totp",
+                    {"code": code(enrollment["secret"], int(time.time()))},
+                    origin=origin,
+                    ticket=ticket,
+                )
+            )
+        )
+        return setup, confirmed
 
     def test_retired_query_token_grants_no_session_or_api_access(self) -> None:
         async def serve_static(_request):
@@ -161,44 +196,89 @@ class AuthRouteTests(unittest.TestCase):
                 self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
             )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         self.assertIn("set-cookie", response.headers)
         self.assertTrue(self.admin_app.state.is_initialized())
-        to_thread.assert_awaited_once_with(self.admin_app._initialize_local_supervisor, password, None)
+        self.assertEqual(self.admin_app.state.authentication_state(), "enrollment-required")
+        self.assertTrue(
+            any(call.args[0] is self.admin_app.state.begin_supervisor_setup for call in to_thread.await_args_list)
+        )
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        self._configure(password)
         record = self.admin_app.state.get()
 
         with mock.patch.object(self.admin_app.auth.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
         to_thread.assert_awaited_once_with(
             self.admin_app.auth.verify_password,
             password,
             record,
         )
 
+    def test_login_degrades_to_totp_when_passkey_options_are_unavailable(self) -> None:
+        password = "violet otter lantern quartz 92"
+        self._configure(password, "http://localhost:7777")
+        with (
+            mock.patch.object(self.admin_app.state, "active_passkeys", return_value=[{"credential_id": "one"}]),
+            mock.patch.object(
+                self.admin_app._LOCAL_AUTH_CONTEXT.challenge_store,
+                "issue",
+                side_effect=self.admin_app.local_auth.passkeys.PasskeyUnavailableError("capacity reached"),
+            ),
+        ):
+            response = asyncio.run(
+                self.admin_app.login(
+                    self._request(
+                        "/api/login",
+                        {"password": password},
+                        origin="http://localhost:7777",
+                    )
+                )
+            )
+
+        self.assertEqual(json.loads(response.body), {"methods": ["totp"]})
+
+    def test_passkey_registration_capacity_is_a_conflict_not_server_error(self) -> None:
+        configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
+        session = self.admin_app.auth.issue_session(self.admin_app.state.get()["session_secret"], "totp")
+        request = self._request(
+            "/api/admin/passkeys/registration",
+            {},
+            origin="http://localhost:7777",
+            cookie=session,
+        )
+        unavailable = self.admin_app.local_auth.passkeys.PasskeyUnavailableError("maximum passkey count reached")
+
+        with (
+            mock.patch.object(self.admin_app.state, "passkeys_for_registration", side_effect=unavailable),
+            self.assertRaises(self.admin_app.HTTPException) as raised,
+        ):
+            asyncio.run(self.admin_app.local_passkey_registration_begin(request))
+
+        self.assertEqual(raised.exception.status_code, 409)
+
     def test_in_flight_login_returns_one_second_retry_without_consuming_a_rejection(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
-        self.admin_app._LOCAL_LOGIN_LIMITER.begin()
+        self._configure(password)
+        self.admin_app._LOCAL_AUTH_CONTEXT.limiter.begin()
         try:
             with self.assertRaises(self.admin_app.HTTPException) as raised:
                 asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
         finally:
-            self.admin_app._LOCAL_LOGIN_LIMITER.finish(rejected=None)
+            self.admin_app._LOCAL_AUTH_CONTEXT.limiter.finish(rejected=None)
 
         self.assertEqual(raised.exception.status_code, 429)
         self.assertEqual(raised.exception.headers, {"Retry-After": "1"})
         response = asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
 
     def test_external_https_origin_is_bound_only_after_correct_password(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        self._configure(password)
 
         wrong = self._request(
             "/api/login",
@@ -216,11 +296,23 @@ class AuthRouteTests(unittest.TestCase):
             origin="https://developer.example.test",
         )
         response = asyncio.run(self.admin_app.login(valid))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.assertIsNone(self.admin_app.state.browser_origin())
+        ticket = self._cookie(response, "shimpz_admin_ticket")
+        confirmed = asyncio.run(
+            self.admin_app.local_login_totp(
+                self._request(
+                    "/api/login/totp",
+                    {"code": code(self.admin_app.state.get()["totp"]["secret"], int(time.time()) + 30)},
+                    origin="https://developer.example.test",
+                    ticket=ticket,
+                )
+            )
+        )
         self.assertEqual(self.admin_app.state.browser_origin(), "https://developer.example.test")
-        self.assertIn("Secure", response.headers["set-cookie"])
+        self.assertIn("Secure", confirmed.headers["set-cookie"])
 
-        session_token = self.admin_app.auth.issue_session(self.admin_app.state.get()["session_secret"])
+        session_token = self.admin_app.auth.issue_session(self.admin_app.state.get()["session_secret"], "totp")
         admitted = asyncio.run(
             self.admin_app.session(
                 self._request("/api/session", origin="https://developer.example.test", cookie=session_token)
@@ -243,7 +335,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_external_origin_is_validated_before_password_verification(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        self._configure(password)
 
         with (
             self.assertRaises(self.admin_app.HTTPException) as caught,
@@ -262,15 +354,7 @@ class AuthRouteTests(unittest.TestCase):
         verify_password.assert_not_called()
 
     def test_first_setup_binds_its_external_https_origin(self) -> None:
-        response = asyncio.run(
-            self.admin_app.admin_setup(
-                self._request(
-                    "/api/admin/setup",
-                    {"password": "violet otter lantern quartz 92"},
-                    origin="https://first.example.test",
-                )
-            )
-        )
+        _setup, response = self._configure("violet otter lantern quartz 92", "https://first.example.test")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.admin_app.state.browser_origin(), "https://first.example.test")
@@ -289,7 +373,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        configure_supervisor(self.admin_app.state, password)
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
         expected = self.admin_app.team.TeamResponse(200, {"reset": True})
@@ -311,83 +395,9 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 403)
         blocked.assert_not_called()
 
-    def test_bootstrap_reset_skips_password_only_before_supervisor_setup(self) -> None:
-        request = self._request("/api/space/bootstrap", {}, method="DELETE")
-        expected = self.admin_app.team.TeamResponse(200, {"reset": True})
-        with mock.patch.object(
-            self.admin_app.team,
-            "bootstrap_reset_space",
-            return_value=expected,
-        ) as team_reset:
-            response = asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.body), {"reset": True})
-        self.assertEqual(response.headers["cache-control"], "no-store")
-        self.assertNotIn("set-cookie", response.headers)
-        team_reset.assert_called_once_with()
-
-        password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
-        with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
-            configured = asyncio.run(
-                self.admin_app.local_space_bootstrap_reset(self._request("/api/space/bootstrap", {}, method="DELETE"))
-            )
-        self.assertEqual(configured.status_code, 409)
-        self.assertEqual(
-            json.loads(configured.body),
-            {
-                "code": "supervisor-password-required",
-                "detail": "Supervisor password is configured",
-            },
-        )
-        blocked.assert_not_called()
-
-    def test_bootstrap_reset_rejects_nonempty_body_before_team_cleanup(self) -> None:
-        request = self._request("/api/space/bootstrap", {"unexpected": True}, method="DELETE")
-
-        with (
-            mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked,
-            self.assertRaises(self.admin_app.HTTPException) as caught,
-        ):
-            asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
-
-        self.assertEqual(caught.exception.status_code, 400)
-        self.assertEqual(caught.exception.detail, "request body must be an empty object")
-        blocked.assert_not_called()
-
-    def test_bootstrap_reset_fails_closed_while_setup_lock_is_held(self) -> None:
-        async def exercise():
-            await self.admin_app._ADMIN_SETUP_LOCK.acquire()
-            try:
-                return await self.admin_app.local_space_bootstrap_reset(
-                    self._request("/api/space/bootstrap", {}, method="DELETE")
-                )
-            finally:
-                self.admin_app._ADMIN_SETUP_LOCK.release()
-
-        with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
-            response = asyncio.run(exercise())
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(json.loads(response.body)["code"], "bootstrap-reset-busy")
-        blocked.assert_not_called()
-
-    def test_bootstrap_reset_releases_setup_lock_after_corrupt_admin_state(self) -> None:
-        self.admin_app.state.STORE_PATH.write_text("{", encoding="utf-8")
-        request = self._request("/api/space/bootstrap", {}, method="DELETE")
-
-        with (
-            mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked,
-            self.assertRaisesRegex(RuntimeError, "is corrupt"),
-        ):
-            asyncio.run(self.admin_app.local_space_bootstrap_reset(request))
-
-        blocked.assert_not_called()
-        self.assertFalse(self.admin_app._ADMIN_SETUP_LOCK.locked())
-
     def test_local_space_reset_bounds_team_request_failure(self) -> None:
         password = "violet otter lantern quartz 92"
-        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        configure_supervisor(self.admin_app.state, password)
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
 

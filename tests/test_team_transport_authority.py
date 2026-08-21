@@ -158,7 +158,8 @@ class TeamTransportAuthorityTest(unittest.TestCase):
                 "key_sha256": hashlib.sha256(api_key.encode()).hexdigest(),
             },
         )
-        self.assertEqual(claims["session_sha256"], hashlib.sha256(session.encode()).hexdigest())
+        self.assertEqual(claims["authority"], "session")
+        self.assertEqual(claims["authority_sha256"], hashlib.sha256(session.encode()).hexdigest())
         self.assertNotIn("assurance", claims)
         self.assertNotIn(api_key, json.dumps(claims))
 
@@ -189,6 +190,23 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         raw = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
         claims = contract.canonical_claims(json.loads(raw))
         self.assertEqual(claims["assurance"], assurance)
+
+    def test_host_reset_assertion_declares_its_non_session_authority(self) -> None:
+        capability_binding = "host-reset-v1:" + "d" * 64
+        with transport.supervisor_session(
+            capability_binding,
+            account=False,
+            local_identity=self.local_identity,
+            authority_kind="host-reset",
+        ):
+            transport._call("DELETE", "/v1/space")
+
+        claims = _claims(_Connection.requests[0])
+        self.assertEqual(claims["authority"], "host-reset")
+        self.assertEqual(
+            claims["authority_sha256"],
+            hashlib.sha256(capability_binding.encode()).hexdigest(),
+        )
 
     def test_local_file_assertion_binds_metadata_without_embedding_content(self) -> None:
         content = b"private Team file"

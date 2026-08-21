@@ -88,7 +88,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.store.unlink(missing_ok=True)
-        self.admin_app._LOCAL_LOGIN_LIMITER = self.admin_app.auth.LocalLoginLimiter()
+        self.admin_app._LOCAL_AUTH_CONTEXT = self.admin_app.local_auth.Context()
 
     def assert_status(self, expected: int, awaitable) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
@@ -143,12 +143,16 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
             self.assertIsNone(self.admin_app._oauth_request_mode(_request("/oauth")))
 
         with self.assertRaises(self.admin_app.HTTPException) as inexact:
-            self.admin_app._request_browser_origin(_request("/login", origin="https://EXAMPLE.test"))
+            self.admin_app.local_auth._request_origin(_request("/login", origin="https://EXAMPLE.test"))
         self.assertEqual(inexact.exception.status_code, 403)
-        self.assertIsNone(self.admin_app._request_browser_origin(_request("/login", origin="http://localhost:7777")))
+        self.assertEqual(
+            self.admin_app.local_auth._request_origin(_request("/login", origin="http://localhost:7777")),
+            "http://localhost:7777",
+        )
 
-        with mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value="unchanged")):
-            asyncio.run(self.admin_app._bind_browser_origin("https://developer.example.test"))
+        with mock.patch.object(self.admin_app.state, "bind_browser_origin", return_value="unchanged") as bind:
+            self.admin_app.local_auth._bind_origin("https://developer.example.test")
+        bind.assert_called_once_with("https://developer.example.test")
 
     def test_oauth_completion_mode_projects_only_the_admin_origin_decision(self) -> None:
         for callback_mode, completion_mode in (
@@ -200,7 +204,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
     def test_session_evidence_maps_corrupt_local_authority_and_hosted_denials(self) -> None:
         authority_error = self.admin_app.supervisor.SupervisorAuthorityError("invalid")
         with (
-            mock.patch.object(self.admin_app.state, "password_state", return_value="configured"),
+            mock.patch.object(self.admin_app.state, "authentication_state", return_value="configured"),
             mock.patch.object(self.admin_app.supervisor, "local_session_evidence", side_effect=authority_error),
             self.assertRaises(self.admin_app.SessionEvidenceUnavailableError),
         ):
@@ -239,9 +243,8 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
 
     def test_local_login_rejects_invalid_shape_and_missing_initialization(self) -> None:
-        request = _request("/api/login")
-        self.assert_status(400, self.admin_app._local_login(request, {"password": 1}))
-        self.assert_status(409, self.admin_app._local_login(request, {"password": "valid-shape"}))
+        self.assert_status(409, self.admin_app.login(_request("/api/login", {"password": "valid-shape"})))
+        self.assert_status(400, self.admin_app.admin_setup(_request("/api/admin/setup", {"password": 1})))
 
     def test_hosted_login_maps_every_upstream_authentication_failure(self) -> None:
         request = _request("/api/login")
@@ -308,9 +311,9 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(json.loads(response.body)["code"], code)
 
-        self.admin_app.state.set_password("violet otter lantern quartz 92")
+        self.admin_app.state.begin_supervisor_setup("violet otter lantern quartz 92")
         self.assert_status(
-            409,
+            401,
             self.admin_app.admin_setup(_request("/setup", {"password": "another correct password"})),
         )
         self.assert_status(400, self.admin_app.local_space_reset(_request("/space", {"password": 1})))

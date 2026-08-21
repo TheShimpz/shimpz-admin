@@ -1,15 +1,41 @@
 import { expect, test } from '@playwright/test';
 
+const visualStylePath = new URL('./visual-contract.css', import.meta.url).pathname;
 const visualContract = {
-  animations: 'disabled',
+  animations: 'allow',
   fullPage: true,
   maxDiffPixels: 100,
+  stylePath: visualStylePath,
 };
+
+function localSession(overrides = {}) {
+  return {
+    profile: 'local',
+    authenticated: false,
+    initialized: false,
+    authentication_state: 'uninitialized',
+    ...overrides,
+  };
+}
+
+function authenticatedLocalSession(overrides = {}) {
+  return localSession({
+    authenticated: true,
+    initialized: true,
+    authentication_state: 'configured',
+    authentication_method: 'webauthn',
+    origin_admitted: true,
+    oauth_completion_mode: null,
+    passkey_enrollment_available: true,
+    passkey_registered: true,
+    ...overrides,
+  });
+}
 
 test('renders the Local setup through the shared design system', async ({ page }) => {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: false, initialized: false }),
+    body: JSON.stringify(localSession()),
   }));
 
   await page.goto('/');
@@ -18,10 +44,200 @@ test('renders the Local setup through the shared design system', async ({ page }
   await expect(page.getByLabel(/password/i).first()).toBeVisible();
   await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
   await expect(page.getByText('At least 15 characters. This password stays on your machine.')).toBeVisible();
-  await expect(page.getByRole('button', { name: /create password/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page.locator('.shimpz-card')).toHaveCount(1);
   await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
+});
+
+test('completes mandatory authenticator enrollment before opening Admin', async ({ page }) => {
+  let authenticationState = 'uninitialized';
+  await page.route('**/api/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'Unavailable in the MFA contract.' }),
+  }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticationState === 'configured'
+      ? authenticatedLocalSession({
+        authentication_method: 'totp',
+        passkey_enrollment_available: false,
+        passkey_registered: false,
+      })
+      : localSession()),
+  }));
+  await page.route('**/api/admin/setup', async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      password: 'violet otter lantern quartz 92',
+    });
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        enrollment: {
+          secret: 'JBSWY3DPEHPK3PXP',
+          uri: 'otpauth://totp/Shimpz%3ASupervisor?secret=JBSWY3DPEHPK3PXP&issuer=Shimpz',
+        },
+      }),
+    });
+  });
+  await page.route('**/api/admin/setup/totp', async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({ code: '123456' });
+    authenticationState = 'configured';
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, method: 'totp' }) });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByLabel('Confirm password').fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Add an authenticator' })).toBeVisible();
+  await expect(page.getByAltText('QR code for the Shimpz Supervisor authenticator')).toHaveAttribute('src', /^data:image\/png;base64,/);
+  await expect(page.getByText('JBSWY3DPEHPK3PXP', { exact: true })).toBeVisible();
+  const codeInput = page.getByLabel('Six-digit code');
+  await codeInput.fill('123456');
+  await expect(codeInput).toHaveAttribute('pattern', '[0-9]{6}');
+  await expect.poll(() => codeInput.evaluate((input) => input.checkValidity())).toBe(true);
+  const enrollmentResponse = page.waitForResponse((response) => response.url().endsWith('/api/admin/setup/totp'));
+  await page.getByRole('button', { name: 'Verify and continue' }).click();
+  await enrollmentResponse;
+
+  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+});
+
+test('announces a rejected TOTP and returns focus to password entry', async ({ page }) => {
+  let ticketIssued = false;
+  await page.route('**/api/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'Unavailable in the MFA contract.' }),
+  }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
+  }));
+  await page.route('**/api/login', (route) => {
+    ticketIssued = true;
+    return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ methods: ['totp'] }) });
+  });
+  await page.route('**/api/login/totp', (route) => route.fulfill({
+    status: 401,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'invalid Supervisor code' }),
+  }));
+
+  await page.goto('/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  expect(ticketIssued).toBe(true);
+  await page.getByLabel('Six-digit code').fill('123456');
+  await page.getByRole('button', { name: 'Verify and continue' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('That code was not accepted');
+  await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+});
+
+test('registers and then uses a UV passkey through the browser ceremony', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'one real Chromium WebAuthn ceremony is sufficient');
+  const client = await page.context().newCDPSession(page);
+  await client.send('WebAuthn.enable');
+  await client.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  let sessionState = 'totp';
+  let credentialId = '';
+  let assertionReceived = false;
+  await page.route('**/api/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'Unavailable in the passkey contract.' }),
+  }));
+  await page.route('**/api/session', (route) => {
+    const body = sessionState === 'none'
+      ? localSession({ initialized: true, authentication_state: 'configured' })
+      : authenticatedLocalSession({
+        authentication_method: sessionState === 'totp' ? 'totp' : 'webauthn',
+        passkey_enrollment_available: true,
+        passkey_registered: sessionState === 'passkey',
+      });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.route('**/api/admin/passkeys/registration', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ options: {
+      attestation: 'none',
+      authenticatorSelection: {
+        requireResidentKey: false,
+        residentKey: 'preferred',
+        userVerification: 'required',
+      },
+      challenge: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY',
+      excludeCredentials: [],
+      pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+      rp: { id: 'localhost', name: 'Shimpz' },
+      timeout: 180000,
+      user: {
+        displayName: 'Supervisor',
+        id: 'MDEyMzQ1Njc4OWFiY2RlZg',
+        name: 'Supervisor',
+      },
+    } }),
+  }));
+  await page.route('**/api/admin/passkeys', async (route) => {
+    const credential = (await route.request().postDataJSON()).credential;
+    credentialId = credential.rawId;
+    expect(credential.response.attestationObject).toMatch(/^[A-Za-z0-9_-]+$/);
+    sessionState = 'passkey';
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ registered: true }) });
+  });
+  await page.route('**/api/login', (route) => route.fulfill({
+    status: 202,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      methods: ['totp', 'passkey'],
+      passkey_options: {
+        allowCredentials: [{ id: credentialId, type: 'public-key' }],
+        challenge: 'YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk',
+        rpId: 'localhost',
+        timeout: 180000,
+        userVerification: 'required',
+      },
+    }),
+  }));
+  await page.route('**/api/login/passkey', async (route) => {
+    const credential = (await route.request().postDataJSON()).credential;
+    expect(credential.rawId).toBe(credentialId);
+    expect(credential.response.signature).toMatch(/^[A-Za-z0-9_-]+$/);
+    assertionReceived = true;
+    sessionState = 'passkey';
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, method: 'passkey' }) });
+  });
+
+  await page.goto('http://localhost:4173/');
+  await expect(page.getByRole('heading', { name: 'Make future sign-ins easier' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create passkey' }).click();
+  await expect.poll(() => credentialId).not.toBe('');
+  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+
+  sessionState = 'none';
+  await page.goto('http://localhost:4173/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: 'Use a passkey' })).toBeVisible();
+  await page.getByRole('button', { name: 'Use a passkey' }).click();
+
+  await expect.poll(() => assertionReceived).toBe(true);
+  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+  await client.send('WebAuthn.disable');
 });
 
 test('renders bounded Local login feedback instead of the raw API error', async ({ page }) => {
@@ -31,7 +247,7 @@ test('renders bounded Local login feedback instead of the raw API error', async 
       profile: 'local',
       authenticated: false,
       initialized: true,
-      password_state: 'configured',
+      authentication_state: 'configured',
     }),
   }));
   await page.route('**/api/login', (route) => route.fulfill({
@@ -42,7 +258,7 @@ test('renders bounded Local login feedback instead of the raw API error', async 
   }));
 
   await page.goto('/');
-  await page.getByLabel('Password').fill('wrong password value');
+  await page.getByLabel('Password', { exact: true }).fill('wrong password value');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page.getByText('Too many attempts. Wait one minute and try again.')).toBeVisible();
@@ -56,7 +272,7 @@ test('renders the terminal recovery action for an unsupported password record', 
       profile: 'local',
       authenticated: false,
       initialized: true,
-      password_state: 'recovery-required',
+      authentication_state: 'recovery-required',
     }),
   }));
 
@@ -74,7 +290,7 @@ test('uses the compact locale control at 360 pixels', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 720 });
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: false, initialized: false }),
+    body: JSON.stringify(localSession()),
   }));
   await page.goto('/');
   await expect(page.locator('.locale-full')).toBeHidden();
@@ -91,7 +307,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('https://shimpz.com/**', (route) => route.fulfill({
     contentType: 'text/html',
@@ -105,6 +321,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page.getByText('Loading the Assistant Store…', { exact: true })).toBeVisible();
+  await page.addStyleTag({ path: visualStylePath });
   await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
 
   const localeTrigger = page.getByRole('button', { name: 'Language: English' });
@@ -126,7 +343,7 @@ test('shows the installed Admin version with the read-only Local release status'
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('**/api/platform-release', (route) => route.fulfill({
     contentType: 'application/json',
@@ -153,7 +370,7 @@ test('shows the installed Admin version when Local release status is temporarily
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
 
   await page.goto('/assistants/');
@@ -167,7 +384,7 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('**/api/platform-release', (route) => route.fulfill({
     contentType: 'application/json',
@@ -193,7 +410,7 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
@@ -337,7 +554,7 @@ test('keeps the Store destination guidance when no Team exists', async ({ page }
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: true, origin_admitted: true, oauth_completion_mode: 'automatic' }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',

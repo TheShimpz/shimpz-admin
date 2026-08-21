@@ -44,8 +44,10 @@ RUN groupadd -g 1000 admin && \
     useradd -u 1000 -g 1000 -G 10021 -M -s /usr/sbin/nologin admin
 
 WORKDIR /app/backend
-COPY backend/app.py backend/auth.py backend/browser.py backend/models.py backend/model_catalog.json backend/notifications.py \
+COPY backend/app.py backend/auth.py backend/browser.py backend/host_reset.py backend/local_auth.py backend/models.py \
+    backend/model_catalog.json backend/notifications.py \
     backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
+COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
 COPY backend/chat/human.py backend/chat/local.py backend/chat/payloads.py backend/chat/progress.py \
     backend/chat/socket.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
@@ -57,9 +59,10 @@ COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py ba
 COPY --from=ui /w/build /app/frontend/build
 
 # /data → named volume (admin.json 0600); the public verifier volume contains no private key.
-RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-supervisor && \
+RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-reset /run/shimpz-local-supervisor && \
     chown 1000:1000 /data && \
     chown 1000:1000 /run/shimpz-local-release && \
+    chown 1000:1000 /run/shimpz-local-reset && \
     chown root:shimpzsupervisor-key /run/shimpz-local-supervisor && \
     chmod 2770 /run/shimpz-local-supervisor
 ENV PATH="/opt/venv/bin:$PATH" \

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -12,13 +13,38 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 GOOD_PASSWORD = "violet otter lantern quartz 92"
 
-from admin_http import AdminHTTPServer, request, request_with_headers, session_cookie
+from admin_http import AdminHTTPServer, request, request_with_headers, session_cookie, ticket_cookie
+from mfa_helper import code
 
 sys.path.insert(0, str(BACKEND))
 import auth
 
 
 class AuthHTTPTests(unittest.TestCase):
+    @staticmethod
+    def _confirm_setup(port: int, enrollment: dict[str, object], ticket: str) -> str:
+        status, _payload, set_cookie = request(
+            port,
+            "POST",
+            "/api/admin/setup/totp",
+            {"code": code(enrollment["secret"], int(time.time()))},
+            session=f"shimpz_admin_ticket={ticket}",
+        )
+        session = session_cookie(set_cookie)
+        if status != 200 or session is None:
+            raise AssertionError("TOTP setup did not complete")
+        return session
+
+    @classmethod
+    def _setup(cls, port: int) -> tuple[str, dict[str, object]]:
+        status, payload, set_cookie = request(port, "POST", "/api/admin/setup", {"password": GOOD_PASSWORD})
+        ticket = ticket_cookie(set_cookie)
+        if status != 202 or not isinstance(payload, dict) or ticket is None:
+            raise AssertionError("TOTP setup did not start")
+        enrollment = payload["enrollment"]
+        session = cls._confirm_setup(port, enrollment, ticket)
+        return session, enrollment
+
     def test_real_http_lifecycle_persists_only_hardened_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -30,10 +56,7 @@ class AuthHTTPTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with AdminHTTPServer(root) as server:
-                self.assertEqual(
-                    request(server.port, "POST", "/api/admin/setup", {"password": GOOD_PASSWORD})[0],
-                    200,
-                )
+                self._setup(server.port)
                 for _ in range(4):
                     self.assertEqual(
                         request(server.port, "POST", "/api/login", {"password": "definitely wrong"})[0],
@@ -73,7 +96,7 @@ class AuthHTTPTests(unittest.TestCase):
                             "profile": "local",
                             "authenticated": False,
                             "initialized": True,
-                            "password_state": "recovery-required",
+                            "authentication_state": "recovery-required",
                             "features": {"teamCredentials": True},
                         },
                     ),
@@ -81,7 +104,6 @@ class AuthHTTPTests(unittest.TestCase):
                 for method, path, body in (
                     ("POST", "/api/login", {"password": GOOD_PASSWORD}),
                     ("POST", "/api/admin/setup", {"password": GOOD_PASSWORD}),
-                    ("DELETE", "/api/space/bootstrap", {}),
                     ("GET", "/api/model-providers", None),
                 ):
                     with self.subTest(path=path):
@@ -98,7 +120,7 @@ class AuthHTTPTests(unittest.TestCase):
                 "profile": "local",
                 "authenticated": False,
                 "initialized": False,
-                "password_state": "uninitialized",
+                "authentication_state": "uninitialized",
                 "features": {"teamCredentials": False},
             },
         )
@@ -111,19 +133,25 @@ class AuthHTTPTests(unittest.TestCase):
             "/api/admin/setup",
             {"password": GOOD_PASSWORD},
         )
-        session = session_cookie(set_cookie)
-        self.assertEqual((status, payload), (200, {"ok": True}))
-        self.assertIsNotNone(session)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+        ticket = ticket_cookie(set_cookie)
+        self.assertEqual(status, 202)
+        self.assertEqual(set(payload), {"enrollment"})
+        self.assertIsNotNone(ticket)
+        self.assertIsNone(session_cookie(set_cookie))
+        self.assertEqual(request(port, "GET", "/api/model-providers")[0], 401)
 
         self.assertEqual(store.stat().st_mode & 0o777, 0o600)
         disk = store.read_text(encoding="utf-8")
         self.assertNotIn(GOOD_PASSWORD, disk)
         record = json.loads(disk)
         self.assertTrue(record["password_verifier"].startswith("scrypt-v1$ln=14,r=8,p=5,dk=32$"))
+        self.assertEqual(record["totp"]["status"], "pending")
         self.assertNotIn("password_hash", record)
         self.assertNotIn("salt", record)
         self.assertTrue(record["session_secret"])
+
+        session = self._confirm_setup(port, payload["enrollment"], ticket)
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
 
         self.assertEqual(
             request(port, "POST", "/api/admin/setup", {"password": "another good password"})[0],
@@ -140,28 +168,45 @@ class AuthHTTPTests(unittest.TestCase):
             "/api/login",
             {"password": GOOD_PASSWORD},
         )
+        login_ticket = ticket_cookie(login_cookie)
+        self.assertEqual((login_status, login_payload), (202, {"methods": ["totp"]}))
+        self.assertIsNotNone(login_ticket)
+        self.assertIsNone(session_cookie(login_cookie))
+        login_status, login_payload, login_cookie = request(
+            port,
+            "POST",
+            "/api/login/totp",
+            {"code": code(record["totp"]["secret"], int(time.time()) + 30)},
+            session=f"shimpz_admin_ticket={login_ticket}",
+        )
         fresh_session = session_cookie(login_cookie)
-        self.assertEqual((login_status, login_payload), (200, {"ok": True}))
+        self.assertEqual((login_status, login_payload), (200, {"ok": True, "method": "totp"}))
         self.assertIsNotNone(fresh_session)
         self.assertEqual(request(port, "GET", "/api/model-providers", session=fresh_session)[0], 200)
 
+        self._assert_authenticated_session(port, fresh_session)
+
+        self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
+        expired = auth.issue_session(record["session_secret"], "totp", ttl=-10)
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=expired)[0], 401)
+        foreign = auth.issue_session(auth.new_secret(), "totp")
+        self.assertEqual(request(port, "GET", "/api/model-providers", session=foreign)[0], 401)
+        self.assertEqual(request(port, "GET", "/")[0], 200)
+
+    def _assert_authenticated_session(self, port: int, session: str) -> None:
         status, payload, _ = request(
             port,
             "POST",
             "/api/session",
-            session=fresh_session,
+            session=session,
             origin=f"http://127.0.0.1:{port}",
         )
         self.assertEqual(status, 200)
         self.assertIs(payload["origin_admitted"], True)
+        self.assertEqual(payload["authentication_method"], "totp")
+        self.assertIs(payload["passkey_enrollment_available"], False)
+        self.assertIs(payload["passkey_registered"], False)
         self.assertIsNone(payload["oauth_completion_mode"])
-
-        self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
-        expired = auth.issue_session(record["session_secret"], ttl=-10)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=expired)[0], 401)
-        foreign = auth.issue_session(auth.new_secret())
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=foreign)[0], 401)
-        self.assertEqual(request(port, "GET", "/")[0], 200)
 
 
 if __name__ == "__main__":

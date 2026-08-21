@@ -59,6 +59,17 @@ class PasswordVerifierTests(unittest.TestCase):
                 self.assertEqual(auth.password_policy(password), expected)
         self.assertIsNone(auth.password_policy(GOOD_PASSWORD))
 
+    def test_sessions_carry_only_signed_current_mfa_evidence(self) -> None:
+        secret = auth.new_secret()
+        token = auth.issue_session(secret, "totp")
+        evidence = auth.verify_session(secret, token)
+
+        self.assertEqual(evidence.method, "totp")
+        self.assertIsNone(auth.verify_session(secret, token.replace("pwd+totp", "pwd+webauthn")))
+        self.assertIsNone(auth.verify_session(secret, "v1:9999999999:nonce:" + "0" * 64))
+        with self.assertRaises(ValueError):
+            auth.issue_session(secret, "password")
+
 
 class LocalLoginLimiterTests(unittest.TestCase):
     def test_cancelled_attempt_retains_its_slot_until_the_worker_finishes(self) -> None:

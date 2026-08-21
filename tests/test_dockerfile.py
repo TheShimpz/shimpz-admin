@@ -53,6 +53,12 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         self.assertNotIn("curl", runtime)
         self.assertNotIn("/usr/local/bin/uv", runtime)
 
+    def test_runtime_keeps_one_process_for_memory_bound_mfa_ceremonies(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        command = dockerfile.split('CMD ["uvicorn"', 1)[1]
+
+        self.assertNotIn("--workers", command)
+
     def test_static_runtime_copy_contains_every_application_backend_module(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         runtime = dockerfile.split(" AS runtime\n", 1)[1]

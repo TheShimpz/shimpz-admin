@@ -8,10 +8,35 @@ const modelCatalog = JSON.parse(
 );
 
 const visualContract = {
-  animations: 'disabled',
+  animations: 'allow',
   fullPage: true,
   maxDiffPixels: 100,
+  stylePath: new URL('./visual-contract.css', import.meta.url).pathname,
 };
+
+function localSession(overrides = {}) {
+  return {
+    profile: 'local',
+    authenticated: false,
+    initialized: false,
+    authentication_state: 'uninitialized',
+    ...overrides,
+  };
+}
+
+function authenticatedLocalSession(overrides = {}) {
+  return localSession({
+    authenticated: true,
+    initialized: true,
+    authentication_state: 'configured',
+    authentication_method: 'webauthn',
+    origin_admitted: true,
+    oauth_completion_mode: null,
+    passkey_enrollment_available: true,
+    passkey_registered: true,
+    ...overrides,
+  });
+}
 
 async function expectVisuallyHidden(locator) {
   await expect(locator).toHaveClass(/visually-hidden/);
@@ -39,7 +64,7 @@ const localTeamResidues = [
 async function routeSetup(page) {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ profile: 'local', authenticated: false, initialized: false }),
+    body: JSON.stringify(localSession()),
   }));
 }
 
@@ -110,12 +135,7 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: oauthCompletionMode,
-    }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
@@ -1292,12 +1312,7 @@ test('keeps a first Store install ready while local display metadata catches up'
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    }),
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',

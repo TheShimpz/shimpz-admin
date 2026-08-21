@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
 
 import auth
+import host_reset
+import local_auth
 import models
 import notifications
 import platform_release
@@ -57,7 +59,7 @@ _AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
         record_get=state.get,
     )
 )
-_LOCAL_LOGIN_LIMITER = auth.LocalLoginLimiter()
+_LOCAL_AUTH_CONTEXT = local_auth.Context()
 TEAM_CREDENTIALS_ENABLED = (
     ADMIN_PROFILE == "local" and os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 )
@@ -78,7 +80,6 @@ OAUTH_ORIGINS = {
     "loopback": "http://127.0.0.1:7777",
     "hosted": "https://local.shimpz.com",
 }
-MIN_PASSWORD_LEN = auth.MIN_PASSWORD_CHARS
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
 MAX_ACCOUNT_USERNAME_CHARS = 32
@@ -96,9 +97,12 @@ OPEN_API = frozenset(
     | (
         {
             "/api/admin/setup",
+            "/api/admin/setup/totp",
+            "/api/login/totp",
+            "/api/login/passkey",
             "/api/oauth/cloudflare/start",
             "/api/oauth/cloudflare/callback",
-            "/api/space/bootstrap",
+            "/api/space/host",
         }
         if ADMIN_PROFILE == "local"
         else set()
@@ -199,11 +203,6 @@ def _materialize_local_supervisor() -> None:
     supervisor.materialize_public_key(state.local_supervisor())
 
 
-def _initialize_local_supervisor(password: str, browser_origin: str | None = None) -> None:
-    state.set_password(password, browser_origin)
-    _materialize_local_supervisor()
-
-
 def _allowed_browser_origins() -> frozenset[str]:
     origins = set(chat_socket.STATIC_ORIGINS)
     if ADMIN_PROFILE == "local" and (browser_origin := state.browser_origin()) is not None:
@@ -211,42 +210,24 @@ def _allowed_browser_origins() -> frozenset[str]:
     return frozenset(origins)
 
 
-def _request_browser_origin(request: Request) -> str | None:
-    raw_origin = request.headers.get("origin")
-    if raw_origin is None:
-        return None
-    origin = chat_ws_common.canonical_origin(raw_origin)
-    if origin is None or origin != raw_origin:
-        raise HTTPException(status_code=403, detail="request Origin must be one exact HTTPS address")
-    if origin in chat_socket.STATIC_ORIGINS:
-        return None
-    if not origin.startswith("https://"):
-        raise HTTPException(status_code=403, detail="external Admin addresses must use HTTPS")
-    return origin
-
-
-async def _bind_browser_origin(origin: str | None) -> None:
-    if origin is None:
-        return
-    transition = await asyncio.to_thread(state.bind_browser_origin, origin)
-    if transition != "unchanged":
-        log.info("Local Admin browser origin %s: %s", transition, origin)
-
-
 def _local_session_evidence(cookies) -> dict[str, object] | None:
-    if state.password_state() != auth.RECORD_STATE_CONFIGURED:
+    if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
         return None
     record = state.get()
+    session = auth.verify_session(
+        record.get("session_secret", ""),
+        cookies.get(COOKIE, ""),
+    )
     try:
-        return supervisor.local_session_evidence(
+        evidence = supervisor.local_session_evidence(
             record,
-            session_valid=auth.verify_session(
-                record.get("session_secret", ""),
-                cookies.get(COOKIE, ""),
-            ),
+            session_valid=session is not None,
         )
     except supervisor.SupervisorAuthorityError as exc:
         raise SessionEvidenceUnavailableError from exc
+    if evidence is not None and session is not None:
+        evidence["authentication_method"] = session.method
+    return evidence
 
 
 async def _session_evidence(cookies) -> dict[str, object] | None:
@@ -269,7 +250,7 @@ async def _session_ok(cookies) -> bool:
     return await _session_evidence(cookies) is not None
 
 
-def _team_session_scope(cookies):
+def _team_session_scope(cookies, *, authority_kind: str = "session"):
     token = cookies.get(COOKIE, "")
     if ADMIN_PROFILE == "hosted":
         return team.supervisor_session(token, account=True)
@@ -277,6 +258,7 @@ def _team_session_scope(cookies):
         token,
         account=False,
         local_identity=state.local_supervisor(),
+        authority_kind=authority_kind,
     )
 
 
@@ -300,7 +282,7 @@ async def _gate(request: Request, call_next):
     # Static SPA + assets (login form has no secret) and the open auth endpoints.
     if not path.startswith("/api/") or path in OPEN_API:
         response = await call_next(request)
-        if path in {"/api/session", "/api/space/bootstrap"}:
+        if path in {"/api/session", "/api/space/host"}:
             response.headers["Cache-Control"] = "no-store"
         if path == "/api/session":
             response.headers["Vary"] = "Origin"
@@ -330,13 +312,13 @@ async def _gate(request: Request, call_next):
 async def session(request: Request):
     if ADMIN_PROFILE == "local":
         try:
-            local_password_state = state.password_state()
+            local_authentication_state = state.authentication_state()
         except auth.PasswordRecordError:
             return {
                 "profile": "local",
                 "authenticated": False,
                 "initialized": True,
-                "password_state": auth.RECORD_STATE_RECOVERY_REQUIRED,
+                "authentication_state": auth.RECORD_STATE_RECOVERY_REQUIRED,
                 "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
             }
     evidence = await _session_evidence(request.cookies)
@@ -346,57 +328,21 @@ async def session(request: Request):
         "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
     }
     if ADMIN_PROFILE == "local":
-        response["initialized"] = local_password_state == auth.RECORD_STATE_CONFIGURED
-        response["password_state"] = local_password_state
+        response["initialized"] = local_authentication_state != auth.RECORD_STATE_UNINITIALIZED
+        response["authentication_state"] = local_authentication_state
         if evidence is not None:
             origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
             origin_admitted = origin is not None and origin in _allowed_browser_origins()
             response["origin_admitted"] = origin_admitted
+            response["authentication_method"] = evidence["authentication_method"]
+            response["passkey_enrollment_available"] = local_auth.passkey_enrollment_available(origin)
+            response["passkey_registered"] = local_auth.passkey_registered(origin)
             if origin_admitted:
                 completion_mode = browser.oauth_completion_mode(request, _local_oauth_authorization_mode)
                 response["oauth_completion_mode"] = completion_mode
     else:
         response["account_id"] = evidence.get("account_id") if evidence is not None else None
     return response
-
-
-async def _local_login(request: Request, payload: dict) -> JSONResponse:
-    if set(payload) != {"password"} or not isinstance(payload["password"], str):
-        raise HTTPException(status_code=400, detail="request body must contain only password")
-    password = payload["password"]
-    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
-        raise HTTPException(status_code=400, detail="invalid Supervisor credentials")
-    if not state.is_initialized():
-        raise HTTPException(status_code=409, detail="no admin password set yet — create one first")
-    browser_origin = _request_browser_origin(request)
-    rec = state.get()
-    try:
-        password_ok, lock_seconds = await auth.attempt_login(
-            password,
-            rec,
-            _LOCAL_LOGIN_LIMITER,
-        )
-    except auth.LoginRateLimitedError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail="too many login attempts",
-            headers={"Retry-After": str(exc.retry_after)},
-        ) from None
-    if lock_seconds:
-        log.info("login locked after repeated password rejection")
-        raise HTTPException(
-            status_code=429,
-            detail="too many login attempts",
-            headers={"Retry-After": str(lock_seconds)},
-        )
-    if not password_ok:
-        log.info("login failed")  # never the password
-        raise HTTPException(status_code=401, detail="wrong password")
-    await _bind_browser_origin(browser_origin)
-    resp = JSONResponse({"ok": True})
-    _set_session(resp, auth.issue_session(rec["session_secret"]), browser_origin)
-    log.info("login ok")
-    return resp
 
 
 async def _hosted_login(request: Request, payload: dict) -> JSONResponse:
@@ -437,9 +383,9 @@ async def _hosted_login(request: Request, payload: dict) -> JSONResponse:
 
 @app.post("/api/login")
 async def login(request: Request):
-    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
     if ADMIN_PROFILE == "local":
-        return await _local_login(request, payload)
+        return await local_auth.login(request, _LOCAL_AUTH_CONTEXT)
+    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
     return await _hosted_login(request, payload)
 
 
@@ -463,49 +409,63 @@ async def logout(request: Request):
 
 
 async def admin_setup(request: Request):
-    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
-    if set(payload) != {"password"} or not isinstance(payload["password"], str):
-        raise HTTPException(status_code=400, detail="request body must contain only password")
-    browser_origin = _request_browser_origin(request)
     async with _ADMIN_SETUP_LOCK:
-        if state.is_initialized():
-            raise HTTPException(status_code=409, detail="admin password already set")
-        password = payload["password"]
-        violation = auth.password_policy(password)
-        if violation is not None:
-            details = {
-                "password-too-short": f"password must be at least {MIN_PASSWORD_LEN} characters",
-                "password-too-long": "password is too long",
-                "password-blocklisted": "choose a password that is not commonly used or expected",
-            }
-            return JSONResponse(
-                {"code": violation, "detail": details[violation]},
-                status_code=400,
-            )
-        await asyncio.to_thread(_initialize_local_supervisor, password, browser_origin)
-        if browser_origin is not None:
-            log.info("Local Admin browser origin learned: %s", browser_origin)
-    resp = JSONResponse({"ok": True})
-    _set_session(resp, auth.issue_session(state.get()["session_secret"]), browser_origin)
-    log.info("admin password created")
-    return resp
+        return await local_auth.setup(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def admin_setup_totp(request: Request):
+    async with _ADMIN_SETUP_LOCK:
+        return await local_auth.confirm_setup(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def local_login_totp(request: Request):
+    return await local_auth.confirm_login_totp(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def local_login_passkey(request: Request):
+    return await local_auth.confirm_login_passkey(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def local_passkey_registration_begin(request: Request):
+    return await local_auth.begin_passkey_registration(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def local_passkey_registration_complete(request: Request):
+    return await local_auth.complete_passkey_registration(request, _LOCAL_AUTH_CONTEXT)
 
 
 if ADMIN_PROFILE == "local":
     app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
+    app.add_api_route("/api/admin/setup/totp", admin_setup_totp, methods=["POST"])
+    app.add_api_route("/api/login/totp", local_login_totp, methods=["POST"])
+    app.add_api_route("/api/login/passkey", local_login_passkey, methods=["POST"])
+    app.add_api_route("/api/admin/passkeys/registration", local_passkey_registration_begin, methods=["POST"])
+    app.add_api_route("/api/admin/passkeys", local_passkey_registration_complete, methods=["POST"])
 
 
-async def local_space_bootstrap_reset(request: Request):
-    return await space_reset.bootstrap(
+async def _host_reset_password(password: object) -> None:
+    await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
+
+
+def _established_host_reset(capability_digest: str) -> JSONResponse:
+    binding = f"host-reset-v1:{capability_digest}"
+    with _team_session_scope({COOKIE: binding}, authority_kind="host-reset"):
+        return _team_response(team.reset_space)
+
+
+async def local_space_host_reset(request: Request):
+    return await host_reset.reset(
         request,
         setup_lock=_ADMIN_SETUP_LOCK,
         read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
-        team_response=_team_response,
+        verify_password=_host_reset_password,
+        bootstrap_reset=lambda: _team_response(team.bootstrap_reset_space),
+        established_reset=_established_host_reset,
     )
 
 
 if ADMIN_PROFILE == "local":
-    app.add_api_route("/api/space/bootstrap", local_space_bootstrap_reset, methods=["DELETE"])
+    app.add_api_route("/api/space/host", local_space_host_reset, methods=["DELETE"])
 
 
 async def local_space_reset(request: Request):

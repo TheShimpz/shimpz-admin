@@ -13,10 +13,12 @@ import time
 import unicodedata
 from collections.abc import Callable, Mapping
 from contextlib import suppress
+from dataclasses import dataclass
 
 MIN_PASSWORD_CHARS = 15
 MAX_PASSWORD_CHARS = 4 * 1024
 RECORD_STATE_CONFIGURED = "configured"
+RECORD_STATE_ENROLLMENT_REQUIRED = "enrollment-required"
 RECORD_STATE_RECOVERY_REQUIRED = "recovery-required"
 RECORD_STATE_UNINITIALIZED = "uninitialized"
 
@@ -58,7 +60,8 @@ LOGIN_FAILURE_LIMIT = 5
 LOGIN_LOCK_SECONDS = 60
 
 TTL = 7 * 24 * 3600
-_SESSION_SCHEME = "v1"
+_SESSION_SCHEME = "v2"
+_SESSION_METHODS = frozenset({"totp", "webauthn"})
 
 
 class PasswordRecordError(RuntimeError):
@@ -71,6 +74,14 @@ class LoginRateLimitedError(RuntimeError):
     def __init__(self, retry_after: int) -> None:
         super().__init__("too many login attempts")
         self.retry_after = retry_after
+
+
+@dataclass(frozen=True, slots=True)
+class SessionEvidence:
+    """Signed Local session evidence for one completed MFA ceremony."""
+
+    expires_at: int
+    method: str
 
 
 class LocalLoginLimiter:
@@ -207,7 +218,7 @@ def _password_material(record: object) -> tuple[bytes, bytes] | None:
 
 
 def password_state(record: object) -> str:
-    """Return ``uninitialized`` or ``configured``; reject every other record shape."""
+    """Return whether the strict password verifier exists, independent of MFA enrollment."""
     if _password_material(record) is None:
         return RECORD_STATE_UNINITIALIZED
     return RECORD_STATE_CONFIGURED
@@ -224,26 +235,41 @@ def verify_password(password: str, record: object) -> bool:
     return hmac.compare_digest(_derive(password, salt), expected)
 
 
-def issue_session(secret_hex: str, ttl: int = TTL) -> str:
-    """Mint a signed Local session token valid for ``ttl`` seconds."""
+def issue_session(secret_hex: str, method: str, ttl: int = TTL) -> str:
+    """Mint a signed Local MFA session token valid for ``ttl`` seconds."""
+    if method not in _SESSION_METHODS:
+        raise ValueError("invalid Local session authentication method")
     exp = int(time.time()) + int(ttl)
-    body = f"{_SESSION_SCHEME}:{exp}:{secrets.token_hex(8)}"
+    body = f"{_SESSION_SCHEME}:{exp}:{secrets.token_hex(8)}:pwd+{method}"
     sig = hmac.new(bytes.fromhex(secret_hex), body.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{body}:{sig}"
 
 
-def verify_session(secret_hex: str, token: str) -> bool:
-    """Return whether a Local session token is authentic and unexpired."""
-    if not secret_hex or not token:
-        return False
+def _session_parts(token: str) -> tuple[list[str], str] | None:
     parts = token.split(":")
-    if len(parts) != 4 or parts[0] != _SESSION_SCHEME:
-        return False
-    body = ":".join(parts[:3])
-    expected = hmac.new(bytes.fromhex(secret_hex), body.encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(parts[3], expected):
-        return False
+    if len(parts) != 5 or parts[0] != _SESSION_SCHEME or not parts[3].startswith("pwd+"):
+        return None
+    method = parts[3].removeprefix("pwd+")
+    return (parts, method) if method in _SESSION_METHODS else None
+
+
+def verify_session(secret_hex: str, token: str) -> SessionEvidence | None:
+    """Return structured MFA evidence for an authentic, unexpired Local session."""
+    parsed = _session_parts(token) if secret_hex and token else None
+    if parsed is None:
+        return None
+    parts, method = parsed
+    body = ":".join(parts[:4])
     try:
-        return int(parts[1]) > time.time()
+        expected = hmac.new(bytes.fromhex(secret_hex), body.encode("utf-8"), hashlib.sha256).hexdigest()
     except ValueError:
-        return False
+        return None
+    if not hmac.compare_digest(parts[4], expected):
+        return None
+    try:
+        expires_at = int(parts[1])
+    except ValueError:
+        return None
+    if expires_at <= time.time():
+        return None
+    return SessionEvidence(expires_at, method)

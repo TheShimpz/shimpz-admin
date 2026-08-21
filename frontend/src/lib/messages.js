@@ -1,5 +1,58 @@
 import { humanRequestMessages } from './humanRequestMessages.js';
 
+const mfaMessages = {
+  en: {
+    continue: 'Continue',
+    resumeMfaTitle: 'Complete multifactor setup',
+    resumeMfaLead: 'Enter your Supervisor password to resume secure authenticator setup.',
+    totpSetupTitle: 'Add an authenticator',
+    totpSetupLead: 'Scan this code with your authenticator app, then enter the current six-digit code.',
+    totpQrAlt: 'QR code for the Shimpz Supervisor authenticator',
+    totpManual: 'Can’t scan it? Enter this setup key manually:',
+    totpCode: 'Six-digit code',
+    totpLoginTitle: 'Verify it’s you',
+    totpLoginLead: 'Enter the current code from your authenticator app.',
+    verify: 'Verify and continue',
+    or: 'or',
+    usePasskey: 'Use a passkey',
+    badCodeRetry: 'That code was not accepted. Enter your password to try again.',
+    passkeySetupTitle: 'Make future sign-ins easier',
+    passkeySetupLead: 'Add a passkey protected by your device. Your authenticator remains available as a recovery sign-in method.',
+    createPasskey: 'Create passkey',
+    passkeyLater: 'Maybe later',
+    passkeyWaiting: 'Waiting for your device…',
+    passkeyCanceled: 'The passkey request was canceled or timed out.',
+    passkeyRegistered: 'That passkey is already registered.',
+    passkeyFailed: 'Passkey verification could not be completed. Try again or use your authenticator.',
+    passkeyRetry: 'The passkey was not accepted. Enter your password to try again.',
+  },
+  pt: {
+    continue: 'Continuar',
+    resumeMfaTitle: 'Conclua a configuração multifator',
+    resumeMfaLead: 'Digite sua senha de Supervisor para retomar a configuração segura do autenticador.',
+    totpSetupTitle: 'Adicione um autenticador',
+    totpSetupLead: 'Leia este código com seu aplicativo autenticador e digite o código atual de seis dígitos.',
+    totpQrAlt: 'QR code do autenticador do Supervisor Shimpz',
+    totpManual: 'Não consegue ler? Digite esta chave de configuração manualmente:',
+    totpCode: 'Código de seis dígitos',
+    totpLoginTitle: 'Confirme que é você',
+    totpLoginLead: 'Digite o código atual do seu aplicativo autenticador.',
+    verify: 'Verificar e continuar',
+    or: 'ou',
+    usePasskey: 'Usar uma passkey',
+    badCodeRetry: 'O código não foi aceito. Digite sua senha para tentar novamente.',
+    passkeySetupTitle: 'Facilite os próximos acessos',
+    passkeySetupLead: 'Adicione uma passkey protegida pelo seu dispositivo. Seu autenticador continuará disponível como método de recuperação.',
+    createPasskey: 'Criar passkey',
+    passkeyLater: 'Agora não',
+    passkeyWaiting: 'Aguardando seu dispositivo…',
+    passkeyCanceled: 'A solicitação da passkey foi cancelada ou expirou.',
+    passkeyRegistered: 'Essa passkey já está cadastrada.',
+    passkeyFailed: 'Não foi possível verificar a passkey. Tente novamente ou use o autenticador.',
+    passkeyRetry: 'A passkey não foi aceita. Digite sua senha para tentar novamente.',
+  },
+};
+
 // Admin UI copy, one object per locale. `en` is the canonical baseline that every other locale
 // falls back to key-by-key (see i18n.js).
 //
@@ -8,15 +61,16 @@ import { humanRequestMessages } from './humanRequestMessages.js';
 export const messages = {
   en: {
     auth: {
+      ...mfaMessages.en,
       checking: 'Checking…',
       heroTitle: 'Your world, one Team at a time.',
       heroLead: 'A calm control plane for isolated Assistants, shared Services, and the ideas you want to ship next.',
       firstRun: 'Space // first run',
       returning: 'Space // access',
       setupTitle: 'Create your admin password',
-      setupLead: 'Set a password to protect this panel. You’ll use it every time from now on.',
+      setupLead: 'Create your Supervisor password, then add an authenticator as the required second factor.',
       loginTitle: 'Admin sign-in',
-      loginLead: 'Enter your admin password to manage Shimpz.',
+      loginLead: 'Start with your Supervisor password, then use your authenticator or a passkey.',
       originTitle: 'Authorize this Admin address',
       originLead: 'Confirm your admin password once to trust this HTTPS address for secure chat.',
       hostedLoginTitle: 'Supervisor sign-in',
@@ -345,15 +399,16 @@ export const messages = {
 
   pt: {
     auth: {
+      ...mfaMessages.pt,
       checking: 'Verificando…',
       heroTitle: 'Seu mundo, um Time de cada vez.',
       heroLead: 'Um plano de controle confortável para Assistants isolados, Services compartilhados e as próximas ideias que você quer lançar.',
       firstRun: 'Space // primeira execução',
       returning: 'Space // acesso',
       setupTitle: 'Crie sua senha de administrador',
-      setupLead: 'Defina uma senha para proteger este painel. Você vai usá-la sempre a partir de agora.',
+      setupLead: 'Crie sua senha de Supervisor e depois adicione um autenticador como segundo fator obrigatório.',
       loginTitle: 'Entrar no admin',
-      loginLead: 'Digite sua senha de administrador para gerenciar o Shimpz.',
+      loginLead: 'Comece com sua senha de Supervisor e depois use o autenticador ou uma passkey.',
       originTitle: 'Autorize este endereço do Admin',
       originLead: 'Confirme sua senha de administrador uma vez para confiar neste endereço HTTPS para o chat seguro.',
       hostedLoginTitle: 'Entrar como Supervisor',
@@ -682,15 +737,16 @@ export const messages = {
 
   es: {
     auth: {
+      ...mfaMessages.en,
       checking: 'Comprobando…',
       heroTitle: 'Tu mundo, un Equipo a la vez.',
       heroLead: 'Un plano de control sereno para Assistants aislados, Services compartidos y las próximas ideas que quieras lanzar.',
       firstRun: 'Space // primera ejecución',
       returning: 'Space // acceso',
       setupTitle: 'Crea tu contraseña de administrador',
-      setupLead: 'Establece una contraseña para proteger este panel. La usarás siempre a partir de ahora.',
+      setupLead: 'Crea tu contraseña de Supervisor y añade un autenticador como segundo factor obligatorio.',
       loginTitle: 'Acceso de administrador',
-      loginLead: 'Introduce tu contraseña de administrador para gestionar Shimpz.',
+      loginLead: 'Empieza con tu contraseña de Supervisor y luego usa el autenticador o una passkey.',
       originTitle: 'Autoriza esta dirección del Admin',
       originLead: 'Confirma una vez tu contraseña de administrador para confiar en esta dirección HTTPS para el chat seguro.',
       hostedLoginTitle: 'Acceso de Supervisor',
@@ -1019,15 +1075,16 @@ export const messages = {
 
   zh: {
     auth: {
+      ...mfaMessages.en,
       checking: '检查中…',
       heroTitle: '你的世界，一次一个团队。',
       heroLead: '一个从容的控制平面，用于隔离 Assistants、共享 Services，以及你准备发布的下一个创意。',
       firstRun: 'Space // 首次运行',
       returning: 'Space // 访问',
       setupTitle: '创建管理员密码',
-      setupLead: '设置一个密码来保护此面板。以后每次都将使用它。',
+      setupLead: '创建 Supervisor 密码，然后添加身份验证器作为必需的第二因素。',
       loginTitle: '管理员登录',
-      loginLead: '输入管理员密码以管理 Shimpz。',
+      loginLead: '先输入 Supervisor 密码，再使用身份验证器或通行密钥。',
       originTitle: '授权此 Admin 地址',
       originLead: '确认一次管理员密码，以信任此 HTTPS 地址用于安全聊天。',
       hostedLoginTitle: 'Supervisor 登录',
@@ -1356,15 +1413,16 @@ export const messages = {
 
   fr: {
     auth: {
+      ...mfaMessages.en,
       checking: 'Vérification…',
       heroTitle: 'Votre monde, une Équipe à la fois.',
       heroLead: 'Un plan de contrôle serein pour des Assistants isolés, des Services partagés et les prochaines idées que vous souhaitez lancer.',
       firstRun: 'Space // premier lancement',
       returning: 'Space // accès',
       setupTitle: 'Créez votre mot de passe administrateur',
-      setupLead: 'Définissez un mot de passe pour protéger ce panneau. Vous l’utiliserez à chaque fois désormais.',
+      setupLead: 'Créez votre mot de passe Supervisor, puis ajoutez un authentificateur comme second facteur obligatoire.',
       loginTitle: 'Connexion administrateur',
-      loginLead: 'Saisissez votre mot de passe administrateur pour gérer Shimpz.',
+      loginLead: 'Commencez par votre mot de passe Supervisor, puis utilisez l’authentificateur ou une passkey.',
       originTitle: 'Autoriser cette adresse Admin',
       originLead: 'Confirmez une fois votre mot de passe administrateur pour approuver cette adresse HTTPS pour le chat sécurisé.',
       hostedLoginTitle: 'Connexion Supervisor',
@@ -1693,15 +1751,16 @@ export const messages = {
 
   de: {
     auth: {
+      ...mfaMessages.en,
       checking: 'Wird geprüft…',
       heroTitle: 'Ihre Welt, ein Team nach dem anderen.',
       heroLead: 'Eine ruhige Steuerzentrale für isolierte Assistants, gemeinsame Services und die nächsten Ideen, die Sie veröffentlichen möchten.',
       firstRun: 'Space // erster Start',
       returning: 'Space // Zugang',
       setupTitle: 'Erstellen Sie Ihr Admin-Passwort',
-      setupLead: 'Legen Sie ein Passwort fest, um dieses Panel zu schützen. Sie verwenden es ab jetzt jedes Mal.',
+      setupLead: 'Erstellen Sie Ihr Supervisor-Passwort und fügen Sie danach einen Authenticator als erforderlichen zweiten Faktor hinzu.',
       loginTitle: 'Admin-Anmeldung',
-      loginLead: 'Geben Sie Ihr Admin-Passwort ein, um Shimpz zu verwalten.',
+      loginLead: 'Beginnen Sie mit Ihrem Supervisor-Passwort und verwenden Sie danach den Authenticator oder einen Passkey.',
       originTitle: 'Diese Admin-Adresse autorisieren',
       originLead: 'Bestätigen Sie einmal Ihr Admin-Passwort, um dieser HTTPS-Adresse für den sicheren Chat zu vertrauen.',
       hostedLoginTitle: 'Supervisor-Anmeldung',
@@ -2030,15 +2089,16 @@ export const messages = {
 
   ja: {
     auth: {
+      ...mfaMessages.en,
       checking: '確認中…',
       heroTitle: 'あなたの世界を、チームひとつずつ。',
       heroLead: '分離された Assistants、共有 Services、そして次に届けたいアイデアのための、落ち着いて使えるコントロールプレーンです。',
       firstRun: 'Space // 初回起動',
       returning: 'Space // アクセス',
       setupTitle: '管理者パスワードを作成',
-      setupLead: 'このパネルを保護するパスワードを設定してください。今後は毎回これを使用します。',
+      setupLead: 'Supervisor パスワードを作成し、必須の第2要素として認証アプリを追加します。',
       loginTitle: '管理者ログイン',
-      loginLead: 'Shimpz を管理するには管理者パスワードを入力してください。',
+      loginLead: 'Supervisor パスワードを入力し、認証アプリまたはパスキーを使用します。',
       originTitle: 'この Admin アドレスを承認',
       originLead: '安全なチャットでこの HTTPS アドレスを信頼するため、管理者パスワードを一度確認してください。',
       hostedLoginTitle: 'Supervisor ログイン',
@@ -2367,15 +2427,16 @@ export const messages = {
 
   ar: {
     auth: {
+      ...mfaMessages.en,
       checking: 'جارٍ التحقق…',
       heroTitle: 'عالمك، فريقًا تلو الآخر.',
       heroLead: 'مستوى تحكّم هادئ لـ Assistants المعزولة وServices المشتركة والأفكار التالية التي تريد إطلاقها.',
       firstRun: 'Space // التشغيل الأول',
       returning: 'Space // الدخول',
       setupTitle: 'أنشئ كلمة مرور المشرف',
-      setupLead: 'عيّن كلمة مرور لحماية هذه اللوحة. ستستخدمها في كل مرة من الآن فصاعدًا.',
+      setupLead: 'أنشئ كلمة مرور Supervisor، ثم أضف تطبيق مصادقة كعامل ثانٍ إلزامي.',
       loginTitle: 'تسجيل دخول المشرف',
-      loginLead: 'أدخل كلمة مرور المشرف لإدارة Shimpz.',
+      loginLead: 'ابدأ بكلمة مرور Supervisor، ثم استخدم تطبيق المصادقة أو مفتاح مرور.',
       originTitle: 'تفويض عنوان Admin هذا',
       originLead: 'أكّد كلمة مرور المشرف مرة واحدة للوثوق بعنوان HTTPS هذا للدردشة الآمنة.',
       hostedLoginTitle: 'تسجيل دخول Supervisor',

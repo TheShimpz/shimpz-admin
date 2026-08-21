@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from chat_socket_fixtures import CHALLENGE_ID, human_challenge
+from mfa_helper import configure_supervisor
 from test_chat_socket import _Socket
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,9 +47,8 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.state.set_password("violet otter lantern quartz 92")
-        record = self.admin_app.state.get()
-        self.token = self.admin_app.auth.issue_session(record["session_secret"])
+        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
+        self.token = self.admin_app.auth.issue_session(secret, "totp")
         self.auth_clock = [100.0]
         self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalPasswordAuthority(
             partial(

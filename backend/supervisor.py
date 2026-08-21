@@ -228,9 +228,10 @@ def _segment(raw: bytes) -> str:
 
 def sign_request(
     identity: LocalIdentity,
-    session_token: str,
+    authority_secret: str,
     *,
     request: RequestBinding,
+    authority_kind: str = "session",
     now: int | None = None,
 ) -> str:
     """Sign one canonical, short-lived assertion for one exact Team request."""
@@ -239,7 +240,8 @@ def sign_request(
         "v": 1,
         "aud": contract.ASSERTION_AUDIENCE,
         "sub": identity.supervisor_id,
-        "session_sha256": hashlib.sha256(session_token.encode("ascii")).hexdigest(),
+        "authority": authority_kind,
+        "authority_sha256": hashlib.sha256(authority_secret.encode("ascii")).hexdigest(),
         "jti": secrets.token_hex(16),
         "iat": issued_at,
         "exp": issued_at + contract.ASSERTION_MAX_TTL_SECONDS,

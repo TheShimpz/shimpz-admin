@@ -77,7 +77,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
         ):
             pass
 
-        reset = transport._SUPERVISOR_SESSION.set(transport._SupervisorSession("session", False, None))
+        reset = transport._SUPERVISOR_SESSION.set(transport._SupervisorSession("session", False, None, "session"))
         try:
             with self.assertRaises(supervisor.SupervisorAuthorityError):
                 transport._local_assertion(

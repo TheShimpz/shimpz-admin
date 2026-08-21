@@ -40,6 +40,7 @@ class _SupervisorSession:
     value: str
     account: bool
     local_identity: local_supervisor.LocalIdentity | None
+    authority_kind: str
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -91,6 +92,7 @@ def supervisor_session(
     *,
     account: bool,
     local_identity: local_supervisor.LocalIdentity | None = None,
+    authority_kind: str = "session",
 ):
     """Bind one already-validated human session to downstream Team calls in this request."""
     if (
@@ -102,8 +104,10 @@ def supervisor_session(
         raise TeamRequestError("Supervisor session is unavailable")
     if type(account) is not bool:
         raise TeamRequestError("Supervisor session kind is invalid")
+    if authority_kind not in {"session", "host-reset"}:
+        raise TeamRequestError("Supervisor authority kind is invalid")
     if account:
-        if local_identity is not None:
+        if local_identity is not None or authority_kind != "session":
             raise TeamRequestError("Hosted Supervisor session cannot carry a Local identity")
     else:
         try:
@@ -116,7 +120,7 @@ def supervisor_session(
         except (AttributeError, local_supervisor.SupervisorAuthorityError) as exc:
             raise TeamRequestError("Local Supervisor identity is unavailable") from exc
         local_identity = validated
-    reset = _SUPERVISOR_SESSION.set(_SupervisorSession(value, account, local_identity))
+    reset = _SUPERVISOR_SESSION.set(_SupervisorSession(value, account, local_identity, authority_kind))
     try:
         yield
     finally:
@@ -160,6 +164,7 @@ def _local_assertion(
             model=local_supervisor.model_binding(bindings.model_credential),
             assurance=bindings.human_assurance,
         ),
+        authority_kind=binding.authority_kind,
     )
 
 

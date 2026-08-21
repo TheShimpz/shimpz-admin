@@ -12,6 +12,30 @@ const visualContract = {
   maxDiffPixels: 100,
 };
 
+function localSession(overrides = {}) {
+  return {
+    profile: 'local',
+    authenticated: false,
+    initialized: false,
+    authentication_state: 'uninitialized',
+    ...overrides,
+  };
+}
+
+function authenticatedLocalSession(overrides = {}) {
+  return localSession({
+    authenticated: true,
+    initialized: true,
+    authentication_state: 'configured',
+    authentication_method: 'webauthn',
+    origin_admitted: true,
+    oauth_completion_mode: null,
+    passkey_enrollment_available: true,
+    passkey_registered: true,
+    ...overrides,
+  });
+}
+
 function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
@@ -52,12 +76,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
     503,
   ));
   await routeSession(page, {
-    body: {
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    },
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
   await page.route('**/api/teams', async (route) => {
     await teamGate.promise;
@@ -91,7 +110,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
 test('shows only the centered animated Shimpz mark while the session is unresolved', async ({ page }) => {
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
-    body: { profile: 'local', authenticated: false, initialized: false },
+    body: localSession(),
   }, sessionGate);
 
   await page.goto('/');
@@ -205,13 +224,13 @@ test('shows only the centered animated Shimpz mark while the session is unresolv
   await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
   sessionGate.resolve();
   await expect(boot).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Create password' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
 });
 
 test('moves all six Shimpz letters vertically in exact counterphase', async ({ page }) => {
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
-    body: { profile: 'local', authenticated: false, initialized: false },
+    body: localSession(),
   }, sessionGate);
 
   await page.goto('/');
@@ -313,12 +332,7 @@ test('releases to the empty-Team final state without waiting for a model request
     503,
   ));
   await routeSession(page, {
-    body: {
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    },
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
   await page.route('**/api/teams', async (route) => {
     await teamGate.promise;
@@ -343,12 +357,7 @@ test('keeps boot visible across the authenticated root redirect', async ({ page 
     503,
   ));
   await routeSession(page, {
-    body: {
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    },
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
   await page.route('**/api/teams', async (route) => {
     await teamGate.promise;
@@ -374,12 +383,7 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
     503,
   ));
   await routeSession(page, {
-    body: {
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    },
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
   await page.route('**/api/teams', async (route) => {
     await teamGate.promise;
@@ -405,12 +409,7 @@ test('releases a non-Chat route after Team hydration without waiting for a model
     503,
   ));
   await routeSession(page, {
-    body: {
-      profile: 'local',
-      authenticated: true,
-      origin_admitted: true,
-      oauth_completion_mode: 'automatic',
-    },
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
   await page.route('**/api/teams', async (route) => {
     await teamGate.promise;
@@ -468,7 +467,7 @@ test('keeps a stable Shimpz wordmark when reduced motion is requested', async ({
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
-    body: { profile: 'local', authenticated: false, initialized: false },
+    body: localSession(),
   }, sessionGate);
 
   await page.goto('/');

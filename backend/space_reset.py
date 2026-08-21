@@ -15,42 +15,6 @@ from team import bridge as team
 log = logging.getLogger("shimpz-admin")
 
 
-def _response(status: int, body: dict[str, object]) -> JSONResponse:
-    response = JSONResponse(body, status_code=status)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-async def bootstrap(request: Request, *, setup_lock: asyncio.Lock, read_json, team_response) -> JSONResponse:
-    """Reset only while fail-loud Admin and Team authority prove no Supervisor exists."""
-    payload = await read_json(request)
-    if payload:
-        raise HTTPException(status_code=400, detail="request body must be an empty object")
-    if setup_lock.locked():
-        return _response(
-            409,
-            {
-                "code": "bootstrap-reset-busy",
-                "detail": "Supervisor setup or bootstrap reset is already in progress; nothing was deleted",
-            },
-        )
-    await setup_lock.acquire()
-    try:
-        if state.is_initialized():
-            return _response(
-                409,
-                {
-                    "code": "supervisor-password-required",
-                    "detail": "Supervisor password is configured",
-                },
-            )
-        response = await run_in_threadpool(team_response, team.bootstrap_reset_space)
-        response.headers["Cache-Control"] = "no-store"
-        return response
-    finally:
-        setup_lock.release()
-
-
 async def authenticated(request: Request, *, max_password_chars: int, read_json, team_response) -> JSONResponse:
     """Require the current Supervisor password before established-Space reset."""
     payload = await read_json(request)

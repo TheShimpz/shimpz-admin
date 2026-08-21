@@ -81,7 +81,7 @@ class StateEdgeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "is not a JSON object"):
             state._write([])
         with self.assertRaises(ValueError):
-            state.set_password("password", "http://example.test")
+            state.begin_supervisor_setup("password")
 
         state._write({"browser_origin": 7})
         with self.assertRaisesRegex(RuntimeError, "invalid browser origin"):
@@ -101,10 +101,10 @@ class StateEdgeTests(unittest.TestCase):
             self.assertFalse(state.delete_model_api_key("openai"))
         write.assert_not_called()
 
-    def test_password_initialization_preserves_existing_session_secret(self) -> None:
+    def test_password_initialization_rejects_an_ambiguous_existing_session_secret(self) -> None:
         state._write({"session_secret": "existing-session-secret"})
-        state.set_password("violet otter lantern quartz 92")
-        self.assertEqual(state.get()["session_secret"], "existing-session-secret")
+        with self.assertRaises(state.supervisor.SupervisorAuthorityError):
+            state.begin_supervisor_setup("violet otter lantern quartz 92")
 
 
 class AssetProjectionEdgeTests(unittest.TestCase):

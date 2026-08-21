@@ -16,6 +16,7 @@ from unittest import mock
 
 import uvicorn
 import websockets
+from mfa_helper import configure_supervisor
 from websockets.exceptions import InvalidStatus
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,9 +49,8 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.state.set_password("violet otter lantern quartz 92")
-        store = self.admin_app.state.get()
-        self.token = self.admin_app.auth.issue_session(store["session_secret"])
+        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
+        self.token = self.admin_app.auth.issue_session(secret, "totp")
 
     def test_real_uvicorn_negotiates_v3_and_delivers_one_public_terminal(self) -> None:
         async def scenario() -> None:

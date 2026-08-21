@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 import chat_socket_fixtures
+from mfa_helper import configure_supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -144,9 +145,8 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.state.set_password("violet otter lantern quartz 92")
-        store = self.admin_app.state.get()
-        self.token = self.admin_app.auth.issue_session(store["session_secret"])
+        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
+        self.token = self.admin_app.auth.issue_session(secret, "totp")
         empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
         pending_human = mock.patch.object(
             self.chat_socket.local,

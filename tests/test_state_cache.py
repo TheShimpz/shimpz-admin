@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import state
+from mfa_helper import configure_supervisor
 
 
 class AdminStoreCacheTests(unittest.TestCase):
@@ -58,7 +59,7 @@ class AdminStoreCacheTests(unittest.TestCase):
         read_store.assert_not_called()
 
     def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
-        state.set_password("violet otter lantern quartz 92")
+        configure_supervisor(state, "violet otter lantern quartz 92")
         first = state.local_supervisor()
 
         self.assertRegex(first.supervisor_id, r"^[0-9a-f]{32}$")
@@ -99,8 +100,18 @@ class AdminStoreCacheTests(unittest.TestCase):
     def test_partial_local_supervisor_record_is_never_repaired(self) -> None:
         state._write({"supervisor_id": "a" * 32})
 
+        with self.assertRaises(state.auth.PasswordRecordError):
+            state.authentication_state()
         with self.assertRaises(state.supervisor.SupervisorAuthorityError):
-            state.set_password("violet otter lantern quartz 92")
+            state.begin_supervisor_setup("violet otter lantern quartz 92")
+
+    def test_uninitialized_state_admits_only_strict_reset_consumption_evidence(self) -> None:
+        state._write({"consumed_host_resets": [{"digest": "a" * 64, "expires_at": 1_800_000_000}]})
+        self.assertEqual(state.authentication_state(), "uninitialized")
+
+        state._write({"consumed_host_resets": [{"digest": "not-a-digest", "expires_at": 1_800_000_000}]})
+        with self.assertRaisesRegex(RuntimeError, "invalid host reset evidence"):
+            state.authentication_state()
 
 
 if __name__ == "__main__":

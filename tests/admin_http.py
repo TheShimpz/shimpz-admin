@@ -52,13 +52,16 @@ def request_with_headers(
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     headers = {"Content-Type": "application/json"}
     if session is not None:
-        headers["Cookie"] = f"shimpz_admin={session}"
+        headers["Cookie"] = session if "=" in session else f"shimpz_admin={session}"
     if origin is not None:
         headers["Origin"] = origin
     connection.request(method, path, json.dumps(body) if body is not None else None, headers)
     response = connection.getresponse()
     raw = response.read().decode("utf-8", errors="replace")
-    response_headers = {name.lower(): value for name, value in response.getheaders()}
+    response_headers: dict[str, str] = {}
+    for name, value in response.getheaders():
+        key = name.lower()
+        response_headers[key] = f"{response_headers[key]}, {value}" if key in response_headers else value
     connection.close()
     try:
         payload: object = json.loads(raw)
@@ -69,6 +72,11 @@ def request_with_headers(
 
 def session_cookie(set_cookie: str) -> str | None:
     match = re.search(r"shimpz_admin=([^;]+)", set_cookie)
+    return match.group(1) if match else None
+
+
+def ticket_cookie(set_cookie: str) -> str | None:
+    match = re.search(r"shimpz_admin_ticket=([^;]+)", set_cookie)
     return match.group(1) if match else None
 
 

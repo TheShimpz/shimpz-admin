@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import notifications
+from mfa_helper import configure_supervisor
 from team import bridge as team
 from team import transport
 
@@ -550,8 +551,8 @@ class NotificationRouteTests(unittest.TestCase):
         cls.admin_app.notifications.STORE_PATH = root / "notifications.json"
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_admin_store)
         cls.addClassCleanup(setattr, cls.admin_app.notifications, "STORE_PATH", previous_notification_store)
-        cls.admin_app.state.set_password("test-admin-password")
-        cls.token = cls.admin_app.auth.issue_session(cls.admin_app.state.get()["session_secret"])
+        secret = configure_supervisor(cls.admin_app.state, "test-admin-password")
+        cls.token = cls.admin_app.auth.issue_session(secret, "totp")
 
     def setUp(self) -> None:
         self.admin_app.notifications.STORE_PATH.unlink(missing_ok=True)
