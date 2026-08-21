@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest import mock
 
@@ -128,9 +129,40 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     pass
 
+        async def uninitialized() -> None:
+            with (
+                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
+                mock.patch.object(self.admin_app.state, "is_initialized", return_value=False),
+                mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
+            ):
+                async with self.admin_app._lifespan(self.admin_app.app):
+                    pass
+            to_thread.assert_not_awaited()
+
+        async def recovery_required() -> None:
+            error = self.admin_app.auth.PasswordRecordError("corrupt")
+            with (
+                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
+                mock.patch.object(self.admin_app.state, "is_initialized", side_effect=error),
+                self.assertLogs("shimpz-admin", level="ERROR") as captured,
+            ):
+                async with self.admin_app._lifespan(self.admin_app.app):
+                    pass
+            self.assertIn("requires bounded recovery", "\n".join(captured.output))
+
         asyncio.run(mismatch())
         asyncio.run(initialized())
         asyncio.run(hosted())
+        asyncio.run(uninitialized())
+        asyncio.run(recovery_required())
+
+        identity = object()
+        with (
+            mock.patch.object(self.admin_app.state, "local_supervisor", return_value=identity),
+            mock.patch.object(self.admin_app.supervisor, "materialize_public_key") as materialize,
+        ):
+            self.admin_app._materialize_local_supervisor()
+        materialize.assert_called_once_with(identity)
 
     def test_origin_helpers_reject_unadmitted_values_and_preserve_an_unchanged_binding(self) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as denied:
@@ -241,6 +273,74 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         ):
             response = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
         self.assertEqual(response.status_code, 503)
+
+    def test_password_recovery_is_consistent_across_handler_gate_and_session(self) -> None:
+        error = self.admin_app.auth.PasswordRecordError("corrupt")
+        handled = asyncio.run(self.admin_app._password_record_unavailable(_request("/api/session"), error))
+        self.assertEqual(handled.status_code, 503)
+        self.assertEqual(json.loads(handled.body)["code"], "password-recovery-required")
+
+        async def should_not_run(_request):
+            self.fail("corrupt Local authentication reached a protected route")
+
+        with mock.patch.object(self.admin_app, "_session_evidence", new=mock.AsyncMock(side_effect=error)):
+            gated = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
+        self.assertEqual(gated.status_code, 503)
+        self.assertEqual(json.loads(gated.body)["code"], "password-recovery-required")
+
+        with mock.patch.object(self.admin_app.state, "authentication_state", side_effect=error):
+            projected = asyncio.run(self.admin_app.session(_request("/api/session")))
+        self.assertEqual(projected["authentication_state"], self.admin_app.auth.RECORD_STATE_RECOVERY_REQUIRED)
+        self.assertIs(projected["authenticated"], False)
+
+    def test_local_mfa_and_host_reset_wrappers_preserve_exact_authority(self) -> None:
+        request = _request("/api/local-wrapper", {})
+        sentinel = object()
+        with mock.patch.object(
+            self.admin_app.local_auth,
+            "confirm_login_passkey",
+            new=mock.AsyncMock(return_value=sentinel),
+        ) as login_passkey:
+            self.assertIs(asyncio.run(self.admin_app.local_login_passkey(request)), sentinel)
+        login_passkey.assert_awaited_once_with(request, self.admin_app._LOCAL_AUTH_CONTEXT)
+
+        with mock.patch.object(
+            self.admin_app.local_auth,
+            "complete_passkey_registration",
+            new=mock.AsyncMock(return_value=sentinel),
+        ) as complete_registration:
+            self.assertIs(asyncio.run(self.admin_app.local_passkey_registration_complete(request)), sentinel)
+        complete_registration.assert_awaited_once_with(request, self.admin_app._LOCAL_AUTH_CONTEXT)
+
+        with mock.patch.object(
+            self.admin_app.local_auth,
+            "_verify_password",
+            new=mock.AsyncMock(),
+        ) as verify_password:
+            asyncio.run(self.admin_app._host_reset_password("secret"))
+        verify_password.assert_awaited_once_with("secret", self.admin_app._LOCAL_AUTH_CONTEXT)
+
+        team_response = self.admin_app.JSONResponse({"reset": True})
+        with (
+            mock.patch.object(self.admin_app, "_team_session_scope", return_value=nullcontext()) as scope,
+            mock.patch.object(self.admin_app, "_team_response", return_value=team_response) as response,
+        ):
+            self.assertIs(self.admin_app._established_host_reset("d" * 64), team_response)
+        scope.assert_called_once_with(
+            {self.admin_app.COOKIE: "host-reset-v1:" + "d" * 64},
+            authority_kind="host-reset",
+        )
+        response.assert_called_once_with(self.admin_app.team.reset_space)
+
+        with mock.patch.object(
+            self.admin_app.host_reset,
+            "reset",
+            new=mock.AsyncMock(return_value=sentinel),
+        ) as reset:
+            self.assertIs(asyncio.run(self.admin_app.local_space_host_reset(request)), sentinel)
+        reset.assert_awaited_once()
+        self.assertIs(reset.await_args.kwargs["setup_lock"], self.admin_app._ADMIN_SETUP_LOCK)
+        self.assertIs(reset.await_args.kwargs["verify_password"], self.admin_app._host_reset_password)
 
     def test_local_login_rejects_invalid_shape_and_missing_initialization(self) -> None:
         self.assert_status(409, self.admin_app.login(_request("/api/login", {"password": "valid-shape"})))
