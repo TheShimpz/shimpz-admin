@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,6 +16,14 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import state
 from mfa import passkeys
+from webauthn.authentication.verify_authentication_response import VerifiedAuthentication
+from webauthn.helpers.structs import (
+    AttestationFormat,
+    AuthenticationCredential,
+    AuthenticatorAssertionResponse,
+    PublicKeyCredentialType,
+)
+from webauthn.registration.verify_registration_response import VerifiedRegistration
 
 NOW = 1_800_000_000
 ORIGIN = "http://localhost:7777"
@@ -107,12 +114,30 @@ class PasskeyTests(unittest.TestCase):
         challenge = self.challenge()
         generated = object()
         with (
-            mock.patch.object(passkeys, "generate_registration_options", return_value=generated) as registration,
-            mock.patch.object(passkeys, "options_to_json", return_value='{"kind":"registration"}'),
+            mock.patch.object(
+                passkeys,
+                "generate_registration_options",
+                autospec=True,
+                return_value=generated,
+            ) as registration,
+            mock.patch.object(
+                passkeys,
+                "options_to_json",
+                autospec=True,
+                return_value='{"kind":"registration"}',
+            ),
         ):
             options = passkeys.registration_options(challenge, "00" * 32, [credential()])
         self.assertEqual(options, {"kind": "registration"})
-        selection = registration.call_args.kwargs["authenticator_selection"]
+        registration_arguments = registration.call_args.kwargs
+        self.assertEqual(registration_arguments["rp_id"], challenge.rp_id)
+        self.assertEqual(registration_arguments["rp_name"], passkeys.RP_NAME)
+        self.assertEqual(registration_arguments["user_name"], "Supervisor")
+        self.assertEqual(registration_arguments["user_id"], bytes.fromhex("00" * 32))
+        self.assertEqual(registration_arguments["challenge"], challenge.challenge)
+        self.assertEqual(registration_arguments["timeout"], passkeys.CEREMONY_TIMEOUT_MS)
+        self.assertEqual(len(registration_arguments["exclude_credentials"]), 1)
+        selection = registration_arguments["authenticator_selection"]
         self.assertIs(selection.user_verification, passkeys.UserVerificationRequirement.REQUIRED)
 
         with self.assertRaises(passkeys.PasskeyError):
@@ -123,30 +148,66 @@ class PasskeyTests(unittest.TestCase):
             passkeys.authentication_options(challenge, [])
 
         with (
-            mock.patch.object(passkeys, "generate_authentication_options", return_value=generated),
-            mock.patch.object(passkeys, "options_to_json", return_value='{"kind":"authentication"}'),
+            mock.patch.object(
+                passkeys,
+                "generate_authentication_options",
+                autospec=True,
+                return_value=generated,
+            ) as authentication,
+            mock.patch.object(
+                passkeys,
+                "options_to_json",
+                autospec=True,
+                return_value='{"kind":"authentication"}',
+            ),
         ):
             self.assertEqual(
                 passkeys.authentication_options(challenge, [credential()]),
                 {"kind": "authentication"},
             )
+        authentication_arguments = authentication.call_args.kwargs
+        self.assertEqual(authentication_arguments["rp_id"], challenge.rp_id)
+        self.assertEqual(authentication_arguments["challenge"], challenge.challenge)
+        self.assertEqual(authentication_arguments["timeout"], passkeys.CEREMONY_TIMEOUT_MS)
+        self.assertEqual(len(authentication_arguments["allow_credentials"]), 1)
+        self.assertIs(
+            authentication_arguments["user_verification"],
+            passkeys.UserVerificationRequirement.REQUIRED,
+        )
         with (
-            mock.patch.object(passkeys, "generate_authentication_options", return_value=generated),
-            mock.patch.object(passkeys, "options_to_json", side_effect=ValueError),
+            mock.patch.object(
+                passkeys,
+                "generate_authentication_options",
+                autospec=True,
+                return_value=generated,
+            ),
+            mock.patch.object(passkeys, "options_to_json", autospec=True, side_effect=ValueError),
             self.assertRaises(passkeys.PasskeyError),
         ):
             passkeys.authentication_options(challenge, [credential()])
 
     def test_registration_verification_projects_only_public_state(self) -> None:
-        verified = types.SimpleNamespace(
+        verified = VerifiedRegistration(
             credential_id=b"credential-id",
             credential_public_key=b"public-key",
             sign_count=7,
+            aaguid="00000000-0000-0000-0000-000000000000",
+            fmt=AttestationFormat.NONE,
+            credential_type=PublicKeyCredentialType.PUBLIC_KEY,
+            user_verified=True,
+            attestation_object=b"attestation",
             credential_device_type=passkeys.CredentialDeviceType.MULTI_DEVICE,
             credential_backed_up=True,
         )
-        with mock.patch.object(passkeys, "verify_registration_response", return_value=verified) as verify:
-            record = passkeys.verify_registration(self.challenge(), {"credential": "response"}, NOW)
+        credential_payload = {"credential": "response"}
+        challenge = self.challenge()
+        with mock.patch.object(
+            passkeys,
+            "verify_registration_response",
+            autospec=True,
+            return_value=verified,
+        ) as verify:
+            record = passkeys.verify_registration(challenge, credential_payload, NOW)
 
         self.assertEqual(record["sign_count"], 7)
         self.assertEqual(record["backup_eligible"], True)
@@ -154,51 +215,116 @@ class PasskeyTests(unittest.TestCase):
         self.assertEqual(record["rp_id"], "localhost")
         self.assertEqual(record["origin"], ORIGIN)
         self.assertNotIn("challenge", record)
-        self.assertIs(verify.call_args.kwargs["require_user_verification"], True)
+        self.assertEqual(
+            verify.call_args.kwargs,
+            {
+                "credential": credential_payload,
+                "expected_challenge": challenge.challenge,
+                "expected_rp_id": challenge.rp_id,
+                "expected_origin": challenge.origin,
+                "require_user_verification": True,
+            },
+        )
 
         with (
-            mock.patch.object(passkeys, "verify_registration_response", side_effect=TypeError),
+            mock.patch.object(
+                passkeys,
+                "verify_registration_response",
+                autospec=True,
+                side_effect=TypeError,
+            ),
             self.assertRaises(passkeys.PasskeyUnavailableError),
         ):
             passkeys.verify_registration(self.challenge(), None, NOW)
 
     def test_authentication_verification_is_bounded_and_fail_closed(self) -> None:
-        parsed = types.SimpleNamespace(raw_id=b"credential-id")
-        with mock.patch.object(passkeys, "parse_authentication_credential_json", return_value=parsed):
+        parsed = AuthenticationCredential(
+            id="Y3JlZGVudGlhbC1pZA",
+            raw_id=b"credential-id",
+            response=AuthenticatorAssertionResponse(b"client", b"authenticator", b"signature"),
+        )
+        with mock.patch.object(
+            passkeys,
+            "parse_authentication_credential_json",
+            autospec=True,
+            return_value=parsed,
+        ):
             self.assertEqual(passkeys.credential_id({}), "Y3JlZGVudGlhbC1pZA")
         with self.assertRaises(passkeys.PasskeyUnavailableError):
             passkeys.credential_id(None)
         with (
-            mock.patch.object(passkeys, "parse_authentication_credential_json", return_value=parsed),
+            mock.patch.object(
+                passkeys,
+                "parse_authentication_credential_json",
+                autospec=True,
+                return_value=parsed,
+            ),
             mock.patch.object(passkeys, "bytes_to_base64url", return_value="."),
             self.assertRaises(passkeys.PasskeyUnavailableError),
         ):
             passkeys.credential_id({})
 
-        verified = types.SimpleNamespace(
+        verified = VerifiedAuthentication(
             credential_id=b"credential-id",
             new_sign_count=8,
             credential_device_type=passkeys.CredentialDeviceType.SINGLE_DEVICE,
             credential_backed_up=False,
+            user_verified=True,
         )
+        challenge = self.challenge()
+        stored = credential()
+        credential_payload = {"credential": "response"}
         with (
-            mock.patch.object(passkeys, "parse_authentication_credential_json", return_value=parsed),
-            mock.patch.object(passkeys, "verify_authentication_response", return_value=verified) as verify,
+            mock.patch.object(
+                passkeys,
+                "parse_authentication_credential_json",
+                autospec=True,
+                return_value=parsed,
+            ) as parse,
+            mock.patch.object(
+                passkeys,
+                "verify_authentication_response",
+                autospec=True,
+                return_value=verified,
+            ) as verify,
         ):
-            result = passkeys.verify_authentication(self.challenge(), {}, credential())
+            result = passkeys.verify_authentication(challenge, credential_payload, stored)
         self.assertEqual(result, passkeys.Authentication("Y3JlZGVudGlhbC1pZA", 8, False, False))
-        self.assertIs(verify.call_args.kwargs["require_user_verification"], True)
+        parse.assert_called_once_with(credential_payload)
+        self.assertEqual(
+            verify.call_args.kwargs,
+            {
+                "credential": parsed,
+                "expected_challenge": challenge.challenge,
+                "expected_rp_id": challenge.rp_id,
+                "expected_origin": challenge.origin,
+                "credential_public_key": passkeys.base64url_to_bytes(str(stored["public_key"])),
+                "credential_current_sign_count": 0,
+                "require_user_verification": True,
+            },
+        )
 
         with (
-            mock.patch.object(passkeys, "parse_authentication_credential_json", side_effect=TypeError),
+            mock.patch.object(
+                passkeys,
+                "parse_authentication_credential_json",
+                autospec=True,
+                side_effect=TypeError,
+            ),
             self.assertRaises(passkeys.PasskeyUnavailableError),
         ):
             passkeys.verify_authentication(self.challenge(), None, credential())
         with (
-            mock.patch.object(passkeys, "parse_authentication_credential_json", return_value=parsed),
+            mock.patch.object(
+                passkeys,
+                "parse_authentication_credential_json",
+                autospec=True,
+                return_value=parsed,
+            ),
             mock.patch.object(
                 passkeys,
                 "verify_authentication_response",
+                autospec=True,
                 side_effect=passkeys.WebAuthnException("stored key is invalid"),
             ),
             self.assertRaises(passkeys.PasskeyError),
