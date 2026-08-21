@@ -57,7 +57,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         command = dockerfile.split('CMD ["uvicorn"', 1)[1]
 
-        self.assertNotIn("--workers", command)
+        self.assertIn('"--workers", "1"', command)
 
     def test_static_runtime_copy_contains_every_application_backend_module(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

@@ -75,4 +75,4 @@ ENV PATH="/opt/venv/bin:$PATH" \
 RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app"
 USER admin
 EXPOSE 4600
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--log-level", "warning"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--workers", "1", "--log-level", "warning"]
