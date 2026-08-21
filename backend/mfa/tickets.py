@@ -49,7 +49,7 @@ class TicketStore:
             self._records.pop(token, None)
 
     def issue(self, purpose: str, origin: str | None, generation: int) -> str:
-        if purpose not in {"login", "totp-enrollment"} or not isinstance(generation, int) or generation < 1:
+        if purpose not in {"login", "totp-enrollment"} or type(generation) is not int or generation < 1:
             raise ValueError("invalid password-ticket binding")
         now = self._clock()
         with self._lock:
