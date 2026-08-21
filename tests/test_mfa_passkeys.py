@@ -368,6 +368,31 @@ class PasskeyTests(unittest.TestCase):
         state.add_passkey(replacement, state.factor_generation())
         self.assertEqual([item["credential_id"] for item in state.get()["passkeys"]], ["credential_B"])
 
+    def test_counterless_passkey_arms_regression_protection_after_a_positive_count(self) -> None:
+        counterless = credential()
+        counterless["sign_count"] = 0
+        state.add_passkey(counterless, state.factor_generation())
+        generation = state.factor_generation()
+        session_secret = state.get()["session_secret"]
+
+        original = state.passkey_for_authentication("credential_A", ORIGIN)
+        zero = passkeys.Authentication("credential_A", 0, False, False)
+        secret, suspension_reason = state.commit_passkey_authentication(original, zero, generation, now=NOW + 1)
+        self.assertEqual((secret, suspension_reason), (session_secret, None))
+        self.assertEqual(state.active_passkeys(ORIGIN)[0]["sign_count"], 0)
+
+        original = state.passkey_for_authentication("credential_A", ORIGIN)
+        positive = passkeys.Authentication("credential_A", 1, False, False)
+        secret, suspension_reason = state.commit_passkey_authentication(original, positive, generation, now=NOW + 2)
+        self.assertEqual((secret, suspension_reason), (session_secret, None))
+        self.assertEqual(state.active_passkeys(ORIGIN)[0]["sign_count"], 1)
+
+        original = state.passkey_for_authentication("credential_A", ORIGIN)
+        secret, suspension_reason = state.commit_passkey_authentication(original, positive, generation, now=NOW + 3)
+        self.assertEqual(suspension_reason, "counter-regression")
+        self.assertNotEqual(secret, session_secret)
+        self.assertEqual(state.active_passkeys(ORIGIN), [])
+
     def test_registration_capacity_counts_active_credentials_before_the_ceremony(self) -> None:
         for index in range(passkeys.MAX_PASSKEYS):
             record = credential()
