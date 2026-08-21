@@ -176,9 +176,10 @@ class AuthRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         to_thread.assert_awaited_once_with(
-            self.admin_app.auth.verify_password,
+            self.admin_app.auth.attempt_login,
             password,
             record,
+            self.admin_app._LOCAL_LOGIN_LIMITER,
         )
 
     def test_external_https_origin_is_bound_only_after_correct_password(self) -> None:

@@ -22,8 +22,6 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import UploadFile
-from starlette.formparsers import MultiPartException, MultiPartParser
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
@@ -37,6 +35,7 @@ import state
 import supervisor
 from team import assets as team_assets
 from team import bridge as team
+from team import files as team_files
 
 import browser
 from chat import human as chat_human
@@ -141,15 +140,16 @@ async def _session_evidence_unavailable(_request: Request, _exc: SessionEvidence
     return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
 
 
-@app.exception_handler(auth.PasswordRecordError)
-async def _password_record_unavailable(_request: Request, _exc: auth.PasswordRecordError):
+def _password_recovery_response() -> JSONResponse:
     return JSONResponse(
-        {
-            "code": "password-recovery-required",
-            "detail": "Supervisor password recovery is required",
-        },
+        {"code": "password-recovery-required", "detail": "Supervisor password recovery is required"},
         status_code=503,
     )
+
+
+@app.exception_handler(auth.PasswordRecordError)
+async def _password_record_unavailable(_request: Request, _exc: auth.PasswordRecordError):
+    return _password_recovery_response()
 
 
 def _local_oauth_authorization_mode(request: Request) -> str:
@@ -312,14 +312,7 @@ async def _gate(request: Request, call_next):
         response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
         return _secure_response(response)
     except auth.PasswordRecordError:
-        response = JSONResponse(
-            {
-                "code": "password-recovery-required",
-                "detail": "Supervisor password recovery is required",
-            },
-            status_code=503,
-        )
-        return _secure_response(response)
+        return _secure_response(_password_recovery_response())
     if evidence is None:
         response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
         return _secure_response(response)
@@ -378,21 +371,18 @@ async def _local_login(request: Request, payload: dict) -> JSONResponse:
     browser_origin = _request_browser_origin(request)
     rec = state.get()
     try:
-        _LOCAL_LOGIN_LIMITER.begin()
+        password_ok, lock_seconds = await asyncio.to_thread(
+            auth.attempt_login,
+            password,
+            rec,
+            _LOCAL_LOGIN_LIMITER,
+        )
     except auth.LoginRateLimitedError as exc:
         raise HTTPException(
             status_code=429,
             detail="too many login attempts",
             headers={"Retry-After": str(exc.retry_after)},
         ) from None
-    password_ok: bool | None = None
-    lock_seconds = 0
-    try:
-        password_ok = await asyncio.to_thread(auth.verify_password, password, rec)
-    finally:
-        lock_seconds = _LOCAL_LOGIN_LIMITER.finish(
-            rejected=None if password_ok is None else not password_ok,
-        )
     if lock_seconds:
         log.info("login locked after repeated password rejection")
         raise HTTPException(
@@ -601,71 +591,6 @@ if ADMIN_PROFILE == "local":
     app.add_api_route("/api/model-providers", model_providers_status, methods=["GET"])
     app.add_api_route("/api/model-providers/{provider}", model_provider_configure, methods=["PUT"])
     app.add_api_route("/api/model-providers/{provider}", model_provider_delete, methods=["DELETE"])
-
-
-MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
-MAX_MULTIPART_BODY_BYTES = team.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
-
-
-class _MultipartBodyTooLargeError(OSError):
-    pass
-
-
-async def _bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
-    """Accept exactly one bounded file part and return no filesystem path."""
-    content_types = request.headers.getlist("content-type")
-    if len(content_types) != 1 or content_types[0].partition(";")[0].strip().lower() != "multipart/form-data":
-        raise HTTPException(status_code=415, detail="content type must be multipart/form-data")
-
-    content_lengths = request.headers.getlist("content-length")
-    if len(content_lengths) > 1:
-        raise HTTPException(status_code=400, detail="invalid content length")
-    if content_lengths:
-        raw_length = content_lengths[0]
-        if not raw_length.isascii() or not raw_length.isdigit():
-            raise HTTPException(status_code=400, detail="invalid content length")
-        if int(raw_length) > MAX_MULTIPART_BODY_BYTES:
-            raise HTTPException(status_code=413, detail="file upload too large")
-
-    async def bounded_stream():
-        total = 0
-        async for chunk in request.stream():
-            total += len(chunk)
-            if total > MAX_MULTIPART_BODY_BYTES:
-                raise _MultipartBodyTooLargeError
-            yield chunk
-
-    try:
-        form = await MultiPartParser(
-            request.headers,
-            bounded_stream(),
-            max_files=1,
-            max_fields=0,
-            max_part_size=1024,
-        ).parse()
-    except _MultipartBodyTooLargeError:
-        raise HTTPException(status_code=413, detail="file upload too large") from None
-    except MultiPartException:
-        raise HTTPException(status_code=400, detail="invalid multipart body") from None
-
-    try:
-        items = form.multi_items()
-        if len(items) != 1 or items[0][0] != "file" or not isinstance(items[0][1], UploadFile):
-            raise HTTPException(status_code=400, detail="multipart body must contain only one file field")
-        upload = items[0][1]
-        try:
-            filename = team.canonical_filename(upload.filename)
-            media_type = team.canonical_media_type(upload.content_type)
-        except team.TeamRequestError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
-        content = await upload.read(team.MAX_FILE_UPLOAD_BYTES + 1)
-        if not content:
-            raise HTTPException(status_code=400, detail="file must contain bytes")
-        if len(content) > team.MAX_FILE_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="file upload too large")
-        return filename, media_type, content
-    finally:
-        await form.close()
 
 
 @app.get("/api/teams")
@@ -1021,7 +946,7 @@ def team_files_list(team_id: str):
 
 @app.post("/api/teams/{team_id}/files")
 async def team_file_upload(team_id: str, request: Request):
-    filename, media_type, content = await _bounded_multipart_file(request)
+    filename, media_type, content = await team_files.bounded_multipart_file(request)
     return await run_in_threadpool(
         _team_response,
         lambda: team.upload_file(team_id, filename, media_type, content),

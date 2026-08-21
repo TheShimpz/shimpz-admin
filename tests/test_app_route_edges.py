@@ -312,8 +312,8 @@ class AppRouteEdgeTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                self.admin_app,
-                "_bounded_multipart_file",
+                self.admin_app.team_files,
+                "bounded_multipart_file",
                 new=mock.AsyncMock(return_value=("file.txt", "text/plain", b"data")),
             ),
             mock.patch.object(self.admin_app.team, "upload_file", return_value=response),

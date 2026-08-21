@@ -877,7 +877,7 @@ def _run_asgi_probe(scenario: str) -> None:
                 payload,
                 token=token,
                 content_type=f"multipart/form-data; boundary={boundary}",
-                content_length=admin_app.MAX_MULTIPART_BODY_BYTES + 1,
+                content_length=admin_app.team_files.MAX_MULTIPART_BODY_BYTES + 1,
             )
         )
         output = {"status": status, "body": body}

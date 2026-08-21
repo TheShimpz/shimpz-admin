@@ -54,6 +54,18 @@ class PasswordVerifierTests(unittest.TestCase):
 
 
 class LocalLoginLimiterTests(unittest.TestCase):
+    def test_attempt_login_releases_its_slot_after_invalid_record(self) -> None:
+        limiter = auth.LocalLoginLimiter()
+
+        with self.assertRaises(auth.PasswordRecordError):
+            auth.attempt_login(GOOD_PASSWORD, {"password_verifier": "invalid"}, limiter)
+
+        verifier = auth.new_password_verifier(GOOD_PASSWORD)
+        self.assertEqual(
+            auth.attempt_login(GOOD_PASSWORD, {"password_verifier": verifier}, limiter),
+            (True, 0),
+        )
+
     def test_in_flight_refusal_does_not_consume_a_password_rejection(self) -> None:
         now = [100.0]
         limiter = auth.LocalLoginLimiter(clock=lambda: now[0], failure_limit=2, lock_seconds=60)

@@ -119,24 +119,26 @@ class AppMultipartEdgeTests(unittest.TestCase):
     def test_media_type_and_declared_length_are_exact_and_bounded(self) -> None:
         self.assert_status(
             415,
-            self.admin_app._bounded_multipart_file(_request([(b"content-type", b"application/json")])),
+            self.admin_app.team_files.bounded_multipart_file(_request([(b"content-type", b"application/json")])),
         )
         self.assert_status(
             400,
-            self.admin_app._bounded_multipart_file(
+            self.admin_app.team_files.bounded_multipart_file(
                 _request(self.multipart_headers((b"content-length", b"1"), (b"content-length", b"1")))
             ),
         )
         self.assert_status(
             400,
-            self.admin_app._bounded_multipart_file(_request(self.multipart_headers((b"content-length", b"invalid")))),
+            self.admin_app.team_files.bounded_multipart_file(
+                _request(self.multipart_headers((b"content-length", b"invalid")))
+            ),
         )
         self.assert_status(
             413,
-            self.admin_app._bounded_multipart_file(
+            self.admin_app.team_files.bounded_multipart_file(
                 _request(
                     self.multipart_headers(
-                        (b"content-length", str(self.admin_app.MAX_MULTIPART_BODY_BYTES + 1).encode())
+                        (b"content-length", str(self.admin_app.team_files.MAX_MULTIPART_BODY_BYTES + 1).encode())
                     )
                 )
             ),
@@ -144,38 +146,40 @@ class AppMultipartEdgeTests(unittest.TestCase):
 
     def test_streaming_limit_and_parser_failure_are_mapped_without_leaking_parser_errors(self) -> None:
         with (
-            mock.patch.object(self.admin_app, "MAX_MULTIPART_BODY_BYTES", 3),
+            mock.patch.object(self.admin_app.team_files, "MAX_MULTIPART_BODY_BYTES", 3),
             mock.patch.object(
-                self.admin_app,
+                self.admin_app.team_files,
                 "MultiPartParser",
                 side_effect=_parser_factory(consume=True),
             ),
         ):
             self.assert_status(
                 413,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers(), chunks=[b"four"])),
+                self.admin_app.team_files.bounded_multipart_file(
+                    _request(self.multipart_headers(), chunks=[b"four"])
+                ),
             )
 
         with mock.patch.object(
-            self.admin_app,
+            self.admin_app.team_files,
             "MultiPartParser",
             side_effect=_parser_factory(error=MultiPartException("invalid")),
         ):
             self.assert_status(
                 400,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers())),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers())),
             )
 
     def test_form_shape_and_canonical_metadata_failures_always_close_the_form(self) -> None:
         invalid_form = _form([])
         with mock.patch.object(
-            self.admin_app,
+            self.admin_app.team_files,
             "MultiPartParser",
             side_effect=_parser_factory(result=invalid_form),
         ):
             self.assert_status(
                 400,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers())),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers())),
             )
         invalid_form.close.assert_awaited_once_with()
 
@@ -183,7 +187,7 @@ class AppMultipartEdgeTests(unittest.TestCase):
         invalid_metadata_form = _form([("file", upload)])
         with (
             mock.patch.object(
-                self.admin_app,
+                self.admin_app.team_files,
                 "MultiPartParser",
                 side_effect=_parser_factory(result=invalid_metadata_form),
             ),
@@ -195,20 +199,20 @@ class AppMultipartEdgeTests(unittest.TestCase):
         ):
             self.assert_status(
                 400,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers())),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers())),
             )
         invalid_metadata_form.close.assert_awaited_once_with()
 
     def test_empty_oversized_and_valid_file_content_are_distinguished(self) -> None:
         empty_form = _form([("file", _upload(b""))])
         with mock.patch.object(
-            self.admin_app,
+            self.admin_app.team_files,
             "MultiPartParser",
             side_effect=_parser_factory(result=empty_form),
         ):
             self.assert_status(
                 400,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers())),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers())),
             )
         empty_form.close.assert_awaited_once_with()
 
@@ -216,25 +220,25 @@ class AppMultipartEdgeTests(unittest.TestCase):
         with (
             mock.patch.object(self.admin_app.team, "MAX_FILE_UPLOAD_BYTES", 2),
             mock.patch.object(
-                self.admin_app,
+                self.admin_app.team_files,
                 "MultiPartParser",
                 side_effect=_parser_factory(result=oversized_form),
             ),
         ):
             self.assert_status(
                 413,
-                self.admin_app._bounded_multipart_file(_request(self.multipart_headers())),
+                self.admin_app.team_files.bounded_multipart_file(_request(self.multipart_headers())),
             )
         oversized_form.close.assert_awaited_once_with()
 
         valid_form = _form([("file", _upload(b"data"))])
         with mock.patch.object(
-            self.admin_app,
+            self.admin_app.team_files,
             "MultiPartParser",
             side_effect=_parser_factory(result=valid_form, consume=True),
         ):
             result = asyncio.run(
-                self.admin_app._bounded_multipart_file(
+                self.admin_app.team_files.bounded_multipart_file(
                     _request(self.multipart_headers((b"content-length", b"1")), chunks=[b"x"])
                 )
             )

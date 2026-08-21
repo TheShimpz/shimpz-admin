@@ -121,6 +121,21 @@ class LocalLoginLimiter:
             return self._lock_seconds
 
 
+def attempt_login(
+    password: str,
+    record: object,
+    limiter: LocalLoginLimiter,
+) -> tuple[bool, int]:
+    """Run one reserved password derivation and release its slot on every outcome."""
+    limiter.begin()
+    verified: bool | None = None
+    try:
+        verified = verify_password(password, record)
+    finally:
+        lock_seconds = limiter.finish(rejected=None if verified is None else not verified)
+    return verified, lock_seconds
+
+
 def new_secret() -> str:
     """Return one random 32-byte hex secret."""
     return secrets.token_hex(32)
