@@ -1,0 +1,91 @@
+"""Pure contracts for Local Supervisor password security."""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend"))
+
+import auth
+
+GOOD_PASSWORD = "violet otter lantern quartz 92"
+
+
+class PasswordVerifierTests(unittest.TestCase):
+    def test_current_verifier_is_strict_and_authenticates_exact_password(self) -> None:
+        verifier = auth.new_password_verifier(GOOD_PASSWORD)
+        record = {"password_verifier": verifier}
+
+        self.assertEqual(auth.password_state({}), "uninitialized")
+        self.assertEqual(auth.password_state(record), "configured")
+        self.assertTrue(verifier.startswith("scrypt-v1$ln=14,r=8,p=5,dk=32$"))
+        self.assertTrue(auth.verify_password(GOOD_PASSWORD, record))
+        self.assertFalse(auth.verify_password("violet otter lantern quartz 93", record))
+
+    def test_retired_mixed_and_malformed_records_fail_closed(self) -> None:
+        verifier = auth.new_password_verifier(GOOD_PASSWORD)
+        invalid = (
+            {"salt": "00" * 32, "password_hash": "11" * 32},
+            {"password_verifier": verifier, "password_hash": "11" * 32},
+            {"password_verifier": verifier.replace("p=5", "p=1")},
+            {"password_verifier": "malformed"},
+        )
+
+        for record in invalid:
+            with self.subTest(record=record), self.assertRaises(auth.PasswordRecordError):
+                auth.password_state(record)
+
+    def test_setup_policy_rejects_short_common_and_repeated_passwords(self) -> None:
+        cases = {
+            "short": "password-too-short",
+            "correct horse battery staple": "password-blocklisted",
+            "Shimpz Admin Password": "password-blocklisted",
+            "abcabcabcabcabc": "password-blocklisted",
+            "x" * (auth.MAX_PASSWORD_CHARS + 1): "password-too-long",
+        }
+
+        for password, expected in cases.items():
+            with self.subTest(password=password[:32]):
+                self.assertEqual(auth.password_policy(password), expected)
+        self.assertIsNone(auth.password_policy(GOOD_PASSWORD))
+
+
+class LocalLoginLimiterTests(unittest.TestCase):
+    def test_in_flight_refusal_does_not_consume_a_password_rejection(self) -> None:
+        now = [100.0]
+        limiter = auth.LocalLoginLimiter(clock=lambda: now[0], failure_limit=2, lock_seconds=60)
+
+        limiter.begin()
+        with self.assertRaises(auth.LoginRateLimitedError) as caught:
+            limiter.begin()
+        self.assertEqual(caught.exception.retry_after, 1)
+        self.assertEqual(limiter.finish(rejected=None), 0)
+
+        limiter.begin()
+        self.assertEqual(limiter.finish(rejected=True), 0)
+        limiter.begin()
+        self.assertEqual(limiter.finish(rejected=True), 60)
+
+    def test_lock_expires_and_success_resets_rejections(self) -> None:
+        now = [100.0]
+        limiter = auth.LocalLoginLimiter(clock=lambda: now[0], failure_limit=2, lock_seconds=60)
+
+        for expected in (0, 60):
+            limiter.begin()
+            self.assertEqual(limiter.finish(rejected=True), expected)
+        with self.assertRaises(auth.LoginRateLimitedError) as caught:
+            limiter.begin()
+        self.assertEqual(caught.exception.retry_after, 60)
+
+        now[0] = 160.0
+        limiter.begin()
+        self.assertEqual(limiter.finish(rejected=False), 0)
+        limiter.begin()
+        self.assertEqual(limiter.finish(rejected=True), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

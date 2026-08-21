@@ -125,10 +125,9 @@ async def authenticate_local(
         verified = await asyncio.to_thread(
             auth.verify_password,
             secret,
-            record.get("salt", ""),
-            record.get("password_hash", ""),
+            record,
         )
-    except TypeError, ValueError, RuntimeError, OSError:
+    except auth.PasswordRecordError, TypeError, ValueError, RuntimeError, OSError:
         log.warning("Action password authority is unavailable")
         return "unavailable"
     return "verified" if verified else "denied"

@@ -164,7 +164,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.state.set_password("correct horse battery staple")
+        self.admin_app.state.set_password("violet otter lantern quartz 92")
         store = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(store["session_secret"])
 

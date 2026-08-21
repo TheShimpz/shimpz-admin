@@ -23,7 +23,7 @@ class AdminStoreCacheTests(unittest.TestCase):
             state._store_cache = None
 
     def test_validated_store_is_read_once_until_file_identity_changes(self) -> None:
-        state._write({"password_hash": "first", "session_secret": "session"})
+        state._write({"session_secret": "first"})
         with state._STORE_LOCK:
             state._store_cache = None
 
@@ -33,16 +33,16 @@ class AdminStoreCacheTests(unittest.TestCase):
             wraps=state._read_store_file,
         ) as read_store:
             first = state.get()
-            first["password_hash"] = "caller-mutation"
-            self.assertTrue(state.is_initialized())
-            self.assertEqual(state.get()["password_hash"], "first")
+            first["session_secret"] = "caller-mutation"
+            self.assertFalse(state.is_initialized())
+            self.assertEqual(state.get()["session_secret"], "first")
             self.assertEqual(read_store.call_count, 1)
 
             state.STORE_PATH.write_text(
-                '{"password_hash":"rotated-value","session_secret":"session"}',
+                '{"session_secret":"rotated-value"}',
                 encoding="utf-8",
             )
-            self.assertEqual(state.get()["password_hash"], "rotated-value")
+            self.assertEqual(state.get()["session_secret"], "rotated-value")
 
         self.assertEqual(read_store.call_count, 2)
 
@@ -52,21 +52,26 @@ class AdminStoreCacheTests(unittest.TestCase):
             "_read_store_file",
             wraps=state._read_store_file,
         ) as read_store:
-            state._write({"password_hash": "written"})
-            self.assertEqual(state.get(), {"password_hash": "written"})
+            state._write({"session_secret": "written"})
+            self.assertEqual(state.get(), {"session_secret": "written"})
 
         read_store.assert_not_called()
 
     def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
-        state.set_password("correct horse battery staple")
+        state.set_password("violet otter lantern quartz 92")
         first = state.local_supervisor()
 
         self.assertRegex(first.supervisor_id, r"^[0-9a-f]{32}$")
         self.assertRegex(first.private_key_hex, r"^[0-9a-f]{64}$")
         self.assertEqual(state.local_supervisor(), first)
 
-    def test_browser_origin_binding_is_exact_atomic_and_noop_when_unchanged(self) -> None:
-        state._write({"password_hash": "configured", "session_secret": "session"})
+    def test_browser_origin_binding_preserves_a_retired_verifier_for_release_rollback(self) -> None:
+        retired = {
+            "salt": "00" * 32,
+            "password_hash": "11" * 32,
+            "session_secret": "session",
+        }
+        state._write(retired)
 
         with mock.patch.object(state, "_write", wraps=state._write) as write:
             self.assertEqual(state.bind_browser_origin("https://dev.example.test"), "learned")
@@ -76,6 +81,12 @@ class AdminStoreCacheTests(unittest.TestCase):
 
         self.assertEqual(write.call_count, 2)
         self.assertEqual(state.browser_origin(), "https://next.example.test:8443")
+        self.assertEqual(
+            {name: state.get()[name] for name in retired},
+            retired,
+        )
+        with self.assertRaises(state.auth.PasswordRecordError):
+            state.is_initialized()
         with self.assertRaises(ValueError):
             state.bind_browser_origin("http://public.example.test")
 
@@ -89,7 +100,7 @@ class AdminStoreCacheTests(unittest.TestCase):
         state._write({"supervisor_id": "a" * 32})
 
         with self.assertRaises(state.supervisor.SupervisorAuthorityError):
-            state.set_password("correct horse battery staple")
+            state.set_password("violet otter lantern quartz 92")
 
 
 if __name__ == "__main__":

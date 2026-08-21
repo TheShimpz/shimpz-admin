@@ -64,10 +64,9 @@ async def authenticated(request: Request, *, max_password_chars: int, read_json,
         password_ok = await asyncio.to_thread(
             auth.verify_password,
             password,
-            record.get("salt", ""),
-            record.get("password_hash", ""),
+            record,
         )
-    except TypeError, ValueError:
+    except auth.PasswordRecordError, TypeError, ValueError:
         log.warning("Admin password record is invalid")
         raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
     if not password_ok:

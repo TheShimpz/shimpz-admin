@@ -88,6 +88,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.store.unlink(missing_ok=True)
+        self.admin_app._LOCAL_LOGIN_LIMITER = self.admin_app.auth.LocalLoginLimiter()
 
     def assert_status(self, expected: int, awaitable) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
@@ -199,6 +200,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
     def test_session_evidence_maps_corrupt_local_authority_and_hosted_denials(self) -> None:
         authority_error = self.admin_app.supervisor.SupervisorAuthorityError("invalid")
         with (
+            mock.patch.object(self.admin_app.state, "password_state", return_value="configured"),
             mock.patch.object(self.admin_app.supervisor, "local_session_evidence", side_effect=authority_error),
             self.assertRaises(self.admin_app.SessionEvidenceUnavailableError),
         ):
@@ -296,13 +298,17 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
 
     def test_setup_and_reset_reject_invalid_inputs_and_corrupt_password_state(self) -> None:
         self.assert_status(400, self.admin_app.admin_setup(_request("/setup", {"password": 1})))
-        self.assert_status(400, self.admin_app.admin_setup(_request("/setup", {"password": "short"})))
-        self.assert_status(
-            400,
-            self.admin_app.admin_setup(_request("/setup", {"password": "x" * (self.admin_app.MAX_PASSWORD_CHARS + 1)})),
-        )
+        for password, code in (
+            ("short", "password-too-short"),
+            ("x" * (self.admin_app.MAX_PASSWORD_CHARS + 1), "password-too-long"),
+            ("correct horse battery staple", "password-blocklisted"),
+        ):
+            with self.subTest(code=code):
+                response = asyncio.run(self.admin_app.admin_setup(_request("/setup", {"password": password})))
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(json.loads(response.body)["code"], code)
 
-        self.admin_app.state.set_password("correct horse battery staple")
+        self.admin_app.state.set_password("violet otter lantern quartz 92")
         self.assert_status(
             409,
             self.admin_app.admin_setup(_request("/setup", {"password": "another correct password"})),
@@ -312,7 +318,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         with mock.patch.object(self.admin_app.space_reset.asyncio, "to_thread", side_effect=ValueError("corrupt")):
             self.assert_status(
                 503,
-                self.admin_app.local_space_reset(_request("/space", {"password": "correct horse battery staple"})),
+                self.admin_app.local_space_reset(_request("/space", {"password": "violet otter lantern quartz 92"})),
             )
 
 

@@ -389,12 +389,12 @@ test('deletes a Team with exact credentials, clears its stored scope, and select
     const key = 'shimpz.admin.chat.assistant-intent.v2:marketing';
     assert.equal(values.get(key), JSON.stringify({ version: 2, disabled: [] }));
 
-    const result = await deleteTeam(fetcher, 'marketing', 'Marketing', 'correct horse battery staple');
+    const result = await deleteTeam(fetcher, 'marketing', 'Marketing', 'violet otter lantern quartz 92');
 
     assert.deepEqual(calls, [{
       method: 'DELETE',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ team_name: 'Marketing', password: 'correct horse battery staple' }),
+      body: JSON.stringify({ team_name: 'Marketing', password: 'violet otter lantern quartz 92' }),
     }]);
     assert.deepEqual(result, {
       teamId: 'marketing',

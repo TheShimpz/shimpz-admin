@@ -103,7 +103,7 @@ class StateEdgeTests(unittest.TestCase):
 
     def test_password_initialization_preserves_existing_session_secret(self) -> None:
         state._write({"session_secret": "existing-session-secret"})
-        state.set_password("password")
+        state.set_password("violet otter lantern quartz 92")
         self.assertEqual(state.get()["session_secret"], "existing-session-secret")
 
 

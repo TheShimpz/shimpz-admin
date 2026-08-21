@@ -16,10 +16,56 @@ test('renders the Local setup through the shared design system', async ({ page }
 
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByLabel(/password/i).first()).toBeVisible();
+  await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
+  await expect(page.getByText('At least 15 characters. This password stays on your machine.')).toBeVisible();
   await expect(page.getByRole('button', { name: /create password/i })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page.locator('.shimpz-card')).toHaveCount(1);
   await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
+});
+
+test('renders bounded Local login feedback instead of the raw API error', async ({ page }) => {
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      profile: 'local',
+      authenticated: false,
+      initialized: true,
+      password_state: 'configured',
+    }),
+  }));
+  await page.route('**/api/login', (route) => route.fulfill({
+    status: 429,
+    contentType: 'application/json',
+    headers: { 'Retry-After': '60' },
+    body: JSON.stringify({ detail: 'too many login attempts' }),
+  }));
+
+  await page.goto('/');
+  await page.getByLabel('Password').fill('wrong password value');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  await expect(page.getByText('Too many attempts. Wait one minute and try again.')).toBeVisible();
+  await expect(page.getByText('too many login attempts')).toHaveCount(0);
+});
+
+test('renders the terminal recovery action for an unsupported password record', async ({ page }) => {
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      profile: 'local',
+      authenticated: false,
+      initialized: true,
+      password_state: 'recovery-required',
+    }),
+  }));
+
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: 'Supervisor password reset required' })).toBeVisible();
+  await expect(page.getByLabel('Recovery commands')).toContainText('shimpz reset');
+  await expect(page.getByLabel('Recovery commands')).toContainText('shimpz install');
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
 });
 
 test('uses the compact locale control at 360 pixels', async ({ page }) => {

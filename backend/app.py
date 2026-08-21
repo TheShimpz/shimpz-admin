@@ -58,6 +58,7 @@ _AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
         record_get=state.get,
     )
 )
+_LOCAL_LOGIN_LIMITER = auth.LocalLoginLimiter()
 TEAM_CREDENTIALS_ENABLED = (
     ADMIN_PROFILE == "local" and os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 )
@@ -78,9 +79,9 @@ OAUTH_ORIGINS = {
     "loopback": "http://127.0.0.1:7777",
     "hosted": "https://local.shimpz.com",
 }
-MIN_PASSWORD_LEN = 12
+MIN_PASSWORD_LEN = auth.MIN_PASSWORD_CHARS
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
-MAX_PASSWORD_CHARS = 4 * 1024
+MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
 MAX_ACCOUNT_USERNAME_CHARS = 32
 ACCOUNT_COOKIE_TTL = 14 * 24 * 60 * 60
 BROWSER_SECURITY_HEADERS = browser.security_headers(UI_DIR)
@@ -110,8 +111,14 @@ OPEN_API = frozenset(
 async def _lifespan(_application: FastAPI):
     if profile.require() != ADMIN_PROFILE:
         raise RuntimeError("Admin profile changed after route registration")
-    if ADMIN_PROFILE == "local" and state.is_initialized():
-        await asyncio.to_thread(_materialize_local_supervisor)
+    if ADMIN_PROFILE == "local":
+        try:
+            initialized = state.is_initialized()
+        except auth.PasswordRecordError:
+            log.exception("Local Supervisor password record requires bounded recovery")
+        else:
+            if initialized:
+                await asyncio.to_thread(_materialize_local_supervisor)
     yield
 
 
@@ -132,6 +139,17 @@ class SessionEvidenceUnavailableError(RuntimeError):
 @app.exception_handler(SessionEvidenceUnavailableError)
 async def _session_evidence_unavailable(_request: Request, _exc: SessionEvidenceUnavailableError):
     return JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
+
+
+@app.exception_handler(auth.PasswordRecordError)
+async def _password_record_unavailable(_request: Request, _exc: auth.PasswordRecordError):
+    return JSONResponse(
+        {
+            "code": "password-recovery-required",
+            "detail": "Supervisor password recovery is required",
+        },
+        status_code=503,
+    )
 
 
 def _local_oauth_authorization_mode(request: Request) -> str:
@@ -216,6 +234,8 @@ async def _bind_browser_origin(origin: str | None) -> None:
 
 
 def _local_session_evidence(cookies) -> dict[str, object] | None:
+    if state.password_state() != auth.RECORD_STATE_CONFIGURED:
+        return None
     record = state.get()
     try:
         return supervisor.local_session_evidence(
@@ -291,6 +311,15 @@ async def _gate(request: Request, call_next):
     except SessionEvidenceUnavailableError:
         response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
         return _secure_response(response)
+    except auth.PasswordRecordError:
+        response = JSONResponse(
+            {
+                "code": "password-recovery-required",
+                "detail": "Supervisor password recovery is required",
+            },
+            status_code=503,
+        )
+        return _secure_response(response)
     if evidence is None:
         response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
         return _secure_response(response)
@@ -306,6 +335,17 @@ async def _gate(request: Request, call_next):
 
 @app.post("/api/session")
 async def session(request: Request):
+    if ADMIN_PROFILE == "local":
+        try:
+            local_password_state = state.password_state()
+        except auth.PasswordRecordError:
+            return {
+                "profile": "local",
+                "authenticated": False,
+                "initialized": True,
+                "password_state": auth.RECORD_STATE_RECOVERY_REQUIRED,
+                "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
+            }
     evidence = await _session_evidence(request.cookies)
     response = {
         "profile": ADMIN_PROFILE,
@@ -313,7 +353,8 @@ async def session(request: Request):
         "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
     }
     if ADMIN_PROFILE == "local":
-        response["initialized"] = state.is_initialized()
+        response["initialized"] = local_password_state == auth.RECORD_STATE_CONFIGURED
+        response["password_state"] = local_password_state
         if evidence is not None:
             origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
             origin_admitted = origin is not None and origin in _allowed_browser_origins()
@@ -329,16 +370,36 @@ async def session(request: Request):
 async def _local_login(request: Request, payload: dict) -> JSONResponse:
     if set(payload) != {"password"} or not isinstance(payload["password"], str):
         raise HTTPException(status_code=400, detail="request body must contain only password")
+    password = payload["password"]
+    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
+        raise HTTPException(status_code=400, detail="invalid Supervisor credentials")
     if not state.is_initialized():
         raise HTTPException(status_code=409, detail="no admin password set yet — create one first")
     browser_origin = _request_browser_origin(request)
     rec = state.get()
-    password_ok = await asyncio.to_thread(
-        auth.verify_password,
-        payload["password"],
-        rec.get("salt", ""),
-        rec.get("password_hash", ""),
-    )
+    try:
+        _LOCAL_LOGIN_LIMITER.begin()
+    except auth.LoginRateLimitedError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="too many login attempts",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from None
+    password_ok: bool | None = None
+    lock_seconds = 0
+    try:
+        password_ok = await asyncio.to_thread(auth.verify_password, password, rec)
+    finally:
+        lock_seconds = _LOCAL_LOGIN_LIMITER.finish(
+            rejected=None if password_ok is None else not password_ok,
+        )
+    if lock_seconds:
+        log.info("login locked after repeated password rejection")
+        raise HTTPException(
+            status_code=429,
+            detail="too many login attempts",
+            headers={"Retry-After": str(lock_seconds)},
+        )
     if not password_ok:
         log.info("login failed")  # never the password
         raise HTTPException(status_code=401, detail="wrong password")
@@ -421,10 +482,17 @@ async def admin_setup(request: Request):
         if state.is_initialized():
             raise HTTPException(status_code=409, detail="admin password already set")
         password = payload["password"]
-        if len(password) < MIN_PASSWORD_LEN:
-            raise HTTPException(status_code=400, detail=f"password must be at least {MIN_PASSWORD_LEN} characters")
-        if len(password) > MAX_PASSWORD_CHARS:
-            raise HTTPException(status_code=400, detail="password is too long")
+        violation = auth.password_policy(password)
+        if violation is not None:
+            details = {
+                "password-too-short": f"password must be at least {MIN_PASSWORD_LEN} characters",
+                "password-too-long": "password is too long",
+                "password-blocklisted": "choose a password that is not commonly used or expected",
+            }
+            return JSONResponse(
+                {"code": violation, "detail": details[violation]},
+                status_code=400,
+            )
         await asyncio.to_thread(_initialize_local_supervisor, password, browser_origin)
         if browser_origin is not None:
             log.info("Local Admin browser origin learned: %s", browser_origin)
@@ -638,12 +706,7 @@ async def teams_destroy(team_id: str, request: Request):
     if ADMIN_PROFILE == "local":
         record = state.get()
         try:
-            password_ok = await asyncio.to_thread(
-                auth.verify_password,
-                password,
-                record.get("salt", ""),
-                record.get("password_hash", ""),
-            )
+            password_ok = await asyncio.to_thread(auth.verify_password, password, record)
         except TypeError, ValueError:
             log.warning("Admin password record is invalid")
             raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None

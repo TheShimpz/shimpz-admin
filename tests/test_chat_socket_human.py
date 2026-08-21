@@ -46,7 +46,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.state.set_password("correct horse battery staple")
+        self.admin_app.state.set_password("violet otter lantern quartz 92")
         record = self.admin_app.state.get()
         self.token = self.admin_app.auth.issue_session(record["session_secret"])
         self.auth_clock = [100.0]
@@ -132,7 +132,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                         "type": "human-response",
                         "challenge_id": CHALLENGE_ID,
                         "decision": "submit",
-                        "value": "correct horse battery staple",
+                        "value": "violet otter lantern quartz 92",
                     }
                 )
                 event = await websocket.next_json()
@@ -145,8 +145,8 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                     resume.call_args.kwargs["assurance"],
                     {"kind": "auth:password", "challenge_id": CHALLENGE_ID},
                 )
-                self.assertNotIn("correct horse battery staple", repr(resume.call_args))
-                self.assertNotIn("correct horse battery staple", json.dumps(event))
+                self.assertNotIn("violet otter lantern quartz 92", repr(resume.call_args))
+                self.assertNotIn("violet otter lantern quartz 92", json.dumps(event))
                 await websocket.disconnect()
 
         asyncio.run(scenario())
@@ -191,7 +191,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                         "type": "human-response",
                         "challenge_id": CHALLENGE_ID,
                         "decision": "submit",
-                        "value": "correct horse battery staple",
+                        "value": "violet otter lantern quartz 92",
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
@@ -245,7 +245,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                         "type": "human-response",
                         "challenge_id": CHALLENGE_ID,
                         "decision": "submit",
-                        "value": "correct horse battery staple",
+                        "value": "violet otter lantern quartz 92",
                     }
                 )
                 still_locked = await websocket.next_json()
@@ -258,7 +258,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                         "type": "human-response",
                         "challenge_id": CHALLENGE_ID,
                         "decision": "submit",
-                        "value": "correct horse battery staple",
+                        "value": "violet otter lantern quartz 92",
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")

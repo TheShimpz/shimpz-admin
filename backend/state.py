@@ -96,9 +96,14 @@ def get():
     return _read()
 
 
+def password_state() -> str:
+    """Return the exact current Local Supervisor password state."""
+    return auth.password_state(_read())
+
+
 def is_initialized():
-    """True once a password has been set (bootstrap window is closed)."""
-    return bool(_read().get("password_hash"))
+    """True once a current-contract password has closed the bootstrap window."""
+    return password_state() == auth.RECORD_STATE_CONFIGURED
 
 
 def _validated_browser_origin(data: dict) -> str | None:
@@ -130,15 +135,15 @@ def bind_browser_origin(origin: str) -> str:
 
 
 def set_password(password, browser_origin: str | None = None):
-    """Set the admin password (salt + scrypt hash), ensuring a session secret exists too."""
+    """Set the current Supervisor verifier, ensuring a session secret exists too."""
     if browser_origin is not None and (
         canonical_origin(browser_origin) != browser_origin or not browser_origin.startswith("https://")
     ):
         raise ValueError("browser origin must be one exact HTTPS origin")
     data = _read()
-    salt = auth.new_secret()
-    data["salt"] = salt
-    data["password_hash"] = auth.hash_password(password, salt)
+    if auth.password_state(data) != auth.RECORD_STATE_UNINITIALIZED:
+        raise RuntimeError("Local Supervisor password is already configured")
+    data["password_verifier"] = auth.new_password_verifier(password)
     if not data.get("session_secret"):
         data["session_secret"] = auth.new_secret()
     identity_fields = {"supervisor_id", "supervisor_signing_key"} & set(data)

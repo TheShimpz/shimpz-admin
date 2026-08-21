@@ -212,7 +212,7 @@ class AppRouteEdgeTests(unittest.TestCase):
         ):
             self.assert_async_status(400, self.admin_app.teams_destroy("team_1", request))
 
-        payload = {"team_name": "Marketing", "password": "correct horse battery staple"}
+        payload = {"team_name": "Marketing", "password": "violet otter lantern quartz 92"}
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
             mock.patch.object(self.admin_app.state, "get", return_value={}),
@@ -242,7 +242,7 @@ class AppRouteEdgeTests(unittest.TestCase):
 
     def test_hosted_team_deletion_maps_session_and_sudo_statuses(self) -> None:
         request = _json_request({}, cookie="token")
-        payload = {"team_name": "Marketing", "password": "correct horse battery staple"}
+        payload = {"team_name": "Marketing", "password": "violet otter lantern quartz 92"}
         with (
             mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),

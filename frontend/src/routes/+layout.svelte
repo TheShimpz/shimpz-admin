@@ -64,7 +64,9 @@
         throw new Error('invalid session profile');
       }
       profile = session.profile;
-      if (session?.authenticated === true) {
+      if (profile === 'local' && session?.password_state === 'recovery-required') {
+        phase = 'recovery';
+      } else if (session?.authenticated === true) {
         if (profile === 'local' && session?.origin_admitted !== true) {
           confirmOrigin = true;
           phase = 'login';
@@ -96,7 +98,7 @@
       error = $t('auth.usernameRequired');
       return;
     }
-    if (phase === 'setup' && password.length < 12) {
+    if (phase === 'setup' && password.length < 15) {
       error = $t('auth.tooShort');
       return;
     }
@@ -115,12 +117,22 @@
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
+        if (body.code === 'password-recovery-required') {
+          phase = 'recovery';
+          return;
+        }
         error =
-          response.status === 401
-            ? $t('auth.badPassword')
-            : response.status === 403 && profile === 'hosted'
-              ? $t('auth.supervisorRequired')
-              : (body.detail ?? `HTTP ${response.status}`);
+          response.status === 429
+            ? $t('auth.tooManyAttempts')
+            : body.code === 'password-too-short'
+              ? $t('auth.tooShort')
+              : body.code === 'password-blocklisted'
+                ? $t('auth.commonPassword')
+                : response.status === 401
+                  ? $t('auth.badPassword')
+                  : response.status === 403 && profile === 'hosted'
+                    ? $t('auth.supervisorRequired')
+                    : (body.detail ?? `HTTP ${response.status}`);
         return;
       }
 

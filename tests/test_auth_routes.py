@@ -56,6 +56,7 @@ class AuthRouteTests(unittest.TestCase):
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
         self.admin_app.supervisor.PUBLIC_KEY_FILE.unlink(missing_ok=True)
+        self.admin_app._LOCAL_LOGIN_LIMITER = self.admin_app.auth.LocalLoginLimiter()
         group = mock.patch.object(
             self.admin_app.supervisor.grp,
             "getgrnam",
@@ -154,7 +155,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertFalse(self.admin_app.state.is_initialized())
 
     def test_retired_environment_does_not_change_password_setup(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(
                 self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}))
@@ -166,7 +167,7 @@ class AuthRouteTests(unittest.TestCase):
         to_thread.assert_awaited_once_with(self.admin_app._initialize_local_supervisor, password, None)
 
     def test_login_verifies_the_password_off_the_event_loop(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         record = self.admin_app.state.get()
 
@@ -177,12 +178,11 @@ class AuthRouteTests(unittest.TestCase):
         to_thread.assert_awaited_once_with(
             self.admin_app.auth.verify_password,
             password,
-            record["salt"],
-            record["password_hash"],
+            record,
         )
 
     def test_external_https_origin_is_bound_only_after_correct_password(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
 
         wrong = self._request(
@@ -227,7 +227,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(loopback["oauth_completion_mode"], "automatic")
 
     def test_external_origin_is_validated_before_password_verification(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
 
         with (
@@ -251,7 +251,7 @@ class AuthRouteTests(unittest.TestCase):
             self.admin_app.admin_setup(
                 self._request(
                     "/api/admin/setup",
-                    {"password": "correct horse battery staple"},
+                    {"password": "violet otter lantern quartz 92"},
                     origin="https://first.example.test",
                 )
             )
@@ -264,7 +264,7 @@ class AuthRouteTests(unittest.TestCase):
     def test_forwarded_protocol_cannot_mark_a_loopback_session_secure(self) -> None:
         request = self._request(
             "/api/admin/setup",
-            {"password": "correct horse battery staple"},
+            {"password": "violet otter lantern quartz 92"},
         )
         request.scope["headers"].append((b"x-forwarded-proto", b"https"))
 
@@ -273,7 +273,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertNotIn("Secure", response.headers["set-cookie"])
 
     def test_local_space_reset_requires_password_confirmation_before_team(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
@@ -312,7 +312,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertNotIn("set-cookie", response.headers)
         team_reset.assert_called_once_with()
 
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         with mock.patch.object(self.admin_app.team, "bootstrap_reset_space") as blocked:
             configured = asyncio.run(
@@ -371,7 +371,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertFalse(self.admin_app._ADMIN_SETUP_LOCK.locked())
 
     def test_local_space_reset_bounds_team_request_failure(self) -> None:
-        password = "correct horse battery staple"
+        password = "violet otter lantern quartz 92"
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"

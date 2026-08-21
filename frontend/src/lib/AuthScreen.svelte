@@ -17,6 +17,7 @@
 
   let setup = $derived(phase === 'setup');
   let hosted = $derived(profile === 'hosted');
+  let recovery = $derived(phase === 'recovery');
   let confirmationError = $derived(setup && error === $t('auth.mismatch') ? error : '');
   let formError = $derived(confirmationError ? '' : error);
 </script>
@@ -39,6 +40,13 @@
           <Notice variant="error">{error}</Notice>
           <Button variant="secondary" type="button" onclick={onRetry}>{$t('auth.retry')}</Button>
         {/if}
+      </div>
+    {:else if recovery}
+      <h1 id="auth-title">{$t('auth.recoveryTitle')}</h1>
+      <p class="lead">{$t('auth.recoveryLead')}</p>
+      <div class="recovery-commands" aria-label={$t('auth.recoveryCommands')}>
+        <code>shimpz reset</code>
+        <code>shimpz install</code>
       </div>
     {:else}
       <h1 id="auth-title">
@@ -81,7 +89,7 @@
           autocomplete={setup ? 'new-password' : 'current-password'}
           hint={setup ? $t('auth.passwordHint') : undefined}
           required
-          minlength={setup ? 12 : undefined}
+          minlength={setup ? 15 : undefined}
           disabled={busy}
         />
 
@@ -93,11 +101,11 @@
             bind:value={confirmation}
             autocomplete="new-password"
             required
-          minlength="12"
-          disabled={busy}
-          error={confirmationError}
-        />
-      {/if}
+            minlength="15"
+            disabled={busy}
+            error={confirmationError}
+          />
+        {/if}
 
         {#if formError}<Notice variant="error">{formError}</Notice>{/if}
 
@@ -181,6 +189,18 @@
   form {
     display: grid;
     gap: 0.55rem;
+  }
+
+  .recovery-commands {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .recovery-commands code {
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--font-mono);
   }
 
   .checking {

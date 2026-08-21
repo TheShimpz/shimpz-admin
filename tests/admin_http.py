@@ -27,6 +27,28 @@ def request(
     origin: str | None = None,
     timeout: float = 10,
 ) -> tuple[int, object, str]:
+    status, payload, headers = request_with_headers(
+        port,
+        method,
+        path,
+        body,
+        session=session,
+        origin=origin,
+        timeout=timeout,
+    )
+    return status, payload, headers.get("set-cookie", "")
+
+
+def request_with_headers(
+    port: int,
+    method: str,
+    path: str,
+    body: dict[str, object] | None = None,
+    *,
+    session: str | None = None,
+    origin: str | None = None,
+    timeout: float = 10,
+) -> tuple[int, object, dict[str, str]]:
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     headers = {"Content-Type": "application/json"}
     if session is not None:
@@ -36,13 +58,13 @@ def request(
     connection.request(method, path, json.dumps(body) if body is not None else None, headers)
     response = connection.getresponse()
     raw = response.read().decode("utf-8", errors="replace")
-    set_cookie = response.getheader("Set-Cookie") or ""
+    response_headers = {name.lower(): value for name, value in response.getheaders()}
     connection.close()
     try:
         payload: object = json.loads(raw)
     except json.JSONDecodeError:
         payload = raw
-    return response.status, payload, set_cookie
+    return response.status, payload, response_headers
 
 
 def session_cookie(set_cookie: str) -> str | None:
