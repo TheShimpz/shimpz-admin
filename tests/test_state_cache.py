@@ -10,7 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import state
-from mfa_helper import configure_supervisor
+from mfa_helper import code, configure_supervisor
+
+NOW = 1_800_000_000
 
 
 class AdminStoreCacheTests(unittest.TestCase):
@@ -105,6 +107,34 @@ class AdminStoreCacheTests(unittest.TestCase):
         with self.assertRaises(state.supervisor.SupervisorAuthorityError):
             state.begin_supervisor_setup("violet otter lantern quartz 92")
 
+    def test_pending_totp_projection_resumes_and_closes_after_activation(self) -> None:
+        enrollment = state.begin_supervisor_setup("violet otter lantern quartz 92", now=NOW)
+
+        self.assertEqual(state.totp_enrollment(), enrollment)
+        resumed = state.resume_totp_enrollment(now=NOW + 1)
+        self.assertEqual((resumed.secret, resumed.uri), (enrollment.secret, enrollment.uri))
+        self.assertRegex(state.webauthn_user_id(), r"^[0-9a-f]{64}$")
+        with self.assertRaises(RuntimeError):
+            state.begin_supervisor_setup("violet otter lantern quartz 92", now=NOW)
+
+        result = state.verify_totp(code(enrollment.secret, NOW + 1), enrollment=True, now=NOW + 1)
+        self.assertIs(result, state.totp.Verification.ACCEPTED)
+        with self.assertRaises(state.totp.TotpStateError):
+            state.totp_enrollment()
+        with self.assertRaises(state.totp.TotpStateError):
+            state.resume_totp_enrollment(now=NOW + 2)
+        with self.assertRaises(state.totp.TotpStateError):
+            state.verify_totp(code(enrollment.secret, NOW + 30), enrollment=True, now=NOW + 30)
+
+    def test_corrupt_factor_state_requires_bounded_recovery(self) -> None:
+        configure_supervisor(state, "violet otter lantern quartz 92")
+        data = state.get()
+        data["totp"].pop("status")
+        state._write(data)
+
+        with self.assertRaises(state.auth.PasswordRecordError):
+            state.authentication_state()
+
     def test_uninitialized_state_admits_only_strict_reset_consumption_evidence(self) -> None:
         state._write({"consumed_host_resets": [{"digest": "a" * 64, "expires_at": 1_800_000_000}]})
         self.assertEqual(state.authentication_state(), "uninitialized")
@@ -112,6 +142,18 @@ class AdminStoreCacheTests(unittest.TestCase):
         state._write({"consumed_host_resets": [{"digest": "not-a-digest", "expires_at": 1_800_000_000}]})
         with self.assertRaisesRegex(RuntimeError, "invalid host reset evidence"):
             state.authentication_state()
+
+    def test_host_reset_consumption_rejects_malformed_and_over_capacity_evidence(self) -> None:
+        for digest, expires_at, now in (("bad", NOW + 1, NOW), ("a" * 64, True, NOW), ("a" * 64, NOW + 1, True)):
+            with self.subTest(digest=digest, expires_at=expires_at, now=now), self.assertRaises(ValueError):
+                state.consume_host_reset_capability(digest, expires_at, now=now)
+
+        over_capacity = [
+            {"digest": f"{index:064x}", "expires_at": NOW + 1}
+            for index in range(state.MAX_CONSUMED_HOST_RESETS + 1)
+        ]
+        with self.assertRaisesRegex(RuntimeError, "invalid host reset evidence"):
+            state._validated_consumed_host_resets(over_capacity)
 
 
 if __name__ == "__main__":
