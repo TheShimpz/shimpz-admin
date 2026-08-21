@@ -38,9 +38,6 @@ class Context:
         self.challenge_store.clear()
 
 
-CONTEXT = Context()
-
-
 async def _json_object(request: Request) -> dict:
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type != "application/json":
@@ -173,7 +170,7 @@ def _complete_totp(code: object, *, enrollment: bool) -> None:
         raise HTTPException(status_code=401, detail="invalid verification code")
 
 
-async def setup(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def setup(request: Request, context: Context) -> JSONResponse:
     """Create or resume the password-bound mandatory TOTP enrollment."""
     payload = await _json_object(request)
     if set(payload) != {"password"}:
@@ -205,7 +202,7 @@ async def setup(request: Request, context: Context = CONTEXT) -> JSONResponse:
     return response
 
 
-async def confirm_setup(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def confirm_setup(request: Request, context: Context) -> JSONResponse:
     """Activate TOTP and issue the first MFA session."""
     payload = await _json_object(request)
     if set(payload) != {"code"}:
@@ -233,7 +230,7 @@ def _login_passkey_options(token: str, origin: str | None, generation: int, cont
         return None
 
 
-async def login(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def login(request: Request, context: Context) -> JSONResponse:
     """Verify the password and issue only a short-lived second-factor ticket."""
     payload = await _json_object(request)
     if set(payload) != {"password"}:
@@ -254,7 +251,7 @@ async def login(request: Request, context: Context = CONTEXT) -> JSONResponse:
     return response
 
 
-async def confirm_login_totp(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def confirm_login_totp(request: Request, context: Context) -> JSONResponse:
     """Consume one password ticket and complete login with TOTP."""
     payload = await _json_object(request)
     if set(payload) != {"code"}:
@@ -268,7 +265,7 @@ async def confirm_login_totp(request: Request, context: Context = CONTEXT) -> JS
     return response
 
 
-async def confirm_login_passkey(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def confirm_login_passkey(request: Request, context: Context) -> JSONResponse:
     """Consume one password ticket and complete login with an exact-origin UV assertion."""
     payload = await _json_object(request)
     if set(payload) != {"credential"}:
@@ -323,7 +320,7 @@ def passkey_registered(origin: str | None) -> bool:
         return False
 
 
-async def begin_passkey_registration(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def begin_passkey_registration(request: Request, context: Context) -> JSONResponse:
     """Start registration from one admitted MFA-authenticated browser origin."""
     payload = await _json_object(request)
     if payload:
@@ -345,7 +342,7 @@ async def begin_passkey_registration(request: Request, context: Context = CONTEX
     return _response({"options": options})
 
 
-async def complete_passkey_registration(request: Request, context: Context = CONTEXT) -> JSONResponse:
+async def complete_passkey_registration(request: Request, context: Context) -> JSONResponse:
     """Persist one verified passkey and rotate every previous Local session."""
     payload = await _json_object(request)
     if set(payload) != {"credential"}:
