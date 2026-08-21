@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -41,6 +44,10 @@ class PasswordVerifierTests(unittest.TestCase):
     def test_setup_policy_rejects_short_common_and_repeated_passwords(self) -> None:
         cases = {
             "short": "password-too-short",
+            " " * auth.MIN_PASSWORD_CHARS: "password-too-short",
+            "violet otter" + " " * auth.MIN_PASSWORD_CHARS: "password-too-short",
+            "a" + " " * 20 + "b": "password-too-short",
+            "ﬀ" * 8: "password-too-short",
             "correct horse battery staple": "password-blocklisted",
             "Shimpz Admin Password": "password-blocklisted",
             "abcabcabcabcabc": "password-blocklisted",
@@ -54,15 +61,42 @@ class PasswordVerifierTests(unittest.TestCase):
 
 
 class LocalLoginLimiterTests(unittest.TestCase):
+    def test_cancelled_attempt_retains_its_slot_until_the_worker_finishes(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+        limiter = auth.LocalLoginLimiter()
+
+        def verify(_password: str, _record: object) -> bool:
+            started.set()
+            self.assertTrue(release.wait(timeout=2))
+            return True
+
+        async def exercise() -> None:
+            with mock.patch.object(auth, "verify_password", side_effect=verify):
+                attempt = asyncio.create_task(auth.attempt_login(GOOD_PASSWORD, {}, limiter))
+                self.assertTrue(await asyncio.to_thread(started.wait, 1))
+                attempt.cancel()
+                await asyncio.sleep(0)
+                self.assertFalse(attempt.done())
+                with self.assertRaises(auth.LoginRateLimitedError):
+                    limiter.begin()
+                release.set()
+                with self.assertRaises(asyncio.CancelledError):
+                    await attempt
+                limiter.begin()
+                self.assertEqual(limiter.finish(rejected=None), 0)
+
+        asyncio.run(exercise())
+
     def test_attempt_login_releases_its_slot_after_invalid_record(self) -> None:
         limiter = auth.LocalLoginLimiter()
 
         with self.assertRaises(auth.PasswordRecordError):
-            auth.attempt_login(GOOD_PASSWORD, {"password_verifier": "invalid"}, limiter)
+            asyncio.run(auth.attempt_login(GOOD_PASSWORD, {"password_verifier": "invalid"}, limiter))
 
         verifier = auth.new_password_verifier(GOOD_PASSWORD)
         self.assertEqual(
-            auth.attempt_login(GOOD_PASSWORD, {"password_verifier": verifier}, limiter),
+            asyncio.run(auth.attempt_login(GOOD_PASSWORD, {"password_verifier": verifier}, limiter)),
             (True, 0),
         )
 

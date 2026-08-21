@@ -371,8 +371,7 @@ async def _local_login(request: Request, payload: dict) -> JSONResponse:
     browser_origin = _request_browser_origin(request)
     rec = state.get()
     try:
-        password_ok, lock_seconds = await asyncio.to_thread(
-            auth.attempt_login,
+        password_ok, lock_seconds = await auth.attempt_login(
             password,
             rec,
             _LOCAL_LOGIN_LIMITER,

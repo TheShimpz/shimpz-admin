@@ -24,7 +24,9 @@
 
 <section class="auth-stage" aria-labelledby="auth-title">
   <div class="welcome">
-    <p class="kicker">{phase === 'login' ? $t('auth.returning') : $t('auth.firstRun')}</p>
+    <p class="kicker">
+      {recovery ? $t('auth.recoveryKicker') : phase === 'login' ? $t('auth.returning') : $t('auth.firstRun')}
+    </p>
     <ShimpzBrand variant="hero" />
     <div class="welcome-copy">
       <p class="hero-title">{$t('auth.heroTitle')}</p>

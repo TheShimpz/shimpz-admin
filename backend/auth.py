@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import math
@@ -11,6 +12,7 @@ import threading
 import time
 import unicodedata
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 
 MIN_PASSWORD_CHARS = 15
 MAX_PASSWORD_CHARS = 4 * 1024
@@ -121,16 +123,22 @@ class LocalLoginLimiter:
             return self._lock_seconds
 
 
-def attempt_login(
+async def attempt_login(
     password: str,
     record: object,
     limiter: LocalLoginLimiter,
 ) -> tuple[bool, int]:
-    """Run one reserved password derivation and release its slot on every outcome."""
+    """Reserve immediately and retain the slot until the off-loop derivation finishes."""
     limiter.begin()
     verified: bool | None = None
+    worker = asyncio.create_task(asyncio.to_thread(verify_password, password, record))
     try:
-        verified = verify_password(password, record)
+        try:
+            verified = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await worker
+            raise
     finally:
         lock_seconds = limiter.finish(rejected=None if verified is None else not verified)
     return verified, lock_seconds
@@ -157,6 +165,8 @@ def password_policy(password: str) -> str | None:
     if len(password) > MAX_PASSWORD_CHARS:
         return "password-too-long"
     normalized = _normalized_password(password)
+    if len(normalized) < MIN_PASSWORD_CHARS:
+        return "password-too-short"
     if normalized in _BLOCKLIST or _is_repeated_unit(normalized):
         return "password-blocklisted"
     return None
@@ -183,16 +193,23 @@ def new_password_verifier(password: str) -> str:
     return f"{_SCHEME}${_PARAMETERS}${salt.hex()}${digest.hex()}"
 
 
-def password_state(record: object) -> str:
-    """Return ``uninitialized`` or ``configured``; reject every other record shape."""
+def _password_material(record: object) -> tuple[bytes, bytes] | None:
     if not isinstance(record, Mapping):
         raise PasswordRecordError("Local Supervisor password record is invalid")
     verifier = record.get("password_verifier")
     retired = _RETIRED_PASSWORD_FIELDS & set(record)
     if verifier is None and not retired:
-        return RECORD_STATE_UNINITIALIZED
-    if not isinstance(verifier, str) or retired or _VERIFIER.fullmatch(verifier) is None:
+        return None
+    match = _VERIFIER.fullmatch(verifier) if isinstance(verifier, str) else None
+    if retired or match is None:
         raise PasswordRecordError("Local Supervisor password record requires bounded recovery")
+    return bytes.fromhex(match.group(1)), bytes.fromhex(match.group(2))
+
+
+def password_state(record: object) -> str:
+    """Return ``uninitialized`` or ``configured``; reject every other record shape."""
+    if _password_material(record) is None:
+        return RECORD_STATE_UNINITIALIZED
     return RECORD_STATE_CONFIGURED
 
 
@@ -200,14 +217,10 @@ def verify_password(password: str, record: object) -> bool:
     """Verify one bounded password against only the exact current record contract."""
     if not isinstance(password, str) or not 1 <= len(password) <= MAX_PASSWORD_CHARS:
         raise ValueError("invalid password input")
-    if password_state(record) != RECORD_STATE_CONFIGURED:
+    material = _password_material(record)
+    if material is None:
         raise PasswordRecordError("Local Supervisor password is not configured")
-    verifier = record["password_verifier"]
-    match = _VERIFIER.fullmatch(verifier)
-    if match is None:
-        raise PasswordRecordError("Local Supervisor password record is invalid")
-    salt = bytes.fromhex(match.group(1))
-    expected = bytes.fromhex(match.group(2))
+    salt, expected = material
     return hmac.compare_digest(_derive(password, salt), expected)
 
 

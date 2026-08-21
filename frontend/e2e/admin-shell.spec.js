@@ -62,6 +62,8 @@ test('renders the terminal recovery action for an unsupported password record', 
 
   await page.goto('/');
 
+  await expect(page.getByText('Space // recovery', { exact: true })).toBeVisible();
+  await expect(page.getByText('Space // first run', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Supervisor password reset required' })).toBeVisible();
   await expect(page.getByLabel('Recovery commands')).toContainText('shimpz reset');
   await expect(page.getByLabel('Recovery commands')).toContainText('shimpz install');

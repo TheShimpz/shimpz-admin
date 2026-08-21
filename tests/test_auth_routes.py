@@ -171,16 +171,30 @@ class AuthRouteTests(unittest.TestCase):
         asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
         record = self.admin_app.state.get()
 
-        with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
+        with mock.patch.object(self.admin_app.auth.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
 
         self.assertEqual(response.status_code, 200)
         to_thread.assert_awaited_once_with(
-            self.admin_app.auth.attempt_login,
+            self.admin_app.auth.verify_password,
             password,
             record,
-            self.admin_app._LOCAL_LOGIN_LIMITER,
         )
+
+    def test_in_flight_login_returns_one_second_retry_without_consuming_a_rejection(self) -> None:
+        password = "violet otter lantern quartz 92"
+        asyncio.run(self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password})))
+        self.admin_app._LOCAL_LOGIN_LIMITER.begin()
+        try:
+            with self.assertRaises(self.admin_app.HTTPException) as raised:
+                asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
+        finally:
+            self.admin_app._LOCAL_LOGIN_LIMITER.finish(rejected=None)
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.headers, {"Retry-After": "1"})
+        response = asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
+        self.assertEqual(response.status_code, 200)
 
     def test_external_https_origin_is_bound_only_after_correct_password(self) -> None:
         password = "violet otter lantern quartz 92"
