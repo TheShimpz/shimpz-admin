@@ -19,7 +19,7 @@ def main() -> int:
     """Write exactly one admitted state, or fail without projecting store details."""
     try:
         authentication_state = state.classified_authentication_state()
-    except (OSError, RuntimeError):
+    except OSError, RuntimeError:
         return 1
     if authentication_state not in _ADMITTED_STATES:
         return 1

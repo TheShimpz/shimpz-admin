@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import runpy
 import sys
 import unittest
 from pathlib import Path
@@ -16,6 +17,24 @@ import authentication_state
 
 
 class AuthenticationStateProjectionTests(unittest.TestCase):
+    def test_module_entrypoint_exits_with_the_projection_result(self) -> None:
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(
+                authentication_state.state,
+                "classified_authentication_state",
+                return_value="configured",
+            ),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as stopped,
+        ):
+            runpy.run_path(
+                ROOT / "backend/authentication_state.py",
+                run_name="__main__",
+            )
+        self.assertEqual(stopped.exception.code, 0)
+        self.assertEqual(stdout.getvalue(), "configured")
+
     def test_emits_each_exact_admitted_state(self) -> None:
         for projected in sorted(authentication_state._ADMITTED_STATES):
             with self.subTest(projected=projected):
