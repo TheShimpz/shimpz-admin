@@ -151,6 +151,15 @@ class AdminStoreCacheTests(unittest.TestCase):
         with self.assertRaises(state.auth.PasswordRecordError):
             state.authentication_state()
 
+        self.assertEqual(state.classified_authentication_state(), "recovery-required")
+
+    def test_authentication_projection_does_not_reclassify_store_failures(self) -> None:
+        with (
+            mock.patch.object(state, "authentication_state", side_effect=RuntimeError("store unavailable")),
+            self.assertRaisesRegex(RuntimeError, "store unavailable"),
+        ):
+            state.classified_authentication_state()
+
     def test_uninitialized_state_admits_only_strict_reset_consumption_evidence(self) -> None:
         state._write({"consumed_host_resets": [{"digest": "a" * 64, "expires_at": 1_800_000_000}]})
         self.assertEqual(state.authentication_state(), "uninitialized")

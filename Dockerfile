@@ -44,7 +44,8 @@ RUN groupadd -g 1000 admin && \
     useradd -u 1000 -g 1000 -G 10021 -M -s /usr/sbin/nologin admin
 
 WORKDIR /app/backend
-COPY backend/app.py backend/auth.py backend/browser.py backend/host_reset.py backend/local_auth.py backend/models.py \
+COPY backend/app.py backend/auth.py backend/authentication_state.py backend/browser.py backend/host_reset.py \
+    backend/local_auth.py backend/models.py \
     backend/model_catalog.json backend/notifications.py \
     backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
 COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/

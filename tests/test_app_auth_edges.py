@@ -288,7 +288,11 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         self.assertEqual(gated.status_code, 503)
         self.assertEqual(json.loads(gated.body)["code"], "password-recovery-required")
 
-        with mock.patch.object(self.admin_app.state, "authentication_state", side_effect=error):
+        with mock.patch.object(
+            self.admin_app.state,
+            "classified_authentication_state",
+            return_value=self.admin_app.auth.RECORD_STATE_RECOVERY_REQUIRED,
+        ):
             projected = asyncio.run(self.admin_app.session(_request("/api/session")))
         self.assertEqual(projected["authentication_state"], self.admin_app.auth.RECORD_STATE_RECOVERY_REQUIRED)
         self.assertIs(projected["authenticated"], False)

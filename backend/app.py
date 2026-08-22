@@ -311,14 +311,13 @@ async def _gate(request: Request, call_next):
 @app.post("/api/session")
 async def session(request: Request):
     if ADMIN_PROFILE == "local":
-        try:
-            local_authentication_state = state.authentication_state()
-        except auth.PasswordRecordError:
+        local_authentication_state = state.classified_authentication_state()
+        if local_authentication_state == auth.RECORD_STATE_RECOVERY_REQUIRED:
             return {
                 "profile": "local",
                 "authenticated": False,
                 "initialized": True,
-                "authentication_state": auth.RECORD_STATE_RECOVERY_REQUIRED,
+                "authentication_state": local_authentication_state,
                 "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
             }
     evidence = await _session_evidence(request.cookies)

@@ -214,6 +214,14 @@ def authentication_state() -> str:
     return _authentication_state(_read())
 
 
+def classified_authentication_state() -> str:
+    """Project a current state while classifying only an invalid auth record for recovery."""
+    try:
+        return authentication_state()
+    except auth.PasswordRecordError:
+        return auth.RECORD_STATE_RECOVERY_REQUIRED
+
+
 def revoke_sessions_for_logout(session_token: object) -> bool:
     """Rotate every Local session only when the presented session is currently valid."""
 
