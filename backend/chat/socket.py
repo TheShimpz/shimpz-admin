@@ -1,6 +1,6 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
-The browser speaks only ``shimpz.chat.v4``. Provider and Assistant secrets stay behind
+The browser speaks only ``shimpz.chat.v5``. Provider and Assistant secrets stay behind
 :mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
@@ -14,17 +14,18 @@ import contextvars
 import logging
 import os
 import threading
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
-from chat import human, local
+from chat import assistant_install, assistant_proposal, human, local, store_catalog
 from chat import progress as progress_transport
 from protocol.http.v1 import websocket as chat_ws_common
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v4"
+CHAT_SUBPROTOCOL = "shimpz.chat.v5"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 STOP_RESULT_WAIT_SECONDS = 15
@@ -80,6 +81,18 @@ _SYNC_EXECUTOR = BoundedThreadPoolExecutor(
     max_outstanding=4,
     thread_name_prefix="shimpz-chat-sync",
 )
+_DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=2,
+    thread_name_prefix="shimpz-chat-discovery",
+)
+_INSTALL_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=2,
+    thread_name_prefix="shimpz-chat-install",
+)
+_STORE_CATALOG = store_catalog.StoreCatalog()
+_monotonic = time.monotonic
 
 
 canonical_origin = chat_ws_common.canonical_origin
@@ -160,6 +173,7 @@ class _Turn:
     future: concurrent.futures.Future | None
     operation: str
     progress: asyncio.Queue[dict[str, object]] | None = None
+    discovery_future: concurrent.futures.Future | None = None
     delivery: asyncio.Task | None = None
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False
@@ -174,7 +188,16 @@ class _Connection:
     pending_human_request: dict[str, object] | None = None
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
+    install_proposal: assistant_proposal.InstallProposal | None = None
+    install: _InstallOperation | None = None
     closed: bool = False
+
+
+@dataclass(slots=True)
+class _InstallOperation:
+    proposal: assistant_proposal.InstallProposal
+    future: concurrent.futures.Future
+    delivery: asyncio.Task | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +224,74 @@ def _forget_challenge(connection: _Connection) -> None:
     connection.pending_challenge_id = None
     connection.pending_challenge_type = None
     connection.pending_human_request = None
+
+
+def _assistant_identity(proposal: assistant_proposal.InstallProposal) -> dict[str, object]:
+    assistant = proposal.assistant
+    return {
+        "id": assistant.assistant_id,
+        "name": assistant.name,
+        "summary": assistant.summary,
+        "providers": sorted({item.provider for item in assistant.integrations}),
+    }
+
+
+def _proposal_event(
+    proposal: assistant_proposal.InstallProposal,
+    terminal: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "type": "assistant-install",
+        "state": "proposed",
+        "proposal_id": proposal.proposal_id,
+        "team_id": proposal.team_id,
+        "reply": terminal["reply"],
+        "expires_in": assistant_proposal.PROPOSAL_TTL_SECONDS,
+        "assistant": _assistant_identity(proposal),
+    }
+
+
+def _install_event(
+    proposal: assistant_proposal.InstallProposal,
+    state: str,
+    **fields: object,
+) -> dict[str, object]:
+    return {
+        "type": "assistant-install",
+        "state": state,
+        "proposal_id": proposal.proposal_id,
+        "assistant_id": proposal.assistant.assistant_id,
+        **fields,
+    }
+
+
+def _cancel_discovery(turn: _Turn) -> None:
+    if turn.discovery_future is not None and not turn.discovery_future.done():
+        turn.discovery_future.cancel()
+
+
+def _submit_discovery(
+    team_id: str,
+    payload: dict[str, object],
+) -> concurrent.futures.Future | None:
+    try:
+        return _submit_in_context(
+            _DISCOVERY_EXECUTOR,
+            assistant_install.discover,
+            team_id,
+            payload["message"],
+            tuple(payload["assistant_ids"]),
+            _STORE_CATALOG,
+        )
+    except (
+        ExecutorSaturatedError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        team.TeamRequestError,
+    ):
+        return None
 
 
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
@@ -293,6 +384,43 @@ async def _await_turn_response(
     return team.TeamResponse(502, {}) if result is None else result
 
 
+async def _await_discovery(turn: _Turn) -> store_catalog.CatalogAssistant | None:
+    if turn.discovery_future is None:
+        return None
+    try:
+        candidate = await asyncio.wrap_future(turn.discovery_future)
+    except asyncio.CancelledError:
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError):
+        return None
+    return candidate if isinstance(candidate, store_catalog.CatalogAssistant) else None
+
+
+async def _terminal_with_proposal(
+    connection: _Connection,
+    turn: _Turn,
+    team_id: str,
+    event: dict[str, object],
+) -> dict[str, object]:
+    if event.get("type") != "done":
+        _cancel_discovery(turn)
+        return event
+    _forget_challenge(connection)
+    candidate = await _await_discovery(turn)
+    if candidate is None or connection.install_proposal is not None:
+        return event
+    try:
+        proposal = assistant_proposal.create_proposal(
+            team_id,
+            candidate,
+            now=_monotonic(),
+        )
+    except ValueError:
+        return event
+    connection.install_proposal = proposal
+    return _proposal_event(proposal, event)
+
+
 async def _stop_closed_turn(
     websocket: WebSocket,
     connection: _Connection,
@@ -334,6 +462,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             return
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
+            _cancel_discovery(turn)
             _remember_challenge(connection, challenge, challenge_type)
             if not await _send_event(websocket, challenge):
                 connection.closed = True
@@ -348,8 +477,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             event = _error_terminal(502, "the Assistant challenge was invalid")
         else:
             event = turn_terminal(response, team_id)
-        if event.get("type") == "done":
-            _forget_challenge(connection)
+        event = await _terminal_with_proposal(connection, turn, team_id, event)
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -602,6 +730,7 @@ def _request_stop(
     if turn.stop_requested:
         return turn.stop_task
     turn.stop_requested = True
+    _cancel_discovery(turn)
     cancelled = turn.future is not None and turn.future.cancel()
     if cancelled and connection.pending_challenge_id is None:
         if emit and not connection.closed:
@@ -794,6 +923,86 @@ async def _dispatch_human_response(
     )
 
 
+async def _deliver_install(
+    websocket: WebSocket,
+    connection: _Connection,
+    operation: _InstallOperation,
+) -> None:
+    task = asyncio.current_task()
+    try:
+        result = assistant_install.InstallResult(502)
+        with contextlib.suppress(Exception):
+            resolved = await asyncio.wrap_future(operation.future)
+            if isinstance(resolved, assistant_install.InstallResult):
+                result = resolved
+        if connection.closed:
+            return
+        if result.installed is not None and 200 <= result.status < 300:
+            event = _install_event(
+                operation.proposal,
+                "installed",
+                team_id=operation.proposal.team_id,
+                installed=result.installed,
+            )
+        else:
+            status = result.status if 400 <= result.status <= 599 else 502
+            event = _install_event(operation.proposal, "failed", status=status)
+        if not await _send_event(websocket, event):
+            connection.closed = True
+    finally:
+        if operation.delivery is task and connection.install is operation:
+            connection.install = None
+
+
+async def _dispatch_install(
+    websocket: WebSocket,
+    connection: _Connection,
+    proposal: assistant_proposal.InstallProposal,
+) -> None:
+    if not await _send_event(websocket, _install_event(proposal, "installing")):
+        connection.closed = True
+        return
+    try:
+        future = _submit_in_context(_INSTALL_EXECUTOR, assistant_install.install, proposal)
+    except ExecutorSaturatedError:
+        await _send_event(websocket, _install_event(proposal, "failed", status=429))
+        return
+    operation = _InstallOperation(proposal=proposal, future=future)
+    connection.install = operation
+    operation.delivery = asyncio.create_task(_deliver_install(websocket, connection, operation))
+
+
+async def _resolve_install_proposal(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    payload: dict[str, object],
+) -> bool:
+    proposal = connection.install_proposal
+    if proposal is None:
+        return False
+    decision = (
+        assistant_proposal.classify_confirmation(payload["message"])
+        if payload["files"] == []
+        else "ambiguous"
+    )
+    if not proposal.valid_for(team_id, _monotonic()):
+        connection.install_proposal = None
+        if decision != "ambiguous":
+            await _send_event(websocket, _install_event(proposal, "expired"))
+            return True
+        return False
+    if decision == "confirm":
+        connection.install_proposal = None
+        await _dispatch_install(websocket, connection, proposal)
+        return True
+    if decision == "cancel":
+        connection.install_proposal = None
+        await _send_event(websocket, _install_event(proposal, "cancelled"))
+        return True
+    return False
+
+
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -811,7 +1020,7 @@ async def _dispatch_chat(
     except team.TeamRequestError:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
         return
-    if connection.active is not None or connection.sync_task is not None:
+    if connection.active is not None or connection.sync_task is not None or connection.install is not None:
         await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
         return
     if connection.pending_challenge_id is not None:
@@ -820,13 +1029,23 @@ async def _dispatch_chat(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return
+    if await _resolve_install_proposal(websocket, connection, team_id, payload):
+        return
     try:
         progress, report = _progress_channel()
         future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
-    turn = _Turn(future=future, operation="chat", progress=progress)
+    discovery_future = None
+    if connection.install_proposal is None:
+        discovery_future = _submit_discovery(team_id, payload)
+    turn = _Turn(
+        future=future,
+        operation="chat",
+        discovery_future=discovery_future,
+        progress=progress,
+    )
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
@@ -859,6 +1078,12 @@ async def _dispatch(
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
+    if connection.install is not None:
+        await _send_event(websocket, _error_terminal(409, "an Assistant installation is already active"))
+        return
+    if connection.install_proposal is not None and frame_type != "chat":
+        await _send_event(websocket, _error_terminal(409, "an Assistant install decision is pending"))
+        return
     if frame_type == "sync" and set(frame) == {"type"}:
         await _dispatch_sync(websocket, connection, team_id)
     elif frame_type == "chat":
@@ -918,6 +1143,39 @@ async def _admit(
     return canonical_id
 
 
+async def _close_connection(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+) -> None:
+    connection.closed = True
+    connection.install_proposal = None
+    sync_task = connection.sync_task
+    if sync_task is not None:
+        sync_task.cancel()
+        await asyncio.gather(sync_task, return_exceptions=True)
+    active = connection.active
+    if active is not None:
+        stop_task = active.stop_task
+        if active.future is not None and not active.future.done():
+            stop_task = _request_stop(websocket, connection, active, team_id, emit=False)
+        if stop_task is not None:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(
+                    asyncio.shield(stop_task),
+                    timeout=STOP_RESULT_WAIT_SECONDS,
+                )
+        if active.delivery is not None:
+            active.delivery.cancel()
+            await asyncio.gather(active.delivery, return_exceptions=True)
+    install = connection.install
+    if install is not None:
+        install.future.cancel()
+        if install.delivery is not None:
+            install.delivery.cancel()
+            await asyncio.gather(install.delivery, return_exceptions=True)
+
+
 async def serve(
     websocket: WebSocket,
     team_id: object,
@@ -955,22 +1213,4 @@ async def serve(
         except WebSocketDisconnect, RuntimeError, OSError:
             connection.closed = True
         finally:
-            connection.closed = True
-            sync_task = connection.sync_task
-            if sync_task is not None:
-                sync_task.cancel()
-                await asyncio.gather(sync_task, return_exceptions=True)
-            active = connection.active
-            if active is not None:
-                stop_task = active.stop_task
-                if active.future is not None and not active.future.done():
-                    stop_task = _request_stop(websocket, connection, active, canonical_id, emit=False)
-                if stop_task is not None:
-                    with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-                        await asyncio.wait_for(
-                            asyncio.shield(stop_task),
-                            timeout=STOP_RESULT_WAIT_SECONDS,
-                        )
-                if active.delivery is not None:
-                    active.delivery.cancel()
-                    await asyncio.gather(active.delivery, return_exceptions=True)
+            await _close_connection(websocket, connection, canonical_id)

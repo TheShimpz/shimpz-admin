@@ -54,7 +54,7 @@ test('static presentation: declared Admin sources instantiate the canonical prim
     ['../src/lib/ProviderSetupGate.svelte', ['Card']],
     ['../src/lib/ShimpzThinking.svelte', ['Disclosure']],
     ['../src/lib/TeamSidebar.svelte', ['Notice']],
-    ['../src/routes/chat/+page.svelte', ['EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
+    ['../src/routes/chat/+page.svelte', ['ChatTask', 'EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
     ['../src/routes/assistants/+page.svelte', ['Card', 'EmptyState', 'PageIntro', 'Skeleton', 'Toolbar']],
   ]);
   for (const [path, primitives] of contracts) {

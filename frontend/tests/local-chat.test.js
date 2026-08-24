@@ -127,7 +127,7 @@ test('chat builds only the versioned WebSocket contract', () => {
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
-  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v4');
+  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v5');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
     'ws://127.0.0.1:7777/api/teams/team_1/chat/ws',
@@ -390,6 +390,93 @@ for (const invalid of [
   }
   assert.throws(
     () => parseChatEvent({ type: 'sync-empty', pending: false }, 'team_1', 'Marketing'),
+    /response is invalid/,
+  );
+});
+
+test('chat admits only the exact conversational Assistant installation lifecycle', () => {
+  const proposalId = 'c'.repeat(32);
+  const proposed = {
+    type: 'assistant-install',
+    state: 'proposed',
+    proposal_id: proposalId,
+    team_id: 'team_1',
+    reply: 'The Cloudflare Assistant is required. Should I install it?',
+    expires_in: 300,
+    assistant: {
+      id: 'shimpz-cloudflare',
+      name: 'Shimpz Cloudflare',
+      summary: 'Manage Cloudflare zones and DNS records.',
+      providers: ['cloudflare'],
+    },
+  };
+  assert.deepEqual(parseChatEvent(proposed, 'team_1', 'Marketing'), {
+    ...proposed,
+    team_name: 'Marketing',
+  });
+
+  for (const event of [
+    {
+      type: 'assistant-install', state: 'installing', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+    },
+    {
+      type: 'assistant-install', state: 'cancelled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-install', state: 'expired', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-install', state: 'failed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', status: 503,
+    },
+  ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
+  assert.doesNotMatch(JSON.stringify(proposed), /source_digest|token|secret/i);
+});
+
+test('chat rejects widened, cross-Team, secret, or malformed Assistant installation events', () => {
+  const proposalId = 'c'.repeat(32);
+  const proposed = {
+    type: 'assistant-install',
+    state: 'proposed',
+    proposal_id: proposalId,
+    team_id: 'team_1',
+    reply: 'Install this Assistant?',
+    expires_in: 300,
+    assistant: {
+      id: 'shimpz-cloudflare',
+      name: 'Shimpz Cloudflare',
+      summary: 'Manage Cloudflare zones and DNS records.',
+      providers: ['cloudflare'],
+    },
+  };
+  for (const invalid of [
+    { ...proposed, source_digest: `sha256:${'a'.repeat(64)}` },
+    { ...proposed, team_id: 'other_team' },
+    { ...proposed, expires_in: 301 },
+    { ...proposed, proposal_id: 'short' },
+    { ...proposed, assistant: { ...proposed.assistant, providers: ['x', 'cloudflare'] } },
+    { ...proposed, assistant: { ...proposed.assistant, providers: ['cloudflare', 'cloudflare'] } },
+    {
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'other_team', installed: true,
+    },
+    {
+      type: 'assistant-install', state: 'failed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', status: 200,
+    },
+    {
+      type: 'assistant-install', state: 'installing', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', approved: true,
+    },
+  ]) assert.throws(
+    () => parseChatEvent(invalid, 'team_1', 'Marketing'),
     /response is invalid/,
   );
 });

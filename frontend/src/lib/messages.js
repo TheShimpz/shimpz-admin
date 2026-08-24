@@ -285,6 +285,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "The Supervisor password was not confirmed. This action was not executed. Start the action again to retry.",
       "authenticationUnavailable": "Supervisor password verification is unavailable. This action was not executed. Try again later.",
       "technicalDetail": "Technical detail"
@@ -623,6 +636,19 @@ export const messages = {
       "capacityFailed": "O chat local está ocupado. Tente novamente em instantes.",
       "runtimeFailed": "O runtime do chat local está indisponível.",
       "requestFailed": "O Time não conseguiu concluir este turno.",
+      "install": {
+        "label": "Instalação de Assistant",
+        "pending": "Confirmação necessária",
+        "working": "Instalando",
+        "complete": "Instalado",
+        "available": "Disponível",
+        "cancelled": "Cancelado",
+        "expired": "Confirmação expirada",
+        "failed": "Falha na instalação",
+        "confirm": "Responda naturalmente com sim para instalar ou não para cancelar.",
+        "providers": "Provedor de Integration: {providers}",
+        "refreshFailed": "O Assistant foi instalado, mas não foi possível atualizar o contexto do Time."
+      },
       "authenticationDenied": "A senha do Supervisor não foi confirmada. Esta ação não foi executada. Inicie a ação novamente para tentar outra vez.",
       "authenticationUnavailable": "A verificação da senha do Supervisor está indisponível. Esta ação não foi executada. Tente novamente mais tarde.",
       "technicalDetail": "Detalhe técnico"
@@ -961,6 +987,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "No se confirmó la contraseña del Supervisor. Esta acción no se ejecutó. Inicia la acción de nuevo para volver a intentarlo.",
       "authenticationUnavailable": "La verificación de la contraseña del Supervisor no está disponible. Esta acción no se ejecutó. Inténtalo de nuevo más tarde.",
       "technicalDetail": "Technical detail"
@@ -1299,6 +1338,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "未能确认 Supervisor 密码。此操作未执行。请重新发起操作后再试。",
       "authenticationUnavailable": "Supervisor 密码验证当前不可用。此操作未执行。请稍后再试。",
       "technicalDetail": "Technical detail"
@@ -1637,6 +1689,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "Le mot de passe du Supervisor n’a pas été confirmé. Cette action n’a pas été exécutée. Relancez l’action pour réessayer.",
       "authenticationUnavailable": "La vérification du mot de passe du Supervisor est indisponible. Cette action n’a pas été exécutée. Réessayez plus tard.",
       "technicalDetail": "Technical detail"
@@ -1975,6 +2040,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "Das Supervisor-Passwort wurde nicht bestätigt. Diese Aktion wurde nicht ausgeführt. Starte die Aktion erneut, um es noch einmal zu versuchen.",
       "authenticationUnavailable": "Die Prüfung des Supervisor-Passworts ist nicht verfügbar. Diese Aktion wurde nicht ausgeführt. Versuche es später erneut.",
       "technicalDetail": "Technical detail"
@@ -2313,6 +2391,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "Supervisor のパスワードを確認できませんでした。この操作は実行されていません。もう一度試すには操作を再開してください。",
       "authenticationUnavailable": "Supervisor のパスワード確認を現在利用できません。この操作は実行されていません。後でもう一度お試しください。",
       "technicalDetail": "Technical detail"
@@ -2651,6 +2742,19 @@ export const messages = {
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
       "requestFailed": "The Team could not complete this turn.",
+      "install": {
+        "label": "Assistant installation",
+        "pending": "Confirmation required",
+        "working": "Installing",
+        "complete": "Installed",
+        "available": "Available",
+        "cancelled": "Cancelled",
+        "expired": "Confirmation expired",
+        "failed": "Installation failed",
+        "confirm": "Reply naturally with yes to install or no to cancel.",
+        "providers": "Integration provider: {providers}",
+        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+      },
       "authenticationDenied": "لم يتم تأكيد كلمة مرور Supervisor. لم يُنفَّذ هذا الإجراء. ابدأ الإجراء من جديد للمحاولة مرة أخرى.",
       "authenticationUnavailable": "التحقق من كلمة مرور Supervisor غير متاح حاليًا. لم يُنفَّذ هذا الإجراء. حاول مرة أخرى لاحقًا.",
       "technicalDetail": "Technical detail"

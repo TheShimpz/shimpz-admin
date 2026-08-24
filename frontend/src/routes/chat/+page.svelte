@@ -1,6 +1,6 @@
 <script>
   import { flushSync, onMount, tick } from 'svelte';
-  import { Button, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
+  import { Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
@@ -13,7 +13,7 @@
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
   import { sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
-  import { teamContext } from '$lib/teamContext.js';
+  import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
@@ -79,10 +79,13 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
+  let installWorking = $derived(turns.some((turn) => turn.install?.state === 'working'));
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
-    currentProgress
+    installWorking
+      ? copy.install.working
+      : currentProgress
       ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
       : busy ? thinking : '',
   );
@@ -122,7 +125,89 @@
   }
 
   function oauthTurns() {
-    return turns.map(({ receipt: _receipt, ...turn }) => turn);
+    return turns.map((turn) => (
+      turn.role === 'user'
+        ? { role: 'user', text: turn.text }
+        : { role: 'assistant', text: turn.text, author: turn.author }
+    ));
+  }
+
+  function installVisualState(state) {
+    if (state === 'proposed') return 'pending';
+    if (state === 'working') return 'working';
+    if (state === 'installed') return 'complete';
+    if (state === 'cancelled' || state === 'expired') return 'cancelled';
+    return 'failed';
+  }
+
+  function installStatus(install) {
+    if (install.state === 'proposed') return copy.install.pending;
+    if (install.state === 'working') return copy.install.working;
+    if (install.state === 'installed') {
+      return install.installed ? copy.install.complete : copy.install.available;
+    }
+    if (install.state === 'cancelled') return copy.install.cancelled;
+    if (install.state === 'expired') return copy.install.expired;
+    if (install.state === 'unknown') return copy.disconnected;
+    return copy.install.failed;
+  }
+
+  function installProviderText(install) {
+    const providers = install.assistant.providers.join(', ');
+    return providers ? $t('chatPage.install.providers', { providers }) : '';
+  }
+
+  function expireSocketInstalls() {
+    turns = turns.map((turn) => {
+      if (turn.install?.state === 'proposed') {
+        return { ...turn, install: { ...turn.install, state: 'expired' } };
+      }
+      if (turn.install?.state === 'working') {
+        return { ...turn, install: { ...turn.install, state: 'unknown' } };
+      }
+      return turn;
+    });
+  }
+
+  function installTurnIndex(proposalId) {
+    return turns.findLastIndex((turn) => turn.install?.proposal_id === proposalId);
+  }
+
+  function applyInstallEvent(incoming, receipt) {
+    if (incoming.state === 'proposed') {
+      if (installTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate install proposal');
+      turns = [...turns, {
+        role: 'assistant',
+        text: incoming.reply,
+        author: incoming.team_name,
+        receipt,
+        install: {
+          proposal_id: incoming.proposal_id,
+          assistant: incoming.assistant,
+          state: 'proposed',
+        },
+      }];
+      return true;
+    }
+    const index = installTurnIndex(incoming.proposal_id);
+    if (index < 0) throw new Error('unknown install proposal');
+    const current = turns[index].install;
+    if (current.assistant.id !== incoming.assistant_id) throw new Error('mismatched install proposal');
+    const allowed = current.state === 'proposed'
+      ? ['installing', 'cancelled', 'expired']
+      : current.state === 'working' ? ['installed', 'failed'] : [];
+    if (!allowed.includes(incoming.state)) throw new Error('invalid install transition');
+    const state = incoming.state === 'installing' ? 'working' : incoming.state;
+    const updated = {
+      ...current,
+      state,
+      ...(incoming.state === 'installed' ? { installed: incoming.installed } : {}),
+      ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
+    };
+    turns = turns.map((turn, turnIndex) => (
+      turnIndex === index ? { ...turn, install: updated } : turn
+    ));
+    return incoming.state !== 'installing';
   }
 
   function clearError() {
@@ -150,7 +235,7 @@
 
   async function focusStop() {
     await tick();
-    if (mounted && busy && !syncing && !integrationChallenge && !humanChallenge) {
+    if (mounted && busy && !syncing && !installWorking && !integrationChallenge && !humanChallenge) {
       stopButton?.focus({ preventScroll: true });
     }
   }
@@ -211,6 +296,7 @@
     socket = null;
     socketReady = false;
     syncing = false;
+    expireSocketInstalls();
     resetProgress();
     resetChallengeState();
     current?.close(1000, 'Team changed');
@@ -371,6 +457,20 @@
           }
           return;
         }
+        if (incoming.type === 'assistant-install') {
+          if (!busy || stopping || syncing) throw new Error('unexpected Assistant install event');
+          const receipt = progressEvents.map((item) => ({ ...item }));
+          const terminal = applyInstallEvent(incoming, receipt);
+          stopping = false;
+          resetProgress();
+          if (!terminal) return;
+          busy = false;
+          clearError();
+          if (incoming.state === 'installed') {
+            void refreshTeamInventory(fetch).catch(() => setError(copy.install.refreshFailed));
+          }
+          return;
+        }
         if (!busy && !stopping && !syncing) throw new Error('unexpected terminal frame');
       } catch {
         socket = null;
@@ -412,6 +512,7 @@
       socketReady = false;
       syncing = false;
       stopping = false;
+      expireSocketInstalls();
       resetProgress();
       if (busy) busy = false;
       resetChallengeState();
@@ -748,6 +849,28 @@
               {#if exchange.assistant}
                 <Message variant="assistant" author={exchange.assistant.author}>
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
+                  {#if exchange.assistant.install}
+                    {#snippet installDetails()}
+                      {#if exchange.assistant.install.state === 'proposed'}
+                        <span>{copy.install.confirm}</span>
+                      {/if}
+                      {#if installProviderText(exchange.assistant.install)}
+                        <span>{installProviderText(exchange.assistant.install)}</span>
+                      {/if}
+                      {#if exchange.assistant.install.status}
+                        <span>HTTP {exchange.assistant.install.status}</span>
+                      {/if}
+                    {/snippet}
+                    <ChatTask
+                      class="assistant-install-task"
+                      label={copy.install.label}
+                      title={exchange.assistant.install.assistant.name}
+                      description={exchange.assistant.install.assistant.summary}
+                      state={installVisualState(exchange.assistant.install.state)}
+                      status={installStatus(exchange.assistant.install)}
+                      details={installDetails}
+                    />
+                  {/if}
                   <ExecutionReceipt
                     events={exchange.assistant.receipt ?? []}
                     label={copy.progressStagesExecuted}
@@ -756,7 +879,7 @@
                     {assistantNames}
                   />
                 </Message>
-              {:else if index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge}
+              {:else if index === exchanges.length - 1 && busy && !installWorking && !integrationChallenge && !humanChallenge}
                 <ShimpzThinking
                   label={thinking}
                   events={progressEvents}
@@ -795,7 +918,7 @@
                 onkeydown={handleComposerKeydown}
               />
               <Toolbar class="composer-actions">
-              {#if busy && !syncing}
+              {#if busy && !syncing && !installWorking}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
                 </Button>
@@ -978,6 +1101,14 @@
     white-space: pre-wrap;
     line-height: 1.55;
     overflow-wrap: anywhere;
+  }
+
+  :global(.assistant-install-task) {
+    margin-top: 0.8rem;
+  }
+
+  :global(.assistant-install-task [data-slot="chat-task-details"] span) {
+    display: block;
   }
 
   :global(.error),

@@ -60,7 +60,7 @@ class _Socket:
         team_id: str = "team_1",
         fail_send_type: str = "",
     ) -> None:
-        offered = ["shimpz.chat.v4"] if protocols is None else protocols
+        offered = ["shimpz.chat.v5"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
         if offered:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
@@ -168,9 +168,21 @@ class ChatWebSocketTests(unittest.TestCase):
         secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
         self.token = self.admin_app.auth.issue_session(secret, "totp")
 
+    def _install_candidate(self):
+        return self.chat_socket.store_catalog.CatalogAssistant(
+            assistant_id="shimpz-cloudflare",
+            name="Shimpz Cloudflare",
+            summary="Manage Cloudflare zones and DNS records.",
+            source_digest="sha256:" + ("d" * 64),
+            integrations=(
+                self.chat_socket.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
+            ),
+            actions=("list-zones",),
+        )
+
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v4", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v5", "headers": []}
 
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
@@ -189,7 +201,7 @@ class ChatWebSocketTests(unittest.TestCase):
             extra_protocol = _Socket(
                 self.admin_app.app,
                 token=self.token,
-                protocols=["shimpz.chat.v4", "shimpz.chat.v3"],
+                protocols=["shimpz.chat.v5", "shimpz.chat.v4"],
             )
             self.assertEqual(
                 await extra_protocol.start(),
@@ -710,5 +722,263 @@ class ChatWebSocketTests(unittest.TestCase):
 
             self.assertEqual(result, "completed")
             self.assertTrue(connection.closed)
+
+        asyncio.run(scenario())
+
+    def test_successful_turn_can_propose_one_socket_scoped_install_without_a_digest(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "I can help with that."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "discover",
+                    return_value=self._install_candidate(),
+                ),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "Liste minhas zonas DNS da Cloudflare",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
+                )
+                event = await websocket.next_json()
+                self.assertEqual(event["type"], "assistant-install")
+                self.assertEqual(event["state"], "proposed")
+                self.assertEqual(event["team_id"], "team_1")
+                self.assertEqual(event["reply"], "I can help with that.")
+                self.assertEqual(event["expires_in"], 300)
+                self.assertEqual(
+                    event["assistant"],
+                    {
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "summary": "Manage Cloudflare zones and DNS records.",
+                        "providers": ["cloudflare"],
+                    },
+                )
+                self.assertRegex(event["proposal_id"], r"^[0-9a-f]{32}$")
+                self.assertNotIn("source_digest", json.dumps(event))
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_text_confirmation_consumes_proposal_and_installs_once(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
+            )
+            result = self.chat_socket.assistant_install.InstallResult(200, True)
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "discover",
+                    side_effect=(self._install_candidate(), None),
+                ),
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "install",
+                    return_value=result,
+                ) as install,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "Cloudflare zones", "files": [], "assistant_ids": []}
+                )
+                proposed = await websocket.next_json()
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "Pode instalar!", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "assistant-install",
+                        "state": "installing",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                    },
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "assistant-install",
+                        "state": "installed",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                        "team_id": "team_1",
+                        "installed": True,
+                    },
+                )
+                install.assert_called_once()
+                proposal = install.call_args.args[0]
+                self.assertEqual(proposal.assistant.source_digest, "sha256:" + ("d" * 64))
+                self.assertEqual(turn.call_count, 1)
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "sim", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                self.assertEqual(turn.call_count, 2)
+                install.assert_called_once()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_negative_cancels_and_ambiguous_message_preserves_proposal(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Understood."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "discover",
+                    return_value=self._install_candidate(),
+                ),
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "install",
+                    return_value=self.chat_socket.assistant_install.InstallResult(200, True),
+                ) as install,
+            ):
+                cancelled = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await cancelled.start()))
+                await cancelled.send_json(
+                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
+                )
+                proposed = await cancelled.next_json()
+                await cancelled.send_json(
+                    {"type": "chat", "message": "Esquece", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await cancelled.next_json(),
+                    {
+                        "type": "assistant-install",
+                        "state": "cancelled",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                    },
+                )
+                await cancelled.disconnect()
+
+                ambiguous = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await ambiguous.start()))
+                await ambiguous.send_json(
+                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
+                )
+                await ambiguous.next_json()
+                await ambiguous.send_json(
+                    {"type": "chat", "message": "talvez depois", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await ambiguous.next_json())["type"], "done")
+                install.assert_not_called()
+                await ambiguous.send_json(
+                    {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await ambiguous.next_json())["state"], "installing")
+                self.assertEqual((await ambiguous.next_json())["state"], "installed")
+                await ambiguous.disconnect()
+
+                self.assertEqual(turn.call_count, 3)
+                install.assert_called_once()
+
+        asyncio.run(scenario())
+
+    def test_expired_confirmation_never_reaches_install_authority(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "discover",
+                    return_value=self._install_candidate(),
+                ),
+                mock.patch.object(self.chat_socket.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket, "_monotonic", side_effect=(10, 311)),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
+                )
+                proposed = await websocket.next_json()
+                await websocket.send_json(
+                    {"type": "chat", "message": "sim", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "assistant-install",
+                        "state": "expired",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                    },
+                )
+                install.assert_not_called()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_install_capacity_failure_consumes_proposal_without_reaching_team(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                mock.patch.object(
+                    self.chat_socket.assistant_install,
+                    "discover",
+                    return_value=self._install_candidate(),
+                ),
+                mock.patch.object(self.chat_socket.assistant_install, "install") as install,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
+                )
+                proposed = await websocket.next_json()
+
+                with mock.patch.object(
+                    self.chat_socket._INSTALL_EXECUTOR,
+                    "submit",
+                    side_effect=self.chat_socket.ExecutorSaturatedError,
+                ):
+                    await websocket.send_json(
+                        {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
+                    )
+                    self.assertEqual((await websocket.next_json())["state"], "installing")
+                    self.assertEqual(
+                        await websocket.next_json(),
+                        {
+                            "type": "assistant-install",
+                            "state": "failed",
+                            "proposal_id": proposed["proposal_id"],
+                            "assistant_id": "shimpz-cloudflare",
+                            "status": 429,
+                        },
+                    )
+
+                install.assert_not_called()
+                await websocket.disconnect()
 
         asyncio.run(scenario())

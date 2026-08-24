@@ -50,7 +50,7 @@ class _Socket:
         protocols: list[str] | None = None,
         team_id: str = "team_1",
     ) -> None:
-        offered = ["shimpz.chat.v4"] if protocols is None else protocols
+        offered = ["shimpz.chat.v5"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
         if offered:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
@@ -158,7 +158,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v4", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v5", "headers": []}
 
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:

@@ -105,6 +105,7 @@ function humanRequest(kind) {
 }
 
 async function routeReadyChat(page, {
+  assistantInstall = false,
   disconnectHumanResponse = false,
   holdHumanResponse = false,
   humanKind = '',
@@ -128,6 +129,8 @@ async function routeReadyChat(page, {
   let humanRejectionIndex = 0;
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
+  let assistantInstalled = !assistantInstall;
+  let installProposed = false;
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -161,7 +164,7 @@ async function routeReadyChat(page, {
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      assistants: [
+      assistants: assistantInstalled ? [
         {
           assistant: 'shimpz-cloudflare',
           assistant_version: '0.4.1',
@@ -172,7 +175,7 @@ async function routeReadyChat(page, {
           assistant_version: '1.2.3',
           status: 'running',
         }] : []),
-      ],
+      ] : [],
     }),
   }));
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({
@@ -298,6 +301,42 @@ async function routeReadyChat(page, {
         }
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat') {
+        if (assistantInstall) {
+          if (!installProposed) {
+            installProposed = true;
+            socket.send(JSON.stringify({
+              type: 'assistant-install',
+              state: 'proposed',
+              proposal_id: 'd'.repeat(32),
+              team_id: 'marketing',
+              reply: 'The Cloudflare Assistant is required to list your DNS zones. Should I install it?',
+              expires_in: 300,
+              assistant: {
+                id: 'shimpz-cloudflare',
+                name: 'Shimpz Cloudflare',
+                summary: 'Safely manage Cloudflare DNS records through OAuth.',
+                providers: ['cloudflare'],
+              },
+            }));
+            return;
+          }
+          socket.send(JSON.stringify({
+            type: 'assistant-install',
+            state: 'installing',
+            proposal_id: 'd'.repeat(32),
+            assistant_id: 'shimpz-cloudflare',
+          }));
+          assistantInstalled = true;
+          socket.send(JSON.stringify({
+            type: 'assistant-install',
+            state: 'installed',
+            proposal_id: 'd'.repeat(32),
+            assistant_id: 'shimpz-cloudflare',
+            team_id: 'marketing',
+            installed: true,
+          }));
+          return;
+        }
         if (integrationChallenge) {
           socket.send(JSON.stringify({
             type: 'integrations-required',
@@ -409,6 +448,35 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/');
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+});
+
+test('installs a suggested Assistant through natural chat confirmation', async ({ page }) => {
+  await routeReadyChat(page, { assistantInstall: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('List my Cloudflare DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const task = page.locator('[data-slot="chat-task"]');
+  await expect(task).toHaveAttribute('data-state', 'pending');
+  await expect(task).toContainText('Shimpz Cloudflare');
+  await expect(task).toContainText('Confirmation required');
+  await expect(task).toContainText('Reply naturally with yes to install or no to cancel.');
+  await expect(task.getByRole('button')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await expect(task).toHaveScreenshot('assistant-install-proposal.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+
+  await composer.fill('ok');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect(task).toContainText('Installed');
+  await expect(composer).toBeEnabled();
 });
 
 test('renders the integrations drawer as a responsive Sheet surface', async ({ page }) => {
