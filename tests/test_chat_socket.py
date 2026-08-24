@@ -770,6 +770,50 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_slow_optional_discovery_does_not_withhold_the_completed_reply(self) -> None:
+        async def scenario() -> None:
+            started = threading.Event()
+            release = threading.Event()
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
+            )
+
+            def discover(*_args, **_kwargs):
+                started.set()
+                release.wait(timeout=2)
+                return self._install_candidate()
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                mock.patch.object(
+                    self.chat_socket.install_flow.assistant_install,
+                    "discover",
+                    side_effect=discover,
+                ),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                try:
+                    await websocket.send_json(
+                        {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
+                    )
+                    await _wait_for_thread(started)
+                    self.assertEqual(
+                        await asyncio.wait_for(websocket.next_json(), timeout=1),
+                        {
+                            "type": "done",
+                            "team_id": "team_1",
+                            "team_name": "Marketing",
+                            "reply": "Done.",
+                        },
+                    )
+                finally:
+                    release.set()
+                    await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_text_confirmation_consumes_proposal_and_installs_once(self) -> None:
         async def scenario() -> None:
             response = self.chat_socket.local.PublicResponse(

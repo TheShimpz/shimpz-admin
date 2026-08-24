@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import copy
 import json
 import sys
+import threading
 import unittest
 from pathlib import Path
 
@@ -166,6 +168,37 @@ class StoreCatalogTests(unittest.TestCase):
         with self.assertRaises(store_catalog.CatalogUnavailableError):
             catalog.get()
         self.assertEqual(calls, 2)
+        with self.assertRaises(store_catalog.CatalogUnavailableError):
+            catalog.get()
+        self.assertEqual(calls, 2)
+        now[0] += store_catalog.CATALOG_TTL_SECONDS
+        self.assertIs(catalog.get(), assistant)
+        self.assertEqual(calls, 3)
+
+    def test_cache_does_not_hold_its_state_lock_during_fetch(self) -> None:
+        assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        calls_lock = threading.Lock()
+        both_started = threading.Event()
+        release = threading.Event()
+        calls = 0
+
+        def loader():
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+                if calls == 2:
+                    both_started.set()
+            release.wait(timeout=1)
+            return assistant
+
+        catalog = store_catalog.StoreCatalog(loader=loader)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(catalog.get)
+            second = executor.submit(catalog.get)
+            self.assertTrue(both_started.wait(timeout=1))
+            release.set()
+            self.assertIs(first.result(timeout=1), assistant)
+            self.assertIs(second.result(timeout=1), assistant)
 
 
 if __name__ == "__main__":

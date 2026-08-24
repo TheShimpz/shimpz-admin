@@ -243,13 +243,28 @@ class StoreCatalog:
         self._lock = threading.Lock()
         self._expires_at = 0.0
         self._assistants: tuple[CatalogAssistant, ...] = ()
+        self._failed = False
 
     def get(self) -> tuple[CatalogAssistant, ...]:
         with self._lock:
             now = self._clock()
             if self._expires_at > now:
+                if self._failed:
+                    raise CatalogUnavailableError("Store catalog is unavailable")
                 return self._assistants
+        try:
             assistants = self._loader()
+        except CatalogUnavailableError:
+            with self._lock:
+                now = self._clock()
+                if self._expires_at > now and not self._failed:
+                    return self._assistants
+                self._assistants = ()
+                self._failed = True
+                self._expires_at = now + CATALOG_TTL_SECONDS
+            raise
+        with self._lock:
             self._assistants = assistants
-            self._expires_at = now + CATALOG_TTL_SECONDS
+            self._failed = False
+            self._expires_at = self._clock() + CATALOG_TTL_SECONDS
             return assistants

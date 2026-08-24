@@ -27,6 +27,7 @@ _INSTALL_EXECUTOR = BoundedThreadPoolExecutor(
     thread_name_prefix="shimpz-chat-install",
 )
 _STORE_CATALOG = store_catalog.StoreCatalog()
+DISCOVERY_GRACE_SECONDS = 0.25
 monotonic = time.monotonic
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
@@ -139,7 +140,14 @@ async def attach_proposal(
     if event.get("type") != "done":
         cancel_discovery(discovery_future)
         return event
-    candidate = await _await_discovery(discovery_future)
+    try:
+        candidate = await asyncio.wait_for(
+            _await_discovery(discovery_future),
+            timeout=DISCOVERY_GRACE_SECONDS,
+        )
+    except TimeoutError:
+        cancel_discovery(discovery_future)
+        return event
     if candidate is None or connection.install_proposal is not None:
         return event
     try:
