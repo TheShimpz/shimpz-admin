@@ -107,6 +107,7 @@ function humanRequest(kind) {
 async function routeReadyChat(page, {
   assistantInstall = false,
   assistantInstallExpiresIn = 300,
+  assistantInstallExpiresOnConfirm = false,
   disconnectHumanResponse = false,
   holdHumanResponse = false,
   humanKind = '',
@@ -321,6 +322,15 @@ async function routeReadyChat(page, {
             }));
             return;
           }
+          if (assistantInstallExpiresOnConfirm) {
+            socket.send(JSON.stringify({
+              type: 'assistant-install',
+              state: 'expired',
+              proposal_id: 'd'.repeat(32),
+              assistant_id: 'shimpz-cloudflare',
+            }));
+            return;
+          }
           socket.send(JSON.stringify({
             type: 'assistant-install',
             state: 'installing',
@@ -482,7 +492,11 @@ test('installs a suggested Assistant through natural chat confirmation', async (
 });
 
 test('expires a conversational Assistant proposal without another server frame', async ({ page }) => {
-  await routeReadyChat(page, { assistantInstall: true, assistantInstallExpiresIn: 1 });
+  await routeReadyChat(page, {
+    assistantInstall: true,
+    assistantInstallExpiresIn: 1,
+    assistantInstallExpiresOnConfirm: true,
+  });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -495,6 +509,12 @@ test('expires a conversational Assistant proposal without another server frame',
   await expect(task).toHaveAttribute('data-state', 'cancelled', { timeout: 3_000 });
   await expect(task).toContainText('Confirmation expired');
   await expect(task).not.toContainText('Reply naturally with yes to install or no to cancel.');
+
+  await composer.fill('yes');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(task).toHaveAttribute('data-state', 'cancelled');
+  await expect(task).toContainText('Confirmation expired');
+  await expect(page.getByText('The chat response did not match the secure protocol.')).toHaveCount(0);
   await expect(composer).toBeEnabled();
 });
 

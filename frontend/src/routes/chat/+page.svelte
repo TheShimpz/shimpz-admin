@@ -218,7 +218,8 @@
     clearInstallExpiry(incoming.proposal_id);
     const allowed = current.state === 'proposed'
       ? ['installing', 'cancelled', 'expired']
-      : current.state === 'working' ? ['installed', 'failed'] : [];
+      : current.state === 'working' ? ['installed', 'failed']
+        : current.state === 'expired' ? ['expired'] : [];
     if (!allowed.includes(incoming.state)) throw new Error('invalid install transition');
     const state = incoming.state === 'installing' ? 'working' : incoming.state;
     const updated = {
