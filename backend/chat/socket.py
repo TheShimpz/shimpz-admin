@@ -324,6 +324,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
             _cancel_discovery(turn)
+            connection.install_proposal = None
             _remember_challenge(connection, challenge, challenge_type)
             if not await _send_event(websocket, challenge):
                 connection.closed = True
@@ -810,6 +811,7 @@ async def _dispatch_chat(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return
+    had_install_proposal = connection.install_proposal is not None
     if await install_flow.resolve(websocket, connection, team_id, payload, _send_event):
         return
     try:
@@ -819,7 +821,7 @@ async def _dispatch_chat(
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
     discovery_future = None
-    if connection.install_proposal is None:
+    if not had_install_proposal and connection.install_proposal is None:
         discovery_future = install_flow.submit_discovery(team_id, payload)
     turn = _Turn(
         future=future,

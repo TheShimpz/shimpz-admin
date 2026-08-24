@@ -227,6 +227,7 @@ async def resolve(
         connection.install_proposal = None
         await send_event(websocket, _event(proposal, "cancelled"))
         return True
+    connection.install_proposal = None
     return False
 
 

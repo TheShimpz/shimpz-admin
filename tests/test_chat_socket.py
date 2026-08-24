@@ -833,7 +833,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_negative_cancels_and_ambiguous_message_preserves_proposal(self) -> None:
+    def test_negative_cancels_and_ambiguous_message_retires_proposal(self) -> None:
         async def scenario() -> None:
             response = self.chat_socket.local.PublicResponse(
                 200,
@@ -844,7 +844,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 mock.patch.object(
                     self.chat_socket.install_flow.assistant_install,
                     "discover",
-                    return_value=self._install_candidate(),
+                    side_effect=(self._install_candidate(), self._install_candidate(), None),
                 ),
                 mock.patch.object(
                     self.chat_socket.install_flow.assistant_install,
@@ -878,12 +878,49 @@ class ChatWebSocketTests(unittest.TestCase):
                 self.assertEqual((await ambiguous.next_json())["type"], "done")
                 install.assert_not_called()
                 await ambiguous.send_json({"type": "chat", "message": "ok", "files": [], "assistant_ids": []})
-                self.assertEqual((await ambiguous.next_json())["state"], "installing")
-                self.assertEqual((await ambiguous.next_json())["state"], "installed")
+                self.assertEqual((await ambiguous.next_json())["type"], "done")
                 await ambiguous.disconnect()
 
-                self.assertEqual(turn.call_count, 3)
-                install.assert_called_once()
+                self.assertEqual(turn.call_count, 4)
+                install.assert_not_called()
+
+        asyncio.run(scenario())
+
+    def test_team_challenge_supersedes_a_pending_install_proposal(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
+            )
+            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            with (
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "turn",
+                    side_effect=(response, chat_socket_fixtures.integration_challenge()),
+                ),
+                mock.patch.object(
+                    self.chat_socket.install_flow.assistant_install,
+                    "discover",
+                    return_value=self._install_candidate(),
+                ),
+                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop,
+                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json({"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []})
+                self.assertEqual((await websocket.next_json())["state"], "proposed")
+                await websocket.send_json(
+                    {"type": "chat", "message": "talvez depois", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "integrations-required")
+
+                await websocket.send_json({"type": "stop"})
+                self.assertEqual(await websocket.next_json(), {"type": "stopped"})
+                stop.assert_called_once()
+                install.assert_not_called()
+                await websocket.disconnect()
 
         asyncio.run(scenario())
 
