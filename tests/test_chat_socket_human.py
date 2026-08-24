@@ -14,8 +14,8 @@ from pathlib import Path
 from unittest import mock
 
 from chat_socket_fixtures import CHALLENGE_ID, human_challenge
+from chat_socket_fixtures import Socket as _Socket
 from mfa_helper import configure_supervisor
-from test_chat_socket import _Socket
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))

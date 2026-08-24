@@ -40,82 +40,8 @@ _MEASURED_PROGRESS = (
 )
 
 
-class _Socket:
-    def __init__(
-        self,
-        application,
-        *,
-        token: str = "",
-        origin: str = "http://localhost:7777",
-        protocols: list[str] | None = None,
-        team_id: str = "team_1",
-    ) -> None:
-        offered = ["shimpz.chat.v5"] if protocols is None else protocols
-        headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
-        if offered:
-            headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
-        if token:
-            headers.append((b"cookie", f"shimpz_admin={token}".encode("ascii")))
-        path = f"/api/teams/{team_id}/chat/ws"
-        self._scope = {
-            "type": "websocket",
-            "asgi": {"version": "3.0", "spec_version": "2.5"},
-            "http_version": "1.1",
-            "scheme": "ws",
-            "path": path,
-            "raw_path": path.encode("ascii"),
-            "query_string": b"",
-            "root_path": "",
-            "headers": headers,
-            "client": ("127.0.0.1", 12345),
-            "server": ("127.0.0.1", 7777),
-            "subprotocols": offered,
-            "state": {},
-            "extensions": {},
-        }
-        self._application = application
-        self._incoming: asyncio.Queue = asyncio.Queue()
-        self._outgoing: asyncio.Queue = asyncio.Queue()
-        self._task: asyncio.Task | None = None
-
-    async def start(self) -> dict:
-        self._task = asyncio.create_task(self._application(self._scope, self._incoming.get, self._outgoing.put))
-        await self._incoming.put({"type": "websocket.connect"})
-        return await self.next_message()
-
-    async def next_message(self, wait_seconds: float = 1.0) -> dict:
-        return await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
-
-    async def next_json(self, wait_seconds: float = 1.0) -> dict:
-        message = await self.next_message(wait_seconds)
-        if message.get("type") != "websocket.send" or "text" not in message:
-            raise AssertionError(f"expected a text WebSocket frame, got {message!r}")
-        return json.loads(message["text"])
-
-    async def send_text(self, text: str) -> None:
-        await self._incoming.put({"type": "websocket.receive", "text": text})
-
-    async def send_bytes(self, value: bytes) -> None:
-        await self._incoming.put({"type": "websocket.receive", "bytes": value})
-
-    async def send_json(self, value: object) -> None:
-        await self.send_text(json.dumps(value, separators=(",", ":")))
-
-    async def disconnect(self) -> None:
-        await self._incoming.put({"type": "websocket.disconnect", "code": 1000})
-        await self.finish()
-
-    async def finish(self) -> None:
-        if self._task is not None:
-            await asyncio.wait_for(self._task, timeout=2)
-
-
-async def _wait_for_thread(event: threading.Event, wait_seconds: float = 1.0) -> None:
-    deadline = asyncio.get_running_loop().time() + wait_seconds
-    while not event.is_set():
-        if asyncio.get_running_loop().time() >= deadline:
-            raise TimeoutError("worker did not start")
-        await asyncio.sleep(0.005)
+_Socket = chat_socket_fixtures.Socket
+_wait_for_thread = chat_socket_fixtures.wait_for_thread
 
 
 class ChatWebSocketSyncTests(unittest.TestCase):
