@@ -144,13 +144,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
-            with mock.patch.object(socket, "_submit_in_context", side_effect=socket.ExecutorSaturatedError):
+            with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
                 self.assertIsNone(await socket._load_sync_snapshot(websocket, connection, "team_1"))
             self.assertTrue(connection.sync_terminal_sent)
 
             turn = socket._Turn(None, "pending-stop")
             connection = socket._Connection(active=turn)
-            with mock.patch.object(socket, "_submit_in_context", side_effect=socket.ExecutorSaturatedError):
+            with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
                 await socket._run_stop(websocket, connection, turn, "team_1", emit=True)
             self.assertTrue(turn.terminal_sent)
             self.assertIsNone(connection.active)
@@ -174,7 +174,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 {"type": "chat", "message": "hi", "files": [], "assistant_ids": []},
             )
 
-            with mock.patch.object(socket, "_submit_in_context", side_effect=socket.ExecutorSaturatedError):
+            with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
                 await socket._dispatch_chat(
                     websocket,
                     socket._Connection(),
@@ -335,7 +335,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             response_future.set_result(local.PublicResponse(200, {"team_id": "team_1", "stopped": False}))
             turn = socket._Turn(None, "pending-stop")
             connection = socket._Connection(active=turn)
-            with mock.patch.object(socket, "_submit_in_context", return_value=response_future):
+            with mock.patch.object(socket, "submit_in_context", return_value=response_future):
                 await socket._run_stop(websocket, connection, turn, "team_1", emit=True)
             self.assertTrue(turn.terminal_sent)
 
@@ -397,7 +397,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 pending_challenge_type="human",
                 pending_human_request=request,
             )
-            with mock.patch.object(socket, "_submit_in_context", side_effect=socket.ExecutorSaturatedError):
+            with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
                 await socket._dispatch_human_response(websocket, available, "team_1", frame, authenticate)
 
             blocked = socket._Connection(sync_task=mock.Mock(), sync_terminal_sent=True)

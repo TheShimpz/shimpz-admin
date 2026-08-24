@@ -143,7 +143,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
         )
         try:
             with transport.supervisor_session(account_session, account=True):
-                future = self.chat_socket._submit_in_context(executor, transport._account_session)
+                future = self.chat_socket.submit_in_context(executor, transport._account_session)
             self.assertEqual(future.result(timeout=1), account_session)
             self.assertEqual(transport._account_session(), "")
         finally:

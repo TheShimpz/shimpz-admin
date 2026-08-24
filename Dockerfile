@@ -49,9 +49,9 @@ COPY backend/app.py backend/auth.py backend/authentication_state.py backend/brow
     backend/model_catalog.json backend/notifications.py \
     backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
 COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
-COPY backend/chat/assistant_install.py backend/chat/assistant_proposal.py backend/chat/human.py \
-    backend/chat/local.py backend/chat/payloads.py backend/chat/progress.py backend/chat/socket.py \
-    backend/chat/store_catalog.py ./chat/
+COPY backend/chat/assistant_install.py backend/chat/assistant_proposal.py backend/chat/executor.py \
+    backend/chat/human.py backend/chat/install.py backend/chat/local.py backend/chat/payloads.py \
+    backend/chat/progress.py backend/chat/socket.py backend/chat/store_catalog.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/transport.py ./team/

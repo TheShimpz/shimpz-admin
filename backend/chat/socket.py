@@ -10,18 +10,18 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
-import contextvars
 import logging
 import os
-import threading
-import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
+from chat.assistant_proposal import InstallProposal
+from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
-from chat import assistant_install, assistant_proposal, human, local, store_catalog
+from chat import human, local
+from chat import install as install_flow
 from chat import progress as progress_transport
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -32,36 +32,6 @@ STOP_RESULT_WAIT_SECONDS = 15
 _DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
-
-
-class ExecutorSaturatedError(RuntimeError):
-    """The local chat worker and queue budget has no free admission slot."""
-
-
-def _submit_in_context(executor, function, /, *args, **kwargs):
-    context = contextvars.copy_context()
-    return executor.submit(context.run, function, *args, **kwargs)
-
-
-class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
-    """Admin-owned executor bounded for the Local chat workload."""
-
-    def __init__(self, *, max_workers: int, max_outstanding: int, thread_name_prefix: str) -> None:
-        if max_workers < 1 or max_outstanding < max_workers:
-            raise ValueError("invalid bounded executor capacity")
-        self._permits = threading.BoundedSemaphore(max_outstanding)
-        super().__init__(max_workers=max_workers, thread_name_prefix=thread_name_prefix)
-
-    def submit(self, fn, /, *args, **kwargs):
-        if not self._permits.acquire(blocking=False):
-            raise ExecutorSaturatedError("blocking worker admission is full")
-        try:
-            future = super().submit(fn, *args, **kwargs)
-        except BaseException:
-            self._permits.release()
-            raise
-        future.add_done_callback(lambda _completed: self._permits.release())
-        return future
 
 
 # Turns and cancellation use separate bounded lanes: a slow provider can never consume the worker
@@ -81,18 +51,6 @@ _SYNC_EXECUTOR = BoundedThreadPoolExecutor(
     max_outstanding=4,
     thread_name_prefix="shimpz-chat-sync",
 )
-_DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=2,
-    thread_name_prefix="shimpz-chat-discovery",
-)
-_INSTALL_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=2,
-    thread_name_prefix="shimpz-chat-install",
-)
-_STORE_CATALOG = store_catalog.StoreCatalog()
-_monotonic = time.monotonic
 
 
 canonical_origin = chat_ws_common.canonical_origin
@@ -188,16 +146,9 @@ class _Connection:
     pending_human_request: dict[str, object] | None = None
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
-    install_proposal: assistant_proposal.InstallProposal | None = None
-    install: _InstallOperation | None = None
+    install_proposal: InstallProposal | None = None
+    install: install_flow.Operation | None = None
     closed: bool = False
-
-
-@dataclass(slots=True)
-class _InstallOperation:
-    proposal: assistant_proposal.InstallProposal
-    future: concurrent.futures.Future
-    delivery: asyncio.Task | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,72 +177,8 @@ def _forget_challenge(connection: _Connection) -> None:
     connection.pending_human_request = None
 
 
-def _assistant_identity(proposal: assistant_proposal.InstallProposal) -> dict[str, object]:
-    assistant = proposal.assistant
-    return {
-        "id": assistant.assistant_id,
-        "name": assistant.name,
-        "summary": assistant.summary,
-        "providers": sorted({item.provider for item in assistant.integrations}),
-    }
-
-
-def _proposal_event(
-    proposal: assistant_proposal.InstallProposal,
-    terminal: Mapping[str, object],
-) -> dict[str, object]:
-    return {
-        "type": "assistant-install",
-        "state": "proposed",
-        "proposal_id": proposal.proposal_id,
-        "team_id": proposal.team_id,
-        "reply": terminal["reply"],
-        "expires_in": assistant_proposal.PROPOSAL_TTL_SECONDS,
-        "assistant": _assistant_identity(proposal),
-    }
-
-
-def _install_event(
-    proposal: assistant_proposal.InstallProposal,
-    state: str,
-    **fields: object,
-) -> dict[str, object]:
-    return {
-        "type": "assistant-install",
-        "state": state,
-        "proposal_id": proposal.proposal_id,
-        "assistant_id": proposal.assistant.assistant_id,
-        **fields,
-    }
-
-
 def _cancel_discovery(turn: _Turn) -> None:
-    if turn.discovery_future is not None and not turn.discovery_future.done():
-        turn.discovery_future.cancel()
-
-
-def _submit_discovery(
-    team_id: str,
-    payload: dict[str, object],
-) -> concurrent.futures.Future | None:
-    try:
-        return _submit_in_context(
-            _DISCOVERY_EXECUTOR,
-            assistant_install.discover,
-            team_id,
-            payload["message"],
-            tuple(payload["assistant_ids"]),
-            _STORE_CATALOG,
-        )
-    except (
-        ExecutorSaturatedError,
-        OSError,
-        RuntimeError,
-        TypeError,
-        ValueError,
-        team.TeamRequestError,
-    ):
-        return None
+    install_flow.cancel_discovery(turn.discovery_future)
 
 
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
@@ -384,41 +271,15 @@ async def _await_turn_response(
     return team.TeamResponse(502, {}) if result is None else result
 
 
-async def _await_discovery(turn: _Turn) -> store_catalog.CatalogAssistant | None:
-    if turn.discovery_future is None:
-        return None
-    try:
-        candidate = await asyncio.wrap_future(turn.discovery_future)
-    except asyncio.CancelledError:
-        raise
-    except (OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError):
-        return None
-    return candidate if isinstance(candidate, store_catalog.CatalogAssistant) else None
-
-
 async def _terminal_with_proposal(
     connection: _Connection,
     turn: _Turn,
     team_id: str,
     event: dict[str, object],
 ) -> dict[str, object]:
-    if event.get("type") != "done":
-        _cancel_discovery(turn)
-        return event
-    _forget_challenge(connection)
-    candidate = await _await_discovery(turn)
-    if candidate is None or connection.install_proposal is not None:
-        return event
-    try:
-        proposal = assistant_proposal.create_proposal(
-            team_id,
-            candidate,
-            now=_monotonic(),
-        )
-    except ValueError:
-        return event
-    connection.install_proposal = proposal
-    return _proposal_event(proposal, event)
+    if event.get("type") == "done":
+        _forget_challenge(connection)
+    return await install_flow.attach_proposal(connection, turn.discovery_future, team_id, event)
 
 
 async def _stop_closed_turn(
@@ -608,7 +469,7 @@ async def _load_sync_snapshot(
 ) -> _SyncSnapshot | None:
     progress, report = _progress_channel()
     try:
-        future = _submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
+        future = submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
     except ExecutorSaturatedError:
         await _send_sync_terminal_once(
             websocket,
@@ -680,7 +541,7 @@ async def _run_stop(
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
-                response = await asyncio.wrap_future(_submit_in_context(_STOP_EXECUTOR, local.stop, team_id))
+                response = await asyncio.wrap_future(submit_in_context(_STOP_EXECUTOR, local.stop, team_id))
             except ExecutorSaturatedError:
                 response = team.TeamResponse(429, {})
         accepted = _stop_accepted(response, team_id)
@@ -896,7 +757,7 @@ async def _dispatch_human_response(
         if payload is None:
             raise FrameError(503, "authentication is unavailable")
         progress, report = _progress_channel()
-        future = _submit_in_context(
+        future = submit_in_context(
             _SYNC_EXECUTOR,
             local.resume_human,
             team_id,
@@ -921,86 +782,6 @@ async def _dispatch_human_response(
             authentication_failure,
         )
     )
-
-
-async def _deliver_install(
-    websocket: WebSocket,
-    connection: _Connection,
-    operation: _InstallOperation,
-) -> None:
-    task = asyncio.current_task()
-    try:
-        result = assistant_install.InstallResult(502)
-        with contextlib.suppress(Exception):
-            resolved = await asyncio.wrap_future(operation.future)
-            if isinstance(resolved, assistant_install.InstallResult):
-                result = resolved
-        if connection.closed:
-            return
-        if result.installed is not None and 200 <= result.status < 300:
-            event = _install_event(
-                operation.proposal,
-                "installed",
-                team_id=operation.proposal.team_id,
-                installed=result.installed,
-            )
-        else:
-            status = result.status if 400 <= result.status <= 599 else 502
-            event = _install_event(operation.proposal, "failed", status=status)
-        if not await _send_event(websocket, event):
-            connection.closed = True
-    finally:
-        if operation.delivery is task and connection.install is operation:
-            connection.install = None
-
-
-async def _dispatch_install(
-    websocket: WebSocket,
-    connection: _Connection,
-    proposal: assistant_proposal.InstallProposal,
-) -> None:
-    if not await _send_event(websocket, _install_event(proposal, "installing")):
-        connection.closed = True
-        return
-    try:
-        future = _submit_in_context(_INSTALL_EXECUTOR, assistant_install.install, proposal)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, _install_event(proposal, "failed", status=429))
-        return
-    operation = _InstallOperation(proposal=proposal, future=future)
-    connection.install = operation
-    operation.delivery = asyncio.create_task(_deliver_install(websocket, connection, operation))
-
-
-async def _resolve_install_proposal(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    payload: dict[str, object],
-) -> bool:
-    proposal = connection.install_proposal
-    if proposal is None:
-        return False
-    decision = (
-        assistant_proposal.classify_confirmation(payload["message"])
-        if payload["files"] == []
-        else "ambiguous"
-    )
-    if not proposal.valid_for(team_id, _monotonic()):
-        connection.install_proposal = None
-        if decision != "ambiguous":
-            await _send_event(websocket, _install_event(proposal, "expired"))
-            return True
-        return False
-    if decision == "confirm":
-        connection.install_proposal = None
-        await _dispatch_install(websocket, connection, proposal)
-        return True
-    if decision == "cancel":
-        connection.install_proposal = None
-        await _send_event(websocket, _install_event(proposal, "cancelled"))
-        return True
-    return False
 
 
 async def _dispatch_chat(
@@ -1029,17 +810,17 @@ async def _dispatch_chat(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return
-    if await _resolve_install_proposal(websocket, connection, team_id, payload):
+    if await install_flow.resolve(websocket, connection, team_id, payload, _send_event):
         return
     try:
         progress, report = _progress_channel()
-        future = _submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
+        future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
     discovery_future = None
     if connection.install_proposal is None:
-        discovery_future = _submit_discovery(team_id, payload)
+        discovery_future = install_flow.submit_discovery(team_id, payload)
     turn = _Turn(
         future=future,
         operation="chat",
@@ -1149,7 +930,6 @@ async def _close_connection(
     team_id: str,
 ) -> None:
     connection.closed = True
-    connection.install_proposal = None
     sync_task = connection.sync_task
     if sync_task is not None:
         sync_task.cancel()
@@ -1168,12 +948,7 @@ async def _close_connection(
         if active.delivery is not None:
             active.delivery.cancel()
             await asyncio.gather(active.delivery, return_exceptions=True)
-    install = connection.install
-    if install is not None:
-        install.future.cancel()
-        if install.delivery is not None:
-            install.delivery.cancel()
-            await asyncio.gather(install.delivery, return_exceptions=True)
+    await install_flow.close(connection)
 
 
 async def serve(

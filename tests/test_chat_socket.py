@@ -169,13 +169,13 @@ class ChatWebSocketTests(unittest.TestCase):
         self.token = self.admin_app.auth.issue_session(secret, "totp")
 
     def _install_candidate(self):
-        return self.chat_socket.store_catalog.CatalogAssistant(
+        return self.chat_socket.install_flow.store_catalog.CatalogAssistant(
             assistant_id="shimpz-cloudflare",
             name="Shimpz Cloudflare",
             summary="Manage Cloudflare zones and DNS records.",
             source_digest="sha256:" + ("d" * 64),
             integrations=(
-                self.chat_socket.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
+                self.chat_socket.install_flow.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
             ),
             actions=("list-zones",),
         )
@@ -611,7 +611,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
-                mock.patch.object(self.chat_socket, "_submit_in_context", side_effect=submit_completed),
+                mock.patch.object(self.chat_socket, "submit_in_context", side_effect=submit_completed),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
@@ -734,7 +734,7 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
@@ -776,16 +776,16 @@ class ChatWebSocketTests(unittest.TestCase):
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
             )
-            result = self.chat_socket.assistant_install.InstallResult(200, True)
+            result = self.chat_socket.install_flow.assistant_install.InstallResult(200, True)
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "discover",
                     side_effect=(self._install_candidate(), None),
                 ),
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "install",
                     return_value=result,
                 ) as install,
@@ -825,9 +825,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 self.assertEqual(proposal.assistant.source_digest, "sha256:" + ("d" * 64))
                 self.assertEqual(turn.call_count, 1)
 
-                await websocket.send_json(
-                    {"type": "chat", "message": "sim", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "sim", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 self.assertEqual(turn.call_count, 2)
                 install.assert_called_once()
@@ -844,25 +842,21 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "install",
-                    return_value=self.chat_socket.assistant_install.InstallResult(200, True),
+                    return_value=self.chat_socket.install_flow.assistant_install.InstallResult(200, True),
                 ) as install,
             ):
                 cancelled = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await cancelled.start()))
-                await cancelled.send_json(
-                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
-                )
+                await cancelled.send_json({"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []})
                 proposed = await cancelled.next_json()
-                await cancelled.send_json(
-                    {"type": "chat", "message": "Esquece", "files": [], "assistant_ids": []}
-                )
+                await cancelled.send_json({"type": "chat", "message": "Esquece", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await cancelled.next_json(),
                     {
@@ -876,18 +870,14 @@ class ChatWebSocketTests(unittest.TestCase):
 
                 ambiguous = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await ambiguous.start()))
-                await ambiguous.send_json(
-                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
-                )
+                await ambiguous.send_json({"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []})
                 await ambiguous.next_json()
                 await ambiguous.send_json(
                     {"type": "chat", "message": "talvez depois", "files": [], "assistant_ids": []}
                 )
                 self.assertEqual((await ambiguous.next_json())["type"], "done")
                 install.assert_not_called()
-                await ambiguous.send_json(
-                    {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
-                )
+                await ambiguous.send_json({"type": "chat", "message": "ok", "files": [], "assistant_ids": []})
                 self.assertEqual((await ambiguous.next_json())["state"], "installing")
                 self.assertEqual((await ambiguous.next_json())["state"], "installed")
                 await ambiguous.disconnect()
@@ -906,22 +896,18 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
-                mock.patch.object(self.chat_socket.assistant_install, "install") as install,
-                mock.patch.object(self.chat_socket, "_monotonic", side_effect=(10, 311)),
+                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket.install_flow, "monotonic", side_effect=(10, 311)),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []})
                 proposed = await websocket.next_json()
-                await websocket.send_json(
-                    {"type": "chat", "message": "sim", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "sim", "files": [], "assistant_ids": []})
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -945,27 +931,23 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.assistant_install,
+                    self.chat_socket.install_flow.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
-                mock.patch.object(self.chat_socket.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "Cloudflare", "files": [], "assistant_ids": []})
                 proposed = await websocket.next_json()
 
                 with mock.patch.object(
-                    self.chat_socket._INSTALL_EXECUTOR,
+                    self.chat_socket.install_flow._INSTALL_EXECUTOR,
                     "submit",
                     side_effect=self.chat_socket.ExecutorSaturatedError,
                 ):
-                    await websocket.send_json(
-                        {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
-                    )
+                    await websocket.send_json({"type": "chat", "message": "ok", "files": [], "assistant_ids": []})
                     self.assertEqual((await websocket.next_json())["state"], "installing")
                     self.assertEqual(
                         await websocket.next_json(),
