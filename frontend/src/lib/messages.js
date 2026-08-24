@@ -295,6 +295,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -646,6 +647,7 @@ export const messages = {
         "expired": "Confirmação expirada",
         "failed": "Falha na instalação",
         "confirm": "Responda naturalmente com sim para instalar ou não para cancelar.",
+        "resend": "Envie sua solicitação original novamente para usar este Assistant.",
         "providers": "Provedor de Integration: {providers}",
         "refreshFailed": "O Assistant foi instalado, mas não foi possível atualizar o contexto do Time."
       },
@@ -997,6 +999,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -1348,6 +1351,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -1699,6 +1703,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -2050,6 +2055,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -2401,6 +2407,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },
@@ -2752,6 +2759,7 @@ export const messages = {
         "expired": "Confirmation expired",
         "failed": "Installation failed",
         "confirm": "Reply naturally with yes to install or no to cancel.",
+        "resend": "Send your original request again to use this Assistant.",
         "providers": "Integration provider: {providers}",
         "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
       },

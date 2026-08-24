@@ -106,6 +106,7 @@ function humanRequest(kind) {
 
 async function routeReadyChat(page, {
   assistantInstall = false,
+  assistantInstallExpiresIn = 300,
   disconnectHumanResponse = false,
   holdHumanResponse = false,
   humanKind = '',
@@ -310,7 +311,7 @@ async function routeReadyChat(page, {
               proposal_id: 'd'.repeat(32),
               team_id: 'marketing',
               reply: 'The Cloudflare Assistant is required to list your DNS zones. Should I install it?',
-              expires_in: 300,
+              expires_in: assistantInstallExpiresIn,
               assistant: {
                 id: 'shimpz-cloudflare',
                 name: 'Shimpz Cloudflare',
@@ -476,6 +477,24 @@ test('installs a suggested Assistant through natural chat confirmation', async (
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect(task).toContainText('Installed');
+  await expect(task).toContainText('Send your original request again to use this Assistant.');
+  await expect(composer).toBeEnabled();
+});
+
+test('expires a conversational Assistant proposal without another server frame', async ({ page }) => {
+  await routeReadyChat(page, { assistantInstall: true, assistantInstallExpiresIn: 1 });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('List my Cloudflare DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const task = page.locator('[data-slot="chat-task"]');
+  await expect(task).toHaveAttribute('data-state', 'pending');
+  await expect(task).toHaveAttribute('data-state', 'cancelled', { timeout: 3_000 });
+  await expect(task).toContainText('Confirmation expired');
+  await expect(task).not.toContainText('Reply naturally with yes to install or no to cancel.');
   await expect(composer).toBeEnabled();
 });
 

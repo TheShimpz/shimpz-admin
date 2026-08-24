@@ -46,6 +46,7 @@
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
+  const installExpiryTimers = new Map();
   let reconnectAttempt = 0;
   const MAX_RECONNECT_ATTEMPTS = 5;
   let integrationsOpen = $state(false);
@@ -157,7 +158,27 @@
     return providers ? $t('chatPage.install.providers', { providers }) : '';
   }
 
+  function clearInstallExpiry(proposalId) {
+    const timer = installExpiryTimers.get(proposalId);
+    if (timer) clearTimeout(timer);
+    installExpiryTimers.delete(proposalId);
+  }
+
+  function scheduleInstallExpiry(proposalId, expiresIn) {
+    clearInstallExpiry(proposalId);
+    installExpiryTimers.set(proposalId, setTimeout(() => {
+      installExpiryTimers.delete(proposalId);
+      turns = turns.map((turn) => (
+        turn.install?.proposal_id === proposalId && turn.install.state === 'proposed'
+          ? { ...turn, install: { ...turn.install, state: 'expired' } }
+          : turn
+      ));
+    }, expiresIn * 1000));
+  }
+
   function expireSocketInstalls() {
+    for (const timer of installExpiryTimers.values()) clearTimeout(timer);
+    installExpiryTimers.clear();
     turns = turns.map((turn) => {
       if (turn.install?.state === 'proposed') {
         return { ...turn, install: { ...turn.install, state: 'expired' } };
@@ -187,12 +208,14 @@
           state: 'proposed',
         },
       }];
+      scheduleInstallExpiry(incoming.proposal_id, incoming.expires_in);
       return true;
     }
     const index = installTurnIndex(incoming.proposal_id);
     if (index < 0) throw new Error('unknown install proposal');
     const current = turns[index].install;
     if (current.assistant.id !== incoming.assistant_id) throw new Error('mismatched install proposal');
+    clearInstallExpiry(incoming.proposal_id);
     const allowed = current.state === 'proposed'
       ? ['installing', 'cancelled', 'expired']
       : current.state === 'working' ? ['installed', 'failed'] : [];
@@ -307,6 +330,7 @@
     if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
       throw new Error('unexpected Assistant integration requirement');
     }
+    expireSocketInstalls();
     integrationChallenge = incoming;
     humanChallenge = undefined;
     humanRejection = undefined;
@@ -326,6 +350,7 @@
     if (!installed.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
+    expireSocketInstalls();
     const reconciledExpiry = humanExpiredId === incoming.challenge_id;
     humanExpiredId = '';
     if (reconciledExpiry) clearError();
@@ -486,6 +511,7 @@
       }
 
       const receipt = progressEvents.map((item) => ({ ...item }));
+      expireSocketInstalls();
       busy = false;
       syncing = false;
       stopping = false;
@@ -853,6 +879,9 @@
                     {#snippet installDetails()}
                       {#if exchange.assistant.install.state === 'proposed'}
                         <span>{copy.install.confirm}</span>
+                      {/if}
+                      {#if exchange.assistant.install.state === 'installed'}
+                        <span>{copy.install.resend}</span>
                       {/if}
                       {#if installProviderText(exchange.assistant.install)}
                         <span>{installProviderText(exchange.assistant.install)}</span>
