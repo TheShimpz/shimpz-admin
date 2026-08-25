@@ -9,6 +9,11 @@ function textToken(text) {
   return { type: 'text', text };
 }
 
+/** Preserve bounded external copy as literal text when it is placed in a Markdown message. */
+export function escapeMarkdownText(value) {
+  return String(value ?? '').replace(/[\\`*_[\]{}()<>#+\-.!|]/gu, '\\$&');
+}
+
 function appendText(tokens, text) {
   if (!text) return;
   const previous = tokens.at(-1);

@@ -8,6 +8,7 @@
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import { localizedEventLabel } from '$lib/executionProgress.js';
   import Markdown from '$lib/Markdown.svelte';
+  import { escapeMarkdownText } from '$lib/markdown.js';
   import { t } from '$lib/i18n.js';
   import { modelContext } from '$lib/modelContext.js';
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
@@ -38,6 +39,7 @@
   let turns = $state([]);
   let busy = $state(false);
   let syncing = $state(false);
+  let installOutcomePending = $state(null);
   let progressEvents = $state([]);
   let progressSequence = $state(0);
   let stopping = $state(false);
@@ -81,6 +83,7 @@
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
   let installWorking = $derived(turns.some((turn) => turn.install?.state === 'working'));
+  let composerBusy = $derived(busy || syncing || installOutcomePending !== null);
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
@@ -104,8 +107,7 @@
       : '',
   );
   let installDecisionDisabled = $derived(
-    busy ||
-      syncing ||
+    composerBusy ||
       stopping ||
       !socketReady ||
       !socket ||
@@ -159,11 +161,6 @@
     if (install.state === 'expired') return copy.install.expired;
     if (install.state === 'unknown') return copy.disconnected;
     return copy.install.failed;
-  }
-
-  function installProviderText(install) {
-    const providers = install.assistant.providers.join(', ');
-    return providers ? $t('chatPage.install.providers', { providers }) : '';
   }
 
   function installIconSource(install) {
@@ -250,6 +247,60 @@
     return incoming.state !== 'installing';
   }
 
+  async function appendInstallOutcome(incoming) {
+    const { installedAssistants } = await refreshTeamInventory(fetch);
+    if (
+      installOutcomePending?.teamId !== incoming.team_id ||
+      installOutcomePending?.proposalId !== incoming.proposal_id ||
+      installOutcomePending?.assistantId !== incoming.assistant_id ||
+      chatTeamId !== incoming.team_id
+    ) return;
+    const index = installTurnIndex(incoming.proposal_id);
+    if (index < 0) return;
+    const install = turns[index].install;
+    if (
+      install.state !== 'installed' ||
+      install.assistant.id !== incoming.assistant_id ||
+      install.completionAnnounced
+    ) return;
+    const installedAssistant = installedAssistants.find(
+      (entry) => entry.assistant === incoming.assistant_id,
+    );
+    const team = $teamContext.teams.find((entry) => entry.id === incoming.team_id);
+    const projectedAssistant = $teamContext.installedAssistants.find(
+      (entry) => entry.assistant === incoming.assistant_id,
+    );
+    if (
+      !installedAssistant ||
+      installedAssistant.status !== 'running' ||
+      !team ||
+      $teamContext.phase !== 'ready' ||
+      $teamContext.selectedTeamId !== incoming.team_id ||
+      projectedAssistant?.assistant_version !== installedAssistant.assistant_version ||
+      projectedAssistant?.status !== 'running' ||
+      !$teamContext.selectedAssistantIds.includes(incoming.assistant_id)
+    ) throw new Error('installed Assistant inventory mismatch');
+    const outcomeKey = install.installed ? 'installedReply' : 'availableReply';
+    const outcome = $t(`chatPage.install.${outcomeKey}`, {
+      assistant: escapeMarkdownText(install.assistant.name),
+      version: escapeMarkdownText(installedAssistant.assistant_version),
+      team: escapeMarkdownText(team.name),
+      summary: escapeMarkdownText(install.assistant.summary),
+    });
+    const nextTurns = turns.map((turn, turnIndex) => (
+      turnIndex === index
+        ? { ...turn, install: { ...turn.install, completionAnnounced: true } }
+        : turn
+    ));
+    nextTurns.splice(index + 1, 0, {
+      role: 'assistant',
+      text: `${outcome} ${copy.install.resend}`,
+      author: team.name,
+    });
+    turns = nextTurns;
+    void revealLatestExchange();
+  }
+
   function clearError() {
     error = '';
     errorDetail = '';
@@ -265,8 +316,7 @@
     if (
       !mounted ||
       !chatTeamId ||
-      busy ||
-      syncing ||
+      composerBusy ||
       integrationsOpen ||
       document.querySelector('dialog[open]')
     ) return;
@@ -518,7 +568,24 @@
           busy = false;
           clearError();
           if (incoming.state === 'installed') {
-            void refreshTeamInventory(fetch).catch(() => setError(copy.install.refreshFailed));
+            installOutcomePending = {
+              teamId: incoming.team_id,
+              proposalId: incoming.proposal_id,
+              assistantId: incoming.assistant_id,
+            };
+            void appendInstallOutcome(incoming)
+              .catch(() => {
+                if (
+                  installOutcomePending?.teamId === incoming.team_id &&
+                  installOutcomePending?.proposalId === incoming.proposal_id
+                ) setError(copy.install.refreshFailed);
+              })
+              .finally(() => {
+                if (
+                  installOutcomePending?.teamId === incoming.team_id &&
+                  installOutcomePending?.proposalId === incoming.proposal_id
+                ) installOutcomePending = null;
+              });
           }
           return;
         }
@@ -578,6 +645,7 @@
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
     stopping = false;
+    installOutcomePending = null;
     draft = '';
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
@@ -721,12 +789,14 @@
     }
   }
 
-  function submitMessage(message, focusActiveTurn = true) {
+  function submitMessage(message, {
+    focusActiveTurn = true,
+    projectUserTurn = true,
+  } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
     if (
-      busy ||
-      syncing ||
+      composerBusy ||
       !teamId ||
       chatTeamId !== teamId ||
       !normalized ||
@@ -747,8 +817,10 @@
     busy = true;
     resetProgress();
     clearError();
-    turns = [...turns, { role: 'user', text: normalized }];
-    void revealLatestExchange();
+    if (projectUserTurn) {
+      turns = [...turns, { role: 'user', text: normalized }];
+      void revealLatestExchange();
+    }
     try {
       socket.send(JSON.stringify(frame));
       if (focusActiveTurn) void focusStop();
@@ -760,6 +832,10 @@
       socket.close();
       return false;
     }
+  }
+
+  function submitInstallDecision(decision) {
+    return submitMessage(decision, { focusActiveTurn: false, projectUserTurn: false });
   }
 
   function send(event) {
@@ -860,7 +936,7 @@
   });
 
   $effect(() => {
-    if (mounted && chatTeamId && !busy && !syncing && !integrationsOpen) void focusComposer();
+    if (mounted && chatTeamId && !composerBusy && !integrationsOpen) void focusComposer();
   });
 
   onMount(() => {
@@ -892,7 +968,7 @@
           class="conversation"
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
-          aria-busy={(busy || syncing) && !integrationChallenge && !humanChallenge}
+          aria-busy={composerBusy && !integrationChallenge && !humanChallenge}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         <ScrollArea class="turns" bind:element={turnsViewport}>
@@ -907,52 +983,46 @@
                 <Message variant="assistant" author={exchange.assistant.author}>
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
                   {#if exchange.assistant.install}
+                    {#snippet installMedia()}
+                      <AssistantIcon
+                        assistant={exchange.assistant.install.assistant.id}
+                        src={installIconSource(exchange.assistant.install)}
+                        size={44}
+                      />
+                    {/snippet}
                     {#snippet installDetails()}
                       <div class="assistant-install-details">
-                        <AssistantIcon
-                          assistant={exchange.assistant.install.assistant.id}
-                          src={installIconSource(exchange.assistant.install)}
-                          size={44}
-                        />
-                        <div class="assistant-install-detail-content">
-                          {#if exchange.assistant.install.state === 'proposed'}
-                            <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
-                            <div class="assistant-install-actions">
-                              <Button
-                                variant="secondary"
-                                size="compact"
-                                type="button"
-                                onclick={() => submitMessage('no', false)}
-                                disabled={installDecisionDisabled}
-                                aria-label={$t('chatPage.install.cancelActionLabel', {
-                                  assistant: exchange.assistant.install.assistant.name,
-                                })}
-                              >
-                                {copy.install.cancelAction}
-                              </Button>
-                              <Button
-                                size="compact"
-                                type="button"
-                                onclick={() => submitMessage('yes', false)}
-                                disabled={installDecisionDisabled}
-                                aria-label={$t('chatPage.install.installActionLabel', {
-                                  assistant: exchange.assistant.install.assistant.name,
-                                })}
-                              >
-                                {copy.install.installAction}
-                              </Button>
-                            </div>
-                          {/if}
-                          {#if exchange.assistant.install.state === 'installed'}
-                            <span class="assistant-install-detail-copy">{copy.install.resend}</span>
-                          {/if}
-                          {#if installProviderText(exchange.assistant.install)}
-                            <span class="assistant-install-detail-copy">{installProviderText(exchange.assistant.install)}</span>
-                          {/if}
-                          {#if exchange.assistant.install.status}
-                            <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
-                          {/if}
-                        </div>
+                        {#if exchange.assistant.install.state === 'proposed'}
+                          <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
+                          <div class="assistant-install-actions">
+                            <Button
+                              variant="secondary"
+                              size="compact"
+                              type="button"
+                              onclick={() => submitInstallDecision('no')}
+                              disabled={installDecisionDisabled}
+                              aria-label={$t('chatPage.install.cancelActionLabel', {
+                                assistant: exchange.assistant.install.assistant.name,
+                              })}
+                            >
+                              {copy.install.cancelAction}
+                            </Button>
+                            <Button
+                              size="compact"
+                              type="button"
+                              onclick={() => submitInstallDecision('yes')}
+                              disabled={installDecisionDisabled}
+                              aria-label={$t('chatPage.install.installActionLabel', {
+                                assistant: exchange.assistant.install.assistant.name,
+                              })}
+                            >
+                              {copy.install.installAction}
+                            </Button>
+                          </div>
+                        {/if}
+                        {#if exchange.assistant.install.status}
+                          <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
+                        {/if}
                       </div>
                     {/snippet}
                     <ChatTask
@@ -963,7 +1033,10 @@
                       description={exchange.assistant.install.assistant.summary}
                       state={installVisualState(exchange.assistant.install.state)}
                       status={installStatus(exchange.assistant.install)}
-                      details={installDetails}
+                      media={installMedia}
+                      details={exchange.assistant.install.state === 'proposed' || exchange.assistant.install.status
+                        ? installDetails
+                        : undefined}
                       tabindex={exchange.assistant.install.state === 'working' ? -1 : undefined}
                     />
                   {/if}
@@ -998,7 +1071,7 @@
         {/if}
 
           <form class="composer" onsubmit={send}>
-            <ChatContextControls disabled={busy || syncing || stopping} />
+            <ChatContextControls disabled={composerBusy || stopping} />
             <div class="composer-input">
               <TextAreaField
                 id="chat-composer"
@@ -1010,7 +1083,7 @@
                 maxlength="16000"
                 rows="2"
                 placeholder={placeholder}
-                disabled={busy || syncing}
+                disabled={composerBusy}
                 onkeydown={handleComposerKeydown}
               />
               <Toolbar class="composer-actions">
@@ -1037,7 +1110,7 @@
               </Button>
               <Button
                 type="submit"
-                disabled={busy || syncing || !socketReady || !draft.trim()}
+                disabled={composerBusy || !socketReady || !draft.trim()}
               >
                 {socketReady ? copy.send : copy.connecting}
               </Button>
@@ -1209,13 +1282,7 @@
 
   :global(.assistant-install-task .assistant-install-details) {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: start;
-    gap: 0.75rem;
-  }
-
-  :global(.assistant-install-task .assistant-install-detail-content) {
-    min-width: 0;
+    gap: 0.55rem;
   }
 
   :global(.assistant-install-task .assistant-install-actions) {

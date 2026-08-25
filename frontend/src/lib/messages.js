@@ -299,9 +299,10 @@ export const messages = {
         "cancelActionLabel": "Cancel installing {assistant}",
         "installAction": "Install",
         "installActionLabel": "Install {assistant}",
+        "installedReply": "{assistant} v{version} was installed in Team {team}. What it can do: {summary}",
+        "availableReply": "{assistant} v{version} was already available in Team {team}. What it can do: {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "The Supervisor password was not confirmed. This action was not executed. Start the action again to retry.",
       "authenticationUnavailable": "Supervisor password verification is unavailable. This action was not executed. Try again later.",
@@ -655,9 +656,10 @@ export const messages = {
         "cancelActionLabel": "Cancelar instalação de {assistant}",
         "installAction": "Instalar",
         "installActionLabel": "Instalar {assistant}",
+        "installedReply": "O {assistant} v{version} foi instalado no Time {team}. O que ele pode fazer: {summary}",
+        "availableReply": "O {assistant} v{version} já estava disponível no Time {team}. O que ele pode fazer: {summary}",
         "resend": "Envie sua solicitação original novamente para usar este Assistant.",
-        "providers": "Provedor de Integration: {providers}",
-        "refreshFailed": "O Assistant foi instalado, mas não foi possível atualizar o contexto do Time."
+        "refreshFailed": "A instalação do Assistant foi concluída, mas não foi possível confirmar seus dados instalados no Time."
       },
       "authenticationDenied": "A senha do Supervisor não foi confirmada. Esta ação não foi executada. Inicie a ação novamente para tentar outra vez.",
       "authenticationUnavailable": "A verificação da senha do Supervisor está indisponível. Esta ação não foi executada. Tente novamente mais tarde.",
@@ -1011,9 +1013,10 @@ export const messages = {
         "cancelActionLabel": "Cancelar la instalación de {assistant}",
         "installAction": "Instalar",
         "installActionLabel": "Instalar {assistant}",
+        "installedReply": "{assistant} v{version} se instaló en el Team {team}. Qué puede hacer: {summary}",
+        "availableReply": "{assistant} v{version} ya estaba disponible en el Team {team}. Qué puede hacer: {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "No se confirmó la contraseña del Supervisor. Esta acción no se ejecutó. Inicia la acción de nuevo para volver a intentarlo.",
       "authenticationUnavailable": "La verificación de la contraseña del Supervisor no está disponible. Esta acción no se ejecutó. Inténtalo de nuevo más tarde.",
@@ -1367,9 +1370,10 @@ export const messages = {
         "cancelActionLabel": "取消安装 {assistant}",
         "installAction": "安装",
         "installActionLabel": "安装 {assistant}",
+        "installedReply": "{assistant} v{version} 已安装到 Team {team}。它可以：{summary}",
+        "availableReply": "{assistant} v{version} 已在 Team {team} 中可用。它可以：{summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "未能确认 Supervisor 密码。此操作未执行。请重新发起操作后再试。",
       "authenticationUnavailable": "Supervisor 密码验证当前不可用。此操作未执行。请稍后再试。",
@@ -1723,9 +1727,10 @@ export const messages = {
         "cancelActionLabel": "Annuler l’installation de {assistant}",
         "installAction": "Installer",
         "installActionLabel": "Installer {assistant}",
+        "installedReply": "{assistant} v{version} a été installé dans le Team {team}. Ce qu’il peut faire : {summary}",
+        "availableReply": "{assistant} v{version} était déjà disponible dans le Team {team}. Ce qu’il peut faire : {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "Le mot de passe du Supervisor n’a pas été confirmé. Cette action n’a pas été exécutée. Relancez l’action pour réessayer.",
       "authenticationUnavailable": "La vérification du mot de passe du Supervisor est indisponible. Cette action n’a pas été exécutée. Réessayez plus tard.",
@@ -2079,9 +2084,10 @@ export const messages = {
         "cancelActionLabel": "Installation von {assistant} abbrechen",
         "installAction": "Installieren",
         "installActionLabel": "{assistant} installieren",
+        "installedReply": "{assistant} v{version} wurde im Team {team} installiert. Das kann der Assistant: {summary}",
+        "availableReply": "{assistant} v{version} war im Team {team} bereits verfügbar. Das kann der Assistant: {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "Das Supervisor-Passwort wurde nicht bestätigt. Diese Aktion wurde nicht ausgeführt. Starte die Aktion erneut, um es noch einmal zu versuchen.",
       "authenticationUnavailable": "Die Prüfung des Supervisor-Passworts ist nicht verfügbar. Diese Aktion wurde nicht ausgeführt. Versuche es später erneut.",
@@ -2435,9 +2441,10 @@ export const messages = {
         "cancelActionLabel": "{assistant} のインストールをキャンセル",
         "installAction": "インストール",
         "installActionLabel": "{assistant} をインストール",
+        "installedReply": "{assistant} v{version} を Team {team} にインストールしました。できること: {summary}",
+        "availableReply": "{assistant} v{version} は Team {team} ですでに利用可能でした。できること: {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "Supervisor のパスワードを確認できませんでした。この操作は実行されていません。もう一度試すには操作を再開してください。",
       "authenticationUnavailable": "Supervisor のパスワード確認を現在利用できません。この操作は実行されていません。後でもう一度お試しください。",
@@ -2791,9 +2798,10 @@ export const messages = {
         "cancelActionLabel": "إلغاء تثبيت {assistant}",
         "installAction": "تثبيت",
         "installActionLabel": "تثبيت {assistant}",
+        "installedReply": "تم تثبيت {assistant} بالإصدار v{version} في Team {team}. ما يمكنه فعله: {summary}",
+        "availableReply": "كان {assistant} بالإصدار v{version} متاحًا بالفعل في Team {team}. ما يمكنه فعله: {summary}",
         "resend": "Send your original request again to use this Assistant.",
-        "providers": "Integration provider: {providers}",
-        "refreshFailed": "The Assistant was installed, but the Team context could not be refreshed."
+        "refreshFailed": "The Assistant installation completed, but its installed Team details could not be confirmed."
       },
       "authenticationDenied": "لم يتم تأكيد كلمة مرور Supervisor. لم يُنفَّذ هذا الإجراء. ابدأ الإجراء من جديد للمحاولة مرة أخرى.",
       "authenticationUnavailable": "التحقق من كلمة مرور Supervisor غير متاح حاليًا. لم يُنفَّذ هذا الإجراء. حاول مرة أخرى لاحقًا.",

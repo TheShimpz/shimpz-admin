@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseInline, parseMarkdown } from '../src/lib/markdown.js';
+import { escapeMarkdownText, parseInline, parseMarkdown } from '../src/lib/markdown.js';
+
+test('keeps external display copy literal inside a Markdown response', () => {
+  const source = '# Assistant [docs](https://example.com) `code` **bold** | value';
+  const blocks = parseMarkdown(escapeMarkdownText(source));
+
+  assert.deepEqual(blocks.map((block) => block.type), ['paragraph']);
+  assert.deepEqual(blocks[0].inlines, [{ type: 'text', text: source }]);
+});
 
 test('parses the small supported Markdown surface into a closed AST', () => {
   const blocks = parseMarkdown(`# Weather Guide
