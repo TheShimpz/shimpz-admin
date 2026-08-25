@@ -993,7 +993,9 @@
                     {#snippet installDetails()}
                       <div class="assistant-install-details">
                         {#if exchange.assistant.install.state === 'proposed'}
-                          <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
+                          <span class="assistant-install-detail-copy assistant-install-confirm-copy">
+                            {copy.install.confirm}
+                          </span>
                           <div class="assistant-install-actions">
                             <Button
                               variant="secondary"
@@ -1278,6 +1280,10 @@
 
   :global(.assistant-install-task .assistant-install-detail-copy) {
     display: block;
+  }
+
+  :global(.assistant-install-task .assistant-install-confirm-copy) {
+    text-align: right;
   }
 
   :global(.assistant-install-task .assistant-install-details) {

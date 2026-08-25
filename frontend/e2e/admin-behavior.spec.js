@@ -539,7 +539,8 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   await expect(task).toHaveAttribute('data-state', 'pending');
   await expect(task).toContainText('Shimpz Cloudflare');
   await expect(task).toContainText('Confirmation required');
-  await expect(task).toContainText('Install this Assistant for this Team?');
+  const confirmation = task.getByText('Install this Assistant for this Team?', { exact: true });
+  await expect(confirmation).toHaveCSS('text-align', 'right');
   await expect(task).not.toContainText('Integration provider');
   const icon = task.locator('img');
   await expect(icon).toBeVisible();
