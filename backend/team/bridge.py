@@ -68,6 +68,7 @@ def canonical_team_name(value: object) -> str:
 
 canonical_assistant_id = payloads.canonical_assistant_id
 _SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 def canonical_source_digest(value: object) -> str:
@@ -384,6 +385,76 @@ def list_installed_assistants(team_id: object) -> TeamResponse:
 
 def assistant_icon(team_id: object, assistant_id: object) -> TeamAssetResponse:
     return _call_asset(f"{_assistant_path(team_id, assistant_id)}/icon")
+
+
+def assistant_action_labels(
+    team_id: object,
+    assistant_id: object,
+    language_exemplar: object,
+    *,
+    provider: str,
+    api_key: str,
+) -> TeamResponse:
+    """Request inert labels for the exact installed Assistant binding."""
+    canonical_team = canonical_team_id(team_id)
+    canonical_assistant = canonical_assistant_id(assistant_id)
+    exemplar = team_contract.canonical_language_exemplar(language_exemplar)
+    if exemplar is None or exemplar != language_exemplar:
+        raise TeamRequestError("language exemplar must be canonical")
+    response = _call(
+        "POST",
+        f"{_assistant_path(canonical_team, canonical_assistant)}/action-labels",
+        {"language_exemplar": exemplar},
+        model_credential=(provider, api_key),
+    )
+    if response.status != 200:
+        if type(response.status) is int and 400 <= response.status <= 599:
+            return response
+        log.warning("team returned an invalid Action label status")
+        return TeamResponse(502, {"detail": "Team Action label response is invalid."})
+    try:
+        body = response.body
+        if set(body) != {"team_id", "assistant", "assistant_version", "actions", "trace_id"}:
+            raise ValueError("unexpected Action label fields")
+        version = body["assistant_version"]
+        trace_id = body["trace_id"]
+        raw_actions = body["actions"]
+        if (
+            body["team_id"] != canonical_team
+            or body["assistant"] != canonical_assistant
+            or not isinstance(version, str)
+            or _SEMANTIC_VERSION_RE.fullmatch(version) is None
+            or not isinstance(trace_id, str)
+            or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+            or not isinstance(raw_actions, list)
+            or not 1 <= len(raw_actions) <= 64
+        ):
+            raise ValueError("invalid Action label identity")
+        actions: list[dict[str, str]] = []
+        for raw in raw_actions:
+            if not isinstance(raw, dict) or set(raw) != {"id", "label"}:
+                raise ValueError("invalid Action label fields")
+            action_id = team_contract.canonical_action_id(raw["id"])
+            label = team_contract.canonical_action_label(raw["label"])
+            if action_id is None or action_id != raw["id"] or label is None or api_key in label:
+                raise ValueError("invalid Action label")
+            actions.append({"id": action_id, "label": label})
+        action_ids = [action["id"] for action in actions]
+        labels = [action["label"] for action in actions]
+        if action_ids != sorted(set(action_ids)) or len(set(labels)) != len(labels):
+            raise ValueError("Action labels are not canonical")
+    except KeyError, TypeError, ValueError:
+        log.warning("team returned an invalid Action label response")
+        return TeamResponse(502, {"detail": "Team Action label response is invalid."})
+    return TeamResponse(
+        response.status,
+        {
+            "team_id": canonical_team,
+            "assistant": canonical_assistant,
+            "assistant_version": version,
+            "actions": actions,
+        },
+    )
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:
