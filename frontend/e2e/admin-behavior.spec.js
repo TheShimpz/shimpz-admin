@@ -108,6 +108,7 @@ async function routeReadyChat(page, {
   assistantInstall = false,
   assistantInstallExpiresIn = 300,
   assistantInstallExpiresOnConfirm = false,
+  holdAssistantInstall = false,
   disconnectHumanResponse = false,
   holdHumanResponse = false,
   humanKind = '',
@@ -133,6 +134,7 @@ async function routeReadyChat(page, {
   let expiredHumanRedelivered = false;
   let assistantInstalled = !assistantInstall;
   let installProposed = false;
+  let releaseAssistantInstall = () => {};
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -331,21 +333,42 @@ async function routeReadyChat(page, {
             }));
             return;
           }
+          if (frame.message === 'no') {
+            socket.send(JSON.stringify({
+              type: 'assistant-install',
+              state: 'cancelled',
+              proposal_id: 'd'.repeat(32),
+              assistant_id: 'shimpz-cloudflare',
+            }));
+            return;
+          }
+          if (frame.message !== 'yes') {
+            socket.send(JSON.stringify({
+              type: 'error',
+              status: 400,
+              detail: 'unexpected Assistant installation confirmation',
+            }));
+            return;
+          }
           socket.send(JSON.stringify({
             type: 'assistant-install',
             state: 'installing',
             proposal_id: 'd'.repeat(32),
             assistant_id: 'shimpz-cloudflare',
           }));
-          assistantInstalled = true;
-          socket.send(JSON.stringify({
-            type: 'assistant-install',
-            state: 'installed',
-            proposal_id: 'd'.repeat(32),
-            assistant_id: 'shimpz-cloudflare',
-            team_id: 'marketing',
-            installed: true,
-          }));
+          const completeAssistantInstall = () => {
+            assistantInstalled = true;
+            socket.send(JSON.stringify({
+              type: 'assistant-install',
+              state: 'installed',
+              proposal_id: 'd'.repeat(32),
+              assistant_id: 'shimpz-cloudflare',
+              team_id: 'marketing',
+              installed: true,
+            }));
+          };
+          if (holdAssistantInstall) releaseAssistantInstall = completeAssistantInstall;
+          else completeAssistantInstall();
           return;
         }
         if (integrationChallenge) {
@@ -406,6 +429,7 @@ async function routeReadyChat(page, {
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     inferenceWrites: () => inferenceWrites,
+    releaseAssistantInstall: () => releaseAssistantInstall(),
     releaseHumanResponse: () => releaseHumanResponse(),
     syncFrames: () => syncFrames,
   };
@@ -461,8 +485,11 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 
-test('installs a suggested Assistant through natural chat confirmation', async ({ page }) => {
-  await routeReadyChat(page, { assistantInstall: true });
+test('installs a suggested Assistant from the inline proposal', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantInstall: true,
+    holdAssistantInstall: true,
+  });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -474,8 +501,10 @@ test('installs a suggested Assistant through natural chat confirmation', async (
   await expect(task).toHaveAttribute('data-state', 'pending');
   await expect(task).toContainText('Shimpz Cloudflare');
   await expect(task).toContainText('Confirmation required');
-  await expect(task).toContainText('Reply naturally with yes to install or no to cancel.');
-  await expect(task.getByRole('button')).toHaveCount(0);
+  await expect(task).toContainText('Install this Assistant for this Team?');
+  await expect(task.getByRole('button', { name: 'Cancel installing Shimpz Cloudflare' })).toBeEnabled();
+  const install = task.getByRole('button', { name: 'Install Shimpz Cloudflare' });
+  await expect(install).toBeEnabled();
   await expect(composer).toBeEnabled();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await expect(task).toHaveScreenshot('assistant-install-proposal.png', {
@@ -483,12 +512,35 @@ test('installs a suggested Assistant through natural chat confirmation', async (
     maxDiffPixels: 100,
   });
 
-  await composer.fill('ok');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await install.click();
+  await expect(page.getByText('yes', { exact: true })).toBeVisible();
+  await expect(task).toHaveAttribute('data-state', 'working');
+  await expect(task).toBeFocused();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  chat.releaseAssistantInstall();
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect(task).toContainText('Installed');
   await expect(task).toContainText('Send your original request again to use this Assistant.');
+  await expect(task.getByRole('button')).toHaveCount(0);
   await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+});
+
+test('cancels a suggested Assistant from the inline proposal', async ({ page }) => {
+  await routeReadyChat(page, { assistantInstall: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('List my Cloudflare DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const task = page.locator('[data-slot="chat-task"]');
+  await task.getByRole('button', { name: 'Cancel installing Shimpz Cloudflare' }).click();
+  await expect(page.getByText('no', { exact: true })).toBeVisible();
+  await expect(task).toHaveAttribute('data-state', 'cancelled');
+  await expect(task).toContainText('Cancelled');
+  await expect(task.getByRole('button')).toHaveCount(0);
+  await expect(composer).toBeFocused();
 });
 
 test('expires a conversational Assistant proposal without another server frame', async ({ page }) => {
@@ -508,7 +560,7 @@ test('expires a conversational Assistant proposal without another server frame',
   await expect(task).toHaveAttribute('data-state', 'pending');
   await expect(task).toHaveAttribute('data-state', 'cancelled', { timeout: 3_000 });
   await expect(task).toContainText('Confirmation expired');
-  await expect(task).not.toContainText('Reply naturally with yes to install or no to cancel.');
+  await expect(task).not.toContainText('Install this Assistant for this Team?');
 
   await composer.fill('yes');
   await page.getByRole('button', { name: 'Send' }).click();

@@ -103,6 +103,14 @@
       ? $teamContext.error
       : '',
   );
+  let installDecisionDisabled = $derived(
+    busy ||
+      syncing ||
+      stopping ||
+      !socketReady ||
+      !socket ||
+      chatTeamId !== selectedTeamId,
+  );
   let visibleError = $derived(error || (contextFailed ? copy.loadFailed : ''));
   let visibleErrorDetail = $derived(error ? errorDetail : contextErrorDetail);
 
@@ -262,6 +270,12 @@
     if (mounted && busy && !syncing && !installWorking && !integrationChallenge && !humanChallenge) {
       stopButton?.focus({ preventScroll: true });
     }
+  }
+
+  async function focusInstallTask(proposalId) {
+    await tick();
+    if (!mounted || !busy || !installWorking) return;
+    document.getElementById(`assistant-install-${proposalId}`)?.focus({ preventScroll: true });
   }
 
   async function revealLatestExchange() {
@@ -489,7 +503,10 @@
           const terminal = applyInstallEvent(incoming, receipt);
           stopping = false;
           resetProgress();
-          if (!terminal) return;
+          if (!terminal) {
+            void focusInstallTask(incoming.proposal_id);
+            return;
+          }
           busy = false;
           clearError();
           if (incoming.state === 'installed') {
@@ -696,45 +713,50 @@
     }
   }
 
-  function send(event) {
-    event.preventDefault();
+  function submitMessage(message, focusActiveTurn = true) {
     const teamId = $teamContext.selectedTeamId;
+    const normalized = message.trim();
     if (
       busy ||
       syncing ||
       !teamId ||
       chatTeamId !== teamId ||
-      !draft.trim() ||
+      !normalized ||
       !socketReady ||
       !socket
-    ) return;
-    const message = draft.trim();
+    ) return false;
     let frame;
     try {
       frame = createChatFrame(teamId, {
-        message,
+        message: normalized,
         files: [],
         assistant_ids: $teamContext.selectedAssistantIds,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      return;
+      return false;
     }
     busy = true;
     resetProgress();
     clearError();
-    turns = [...turns, { role: 'user', text: message }];
+    turns = [...turns, { role: 'user', text: normalized }];
     void revealLatestExchange();
-    draft = '';
     try {
       socket.send(JSON.stringify(frame));
-      void focusStop();
+      if (focusActiveTurn) void focusStop();
+      return true;
     } catch (reason) {
       busy = false;
       resetProgress();
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
+      return false;
     }
+  }
+
+  function send(event) {
+    event.preventDefault();
+    if (submitMessage(draft)) draft = '';
   }
 
   function handleComposerKeydown(event) {
@@ -879,26 +901,53 @@
                   {#if exchange.assistant.install}
                     {#snippet installDetails()}
                       {#if exchange.assistant.install.state === 'proposed'}
-                        <span>{copy.install.confirm}</span>
+                        <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
+                        <div class="assistant-install-actions">
+                          <Button
+                            variant="secondary"
+                            size="compact"
+                            type="button"
+                            onclick={() => submitMessage('no', false)}
+                            disabled={installDecisionDisabled}
+                            aria-label={$t('chatPage.install.cancelActionLabel', {
+                              assistant: exchange.assistant.install.assistant.name,
+                            })}
+                          >
+                            {copy.install.cancelAction}
+                          </Button>
+                          <Button
+                            size="compact"
+                            type="button"
+                            onclick={() => submitMessage('yes', false)}
+                            disabled={installDecisionDisabled}
+                            aria-label={$t('chatPage.install.installActionLabel', {
+                              assistant: exchange.assistant.install.assistant.name,
+                            })}
+                          >
+                            {copy.install.installAction}
+                          </Button>
+                        </div>
                       {/if}
                       {#if exchange.assistant.install.state === 'installed'}
-                        <span>{copy.install.resend}</span>
+                        <span class="assistant-install-detail-copy">{copy.install.resend}</span>
                       {/if}
                       {#if installProviderText(exchange.assistant.install)}
-                        <span>{installProviderText(exchange.assistant.install)}</span>
+                        <span class="assistant-install-detail-copy">{installProviderText(exchange.assistant.install)}</span>
                       {/if}
                       {#if exchange.assistant.install.status}
-                        <span>HTTP {exchange.assistant.install.status}</span>
+                        <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
                       {/if}
                     {/snippet}
                     <ChatTask
                       class="assistant-install-task"
+                      id={`assistant-install-${exchange.assistant.install.proposal_id}`}
                       label={copy.install.label}
                       title={exchange.assistant.install.assistant.name}
                       description={exchange.assistant.install.assistant.summary}
                       state={installVisualState(exchange.assistant.install.state)}
                       status={installStatus(exchange.assistant.install)}
                       details={installDetails}
+                      tabindex={exchange.assistant.install.state === 'working' ? -1 : undefined}
                     />
                   {/if}
                   <ExecutionReceipt
@@ -1137,8 +1186,16 @@
     margin-top: 0.8rem;
   }
 
-  :global(.assistant-install-task [data-slot="chat-task-details"] span) {
+  :global(.assistant-install-task .assistant-install-detail-copy) {
     display: block;
+  }
+
+  :global(.assistant-install-task .assistant-install-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    margin-top: 0.7rem;
   }
 
   :global(.error),
