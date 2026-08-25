@@ -23,7 +23,7 @@ def _candidate(
     actions: tuple[str, ...] = ("list-zones", "list-dns-records"),
 ) -> store_catalog.CatalogAssistant:
     integrations = () if not provider else (store_catalog.CatalogIntegration(provider, ("zone.read",)),)
-    return store_catalog.CatalogAssistant(assistant_id, name, summary, DIGEST, integrations, actions)
+    return store_catalog.CatalogAssistant(assistant_id, name, summary, DIGEST, DIGEST, integrations, actions)
 
 
 class AssistantProposalTests(unittest.TestCase):

@@ -189,6 +189,13 @@ async function routeReadyChat(page, {
       'base64',
     ),
   }));
+  await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  }));
   await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
@@ -502,6 +509,9 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   await expect(task).toContainText('Shimpz Cloudflare');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText('Install this Assistant for this Team?');
+  const icon = task.locator('img');
+  await expect(icon).toBeVisible();
+  await expect(icon).toHaveAttribute('src', '/api/assistants/shimpz-cloudflare/catalog-icon');
   await expect(task.getByRole('button', { name: 'Cancel installing Shimpz Cloudflare' })).toBeEnabled();
   const install = task.getByRole('button', { name: 'Install Shimpz Cloudflare' });
   await expect(install).toBeEnabled();
@@ -519,6 +529,10 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   chat.releaseAssistantInstall();
   await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect(icon).toHaveAttribute(
+    'src',
+    '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
+  );
   await expect(task).toContainText('Installed');
   await expect(task).toContainText('Send your original request again to use this Assistant.');
   await expect(task.getByRole('button')).toHaveCount(0);

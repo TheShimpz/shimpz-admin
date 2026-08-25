@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import http.client
 import json
 import re
@@ -16,6 +17,7 @@ CATALOG_PATH = "/api/assistants"
 CATALOG_TIMEOUT_SECONDS = 5
 CATALOG_TTL_SECONDS = 60
 MAX_CATALOG_BYTES = 512 * 1024
+MAX_ICON_BYTES = 1024 * 1024
 MAX_ASSISTANTS = 256
 _ASSISTANT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -62,6 +64,10 @@ class CatalogUnavailableError(OSError):
     """The optional public discovery catalog could not be admitted."""
 
 
+class CatalogAssistantNotFoundError(LookupError):
+    """The requested Assistant is not present in the current public catalog."""
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogIntegration:
     provider: str
@@ -74,6 +80,7 @@ class CatalogAssistant:
     name: str
     summary: str
     source_digest: str
+    icon_digest: str
     integrations: tuple[CatalogIntegration, ...]
     actions: tuple[str, ...]
 
@@ -169,6 +176,7 @@ def _assistant(value: object) -> CatalogAssistant:
         name=_text(value["name"], 80),
         summary=_text(value["summary"], 160),
         source_digest=value["source_digest"],
+        icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),
         actions=_actions(value["actions"]),
     )
@@ -268,3 +276,58 @@ class StoreCatalog:
             self._failed = False
             self._expires_at = self._clock() + CATALOG_TTL_SECONDS
             return assistants
+
+
+CATALOG = StoreCatalog()
+
+
+def _icon_content_length(response: http.client.HTTPResponse) -> int:
+    value = response.getheader("Content-Length")
+    if value is None or not value.isascii() or not value.isdigit():
+        raise CatalogUnavailableError("invalid Store icon length")
+    length = int(value)
+    if not 1 <= length <= MAX_ICON_BYTES:
+        raise CatalogUnavailableError("invalid Store icon length")
+    return length
+
+
+def fetch_assistant_icon(
+    assistant_id: str,
+    *,
+    catalog: StoreCatalog | None = None,
+    connection_factory: Callable[..., http.client.HTTPSConnection] = http.client.HTTPSConnection,
+) -> bytes:
+    """Fetch one current public Assistant icon without accepting browser-supplied digests."""
+    if _ASSISTANT_ID.fullmatch(assistant_id) is None:
+        raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
+    assistants = (catalog or CATALOG).get()
+    assistant = next((item for item in assistants if item.assistant_id == assistant_id), None)
+    if assistant is None:
+        raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
+    source_hash = assistant.source_digest.removeprefix("sha256:")
+    icon_hash = assistant.icon_digest.removeprefix("sha256:")
+    path = f"/api/assistant-icons/{source_hash}/{icon_hash}.png"
+    connection = None
+    try:
+        connection = connection_factory(CATALOG_HOST, 443, timeout=CATALOG_TIMEOUT_SECONDS)
+        connection.request("GET", path, headers={"Accept": "image/png"})
+        response = connection.getresponse()
+        if response.status != 200:
+            raise CatalogUnavailableError("Store icon is unavailable")
+        content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
+        if content_type != "image/png":
+            raise CatalogUnavailableError("invalid Store icon content type")
+        length = _icon_content_length(response)
+        contents = response.read(MAX_ICON_BYTES + 1)
+        if len(contents) != length or hashlib.sha256(contents).hexdigest() != icon_hash:
+            raise CatalogUnavailableError("invalid Store icon")
+    except (OSError, http.client.HTTPException) as exc:
+        if isinstance(exc, CatalogUnavailableError):
+            raise
+        raise CatalogUnavailableError("Store icon is unavailable") from exc
+    else:
+        return contents
+    finally:
+        if connection is not None:
+            with contextlib.suppress(OSError):
+                connection.close()

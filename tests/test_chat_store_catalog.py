@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import hashlib
 import json
 import sys
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -17,6 +19,8 @@ from chat import store_catalog
 
 DIGEST = "sha256:" + ("a" * 64)
 ICON_DIGEST = "sha256:" + ("b" * 64)
+ICON_BYTES = b"\x89PNG\r\n\x1a\nverified-icon"
+VERIFIED_ICON_DIGEST = "sha256:" + hashlib.sha256(ICON_BYTES).hexdigest()
 
 
 def _assistant(**changes) -> dict[str, object]:
@@ -79,6 +83,7 @@ class StoreCatalogTests(unittest.TestCase):
                     name="Shimpz Cloudflare",
                     summary="Manages reviewed Cloudflare zones and DNS records.",
                     source_digest=DIGEST,
+                    icon_digest=ICON_DIGEST,
                     integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
                     actions=("list-zones",),
                 ),
@@ -189,6 +194,107 @@ class StoreCatalogTests(unittest.TestCase):
                 with self.assertRaises(store_catalog.CatalogUnavailableError):
                     store_catalog.fetch_catalog(factory)
                 self.assertTrue(connection.closed)
+
+    def test_fetches_only_the_catalog_resolved_immutable_icon(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
+        called = None
+
+        def factory(host: str, port: int, *, timeout: int):
+            nonlocal called
+            called = (host, port, timeout)
+            return connection
+
+        result = store_catalog.fetch_assistant_icon(
+            "shimpz-cloudflare",
+            catalog=catalog,
+            connection_factory=factory,
+        )
+
+        self.assertEqual(result, ICON_BYTES)
+        self.assertEqual(called, (store_catalog.CATALOG_HOST, 443, store_catalog.CATALOG_TIMEOUT_SECONDS))
+        self.assertEqual(
+            connection.request_value,
+            (
+                "GET",
+                f"/api/assistant-icons/{'a' * 64}/{VERIFIED_ICON_DIGEST.removeprefix('sha256:')}.png",
+                {"Accept": "image/png"},
+            ),
+        )
+        self.assertTrue(connection.closed)
+
+    def test_icon_lookup_rejects_invalid_and_absent_assistant_ids_before_egress(self) -> None:
+        catalog = mock.Mock(spec=store_catalog.StoreCatalog)
+        with self.assertRaises(store_catalog.CatalogAssistantNotFoundError):
+            store_catalog.fetch_assistant_icon("Invalid", catalog=catalog)
+        catalog.get.assert_not_called()
+
+        catalog.get.return_value = ()
+        with self.assertRaises(store_catalog.CatalogAssistantNotFoundError):
+            store_catalog.fetch_assistant_icon("missing", catalog=catalog)
+        catalog.get.assert_called_once_with()
+
+    def test_icon_fetch_rejects_untrusted_status_type_length_and_contents(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        cases = [
+            _Response(ICON_BYTES, status=302, content_type="image/png"),
+            _Response(ICON_BYTES, content_type="text/html"),
+            _Response(b"wrong", content_type="image/png"),
+        ]
+        missing_length = _Response(ICON_BYTES, content_type="image/png")
+        missing_length._headers.pop("Content-Length")
+        cases.append(missing_length)
+        invalid_length = _Response(ICON_BYTES, content_type="image/png")
+        invalid_length._headers["Content-Length"] = "invalid"
+        cases.append(invalid_length)
+        oversized_length = _Response(ICON_BYTES, content_type="image/png")
+        oversized_length._headers["Content-Length"] = str(store_catalog.MAX_ICON_BYTES + 1)
+        cases.append(oversized_length)
+        mismatched_length = _Response(ICON_BYTES, content_type="image/png")
+        mismatched_length._headers["Content-Length"] = str(len(ICON_BYTES) - 1)
+        cases.append(mismatched_length)
+
+        for response in cases:
+            with self.subTest(response=response):
+                connection = _Connection(response)
+                with self.assertRaises(store_catalog.CatalogUnavailableError):
+                    store_catalog.fetch_assistant_icon(
+                        "shimpz-cloudflare",
+                        catalog=catalog,
+                        connection_factory=lambda *_args, selected=connection, **_kwargs: selected,
+                    )
+                self.assertTrue(connection.closed)
+
+    def test_icon_fetch_wraps_transport_failure_and_suppresses_close_failure(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        with (
+            mock.patch.object(store_catalog.CATALOG, "get", return_value=assistants),
+            self.assertRaises(store_catalog.CatalogUnavailableError),
+        ):
+            store_catalog.fetch_assistant_icon(
+                "shimpz-cloudflare",
+                connection_factory=mock.Mock(side_effect=OSError("offline")),
+            )
+
+        connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
+        connection.close = mock.Mock(side_effect=OSError("close failed"))
+        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        self.assertEqual(
+            store_catalog.fetch_assistant_icon(
+                "shimpz-cloudflare",
+                catalog=catalog,
+                connection_factory=lambda *_args, **_kwargs: connection,
+            ),
+            ICON_BYTES,
+        )
 
     def test_content_length_and_stream_length_are_independently_bounded(self) -> None:
         response = _Response(b"{}")

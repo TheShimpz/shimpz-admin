@@ -1,6 +1,6 @@
 <script>
   import { flushSync, onMount, tick } from 'svelte';
-  import { Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
@@ -164,6 +164,14 @@
   function installProviderText(install) {
     const providers = install.assistant.providers.join(', ');
     return providers ? $t('chatPage.install.providers', { providers }) : '';
+  }
+
+  function installIconSource(install) {
+    const assistantId = encodeURIComponent(install.assistant.id);
+    if (install.state === 'installed' && chatTeamId) {
+      return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
+    }
+    return `/api/assistants/${assistantId}/catalog-icon`;
   }
 
   function clearInstallExpiry(proposalId) {
@@ -900,43 +908,52 @@
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
                   {#if exchange.assistant.install}
                     {#snippet installDetails()}
-                      {#if exchange.assistant.install.state === 'proposed'}
-                        <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
-                        <div class="assistant-install-actions">
-                          <Button
-                            variant="secondary"
-                            size="compact"
-                            type="button"
-                            onclick={() => submitMessage('no', false)}
-                            disabled={installDecisionDisabled}
-                            aria-label={$t('chatPage.install.cancelActionLabel', {
-                              assistant: exchange.assistant.install.assistant.name,
-                            })}
-                          >
-                            {copy.install.cancelAction}
-                          </Button>
-                          <Button
-                            size="compact"
-                            type="button"
-                            onclick={() => submitMessage('yes', false)}
-                            disabled={installDecisionDisabled}
-                            aria-label={$t('chatPage.install.installActionLabel', {
-                              assistant: exchange.assistant.install.assistant.name,
-                            })}
-                          >
-                            {copy.install.installAction}
-                          </Button>
+                      <div class="assistant-install-details">
+                        <AssistantIcon
+                          assistant={exchange.assistant.install.assistant.id}
+                          src={installIconSource(exchange.assistant.install)}
+                          size={44}
+                        />
+                        <div class="assistant-install-detail-content">
+                          {#if exchange.assistant.install.state === 'proposed'}
+                            <span class="assistant-install-detail-copy">{copy.install.confirm}</span>
+                            <div class="assistant-install-actions">
+                              <Button
+                                variant="secondary"
+                                size="compact"
+                                type="button"
+                                onclick={() => submitMessage('no', false)}
+                                disabled={installDecisionDisabled}
+                                aria-label={$t('chatPage.install.cancelActionLabel', {
+                                  assistant: exchange.assistant.install.assistant.name,
+                                })}
+                              >
+                                {copy.install.cancelAction}
+                              </Button>
+                              <Button
+                                size="compact"
+                                type="button"
+                                onclick={() => submitMessage('yes', false)}
+                                disabled={installDecisionDisabled}
+                                aria-label={$t('chatPage.install.installActionLabel', {
+                                  assistant: exchange.assistant.install.assistant.name,
+                                })}
+                              >
+                                {copy.install.installAction}
+                              </Button>
+                            </div>
+                          {/if}
+                          {#if exchange.assistant.install.state === 'installed'}
+                            <span class="assistant-install-detail-copy">{copy.install.resend}</span>
+                          {/if}
+                          {#if installProviderText(exchange.assistant.install)}
+                            <span class="assistant-install-detail-copy">{installProviderText(exchange.assistant.install)}</span>
+                          {/if}
+                          {#if exchange.assistant.install.status}
+                            <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
+                          {/if}
                         </div>
-                      {/if}
-                      {#if exchange.assistant.install.state === 'installed'}
-                        <span class="assistant-install-detail-copy">{copy.install.resend}</span>
-                      {/if}
-                      {#if installProviderText(exchange.assistant.install)}
-                        <span class="assistant-install-detail-copy">{installProviderText(exchange.assistant.install)}</span>
-                      {/if}
-                      {#if exchange.assistant.install.status}
-                        <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
-                      {/if}
+                      </div>
                     {/snippet}
                     <ChatTask
                       class="assistant-install-task"
@@ -1188,6 +1205,17 @@
 
   :global(.assistant-install-task .assistant-install-detail-copy) {
     display: block;
+  }
+
+  :global(.assistant-install-task .assistant-install-details) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  :global(.assistant-install-task .assistant-install-detail-content) {
+    min-width: 0;
   }
 
   :global(.assistant-install-task .assistant-install-actions) {

@@ -40,6 +40,7 @@ from team import bridge as team
 from team import files as team_files
 
 import browser
+from chat import assets as chat_assets
 from chat import human as chat_human
 from chat import socket as chat_socket
 from integrations import account as account_identity
@@ -130,6 +131,11 @@ platform_release.register(app, ADMIN_PROFILE)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,
+    methods=["GET"],
+)
+app.add_api_route(
+    "/api/assistants/{assistant_id}/catalog-icon",
+    chat_assets.assistant_icon,
     methods=["GET"],
 )
 OAUTH_HANDOFFS = handoff_store.OAuthHandoffStore()

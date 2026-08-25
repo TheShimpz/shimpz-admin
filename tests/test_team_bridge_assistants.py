@@ -736,6 +736,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
     }
     expected = {
         ("/api/assistants", "GET"),
+        ("/api/assistants/{assistant_id}/catalog-icon", "GET"),
         ("/api/teams/{team_id}", "DELETE"),
         ("/api/teams/{team_id}/assistants", "GET"),
         ("/api/teams/{team_id}/assistants", "POST"),

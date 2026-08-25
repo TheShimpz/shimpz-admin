@@ -19,6 +19,7 @@ def _candidate() -> store_catalog.CatalogAssistant:
         name="Shimpz Cloudflare",
         summary="Manage Cloudflare zones and DNS records.",
         source_digest="sha256:" + ("a" * 64),
+        icon_digest="sha256:" + ("b" * 64),
         integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
         actions=("list-zones",),
     )

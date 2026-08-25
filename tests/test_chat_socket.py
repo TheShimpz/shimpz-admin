@@ -89,6 +89,7 @@ class ChatWebSocketTests(unittest.TestCase):
             name="Shimpz Cloudflare",
             summary="Manage Cloudflare zones and DNS records.",
             source_digest="sha256:" + ("d" * 64),
+            icon_digest="sha256:" + ("e" * 64),
             integrations=(
                 self.chat_socket.install_flow.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
             ),

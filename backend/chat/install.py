@@ -26,7 +26,7 @@ _INSTALL_EXECUTOR = BoundedThreadPoolExecutor(
     max_outstanding=2,
     thread_name_prefix="shimpz-chat-install",
 )
-_STORE_CATALOG = store_catalog.StoreCatalog()
+_STORE_CATALOG = store_catalog.CATALOG
 DISCOVERY_GRACE_SECONDS = 0.25
 monotonic = time.monotonic
 
