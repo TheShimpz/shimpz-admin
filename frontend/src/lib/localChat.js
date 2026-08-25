@@ -11,6 +11,7 @@ import {
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /\p{C}/u;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -25,6 +26,7 @@ const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
+const MAX_INSTALL_ACTIONS = 64;
 export const CHAT_PROGRESS_PHASES = Object.freeze([
   'admin-preparation',
   'reply-validation',
@@ -814,6 +816,37 @@ function canonicalInstallAssistant(value) {
   };
 }
 
+function canonicalInstallActions(values) {
+  if (!Array.isArray(values) || !values.length || values.length > MAX_INSTALL_ACTIONS) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const actions = values.map((value) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      !exactKeys(value, ['id', 'label']) ||
+      typeof value.id !== 'string' ||
+      value.id.length > 128 ||
+      !ACTION_ID_RE.test(value.id) ||
+      typeof value.label !== 'string' ||
+      value.label.normalize('NFC') !== value.label ||
+      value.label !== value.label.trim() ||
+      !Array.from(value.label).length ||
+      Array.from(value.label).length > 80 ||
+      SECRET_CONTROL_RE.test(value.label)
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return { id: value.id, label: value.label };
+  });
+  const ids = actions.map((action) => action.id);
+  const labels = actions.map((action) => action.label);
+  if (
+    ids.some((id, index) => index > 0 && ids[index - 1] >= id) ||
+    new Set(labels).size !== labels.length
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return actions;
+}
+
 function parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName) {
   const base = ['type', 'state', 'proposal_id', 'assistant_id'];
   if (value.state === 'proposed') {
@@ -851,18 +884,29 @@ function parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName) {
     return { type: 'assistant-install', state: value.state, proposal_id: value.proposal_id, assistant_id: assistantId };
   }
   if (value.state === 'installed') {
+    const baseFields = [...base, 'team_id', 'installed'];
+    const hasLabels = exactKeys(value, [...baseFields, 'assistant_version', 'actions']);
     if (
-      !exactKeys(value, [...base, 'team_id', 'installed']) ||
+      (!exactKeys(value, baseFields) && !hasLabels) ||
       value.team_id !== expectedTeamId ||
       typeof value.installed !== 'boolean'
     ) throw new LocalApiError('The local chat response is invalid.');
-    return {
+    const event = {
       type: 'assistant-install',
       state: 'installed',
       proposal_id: value.proposal_id,
       assistant_id: assistantId,
       team_id: value.team_id,
       installed: value.installed,
+    };
+    if (!hasLabels) return event;
+    if (typeof value.assistant_version !== 'string' || !SEMANTIC_VERSION_RE.test(value.assistant_version)) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    return {
+      ...event,
+      assistant_version: value.assistant_version,
+      actions: canonicalInstallActions(value.actions),
     };
   }
   if (value.state === 'failed') {

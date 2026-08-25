@@ -172,6 +172,7 @@ class AssistantInstallTests(unittest.TestCase):
         self.proposal = assistant_proposal.create_proposal(
             "team_1",
             _candidate(),
+            language_exemplar="Liste minhas zonas DNS",
             now=1,
             proposal_id_factory=lambda: "b" * 32,
         )
@@ -240,6 +241,47 @@ class AssistantInstallTests(unittest.TestCase):
         for response in malformed:
             with self.subTest(response=response), self.assertRaises(ValueError):
                 assistant_install._install_body(response, "shimpz-cloudflare")
+
+    def test_admits_only_exact_action_labels_bound_to_the_proposal(self) -> None:
+        response = assistant_install.team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "assistant": "shimpz-cloudflare",
+                "assistant_version": "0.4.4",
+                "actions": [
+                    {"id": "list-zones", "label": "Listar zonas DNS"},
+                    {"id": "records.read", "label": "Consultar registros DNS"},
+                ],
+            },
+        )
+
+        self.assertEqual(
+            assistant_install.action_labels(response, self.proposal),
+            assistant_install.ActionLabels(
+                "0.4.4",
+                (
+                    assistant_install.ActionLabel("list-zones", "Listar zonas DNS"),
+                    assistant_install.ActionLabel("records.read", "Consultar registros DNS"),
+                ),
+            ),
+        )
+
+        for body in (
+            {**response.body, "team_id": "team_2"},
+            {**response.body, "assistant": "other"},
+            {**response.body, "actions": []},
+            {**response.body, "actions": list(reversed(response.body["actions"]))},
+            {**response.body, "actions": [{"id": "list-zones", "label": "\u202eDNS"}]},
+            {**response.body, "extra": True},
+        ):
+            with self.subTest(body=body):
+                self.assertIsNone(
+                    assistant_install.action_labels(
+                        assistant_install.team.TeamResponse(200, body),
+                        self.proposal,
+                    )
+                )
 
 
 if __name__ == "__main__":

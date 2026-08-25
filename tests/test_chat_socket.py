@@ -749,6 +749,19 @@ class ChatWebSocketTests(unittest.TestCase):
                     "install",
                     return_value=result,
                 ) as install,
+                mock.patch.object(
+                    self.chat_socket.install_flow.local,
+                    "installed_action_labels",
+                    return_value=self.chat_socket.team.TeamResponse(
+                        200,
+                        {
+                            "team_id": "team_1",
+                            "assistant": "shimpz-cloudflare",
+                            "assistant_version": "0.4.4",
+                            "actions": [{"id": "list-zones", "label": "Listar zonas DNS"}],
+                        },
+                    ),
+                ),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -778,11 +791,14 @@ class ChatWebSocketTests(unittest.TestCase):
                         "assistant_id": "shimpz-cloudflare",
                         "team_id": "team_1",
                         "installed": True,
+                        "assistant_version": "0.4.4",
+                        "actions": [{"id": "list-zones", "label": "Listar zonas DNS"}],
                     },
                 )
                 install.assert_called_once()
                 proposal = install.call_args.args[0]
                 self.assertEqual(proposal.assistant.source_digest, "sha256:" + ("d" * 64))
+                self.assertEqual(proposal.language_exemplar, "Cloudflare zones")
                 self.assertEqual(turn.call_count, 1)
 
                 await websocket.send_json({"type": "chat", "message": "sim", "files": [], "assistant_ids": []})

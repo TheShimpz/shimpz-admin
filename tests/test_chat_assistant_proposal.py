@@ -118,20 +118,35 @@ class AssistantProposalTests(unittest.TestCase):
         proposal = assistant_proposal.create_proposal(
             "team_1",
             _candidate(),
+            language_exemplar="Liste minhas zonas DNS",
             now=10.0,
             proposal_id_factory=lambda: "b" * 32,
         )
 
         self.assertEqual(proposal.proposal_id, "b" * 32)
+        self.assertEqual(proposal.language_exemplar, "Liste minhas zonas DNS")
+        self.assertNotIn("Liste minhas zonas DNS", repr(proposal))
         self.assertTrue(proposal.valid_for("team_1", 309.999))
         self.assertFalse(proposal.valid_for("team_2", 20.0))
         self.assertFalse(proposal.valid_for("team_1", 310.0))
+
+    def test_proposal_omits_an_unbounded_language_exemplar_without_blocking_installation(self) -> None:
+        proposal = assistant_proposal.create_proposal(
+            "team_1",
+            _candidate(),
+            language_exemplar="x" * 2_001,
+            now=10.0,
+            proposal_id_factory=lambda: "b" * 32,
+        )
+
+        self.assertIsNone(proposal.language_exemplar)
 
     def test_proposal_rejects_invalid_authority(self) -> None:
         with self.assertRaises(ValueError):
             assistant_proposal.create_proposal(
                 "Bad",
                 _candidate(),
+                language_exemplar="Liste minhas zonas DNS",
                 now=10.0,
                 proposal_id_factory=lambda: "b" * 32,
             )

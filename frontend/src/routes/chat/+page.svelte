@@ -238,7 +238,17 @@
     const updated = {
       ...current,
       state,
-      ...(incoming.state === 'installed' ? { installed: incoming.installed } : {}),
+      ...(incoming.state === 'installed'
+        ? {
+            installed: incoming.installed,
+            ...(incoming.actions
+              ? {
+                  assistant_version: incoming.assistant_version,
+                  actions: incoming.actions,
+                }
+              : {}),
+          }
+        : {}),
       ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
     };
     turns = turns.map((turn, turnIndex) => (
@@ -280,13 +290,21 @@
       projectedAssistant?.status !== 'running' ||
       !$teamContext.selectedAssistantIds.includes(incoming.assistant_id)
     ) throw new Error('installed Assistant inventory mismatch');
+    if (
+      incoming.actions &&
+      incoming.assistant_version !== installedAssistant.assistant_version
+    ) throw new Error('installed Assistant label version mismatch');
     const outcomeKey = install.installed ? 'installedReply' : 'availableReply';
     const outcome = $t(`chatPage.install.${outcomeKey}`, {
       assistant: escapeMarkdownText(install.assistant.name),
       version: escapeMarkdownText(installedAssistant.assistant_version),
       team: escapeMarkdownText(team.name),
-      summary: escapeMarkdownText(install.assistant.summary),
     });
+    const actionList = incoming.actions
+      ? `\n\n${copy.install.actions}\n${incoming.actions.map((action) => (
+          `- ${escapeMarkdownText(action.label)} — \`${action.id}\``
+        )).join('\n')}`
+      : '';
     const nextTurns = turns.map((turn, turnIndex) => (
       turnIndex === index
         ? { ...turn, install: { ...turn.install, completionAnnounced: true } }
@@ -294,7 +312,7 @@
     ));
     nextTurns.splice(index + 1, 0, {
       role: 'assistant',
-      text: `${outcome} ${copy.install.resend}`,
+      text: `${outcome}${actionList}\n\n${copy.install.resend}`,
       author: team.name,
     });
     turns = nextTurns;

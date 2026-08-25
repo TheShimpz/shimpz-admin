@@ -6,10 +6,11 @@ import re
 import secrets
 import unicodedata
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from chat import store_catalog
+from protocol.http.v1 import payload as team_contract
 
 PROPOSAL_TTL_SECONDS = 300
 MINIMUM_MATCH_SCORE = 40
@@ -95,6 +96,7 @@ class InstallProposal:
     proposal_id: str
     team_id: str
     assistant: store_catalog.CatalogAssistant
+    language_exemplar: str | None = field(repr=False)
     expires_at: float
 
     def valid_for(self, team_id: str, now: float) -> bool:
@@ -223,6 +225,7 @@ def create_proposal(
     team_id: str,
     assistant: store_catalog.CatalogAssistant,
     *,
+    language_exemplar: object,
     now: float,
     proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
 ) -> InstallProposal:
@@ -233,5 +236,6 @@ def create_proposal(
         proposal_id=proposal_id,
         team_id=team_id,
         assistant=assistant,
+        language_exemplar=team_contract.canonical_language_exemplar(language_exemplar),
         expires_at=now + PROPOSAL_TTL_SECONDS,
     )

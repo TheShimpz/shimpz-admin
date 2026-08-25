@@ -20,6 +20,43 @@ from chat import human, local, socket
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
+    def test_turn_keeps_only_a_repr_hidden_bounded_language_exemplar(self) -> None:
+        turn = socket._Turn(None, "chat", language_exemplar="Liste minhas zonas DNS")
+
+        self.assertEqual(turn.language_exemplar, "Liste minhas zonas DNS")
+        self.assertNotIn("Liste minhas zonas DNS", repr(turn))
+
+    def test_chat_dispatch_omits_an_overlong_language_exemplar(self) -> None:
+        async def scenario() -> None:
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_result(
+                local.PublicResponse(
+                    200,
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
+                )
+            )
+            connection = socket._Connection()
+            websocket = mock.AsyncMock()
+            message = "x" * 2_001
+            with (
+                mock.patch.object(socket, "submit_in_context", return_value=future),
+                mock.patch.object(socket.install_flow, "submit_discovery", return_value=None),
+            ):
+                await socket._dispatch_chat(
+                    websocket,
+                    connection,
+                    "team_1",
+                    {"type": "chat", "message": message, "files": [], "assistant_ids": []},
+                )
+
+            turn = connection.active
+            self.assertIsNotNone(turn)
+            self.assertIsNone(turn.language_exemplar)
+            self.assertNotIn(message, repr(turn))
+            await turn.delivery
+
+        asyncio.run(scenario())
+
     def test_executor_and_static_origin_configuration_are_bounded(self) -> None:
         with self.assertRaises(ValueError):
             socket.BoundedThreadPoolExecutor(max_workers=2, max_outstanding=1, thread_name_prefix="bad")

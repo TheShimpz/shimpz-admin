@@ -13,7 +13,7 @@ import contextlib
 import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chat.assistant_proposal import InstallProposal
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
@@ -23,6 +23,7 @@ from team import bridge as team
 from chat import human, local
 from chat import install as install_flow
 from chat import progress as progress_transport
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v5"
@@ -136,6 +137,7 @@ class _Turn:
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False
     terminal_sent: bool = False
+    language_exemplar: str | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -271,17 +273,6 @@ async def _await_turn_response(
     return team.TeamResponse(502, {}) if result is None else result
 
 
-async def _terminal_with_proposal(
-    connection: _Connection,
-    turn: _Turn,
-    team_id: str,
-    event: dict[str, object],
-) -> dict[str, object]:
-    if event.get("type") == "done":
-        _forget_challenge(connection)
-    return await install_flow.attach_proposal(connection, turn.discovery_future, team_id, event)
-
-
 async def _stop_closed_turn(
     websocket: WebSocket,
     connection: _Connection,
@@ -339,7 +330,15 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             event = _error_terminal(502, "the Assistant challenge was invalid")
         else:
             event = turn_terminal(response, team_id)
-        event = await _terminal_with_proposal(connection, turn, team_id, event)
+        if event.get("type") == "done":
+            _forget_challenge(connection)
+        event = await install_flow.attach_proposal(
+            connection,
+            turn.discovery_future,
+            team_id,
+            event,
+            language_exemplar=turn.language_exemplar,
+        )
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -826,6 +825,7 @@ async def _dispatch_chat(
     turn = _Turn(
         future=future,
         operation="chat",
+        language_exemplar=team_contract.canonical_language_exemplar(payload["message"]),
         discovery_future=discovery_future,
         progress=progress,
     )

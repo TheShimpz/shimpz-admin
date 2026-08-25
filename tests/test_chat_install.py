@@ -32,6 +32,7 @@ def _proposal() -> assistant_proposal.InstallProposal:
     return assistant_proposal.create_proposal(
         "team_1",
         _candidate(),
+        language_exemplar="Liste minhas zonas DNS",
         now=1.0,
         proposal_id_factory=lambda: "b" * 32,
     )
@@ -44,6 +45,48 @@ def _connection(**changes):
 
 
 class ChatInstallLifecycleTests(unittest.TestCase):
+    def test_install_then_label_keeps_the_original_objective_and_exact_labels(self) -> None:
+        installed = assistant_install.InstallResult(200, True)
+        response = assistant_install.team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "assistant": "shimpz-cloudflare",
+                "assistant_version": "0.4.4",
+                "actions": [{"id": "list-zones", "label": "Listar zonas DNS"}],
+            },
+        )
+        with (
+            mock.patch.object(assistant_install, "install", return_value=installed),
+            mock.patch.object(install.local, "installed_action_labels", return_value=response) as labels,
+        ):
+            result = install._install_then_label(_proposal())
+
+        self.assertEqual(
+            result.labels,
+            assistant_install.ActionLabels(
+                "0.4.4",
+                (assistant_install.ActionLabel("list-zones", "Listar zonas DNS"),),
+            ),
+        )
+        labels.assert_called_once_with(
+            "team_1",
+            "shimpz-cloudflare",
+            "Liste minhas zonas DNS",
+        )
+
+    def test_action_label_failure_never_rewrites_a_completed_install(self) -> None:
+        installed = assistant_install.InstallResult(200, True)
+        with (
+            mock.patch.object(assistant_install, "install", return_value=installed),
+            mock.patch.object(
+                install.local,
+                "installed_action_labels",
+                side_effect=RuntimeError("unavailable"),
+            ),
+        ):
+            self.assertIs(install._install_then_label(_proposal()), installed)
+
     def test_discovery_saturation_is_optional(self) -> None:
         with mock.patch.object(install, "submit_in_context", side_effect=install.ExecutorSaturatedError):
             self.assertIsNone(
@@ -60,7 +103,16 @@ class ChatInstallLifecycleTests(unittest.TestCase):
             connection = _connection()
             event = {"type": "done", "reply": "Ready."}
 
-            self.assertIs(await install.attach_proposal(connection, discovery, "Bad", event), event)
+            self.assertIs(
+                await install.attach_proposal(
+                    connection,
+                    discovery,
+                    "Bad",
+                    event,
+                    language_exemplar="Liste minhas zonas DNS",
+                ),
+                event,
+            )
             self.assertIsNone(connection.install_proposal)
 
         asyncio.run(scenario())
@@ -101,6 +153,44 @@ class ChatInstallLifecycleTests(unittest.TestCase):
 
             send_event.assert_not_awaited()
             self.assertIs(connection.install, operation)
+
+        asyncio.run(scenario())
+
+    def test_delivery_emits_only_the_version_bound_action_projection(self) -> None:
+        async def scenario() -> None:
+            labels = assistant_install.ActionLabels(
+                "0.4.4",
+                (assistant_install.ActionLabel("list-zones", "Listar zonas DNS"),),
+            )
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_result(assistant_install.InstallResult(200, True, labels))
+            connection = _connection()
+            operation = install.Operation(_proposal(), future)
+            connection.install = operation
+            operation.delivery = asyncio.current_task()
+            events = []
+
+            async def collect(_websocket, event) -> bool:
+                events.append(event)
+                return True
+
+            await install._deliver(mock.sentinel.websocket, connection, operation, collect)
+
+            self.assertEqual(
+                events,
+                [
+                    {
+                        "type": "assistant-install",
+                        "state": "installed",
+                        "proposal_id": "b" * 32,
+                        "assistant_id": "shimpz-cloudflare",
+                        "team_id": "team_1",
+                        "installed": True,
+                        "assistant_version": "0.4.4",
+                        "actions": [{"id": "list-zones", "label": "Listar zonas DNS"}],
+                    }
+                ],
+            )
 
         asyncio.run(scenario())
 

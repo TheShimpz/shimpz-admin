@@ -126,6 +126,11 @@ async function routeReadyChat(page, {
   assistantInstallInventoryStatus = 'running',
   assistantInstallSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantInstallWasNew = true,
+  assistantInstallLabelVersion = '0.4.1',
+  assistantInstallActions = [
+    { id: 'list-zones', label: 'List Cloudflare DNS zones' },
+    { id: 'records.read', label: 'Read DNS records' },
+  ],
   holdAssistantInstall = false,
   holdAssistantInventoryRefresh = false,
   disconnectHumanResponse = false,
@@ -400,6 +405,10 @@ async function routeReadyChat(page, {
               assistant_id: 'shimpz-cloudflare',
               team_id: 'marketing',
               installed: assistantInstallWasNew,
+              ...(assistantInstallActions === null ? {} : {
+                assistant_version: assistantInstallLabelVersion,
+                actions: assistantInstallActions,
+              }),
             }));
           };
           if (holdAssistantInstall) releaseAssistantInstall = completeAssistantInstall;
@@ -580,8 +589,13 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   await expect(task.getByRole('button')).toHaveCount(0);
   const outcome = page.locator('.shimpz-message--assistant').last();
   await expect(outcome).toContainText(
-    'Shimpz Cloudflare v0.4.1 was installed in Team Marketing. What it can do: Safely manage Cloudflare DNS records through OAuth.',
+    'Shimpz Cloudflare v0.4.1 was installed in Team Marketing.',
   );
+  await expect(outcome).toContainText('Available Actions:');
+  await expect(outcome).toContainText('List Cloudflare DNS zones — list-zones');
+  await expect(outcome).toContainText('Read DNS records — records.read');
+  await expect(outcome.locator('code')).toHaveText(['list-zones', 'records.read']);
+  await expect(outcome).not.toContainText('Safely manage Cloudflare DNS records through OAuth.');
   await expect(outcome).toContainText('Send your original request again to use this Assistant.');
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
@@ -592,7 +606,7 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   expect(chat.chatFrames().at(-1).assistant_ids).toEqual(['shimpz-cloudflare']);
 });
 
-test('describes an idempotently available Assistant with inert catalog copy', async ({ page }) => {
+test('describes an idempotently available Assistant with its installed Actions', async ({ page }) => {
   await routeReadyChat(page, {
     assistantInstall: true,
     assistantInstallWasNew: false,
@@ -611,15 +625,39 @@ test('describes an idempotently available Assistant with inert catalog copy', as
   await expect(outcome).toContainText(
     'Shimpz Cloudflare v0.4.1 was already available in Team Marketing.',
   );
-  await expect(outcome).toContainText(
-    'Manage [DNS](https://example.com) with **reviewed** changes.',
-  );
+  await expect(outcome).toContainText('List Cloudflare DNS zones — list-zones');
+  await expect(outcome).not.toContainText('Manage [DNS](https://example.com) with **reviewed** changes.');
+  await expect(outcome.getByRole('link')).toHaveCount(0);
+});
+
+test('keeps installation success when optional Action labels are unavailable', async ({ page }) => {
+  const creatorSummary = 'Manage [DNS](https://example.com) with **unverified** copy.';
+  await routeReadyChat(page, {
+    assistantInstall: true,
+    assistantInstallActions: null,
+    assistantInstallSummary: creatorSummary,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('List my Cloudflare DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const task = page.locator('[data-slot="chat-task"]');
+  await task.getByRole('button', { name: 'Install Shimpz Cloudflare' }).click();
+
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  const outcome = page.locator('.shimpz-message--assistant').last();
+  await expect(outcome).toContainText('Shimpz Cloudflare v0.4.1 was installed in Team Marketing.');
+  await expect(outcome).toContainText('Send your original request again to use this Assistant.');
+  await expect(outcome).not.toContainText('Available Actions:');
+  await expect(outcome).not.toContainText(creatorSummary);
   await expect(outcome.getByRole('link')).toHaveCount(0);
 });
 
 for (const [name, inventory] of [
   ['missing from the refreshed inventory', { assistantInstallInventoryMissing: true }],
   ['not running in the refreshed inventory', { assistantInstallInventoryStatus: 'stopped' }],
+  ['different from the label version', { assistantInstallLabelVersion: '0.4.2' }],
 ]) {
   test(`does not announce capability when the installed Assistant is ${name}`, async ({ page }) => {
     await routeReadyChat(page, { assistantInstall: true, ...inventory });
@@ -636,7 +674,7 @@ for (const [name, inventory] of [
       'The Assistant installation completed, but its installed Team details could not be confirmed.',
       { exact: true },
     )).toBeVisible();
-    await expect(page.getByText(/What it can do:/)).toHaveCount(0);
+    await expect(page.getByText(/Available Actions:/)).toHaveCount(0);
     await expect(composer).toBeEnabled();
   });
 }

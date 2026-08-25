@@ -7,14 +7,14 @@ import concurrent.futures
 import contextlib
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from team import bridge as team
 
-from chat import assistant_install, assistant_proposal, store_catalog
+from chat import assistant_install, assistant_proposal, local, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -135,6 +135,8 @@ async def attach_proposal(
     discovery_future: concurrent.futures.Future | None,
     team_id: str,
     event: dict[str, object],
+    *,
+    language_exemplar: object,
 ) -> dict[str, object]:
     """Attach one strong candidate to a successful turn without changing failures."""
     if event.get("type") != "done":
@@ -151,7 +153,12 @@ async def attach_proposal(
     if candidate is None or connection.install_proposal is not None:
         return event
     try:
-        proposal = assistant_proposal.create_proposal(team_id, candidate, now=monotonic())
+        proposal = assistant_proposal.create_proposal(
+            team_id,
+            candidate,
+            language_exemplar=language_exemplar,
+            now=monotonic(),
+        )
     except ValueError:
         return event
     connection.install_proposal = proposal
@@ -174,11 +181,23 @@ async def _deliver(
         if connection.closed:
             return
         if result.installed is not None and 200 <= result.status < 300:
+            labels = result.labels
             event = _event(
                 operation.proposal,
                 "installed",
                 team_id=operation.proposal.team_id,
                 installed=result.installed,
+                **(
+                    {
+                        "assistant_version": labels.assistant_version,
+                        "actions": [
+                            {"id": action.action_id, "label": action.label}
+                            for action in labels.actions
+                        ],
+                    }
+                    if labels is not None
+                    else {}
+                ),
             )
         else:
             status = result.status if 400 <= result.status <= 599 else 502
@@ -200,13 +219,29 @@ async def _dispatch(
         connection.closed = True
         return
     try:
-        future = submit_in_context(_INSTALL_EXECUTOR, assistant_install.install, proposal)
+        future = submit_in_context(_INSTALL_EXECUTOR, _install_then_label, proposal)
     except ExecutorSaturatedError:
         await send_event(websocket, _event(proposal, "failed", status=429))
         return
     operation = Operation(proposal=proposal, future=future)
     connection.install = operation
     operation.delivery = asyncio.create_task(_deliver(websocket, connection, operation, send_event))
+
+
+def _install_then_label(proposal: assistant_proposal.InstallProposal) -> assistant_install.InstallResult:
+    result = assistant_install.install(proposal)
+    if result.installed is None or not 200 <= result.status < 300 or proposal.language_exemplar is None:
+        return result
+    with contextlib.suppress(Exception):
+        response = local.installed_action_labels(
+            proposal.team_id,
+            proposal.assistant.assistant_id,
+            proposal.language_exemplar,
+        )
+        labels = assistant_install.action_labels(response, proposal)
+        if labels is not None:
+            return replace(result, labels=labels)
+    return result
 
 
 async def resolve(

@@ -256,6 +256,26 @@ def _model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
     return provider, api_key
 
 
+def installed_action_labels(
+    team_id: object,
+    assistant_id: object,
+    language_exemplar: object,
+) -> team.TeamResponse:
+    """Request optional presentation labels without exposing the model credential."""
+    canonical_id = team.canonical_team_id(team_id)
+    credential = _model_credential(canonical_id)
+    if isinstance(credential, team.TeamResponse):
+        return credential
+    provider, api_key = credential
+    return team.assistant_action_labels(
+        canonical_id,
+        assistant_id,
+        language_exemplar,
+        provider=provider,
+        api_key=api_key,
+    )
+
+
 def _challenge_envelope(
     response: team.TeamResponse,
     team_id: str,

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from team import bridge as team
 
 from chat import assistant_proposal, store_catalog
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 128
@@ -17,9 +18,22 @@ _RUNTIME_STATUS = re.compile(r"^[a-z]{2,24}$")
 
 
 @dataclass(frozen=True, slots=True)
+class ActionLabel:
+    action_id: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class ActionLabels:
+    assistant_version: str
+    actions: tuple[ActionLabel, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class InstallResult:
     status: int
     installed: bool | None = None
+    labels: ActionLabels | None = None
 
 
 def _payload(response: object, field: str) -> object:
@@ -167,3 +181,45 @@ def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
     ):
         raise ValueError("Assistant install result is invalid")
     return installed
+
+
+def _action_label(value: object) -> ActionLabel:
+    if not isinstance(value, dict) or set(value) != {"id", "label"}:
+        raise ValueError("invalid Action label fields")
+    action_id = team_contract.canonical_action_id(value["id"])
+    label = team_contract.canonical_action_label(value["label"])
+    if action_id is None or action_id != value["id"] or label is None:
+        raise ValueError("invalid Action label")
+    return ActionLabel(action_id, label)
+
+
+def action_labels(
+    response: object,
+    proposal: assistant_proposal.InstallProposal,
+) -> ActionLabels | None:
+    """Admit only labels bound to this exact proposal; availability failure is optional."""
+    try:
+        if not isinstance(response, team.TeamResponse) or response.status != 200 or not isinstance(response.body, dict):
+            raise ValueError("invalid Action label response")
+        body = response.body
+        if set(body) != {"team_id", "assistant", "assistant_version", "actions"}:
+            raise ValueError("invalid Action label response fields")
+        version = body["assistant_version"]
+        raw_actions = body["actions"]
+        if (
+            body["team_id"] != proposal.team_id
+            or body["assistant"] != proposal.assistant.assistant_id
+            or not isinstance(version, str)
+            or _SEMANTIC_VERSION.fullmatch(version) is None
+            or not isinstance(raw_actions, list)
+            or not 1 <= len(raw_actions) <= 64
+        ):
+            raise ValueError("invalid Action label identity")
+        actions = tuple(_action_label(raw) for raw in raw_actions)
+        ids = [action.action_id for action in actions]
+        labels = [action.label for action in actions]
+        if ids != sorted(set(ids)) or len(set(labels)) != len(labels):
+            raise ValueError("Action labels are not canonical")
+    except KeyError, TypeError, ValueError:
+        return None
+    return ActionLabels(version, actions)

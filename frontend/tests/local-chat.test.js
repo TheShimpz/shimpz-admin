@@ -425,6 +425,15 @@ test('chat admits only the exact conversational Assistant installation lifecycle
       assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
     },
     {
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+      assistant_version: '0.4.1',
+      actions: [
+        { id: 'list-zones', label: 'Listar zonas DNS' },
+        { id: 'records.read', label: 'Consultar registros DNS' },
+      ],
+    },
+    {
       type: 'assistant-install', state: 'cancelled', proposal_id: proposalId,
       assistant_id: 'shimpz-cloudflare',
     },
@@ -437,6 +446,13 @@ test('chat admits only the exact conversational Assistant installation lifecycle
       assistant_id: 'shimpz-cloudflare', status: 503,
     },
   ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
+  const astralBoundary = {
+    type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+    assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+    assistant_version: '0.4.1',
+    actions: [{ id: 'list-zones', label: '😀'.repeat(80) }],
+  };
+  assert.deepEqual(parseChatEvent(astralBoundary, 'team_1', 'Marketing'), astralBoundary);
   assert.doesNotMatch(JSON.stringify(proposed), /source_digest|token|secret/i);
 });
 
@@ -467,6 +483,35 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant installat
       type: 'assistant-install', state: 'installed', proposal_id: proposalId,
       assistant_id: 'shimpz-cloudflare', team_id: 'other_team', installed: true,
     },
+    {
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+      assistant_version: '0.4.1',
+    },
+    {
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+      actions: [{ id: 'list-zones', label: 'Listar zonas DNS' }],
+    },
+    ...[
+      [],
+      [
+        { id: 'records.read', label: 'Consultar registros DNS' },
+        { id: 'list-zones', label: 'Listar zonas DNS' },
+      ],
+      [
+        { id: 'list-zones', label: 'Listar zonas DNS' },
+        { id: 'records.read', label: 'Listar zonas DNS' },
+      ],
+      [{ id: 'Bad', label: 'Listar zonas DNS' }],
+      [{ id: 'list-zones', label: '\u202eDNS' }],
+      [{ id: 'list-zones', label: 'e\u0301' }],
+      [{ id: 'list-zones', label: '😀'.repeat(81) }],
+    ].map((actions) => ({
+      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
+      assistant_version: '0.4.1', actions,
+    })),
     {
       type: 'assistant-install', state: 'failed', proposal_id: proposalId,
       assistant_id: 'shimpz-cloudflare', status: 200,
