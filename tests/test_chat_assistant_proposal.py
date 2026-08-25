@@ -85,6 +85,16 @@ class AssistantProposalTests(unittest.TestCase):
                     expected,
                 )
 
+    def test_empty_search_cannot_select_a_candidate(self) -> None:
+        self.assertIsNone(
+            assistant_proposal.select_candidate(
+                "...",
+                (_candidate(),),
+                installed_ids=frozenset(),
+                enabled=(),
+            )
+        )
+
     def test_confirmation_requires_the_complete_message(self) -> None:
         cases = {
             "sim": "confirm",
@@ -116,6 +126,15 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertTrue(proposal.valid_for("team_1", 309.999))
         self.assertFalse(proposal.valid_for("team_2", 20.0))
         self.assertFalse(proposal.valid_for("team_1", 310.0))
+
+    def test_proposal_rejects_invalid_authority(self) -> None:
+        with self.assertRaises(ValueError):
+            assistant_proposal.create_proposal(
+                "Bad",
+                _candidate(),
+                now=10.0,
+                proposal_id_factory=lambda: "b" * 32,
+            )
 
 
 if __name__ == "__main__":

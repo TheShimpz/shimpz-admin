@@ -107,6 +107,48 @@ class StoreCatalogTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     store_catalog.validate_catalog(value)
 
+    def test_rejects_every_nested_catalog_authority_violation(self) -> None:
+        mutations = (
+            lambda value: value.update(assistants={}),
+            lambda value: value["assistants"][0].update(extra=True),
+            lambda value: value["assistants"][0].update(assistant_id="Bad"),
+            lambda value: value["assistants"][0].update(assistant_version="01.0.0"),
+            lambda value: value["assistants"][0].update(icon_digest="sha256:bad"),
+            lambda value: value["assistants"][0].update(creators=["@shimpz", "@shimpz"]),
+            lambda value: value["assistants"][0].update(integrations={}),
+            lambda value: value["assistants"][0].update(
+                integrations=[{"id": "other", "provider": "cloudflare", "scopes": []}]
+            ),
+            lambda value: value["assistants"][0].update(
+                integrations=[
+                    {"id": "cloudflare", "provider": "cloudflare", "scopes": []},
+                    {"id": "cloudflare", "provider": "cloudflare", "scopes": []},
+                ]
+            ),
+            lambda value: value["assistants"][0].update(actions=[{}]),
+            lambda value: value["assistants"][0].update(
+                actions=[{"id": "Bad", "integrations": [], "human_requests": []}]
+            ),
+            lambda value: value["assistants"][0].update(
+                actions=[
+                    {"id": "list-zones", "integrations": [], "human_requests": []},
+                    {"id": "list-zones", "integrations": [], "human_requests": []},
+                ]
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                value = {"version": 1, "assistants": [_assistant()]}
+                mutate(value)
+                with self.assertRaises(ValueError):
+                    store_catalog.validate_catalog(value)
+
+    def test_string_collection_bounds_are_fail_closed(self) -> None:
+        with self.assertRaises(ValueError):
+            store_catalog._strings({}, 1, 1)
+        with self.assertRaises(ValueError):
+            store_catalog._strings(["same", "same"], 2, 8)
+
     def test_fetch_is_fixed_bounded_and_closes_the_connection(self) -> None:
         body = json.dumps({"version": 1, "assistants": [_assistant()]}).encode()
         connection = _Connection(_Response(body))
@@ -148,6 +190,21 @@ class StoreCatalogTests(unittest.TestCase):
                     store_catalog.fetch_catalog(factory)
                 self.assertTrue(connection.closed)
 
+    def test_content_length_and_stream_length_are_independently_bounded(self) -> None:
+        response = _Response(b"{}")
+        response._headers.pop("Content-Length")
+        store_catalog._content_length(response)
+
+        response._headers["Content-Length"] = "invalid"
+        with self.assertRaises(store_catalog.CatalogUnavailableError):
+            store_catalog._content_length(response)
+
+        oversized = _Response(b"x" * (store_catalog.MAX_CATALOG_BYTES + 1))
+        oversized._headers.pop("Content-Length")
+        connection = _Connection(oversized)
+        with self.assertRaises(store_catalog.CatalogUnavailableError):
+            store_catalog.fetch_catalog(lambda *_args, **_kwargs: connection)
+
     def test_cache_expires_without_stale_fallback(self) -> None:
         now = [10.0]
         calls = 0
@@ -188,17 +245,43 @@ class StoreCatalogTests(unittest.TestCase):
                 calls += 1
                 if calls == 2:
                     both_started.set()
-            release.wait(timeout=1)
+            self.assertTrue(release.wait(timeout=10))
             return assistant
 
         catalog = store_catalog.StoreCatalog(loader=loader)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             first = executor.submit(catalog.get)
             second = executor.submit(catalog.get)
-            self.assertTrue(both_started.wait(timeout=1))
+            self.assertTrue(both_started.wait(timeout=10))
             release.set()
-            self.assertIs(first.result(timeout=1), assistant)
-            self.assertIs(second.result(timeout=1), assistant)
+            self.assertIs(first.result(timeout=10), assistant)
+            self.assertIs(second.result(timeout=10), assistant)
+
+    def test_concurrent_success_can_satisfy_an_older_failed_refresh(self) -> None:
+        assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        first_started = threading.Event()
+        release_failure = threading.Event()
+        calls_lock = threading.Lock()
+        calls = 0
+
+        def loader():
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+                call = calls
+            if call == 1:
+                first_started.set()
+                self.assertTrue(release_failure.wait(timeout=10))
+                raise store_catalog.CatalogUnavailableError("unavailable")
+            return assistant
+
+        catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 10.0)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            failed_refresh = executor.submit(catalog.get)
+            self.assertTrue(first_started.wait(timeout=10))
+            self.assertIs(catalog.get(), assistant)
+            release_failure.set()
+            self.assertIs(failed_refresh.result(timeout=10), assistant)
 
 
 if __name__ == "__main__":

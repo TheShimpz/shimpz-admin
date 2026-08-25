@@ -97,9 +97,7 @@ class AssistantDiscoveryTests(unittest.TestCase):
                 ),
                 mock.patch.object(assistant_install.team, "list_assistants", return_value=registry),
             ):
-                self.assertIsNone(
-                    assistant_install.discover("team_1", "list-zones", enabled, catalog)
-                )
+                self.assertIsNone(assistant_install.discover("team_1", "list-zones", enabled, catalog))
 
     def test_malformed_team_authority_rejects_discovery(self) -> None:
         malformed = assistant_install.team.TeamResponse(200, {"assistants": [], "extra": True})
@@ -114,6 +112,58 @@ class AssistantDiscoveryTests(unittest.TestCase):
         ):
             assistant_install.discover("team_1", "cloudflare", (), mock.Mock())
         registry.assert_not_called()
+
+    def test_team_inventory_rejects_each_malformed_projection(self) -> None:
+        responses = (
+            assistant_install.team.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
+            assistant_install.team.TeamResponse(200, {"assistants": {}}),
+            assistant_install.team.TeamResponse(200, {"assistants": [{}]}),
+            assistant_install.team.TeamResponse(
+                200,
+                {"assistants": [{"assistant": "valid", "assistant_version": "bad", "status": "running"}]},
+            ),
+            assistant_install.team.TeamResponse(
+                200,
+                {
+                    "assistants": [
+                        {"assistant": "valid", "assistant_version": "1.0.0", "status": "running"},
+                        {"assistant": "valid", "assistant_version": "1.0.0", "status": "running"},
+                    ]
+                },
+            ),
+        )
+        for response in responses:
+            with self.subTest(response=response), self.assertRaises(ValueError):
+                assistant_install._installed(response)
+
+    def test_registry_rejects_malformed_projection_and_text(self) -> None:
+        responses = (
+            assistant_install.team.TeamResponse(200, {"assistants": {}}),
+            assistant_install.team.TeamResponse(200, {"assistants": [{}]}),
+            assistant_install.team.TeamResponse(
+                200,
+                {"assistants": [{"id": "valid", "title": "Valid", "summary": "Valid", "actions": []}]},
+            ),
+        )
+        for response in responses:
+            with self.subTest(response=response), self.assertRaises(ValueError):
+                assistant_install._registry(response)
+        with self.assertRaises(ValueError):
+            assistant_install._text(" invalid", 80)
+
+    def test_enabled_scope_must_be_bounded_and_authoritative(self) -> None:
+        with self.assertRaises(ValueError):
+            assistant_install.discover("team_1", "dns", ("duplicate", "duplicate"), mock.Mock())
+        with (
+            mock.patch.object(assistant_install.team, "list_installed_assistants", return_value=_installed()),
+            mock.patch.object(
+                assistant_install.team,
+                "list_assistants",
+                return_value=_registry(("dns-helper", ("list-zones",))),
+            ),
+            self.assertRaises(ValueError),
+        ):
+            assistant_install.discover("team_1", "dns", ("dns-helper",), mock.Mock())
 
 
 class AssistantInstallTests(unittest.TestCase):
@@ -174,6 +224,21 @@ class AssistantInstallTests(unittest.TestCase):
                 ),
             ):
                 self.assertEqual(assistant_install.install(self.proposal), expected)
+
+    def test_rejects_invalid_team_response_authority(self) -> None:
+        with mock.patch.object(assistant_install.team, "install_assistant", return_value=object()):
+            self.assertEqual(assistant_install.install(self.proposal), assistant_install.InstallResult(502))
+
+        malformed = (
+            assistant_install.team.TeamResponse(200, []),
+            assistant_install.team.TeamResponse(
+                200,
+                {"assistant": "shimpz-cloudflare", "installed": True, "trace_id": "bad"},
+            ),
+        )
+        for response in malformed:
+            with self.subTest(response=response), self.assertRaises(ValueError):
+                assistant_install._install_body(response, "shimpz-cloudflare")
 
 
 if __name__ == "__main__":

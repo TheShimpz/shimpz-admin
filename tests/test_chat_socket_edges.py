@@ -230,6 +230,22 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNotNone(pending.active)
 
             await socket._dispatch(websocket, socket._Connection(), "team_1", {"type": "bad"}, authenticate)
+            await socket._dispatch(
+                websocket,
+                socket._Connection(install=mock.sentinel.install),
+                "team_1",
+                {"type": "sync"},
+                authenticate,
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+            await socket._dispatch(
+                websocket,
+                socket._Connection(install_proposal=mock.sentinel.proposal),
+                "team_1",
+                {"type": "stop"},
+                authenticate,
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
 
         asyncio.run(scenario())
 

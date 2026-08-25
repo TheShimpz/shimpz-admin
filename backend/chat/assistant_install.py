@@ -90,11 +90,7 @@ def _registry(response: object) -> dict[str, assistant_proposal.Capability]:
             assistant_id != item["id"]
             or not isinstance(actions, list)
             or not 1 <= len(actions) <= 64
-            or any(
-                not isinstance(action, str)
-                or team.canonical_assistant_id(action) != action
-                for action in actions
-            )
+            or any(not isinstance(action, str) or team.canonical_assistant_id(action) != action for action in actions)
             or len(set(actions)) != len(actions)
             or assistant_id in capabilities
         ):
