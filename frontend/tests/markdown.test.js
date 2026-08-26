@@ -89,6 +89,7 @@ After`;
 test('keeps malformed, escaped, nested, and unknown Chat Notice directives literal', () => {
   const source = `:info[Unsupported]
 :success[]
+:success[a[b]
 :success[**not recursively parsed**]
 :warning[nested [content]]
 Prefix :error[not a whole line]
@@ -109,6 +110,7 @@ Prefix :error[not a whole line]
     .join(' ');
   assert.match(literal, /:info\[Unsupported\]/);
   assert.match(literal, /:success\[\]/);
+  assert.match(literal, /:success\[a\[b\]/);
   assert.match(literal, /:warning\[nested \[content\]\]/);
   assert.match(literal, /:error\[Escaped\]/);
   assert.match(literal, /<script>:success\[still inert\]<\/script>/);

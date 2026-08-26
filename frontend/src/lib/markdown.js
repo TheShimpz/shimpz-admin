@@ -2,7 +2,7 @@ const HTTP_URL = /^https?:\/\//i;
 const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(.+)$/;
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
 const TABLE_DIVIDER = /^:?-{3,}:?$/;
-const CHAT_NOTICE = /^:(success|warning|error)\[([^\]\r\n]+)\]$/;
+const CHAT_NOTICE = /^:(success|warning|error)\[([^\[\]\r\n]+)\]$/;
 const MAX_TABLE_COLUMNS = 32;
 const MAX_TABLE_ROWS = 256;
 
