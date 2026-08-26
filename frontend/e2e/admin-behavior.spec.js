@@ -157,6 +157,7 @@ async function routeReadyChat(page, {
   missingInference = false,
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
+  holdReply = false,
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -171,6 +172,7 @@ async function routeReadyChat(page, {
   let assistantInstalled = !assistantInstall;
   let installProposed = false;
   let releaseAssistantInstall = () => {};
+  let releaseReply = () => {};
   let releaseAssistantInventory;
   const assistantInventoryHold = new Promise((resolve) => {
     releaseAssistantInventory = resolve;
@@ -458,12 +460,14 @@ async function routeReadyChat(page, {
           state: 'finished',
           elapsed_ms: 19,
         }));
-        socket.send(JSON.stringify({
+        const completeReply = () => socket.send(JSON.stringify({
           type: 'done',
           team_id: 'marketing',
           team_name: 'Marketing',
           reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
         }));
+        if (holdReply) releaseReply = completeReply;
+        else completeReply();
       } else if (frame.type === 'human-response') {
         humanResponses.push(frame);
         if (disconnectHumanResponse) {
@@ -489,6 +493,7 @@ async function routeReadyChat(page, {
     releaseAssistantInstall: () => releaseAssistantInstall(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
     releaseHumanResponse: () => releaseHumanResponse(),
+    releaseReply: () => releaseReply(),
     syncFrames: () => syncFrames,
   };
 }
@@ -1455,7 +1460,7 @@ test('restores Supervisor password authorization as a focused validation modal',
   await expect(dialog.getByLabel('Senha do Supervisor')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Negar e interromper' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Confirmar autorização' })).toBeDisabled();
-  await expect(page.getByRole('group', { name: 'Seu Time está pensando…' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Estou processando...' })).toHaveCount(0);
   await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await expect(dialog).toHaveScreenshot('human-auth-password-validating.png', {
     animations: 'disabled',
@@ -1522,10 +1527,10 @@ test('keeps authorization modal until Team progress proves password continuation
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Confirming your Supervisor password…');
   await expect(dialog.getByLabel('Supervisor password')).toHaveCount(0);
-  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   contract.releaseHumanResponse();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
 });
 
@@ -1543,10 +1548,45 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Confirming your Supervisor password…');
-  await expect(page.getByRole('group', { name: 'Your Team is thinking…' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   contract.disconnectHumanSocket();
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
+});
+
+test('shows an accessible processing shimmer and honors display preferences', async ({ page }) => {
+  const contract = await routeReadyChat(page, { holdReply: true });
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Liste minhas zonas DNS');
+  await page.getByRole('button', { name: 'Enviar' }).click();
+
+  const processing = page.getByRole('group', { name: 'Estou processando...' });
+  const label = processing.locator('strong');
+  await expect(processing).toBeVisible();
+  await expect(label).toHaveText('Estou processando...');
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
+    .toMatch(/text-shimmer$/);
+
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
+    .toBe('none');
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
+    .not.toBe('rgba(0, 0, 0, 0)');
+
+  await page.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'active' });
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
+    .toBe('none');
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
+    .not.toBe('rgba(0, 0, 0, 0)');
+
+  contract.releaseReply();
+  await expect(page.getByText('Rendered answer')).toBeVisible();
+  await expect(processing).toHaveCount(0);
 });
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {

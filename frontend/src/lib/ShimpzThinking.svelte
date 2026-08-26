@@ -8,7 +8,7 @@
   } from './executionProgress.js';
 
   let {
-    label = 'Your Team is thinking…',
+    label = 'I’m processing…',
     events = [],
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
@@ -124,6 +124,25 @@
     letter-spacing: 0.045em;
   }
 
+  @supports ((background-clip: text) or (-webkit-background-clip: text)) {
+    .copy strong {
+      background: linear-gradient(
+        90deg,
+        var(--text) 0%,
+        var(--text) 35%,
+        var(--accent) 50%,
+        var(--text) 65%,
+        var(--text) 100%
+      );
+      background-size: 250% 100%;
+      background-clip: text;
+      color: transparent;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: text-shimmer 1.8s linear infinite;
+    }
+  }
+
   .copy .step-copy,
   .elapsed {
     color: var(--text-dim);
@@ -229,6 +248,11 @@
     to { transform: translateX(365%); }
   }
 
+  @keyframes text-shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -150% 0; }
+  }
+
   @media (max-width: 520px) {
     .summary { grid-template-columns: 2.5rem minmax(0, 1fr); }
     .elapsed { grid-column: 2; }
@@ -237,10 +261,26 @@
 
   @media (prefers-reduced-motion: reduce) {
     .signal i,
-    .activity::after {
+    .activity::after,
+    .copy strong {
       animation: none;
     }
 
     .activity::after { width: 100%; opacity: 0.7; }
+
+    .copy strong {
+      background: none;
+      color: var(--text);
+      -webkit-text-fill-color: currentColor;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .copy strong {
+      background: none;
+      color: CanvasText;
+      -webkit-text-fill-color: currentColor;
+      animation: none;
+    }
   }
 </style>
