@@ -158,6 +158,7 @@ async function routeReadyChat(page, {
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   holdReply = false,
+  terminalError = false,
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -460,12 +461,14 @@ async function routeReadyChat(page, {
           state: 'finished',
           elapsed_ms: 19,
         }));
-        const completeReply = () => socket.send(JSON.stringify({
-          type: 'done',
-          team_id: 'marketing',
-          team_name: 'Marketing',
-          reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
-        }));
+        const completeReply = () => socket.send(JSON.stringify(terminalError
+          ? { type: 'error', status: 503, detail: 'synthetic runtime failure' }
+          : {
+              type: 'done',
+              team_id: 'marketing',
+              team_name: 'Marketing',
+              reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
+            }));
         if (holdReply) releaseReply = completeReply;
         else completeReply();
       } else if (frame.type === 'human-response') {
@@ -1604,7 +1607,23 @@ test('keeps an intentional Stop silent after the turn ends', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   await expect(page.getByText('The active turn was stopped.')).toHaveCount(0);
-  await expect(page.locator('[data-slot="notice"][data-variant="error"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="notice"].shimpz-notice--error')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+});
+
+test('keeps an unexpected terminal error visible after silent Stop handling', async ({ page }) => {
+  await routeReadyChat(page, { terminalError: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('The local chat runtime is unavailable.');
+  await expect(notice).toContainText('HTTP 503 · synthetic runtime failure');
+  await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
 });
