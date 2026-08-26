@@ -84,16 +84,27 @@ class ChatWebSocketTests(unittest.TestCase):
         self.token = self.admin_app.auth.issue_session(secret, "totp")
 
     def _install_candidate(self):
-        return self.chat_socket.install_flow.store_catalog.CatalogAssistant(
+        return self.chat_socket.lifecycle.store_catalog.CatalogAssistant(
             assistant_id="shimpz-cloudflare",
             name="Shimpz Cloudflare",
             summary="Manage Cloudflare zones and DNS records.",
             source_digest="sha256:" + ("d" * 64),
             icon_digest="sha256:" + ("e" * 64),
             integrations=(
-                self.chat_socket.install_flow.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
+                self.chat_socket.lifecycle.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
             ),
             actions=("list-zones",),
+        )
+
+    def _uninstall_candidate(self):
+        return self.chat_socket.lifecycle.assistant_proposal.UninstallCandidate(
+            self.chat_socket.lifecycle.assistant_proposal.Capability(
+                "shimpz-cloudflare",
+                "Shimpz Cloudflare",
+                "Manage Cloudflare zones and DNS records.",
+                ("list-zones",),
+            ),
+            "0.4.4",
         )
 
     @staticmethod
@@ -650,7 +661,7 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
@@ -703,7 +714,7 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     side_effect=discover,
                 ),
@@ -730,27 +741,103 @@ class ChatWebSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_explicit_uninstall_uses_one_socket_scoped_proposal_and_team_result(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Vou preparar a remoção."},
+            )
+            result = self.chat_socket.lifecycle.assistant_uninstall.UninstallResult(200, True)
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
+                mock.patch.object(
+                    self.chat_socket.lifecycle.assistant_uninstall,
+                    "discover",
+                    return_value=self._uninstall_candidate(),
+                ),
+                mock.patch.object(
+                    self.chat_socket.lifecycle.assistant_uninstall,
+                    "uninstall",
+                    return_value=result,
+                ) as uninstall,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "Desinstale o Assistant do Cloudflare",
+                        "files": [],
+                        "assistant_ids": ["shimpz-cloudflare"],
+                    }
+                )
+                proposed = await websocket.next_json()
+                self.assertEqual(proposed["type"], "assistant-uninstall")
+                self.assertEqual(proposed["state"], "proposed")
+                self.assertEqual(proposed["expires_in"], 120)
+                self.assertEqual(
+                    proposed["assistant"],
+                    {
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "summary": "Manage Cloudflare zones and DNS records.",
+                        "version": "0.4.4",
+                    },
+                )
+                self.assertNotIn("source_digest", json.dumps(proposed))
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "Pode desinstalar!", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "assistant-uninstall",
+                        "state": "uninstalling",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                    },
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {
+                        "type": "assistant-uninstall",
+                        "state": "uninstalled",
+                        "proposal_id": proposed["proposal_id"],
+                        "assistant_id": "shimpz-cloudflare",
+                        "team_id": "team_1",
+                        "uninstalled": True,
+                    },
+                )
+                proposal = uninstall.call_args.args[0]
+                self.assertEqual(proposal.assistant_version, "0.4.4")
+                self.assertEqual(proposal.language_exemplar, "Desinstale o Assistant do Cloudflare")
+                self.assertEqual(turn.call_count, 1)
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_text_confirmation_consumes_proposal_and_installs_once(self) -> None:
         async def scenario() -> None:
             response = self.chat_socket.local.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready."},
             )
-            result = self.chat_socket.install_flow.assistant_install.InstallResult(200, True)
+            result = self.chat_socket.lifecycle.assistant_install.InstallResult(200, True)
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     side_effect=(self._install_candidate(), None),
                 ),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "install",
                     return_value=result,
                 ) as install,
                 mock.patch.object(
-                    self.chat_socket.install_flow.local,
+                    self.chat_socket.lifecycle.local,
                     "installed_action_labels",
                     return_value=self.chat_socket.team.TeamResponse(
                         200,
@@ -818,14 +905,14 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     side_effect=(self._install_candidate(), self._install_candidate(), None),
                 ),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "install",
-                    return_value=self.chat_socket.install_flow.assistant_install.InstallResult(200, True),
+                    return_value=self.chat_socket.lifecycle.assistant_install.InstallResult(200, True),
                 ) as install,
             ):
                 cancelled = _Socket(self.admin_app.app, token=self.token)
@@ -876,12 +963,12 @@ class ChatWebSocketTests(unittest.TestCase):
                     side_effect=(response, chat_socket_fixtures.integration_challenge()),
                 ),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop,
-                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket.lifecycle.assistant_install, "install") as install,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -909,12 +996,12 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
-                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
-                mock.patch.object(self.chat_socket.install_flow, "monotonic", side_effect=(10, 311)),
+                mock.patch.object(self.chat_socket.lifecycle.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket.lifecycle, "monotonic", side_effect=(10, 311)),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -944,11 +1031,11 @@ class ChatWebSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response),
                 mock.patch.object(
-                    self.chat_socket.install_flow.assistant_install,
+                    self.chat_socket.lifecycle.assistant_install,
                     "discover",
                     return_value=self._install_candidate(),
                 ),
-                mock.patch.object(self.chat_socket.install_flow.assistant_install, "install") as install,
+                mock.patch.object(self.chat_socket.lifecycle.assistant_install, "install") as install,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -956,7 +1043,7 @@ class ChatWebSocketTests(unittest.TestCase):
                 proposed = await websocket.next_json()
 
                 with mock.patch.object(
-                    self.chat_socket.install_flow._INSTALL_EXECUTOR,
+                    self.chat_socket.lifecycle._LIFECYCLE_EXECUTOR,
                     "submit",
                     side_effect=self.chat_socket.ExecutorSaturatedError,
                 ):

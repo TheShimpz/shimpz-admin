@@ -15,13 +15,12 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from chat.assistant_proposal import InstallProposal
+from chat.assistant_proposal import InstallProposal, UninstallProposal
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
-from chat import human, local
-from chat import install as install_flow
+from chat import human, lifecycle, local
 from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -148,8 +147,8 @@ class _Connection:
     pending_human_request: dict[str, object] | None = None
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
-    install_proposal: InstallProposal | None = None
-    install: install_flow.Operation | None = None
+    lifecycle_proposal: InstallProposal | UninstallProposal | None = None
+    lifecycle: lifecycle.Operation | None = None
     closed: bool = False
 
 
@@ -180,7 +179,7 @@ def _forget_challenge(connection: _Connection) -> None:
 
 
 def _cancel_discovery(turn: _Turn) -> None:
-    install_flow.cancel_discovery(turn.discovery_future)
+    lifecycle.cancel_discovery(turn.discovery_future)
 
 
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
@@ -315,7 +314,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
             _cancel_discovery(turn)
-            connection.install_proposal = None
+            connection.lifecycle_proposal = None
             _remember_challenge(connection, challenge, challenge_type)
             if not await _send_event(websocket, challenge):
                 connection.closed = True
@@ -332,7 +331,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             event = turn_terminal(response, team_id)
         if event.get("type") == "done":
             _forget_challenge(connection)
-        event = await install_flow.attach_proposal(
+        event = await lifecycle.attach_proposal(
             connection,
             turn.discovery_future,
             team_id,
@@ -801,7 +800,7 @@ async def _dispatch_chat(
     except team.TeamRequestError:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
         return
-    if connection.active is not None or connection.sync_task is not None or connection.install is not None:
+    if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
         await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
         return
     if connection.pending_challenge_id is not None:
@@ -810,8 +809,8 @@ async def _dispatch_chat(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return
-    had_install_proposal = connection.install_proposal is not None
-    if await install_flow.resolve(websocket, connection, team_id, payload, _send_event):
+    had_lifecycle_proposal = connection.lifecycle_proposal is not None
+    if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     try:
         progress, report = _progress_channel()
@@ -820,8 +819,8 @@ async def _dispatch_chat(
         await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
         return
     discovery_future = None
-    if not had_install_proposal and connection.install_proposal is None:
-        discovery_future = install_flow.submit_discovery(team_id, payload)
+    if not had_lifecycle_proposal and connection.lifecycle_proposal is None:
+        discovery_future = lifecycle.submit_discovery(team_id, payload)
     turn = _Turn(
         future=future,
         operation="chat",
@@ -861,11 +860,11 @@ async def _dispatch(
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
-    if connection.install is not None:
-        await _send_event(websocket, _error_terminal(409, "an Assistant installation is already active"))
+    if connection.lifecycle is not None:
+        await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle operation is already active"))
         return
-    if connection.install_proposal is not None and frame_type != "chat":
-        await _send_event(websocket, _error_terminal(409, "an Assistant install decision is pending"))
+    if connection.lifecycle_proposal is not None and frame_type != "chat":
+        await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle decision is pending"))
         return
     if frame_type == "sync" and set(frame) == {"type"}:
         await _dispatch_sync(websocket, connection, team_id)
@@ -950,7 +949,7 @@ async def _close_connection(
         if active.delivery is not None:
             active.delivery.cancel()
             await asyncio.gather(active.delivery, return_exceptions=True)
-    await install_flow.close(connection)
+    await lifecycle.close(connection)
 
 
 async def serve(

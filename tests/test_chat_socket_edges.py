@@ -40,7 +40,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             message = "x" * 2_001
             with (
                 mock.patch.object(socket, "submit_in_context", return_value=future),
-                mock.patch.object(socket.install_flow, "submit_discovery", return_value=None),
+                mock.patch.object(socket.lifecycle, "submit_discovery", return_value=None),
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -269,7 +269,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             await socket._dispatch(websocket, socket._Connection(), "team_1", {"type": "bad"}, authenticate)
             await socket._dispatch(
                 websocket,
-                socket._Connection(install=mock.sentinel.install),
+                socket._Connection(lifecycle=mock.sentinel.lifecycle),
                 "team_1",
                 {"type": "sync"},
                 authenticate,
@@ -277,7 +277,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
             await socket._dispatch(
                 websocket,
-                socket._Connection(install_proposal=mock.sentinel.proposal),
+                socket._Connection(lifecycle_proposal=mock.sentinel.proposal),
                 "team_1",
                 {"type": "stop"},
                 authenticate,

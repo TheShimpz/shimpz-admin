@@ -1,4 +1,4 @@
-"""Pure matching and textual decision rules for one Local chat install proposal."""
+"""Pure matching and textual decision rules for Local chat Assistant lifecycle proposals."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from typing import Literal
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
 
-PROPOSAL_TTL_SECONDS = 300
+INSTALL_PROPOSAL_TTL_SECONDS = 300
+UNINSTALL_PROPOSAL_TTL_SECONDS = 120
 MINIMUM_MATCH_SCORE = 40
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
 _SEARCH_SEPARATOR = re.compile(r"[^a-z0-9]+")
@@ -43,7 +44,7 @@ _STOP_WORDS = frozenset(
         "uma",
     }
 )
-_AFFIRMATIVE = frozenset(
+_INSTALL_AFFIRMATIVE = frozenset(
     {
         "autorizo a instalacao",
         "claro",
@@ -63,7 +64,7 @@ _AFFIRMATIVE = frozenset(
         "yes",
     }
 )
-_NEGATIVE = frozenset(
+_INSTALL_NEGATIVE = frozenset(
     {
         "cancel",
         "cancela",
@@ -78,6 +79,76 @@ _NEGATIVE = frozenset(
         "nao instale",
         "no",
     }
+)
+_UNINSTALL_AFFIRMATIVE = frozenset(
+    {
+        "autorizo a desinstalacao",
+        "claro",
+        "confirmo",
+        "desinstale",
+        "go ahead",
+        "go ahead and uninstall",
+        "ok",
+        "okay",
+        "pode",
+        "pode desinstalar",
+        "pode remover",
+        "please uninstall",
+        "remova",
+        "remove it",
+        "sim",
+        "sure",
+        "uninstall it",
+        "yes",
+    }
+)
+_UNINSTALL_NEGATIVE = frozenset(
+    {
+        "cancel",
+        "cancela",
+        "cancelar",
+        "cancele",
+        "do not remove",
+        "do not uninstall",
+        "dont remove",
+        "dont uninstall",
+        "esquece",
+        "forget it",
+        "nao",
+        "nao desinstale",
+        "nao foi isso que pedi",
+        "nao remova",
+        "no",
+    }
+)
+_UNINSTALL_PREFIXES = (
+    "can you ",
+    "could you ",
+    "eu quero ",
+    "gostaria de ",
+    "i want to ",
+    "please ",
+    "pode ",
+    "por favor ",
+    "quero que voce ",
+    "quero ",
+    "",
+)
+_UNINSTALL_VERBS = (
+    "desinstala ",
+    "desinstale ",
+    "desinstalar ",
+    "remove ",
+    "remova ",
+    "remover ",
+    "uninstall ",
+)
+_UNINSTALL_SUFFIXES = (
+    " deste time",
+    " do time",
+    " from this team",
+    " from the team",
+    "",
 )
 
 Decision = Literal["confirm", "cancel", "ambiguous"]
@@ -103,6 +174,28 @@ class InstallProposal:
         return team_id == self.team_id and now < self.expires_at
 
 
+@dataclass(frozen=True, slots=True)
+class UninstallCandidate:
+    assistant: Capability
+    version: str
+
+
+@dataclass(frozen=True, slots=True)
+class UninstallProposal:
+    proposal_id: str
+    team_id: str
+    assistant: Capability
+    assistant_version: str
+    language_exemplar: str | None = field(repr=False)
+    expires_at: float
+
+    def valid_for(self, team_id: str, now: float) -> bool:
+        return team_id == self.team_id and now < self.expires_at
+
+
+Proposal = InstallProposal | UninstallProposal
+
+
 def _fold(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.casefold())
     return "".join(character for character in normalized if not unicodedata.combining(character))
@@ -112,16 +205,29 @@ def _confirmation(value: str) -> str:
     return _TERMINAL_PUNCTUATION.sub("", " ".join(_fold(value).strip().split()))
 
 
-def classify_confirmation(value: object) -> Decision:
-    """Classify only a complete, explicit user-authored response."""
+def _classify_confirmation(
+    value: object,
+    affirmative: frozenset[str],
+    negative: frozenset[str],
+) -> Decision:
     if not isinstance(value, str) or not value.strip() or len(value) > 160:
         return "ambiguous"
     normalized = _confirmation(value)
-    if normalized in _AFFIRMATIVE:
+    if normalized in affirmative:
         return "confirm"
-    if normalized in _NEGATIVE:
+    if normalized in negative:
         return "cancel"
     return "ambiguous"
+
+
+def classify_install_confirmation(value: object) -> Decision:
+    """Classify only a complete install-specific user response."""
+    return _classify_confirmation(value, _INSTALL_AFFIRMATIVE, _INSTALL_NEGATIVE)
+
+
+def classify_uninstall_confirmation(value: object) -> Decision:
+    """Classify only a complete uninstall-specific user response."""
+    return _classify_confirmation(value, _UNINSTALL_AFFIRMATIVE, _UNINSTALL_NEGATIVE)
 
 
 def _search_text(value: str) -> str:
@@ -221,7 +327,92 @@ def select_candidate(
     return None if enabled_score >= best_score else best
 
 
-def create_proposal(
+def _uninstall_target(message: object) -> str | None:
+    if not isinstance(message, str) or not message.strip() or len(message) > 500:
+        return None
+    normalized = _search_text(message)
+    for prefix in _UNINSTALL_PREFIXES:
+        if not normalized.startswith(prefix):
+            continue
+        remainder = normalized[len(prefix) :]
+        for verb in _UNINSTALL_VERBS:
+            if not remainder.startswith(verb):
+                continue
+            target = remainder[len(verb) :]
+            for suffix in _UNINSTALL_SUFFIXES:
+                if suffix and target.endswith(suffix):
+                    target = target[: -len(suffix)]
+                    break
+            return target.strip() or None
+    return None
+
+
+def uninstall_requested(message: object) -> bool:
+    """Return whether a closed uninstall structure exists before Team discovery work."""
+    return _uninstall_target(message) is not None
+
+
+def _identity_targets(capability: Capability) -> frozenset[str]:
+    exact = {_search_text(capability.assistant_id), _search_text(capability.name)}
+    short_tokens = tuple(
+        token
+        for token in _search_text(capability.name).split()
+        if token not in {"assistant", "assistente", "shimpz"}
+    )
+    aliases = exact | ({" ".join(short_tokens), *short_tokens} if short_tokens else set())
+    targets = {
+        target
+        for value in exact
+        if value
+        for target in (value, f"a {value}", f"o {value}", f"the {value}")
+    }
+    for alias in aliases:
+        if not alias:
+            continue
+        targets.update(
+            {
+                f"a assistente {alias}",
+                f"a assistente da {alias}",
+                f"a assistente de {alias}",
+                f"a assistente do {alias}",
+                f"an assistant {alias}",
+                f"assistant {alias}",
+                f"assistente {alias}",
+                f"assistente da {alias}",
+                f"assistente de {alias}",
+                f"assistente do {alias}",
+                f"o assistant {alias}",
+                f"o assistant da {alias}",
+                f"o assistant de {alias}",
+                f"o assistant do {alias}",
+                f"the assistant {alias}",
+                f"{alias} assistant",
+                f"{alias} assistente",
+            }
+        )
+    return frozenset(targets)
+
+
+def select_uninstall_candidate(
+    message: object,
+    candidates: tuple[UninstallCandidate, ...],
+) -> UninstallCandidate | None:
+    """Select one installed Assistant only from a directly bound destructive request."""
+    target = _uninstall_target(message)
+    if target is None:
+        return None
+    matches = tuple(candidate for candidate in candidates if target in _identity_targets(candidate.assistant))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:
+    proposal_id = proposal_id_factory()
+    if _TEAM_ID.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
+        raise ValueError("invalid Assistant lifecycle proposal")
+    return proposal_id
+
+
+def create_install_proposal(
     team_id: str,
     assistant: store_catalog.CatalogAssistant,
     *,
@@ -229,13 +420,30 @@ def create_proposal(
     now: float,
     proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
 ) -> InstallProposal:
-    proposal_id = proposal_id_factory()
-    if _TEAM_ID.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
-        raise ValueError("invalid Assistant install proposal")
+    proposal_id = _proposal_id(team_id, now, proposal_id_factory)
     return InstallProposal(
         proposal_id=proposal_id,
         team_id=team_id,
         assistant=assistant,
         language_exemplar=team_contract.canonical_language_exemplar(language_exemplar),
-        expires_at=now + PROPOSAL_TTL_SECONDS,
+        expires_at=now + INSTALL_PROPOSAL_TTL_SECONDS,
+    )
+
+
+def create_uninstall_proposal(
+    team_id: str,
+    candidate: UninstallCandidate,
+    *,
+    language_exemplar: object,
+    now: float,
+    proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
+) -> UninstallProposal:
+    proposal_id = _proposal_id(team_id, now, proposal_id_factory)
+    return UninstallProposal(
+        proposal_id=proposal_id,
+        team_id=team_id,
+        assistant=candidate.assistant,
+        assistant_version=candidate.version,
+        language_exemplar=team_contract.canonical_language_exemplar(language_exemplar),
+        expires_at=now + UNINSTALL_PROPOSAL_TTL_SECONDS,
     )

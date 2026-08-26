@@ -10,7 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_install, assistant_proposal, store_catalog
+from chat import assistant_install, assistant_inventory, assistant_proposal, store_catalog
 
 
 def _candidate() -> store_catalog.CatalogAssistant:
@@ -135,7 +135,7 @@ class AssistantDiscoveryTests(unittest.TestCase):
         )
         for response in responses:
             with self.subTest(response=response), self.assertRaises(ValueError):
-                assistant_install._installed(response)
+                assistant_inventory.installed(response)
 
     def test_registry_rejects_malformed_projection_and_text(self) -> None:
         responses = (
@@ -148,9 +148,9 @@ class AssistantDiscoveryTests(unittest.TestCase):
         )
         for response in responses:
             with self.subTest(response=response), self.assertRaises(ValueError):
-                assistant_install._registry(response)
+                assistant_inventory.registry(response)
         with self.assertRaises(ValueError):
-            assistant_install._text(" invalid", 80)
+            assistant_inventory._text(" invalid", 80)
 
     def test_enabled_scope_must_be_bounded_and_authoritative(self) -> None:
         with self.assertRaises(ValueError):
@@ -169,7 +169,7 @@ class AssistantDiscoveryTests(unittest.TestCase):
 
 class AssistantInstallTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.proposal = assistant_proposal.create_proposal(
+        self.proposal = assistant_proposal.create_install_proposal(
             "team_1",
             _candidate(),
             language_exemplar="Liste minhas zonas DNS",
