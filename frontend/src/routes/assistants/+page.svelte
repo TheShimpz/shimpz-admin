@@ -16,7 +16,7 @@
   } from '$lib/assistantIntent.js';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
-  import { installAssistant, safeApiError } from '$lib/localApi.js';
+  import { installAssistant, safeApiError, uninstallAssistant } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
@@ -259,7 +259,7 @@
           ? projectInstalledAssistantIds($teamContext.installedAssistants)
           : [],
       );
-      return;
+      return status === 'ready';
     }
     try {
       await refreshTeamInventory(fetch);
@@ -267,8 +267,10 @@
         'ready',
         projectInstalledAssistantIds($teamContext.installedAssistants),
       );
+      return true;
     } catch {
       publishStoreSnapshot('error', []);
+      return false;
     }
   }
 
@@ -441,18 +443,17 @@
     busy = true;
     dialogError = '';
     try {
-      const response = await fetch(
-        `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}`,
-        { method: 'DELETE', headers: { Accept: 'application/json' } },
-      );
-      const body = await jsonObject(response);
-      if (!response.ok) throw new Error(safeApiError(body, copy.genericFailure));
-      await refreshInstalled(team.id);
+      await uninstallAssistant(fetch, team.id, assistantId);
+      const refreshed = await refreshInstalled(team.id);
       finishAssistantDialog();
       showAdminNotice({
-        tone: 'success',
-        label: $t('store.assistantUninstalledLabel'),
-        message: $t('store.assistantUninstalledMessage', {
+        tone: refreshed ? 'success' : 'info',
+        label: $t(refreshed
+          ? 'store.assistantUninstalledLabel'
+          : 'store.assistantUninstallRefreshLabel'),
+        message: $t(refreshed
+          ? 'store.assistantUninstalledMessage'
+          : 'store.assistantUninstallRefreshMessage', {
           assistant: assistantName,
           team: team.name,
         }),

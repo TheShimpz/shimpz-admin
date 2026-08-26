@@ -7,6 +7,7 @@ import {
   listAssistantCatalog,
   listInstalledAssistants,
   safeApiError,
+  uninstallAssistant,
 } from '../src/lib/localApi.js';
 
 const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
@@ -83,6 +84,75 @@ test('invalid install responses fail closed without invoking anything else', asy
       (error) => error instanceof LocalApiError && error.message.includes('invalid response'),
     );
     assert.equal(calls, 1);
+  }
+});
+
+test('uninstalls through the exact Team route and accepts idempotent absence', async () => {
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, options });
+    return response(200, {
+      assistant: 'hello-pulse',
+      uninstalled: false,
+      trace_id: 'a'.repeat(32),
+    });
+  };
+
+  assert.deepEqual(
+    await uninstallAssistant(fetcher, 'team_1', 'hello-pulse'),
+    { assistant: 'hello-pulse', uninstalled: false },
+  );
+  assert.deepEqual(calls, [{
+    url: '/api/teams/team_1/assistants/hello-pulse',
+    options: { method: 'DELETE', headers: { Accept: 'application/json' } },
+  }]);
+});
+
+test('uninstall fails closed on invalid requests, status, or acknowledgements', async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return response(200, { assistant: 'hello-pulse', uninstalled: true });
+  };
+  for (const [teamId, assistantId] of [
+    ['../escape', 'hello-pulse'],
+    ['team_1', '../escape'],
+    ['team_1', 'hello--pulse'],
+  ]) {
+    await assert.rejects(
+      uninstallAssistant(fetcher, teamId, assistantId),
+      (error) => error instanceof LocalApiError && error.message === 'Invalid local Assistant request.',
+    );
+  }
+  assert.equal(calls, 0);
+
+  await assert.rejects(
+    uninstallAssistant(
+      async () => response(503, { detail: 'controller unavailable' }),
+      'team_1',
+      'hello-pulse',
+    ),
+    (error) => (
+      error instanceof LocalApiError &&
+      error.status === 503 &&
+      error.message === 'controller unavailable'
+    ),
+  );
+
+  for (const [status, body] of [
+    [201, { assistant: 'hello-pulse', uninstalled: true }],
+    [200, { assistant: 'other', uninstalled: true }],
+    [200, { assistant: 'hello-pulse', uninstalled: 'yes' }],
+    [200, { assistant: 'hello-pulse', uninstalled: true, debug: true }],
+    [200, { assistant: 'hello-pulse', uninstalled: true, trace_id: '../invalid' }],
+  ]) {
+    await assert.rejects(
+      uninstallAssistant(async () => response(status, body), 'team_1', 'hello-pulse'),
+      (error) => (
+        error instanceof LocalApiError &&
+        error.message.includes(status === 201 ? 'could not be uninstalled' : 'invalid response')
+      ),
+    );
   }
 });
 

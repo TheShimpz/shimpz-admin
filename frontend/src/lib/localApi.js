@@ -5,6 +5,7 @@ import {
   jsonObject,
   LocalApiError,
   TEAM_ID_RE,
+  TRACE_ID_RE,
 } from './validate.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
@@ -137,4 +138,45 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
     throw new LocalApiError('The local Assistant installation returned an invalid response.', installResponse.status);
   }
   return { assistant: assistantId, installed: installBody.installed };
+}
+
+/** Remove one Team-owned Assistant and validate the exact controller acknowledgement. */
+export async function uninstallAssistant(fetcher, teamId, assistantId) {
+  if (
+    typeof fetcher !== 'function' ||
+    typeof teamId !== 'string' ||
+    !TEAM_ID_RE.test(teamId) ||
+    typeof assistantId !== 'string' ||
+    assistantId.length > 80 ||
+    !ASSISTANT_ID_RE.test(assistantId)
+  ) {
+    throw new LocalApiError('Invalid local Assistant request.');
+  }
+
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}`,
+    { method: 'DELETE', headers: { Accept: 'application/json' } },
+  );
+  const body = await jsonObject(response);
+  if (response.status !== 200) {
+    throw new LocalApiError(
+      safeApiError(body, 'The local Assistant could not be uninstalled.'),
+      response.status,
+    );
+  }
+  const expectedKeys = 'trace_id' in body
+    ? ['assistant', 'trace_id', 'uninstalled']
+    : ['assistant', 'uninstalled'];
+  if (
+    !exactKeys(body, expectedKeys) ||
+    ('trace_id' in body && (typeof body.trace_id !== 'string' || !TRACE_ID_RE.test(body.trace_id))) ||
+    body.assistant !== assistantId ||
+    typeof body.uninstalled !== 'boolean'
+  ) {
+    throw new LocalApiError(
+      'The local Assistant uninstall returned an invalid response.',
+      response.status,
+    );
+  }
+  return { assistant: assistantId, uninstalled: body.uninstalled };
 }

@@ -82,6 +82,18 @@ async function routeSetup(page) {
   }));
 }
 
+async function routeAssistantStoreUninstall(page) {
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><html><body><button type="button">Uninstall</button><script>
+      parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
+      document.querySelector('button').addEventListener('click', () => parent.postMessage({
+        type: 'shimpz:assistant-uninstall', version: 2, assistant: 'shimpz-cloudflare'
+      }, '*'));
+    </script></body></html>`,
+  }));
+}
+
 function humanRequest(kind) {
   const base = {
     kind,
@@ -1568,18 +1580,10 @@ test('reports confirmed Team deletion as animated success above Chat', async ({ 
 
 test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }) => {
   await routeReadyChat(page);
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: `<!doctype html><html><body><button type="button">Uninstall</button><script>
-      parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
-      document.querySelector('button').addEventListener('click', () => parent.postMessage({
-        type: 'shimpz:assistant-uninstall', version: 2, assistant: 'shimpz-cloudflare'
-      }, '*'));
-    </script></body></html>`,
-  }));
+  await routeAssistantStoreUninstall(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: true }),
+    body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: false }),
   }));
 
   await page.goto('/assistants/');
@@ -1588,7 +1592,7 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   const toast = page.locator('[data-slot="toast"]');
-  await expect(toast).toContainText('Shimpz Cloudflare was removed from Marketing.');
+  await expect(toast).toContainText('Shimpz Cloudflare is no longer installed in Marketing.');
   await expect(toast).toHaveCSS('position', 'relative');
   const [toastOnStoreBox, introBox, mainBox, sidebarBox] = await Promise.all([
     toast.boundingBox(),
@@ -1635,6 +1639,41 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
     toastBox.y + toastBox.height > actionsBox.y
   );
   expect(intersectsActions).toBe(false);
+});
+
+test('reports a committed uninstall when the Team inventory cannot refresh', async ({ page }) => {
+  await routeReadyChat(page);
+  await routeAssistantStoreUninstall(page);
+  let committed = false;
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', async (route) => {
+    committed = true;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: true }),
+    });
+  });
+  await page.route('**/api/teams/marketing/assistants', (route) => {
+    if (!committed) return route.fallback();
+    return route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'inventory unavailable' }),
+    });
+  });
+
+  await page.goto('/assistants/');
+  await page.frameLocator('iframe').getByRole('button', { name: 'Uninstall' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
+  await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
+
+  await expect(dialog).toBeHidden();
+  const toast = page.locator('[data-slot="toast"]');
+  await expect(toast).toContainText('Assistant inventory needs refresh');
+  await expect(toast).toContainText(
+    'Shimpz Cloudflare is no longer installed in Marketing, but the current Team inventory could not be refreshed.',
+  );
+  await expect(toast).toContainText('Reload this page to confirm the Assistant list.');
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
 test('keeps a first Store install ready while local display metadata catches up', async ({ page }) => {
