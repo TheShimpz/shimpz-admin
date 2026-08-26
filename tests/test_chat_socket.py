@@ -98,7 +98,7 @@ class ChatWebSocketTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v5", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v6", "headers": []}
 
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
@@ -117,7 +117,7 @@ class ChatWebSocketTests(unittest.TestCase):
             extra_protocol = _Socket(
                 self.admin_app.app,
                 token=self.token,
-                protocols=["shimpz.chat.v5", "shimpz.chat.v4"],
+                protocols=["shimpz.chat.v6", "shimpz.chat.v5"],
             )
             self.assertEqual(
                 await extra_protocol.start(),

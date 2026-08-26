@@ -1,6 +1,6 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
-The browser speaks only ``shimpz.chat.v5``. Provider and Assistant secrets stay behind
+The browser speaks only ``shimpz.chat.v6``. Provider and Assistant secrets stay behind
 :mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
@@ -26,7 +26,7 @@ from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v5"
+CHAT_SUBPROTOCOL = "shimpz.chat.v6"
 MAX_FRAME_BYTES = 128 * 1024
 MAX_PUBLIC_ERROR_CHARS = 800
 STOP_RESULT_WAIT_SECONDS = 15

@@ -50,7 +50,7 @@ const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
-export const CHAT_WS_PROTOCOL = 'shimpz.chat.v5';
+export const CHAT_WS_PROTOCOL = 'shimpz.chat.v6';
 export const HUMAN_REQUEST_KINDS = Object.freeze([
   'approval',
   'input:text',
@@ -578,7 +578,7 @@ export function oauthReturnFailure(value) {
   );
 }
 
-/** Build the only chat frame accepted by shimpz.chat.v5. Provider/model/keys remain server-owned. */
+/** Build the only chat frame accepted by shimpz.chat.v6. Provider/model/keys remain server-owned. */
 export function createChatFrame(teamId, turn) {
   requireTeam(teamId);
   if (

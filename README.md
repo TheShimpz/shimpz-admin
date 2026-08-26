@@ -14,7 +14,7 @@ workload identity, Action execution, storage, Integration encryption, and Brain 
 - Admin password/session state and model-provider API keys live only in `/data/admin.json`, mode `0600`.
   Browser responses expose masked credential state, never stored values.
 - Team inference configuration contains only the canonical `provider` and `model` selection.
-- Browser chat uses `shimpz.chat.v5`: strict `chat`, `stop`, `sync`, and `human-response` client frames plus
+- Browser chat uses `shimpz.chat.v6`: strict `chat`, `stop`, `sync`, and `human-response` client frames plus
   bounded Integration and Action human gates. An empty Assistant selection is Brain-only and never expands.
 - For a turn or challenge resume, Admin resolves the selected model key internally and sends it only
   through the controller's fixed `X-Shimpz-Model-Provider` and `X-Shimpz-Model-Api-Key` headers. The key

@@ -25,7 +25,7 @@ class Socket:
         team_id: str = "team_1",
         fail_send_type: str = "",
     ) -> None:
-        offered = ["shimpz.chat.v5"] if protocols is None else protocols
+        offered = ["shimpz.chat.v6"] if protocols is None else protocols
         headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
         if offered:
             headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))

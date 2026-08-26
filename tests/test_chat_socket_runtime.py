@@ -94,10 +94,10 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                     async with websockets.connect(
                         uri,
                         origin="http://localhost:7777",
-                        subprotocols=["shimpz.chat.v5"],
+                        subprotocols=["shimpz.chat.v6"],
                         additional_headers=headers,
                     ) as websocket:
-                        self.assertEqual(websocket.subprotocol, "shimpz.chat.v5")
+                        self.assertEqual(websocket.subprotocol, "shimpz.chat.v6")
                         await websocket.send('{"type":"chat","message":"hello","files":[],"assistant_ids":[]}')
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
