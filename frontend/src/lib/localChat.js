@@ -816,6 +816,23 @@ function canonicalInstallAssistant(value) {
   };
 }
 
+function canonicalUninstallAssistant(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, ['id', 'name', 'summary', 'version']) ||
+    typeof value.version !== 'string' ||
+    !SEMANTIC_VERSION_RE.test(value.version)
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    id: canonicalId(value.id),
+    name: canonicalPublicText(value.name, 80),
+    summary: canonicalPublicText(value.summary, 160),
+    version: value.version,
+  };
+}
+
 function canonicalInstallActions(values) {
   if (!Array.isArray(values) || !values.length || values.length > MAX_INSTALL_ACTIONS) {
     throw new LocalApiError('The local chat response is invalid.');
@@ -927,6 +944,80 @@ function parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName) {
   throw new LocalApiError('The local chat response is invalid.');
 }
 
+function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
+  const base = ['type', 'state', 'proposal_id', 'assistant_id'];
+  if (value.state === 'proposed') {
+    if (
+      !exactKeys(value, [
+        'type', 'state', 'proposal_id', 'team_id', 'reply', 'expires_in', 'assistant',
+      ]) ||
+      !OPAQUE_ID_RE.test(value.proposal_id) ||
+      value.team_id !== expectedTeamId ||
+      !Number.isSafeInteger(value.expires_in) ||
+      value.expires_in < 1 ||
+      value.expires_in > 120 ||
+      typeof value.reply !== 'string' ||
+      !value.reply.trim() ||
+      value.reply.length > MAX_REPLY_CHARS ||
+      CHAT_TEXT_CONTROL_RE.test(value.reply)
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'assistant-uninstall',
+      state: 'proposed',
+      proposal_id: value.proposal_id,
+      team_id: value.team_id,
+      team_name: canonicalTeam(expectedTeamName),
+      reply: value.reply,
+      expires_in: value.expires_in,
+      assistant: canonicalUninstallAssistant(value.assistant),
+    };
+  }
+  if (!OPAQUE_ID_RE.test(value.proposal_id)) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const assistantId = canonicalId(value.assistant_id);
+  if (['uninstalling', 'cancelled', 'expired'].includes(value.state)) {
+    if (!exactKeys(value, base)) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'assistant-uninstall',
+      state: value.state,
+      proposal_id: value.proposal_id,
+      assistant_id: assistantId,
+    };
+  }
+  if (value.state === 'uninstalled') {
+    if (
+      !exactKeys(value, [...base, 'team_id', 'uninstalled']) ||
+      value.team_id !== expectedTeamId ||
+      typeof value.uninstalled !== 'boolean'
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'assistant-uninstall',
+      state: 'uninstalled',
+      proposal_id: value.proposal_id,
+      assistant_id: assistantId,
+      team_id: value.team_id,
+      uninstalled: value.uninstalled,
+    };
+  }
+  if (value.state === 'failed') {
+    if (
+      !exactKeys(value, [...base, 'status']) ||
+      !Number.isInteger(value.status) ||
+      value.status < 400 ||
+      value.status > 599
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'assistant-uninstall',
+      state: 'failed',
+      proposal_id: value.proposal_id,
+      assistant_id: assistantId,
+      status: value.status,
+    };
+  }
+  throw new LocalApiError('The local chat response is invalid.');
+}
+
 /** Parse one public chat frame. Raw provider events and extra fields fail closed. */
 export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -954,6 +1045,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'assistant-install') {
     return parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName);
+  }
+  if (value.type === 'assistant-uninstall') {
+    return parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName);
   }
   if (value.type === 'error') {
     if (

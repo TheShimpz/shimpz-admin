@@ -144,6 +144,9 @@ async function routeReadyChat(page, {
     { id: 'records.read', label: 'Read DNS records' },
   ],
   holdAssistantInstall = false,
+  assistantUninstall = false,
+  assistantUninstallWasRemoved = true,
+  holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
   disconnectHumanResponse = false,
   holdHumanResponse = false,
@@ -170,15 +173,18 @@ async function routeReadyChat(page, {
   let humanRejectionIndex = 0;
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
-  let assistantInstalled = !assistantInstall;
+  let assistantInstalled = assistantUninstall || !assistantInstall;
   let installProposed = false;
+  let uninstallProposed = false;
   let releaseAssistantInstall = () => {};
+  let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
   let releaseAssistantInventory;
   const assistantInventoryHold = new Promise((resolve) => {
     releaseAssistantInventory = resolve;
   });
   const chatFrames = [];
+  const assistantIconRequests = [];
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -229,20 +235,26 @@ async function routeReadyChat(page, {
       }),
     });
   });
-  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({
-    contentType: 'image/png',
-    body: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64',
-    ),
-  }));
-  await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => route.fulfill({
-    contentType: 'image/png',
-    body: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64',
-    ),
-  }));
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => {
+    assistantIconRequests.push(route.request().url());
+    return route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+  });
+  await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => {
+    assistantIconRequests.push(route.request().url());
+    return route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+  });
   await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
@@ -430,6 +442,63 @@ async function routeReadyChat(page, {
           else completeAssistantInstall();
           return;
         }
+        if (assistantUninstall && assistantInstalled) {
+          if (!uninstallProposed) {
+            uninstallProposed = true;
+            socket.send(JSON.stringify({
+              type: 'assistant-uninstall',
+              state: 'proposed',
+              proposal_id: 'e'.repeat(32),
+              team_id: 'marketing',
+              reply: 'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
+              expires_in: 120,
+              assistant: {
+                id: 'shimpz-cloudflare',
+                name: 'Shimpz Cloudflare',
+                summary: assistantInstallSummary,
+                version: '0.4.1',
+              },
+            }));
+            return;
+          }
+          if (frame.message === 'no') {
+            socket.send(JSON.stringify({
+              type: 'assistant-uninstall',
+              state: 'cancelled',
+              proposal_id: 'e'.repeat(32),
+              assistant_id: 'shimpz-cloudflare',
+            }));
+            return;
+          }
+          if (frame.message !== 'yes') {
+            socket.send(JSON.stringify({
+              type: 'error',
+              status: 400,
+              detail: 'unexpected Assistant uninstall confirmation',
+            }));
+            return;
+          }
+          socket.send(JSON.stringify({
+            type: 'assistant-uninstall',
+            state: 'uninstalling',
+            proposal_id: 'e'.repeat(32),
+            assistant_id: 'shimpz-cloudflare',
+          }));
+          const completeAssistantUninstall = () => {
+            assistantInstalled = false;
+            socket.send(JSON.stringify({
+              type: 'assistant-uninstall',
+              state: 'uninstalled',
+              proposal_id: 'e'.repeat(32),
+              assistant_id: 'shimpz-cloudflare',
+              team_id: 'marketing',
+              uninstalled: assistantUninstallWasRemoved,
+            }));
+          };
+          if (holdAssistantUninstall) releaseAssistantUninstall = completeAssistantUninstall;
+          else completeAssistantUninstall();
+          return;
+        }
         if (integrationChallenge) {
           socket.send(JSON.stringify({
             type: 'integrations-required',
@@ -491,11 +560,13 @@ async function routeReadyChat(page, {
     });
   });
   return {
+    assistantIconRequests: () => assistantIconRequests,
     chatFrames: () => chatFrames,
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     inferenceWrites: () => inferenceWrites,
     releaseAssistantInstall: () => releaseAssistantInstall(),
+    releaseAssistantUninstall: () => releaseAssistantUninstall(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseReply: () => releaseReply(),
@@ -647,6 +718,87 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   expect(chat.chatFrames().at(-1).assistant_ids).toEqual(['shimpz-cloudflare']);
+});
+
+test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const chat = await routeReadyChat(page, {
+    assistantUninstall: true,
+    holdAssistantUninstall: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Uninstall the Cloudflare Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const task = page.locator('[data-slot="chat-task"]');
+  await expect(task).toHaveAttribute('data-state', 'pending');
+  await expect(task).toContainText('Assistant uninstall');
+  await expect(task).toContainText('Confirmation required');
+  await expect(task).toContainText(
+    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team.',
+  );
+  const confirmation = task.getByText('Uninstall this Assistant from this Team?', { exact: true });
+  await expect(confirmation).toHaveCSS('text-align', 'right');
+  const icon = task.locator('img');
+  await expect(icon).toHaveAttribute(
+    'src',
+    '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
+  );
+  await expectTaskMediaBesideTitle(task);
+  await expect(task.getByRole('button', { name: 'Cancel uninstalling Shimpz Cloudflare' }))
+    .toBeEnabled();
+  const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+  await expect(uninstall).toBeEnabled();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+
+  await uninstall.click();
+  await expect(page.getByText('yes', { exact: true })).toHaveCount(0);
+  await expect(task).toHaveAttribute('data-state', 'working');
+  expect(await task.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
+    .toBe('rgb(252, 238, 10)');
+  await expect(task).toBeFocused();
+  chat.releaseAssistantUninstall();
+
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect(task).toContainText('Uninstalled');
+  await expect(task.getByRole('button')).toHaveCount(0);
+  const outcome = page.locator('.shimpz-message--assistant').last();
+  await expect(outcome).toContainText(
+    'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.',
+  );
+  await expect(outcome).toContainText('You can install it again whenever you want.');
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+  expect(chat.assistantIconRequests().some((url) => url.includes('/catalog-icon'))).toBe(false);
+
+  await composer.fill('What can this Team do now?');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  expect(chat.chatFrames().at(-1).assistant_ids).toEqual([]);
+});
+
+test('cancels an Assistant uninstall without projecting a confirmation reply', async ({ page }) => {
+  await routeReadyChat(page, { assistantUninstall: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Uninstall the Cloudflare Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const task = page.locator('[data-slot="chat-task"]');
+  await task.getByRole('button', { name: 'Cancel uninstalling Shimpz Cloudflare' }).click();
+
+  await expect(page.getByText('no', { exact: true })).toHaveCount(0);
+  await expect(task).toHaveAttribute('data-state', 'cancelled');
+  await expect(task).toContainText('Cancelled');
+  await expect(task.getByRole('button')).toHaveCount(0);
+  await expect(composer).toBeFocused();
 });
 
 test('describes an idempotently available Assistant with its installed Actions', async ({ page }) => {

@@ -526,6 +526,98 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant installat
   );
 });
 
+test('chat admits only the exact conversational Assistant uninstall lifecycle', () => {
+  const proposalId = 'd'.repeat(32);
+  const proposed = {
+    type: 'assistant-uninstall',
+    state: 'proposed',
+    proposal_id: proposalId,
+    team_id: 'team_1',
+    reply: 'The Cloudflare Assistant is installed. Should I uninstall it?',
+    expires_in: 120,
+    assistant: {
+      id: 'shimpz-cloudflare',
+      name: 'Shimpz Cloudflare',
+      summary: 'Manage Cloudflare zones and DNS records.',
+      version: '0.4.4',
+    },
+  };
+  assert.deepEqual(parseChatEvent(proposed, 'team_1', 'Marketing'), {
+    ...proposed,
+    team_name: 'Marketing',
+  });
+  for (const event of [
+    {
+      type: 'assistant-uninstall', state: 'uninstalling', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: true,
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: false,
+    },
+    {
+      type: 'assistant-uninstall', state: 'cancelled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-uninstall', state: 'expired', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare',
+    },
+    {
+      type: 'assistant-uninstall', state: 'failed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', status: 503,
+    },
+  ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
+});
+
+test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall events', () => {
+  const proposalId = 'd'.repeat(32);
+  const proposed = {
+    type: 'assistant-uninstall',
+    state: 'proposed',
+    proposal_id: proposalId,
+    team_id: 'team_1',
+    reply: 'Uninstall this Assistant?',
+    expires_in: 120,
+    assistant: {
+      id: 'shimpz-cloudflare',
+      name: 'Shimpz Cloudflare',
+      summary: 'Manage Cloudflare zones and DNS records.',
+      version: '0.4.4',
+    },
+  };
+  for (const invalid of [
+    { ...proposed, source_digest: `sha256:${'a'.repeat(64)}` },
+    { ...proposed, team_id: 'other_team' },
+    { ...proposed, expires_in: 121 },
+    { ...proposed, assistant: { ...proposed.assistant, version: 'latest' } },
+    { ...proposed, assistant: { ...proposed.assistant, actions: [] } },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'other_team', uninstalled: true,
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: 'yes',
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalling', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', approved: true,
+    },
+    {
+      type: 'assistant-uninstall', state: 'failed', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', status: 200,
+    },
+  ]) assert.throws(
+    () => parseChatEvent(invalid, 'team_1', 'Marketing'),
+    /response is invalid/,
+  );
+});
+
 
 
 test('chat accepts only exact bounded public integration requirements', () => {

@@ -39,7 +39,7 @@
   let turns = $state([]);
   let busy = $state(false);
   let syncing = $state(false);
-  let installOutcomePending = $state(null);
+  let lifecycleOutcomePending = $state(null);
   let progressEvents = $state([]);
   let progressSequence = $state(0);
   let stopping = $state(false);
@@ -48,7 +48,7 @@
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
-  const installExpiryTimers = new Map();
+  const lifecycleExpiryTimers = new Map();
   let reconnectAttempt = 0;
   const MAX_RECONNECT_ATTEMPTS = 5;
   let integrationsOpen = $state(false);
@@ -82,13 +82,13 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
-  let installWorking = $derived(turns.some((turn) => turn.install?.state === 'working'));
-  let composerBusy = $derived(busy || syncing || installOutcomePending !== null);
+  let lifecycleWorking = $derived(turns.some((turn) => turn.lifecycle?.state === 'working'));
+  let composerBusy = $derived(busy || syncing || lifecycleOutcomePending !== null);
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
-    installWorking
-      ? copy.install.working
+    lifecycleWorking
+      ? lifecycleCopy(turns.findLast((turn) => turn.lifecycle?.state === 'working')?.lifecycle).working
       : currentProgress
       ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
       : busy ? thinking : '',
@@ -106,7 +106,7 @@
       ? $teamContext.error
       : '',
   );
-  let installDecisionDisabled = $derived(
+  let lifecycleDecisionDisabled = $derived(
     composerBusy ||
       stopping ||
       !socketReady ||
@@ -143,98 +143,112 @@
     ));
   }
 
-  function installVisualState(state) {
+  function lifecycleCopy(lifecycle) {
+    return lifecycle?.operation === 'uninstall' ? copy.uninstall : copy.install;
+  }
+
+  function lifecycleVisualState(state) {
     if (state === 'proposed') return 'pending';
     if (state === 'working') return 'working';
-    if (state === 'installed') return 'complete';
+    if (state === 'installed' || state === 'uninstalled') return 'complete';
     if (state === 'cancelled' || state === 'expired') return 'cancelled';
     return 'failed';
   }
 
-  function installStatus(install) {
-    if (install.state === 'proposed') return copy.install.pending;
-    if (install.state === 'working') return copy.install.working;
-    if (install.state === 'installed') {
-      return install.installed ? copy.install.complete : copy.install.available;
+  function lifecycleStatus(lifecycle) {
+    const lifecycleMessages = lifecycleCopy(lifecycle);
+    if (lifecycle.state === 'proposed') return lifecycleMessages.pending;
+    if (lifecycle.state === 'working') return lifecycleMessages.working;
+    if (lifecycle.state === 'installed') {
+      return lifecycle.installed ? lifecycleMessages.complete : lifecycleMessages.available;
     }
-    if (install.state === 'cancelled') return copy.install.cancelled;
-    if (install.state === 'expired') return copy.install.expired;
-    if (install.state === 'unknown') return copy.disconnected;
-    return copy.install.failed;
+    if (lifecycle.state === 'uninstalled') {
+      return lifecycle.uninstalled ? lifecycleMessages.complete : lifecycleMessages.absent;
+    }
+    if (lifecycle.state === 'cancelled') return lifecycleMessages.cancelled;
+    if (lifecycle.state === 'expired') return lifecycleMessages.expired;
+    if (lifecycle.state === 'unknown') return lifecycleMessages.unknown ?? copy.disconnected;
+    return lifecycleMessages.failed;
   }
 
-  function installIconSource(install) {
-    const assistantId = encodeURIComponent(install.assistant.id);
-    if (install.state === 'installed' && chatTeamId) {
+  function lifecycleIconSource(lifecycle) {
+    const assistantId = encodeURIComponent(lifecycle.assistant.id);
+    if ((lifecycle.operation === 'uninstall' || lifecycle.state === 'installed') && chatTeamId) {
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
     return `/api/assistants/${assistantId}/catalog-icon`;
   }
 
-  function clearInstallExpiry(proposalId) {
-    const timer = installExpiryTimers.get(proposalId);
+  function clearLifecycleExpiry(proposalId) {
+    const timer = lifecycleExpiryTimers.get(proposalId);
     if (timer) clearTimeout(timer);
-    installExpiryTimers.delete(proposalId);
+    lifecycleExpiryTimers.delete(proposalId);
   }
 
-  function scheduleInstallExpiry(proposalId, expiresIn) {
-    clearInstallExpiry(proposalId);
-    installExpiryTimers.set(proposalId, setTimeout(() => {
-      installExpiryTimers.delete(proposalId);
+  function scheduleLifecycleExpiry(proposalId, expiresIn) {
+    clearLifecycleExpiry(proposalId);
+    lifecycleExpiryTimers.set(proposalId, setTimeout(() => {
+      lifecycleExpiryTimers.delete(proposalId);
       turns = turns.map((turn) => (
-        turn.install?.proposal_id === proposalId && turn.install.state === 'proposed'
-          ? { ...turn, install: { ...turn.install, state: 'expired' } }
+        turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed'
+          ? { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } }
           : turn
       ));
     }, expiresIn * 1000));
   }
 
-  function expireSocketInstalls() {
-    for (const timer of installExpiryTimers.values()) clearTimeout(timer);
-    installExpiryTimers.clear();
+  function expireSocketLifecycles() {
+    for (const timer of lifecycleExpiryTimers.values()) clearTimeout(timer);
+    lifecycleExpiryTimers.clear();
     turns = turns.map((turn) => {
-      if (turn.install?.state === 'proposed') {
-        return { ...turn, install: { ...turn.install, state: 'expired' } };
+      if (turn.lifecycle?.state === 'proposed') {
+        return { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } };
       }
-      if (turn.install?.state === 'working') {
-        return { ...turn, install: { ...turn.install, state: 'unknown' } };
+      if (turn.lifecycle?.state === 'working') {
+        return { ...turn, lifecycle: { ...turn.lifecycle, state: 'unknown' } };
       }
       return turn;
     });
   }
 
-  function installTurnIndex(proposalId) {
-    return turns.findLastIndex((turn) => turn.install?.proposal_id === proposalId);
+  function lifecycleTurnIndex(proposalId) {
+    return turns.findLastIndex((turn) => turn.lifecycle?.proposal_id === proposalId);
   }
 
-  function applyInstallEvent(incoming, receipt) {
+  function applyLifecycleEvent(incoming, receipt) {
+    const operation = incoming.type === 'assistant-uninstall' ? 'uninstall' : 'install';
     if (incoming.state === 'proposed') {
-      if (installTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate install proposal');
+      if (lifecycleTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate lifecycle proposal');
       turns = [...turns, {
         role: 'assistant',
         text: incoming.reply,
         author: incoming.team_name,
         receipt,
-        install: {
+        lifecycle: {
+          operation,
           proposal_id: incoming.proposal_id,
           assistant: incoming.assistant,
           state: 'proposed',
         },
       }];
-      scheduleInstallExpiry(incoming.proposal_id, incoming.expires_in);
+      scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
       return true;
     }
-    const index = installTurnIndex(incoming.proposal_id);
-    if (index < 0) throw new Error('unknown install proposal');
-    const current = turns[index].install;
-    if (current.assistant.id !== incoming.assistant_id) throw new Error('mismatched install proposal');
-    clearInstallExpiry(incoming.proposal_id);
+    const index = lifecycleTurnIndex(incoming.proposal_id);
+    if (index < 0) throw new Error('unknown lifecycle proposal');
+    const current = turns[index].lifecycle;
+    if (current.operation !== operation || current.assistant.id !== incoming.assistant_id) {
+      throw new Error('mismatched lifecycle proposal');
+    }
+    clearLifecycleExpiry(incoming.proposal_id);
+    const workingState = operation === 'uninstall' ? 'uninstalling' : 'installing';
+    const completeState = operation === 'uninstall' ? 'uninstalled' : 'installed';
     const allowed = current.state === 'proposed'
-      ? ['installing', 'cancelled', 'expired']
-      : current.state === 'working' ? ['installed', 'failed']
+      ? [workingState, 'cancelled', 'expired']
+      : current.state === 'working' ? [completeState, 'failed']
         : current.state === 'expired' ? ['expired'] : [];
-    if (!allowed.includes(incoming.state)) throw new Error('invalid install transition');
-    const state = incoming.state === 'installing' ? 'working' : incoming.state;
+    if (!allowed.includes(incoming.state)) throw new Error('invalid lifecycle transition');
+    const state = incoming.state === workingState ? 'working' : incoming.state;
     const updated = {
       ...current,
       state,
@@ -249,26 +263,28 @@
               : {}),
           }
         : {}),
+      ...(incoming.state === 'uninstalled' ? { uninstalled: incoming.uninstalled } : {}),
       ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
     };
     turns = turns.map((turn, turnIndex) => (
-      turnIndex === index ? { ...turn, install: updated } : turn
+      turnIndex === index ? { ...turn, lifecycle: updated } : turn
     ));
-    return incoming.state !== 'installing';
+    return incoming.state !== workingState;
   }
 
   async function appendInstallOutcome(incoming) {
     const { installedAssistants } = await refreshTeamInventory(fetch);
     if (
-      installOutcomePending?.teamId !== incoming.team_id ||
-      installOutcomePending?.proposalId !== incoming.proposal_id ||
-      installOutcomePending?.assistantId !== incoming.assistant_id ||
+      lifecycleOutcomePending?.teamId !== incoming.team_id ||
+      lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
+      lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
       chatTeamId !== incoming.team_id
     ) return;
-    const index = installTurnIndex(incoming.proposal_id);
+    const index = lifecycleTurnIndex(incoming.proposal_id);
     if (index < 0) return;
-    const install = turns[index].install;
+    const install = turns[index].lifecycle;
     if (
+      install.operation !== 'install' ||
       install.state !== 'installed' ||
       install.assistant.id !== incoming.assistant_id ||
       install.completionAnnounced
@@ -307,12 +323,64 @@
       : '';
     const nextTurns = turns.map((turn, turnIndex) => (
       turnIndex === index
-        ? { ...turn, install: { ...turn.install, completionAnnounced: true } }
+        ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
         : turn
     ));
     nextTurns.splice(index + 1, 0, {
       role: 'assistant',
       text: `${outcome}${actionList}\n\n${copy.install.resend}`,
+      author: team.name,
+    });
+    turns = nextTurns;
+    void revealLatestExchange();
+  }
+
+  async function appendUninstallOutcome(incoming) {
+    const { installedAssistants } = await refreshTeamInventory(fetch);
+    if (
+      lifecycleOutcomePending?.teamId !== incoming.team_id ||
+      lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
+      lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
+      chatTeamId !== incoming.team_id
+    ) return;
+    const index = lifecycleTurnIndex(incoming.proposal_id);
+    if (index < 0) return;
+    const uninstall = turns[index].lifecycle;
+    if (
+      uninstall.operation !== 'uninstall' ||
+      uninstall.state !== 'uninstalled' ||
+      uninstall.assistant.id !== incoming.assistant_id ||
+      uninstall.completionAnnounced
+    ) return;
+    const team = $teamContext.teams.find((entry) => entry.id === incoming.team_id);
+    const stillInstalled = installedAssistants.some(
+      (entry) => entry.assistant === incoming.assistant_id,
+    );
+    const stillProjected = $teamContext.installedAssistants.some(
+      (entry) => entry.assistant === incoming.assistant_id,
+    );
+    if (
+      stillInstalled ||
+      stillProjected ||
+      !team ||
+      $teamContext.phase !== 'ready' ||
+      $teamContext.selectedTeamId !== incoming.team_id ||
+      $teamContext.selectedAssistantIds.includes(incoming.assistant_id)
+    ) throw new Error('uninstalled Assistant inventory mismatch');
+    const outcomeKey = uninstall.uninstalled ? 'uninstalledReply' : 'absentReply';
+    const outcome = $t(`chatPage.uninstall.${outcomeKey}`, {
+      assistant: escapeMarkdownText(uninstall.assistant.name),
+      version: escapeMarkdownText(uninstall.assistant.version),
+      team: escapeMarkdownText(team.name),
+    });
+    const nextTurns = turns.map((turn, turnIndex) => (
+      turnIndex === index
+        ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
+        : turn
+    ));
+    nextTurns.splice(index + 1, 0, {
+      role: 'assistant',
+      text: `${outcome}\n\n${copy.uninstall.reinstall}`,
       author: team.name,
     });
     turns = nextTurns;
@@ -343,15 +411,15 @@
 
   async function focusStop() {
     await tick();
-    if (mounted && busy && !syncing && !installWorking && !integrationChallenge && !humanChallenge) {
+    if (mounted && busy && !syncing && !lifecycleWorking && !integrationChallenge && !humanChallenge) {
       stopButton?.focus({ preventScroll: true });
     }
   }
 
-  async function focusInstallTask(proposalId) {
+  async function focusLifecycleTask(proposalId) {
     await tick();
-    if (!mounted || !busy || !installWorking) return;
-    document.getElementById(`assistant-install-${proposalId}`)?.focus({ preventScroll: true });
+    if (!mounted || !busy || !lifecycleWorking) return;
+    document.getElementById(`assistant-lifecycle-${proposalId}`)?.focus({ preventScroll: true });
   }
 
   async function revealLatestExchange() {
@@ -410,7 +478,7 @@
     socket = null;
     socketReady = false;
     syncing = false;
-    expireSocketInstalls();
+    expireSocketLifecycles();
     resetProgress();
     resetChallengeState();
     current?.close(1000, 'Team changed');
@@ -421,7 +489,7 @@
     if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
       throw new Error('unexpected Assistant integration requirement');
     }
-    expireSocketInstalls();
+    expireSocketLifecycles();
     integrationChallenge = incoming;
     humanChallenge = undefined;
     humanRejection = undefined;
@@ -441,7 +509,7 @@
     if (!installed.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
-    expireSocketInstalls();
+    expireSocketLifecycles();
     const reconciledExpiry = humanExpiredId === incoming.challenge_id;
     humanExpiredId = '';
     if (reconciledExpiry) clearError();
@@ -573,36 +641,42 @@
           }
           return;
         }
-        if (incoming.type === 'assistant-install') {
-          if (!busy || stopping || syncing) throw new Error('unexpected Assistant install event');
+        if (incoming.type === 'assistant-install' || incoming.type === 'assistant-uninstall') {
+          if (!busy || stopping || syncing) throw new Error('unexpected Assistant lifecycle event');
           const receipt = progressEvents.map((item) => ({ ...item }));
-          const terminal = applyInstallEvent(incoming, receipt);
+          const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
           resetProgress();
           if (!terminal) {
-            void focusInstallTask(incoming.proposal_id);
+            void focusLifecycleTask(incoming.proposal_id);
             return;
           }
           busy = false;
           clearError();
-          if (incoming.state === 'installed') {
-            installOutcomePending = {
+          if (incoming.state === 'installed' || incoming.state === 'uninstalled') {
+            lifecycleOutcomePending = {
               teamId: incoming.team_id,
               proposalId: incoming.proposal_id,
               assistantId: incoming.assistant_id,
             };
-            void appendInstallOutcome(incoming)
+            const appendOutcome = incoming.state === 'uninstalled'
+              ? appendUninstallOutcome
+              : appendInstallOutcome;
+            const lifecycleMessages = incoming.state === 'uninstalled'
+              ? copy.uninstall
+              : copy.install;
+            void appendOutcome(incoming)
               .catch(() => {
                 if (
-                  installOutcomePending?.teamId === incoming.team_id &&
-                  installOutcomePending?.proposalId === incoming.proposal_id
-                ) setError(copy.install.refreshFailed);
+                  lifecycleOutcomePending?.teamId === incoming.team_id &&
+                  lifecycleOutcomePending?.proposalId === incoming.proposal_id
+                ) setError(lifecycleMessages.refreshFailed);
               })
               .finally(() => {
                 if (
-                  installOutcomePending?.teamId === incoming.team_id &&
-                  installOutcomePending?.proposalId === incoming.proposal_id
-                ) installOutcomePending = null;
+                  lifecycleOutcomePending?.teamId === incoming.team_id &&
+                  lifecycleOutcomePending?.proposalId === incoming.proposal_id
+                ) lifecycleOutcomePending = null;
               });
           }
           return;
@@ -622,7 +696,7 @@
       }
 
       const receipt = progressEvents.map((item) => ({ ...item }));
-      expireSocketInstalls();
+      expireSocketLifecycles();
       busy = false;
       syncing = false;
       stopping = false;
@@ -649,7 +723,7 @@
       socketReady = false;
       syncing = false;
       stopping = false;
-      expireSocketInstalls();
+      expireSocketLifecycles();
       resetProgress();
       if (busy) busy = false;
       resetChallengeState();
@@ -663,7 +737,7 @@
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
     stopping = false;
-    installOutcomePending = null;
+    lifecycleOutcomePending = null;
     draft = '';
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
@@ -852,7 +926,7 @@
     }
   }
 
-  function submitInstallDecision(decision) {
+  function submitLifecycleDecision(decision) {
     return submitMessage(decision, { focusActiveTurn: false, projectUserTurn: false });
   }
 
@@ -1000,64 +1074,69 @@
               {#if exchange.assistant}
                 <Message variant="assistant" author={exchange.assistant.author}>
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
-                  {#if exchange.assistant.install}
-                    {#snippet installMedia()}
+                  {#if exchange.assistant.lifecycle}
+                    {@const lifecycle = exchange.assistant.lifecycle}
+                    {@const lifecycleMessages = lifecycleCopy(lifecycle)}
+                    {#snippet lifecycleMedia()}
                       <AssistantIcon
-                        assistant={exchange.assistant.install.assistant.id}
-                        src={installIconSource(exchange.assistant.install)}
+                        assistant={lifecycle.assistant.id}
+                        src={lifecycleIconSource(lifecycle)}
                         size={44}
                       />
                     {/snippet}
-                    {#snippet installDetails()}
-                      <div class="assistant-install-details">
-                        {#if exchange.assistant.install.state === 'proposed'}
-                          <span class="assistant-install-detail-copy assistant-install-confirm-copy">
-                            {copy.install.confirm}
+                    {#snippet lifecycleDetails()}
+                      <div class="assistant-lifecycle-details">
+                        {#if lifecycle.state === 'proposed'}
+                          <span class="assistant-lifecycle-detail-copy assistant-lifecycle-confirm-copy">
+                            {lifecycleMessages.confirm}
                           </span>
-                          <div class="assistant-install-actions">
+                          <div class="assistant-lifecycle-actions">
                             <Button
                               variant="secondary"
                               size="compact"
                               type="button"
-                              onclick={() => submitInstallDecision('no')}
-                              disabled={installDecisionDisabled}
-                              aria-label={$t('chatPage.install.cancelActionLabel', {
-                                assistant: exchange.assistant.install.assistant.name,
+                              onclick={() => submitLifecycleDecision('no')}
+                              disabled={lifecycleDecisionDisabled}
+                              aria-label={$t(`chatPage.${lifecycle.operation}.cancelActionLabel`, {
+                                assistant: lifecycle.assistant.name,
                               })}
                             >
-                              {copy.install.cancelAction}
+                              {lifecycleMessages.cancelAction}
                             </Button>
                             <Button
+                              variant={lifecycle.operation === 'uninstall' ? 'danger' : 'primary'}
                               size="compact"
                               type="button"
-                              onclick={() => submitInstallDecision('yes')}
-                              disabled={installDecisionDisabled}
-                              aria-label={$t('chatPage.install.installActionLabel', {
-                                assistant: exchange.assistant.install.assistant.name,
+                              onclick={() => submitLifecycleDecision('yes')}
+                              disabled={lifecycleDecisionDisabled}
+                              aria-label={$t(`chatPage.${lifecycle.operation}.${lifecycle.operation}ActionLabel`, {
+                                assistant: lifecycle.assistant.name,
                               })}
                             >
-                              {copy.install.installAction}
+                              {lifecycleMessages[`${lifecycle.operation}Action`]}
                             </Button>
                           </div>
                         {/if}
-                        {#if exchange.assistant.install.status}
-                          <span class="assistant-install-detail-copy">HTTP {exchange.assistant.install.status}</span>
+                        {#if lifecycle.status}
+                          <span class="assistant-lifecycle-detail-copy">HTTP {lifecycle.status}</span>
                         {/if}
                       </div>
                     {/snippet}
                     <ChatTask
-                      class="assistant-install-task"
-                      id={`assistant-install-${exchange.assistant.install.proposal_id}`}
-                      label={copy.install.label}
-                      title={exchange.assistant.install.assistant.name}
-                      description={exchange.assistant.install.assistant.summary}
-                      state={installVisualState(exchange.assistant.install.state)}
-                      status={installStatus(exchange.assistant.install)}
-                      media={installMedia}
-                      details={exchange.assistant.install.state === 'proposed' || exchange.assistant.install.status
-                        ? installDetails
+                      class="assistant-lifecycle-task"
+                      id={`assistant-lifecycle-${lifecycle.proposal_id}`}
+                      label={lifecycleMessages.label}
+                      title={lifecycle.assistant.name}
+                      description={lifecycle.operation === 'uninstall'
+                        ? lifecycleMessages.consequences
+                        : lifecycle.assistant.summary}
+                      state={lifecycleVisualState(lifecycle.state)}
+                      status={lifecycleStatus(lifecycle)}
+                      media={lifecycleMedia}
+                      details={lifecycle.state === 'proposed' || lifecycle.status
+                        ? lifecycleDetails
                         : undefined}
-                      tabindex={exchange.assistant.install.state === 'working' ? -1 : undefined}
+                      tabindex={lifecycle.state === 'working' ? -1 : undefined}
                     />
                   {/if}
                   <ExecutionReceipt
@@ -1068,7 +1147,7 @@
                     {assistantNames}
                   />
                 </Message>
-              {:else if index === exchanges.length - 1 && busy && !installWorking && !integrationChallenge && !humanChallenge}
+              {:else if index === exchanges.length - 1 && busy && !lifecycleWorking && !integrationChallenge && !humanChallenge}
                 <ShimpzThinking
                   label={thinking}
                   events={progressEvents}
@@ -1107,7 +1186,7 @@
                 onkeydown={handleComposerKeydown}
               />
               <Toolbar class="composer-actions">
-              {#if busy && !syncing && !installWorking}
+              {#if busy && !syncing && !lifecycleWorking}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
                 </Button>
@@ -1292,24 +1371,24 @@
     overflow-wrap: anywhere;
   }
 
-  :global(.assistant-install-task) {
+  :global(.assistant-lifecycle-task) {
     margin-top: 0.8rem;
   }
 
-  :global(.assistant-install-task .assistant-install-detail-copy) {
+  :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;
   }
 
-  :global(.assistant-install-task .assistant-install-confirm-copy) {
+  :global(.assistant-lifecycle-task .assistant-lifecycle-confirm-copy) {
     text-align: right;
   }
 
-  :global(.assistant-install-task .assistant-install-details) {
+  :global(.assistant-lifecycle-task .assistant-lifecycle-details) {
     display: grid;
     gap: 0.55rem;
   }
 
-  :global(.assistant-install-task .assistant-install-actions) {
+  :global(.assistant-lifecycle-task .assistant-lifecycle-actions) {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
