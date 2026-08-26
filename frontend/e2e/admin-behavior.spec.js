@@ -862,6 +862,23 @@ for (const integrationStatus of ['missing', 'reauthorization-required', 'expired
 
 test('uses text actions and one semantic selected state in the Assistant chooser', async ({ page }) => {
   await routeReadyChat(page);
+  let uninstalled = false;
+  const uninstallMethods = [];
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', async (route) => {
+    uninstallMethods.push(route.request().method());
+    uninstalled = true;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: true }),
+    });
+  });
+  await page.route('**/api/teams/marketing/assistants', (route) => {
+    if (!uninstalled) return route.fallback();
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ assistants: [] }),
+    });
+  });
   await page.goto('/chat/');
 
   await page.locator('.context-controls').getByRole('button').nth(2).click();
@@ -879,6 +896,14 @@ test('uses text actions and one semantic selected state in the Assistant chooser
     'src',
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
   );
+  const uninstall = dialog.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+  await expect(uninstall).toBeVisible();
+  const [choiceBox, uninstallBox] = await Promise.all([choice.boundingBox(), uninstall.boundingBox()]);
+  expect(choiceBox).not.toBeNull();
+  expect(uninstallBox).not.toBeNull();
+  expect(uninstallBox.x).toBeGreaterThan(choiceBox.x + choiceBox.width);
+  expect(Math.min(choiceBox.y + choiceBox.height, uninstallBox.y + uninstallBox.height)
+    - Math.max(choiceBox.y, uninstallBox.y)).toBeGreaterThan(0);
   await expect(dialog).toHaveScreenshot('assistant-chooser.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
@@ -886,8 +911,72 @@ test('uses text actions and one semantic selected state in the Assistant chooser
   await unselectAll.click();
   await expect(choice).toHaveAttribute('aria-pressed', 'false');
   await expect(choice.locator('.selection-mark')).toHaveCount(0);
+
+  await uninstall.click();
+  let confirmation = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
+  await expect(dialog).toBeHidden();
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+  await expect(choice).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' }).click();
+  confirmation = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
+  await confirmation.getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('No running Assistants are available in this Team.');
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+  await expect(page.locator('[data-slot="toast"]')).toContainText(
+    'Shimpz Cloudflare is no longer installed in Marketing.',
+  );
+  expect(uninstallMethods).toEqual(['DELETE']);
   const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
   expect(results.violations).toEqual([]);
+});
+
+test('keeps localized Assistant uninstall actions bounded and label-in-name compatible', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  for (const [locale, visibleLabel, direction] of [
+    ['de', 'Deinstallieren', 'ltr'],
+    ['ja', 'アンインストール', 'ltr'],
+    ['ar', 'إلغاء التثبيت', 'rtl'],
+  ]) {
+    await page.evaluate((language) => localStorage.setItem('shimpz_lang', language), locale);
+    await page.reload();
+    await page.locator('.context-controls').getByRole('button').nth(2).click();
+    const dialog = page.locator('dialog[open]');
+    const row = dialog.locator('.assistant-choice-row');
+    const choice = row.getByRole('button').first();
+    const uninstall = row.getByRole('button').last();
+    await expect(uninstall).toHaveText(visibleLabel);
+    await expect(uninstall).toHaveAttribute('aria-label', new RegExp(visibleLabel));
+    await expect(page.locator('html')).toHaveAttribute('dir', direction);
+    expect(await uninstall.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const [dialogBox, choiceBox, uninstallBox] = await Promise.all([
+      dialog.boundingBox(),
+      choice.boundingBox(),
+      uninstall.boundingBox(),
+    ]);
+    expect(dialogBox).not.toBeNull();
+    expect(choiceBox).not.toBeNull();
+    expect(uninstallBox).not.toBeNull();
+    expect(uninstallBox.x).toBeGreaterThanOrEqual(dialogBox.x);
+    expect(uninstallBox.x + uninstallBox.width).toBeLessThanOrEqual(dialogBox.x + dialogBox.width);
+    expect(
+      Math.min(choiceBox.x + choiceBox.width, uninstallBox.x + uninstallBox.width)
+      - Math.max(choiceBox.x, uninstallBox.x),
+    ).toBeLessThanOrEqual(0);
+    await dialog.getByRole('button', { name: {
+      de: 'Schließen',
+      ja: '閉じる',
+      ar: 'إغلاق',
+    }[locale] }).click();
+  }
 });
 
 test('renders the fail-closed Integration challenge dialog', async ({ page }) => {

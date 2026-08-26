@@ -12,14 +12,16 @@
     TextAction,
     TextField,
   } from '@shimpz/frontend';
+  import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import { t } from '$lib/i18n.js';
-  import { LocalApiError } from '$lib/localApi.js';
+  import { LocalApiError, uninstallAssistant } from '$lib/localApi.js';
   import { modelContext, selectTeamBrain } from '$lib/modelContext.js';
   import {
     createTeam,
     deleteTeam,
     MAX_SELECTED_ASSISTANTS,
+    refreshTeamInventory,
     selectAllTeamAssistants,
     teamContext,
     toggleTeamAssistant,
@@ -37,6 +39,7 @@
   let teamTrigger = $state();
   let brainTrigger = $state();
   let assistantTrigger = $state();
+  let assistantCloseButton = $state();
   let teamName = $state('');
   let creating = $state(false);
   let dialogError = $state('');
@@ -46,8 +49,13 @@
   let deleting = $state(false);
   let deleteError = $state('');
   let deleteErrorDetail = $state('');
+  let uninstallDialogOpen = $state(false);
+  let uninstallTarget = $state();
+  let uninstalling = $state(false);
+  let uninstallError = $state('');
 
   let copy = $derived($t('chatContext'));
+  let storeCopy = $derived($t('store'));
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === $teamContext.selectedTeamId) ?? null,
   );
@@ -253,6 +261,70 @@
     await goto(next);
   }
 
+  function reopenAssistantDialog() {
+    queueMicrotask(() => {
+      open(assistantDialog);
+      queueMicrotask(() => assistantCloseButton?.focus());
+    });
+  }
+
+  function openAssistantUninstall(assistant) {
+    if (controlsDisabled || uninstalling) return;
+    assistantDialog?.close();
+    uninstallTarget = assistant;
+    uninstallError = '';
+    queueMicrotask(() => {
+      uninstallDialogOpen = true;
+    });
+  }
+
+  function cancelAssistantUninstall() {
+    if (uninstalling) return;
+    uninstallDialogOpen = false;
+    uninstallTarget = undefined;
+    uninstallError = '';
+    reopenAssistantDialog();
+  }
+
+  async function confirmAssistantUninstall() {
+    const team = activeTeam;
+    const assistant = uninstallTarget;
+    if (uninstalling || !team || !assistant) return;
+    uninstalling = true;
+    uninstallError = '';
+    try {
+      await uninstallAssistant(fetch, team.id, assistant.id);
+      let refreshed = false;
+      try {
+        await refreshTeamInventory(fetch);
+        refreshed = true;
+      } catch {
+        // The committed lifecycle outcome remains successful even if presentation refresh fails.
+      }
+      uninstallDialogOpen = false;
+      uninstallTarget = undefined;
+      showAdminNotice({
+        tone: refreshed ? 'success' : 'info',
+        label: $t(refreshed
+          ? 'store.assistantUninstalledLabel'
+          : 'store.assistantUninstallRefreshLabel'),
+        message: $t(refreshed
+          ? 'store.assistantUninstalledMessage'
+          : 'store.assistantUninstallRefreshMessage', {
+          assistant: assistant.name,
+          team: team.name,
+        }),
+      });
+      reopenAssistantDialog();
+    } catch (error) {
+      uninstallError = error instanceof LocalApiError
+        ? error.message
+        : storeCopy.assistantUninstallFailureTitle;
+    } finally {
+      uninstalling = false;
+    }
+  }
+
 </script>
 
 <div class="context-controls" aria-label={copy.contextAria}>
@@ -391,26 +463,59 @@
               </svg>
             </span>{/if}
           {/snippet}
-          <ChoiceItem
-            title={assistant.name}
-            description={`v${assistant.version}`}
-            {selected}
-            {leading}
-            {trailing}
-            disabled={!selected && selectedCount >= MAX_SELECTED_ASSISTANTS}
-            onclick={() => toggleTeamAssistant(assistant.id)}
-          />
+          <div class="assistant-choice-row">
+            <ChoiceItem
+              title={assistant.name}
+              description={`v${assistant.version}`}
+              {selected}
+              {leading}
+              {trailing}
+              disabled={!selected && selectedCount >= MAX_SELECTED_ASSISTANTS}
+              onclick={() => toggleTeamAssistant(assistant.id)}
+            />
+            <Button
+              variant="danger"
+              size="compact"
+              type="button"
+              aria-label={$t('chatContext.uninstallAssistantNamed', { assistant: assistant.name })}
+              onclick={() => openAssistantUninstall(assistant)}
+            >{copy.uninstallAssistant}</Button>
+          </div>
         {/each}
       </fieldset>
     {:else}
       <p class="dialog-status">{copy.assistantEmpty}</p>
     {/if}
     {#snippet footer()}
-      <Button variant="secondary" type="button" onclick={() => close(assistantDialog, assistantTrigger)}>{copy.close}</Button>
+      <Button bind:element={assistantCloseButton} variant="secondary" type="button" onclick={() => close(assistantDialog, assistantTrigger)}>{copy.close}</Button>
       <Button type="button" onclick={openAssistantStore}>{copy.openStore}</Button>
     {/snippet}
   </DialogFrame>
 </Modal>
+
+<AssistantActionDialog
+  bind:open={uninstallDialogOpen}
+  kicker={copy.assistantKicker}
+  title={uninstallError
+    ? storeCopy.assistantUninstallFailureTitle
+    : $t('store.assistantUninstallTitle', { assistant: uninstallTarget?.name ?? '' })}
+  lead={uninstallError
+    ? storeCopy.assistantUninstallFailureLead
+    : $t('store.assistantUninstallLead', { team: activeTeam?.name ?? '' })}
+  targetLabel={storeCopy.assistantDestinationTeam}
+  targetName={activeTeam?.name ?? ''}
+  targetId={activeTeam?.id ?? ''}
+  error={uninstallError}
+  primaryLabel={uninstalling
+    ? storeCopy.assistantUninstalling
+    : uninstallError ? storeCopy.assistantActionRetry : storeCopy.assistantUninstallConfirm}
+  secondaryLabel={storeCopy.assistantActionCancel}
+  primaryDisabled={!activeTeam || !uninstallTarget}
+  busy={uninstalling}
+  destructive
+  onconfirm={confirmAssistantUninstall}
+  oncancel={cancelAssistantUninstall}
+/>
 
 <Modal
   bind:element={deleteDialog}
@@ -508,6 +613,7 @@
   .bulk-actions :global(svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: square; stroke-linejoin: bevel; }
   .selection-limit { margin: -0.45rem 0 0; color: var(--text-faint); font-size: 0.64rem; line-height: 1.45; }
   .assistant-choices { display: grid; min-width: 0; gap: 1px; margin: 0; border: 0; padding: 0.45rem 0; }
+  .assistant-choice-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
   .selection-mark { display: grid; place-items: center; color: var(--success); }
   .selection-mark svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; }
   .dialog-status { margin: 0; color: var(--text-faint); font-size: 0.7rem; line-height: 1.5; }

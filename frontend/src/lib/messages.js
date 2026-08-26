@@ -233,6 +233,8 @@ export const messages = {
       "selectedLimited": "{selected} of {total} · max {limit}",
       "current": "Current",
       "openStore": "Open Assistant Store",
+      "uninstallAssistant": "Uninstall",
+      "uninstallAssistantNamed": "Uninstall {assistant}",
       "close": "Close",
       "cancel": "Cancel"
     },
@@ -593,6 +595,8 @@ export const messages = {
       "selectedLimited": "{selected} de {total} · máximo {limit}",
       "current": "Atual",
       "openStore": "Abrir Store de Assistants",
+      "uninstallAssistant": "Desinstalar",
+      "uninstallAssistantNamed": "Desinstalar {assistant}",
       "close": "Fechar",
       "cancel": "Cancelar"
     },
@@ -953,6 +957,8 @@ export const messages = {
       "selectedLimited": "{selected} de {total} · máximo {limit}",
       "current": "Actual",
       "openStore": "Abrir Store de Assistants",
+      "uninstallAssistant": "Desinstalar",
+      "uninstallAssistantNamed": "Desinstalar {assistant}",
       "close": "Cerrar",
       "cancel": "Cancelar"
     },
@@ -1313,6 +1319,8 @@ export const messages = {
       "selectedLimited": "已选 {selected}/{total} · 上限 {limit}",
       "current": "当前",
       "openStore": "打开 Assistant Store",
+      "uninstallAssistant": "卸载",
+      "uninstallAssistantNamed": "卸载 {assistant}",
       "close": "关闭",
       "cancel": "取消"
     },
@@ -1673,6 +1681,8 @@ export const messages = {
       "selectedLimited": "{selected} sur {total} · maximum {limit}",
       "current": "Actuel",
       "openStore": "Ouvrir le Store d’Assistants",
+      "uninstallAssistant": "Désinstaller",
+      "uninstallAssistantNamed": "Désinstaller {assistant}",
       "close": "Fermer",
       "cancel": "Annuler"
     },
@@ -2033,6 +2043,8 @@ export const messages = {
       "selectedLimited": "{selected} von {total} · maximal {limit}",
       "current": "Aktuell",
       "openStore": "Assistant Store öffnen",
+      "uninstallAssistant": "Deinstallieren",
+      "uninstallAssistantNamed": "Deinstallieren: {assistant}",
       "close": "Schließen",
       "cancel": "Abbrechen"
     },
@@ -2393,6 +2405,8 @@ export const messages = {
       "selectedLimited": "{total} 件中 {selected} 件 · 上限 {limit}",
       "current": "現在",
       "openStore": "Assistant Store を開く",
+      "uninstallAssistant": "アンインストール",
+      "uninstallAssistantNamed": "{assistant} をアンインストール",
       "close": "閉じる",
       "cancel": "キャンセル"
     },
@@ -2753,6 +2767,8 @@ export const messages = {
       "selectedLimited": "{selected} من {total} · الحد {limit}",
       "current": "الحالي",
       "openStore": "فتح متجر Assistants",
+      "uninstallAssistant": "إلغاء التثبيت",
+      "uninstallAssistantNamed": "إلغاء التثبيت لـ {assistant}",
       "close": "إغلاق",
       "cancel": "إلغاء"
     },

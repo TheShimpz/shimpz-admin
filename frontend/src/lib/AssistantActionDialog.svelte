@@ -3,6 +3,7 @@
   import { t } from '$lib/i18n.js';
   let {
     open = $bindable(false),
+    kicker = '',
     title,
     lead,
     targetLabel = '',
@@ -43,7 +44,7 @@
 <Modal bind:element={dialog} labelledBy="assistant-action-title" oncancel={cancel}>
   <form onsubmit={submit}>
   <DialogFrame
-    kicker={$t('store.destinationKicker')}
+    kicker={kicker || $t('store.destinationKicker')}
     {title}
     titleId="assistant-action-title"
     {lead}
