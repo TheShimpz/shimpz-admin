@@ -173,7 +173,11 @@
 
   function lifecycleIconSource(lifecycle) {
     const assistantId = encodeURIComponent(lifecycle.assistant.id);
-    if ((lifecycle.operation === 'uninstall' || lifecycle.state === 'installed') && chatTeamId) {
+    if (lifecycle.operation === 'uninstall') {
+      if (!chatTeamId || lifecycle.state === 'uninstalled') return undefined;
+      return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
+    }
+    if (lifecycle.state === 'installed' && chatTeamId) {
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
     return `/api/assistants/${assistantId}/catalog-icon`;

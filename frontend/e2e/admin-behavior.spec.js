@@ -158,6 +158,7 @@ async function routeReadyChat(page, {
   integrationStatus = 'connected',
   integrationRequirements,
   missingInference = false,
+  holdInferenceWrite = false,
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   holdReply = false,
@@ -179,6 +180,10 @@ async function routeReadyChat(page, {
   let releaseAssistantInstall = () => {};
   let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
+  let releaseInferenceWrite;
+  const inferenceWriteHold = new Promise((resolve) => {
+    releaseInferenceWrite = resolve;
+  });
   let releaseAssistantInventory;
   const assistantInventoryHold = new Promise((resolve) => {
     releaseAssistantInventory = resolve;
@@ -269,7 +274,7 @@ async function routeReadyChat(page, {
       })),
     }),
   }));
-  await page.route('**/api/teams/marketing/inference', (route) => {
+  await page.route('**/api/teams/marketing/inference', async (route) => {
     if (missingInference && route.request().method() === 'GET') {
       return route.fulfill({
         status: 409,
@@ -277,7 +282,10 @@ async function routeReadyChat(page, {
         body: JSON.stringify({ detail: 'not configured' }),
       });
     }
-    if (route.request().method() === 'PUT') inferenceWrites += 1;
+    if (route.request().method() === 'PUT') {
+      inferenceWrites += 1;
+      if (holdInferenceWrite) await inferenceWriteHold;
+    }
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' }),
@@ -568,6 +576,7 @@ async function routeReadyChat(page, {
     releaseAssistantInstall: () => releaseAssistantInstall(),
     releaseAssistantUninstall: () => releaseAssistantUninstall(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
+    releaseInferenceWrite: () => releaseInferenceWrite(),
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseReply: () => releaseReply(),
     syncFrames: () => syncFrames,
@@ -768,6 +777,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
 
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect(task).toContainText('Uninstalled');
+  await expect(task.locator('img')).toHaveCount(0);
   await expect(task.getByRole('button')).toHaveCount(0);
   const outcome = page.locator('.shimpz-message--assistant').last();
   await expect(outcome).toContainText(
@@ -782,6 +792,33 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   expect(chat.chatFrames().at(-1).assistant_ids).toEqual([]);
+});
+
+test('never falls back to the Store icon when model context leaves an uninstall card', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantUninstall: true,
+    holdInferenceWrite: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Uninstall the Cloudflare Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const task = page.locator('[data-slot="chat-task"]');
+  await expect(task.locator('img')).toHaveAttribute(
+    'src',
+    '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
+  );
+
+  await page.getByRole('button', { name: /Brain GPT-5\.6 Terra/i }).click();
+  const brainDialog = page.getByRole('dialog', { name: 'Choose a Brain' });
+  await brainDialog.getByText('GPT-5.6 Sol', { exact: true }).click();
+  await expect.poll(chat.inferenceWrites).toBe(1);
+  await expect.poll(
+    () => chat.assistantIconRequests().some((url) => url.includes('/catalog-icon')),
+  ).toBe(false);
+
+  chat.releaseInferenceWrite();
 });
 
 test('cancels an Assistant uninstall without projecting a confirmation reply', async ({ page }) => {
