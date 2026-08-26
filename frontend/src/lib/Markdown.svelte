@@ -1,9 +1,10 @@
 <script>
+  import { Notice } from '@shimpz/frontend';
   import MarkdownInline from '$lib/MarkdownInline.svelte';
   import { parseMarkdown } from '$lib/markdown.js';
 
   let { markdown = '', variant = 'body' } = $props();
-  let blocks = $derived(parseMarkdown(markdown));
+  let blocks = $derived(parseMarkdown(markdown, { chatNotices: variant === 'chat' }));
 
   function tableLabel(block) {
     return block.header.map((cell) => cell.map((token) => token.text).join('')).join(', ');
@@ -20,6 +21,8 @@
       <h3><MarkdownInline tokens={block.inlines} /></h3>
     {:else if block.type === 'code'}
       <pre><code>{block.text}</code></pre>
+    {:else if block.type === 'notice'}
+      <Notice variant={block.variant} role="status">{block.text}</Notice>
     {:else if block.type === 'list' && block.ordered}
       <ol>{#each block.items as item}<li><MarkdownInline tokens={item} /></li>{/each}</ol>
     {:else if block.type === 'list'}
@@ -83,4 +86,7 @@
   .align-right { text-align: end; }
   .markdown :global(a) { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-alt); text-underline-offset: 0.2em; }
   .markdown :global(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .markdown :global([data-slot="notice"]) { margin: 0.75rem 0; color: var(--text); }
+  .markdown.chat > :global([data-slot="notice"]:first-child) { margin-top: 0; }
+  .markdown.chat > :global([data-slot="notice"]:last-child) { margin-bottom: 0; }
 </style>

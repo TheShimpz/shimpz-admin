@@ -2,6 +2,7 @@ const HTTP_URL = /^https?:\/\//i;
 const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(.+)$/;
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
 const TABLE_DIVIDER = /^:?-{3,}:?$/;
+const CHAT_NOTICE = /^:(success|warning|error)\[([^\]\r\n]+)\]$/;
 const MAX_TABLE_COLUMNS = 32;
 const MAX_TABLE_ROWS = 256;
 
@@ -95,8 +96,18 @@ export function parseInline(source) {
   return tokens;
 }
 
-function startsBlock(line) {
-  return line.startsWith('```') || HEADING.test(line) || LIST_ITEM.test(line);
+function chatNotice(line, enabled) {
+  if (!enabled) return null;
+  const match = CHAT_NOTICE.exec(line);
+  if (!match) return null;
+  return { type: 'notice', variant: match[1], text: match[2] };
+}
+
+function startsBlock(line, chatNotices) {
+  return (
+    line.startsWith('```') || HEADING.test(line) || LIST_ITEM.test(line)
+    || chatNotice(line, chatNotices) !== null
+  );
 }
 
 function tableCells(line) {
@@ -172,7 +183,7 @@ function parseTable(lines, index) {
  * Convert bounded Markdown into a closed AST. Raw HTML is always ordinary escaped text;
  * callers render only the node types returned here and never inject HTML.
  */
-export function parseMarkdown(markdown) {
+export function parseMarkdown(markdown, { chatNotices = false } = {}) {
   const lines = String(markdown ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   const blocks = [];
   let index = 0;
@@ -193,6 +204,13 @@ export function parseMarkdown(markdown) {
       }
       if (index < lines.length) index += 1;
       blocks.push({ type: 'code', text: content.join('\n') });
+      continue;
+    }
+
+    const notice = chatNotice(line, chatNotices);
+    if (notice) {
+      blocks.push(notice);
+      index += 1;
       continue;
     }
 
@@ -231,7 +249,7 @@ export function parseMarkdown(markdown) {
     const paragraph = [line.trim()];
     index += 1;
     while (
-      index < lines.length && lines[index].trim() && !startsBlock(lines[index])
+      index < lines.length && lines[index].trim() && !startsBlock(lines[index], chatNotices)
       && !parseTable(lines, index)
     ) {
       paragraph.push(lines[index].trim());

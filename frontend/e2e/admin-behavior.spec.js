@@ -519,7 +519,13 @@ test('opens Chat directly when the provider key already exists', async ({ page }
 });
 
 test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {
-  await routeReadyChat(page);
+  await routeReadyChat(page, {
+    reply: `**Rendered answer** with a [safe link](https://example.com).
+
+:success[The deployment completed.]
+:warning[Review the DNS TTL before publishing.]
+:error[The provider rejected the request.]`,
+  });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -528,6 +534,21 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'safe link' })).toHaveAttribute('href', 'https://example.com/');
+  const notices = page.locator('.shimpz-message--assistant [data-slot="notice"]');
+  await expect(notices).toHaveCount(3);
+  for (let index = 0; index < 3; index += 1) {
+    await expect(notices.nth(index)).toHaveAttribute('role', 'status');
+  }
+  await expect(notices.nth(0)).toHaveClass(/shimpz-notice--success/);
+  await expect(notices.nth(1)).toHaveClass(/shimpz-notice--warning/);
+  await expect(notices.nth(2)).toHaveClass(/shimpz-notice--error/);
+  await expect(notices.nth(0).locator('[data-slot="notice-icon"] circle')).toHaveCount(1);
+  await expect(notices.nth(1).locator('[data-slot="notice-icon"] circle')).toHaveCount(0);
+  await expect(notices.nth(2).locator('[data-slot="notice-icon"] path')).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).include('.shimpz-message--assistant').analyze()).violations)
+    .toEqual([]);
+  await page.emulateMedia({ forcedColors: 'active' });
+  await expect(notices.nth(0)).toHaveCSS('border-left-color', 'rgb(0, 0, 0)');
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 

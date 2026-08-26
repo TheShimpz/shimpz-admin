@@ -65,6 +65,63 @@ test('does not expose any HTML node or attribute channel in its output model', (
   assert.match(encoded, /<script>alert\(1\)<\/script>/);
 });
 
+test('admits only exact whole-line semantic Notices on the Chat surface', () => {
+  const source = `Before
+
+:success[The deployment completed.]
+:warning[Review the DNS TTL before publishing.]
+:error[The provider rejected the request.]
+
+After`;
+  const body = parseMarkdown(source);
+  const chat = parseMarkdown(source, { chatNotices: true });
+
+  assert.equal(body.some((block) => block.type === 'notice'), false);
+  assert.deepEqual(chat, [
+    { type: 'paragraph', inlines: [{ type: 'text', text: 'Before' }] },
+    { type: 'notice', variant: 'success', text: 'The deployment completed.' },
+    { type: 'notice', variant: 'warning', text: 'Review the DNS TTL before publishing.' },
+    { type: 'notice', variant: 'error', text: 'The provider rejected the request.' },
+    { type: 'paragraph', inlines: [{ type: 'text', text: 'After' }] },
+  ]);
+});
+
+test('keeps malformed, escaped, nested, and unknown Chat Notice directives literal', () => {
+  const source = `:info[Unsupported]
+:success[]
+:success[**not recursively parsed**]
+:warning[nested [content]]
+Prefix :error[not a whole line]
+\\:error[Escaped]
+<script>:success[still inert]</script>`;
+  const blocks = parseMarkdown(source, { chatNotices: true });
+
+  assert.deepEqual(blocks.map((block) => block.type), ['paragraph', 'notice', 'paragraph']);
+  assert.deepEqual(blocks[1], {
+    type: 'notice',
+    variant: 'success',
+    text: '**not recursively parsed**',
+  });
+  const literal = blocks
+    .filter((block) => block.type === 'paragraph')
+    .flatMap((block) => block.inlines)
+    .map((token) => token.text)
+    .join(' ');
+  assert.match(literal, /:info\[Unsupported\]/);
+  assert.match(literal, /:success\[\]/);
+  assert.match(literal, /:warning\[nested \[content\]\]/);
+  assert.match(literal, /:error\[Escaped\]/);
+  assert.match(literal, /<script>:success\[still inert\]<\/script>/);
+});
+
+test('neutralizes semantic Notice syntax when external display copy is escaped', () => {
+  const source = ':error[Creator-authored status]';
+  const blocks = parseMarkdown(escapeMarkdownText(source), { chatNotices: true });
+
+  assert.deepEqual(blocks.map((block) => block.type), ['paragraph']);
+  assert.deepEqual(blocks[0].inlines, [{ type: 'text', text: source }]);
+});
+
 test('parses bounded GitHub-style tables with alignment and safe inline tokens', () => {
   const blocks = parseMarkdown(`Records
 
