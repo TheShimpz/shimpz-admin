@@ -277,11 +277,12 @@
     grid-template-rows: auto auto minmax(0, 1fr);
   }
 
-  :global(.notification-modal) {
+  :global(dialog.shimpz-modal.notification-modal) {
     position: fixed;
     inset-block: 0;
     inset-inline-end: 0;
     width: min(28rem, 100vw);
+    max-width: none;
     height: 100dvh;
     max-height: none;
     margin: 0;
@@ -388,7 +389,7 @@
   .changelog { margin-top: 1.5rem; border-top: 1px solid var(--border-strong); padding-top: 1.25rem; }
 
   @media (max-width: 520px) {
-    :global(.notification-modal) { width: 100vw; }
+    :global(dialog.shimpz-modal.notification-modal) { width: 100vw; }
     :global(.notification-actions) { justify-content: stretch; }
     :global(.notification-actions .shimpz-button) { flex: 1 1 auto; }
     :global(.notification-item) { padding-inline: 1rem; }

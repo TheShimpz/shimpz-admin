@@ -1423,6 +1423,10 @@
     padding: 0.6rem 0;
   }
 
+  @media (max-width: 820px) {
+    .empty-conversation .composer { align-self: end; }
+  }
+
   @media (max-width: 640px) {
     :global(.turns .shimpz-message--user) { max-width: 92%; }
     .conversation { --chat-rail-gutter: 0.6rem; }

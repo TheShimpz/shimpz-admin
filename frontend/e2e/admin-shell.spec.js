@@ -299,7 +299,7 @@ test('uses the compact locale control at 360 pixels', async ({ page }) => {
   await expect(page.getByRole('menu', { name: 'Language' })).toBeVisible();
 });
 
-test('renders authenticated navigation with canonical primitives', async ({ page }) => {
+test('renders authenticated navigation with canonical primitives', async ({ page }, testInfo) => {
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -328,15 +328,143 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await localeTrigger.click();
   const localeMenu = page.getByRole('menu', { name: 'Language' });
   await expect(localeMenu).toBeVisible();
-  const [iconBox, labelBox] = await Promise.all([
-    localeTrigger.locator('svg').boundingBox(),
-    localeTrigger.getByText('English', { exact: true }).boundingBox(),
-  ]);
+  const iconBox = await localeTrigger.locator('svg').boundingBox();
   expect(iconBox).not.toBeNull();
-  expect(labelBox).not.toBeNull();
-  expect(labelBox.x - (iconBox.x + iconBox.width)).toBeGreaterThanOrEqual(7);
+  if (testInfo.project.name === 'mobile') {
+    await expect(localeTrigger.getByText('English', { exact: true })).toHaveCount(0);
+  } else {
+    const labelBox = await localeTrigger.getByText('English', { exact: true }).boundingBox();
+    expect(labelBox).not.toBeNull();
+    expect(labelBox.x - (iconBox.x + iconBox.width)).toBeGreaterThanOrEqual(7);
+  }
   await expect(localeMenu.getByRole('menuitemradio').first()).toHaveCSS('border-top-width', '0px');
   await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
+
+  if (testInfo.project.name === 'desktop') {
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open notifications. 0 unread.' }).click();
+    const notificationDialog = page.getByRole('dialog', { name: 'Notifications' });
+    await expect(notificationDialog).toBeVisible();
+    const notificationBox = await notificationDialog.boundingBox();
+    expect(notificationBox).not.toBeNull();
+    expect(Math.abs(notificationBox.width - 448)).toBeLessThan(1);
+    expect(Math.abs((notificationBox.x + notificationBox.width) - page.viewportSize().width)).toBeLessThan(1);
+    expect(Math.abs(notificationBox.height - page.viewportSize().height)).toBeLessThan(1);
+    await expect(notificationDialog).toHaveScreenshot('notification-drawer.png', visualContract);
+    await notificationDialog.getByRole('button', { name: 'Close notifications' }).click();
+  }
+});
+
+test('uses one bounded app chrome and scroll region on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'mobile shell contract');
+  await page.route('**/api/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'Unavailable in the mobile shell contract.' }),
+  }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+
+  await page.goto('/assistants/');
+
+  const shell = page.locator('[data-slot="workspace-shell"]');
+  const header = page.locator('[data-slot="workspace-header"]');
+  const main = page.locator('[data-slot="workspace-main"]');
+  const tabs = page.locator('[data-slot="workspace-sidebar"]');
+  const tabLinks = tabs.locator('nav').getByRole('link');
+  await expect(shell).toHaveCSS('overflow', 'hidden');
+  await expect(main).toHaveCSS('overflow-y', 'auto');
+  await expect(tabs.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(tabLinks).toHaveCount(2);
+
+  const [headerBox, mainBox, tabsBox, assistantTabBox, chatTabBox] = await Promise.all([
+    header.boundingBox(),
+    main.boundingBox(),
+    tabs.boundingBox(),
+    tabLinks.nth(0).boundingBox(),
+    tabLinks.nth(1).boundingBox(),
+  ]);
+  expect(headerBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(tabsBox).not.toBeNull();
+  expect(assistantTabBox).not.toBeNull();
+  expect(chatTabBox).not.toBeNull();
+  expect(Math.abs(headerBox.y)).toBeLessThan(1);
+  expect(Math.abs(mainBox.y - (headerBox.y + headerBox.height))).toBeLessThan(1);
+  expect(Math.abs((mainBox.y + mainBox.height) - tabsBox.y)).toBeLessThan(1);
+  expect(Math.abs(tabsBox.y + tabsBox.height - page.viewportSize().height)).toBeLessThan(1);
+  expect(Math.abs(tabsBox.x)).toBeLessThan(1);
+  expect(Math.abs(tabsBox.width - page.viewportSize().width)).toBeLessThan(1);
+  expect(assistantTabBox.height).toBeGreaterThanOrEqual(44);
+  expect(chatTabBox.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(assistantTabBox.width - chatTabBox.width)).toBeLessThanOrEqual(1);
+
+  const appbarButtons = header.getByRole('button');
+  await expect(appbarButtons).toHaveCount(2);
+  for (const button of await appbarButtons.all()) {
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  }
+
+  const contextError = main.locator('.context-error');
+  const retry = contextError.getByRole('button');
+  await expect(contextError).toBeVisible();
+  await expect(retry).toBeVisible();
+  const [errorBox, retryBox] = await Promise.all([contextError.boundingBox(), retry.boundingBox()]);
+  expect(errorBox).not.toBeNull();
+  expect(retryBox).not.toBeNull();
+  expect(errorBox.y).toBeGreaterThanOrEqual(mainBox.y);
+  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height);
+  expect(retryBox.height).toBeGreaterThanOrEqual(44);
+
+  const notificationTrigger = header.getByRole('button', { name: 'Open notifications. 0 unread.' });
+  await notificationTrigger.click();
+  const notificationDialog = page.getByRole('dialog', { name: 'Notifications' });
+  await expect(notificationDialog).toBeVisible();
+  const notificationBox = await notificationDialog.boundingBox();
+  expect(notificationBox).not.toBeNull();
+  expect(Math.abs(notificationBox.x)).toBeLessThan(1);
+  expect(Math.abs(notificationBox.width - page.viewportSize().width)).toBeLessThan(1);
+  expect(Math.abs(notificationBox.height - page.viewportSize().height)).toBeLessThan(1);
+  await notificationDialog.getByRole('button', { name: 'Close notifications' }).click();
+  await expect(notificationDialog).toBeHidden();
+
+  const overflow = await page.locator('html').evaluate((element) => ({
+    client: element.clientWidth,
+    scroll: element.scrollWidth,
+  }));
+  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
+
+  const skip = page.locator('a[href="#admin-content"]');
+  await skip.focus();
+  const [skipBox, skipZIndex, headerZIndex] = await Promise.all([
+    skip.boundingBox(),
+    skip.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+    header.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+  ]);
+  expect(skipBox).not.toBeNull();
+  expect(skipBox.y).toBeGreaterThanOrEqual(0);
+  expect(skipZIndex).toBeGreaterThan(headerZIndex);
+
+  await header.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'العربية' }).click();
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  const rtlTabsBox = await tabs.boundingBox();
+  expect(rtlTabsBox).not.toBeNull();
+  expect(Math.abs(rtlTabsBox.x)).toBeLessThan(1);
+  expect(Math.abs(rtlTabsBox.width - page.viewportSize().width)).toBeLessThan(1);
+
+  await page.setViewportSize({ width: 320, height: 640 });
+  await expect(tabLinks).toHaveCount(2);
+  const narrowOverflow = await page.locator('html').evaluate((element) => ({
+    client: element.clientWidth,
+    scroll: element.scrollWidth,
+  }));
+  expect(narrowOverflow.scroll).toBeLessThanOrEqual(narrowOverflow.client);
 });
 
 test('shows the installed Admin version with the read-only Local release status', async ({ page }) => {

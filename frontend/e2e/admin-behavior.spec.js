@@ -1666,6 +1666,39 @@ test('keeps compact controls and stacked dialog actions usable at 360 pixels', a
   expect(addBox.y).toBeLessThan(closeBox.y);
 });
 
+test('keeps the empty Chat composer inside a reduced mobile viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'mobile viewport contract');
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+  await page.setViewportSize({ width: 390, height: 520 });
+
+  const input = page.getByRole('textbox', { name: 'Send', exact: true });
+  const composer = page.locator('.composer');
+  const main = page.locator('[data-slot="workspace-main"]');
+  const tabs = page.locator('[data-slot="workspace-sidebar"]');
+  await input.focus();
+  await expect(input).toBeFocused();
+
+  const [composerBox, mainBox, tabsBox] = await Promise.all([
+    composer.boundingBox(),
+    main.boundingBox(),
+    tabs.boundingBox(),
+  ]);
+  expect(composerBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(tabsBox).not.toBeNull();
+  expect(composerBox.y).toBeGreaterThanOrEqual(mainBox.y);
+  expect(composerBox.y + composerBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height);
+  expect(Math.abs((mainBox.y + mainBox.height) - tabsBox.y)).toBeLessThan(1);
+  expect(Math.abs((tabsBox.y + tabsBox.height) - page.viewportSize().height)).toBeLessThan(1);
+
+  const overflow = await page.locator('html').evaluate((element) => ({
+    client: element.clientWidth,
+    scroll: element.scrollWidth,
+  }));
+  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
+});
+
 test('reports confirmed Team deletion as animated success above Chat', async ({ page }) => {
   await routeReadyChat(page);
   let deleted = false;
@@ -1734,7 +1767,7 @@ test('reports confirmed Team deletion as animated success above Chat', async ({ 
   expect(Math.abs(toastBox.width - mainBox.width)).toBeLessThan(1);
   if (page.viewportSize().width <= 820) {
     expect(Math.abs(toastBox.x)).toBeLessThan(1);
-    expect(Math.abs(toastBox.y - (sidebarBox.y + sidebarBox.height))).toBeLessThan(1);
+    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(sidebarBox.y);
   } else {
     expect(Math.abs(toastBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
     expect(Math.abs(toastBox.y)).toBeLessThan(1);
@@ -1777,7 +1810,7 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   expect(Math.abs(toastOnStoreBox.width - mainBox.width)).toBeLessThan(1);
   if (page.viewportSize().width <= 820) {
     expect(Math.abs(toastOnStoreBox.x)).toBeLessThan(1);
-    expect(Math.abs(toastOnStoreBox.y - (sidebarBox.y + sidebarBox.height))).toBeLessThan(1);
+    expect(toastOnStoreBox.y + toastOnStoreBox.height).toBeLessThanOrEqual(sidebarBox.y);
   } else {
     expect(Math.abs(toastOnStoreBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
     expect(Math.abs(toastOnStoreBox.y)).toBeLessThan(1);
