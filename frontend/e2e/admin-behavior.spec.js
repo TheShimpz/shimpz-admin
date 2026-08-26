@@ -482,6 +482,8 @@ async function routeReadyChat(page, {
           return;
         }
         deliverHumanResponse();
+      } else if (frame.type === 'stop') {
+        socket.send(JSON.stringify({ type: 'stopped' }));
       }
     });
   });
@@ -1587,6 +1589,24 @@ test('shows an accessible processing shimmer and honors display preferences', as
   contract.releaseReply();
   await expect(page.getByText('Rendered answer')).toBeVisible();
   await expect(processing).toHaveCount(0);
+});
+
+test('keeps an intentional Stop silent after the turn ends', async ({ page }) => {
+  await routeReadyChat(page, { holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop' }).click();
+
+  await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
+  await expect(page.getByText('The active turn was stopped.')).toHaveCount(0);
+  await expect(page.locator('[data-slot="notice"][data-variant="error"]')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
 });
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {

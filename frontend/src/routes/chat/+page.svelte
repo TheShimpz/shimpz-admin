@@ -636,7 +636,7 @@
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
-        setError(copy.stopped);
+        clearError();
       } else {
         const projectedError = projectedChatError(incoming.status, incoming.detail);
         setError(projectedError.message, projectedError.detail);
