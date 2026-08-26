@@ -190,10 +190,7 @@ async def _deliver(
                 **(
                     {
                         "assistant_version": labels.assistant_version,
-                        "actions": [
-                            {"id": action.action_id, "label": action.label}
-                            for action in labels.actions
-                        ],
+                        "actions": [{"id": action.action_id, "label": action.label} for action in labels.actions],
                     }
                     if labels is not None
                     else {}

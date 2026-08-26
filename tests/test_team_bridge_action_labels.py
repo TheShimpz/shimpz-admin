@@ -113,10 +113,13 @@ class TeamActionLabelBridgeTest(unittest.TestCase):
             {**valid, "extra": True},
         )
         for body in invalid:
-            with self.subTest(body=body), mock.patch.object(
-                team,
-                "_call",
-                return_value=team.TeamResponse(200, body),
+            with (
+                self.subTest(body=body),
+                mock.patch.object(
+                    team,
+                    "_call",
+                    return_value=team.TeamResponse(200, body),
+                ),
             ):
                 self.assertEqual(
                     team.assistant_action_labels(
