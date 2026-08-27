@@ -147,6 +147,12 @@
     return lifecycle?.operation === 'uninstall' ? copy.uninstall : copy.install;
   }
 
+  function lifecycleProposalReply(operation, assistant) {
+    return $t(`chatPage.${operation}.proposalReply`, {
+      assistant: escapeMarkdownText(assistant.name),
+    });
+  }
+
   function lifecycleVisualState(state) {
     if (state === 'proposed') return 'pending';
     if (state === 'working') return 'working';
@@ -225,7 +231,7 @@
       if (lifecycleTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate lifecycle proposal');
       turns = [...turns, {
         role: 'assistant',
-        text: incoming.reply,
+        text: lifecycleProposalReply(operation, incoming.assistant),
         author: incoming.team_name,
         receipt,
         lifecycle: {

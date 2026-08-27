@@ -669,6 +669,14 @@ test('installs a suggested Assistant from the inline proposal', async ({ page })
 
   const task = page.locator('[data-slot="chat-task"]');
   await expect(task).toHaveAttribute('data-state', 'pending');
+  await expect(page.getByText(
+    'I can install Shimpz Cloudflare to handle this request after you authorize it.',
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText(
+    'The Cloudflare Assistant is required to list your DNS zones. Should I install it?',
+    { exact: true },
+  )).toHaveCount(0);
   await expect(task).toContainText('Shimpz Cloudflare');
   await expect(task).toContainText('Confirmation required');
   const confirmation = task.getByText('Install this Assistant for this Team?', { exact: true });
@@ -743,6 +751,14 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
 
   const task = page.locator('[data-slot="chat-task"]');
   await expect(task).toHaveAttribute('data-state', 'pending');
+  await expect(page.getByText(
+    'Shimpz Cloudflare is installed in this Team. I can uninstall it after you authorize it.',
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText(
+    'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
+    { exact: true },
+  )).toHaveCount(0);
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
