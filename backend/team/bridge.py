@@ -36,6 +36,7 @@ supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
+ACTION_LABEL_TIMEOUT_SECONDS = 15
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
@@ -406,6 +407,7 @@ def assistant_action_labels(
         f"{_assistant_path(canonical_team, canonical_assistant)}/action-labels",
         {"language_exemplar": exemplar},
         model_credential=(provider, api_key),
+        timeout=ACTION_LABEL_TIMEOUT_SECONDS,
     )
     if response.status != 200:
         if type(response.status) is int and 400 <= response.status <= 599:

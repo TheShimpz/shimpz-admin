@@ -106,6 +106,15 @@ class ChatInstallLifecycleTests(unittest.TestCase):
         ):
             self.assertIs(lifecycle._install_then_label(_proposal()), installed)
 
+    def test_action_label_timeout_response_never_delays_install_success_semantics(self) -> None:
+        installed = assistant_install.InstallResult(200, True)
+        unavailable = assistant_install.team.TeamResponse(502, {"detail": "team unavailable"})
+        with (
+            mock.patch.object(assistant_install, "install", return_value=installed),
+            mock.patch.object(lifecycle.local, "installed_action_labels", return_value=unavailable),
+        ):
+            self.assertIs(lifecycle._install_then_label(_proposal()), installed)
+
     def test_discovery_saturation_is_optional(self) -> None:
         with mock.patch.object(
             lifecycle,

@@ -48,6 +48,7 @@ class TeamActionLabelBridgeTest(unittest.TestCase):
             "/v1/teams/team_1/assistants/hello-pulse/action-labels",
             {"language_exemplar": "Liste minhas zonas DNS"},
             model_credential=("openai", API_KEY),
+            timeout=team.ACTION_LABEL_TIMEOUT_SECONDS,
         )
         self.assertEqual(
             response.body,
