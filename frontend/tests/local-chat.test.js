@@ -6,12 +6,14 @@ import {
   authorizeAssistantIntegration,
   cancelAssistantIntegrationAuthorization,
   chatSocketUrl,
+  clearAssistantStoredInput,
   completeAssistantIntegration,
   createChatFrame,
   createHumanResponseFrame,
   createStopFrame,
   createSyncFrame,
   listAssistantIntegrations,
+  listAssistantStoredInputs,
   oauthReturnFailure,
   parseChatEvent,
   restoreOAuthChatTurns,
@@ -689,6 +691,59 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
       /inventory is invalid/,
     );
   }
+});
+
+test('lists and clears only exact Team-scoped Assistant Stored Input metadata', async () => {
+  const calls = [];
+  const inventory = {
+    stored_inputs: [
+      {
+        assistant_id: 'whatsapp',
+        stored_input_id: 'whatsapp-token',
+        status: 'stored',
+      },
+    ],
+  };
+  assert.deepEqual(
+    await listAssistantStoredInputs(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, inventory);
+    }, 'team_1'),
+    inventory,
+  );
+  assert.equal(calls[0].url, '/api/teams/team_1/assistant-stored-inputs');
+  assert.equal(calls[0].options.cache, 'no-store');
+  assert.doesNotMatch(JSON.stringify(inventory), /"value"|"generation"/i);
+
+  assert.equal(
+    await clearAssistantStoredInput(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, { cleared: true });
+    }, 'team_1', 'whatsapp', 'whatsapp-token'),
+    true,
+  );
+  assert.equal(
+    calls[1].url,
+    '/api/teams/team_1/assistant-stored-inputs/whatsapp/whatsapp-token',
+  );
+  assert.equal(calls[1].options.method, 'DELETE');
+
+  for (const invalid of [
+    { ...inventory, value: 'must-not-cross' },
+    { stored_inputs: [{ ...inventory.stored_inputs[0], value: 'must-not-cross' }] },
+    { stored_inputs: [{ ...inventory.stored_inputs[0], status: 'unknown' }] },
+    { stored_inputs: [...inventory.stored_inputs, ...inventory.stored_inputs] },
+  ]) {
+    await assert.rejects(
+      listAssistantStoredInputs(async () => response(200, invalid), 'team_1'),
+      /inventory is invalid/,
+    );
+  }
+  await assert.rejects(
+    clearAssistantStoredInput(async () => response(200, { cleared: true, value: 'must-not-cross' }),
+      'team_1', 'whatsapp', 'whatsapp-token'),
+    /clear response is invalid/,
+  );
 });
 
 test('starts only a trusted Cloudflare authorization', async () => {

@@ -15,6 +15,7 @@ const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
 const MAX_INTEGRATIONS = 512;
+const MAX_STORED_INPUTS = 128;
 const MAX_INTEGRATION_REQUIREMENTS = 64;
 const MAX_INTEGRATION_SCOPES = 32;
 const MAX_INTEGRATION_ACTIONS = 128;
@@ -697,6 +698,79 @@ export async function listAssistantIntegrations(fetcher, teamId) {
     assistantMetadata.set(integration.assistant_id, metadata);
   }
   return { integrations };
+}
+
+function canonicalStoredInputMetadata(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !exactKeys(value, ['assistant_id', 'stored_input_id', 'status']) ||
+    !['missing', 'stored'].includes(value.status)
+  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.');
+  try {
+    return {
+      assistant_id: canonicalId(value.assistant_id),
+      stored_input_id: canonicalId(value.stored_input_id),
+      status: value.status,
+    };
+  } catch {
+    throw new LocalApiError('The Assistant Stored Input inventory is invalid.');
+  }
+}
+
+export async function listAssistantStoredInputs(fetcher, teamId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant Stored Input request.');
+  requireTeam(teamId);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-stored-inputs`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Assistant Stored Inputs are unavailable.'), response.status);
+  }
+  if (
+    !exactKeys(body, ['stored_inputs']) ||
+    !Array.isArray(body.stored_inputs) ||
+    body.stored_inputs.length > MAX_STORED_INPUTS
+  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+  const storedInputs = body.stored_inputs.map(canonicalStoredInputMetadata);
+  const identities = storedInputs.map((item) => `${item.assistant_id}\u0000${item.stored_input_id}`);
+  if (
+    new Set(identities).size !== identities.length ||
+    identities.some((identity, index) => index > 0 && identities[index - 1] >= identity)
+  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+  return { stored_inputs: storedInputs };
+}
+
+export async function clearAssistantStoredInput(fetcher, teamId, assistantId, storedInputId) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant Stored Input request.');
+  requireTeam(teamId);
+  let assistant;
+  let storedInput;
+  try {
+    assistant = canonicalId(assistantId, 'Invalid Assistant Stored Input request.');
+    storedInput = canonicalId(storedInputId, 'Invalid Assistant Stored Input request.');
+  } catch {
+    throw new LocalApiError('Invalid Assistant Stored Input request.');
+  }
+  const response = await fetcher(
+    `/api/teams/${encodeURIComponent(teamId)}/assistant-stored-inputs/`
+      + `${encodeURIComponent(assistant)}/${encodeURIComponent(storedInput)}`,
+    {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    },
+  );
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'Assistant Stored Input could not be cleared.'), response.status);
+  }
+  if (!exactKeys(body, ['cleared']) || typeof body.cleared !== 'boolean') {
+    throw new LocalApiError('The Assistant Stored Input clear response is invalid.', response.status);
+  }
+  return body.cleared;
 }
 
 export async function authorizeAssistantIntegration(
