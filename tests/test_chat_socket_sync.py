@@ -84,7 +84,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v6", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
 
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:

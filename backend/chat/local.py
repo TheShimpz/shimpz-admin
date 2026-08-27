@@ -79,6 +79,7 @@ _CHAT_ERROR_FALLBACKS = {
 ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation", "reply-validation"})
 PUBLIC_PROGRESS_PHASES = progress_contract.PHASES | ADMIN_PROGRESS_PHASES
 MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 4
+MAX_CAPABILITY_PLAN_IDS = 4
 
 
 def _ignore_progress(_event: dict[str, object]) -> None:
@@ -273,6 +274,52 @@ def installed_action_labels(
         language_exemplar,
         provider=provider,
         api_key=api_key,
+    )
+
+
+def capability_plan(
+    team_id: object,
+    objective: object,
+    candidates: list[dict[str, object]],
+) -> team.TeamResponse:
+    """Project one credential-bound stateless planner result without lifecycle authority."""
+    canonical_id = team.canonical_team_id(team_id)
+    credential = _model_credential(canonical_id)
+    if isinstance(credential, team.TeamResponse):
+        return credential
+    provider, api_key = credential
+    response = team.capability_plan(
+        canonical_id,
+        {"objective": objective, "candidates": candidates},
+        provider=provider,
+        api_key=api_key,
+    )
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    try:
+        body = response.body
+        if set(body) != {"team_id", "status", "assistant_ids", "trace_id"}:
+            raise ValueError("invalid capability plan fields")
+        status = body["status"]
+        raw_ids = body["assistant_ids"]
+        trace_id = body["trace_id"]
+        if (
+            body["team_id"] != canonical_id
+            or status not in {"sufficient", "install-required"}
+            or not isinstance(raw_ids, list)
+            or len(raw_ids) > MAX_CAPABILITY_PLAN_IDS
+            or not isinstance(trace_id, str)
+            or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+        ):
+            raise ValueError("invalid capability plan identity")
+        assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
+        if assistant_ids != sorted(set(assistant_ids)) or (status == "sufficient") != (not assistant_ids):
+            raise ValueError("invalid capability plan selection")
+    except KeyError, TypeError, ValueError, team.TeamRequestError:
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    return PublicResponse(
+        response.status,
+        {"team_id": canonical_id, "status": status, "assistant_ids": assistant_ids},
     )
 
 

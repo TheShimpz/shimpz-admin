@@ -1,4 +1,4 @@
-"""Strict Team projections for conversational Assistant discovery and installation."""
+"""Strict Team projection for one exact automatic Assistant installation."""
 
 from __future__ import annotations
 
@@ -6,61 +6,23 @@ from dataclasses import dataclass
 
 from team import bridge as team
 
-from chat import assistant_inventory, assistant_proposal, store_catalog
-from protocol.http.v1 import payload as team_contract
+from chat import store_catalog
 from protocol.http.v1 import websocket as chat_ws_common
-
-MAX_ENABLED_ASSISTANTS = 16
-
-
-@dataclass(frozen=True, slots=True)
-class ActionLabel:
-    action_id: str
-    label: str
-
-
-@dataclass(frozen=True, slots=True)
-class ActionLabels:
-    assistant_version: str
-    actions: tuple[ActionLabel, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class InstallResult:
     status: int
     installed: bool | None = None
-    labels: ActionLabels | None = None
 
 
-def discover(
-    team_id: str,
-    message: str,
-    enabled_ids: tuple[str, ...],
-    catalog: store_catalog.StoreCatalog,
-) -> store_catalog.CatalogAssistant | None:
-    """Return one strong, uninstalled Store candidate from strict current Team state."""
-    if len(enabled_ids) > MAX_ENABLED_ASSISTANTS or len(set(enabled_ids)) != len(enabled_ids):
-        raise ValueError("enabled Assistant scope is invalid")
-    installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
-    registry = assistant_inventory.registry(team.list_assistants())
-    if any(assistant_id not in registry or assistant_id not in installed for assistant_id in enabled_ids):
-        raise ValueError("enabled Assistant scope is not authoritative")
-    enabled = tuple(registry[assistant_id] for assistant_id in enabled_ids)
-    return assistant_proposal.select_candidate(
-        message,
-        catalog.get(),
-        installed_ids=frozenset(installed),
-        enabled=enabled,
-    )
-
-
-def install(proposal: assistant_proposal.InstallProposal) -> InstallResult:
-    """Submit one exact Team-owned installation intent and admit only its minimal result."""
+def install_publication(team_id: str, assistant: store_catalog.CatalogAssistant) -> InstallResult:
+    """Submit one exact public Store selection to Team's verifying lifecycle."""
     response = team.install_assistant(
-        proposal.team_id,
+        team_id,
         {
-            "assistant_id": proposal.assistant.assistant_id,
-            "source_digest": proposal.assistant.source_digest,
+            "assistant_id": assistant.assistant_id,
+            "source_digest": assistant.source_digest,
         },
     )
     if (
@@ -72,7 +34,7 @@ def install(proposal: assistant_proposal.InstallProposal) -> InstallResult:
     if not 200 <= response.status < 300:
         return InstallResult(response.status)
     try:
-        installed = _install_body(response, proposal.assistant.assistant_id)
+        installed = _install_body(response, assistant.assistant_id)
     except ValueError:
         return InstallResult(502)
     return InstallResult(response.status, installed)
@@ -95,45 +57,3 @@ def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
     ):
         raise ValueError("Assistant install result is invalid")
     return installed
-
-
-def _action_label(value: object) -> ActionLabel:
-    if not isinstance(value, dict) or set(value) != {"id", "label"}:
-        raise ValueError("invalid Action label fields")
-    action_id = team_contract.canonical_action_id(value["id"])
-    label = team_contract.canonical_action_label(value["label"])
-    if action_id is None or action_id != value["id"] or label is None:
-        raise ValueError("invalid Action label")
-    return ActionLabel(action_id, label)
-
-
-def action_labels(
-    response: object,
-    proposal: assistant_proposal.InstallProposal,
-) -> ActionLabels | None:
-    """Admit only labels bound to this exact proposal; availability failure is optional."""
-    try:
-        if not isinstance(response, team.TeamResponse) or response.status != 200 or not isinstance(response.body, dict):
-            raise ValueError("invalid Action label response")
-        body = response.body
-        if set(body) != {"team_id", "assistant", "assistant_version", "actions"}:
-            raise ValueError("invalid Action label response fields")
-        version = body["assistant_version"]
-        raw_actions = body["actions"]
-        if (
-            body["team_id"] != proposal.team_id
-            or body["assistant"] != proposal.assistant.assistant_id
-            or not isinstance(version, str)
-            or assistant_inventory.SEMANTIC_VERSION.fullmatch(version) is None
-            or not isinstance(raw_actions, list)
-            or not 1 <= len(raw_actions) <= 64
-        ):
-            raise ValueError("invalid Action label identity")
-        actions = tuple(_action_label(raw) for raw in raw_actions)
-        ids = [action.action_id for action in actions]
-        labels = [action.label for action in actions]
-        if ids != sorted(set(ids)) or len(set(labels)) != len(labels):
-            raise ValueError("Action labels are not canonical")
-    except KeyError, TypeError, ValueError:
-        return None
-    return ActionLabels(version, actions)

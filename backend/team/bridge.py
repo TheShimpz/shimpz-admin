@@ -37,6 +37,7 @@ supervisor_session = transport.supervisor_session
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 ACTION_LABEL_TIMEOUT_SECONDS = 15
+CAPABILITY_PLAN_TIMEOUT_SECONDS = 65
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
@@ -296,6 +297,26 @@ def chat(
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
         bindings=transport._RequestBindings((provider, api_key)),
         progress=progress,
+    )
+
+
+def capability_plan(
+    team_id: object,
+    payload: object,
+    *,
+    provider: str,
+    api_key: str,
+) -> TeamResponse:
+    """Request one stateless plan over a caller-supplied closed public shortlist."""
+    canonical_id = canonical_team_id(team_id)
+    if not isinstance(payload, dict) or set(payload) != {"objective", "candidates"}:
+        raise TeamRequestError("capability plan requires only objective and candidates")
+    return _call(
+        "POST",
+        f"/v1/teams/{canonical_id}/chat/capability-plan",
+        payload,
+        model_credential=(provider, api_key),
+        timeout=CAPABILITY_PLAN_TIMEOUT_SECONDS,
     )
 
 

@@ -84,13 +84,20 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
-  let lifecycleWorking = $derived(turns.some((turn) => turn.lifecycle?.state === 'working'));
+  let installPlanWorking = $derived(turns.some((turn) => (
+    ['planned', 'installing'].includes(turn.installPlan?.state)
+  )));
+  let lifecycleWorking = $derived(turns.some((turn) => (
+    turn.lifecycle?.state === 'working'
+  )) || installPlanWorking);
   let composerBusy = $derived(busy || syncing || lifecycleOutcomePending !== null);
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
     lifecycleWorking
-      ? lifecycleCopy(turns.findLast((turn) => turn.lifecycle?.state === 'working')?.lifecycle).working
+      ? installPlanWorking
+        ? copy.install.working
+        : copy.uninstall.working
       : currentProgress
       ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
       : busy ? thinking : '',
@@ -146,12 +153,8 @@
     ));
   }
 
-  function lifecycleCopy(lifecycle) {
-    return lifecycle?.operation === 'uninstall' ? copy.uninstall : copy.install;
-  }
-
-  function lifecycleProposalReply(operation, assistant) {
-    return $t(`chatPage.${operation}.proposalReply`, {
+  function lifecycleProposalReply(assistant) {
+    return $t('chatPage.uninstall.proposalReply', {
       assistant: escapeMarkdownText(assistant.name),
     });
   }
@@ -159,18 +162,15 @@
   function lifecycleVisualState(state) {
     if (state === 'proposed') return 'pending';
     if (state === 'working') return 'working';
-    if (state === 'installed' || state === 'uninstalled') return 'complete';
+    if (state === 'uninstalled') return 'complete';
     if (state === 'cancelled' || state === 'expired') return 'cancelled';
     return 'failed';
   }
 
   function lifecycleStatus(lifecycle) {
-    const lifecycleMessages = lifecycleCopy(lifecycle);
+    const lifecycleMessages = copy.uninstall;
     if (lifecycle.state === 'proposed') return lifecycleMessages.pending;
     if (lifecycle.state === 'working') return lifecycleMessages.working;
-    if (lifecycle.state === 'installed') {
-      return lifecycle.installed ? lifecycleMessages.complete : lifecycleMessages.available;
-    }
     if (lifecycle.state === 'uninstalled') {
       return lifecycle.uninstalled ? lifecycleMessages.complete : lifecycleMessages.absent;
     }
@@ -182,15 +182,100 @@
 
   function lifecycleIconSource(lifecycle) {
     const assistantId = encodeURIComponent(lifecycle.assistant.id);
-    if (lifecycle.operation === 'uninstall') {
-      if (lifecycle.state === 'uninstalled') return lifecycle.iconSnapshot;
-      if (!chatTeamId) return undefined;
-      return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
-    }
-    if (lifecycle.state === 'installed' && chatTeamId) {
+    if (lifecycle.state === 'uninstalled') return lifecycle.iconSnapshot;
+    if (!chatTeamId) return undefined;
+    return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
+  }
+
+  function installPlanVisualState(status) {
+    if (status === 'pending') return 'pending';
+    if (status === 'installing') return 'working';
+    if (status === 'installed') return 'complete';
+    return 'failed';
+  }
+
+  function installPlanStatus(status) {
+    if (status === 'pending') return copy.install.pending;
+    if (status === 'installing') return copy.install.working;
+    if (status === 'installed') return copy.install.complete;
+    if (status === 'unknown') return copy.disconnected;
+    return copy.install.failed;
+  }
+
+  function installPlanIconSource(assistant) {
+    const assistantId = encodeURIComponent(assistant.id);
+    if (assistant.status === 'installed' && chatTeamId) {
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
     return `/api/assistants/${assistantId}/catalog-icon`;
+  }
+
+  function installPlanTurnIndex(planId) {
+    return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
+  }
+
+  function applyInstallPlanEvent(incoming, receipt) {
+    if (incoming.state === 'planned') {
+      if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install plan');
+      turns = [...turns, {
+        role: 'assistant',
+        text: copy.install.working,
+        author: incoming.team_name,
+        receipt,
+        installPlan: {
+          plan_id: incoming.plan_id,
+          state: incoming.state,
+          assistants: incoming.assistants,
+        },
+      }];
+      return;
+    }
+    const index = installPlanTurnIndex(incoming.plan_id);
+    if (index < 0) throw new Error('unknown install plan');
+    const current = turns[index].installPlan;
+    if (
+      current.assistants.length !== incoming.assistants.length ||
+      current.assistants.some((assistant, position) => {
+        const next = incoming.assistants[position];
+        return assistant.id !== next.id ||
+          assistant.name !== next.name ||
+          assistant.summary !== next.summary ||
+          assistant.providers.join('\0') !== next.providers.join('\0');
+      })
+    ) throw new Error('mismatched install plan');
+    const itemTransitions = {
+      pending: ['pending', 'installing', 'failed'],
+      installing: ['installing', 'installed', 'failed'],
+      installed: ['installed'],
+    };
+    if (current.assistants.some((assistant, position) => (
+      !itemTransitions[assistant.status]?.includes(incoming.assistants[position].status)
+    ))) throw new Error('invalid install plan item transition');
+    const transitions = {
+      planned: ['installing', 'failed', 'stopped'],
+      installing: ['installing', 'installed', 'failed', 'stopped'],
+    };
+    if (!transitions[current.state]?.includes(incoming.state)) {
+      throw new Error('invalid install plan transition');
+    }
+    turns = turns.map((turn, position) => position === index
+      ? {
+          ...turn,
+          text: incoming.state === 'installed'
+            ? copy.install.complete
+            : incoming.state === 'failed'
+              ? copy.install.failed
+              : incoming.state === 'stopped'
+                ? copy.disconnected
+                : turn.text,
+          installPlan: {
+            ...current,
+            state: incoming.state,
+            assistants: incoming.assistants,
+            ...(incoming.status ? { status: incoming.status } : {}),
+          },
+        }
+      : turn);
   }
 
   function imageDataUrl(blob) {
@@ -220,7 +305,6 @@
       if (typeof snapshot !== 'string' || !snapshot.startsWith('data:image/png;base64,')) return;
       turns = turns.map((turn) => (
         turn.lifecycle?.proposal_id === proposalId &&
-        turn.lifecycle.operation === 'uninstall' &&
         turn.lifecycle.assistant.id === assistantId
           ? { ...turn, lifecycle: { ...turn.lifecycle, iconSnapshot: snapshot } }
           : turn
@@ -263,6 +347,18 @@
       if (turn.lifecycle?.state === 'working') {
         return { ...turn, lifecycle: { ...turn.lifecycle, state: 'unknown' } };
       }
+      if (['planned', 'installing'].includes(turn.installPlan?.state)) {
+        return {
+          ...turn,
+          installPlan: {
+            ...turn.installPlan,
+            state: 'stopped',
+            assistants: turn.installPlan.assistants.map((assistant) => (
+              assistant.status === 'installing' ? { ...assistant, status: 'unknown' } : assistant
+            )),
+          },
+        };
+      }
       return turn;
     });
   }
@@ -272,40 +368,36 @@
   }
 
   function applyLifecycleEvent(incoming, receipt) {
-    const operation = incoming.type === 'assistant-uninstall' ? 'uninstall' : 'install';
     if (incoming.state === 'proposed') {
       if (lifecycleTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate lifecycle proposal');
       turns = [...turns, {
         role: 'assistant',
-        text: lifecycleProposalReply(operation, incoming.assistant),
+        text: lifecycleProposalReply(incoming.assistant),
         author: incoming.team_name,
         receipt,
         lifecycle: {
-          operation,
           proposal_id: incoming.proposal_id,
           assistant: incoming.assistant,
           state: 'proposed',
         },
       }];
       scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
-      if (operation === 'uninstall') {
-        void captureUninstallIcon(
-          incoming.proposal_id,
-          incoming.assistant.id,
-          incoming.team_id,
-        );
-      }
+      void captureUninstallIcon(
+        incoming.proposal_id,
+        incoming.assistant.id,
+        incoming.team_id,
+      );
       return true;
     }
     const index = lifecycleTurnIndex(incoming.proposal_id);
     if (index < 0) throw new Error('unknown lifecycle proposal');
     const current = turns[index].lifecycle;
-    if (current.operation !== operation || current.assistant.id !== incoming.assistant_id) {
+    if (current.assistant.id !== incoming.assistant_id) {
       throw new Error('mismatched lifecycle proposal');
     }
     clearLifecycleExpiry(incoming.proposal_id);
-    const workingState = operation === 'uninstall' ? 'uninstalling' : 'installing';
-    const completeState = operation === 'uninstall' ? 'uninstalled' : 'installed';
+    const workingState = 'uninstalling';
+    const completeState = 'uninstalled';
     const allowed = current.state === 'proposed'
       ? [workingState, 'cancelled', 'expired']
       : current.state === 'working' ? [completeState, 'failed']
@@ -315,17 +407,6 @@
     const updated = {
       ...current,
       state,
-      ...(incoming.state === 'installed'
-        ? {
-            installed: incoming.installed,
-            ...(incoming.actions
-              ? {
-                  assistant_version: incoming.assistant_version,
-                  actions: incoming.actions,
-                }
-              : {}),
-          }
-        : {}),
       ...(incoming.state === 'uninstalled' ? { uninstalled: incoming.uninstalled } : {}),
       ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
     };
@@ -333,69 +414,6 @@
       turnIndex === index ? { ...turn, lifecycle: updated } : turn
     ));
     return incoming.state !== workingState;
-  }
-
-  async function appendInstallOutcome(incoming) {
-    const { installedAssistants } = await refreshTeamInventory(fetch);
-    if (
-      lifecycleOutcomePending?.teamId !== incoming.team_id ||
-      lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
-      lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
-      chatTeamId !== incoming.team_id
-    ) return;
-    const index = lifecycleTurnIndex(incoming.proposal_id);
-    if (index < 0) return;
-    const install = turns[index].lifecycle;
-    if (
-      install.operation !== 'install' ||
-      install.state !== 'installed' ||
-      install.assistant.id !== incoming.assistant_id ||
-      install.completionAnnounced
-    ) return;
-    const installedAssistant = installedAssistants.find(
-      (entry) => entry.assistant === incoming.assistant_id,
-    );
-    const team = $teamContext.teams.find((entry) => entry.id === incoming.team_id);
-    const projectedAssistant = $teamContext.installedAssistants.find(
-      (entry) => entry.assistant === incoming.assistant_id,
-    );
-    if (
-      !installedAssistant ||
-      installedAssistant.status !== 'running' ||
-      !team ||
-      $teamContext.phase !== 'ready' ||
-      $teamContext.selectedTeamId !== incoming.team_id ||
-      projectedAssistant?.assistant_version !== installedAssistant.assistant_version ||
-      projectedAssistant?.status !== 'running' ||
-      !$teamContext.selectedAssistantIds.includes(incoming.assistant_id)
-    ) throw new Error('installed Assistant inventory mismatch');
-    if (
-      incoming.actions &&
-      incoming.assistant_version !== installedAssistant.assistant_version
-    ) throw new Error('installed Assistant label version mismatch');
-    const outcomeKey = install.installed ? 'installedReply' : 'availableReply';
-    const outcome = $t(`chatPage.install.${outcomeKey}`, {
-      assistant: escapeMarkdownText(install.assistant.name),
-      version: escapeMarkdownText(installedAssistant.assistant_version),
-      team: escapeMarkdownText(team.name),
-    });
-    const actionList = incoming.actions
-      ? `\n\n${copy.install.actions}\n${incoming.actions.map((action) => (
-          `- ${escapeMarkdownText(action.label)} — \`${action.id}\``
-        )).join('\n')}`
-      : '';
-    const nextTurns = turns.map((turn, turnIndex) => (
-      turnIndex === index
-        ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
-        : turn
-    ));
-    nextTurns.splice(index + 1, 0, {
-      role: 'assistant',
-      text: `${outcome}${actionList}\n\n${copy.install.resend}`,
-      author: team.name,
-    });
-    turns = nextTurns;
-    void revealLatestExchange();
   }
 
   async function appendUninstallOutcome(incoming) {
@@ -410,7 +428,6 @@
     if (index < 0) return;
     const uninstall = turns[index].lifecycle;
     if (
-      uninstall.operation !== 'uninstall' ||
       uninstall.state !== 'uninstalled' ||
       uninstall.assistant.id !== incoming.assistant_id ||
       uninstall.completionAnnounced
@@ -704,7 +721,29 @@
           }
           return;
         }
-        if (incoming.type === 'assistant-install' || incoming.type === 'assistant-uninstall') {
+        if (incoming.type === 'assistant-install-plan') {
+          if (!busy || syncing) throw new Error('unexpected Assistant install plan event');
+          const receipt = progressEvents.map((item) => ({ ...item }));
+          applyInstallPlanEvent(incoming, receipt);
+          stopping = false;
+          resetProgress();
+          if (incoming.state === 'planned' || incoming.state === 'installing') {
+            void focusLifecycleTask(`plan-${incoming.plan_id}`);
+            return;
+          }
+          if (incoming.state === 'installed') {
+            void refreshTeamInventory(fetch).catch(() => undefined);
+            return;
+          }
+          busy = false;
+          if (incoming.state === 'failed') {
+            setError(friendlyChatError(incoming.status), `HTTP ${incoming.status}`);
+          } else {
+            clearError();
+          }
+          return;
+        }
+        if (incoming.type === 'assistant-uninstall') {
           if (!busy || stopping || syncing) throw new Error('unexpected Assistant lifecycle event');
           const receipt = progressEvents.map((item) => ({ ...item }));
           const terminal = applyLifecycleEvent(incoming, receipt);
@@ -716,19 +755,14 @@
           }
           busy = false;
           clearError();
-          if (incoming.state === 'installed' || incoming.state === 'uninstalled') {
+          if (incoming.state === 'uninstalled') {
             lifecycleOutcomePending = {
               teamId: incoming.team_id,
               proposalId: incoming.proposal_id,
               assistantId: incoming.assistant_id,
             };
-            const appendOutcome = incoming.state === 'uninstalled'
-              ? appendUninstallOutcome
-              : appendInstallOutcome;
-            const lifecycleMessages = incoming.state === 'uninstalled'
-              ? copy.uninstall
-              : copy.install;
-            void appendOutcome(incoming)
+            const lifecycleMessages = copy.uninstall;
+            void appendUninstallOutcome(incoming)
               .catch(() => {
                 if (
                   lifecycleOutcomePending?.teamId === incoming.team_id &&
@@ -1006,7 +1040,7 @@
     lifecycleDecisionPending = true;
     try {
       const pendingUninstall = turns.findLast((turn) => (
-        turn.lifecycle?.operation === 'uninstall' && turn.lifecycle.state === 'proposed'
+        turn.lifecycle?.state === 'proposed'
       ))?.lifecycle;
       if (decision === 'yes' && pendingUninstall && chatTeamId) {
         await captureUninstallIcon(
@@ -1166,9 +1200,45 @@
               {#if exchange.assistant}
                 <Message variant="assistant" author={exchange.assistant.author}>
                   <Markdown markdown={exchange.assistant.text} variant="chat" />
+                  {#if exchange.assistant.installPlan}
+                    <div
+                      class="assistant-install-plan"
+                      id={`assistant-lifecycle-plan-${exchange.assistant.installPlan.plan_id}`}
+                      role="group"
+                      aria-label={copy.install.label}
+                      tabindex="-1"
+                    >
+                      {#each exchange.assistant.installPlan.assistants as assistant (assistant.id)}
+                        {#snippet planMedia()}
+                          <AssistantIcon
+                            assistant={assistant.id}
+                            src={installPlanIconSource(assistant)}
+                            size={44}
+                          />
+                        {/snippet}
+                        {#snippet planDetails()}
+                          {#if assistant.status === 'failed' && exchange.assistant.installPlan.status}
+                            <span class="assistant-lifecycle-detail-copy">
+                              HTTP {exchange.assistant.installPlan.status}
+                            </span>
+                          {/if}
+                        {/snippet}
+                        <ChatTask
+                          class="assistant-lifecycle-task"
+                          label={copy.install.label}
+                          title={assistant.name}
+                          description={assistant.summary}
+                          state={installPlanVisualState(assistant.status)}
+                          status={installPlanStatus(assistant.status)}
+                          media={planMedia}
+                          details={assistant.status === 'failed' ? planDetails : undefined}
+                        />
+                      {/each}
+                    </div>
+                  {/if}
                   {#if exchange.assistant.lifecycle}
                     {@const lifecycle = exchange.assistant.lifecycle}
-                    {@const lifecycleMessages = lifecycleCopy(lifecycle)}
+                    {@const lifecycleMessages = copy.uninstall}
                     {#snippet lifecycleMedia()}
                       <AssistantIcon
                         assistant={lifecycle.assistant.id}
@@ -1189,23 +1259,23 @@
                               type="button"
                               onclick={() => submitLifecycleDecision('no')}
                               disabled={lifecycleDecisionDisabled}
-                              aria-label={$t(`chatPage.${lifecycle.operation}.cancelActionLabel`, {
+                              aria-label={$t('chatPage.uninstall.cancelActionLabel', {
                                 assistant: lifecycle.assistant.name,
                               })}
                             >
                               {lifecycleMessages.cancelAction}
                             </Button>
                             <Button
-                              variant={lifecycle.operation === 'uninstall' ? 'danger' : 'primary'}
+                              variant="danger"
                               size="compact"
                               type="button"
                               onclick={() => submitLifecycleDecision('yes')}
                               disabled={lifecycleDecisionDisabled}
-                              aria-label={$t(`chatPage.${lifecycle.operation}.${lifecycle.operation}ActionLabel`, {
+                              aria-label={$t('chatPage.uninstall.uninstallActionLabel', {
                                 assistant: lifecycle.assistant.name,
                               })}
                             >
-                              {lifecycleMessages[`${lifecycle.operation}Action`]}
+                              {lifecycleMessages.uninstallAction}
                             </Button>
                           </div>
                         {/if}
@@ -1219,9 +1289,7 @@
                       id={`assistant-lifecycle-${lifecycle.proposal_id}`}
                       label={lifecycleMessages.label}
                       title={lifecycle.assistant.name}
-                      description={lifecycle.operation === 'uninstall'
-                        ? lifecycleMessages.consequences
-                        : lifecycle.assistant.summary}
+                      description={lifecycleMessages.consequences}
                       state={lifecycleVisualState(lifecycle.state)}
                       status={lifecycleStatus(lifecycle)}
                       media={lifecycleMedia}
@@ -1278,7 +1346,7 @@
                 onkeydown={handleComposerKeydown}
               />
               <Toolbar class="composer-actions">
-              {#if busy && !syncing && !lifecycleWorking}
+              {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
                 </Button>
@@ -1466,6 +1534,7 @@
   :global(.assistant-lifecycle-task) {
     margin-top: 0.8rem;
   }
+  .assistant-install-plan { display: grid; gap: 0.55rem; margin-top: 0.75rem; }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;

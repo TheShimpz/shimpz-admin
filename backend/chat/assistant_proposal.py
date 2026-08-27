@@ -12,9 +12,9 @@ from typing import Literal
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
 
-INSTALL_PROPOSAL_TTL_SECONDS = 300
 UNINSTALL_PROPOSAL_TTL_SECONDS = 120
 MINIMUM_MATCH_SCORE = 40
+MAX_CAPABILITY_SHORTLIST = 8
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
 _SEARCH_SEPARATOR = re.compile(r"[^a-z0-9]+")
 _TEAM_ID = re.compile(r"^[a-z0-9_]{1,40}$")
@@ -42,42 +42,6 @@ _STOP_WORDS = frozenset(
         "the",
         "um",
         "uma",
-    }
-)
-_INSTALL_AFFIRMATIVE = frozenset(
-    {
-        "autorizo a instalacao",
-        "claro",
-        "confirmo",
-        "go ahead",
-        "go ahead and install",
-        "instale",
-        "install it",
-        "ok",
-        "okay",
-        "pode",
-        "pode instalar",
-        "pode instalar sim",
-        "please install",
-        "sim",
-        "sure",
-        "yes",
-    }
-)
-_INSTALL_NEGATIVE = frozenset(
-    {
-        "cancel",
-        "cancela",
-        "cancelar",
-        "cancele",
-        "do not install",
-        "dont install",
-        "esquece",
-        "forget it",
-        "nao",
-        "nao foi isso que pedi",
-        "nao instale",
-        "no",
     }
 )
 _UNINSTALL_AFFIRMATIVE = frozenset(
@@ -160,18 +124,7 @@ class Capability:
     name: str
     summary: str
     actions: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class InstallProposal:
-    proposal_id: str
-    team_id: str
-    assistant: store_catalog.CatalogAssistant
-    language_exemplar: str | None = field(repr=False)
-    expires_at: float
-
-    def valid_for(self, team_id: str, now: float) -> bool:
-        return team_id == self.team_id and now < self.expires_at
+    integrations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,9 +144,6 @@ class UninstallProposal:
 
     def valid_for(self, team_id: str, now: float) -> bool:
         return team_id == self.team_id and now < self.expires_at
-
-
-Proposal = InstallProposal | UninstallProposal
 
 
 def _fold(value: str) -> str:
@@ -218,11 +168,6 @@ def _classify_confirmation(
     if normalized in negative:
         return "cancel"
     return "ambiguous"
-
-
-def classify_install_confirmation(value: object) -> Decision:
-    """Classify only a complete install-specific user response."""
-    return _classify_confirmation(value, _INSTALL_AFFIRMATIVE, _INSTALL_NEGATIVE)
 
 
 def classify_uninstall_confirmation(value: object) -> Decision:
@@ -293,23 +238,32 @@ def _capability_score(message: str, tokens: frozenset[str], capability: Capabili
         assistant_id=capability.assistant_id,
         name=capability.name,
         summary=capability.summary,
-        integrations=(),
+        integrations=capability.integrations,
         actions=capability.actions,
     )
 
 
-def select_candidate(
+def _direct_candidate_match(message: str, candidate: store_catalog.CatalogAssistant) -> bool:
+    return (
+        _contains_phrase(message, candidate.assistant_id)
+        or _contains_phrase(message, candidate.name)
+        or any(_contains_phrase(message, integration.provider) for integration in candidate.integrations)
+        or any(_contains_phrase(message, action) for action in candidate.actions)
+    )
+
+
+def capability_shortlist(
     message: str,
     catalog: tuple[store_catalog.CatalogAssistant, ...],
     *,
     installed_ids: frozenset[str],
     enabled: tuple[Capability, ...],
-) -> store_catalog.CatalogAssistant | None:
-    """Select one strong public candidate without model inference or product-specific mappings."""
+) -> tuple[store_catalog.CatalogAssistant, ...]:
+    """Return a deterministic strong gap shortlist or no planning signal."""
     search = _search_text(message)
     message_tokens = _tokens(message)
     if not search or not message_tokens:
-        return None
+        return ()
     ranked = sorted(
         (
             (_candidate_score(search, message_tokens, candidate), candidate.assistant_id, candidate)
@@ -318,13 +272,22 @@ def select_candidate(
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    if not ranked or ranked[0][0] < MINIMUM_MATCH_SCORE:
-        return None
-    best_score, _assistant_id, best = ranked[0]
-    if len(ranked) > 1 and ranked[1][0] == best_score:
-        return None
+    strong = tuple(item for item in ranked if item[0] >= MINIMUM_MATCH_SCORE)
+    if not strong:
+        return ()
     enabled_score = max((_capability_score(search, message_tokens, item) for item in enabled), default=0)
-    return None if enabled_score >= best_score else best
+    if enabled_score >= strong[0][0]:
+        return ()
+    top_score = strong[0][0]
+    top = tuple(item[2] for item in strong if item[0] == top_score)
+    if len(top) > 1 and any(not _direct_candidate_match(search, candidate) for candidate in top):
+        return ()
+    if (
+        len(strong) > MAX_CAPABILITY_SHORTLIST
+        and strong[MAX_CAPABILITY_SHORTLIST - 1][0] == strong[MAX_CAPABILITY_SHORTLIST][0]
+    ):
+        return ()
+    return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
 
 
 def _uninstall_target(message: object) -> str | None:
@@ -410,24 +373,6 @@ def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str
     if _TEAM_ID.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
         raise ValueError("invalid Assistant lifecycle proposal")
     return proposal_id
-
-
-def create_install_proposal(
-    team_id: str,
-    assistant: store_catalog.CatalogAssistant,
-    *,
-    language_exemplar: object,
-    now: float,
-    proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
-) -> InstallProposal:
-    proposal_id = _proposal_id(team_id, now, proposal_id_factory)
-    return InstallProposal(
-        proposal_id=proposal_id,
-        team_id=team_id,
-        assistant=assistant,
-        language_exemplar=team_contract.canonical_language_exemplar(language_exemplar),
-        expires_at=now + INSTALL_PROPOSAL_TTL_SECONDS,
-    )
 
 
 def create_uninstall_proposal(

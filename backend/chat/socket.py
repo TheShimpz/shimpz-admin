@@ -1,6 +1,6 @@
 """Bounded, session-authenticated WebSocket transport for local Team chat.
 
-The browser speaks only ``shimpz.chat.v6``. Provider and Assistant secrets stay behind
+The browser speaks only ``shimpz.chat.v7``. Provider and Assistant secrets stay behind
 :mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
@@ -11,152 +11,59 @@ import asyncio
 import concurrent.futures
 import contextlib
 import logging
-import os
+import threading
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
 
-from chat.assistant_proposal import InstallProposal, UninstallProposal
-from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
+from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from team import bridge as team
 
-from chat import human, lifecycle, local
+from chat import (
+    assistant_proposal,
+    connection,
+    human,
+    lanes,
+    lifecycle,
+    local,
+    plan_delivery,
+    projection,
+    socket_boundary,
+)
 from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v6"
-MAX_FRAME_BYTES = 128 * 1024
-MAX_PUBLIC_ERROR_CHARS = 800
+CHAT_SUBPROTOCOL = "shimpz.chat.v7"
+MAX_FRAME_BYTES = socket_boundary.MAX_FRAME_BYTES
+MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
-_DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
 
-# Turns and cancellation use separate bounded lanes: a slow provider can never consume the worker
-# needed to revoke it. The local controller remains the authoritative per-Team admission boundary.
-_TURN_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=2,
-    thread_name_prefix="shimpz-chat-turn",
-)
-_STOP_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=4,
-    thread_name_prefix="shimpz-chat-stop",
-)
-_SYNC_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=4,
-    thread_name_prefix="shimpz-chat-sync",
-)
+_TURN_EXECUTOR = lanes.TURN
+_STOP_EXECUTOR = lanes.STOP
+_SYNC_EXECUTOR = lanes.SYNC
+BoundedThreadPoolExecutor = lanes.BoundedThreadPoolExecutor
 
 
-canonical_origin = chat_ws_common.canonical_origin
-
-
-def _configured_origins() -> frozenset[str]:
-    configured = os.environ.get("SHIMPZ_ADMIN_ALLOWED_ORIGINS", _DEFAULT_ORIGINS)
-    items = [item.strip() for item in configured.split(",")]
-    if not items or any(not item or canonical_origin(item) != item for item in items):
-        raise RuntimeError("SHIMPZ_ADMIN_ALLOWED_ORIGINS must contain exact HTTP(S) origins")
-    return frozenset(items)
+canonical_origin = socket_boundary.canonical_origin
+_configured_origins = socket_boundary.configured_origins
+receive_bounded_json = socket_boundary.receive_bounded_json
+_session_status = socket_boundary.session_status
 
 
 STATIC_ORIGINS = _configured_origins()
-
-
-async def receive_bounded_json(websocket: WebSocket) -> dict[str, object]:
-    message = await websocket.receive()
-    if message["type"] == "websocket.disconnect":
-        raise WebSocketDisconnect(message.get("code", 1000))
-    return chat_ws_common.decode_bounded_json_frame(message, MAX_FRAME_BYTES)
-
-
-def _error_terminal(status: object, detail: str = "local chat request failed") -> dict[str, object]:
-    return chat_ws_common.error_terminal(
-        status,
-        detail,
-        fallback_detail="local chat request failed",
-        max_detail_chars=MAX_PUBLIC_ERROR_CHARS,
-    )
-
-
-def _projected_event(
-    response: object,
-    team_id: str,
-    allowed_types: frozenset[str],
-) -> dict[str, object] | None:
-    if not isinstance(response, local.PublicResponse):
-        return None
-    event = response.websocket_event(team_id)
-    if event is None or event.get("type") not in allowed_types:
-        return None
-    return dict(event)
-
-
-def turn_terminal(response: object, team_id: str) -> dict[str, object]:
-    event = _projected_event(response, team_id, frozenset({"done", "error"}))
-    return event if event is not None else _error_terminal(502, "local chat returned an invalid response")
-
-
-def integration_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    return _projected_event(response, team_id, frozenset({"integrations-required"}))
-
-
-def human_challenge_event(response: object, team_id: str) -> dict[str, object] | None:
-    return _projected_event(response, team_id, frozenset({"human-required"}))
-
-
-def _first_challenge(response: object, team_id: str) -> tuple[dict[str, object] | None, str | None]:
-    challenge = integration_challenge_event(response, team_id)
-    if challenge is not None:
-        return challenge, "integration"
-    challenge = human_challenge_event(response, team_id)
-    return (challenge, "human") if challenge is not None else (None, None)
-
-
-def _stop_accepted(response: object, team_id: str) -> bool | None:
-    if not isinstance(response, local.PublicResponse) or not 200 <= response.status < 300:
-        return None
-    if response.body.get("team_id") != team_id:
-        return None
-    stopped = response.body.get("stopped")
-    return stopped if isinstance(stopped, bool) else None
-
-
-@dataclass(slots=True)
-class _Turn:
-    future: concurrent.futures.Future | None
-    operation: str
-    progress: asyncio.Queue[dict[str, object]] | None = None
-    discovery_future: concurrent.futures.Future | None = None
-    delivery: asyncio.Task | None = None
-    stop_task: asyncio.Task | None = None
-    stop_requested: bool = False
-    terminal_sent: bool = False
-    language_exemplar: str | None = field(default=None, repr=False)
-
-
-@dataclass(slots=True)
-class _Connection:
-    active: _Turn | None = None
-    pending_challenge_id: str | None = None
-    pending_challenge_type: str | None = None
-    pending_human_request: dict[str, object] | None = None
-    sync_task: asyncio.Task | None = None
-    sync_terminal_sent: bool = False
-    lifecycle_proposal: InstallProposal | UninstallProposal | None = None
-    lifecycle: lifecycle.Operation | None = None
-    closed: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class _SyncSnapshot:
-    challenge_type: str
-    pending: object
-    resumed: object | None = None
+_Turn = connection.Turn
+_Connection = connection.Connection
+_SyncSnapshot = connection.SyncSnapshot
+_error_terminal = projection.error_terminal
+_projected_event = projection.projected_event
+turn_terminal = projection.turn_terminal
+integration_challenge_event = projection.integration_challenge_event
+human_challenge_event = projection.human_challenge_event
+_first_challenge = projection.first_challenge
+_stop_accepted = projection.stop_accepted
 
 
 def _remember_challenge(
@@ -342,6 +249,52 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
     finally:
         if connection.active is turn:
             connection.active = None
+
+
+def _submit_team_turn(
+    team_id: str,
+    payload: dict[str, object],
+) -> tuple[concurrent.futures.Future, asyncio.Queue[dict[str, object]]]:
+    progress, report = _progress_channel()
+    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
+    return future, progress
+
+
+async def _continue_team_turn(
+    websocket: WebSocket,
+    connection: _Connection,
+    turn: _Turn,
+    team_id: str,
+    payload: dict[str, object],
+) -> None:
+    if turn.stop_requested or connection.closed:
+        await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
+        if connection.active is turn:
+            connection.active = None
+        return
+    try:
+        future, progress = _submit_team_turn(team_id, payload)
+    except ExecutorSaturatedError:
+        await _send_terminal_once(websocket, connection, turn, _error_terminal(429, "local chat capacity reached"))
+        if connection.active is turn:
+            connection.active = None
+        return
+    turn.future = future
+    turn.progress = progress
+    turn.operation = "chat"
+    turn.lifecycle_stop = None
+    await _deliver_turn(websocket, connection, turn, team_id)
+
+
+async def _finish_active_turn(
+    websocket: WebSocket,
+    connection: _Connection,
+    turn: _Turn,
+    event: Mapping[str, object],
+) -> None:
+    await _send_terminal_once(websocket, connection, turn, event)
+    if connection.active is turn:
+        connection.active = None
 
 
 def _sync_snapshot(
@@ -591,6 +544,15 @@ def _request_stop(
         return turn.stop_task
     turn.stop_requested = True
     _cancel_discovery(turn)
+    if turn.lifecycle_stop is not None:
+        turn.lifecycle_stop.set()
+        if turn.operation == "assistant-plan":
+            return None
+        if turn.future is not None:
+            turn.future.cancel()
+        if emit and not connection.closed:
+            turn.stop_task = asyncio.create_task(_finish_cancelled_turn(websocket, connection, turn))
+        return turn.stop_task
     cancelled = turn.future is not None and turn.future.cancel()
     if cancelled and connection.pending_challenge_id is None:
         if emit and not connection.closed:
@@ -783,53 +745,109 @@ async def _dispatch_human_response(
     )
 
 
+async def _admit_chat_payload(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+) -> dict[str, object] | None:
+    if set(frame) != {"type", "message", "files", "assistant_ids"}:
+        await _send_event(
+            websocket,
+            _error_terminal(400, "chat frame requires message, files, and assistant_ids"),
+        )
+        return None
+    try:
+        payload = team.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
+    except team.TeamRequestError:
+        await _send_event(websocket, _error_terminal(400, "invalid chat request"))
+        return None
+    if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
+        await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
+        return None
+    if connection.pending_challenge_id is not None:
+        await _send_event(
+            websocket,
+            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
+        )
+        return None
+    return payload
+
+
+async def _start_direct_turn(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    payload: dict[str, object],
+    language_exemplar: str | None,
+    *,
+    discovery_future: concurrent.futures.Future | None = None,
+) -> None:
+    try:
+        future, progress = _submit_team_turn(team_id, payload)
+    except ExecutorSaturatedError:
+        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+        return
+    turn = _Turn(
+        future=future,
+        operation="chat",
+        language_exemplar=language_exemplar,
+        discovery_future=discovery_future,
+        progress=progress,
+    )
+    connection.active = turn
+    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
+
+
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
     frame: dict[str, object],
 ) -> None:
-    if set(frame) != {"type", "message", "files", "assistant_ids"}:
-        await _send_event(
-            websocket,
-            _error_terminal(400, "chat frame requires message, files, and assistant_ids"),
-        )
-        return
-    try:
-        payload = team.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
-    except team.TeamRequestError:
-        await _send_event(websocket, _error_terminal(400, "invalid chat request"))
-        return
-    if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
-        return
-    if connection.pending_challenge_id is not None:
-        await _send_event(
-            websocket,
-            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
-        )
+    payload = await _admit_chat_payload(websocket, connection, team_id, frame)
+    if payload is None:
         return
     had_lifecycle_proposal = connection.lifecycle_proposal is not None
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
-    try:
-        progress, report = _progress_channel()
-        future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+    language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
+    if not had_lifecycle_proposal and assistant_proposal.uninstall_requested(payload["message"]):
+        await _start_direct_turn(
+            websocket,
+            connection,
+            team_id,
+            payload,
+            language_exemplar,
+            discovery_future=lifecycle.submit_discovery(team_id, payload),
+        )
         return
-    discovery_future = None
-    if not had_lifecycle_proposal and connection.lifecycle_proposal is None:
-        discovery_future = lifecycle.submit_discovery(team_id, payload)
+    preparation = lifecycle.submit_preparation(team_id, payload)
+    if preparation is None:
+        await _start_direct_turn(websocket, connection, team_id, payload, language_exemplar)
+        return
     turn = _Turn(
-        future=future,
-        operation="chat",
-        language_exemplar=team_contract.canonical_language_exemplar(payload["message"]),
-        discovery_future=discovery_future,
-        progress=progress,
+        future=preparation,
+        operation="capability-plan",
+        language_exemplar=language_exemplar,
+        lifecycle_stop=threading.Event(),
     )
     connection.active = turn
-    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
+    turn.delivery = asyncio.create_task(
+        plan_delivery.deliver_preparation(
+            websocket,
+            connection,
+            turn,
+            team_id,
+            payload,
+            plan_delivery.Operations(
+                send_event=_send_event,
+                finish_turn=_finish_active_turn,
+                continue_turn=_continue_team_turn,
+                error_terminal=_error_terminal,
+            ),
+        )
+    )
 
 
 async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
@@ -881,16 +899,6 @@ async def _dispatch(
 def _has_subprotocol(websocket: WebSocket) -> bool:
     protocols = websocket.scope.get("subprotocols", [])
     return protocols == [CHAT_SUBPROTOCOL]
-
-
-async def _session_status(
-    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
-    cookies: Mapping[str, str],
-) -> str:
-    status = "unavailable"
-    with contextlib.suppress(Exception):
-        status = "active" if await session_ok(cookies) is True else "invalid"
-    return status
 
 
 async def _admit(

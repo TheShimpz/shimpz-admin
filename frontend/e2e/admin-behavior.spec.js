@@ -131,19 +131,10 @@ function humanRequest(kind) {
 }
 
 async function routeReadyChat(page, {
-  assistantInstall = false,
-  assistantInstallExpiresIn = 300,
-  assistantInstallExpiresOnConfirm = false,
-  assistantInstallInventoryMissing = false,
-  assistantInstallInventoryStatus = 'running',
-  assistantInstallSummary = 'Safely manage Cloudflare DNS records through OAuth.',
-  assistantInstallWasNew = true,
-  assistantInstallLabelVersion = '0.4.1',
-  assistantInstallActions = [
-    { id: 'list-zones', label: 'List Cloudflare DNS zones' },
-    { id: 'records.read', label: 'Read DNS records' },
-  ],
-  holdAssistantInstall = false,
+  assistantPlan = false,
+  holdAssistantPlan = false,
+  holdAssistantIcon = false,
+  assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
@@ -163,6 +154,7 @@ async function routeReadyChat(page, {
   oauthCompletionMode = 'automatic',
   holdReply = false,
   terminalError = false,
+  whatsappInstalled = false,
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -174,10 +166,11 @@ async function routeReadyChat(page, {
   let humanRejectionIndex = 0;
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
-  let assistantInstalled = assistantUninstall || !assistantInstall;
-  let installProposed = false;
+  let assistantInstalled = assistantUninstall || !assistantPlan;
+  let cloudflareInstalled = assistantInstalled;
   let uninstallProposed = false;
-  let releaseAssistantInstall = () => {};
+  let advanceAssistantPlan = () => {};
+  let releaseAssistantPlan = () => {};
   let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
   let releaseInferenceWrite;
@@ -187,6 +180,10 @@ async function routeReadyChat(page, {
   let releaseAssistantInventory;
   const assistantInventoryHold = new Promise((resolve) => {
     releaseAssistantInventory = resolve;
+  });
+  let releaseAssistantIcon;
+  const assistantIconHold = new Promise((resolve) => {
+    releaseAssistantIcon = resolve;
   });
   const chatFrames = [];
   const assistantIconRequests = [];
@@ -212,6 +209,11 @@ async function routeReadyChat(page, {
           title: 'Shimpz Cloudflare',
           summary: 'Safely manage Cloudflare DNS records through OAuth.',
         },
+        {
+          id: 'whatsapp',
+          title: 'WhatsApp',
+          summary: 'Send reviewed WhatsApp messages.',
+        },
         ...(multipleIntegrations ? [{
           id: 'shimpz-slack',
           title: 'Shimpz Slack',
@@ -225,12 +227,17 @@ async function routeReadyChat(page, {
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        assistants: assistantInstalled && !assistantInstallInventoryMissing ? [
+        assistants: assistantInstalled ? [
           {
             assistant: 'shimpz-cloudflare',
             assistant_version: '0.4.1',
-            status: assistantInstallInventoryStatus,
+            status: 'running',
           },
+          ...(assistantPlan || whatsappInstalled ? [{
+            assistant: 'whatsapp',
+            assistant_version: '0.1.0',
+            status: 'running',
+          }] : []),
           ...(multipleIntegrations ? [{
             assistant: 'shimpz-slack',
             assistant_version: '1.2.3',
@@ -242,14 +249,15 @@ async function routeReadyChat(page, {
   });
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => {
     assistantIconRequests.push(route.request().url());
-    if (!assistantInstalled) return route.fulfill({ status: 404 });
-    return route.fulfill({
+    if (!cloudflareInstalled) return route.fulfill({ status: 404 });
+    const fulfill = () => route.fulfill({
       contentType: 'image/png',
       body: Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
         'base64',
       ),
     });
+    return holdAssistantIcon ? assistantIconHold.then(fulfill) : fulfill();
   });
   await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => {
     assistantIconRequests.push(route.request().url());
@@ -261,6 +269,20 @@ async function routeReadyChat(page, {
       ),
     });
   });
+  await page.route('**/api/assistants/whatsapp/catalog-icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  }));
+  await page.route('**/api/teams/marketing/assistants/whatsapp/icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  }));
   await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
@@ -381,74 +403,52 @@ async function routeReadyChat(page, {
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat') {
         chatFrames.push(frame);
-        if (assistantInstall && !assistantInstalled) {
-          if (!installProposed) {
-            installProposed = true;
-            socket.send(JSON.stringify({
-              type: 'assistant-install',
-              state: 'proposed',
-              proposal_id: 'd'.repeat(32),
-              team_id: 'marketing',
-              reply: 'The Cloudflare Assistant is required to list your DNS zones. Should I install it?',
-              expires_in: assistantInstallExpiresIn,
-              assistant: {
-                id: 'shimpz-cloudflare',
-                name: 'Shimpz Cloudflare',
-                summary: assistantInstallSummary,
-                providers: ['cloudflare'],
-              },
-            }));
-            return;
-          }
-          if (assistantInstallExpiresOnConfirm) {
-            socket.send(JSON.stringify({
-              type: 'assistant-install',
-              state: 'expired',
-              proposal_id: 'd'.repeat(32),
-              assistant_id: 'shimpz-cloudflare',
-            }));
-            return;
-          }
-          if (frame.message === 'no') {
-            socket.send(JSON.stringify({
-              type: 'assistant-install',
-              state: 'cancelled',
-              proposal_id: 'd'.repeat(32),
-              assistant_id: 'shimpz-cloudflare',
-            }));
-            return;
-          }
-          if (frame.message !== 'yes') {
-            socket.send(JSON.stringify({
-              type: 'error',
-              status: 400,
-              detail: 'unexpected Assistant installation confirmation',
-            }));
-            return;
-          }
-          socket.send(JSON.stringify({
-            type: 'assistant-install',
-            state: 'installing',
-            proposal_id: 'd'.repeat(32),
-            assistant_id: 'shimpz-cloudflare',
+        if (assistantPlan && !assistantInstalled) {
+          const planId = 'd'.repeat(32);
+          const assistants = [
+            {
+              id: 'shimpz-cloudflare',
+              name: 'Shimpz Cloudflare',
+              summary: assistantSummary,
+              providers: ['cloudflare'],
+            },
+            {
+              id: 'whatsapp',
+              name: 'WhatsApp',
+              summary: 'Send reviewed WhatsApp messages.',
+              providers: ['whatsapp'],
+            },
+          ];
+          const sendPlan = (state, statuses) => socket.send(JSON.stringify({
+            type: 'assistant-install-plan',
+            state,
+            plan_id: planId,
+            team_id: 'marketing',
+            assistants: assistants.map((assistant, index) => ({
+              ...assistant,
+              status: statuses[index],
+            })),
           }));
-          const completeAssistantInstall = () => {
+          sendPlan('planned', ['pending', 'pending']);
+          sendPlan('installing', ['installing', 'pending']);
+          advanceAssistantPlan = () => {
+            cloudflareInstalled = true;
+            sendPlan('installing', ['installed', 'installing']);
+          };
+          releaseAssistantPlan = () => {
             assistantInstalled = true;
+            sendPlan('installed', ['installed', 'installed']);
             socket.send(JSON.stringify({
-              type: 'assistant-install',
-              state: 'installed',
-              proposal_id: 'd'.repeat(32),
-              assistant_id: 'shimpz-cloudflare',
+              type: 'done',
               team_id: 'marketing',
-              installed: assistantInstallWasNew,
-              ...(assistantInstallActions === null ? {} : {
-                assistant_version: assistantInstallLabelVersion,
-                actions: assistantInstallActions,
-              }),
+              team_name: 'Marketing',
+              reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
             }));
           };
-          if (holdAssistantInstall) releaseAssistantInstall = completeAssistantInstall;
-          else completeAssistantInstall();
+          if (!holdAssistantPlan) {
+            advanceAssistantPlan();
+            releaseAssistantPlan();
+          }
           return;
         }
         if (assistantUninstall && assistantInstalled) {
@@ -464,7 +464,7 @@ async function routeReadyChat(page, {
               assistant: {
                 id: 'shimpz-cloudflare',
                 name: 'Shimpz Cloudflare',
-                summary: assistantInstallSummary,
+                summary: assistantSummary,
                 version: '0.4.1',
               },
             }));
@@ -495,6 +495,7 @@ async function routeReadyChat(page, {
           }));
           const completeAssistantUninstall = () => {
             assistantInstalled = false;
+            cloudflareInstalled = false;
             socket.send(JSON.stringify({
               type: 'assistant-uninstall',
               state: 'uninstalled',
@@ -574,9 +575,11 @@ async function routeReadyChat(page, {
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     inferenceWrites: () => inferenceWrites,
-    releaseAssistantInstall: () => releaseAssistantInstall(),
+    advanceAssistantPlan: () => advanceAssistantPlan(),
+    releaseAssistantPlan: () => releaseAssistantPlan(),
     releaseAssistantUninstall: () => releaseAssistantUninstall(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
+    releaseAssistantIcon: () => releaseAssistantIcon(),
     releaseInferenceWrite: () => releaseInferenceWrite(),
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseReply: () => releaseReply(),
@@ -655,93 +658,74 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 
-test('installs a suggested Assistant from the inline proposal', async ({ page }) => {
+test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const chat = await routeReadyChat(page, {
-    assistantInstall: true,
-    holdAssistantInstall: true,
-    holdAssistantInventoryRefresh: true,
+    assistantPlan: true,
+    holdAssistantPlan: true,
   });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await expect(composer).toBeEnabled();
-  await composer.fill('List my Cloudflare DNS zones');
+  await composer.fill('Configure my Cloudflare domain and send the result on WhatsApp');
   await page.getByRole('button', { name: 'Send' }).click();
 
-  const task = page.locator('[data-slot="chat-task"]');
-  await expect(task).toHaveAttribute('data-state', 'pending');
-  await expect(page.getByText(
-    'I can install Shimpz Cloudflare to handle this request after you authorize it.',
-    { exact: true },
-  )).toBeVisible();
-  await expect(page.getByText(
-    'The Cloudflare Assistant is required to list your DNS zones. Should I install it?',
-    { exact: true },
-  )).toHaveCount(0);
-  await expect(task).toContainText('Shimpz Cloudflare');
-  await expect(task).toContainText('Confirmation required');
-  const confirmation = task.getByText('Install this Assistant for this Team?', { exact: true });
-  await expect(confirmation).toHaveCSS('text-align', 'right');
-  await expect(task).not.toContainText('Integration provider');
-  const icon = task.locator('img');
-  await expect(icon).toBeVisible();
-  await expect(icon).toHaveAttribute('src', '/api/assistants/shimpz-cloudflare/catalog-icon');
-  await expectTaskMediaBesideTitle(task);
-  await expect(task.getByRole('button', { name: 'Cancel installing Shimpz Cloudflare' })).toBeEnabled();
-  const install = task.getByRole('button', { name: 'Install Shimpz Cloudflare' });
-  await expect(install).toBeEnabled();
-  await expect(composer).toBeEnabled();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await expect(task).toHaveScreenshot('assistant-install-proposal.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-
-  await install.click();
-  await expect(page.getByText('yes', { exact: true })).toHaveCount(0);
-  await expect(task).toHaveAttribute('data-state', 'working');
-  expect(await task.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
+  const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(tasks).toHaveCount(2);
+  await expect(tasks.nth(0)).toContainText('Shimpz Cloudflare');
+  await expect(tasks.nth(0)).toHaveAttribute('data-state', 'working');
+  await expect(tasks.nth(1)).toContainText('WhatsApp');
+  await expect(tasks.nth(1)).toHaveAttribute('data-state', 'pending');
+  await expect(tasks.nth(0).locator('img')).toHaveAttribute(
+    'src',
+    '/api/assistants/shimpz-cloudflare/catalog-icon',
+  );
+  await expect(tasks.nth(1).locator('img')).toHaveAttribute(
+    'src',
+    '/api/assistants/whatsapp/catalog-icon',
+  );
+  await expect(page.getByRole('button', { name: /install/i })).toHaveCount(0);
+  await expect(page.getByText(/confirmation required/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+  expect(await tasks.nth(0).evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
     .toBe('rgb(252, 238, 10)');
-  await expectTaskMediaBesideTitle(task);
-  await expect(task).toBeFocused();
+  await expect(page.getByRole('group', { name: 'Assistant installation' })).toBeFocused();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  chat.releaseAssistantInstall();
-  await expect(task).toHaveAttribute('data-state', 'complete');
-  await expectTaskMediaBesideTitle(task);
-  await expect(composer).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
-  await expect(page.getByText(/was installed in Team Marketing/)).toHaveCount(0);
-  chat.releaseAssistantInventory();
-  await expect(icon).toHaveAttribute(
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+
+  chat.advanceAssistantPlan();
+  await expect(tasks.nth(0)).toHaveAttribute('data-state', 'complete');
+  await expect(tasks.nth(1)).toHaveAttribute('data-state', 'working');
+  chat.releaseAssistantPlan();
+  await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
+  await expect(tasks.nth(0).locator('img')).toHaveAttribute(
     'src',
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
   );
-  await expect(task).toContainText('Installed');
-  await expect(task).not.toContainText('Send your original request again to use this Assistant.');
-  await expect(task.getByRole('button')).toHaveCount(0);
-  const outcome = page.locator('.shimpz-message--assistant').last();
-  await expect(outcome).toContainText(
-    'Shimpz Cloudflare v0.4.1 was installed in Team Marketing.',
+  await expect(tasks.nth(1).locator('img')).toHaveAttribute(
+    'src',
+    '/api/teams/marketing/assistants/whatsapp/icon',
   );
-  await expect(outcome).toContainText('Available Actions:');
-  await expect(outcome).toContainText('List Cloudflare DNS zones — list-zones');
-  await expect(outcome).toContainText('Read DNS records — records.read');
-  await expect(outcome.locator('code')).toHaveText(['list-zones', 'records.read']);
-  await expect(outcome).not.toContainText('Safely manage Cloudflare DNS records through OAuth.');
-  await expect(outcome).toContainText('Send your original request again to use this Assistant.');
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
-
-  await composer.fill('List my Cloudflare DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
-  expect(chat.chatFrames().at(-1).assistant_ids).toEqual(['shimpz-cloudflare']);
+  expect(chat.chatFrames()).toHaveLength(1);
+  expect(chat.chatFrames()[0].message).toBe(
+    'Configure my Cloudflare domain and send the result on WhatsApp',
+  );
 });
 
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const chat = await routeReadyChat(page, {
     assistantUninstall: true,
+    holdAssistantIcon: true,
     holdAssistantUninstall: true,
   });
   await page.goto('/chat/');
@@ -785,6 +769,9 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 
   await uninstall.click();
+  await expect(task).toHaveAttribute('data-state', 'pending');
+  expect(chat.chatFrames()).toHaveLength(1);
+  chat.releaseAssistantIcon();
   await expect(page.getByText('yes', { exact: true })).toHaveCount(0);
   await expect(task).toHaveAttribute('data-state', 'working');
   expect(await task.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
@@ -858,125 +845,6 @@ test('cancels an Assistant uninstall without projecting a confirmation reply', a
   await expect(task).toContainText('Cancelled');
   await expect(task.getByRole('button')).toHaveCount(0);
   await expect(composer).toBeFocused();
-});
-
-test('describes an idempotently available Assistant with its installed Actions', async ({ page }) => {
-  await routeReadyChat(page, {
-    assistantInstall: true,
-    assistantInstallWasNew: false,
-    assistantInstallSummary: 'Manage [DNS](https://example.com) with **reviewed** changes.',
-  });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('List my Cloudflare DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const task = page.locator('[data-slot="chat-task"]');
-  await task.getByRole('button', { name: 'Install Shimpz Cloudflare' }).click();
-
-  await expect(task).toHaveAttribute('data-state', 'complete');
-  const outcome = page.locator('.shimpz-message--assistant').last();
-  await expect(outcome).toContainText(
-    'Shimpz Cloudflare v0.4.1 was already available in Team Marketing.',
-  );
-  await expect(outcome).toContainText('List Cloudflare DNS zones — list-zones');
-  await expect(outcome).not.toContainText('Manage [DNS](https://example.com) with **reviewed** changes.');
-  await expect(outcome.getByRole('link')).toHaveCount(0);
-});
-
-test('keeps installation success when optional Action labels are unavailable', async ({ page }) => {
-  const creatorSummary = 'Manage [DNS](https://example.com) with **unverified** copy.';
-  await routeReadyChat(page, {
-    assistantInstall: true,
-    assistantInstallActions: null,
-    assistantInstallSummary: creatorSummary,
-  });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('List my Cloudflare DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const task = page.locator('[data-slot="chat-task"]');
-  await task.getByRole('button', { name: 'Install Shimpz Cloudflare' }).click();
-
-  await expect(task).toHaveAttribute('data-state', 'complete');
-  const outcome = page.locator('.shimpz-message--assistant').last();
-  await expect(outcome).toContainText('Shimpz Cloudflare v0.4.1 was installed in Team Marketing.');
-  await expect(outcome).toContainText('Send your original request again to use this Assistant.');
-  await expect(outcome).not.toContainText('Available Actions:');
-  await expect(outcome).not.toContainText(creatorSummary);
-  await expect(outcome.getByRole('link')).toHaveCount(0);
-});
-
-for (const [name, inventory] of [
-  ['missing from the refreshed inventory', { assistantInstallInventoryMissing: true }],
-  ['not running in the refreshed inventory', { assistantInstallInventoryStatus: 'stopped' }],
-  ['different from the label version', { assistantInstallLabelVersion: '0.4.2' }],
-]) {
-  test(`does not announce capability when the installed Assistant is ${name}`, async ({ page }) => {
-    await routeReadyChat(page, { assistantInstall: true, ...inventory });
-    await page.goto('/chat/');
-
-    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-    await composer.fill('List my Cloudflare DNS zones');
-    await page.getByRole('button', { name: 'Send' }).click();
-    const task = page.locator('[data-slot="chat-task"]');
-    await task.getByRole('button', { name: 'Install Shimpz Cloudflare' }).click();
-
-    await expect(task).toHaveAttribute('data-state', 'complete');
-    await expect(page.getByText(
-      'The Assistant installation completed, but its installed Team details could not be confirmed.',
-      { exact: true },
-    )).toBeVisible();
-    await expect(page.getByText(/Available Actions:/)).toHaveCount(0);
-    await expect(composer).toBeEnabled();
-  });
-}
-
-test('cancels a suggested Assistant from the inline proposal', async ({ page }) => {
-  await routeReadyChat(page, { assistantInstall: true });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('List my Cloudflare DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-
-  const task = page.locator('[data-slot="chat-task"]');
-  await task.getByRole('button', { name: 'Cancel installing Shimpz Cloudflare' }).click();
-  await expect(page.getByText('no', { exact: true })).toHaveCount(0);
-  await expect(task).toHaveAttribute('data-state', 'cancelled');
-  await expectTaskMediaBesideTitle(task);
-  await expect(task).toContainText('Cancelled');
-  await expect(task.getByRole('button')).toHaveCount(0);
-  await expect(composer).toBeFocused();
-});
-
-test('expires a conversational Assistant proposal without another server frame', async ({ page }) => {
-  await routeReadyChat(page, {
-    assistantInstall: true,
-    assistantInstallExpiresIn: 1,
-    assistantInstallExpiresOnConfirm: true,
-  });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await expect(composer).toBeEnabled();
-  await composer.fill('List my Cloudflare DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-
-  const task = page.locator('[data-slot="chat-task"]');
-  await expect(task).toHaveAttribute('data-state', 'pending');
-  await expect(task).toHaveAttribute('data-state', 'cancelled', { timeout: 3_000 });
-  await expect(task).toContainText('Confirmation expired');
-  await expect(task).not.toContainText('Install this Assistant for this Team?');
-
-  await composer.fill('yes');
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('yes', { exact: true })).toBeVisible();
-  await expect(task).toHaveAttribute('data-state', 'cancelled');
-  await expect(task).toContainText('Confirmation expired');
-  await expect(page.getByText('The chat response did not match the secure protocol.')).toHaveCount(0);
-  await expect(composer).toBeEnabled();
 });
 
 test('renders the integrations drawer as a responsive Sheet surface', async ({ page }) => {
@@ -1271,6 +1139,7 @@ test('presents individual authorization controls for every pending Integration',
   await routeReadyChat(page, {
     integrationChallenge: true,
     oauthCompletionMode: 'code',
+    whatsappInstalled: true,
     integrationRequirements: [
       {
         assistant_id: 'shimpz-cloudflare',
@@ -1283,14 +1152,14 @@ test('presents individual authorization controls for every pending Integration',
         actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
       },
       {
-        assistant_id: 'shimpz-cloudflare',
-        assistant_name: 'Shimpz Cloudflare',
-        integration_id: 'cloudflare-dns',
-        provider: 'cloudflare',
-        name: 'Cloudflare DNS',
-        summary: 'Changes reviewed Cloudflare DNS records.',
-        scopes: ['dns.write'],
-        actions: [{ id: 'change-dns', name: 'Change DNS', summary: 'Changes one DNS record.' }],
+        assistant_id: 'whatsapp',
+        assistant_name: 'WhatsApp',
+        integration_id: 'whatsapp-messages',
+        provider: 'whatsapp',
+        name: 'WhatsApp messages',
+        summary: 'Sends reviewed WhatsApp messages.',
+        scopes: ['messages.write'],
+        actions: [{ id: 'send-message', name: 'Send message', summary: 'Sends one reviewed message.' }],
       },
     ],
   });
@@ -1305,24 +1174,24 @@ test('presents individual authorization controls for every pending Integration',
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect a required account' });
   await expect(dialog.getByText('zone.read', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('dns.write', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('messages.write', { exact: true })).toBeVisible();
   const zoneAuthorize = dialog.getByRole('button', { name: 'Authorize on Cloudflare — Cloudflare zones' });
-  const dnsAuthorize = dialog.getByRole('button', { name: 'Authorize on Cloudflare — Cloudflare DNS' });
+  const messageAuthorize = dialog.getByRole('button', { name: 'Authorize on WhatsApp — WhatsApp messages' });
   await expect(zoneAuthorize).toBeEnabled();
-  await expect(dnsAuthorize).toBeEnabled();
+  await expect(messageAuthorize).toBeEnabled();
   const popupPromise = page.waitForEvent('popup');
-  await dnsAuthorize.click();
+  await messageAuthorize.click();
   const popup = await popupPromise;
   expect(await page.evaluate(() => window.authorizationStateAtOpen)).toEqual({
     disabled: true,
-    text: 'Opening Cloudflare…',
+    text: 'Opening WhatsApp…',
   });
-  await expect(dnsAuthorize).toBeDisabled();
+  await expect(messageAuthorize).toBeDisabled();
   await expect(zoneAuthorize).toBeDisabled();
   await expect.poll(() => Boolean(authorizeRoute)).toBe(true);
   expect(authorizeRoute.request().postDataJSON()).toEqual({
-    assistant_id: 'shimpz-cloudflare',
-    integration_id: 'cloudflare-dns',
+    assistant_id: 'whatsapp',
+    integration_id: 'whatsapp-messages',
   });
   await authorizeRoute.abort();
   await popup.close();

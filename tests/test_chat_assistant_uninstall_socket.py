@@ -67,7 +67,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
     def _accepted(message: dict) -> bool:
         return message == {
             "type": "websocket.accept",
-            "subprotocol": "shimpz.chat.v6",
+            "subprotocol": "shimpz.chat.v7",
             "headers": [],
         }
 

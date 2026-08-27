@@ -129,7 +129,7 @@ test('chat builds only the versioned WebSocket contract', () => {
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
-  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v6');
+  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v7');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
     'ws://127.0.0.1:7777/api/teams/team_1/chat/ws',
@@ -396,131 +396,105 @@ for (const invalid of [
   );
 });
 
-test('chat admits only the exact conversational Assistant installation lifecycle', () => {
-  const proposalId = 'c'.repeat(32);
-  const proposed = {
-    type: 'assistant-install',
-    state: 'proposed',
-    proposal_id: proposalId,
-    team_id: 'team_1',
-    reply: 'The Cloudflare Assistant is required. Should I install it?',
-    expires_in: 300,
-    assistant: {
+test('chat admits only the exact aggregate Assistant installation plan lifecycle', () => {
+  const planId = 'c'.repeat(32);
+  const identities = [
+    {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
       summary: 'Manage Cloudflare zones and DNS records.',
       providers: ['cloudflare'],
     },
-  };
-  assert.deepEqual(parseChatEvent(proposed, 'team_1', 'Marketing'), {
-    ...proposed,
-    team_name: 'Marketing',
+    {
+      id: 'whatsapp',
+      name: 'WhatsApp',
+      summary: 'Send reviewed WhatsApp messages.',
+      providers: ['meta', 'whatsapp'],
+    },
+  ];
+  const frame = (state, statuses, extra = {}) => ({
+    type: 'assistant-install-plan',
+    state,
+    plan_id: planId,
+    team_id: 'team_1',
+    assistants: identities.map((assistant, index) => ({ ...assistant, status: statuses[index] })),
+    ...extra,
   });
-
-  for (const event of [
-    {
-      type: 'assistant-install', state: 'installing', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare',
-    },
-    {
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-    },
-    {
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-      assistant_version: '0.4.1',
-      actions: [
-        { id: 'list-zones', label: 'Listar zonas DNS' },
-        { id: 'records.read', label: 'Consultar registros DNS' },
-      ],
-    },
-    {
-      type: 'assistant-install', state: 'cancelled', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare',
-    },
-    {
-      type: 'assistant-install', state: 'expired', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare',
-    },
-    {
-      type: 'assistant-install', state: 'failed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', status: 503,
-    },
-  ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
-  const astralBoundary = {
-    type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-    assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-    assistant_version: '0.4.1',
-    actions: [{ id: 'list-zones', label: '😀'.repeat(80) }],
-  };
-  assert.deepEqual(parseChatEvent(astralBoundary, 'team_1', 'Marketing'), astralBoundary);
-  assert.doesNotMatch(JSON.stringify(proposed), /source_digest|token|secret/i);
+  const valid = [
+    frame('planned', ['pending', 'pending']),
+    frame('installing', ['installing', 'pending']),
+    frame('installing', ['installed', 'pending']),
+    frame('installing', ['installed', 'installing']),
+    frame('installing', ['installed', 'installed']),
+    frame('installed', ['installed', 'installed']),
+    frame('failed', ['pending', 'pending'], { status: 429 }),
+    frame('failed', ['installed', 'failed'], { status: 503 }),
+    frame('stopped', ['installed', 'pending']),
+  ];
+  for (const event of valid) {
+    assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), {
+      ...event,
+      team_name: 'Marketing',
+    });
+  }
+  assert.doesNotMatch(JSON.stringify(valid), /source_digest|objective|token|secret/i);
 });
 
-test('chat rejects widened, cross-Team, secret, or malformed Assistant installation events', () => {
-  const proposalId = 'c'.repeat(32);
-  const proposed = {
-    type: 'assistant-install',
-    state: 'proposed',
-    proposal_id: proposalId,
+test('chat rejects widened, cross-Team, duplicated, or malformed installation plans', () => {
+  const planId = 'c'.repeat(32);
+  const cloudflare = {
+    id: 'shimpz-cloudflare',
+    name: 'Shimpz Cloudflare',
+    summary: 'Manage Cloudflare zones and DNS records.',
+    providers: ['cloudflare'],
+    status: 'pending',
+  };
+  const whatsapp = {
+    id: 'whatsapp',
+    name: 'WhatsApp',
+    summary: 'Send reviewed WhatsApp messages.',
+    providers: ['meta', 'whatsapp'],
+    status: 'pending',
+  };
+  const planned = {
+    type: 'assistant-install-plan',
+    state: 'planned',
+    plan_id: planId,
     team_id: 'team_1',
-    reply: 'Install this Assistant?',
-    expires_in: 300,
-    assistant: {
-      id: 'shimpz-cloudflare',
-      name: 'Shimpz Cloudflare',
-      summary: 'Manage Cloudflare zones and DNS records.',
-      providers: ['cloudflare'],
-    },
+    assistants: [cloudflare, whatsapp],
   };
   for (const invalid of [
-    { ...proposed, source_digest: `sha256:${'a'.repeat(64)}` },
-    { ...proposed, team_id: 'other_team' },
-    { ...proposed, expires_in: 301 },
-    { ...proposed, proposal_id: 'short' },
-    { ...proposed, assistant: { ...proposed.assistant, providers: ['x', 'cloudflare'] } },
-    { ...proposed, assistant: { ...proposed.assistant, providers: ['cloudflare', 'cloudflare'] } },
+    { ...planned, source_digest: `sha256:${'a'.repeat(64)}` },
+    { ...planned, team_id: 'other_team' },
+    { ...planned, plan_id: 'short' },
+    { ...planned, assistants: [whatsapp, cloudflare] },
+    { ...planned, assistants: [cloudflare, cloudflare] },
+    { ...planned, assistants: [] },
+    { ...planned, assistants: Array.from({ length: 5 }, (_, index) => ({ ...cloudflare, id: `item-${index}` })) },
+    { ...planned, assistants: [{ ...cloudflare, providers: ['x', 'cloudflare'] }, whatsapp] },
+    { ...planned, assistants: [{ ...cloudflare, providers: ['cloudflare', 'cloudflare'] }, whatsapp] },
+    { ...planned, assistants: [{ ...cloudflare, status: 'installing' }, whatsapp] },
+    { ...planned, state: 'installed' },
     {
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'other_team', installed: true,
+      ...planned,
+      state: 'installing',
+      assistants: [{ ...cloudflare, status: 'installing' }, { ...whatsapp, status: 'installing' }],
     },
     {
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-      assistant_version: '0.4.1',
+      ...planned,
+      state: 'failed',
+      status: 200,
+      assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
     },
     {
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-      actions: [{ id: 'list-zones', label: 'Listar zonas DNS' }],
-    },
-    ...[
-      [],
-      [
-        { id: 'records.read', label: 'Consultar registros DNS' },
-        { id: 'list-zones', label: 'Listar zonas DNS' },
-      ],
-      [
-        { id: 'list-zones', label: 'Listar zonas DNS' },
-        { id: 'records.read', label: 'Listar zonas DNS' },
-      ],
-      [{ id: 'Bad', label: 'Listar zonas DNS' }],
-      [{ id: 'list-zones', label: '\u202eDNS' }],
-      [{ id: 'list-zones', label: 'e\u0301' }],
-      [{ id: 'list-zones', label: '😀'.repeat(81) }],
-    ].map((actions) => ({
-      type: 'assistant-install', state: 'installed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', installed: true,
-      assistant_version: '0.4.1', actions,
-    })),
-    {
-      type: 'assistant-install', state: 'failed', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', status: 200,
+      ...planned,
+      state: 'failed',
+      assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
     },
     {
-      type: 'assistant-install', state: 'installing', proposal_id: proposalId,
-      assistant_id: 'shimpz-cloudflare', approved: true,
+      ...planned,
+      state: 'stopped',
+      assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
     },
   ]) assert.throws(
     () => parseChatEvent(invalid, 'team_1', 'Marketing'),

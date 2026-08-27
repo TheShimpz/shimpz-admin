@@ -11,7 +11,6 @@ import {
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /\p{C}/u;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -26,7 +25,6 @@ const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
-const MAX_INSTALL_ACTIONS = 64;
 export const CHAT_PROGRESS_PHASES = Object.freeze([
   'admin-preparation',
   'reply-validation',
@@ -50,7 +48,7 @@ const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
-export const CHAT_WS_PROTOCOL = 'shimpz.chat.v6';
+export const CHAT_WS_PROTOCOL = 'shimpz.chat.v7';
 export const HUMAN_REQUEST_KINDS = Object.freeze([
   'approval',
   'input:text',
@@ -76,6 +74,7 @@ const HUMAN_SINGLE_CHOICE_KINDS = new Set(['input:select', 'input:choice']);
 export function assistantIntegrationProviderLabel(provider) {
   if (typeof provider !== 'string' || !ASSISTANT_ID_RE.test(provider)) return '';
   if (provider === 'x') return 'X';
+  if (provider === 'whatsapp') return 'WhatsApp';
   return provider.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
 }
 
@@ -578,7 +577,7 @@ export function oauthReturnFailure(value) {
   );
 }
 
-/** Build the only chat frame accepted by shimpz.chat.v6. Provider/model/keys remain server-owned. */
+/** Build the only chat frame accepted by shimpz.chat.v7. Provider/model/keys remain server-owned. */
 export function createChatFrame(teamId, turn) {
   requireTeam(teamId);
   if (
@@ -808,14 +807,15 @@ export function chatSocketUrl(locationValue, teamId) {
   return `${scheme}//${locationValue.host}/api/teams/${teamId}/chat/ws`;
 }
 
-function canonicalInstallAssistant(value) {
+function canonicalInstallPlanAssistant(value) {
   if (
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'summary', 'providers']) ||
+    !exactKeys(value, ['id', 'name', 'summary', 'providers', 'status']) ||
     !Array.isArray(value.providers) ||
-    value.providers.length > MAX_INSTALL_PROVIDERS
+    value.providers.length > MAX_INSTALL_PROVIDERS ||
+    !['pending', 'installing', 'installed', 'failed'].includes(value.status)
   ) throw new LocalApiError('The local chat response is invalid.');
   const providers = value.providers.map((provider) => canonicalId(provider));
   if (
@@ -827,6 +827,7 @@ function canonicalInstallAssistant(value) {
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 160),
     providers,
+    status: value.status,
   };
 }
 
@@ -847,115 +848,63 @@ function canonicalUninstallAssistant(value) {
   };
 }
 
-function canonicalInstallActions(values) {
-  if (!Array.isArray(values) || !values.length || values.length > MAX_INSTALL_ACTIONS) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  const actions = values.map((value) => {
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Array.isArray(value) ||
-      !exactKeys(value, ['id', 'label']) ||
-      typeof value.id !== 'string' ||
-      value.id.length > 128 ||
-      !ACTION_ID_RE.test(value.id) ||
-      typeof value.label !== 'string' ||
-      value.label.normalize('NFC') !== value.label ||
-      value.label !== value.label.trim() ||
-      !Array.from(value.label).length ||
-      Array.from(value.label).length > 80 ||
-      SECRET_CONTROL_RE.test(value.label)
-    ) throw new LocalApiError('The local chat response is invalid.');
-    return { id: value.id, label: value.label };
-  });
-  const ids = actions.map((action) => action.id);
-  const labels = actions.map((action) => action.label);
+function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName) {
+  const failed = value.state === 'failed';
+  const fields = ['type', 'state', 'plan_id', 'team_id', 'assistants'];
+  if (failed) fields.push('status');
   if (
-    ids.some((id, index) => index > 0 && ids[index - 1] >= id) ||
-    new Set(labels).size !== labels.length
-  ) throw new LocalApiError('The local chat response is invalid.');
-  return actions;
-}
-
-function parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName) {
-  const base = ['type', 'state', 'proposal_id', 'assistant_id'];
-  if (value.state === 'proposed') {
-    if (
-      !exactKeys(value, [
-        'type', 'state', 'proposal_id', 'team_id', 'reply', 'expires_in', 'assistant',
-      ]) ||
-      !OPAQUE_ID_RE.test(value.proposal_id) ||
-      value.team_id !== expectedTeamId ||
-      !Number.isSafeInteger(value.expires_in) ||
-      value.expires_in < 1 ||
-      value.expires_in > 300 ||
-      typeof value.reply !== 'string' ||
-      !value.reply.trim() ||
-      value.reply.length > MAX_REPLY_CHARS ||
-      CHAT_TEXT_CONTROL_RE.test(value.reply)
-    ) throw new LocalApiError('The local chat response is invalid.');
-    return {
-      type: 'assistant-install',
-      state: 'proposed',
-      proposal_id: value.proposal_id,
-      team_id: value.team_id,
-      team_name: canonicalTeam(expectedTeamName),
-      reply: value.reply,
-      expires_in: value.expires_in,
-      assistant: canonicalInstallAssistant(value.assistant),
-    };
-  }
-  if (!OPAQUE_ID_RE.test(value.proposal_id)) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  const assistantId = canonicalId(value.assistant_id);
-  if (['installing', 'cancelled', 'expired'].includes(value.state)) {
-    if (!exactKeys(value, base)) throw new LocalApiError('The local chat response is invalid.');
-    return { type: 'assistant-install', state: value.state, proposal_id: value.proposal_id, assistant_id: assistantId };
-  }
-  if (value.state === 'installed') {
-    const baseFields = [...base, 'team_id', 'installed'];
-    const hasLabels = exactKeys(value, [...baseFields, 'assistant_version', 'actions']);
-    if (
-      (!exactKeys(value, baseFields) && !hasLabels) ||
-      value.team_id !== expectedTeamId ||
-      typeof value.installed !== 'boolean'
-    ) throw new LocalApiError('The local chat response is invalid.');
-    const event = {
-      type: 'assistant-install',
-      state: 'installed',
-      proposal_id: value.proposal_id,
-      assistant_id: assistantId,
-      team_id: value.team_id,
-      installed: value.installed,
-    };
-    if (!hasLabels) return event;
-    if (typeof value.assistant_version !== 'string' || !SEMANTIC_VERSION_RE.test(value.assistant_version)) {
-      throw new LocalApiError('The local chat response is invalid.');
-    }
-    return {
-      ...event,
-      assistant_version: value.assistant_version,
-      actions: canonicalInstallActions(value.actions),
-    };
-  }
-  if (value.state === 'failed') {
-    if (
-      !exactKeys(value, [...base, 'status']) ||
+    !exactKeys(value, fields) ||
+    !['planned', 'installing', 'installed', 'failed', 'stopped'].includes(value.state) ||
+    !OPAQUE_ID_RE.test(value.plan_id) ||
+    value.team_id !== expectedTeamId ||
+    !Array.isArray(value.assistants) ||
+    value.assistants.length < 1 ||
+    value.assistants.length > 4 ||
+    (failed && (
       !Number.isInteger(value.status) ||
       value.status < 400 ||
       value.status > 599
-    ) throw new LocalApiError('The local chat response is invalid.');
-    return {
-      type: 'assistant-install',
-      state: 'failed',
-      proposal_id: value.proposal_id,
-      assistant_id: assistantId,
-      status: value.status,
-    };
+    ))
+  ) throw new LocalApiError('The local chat response is invalid.');
+  const assistants = value.assistants.map(canonicalInstallPlanAssistant);
+  const ids = assistants.map((assistant) => assistant.id);
+  if (ids.some((id, index) => index > 0 && ids[index - 1] >= id)) {
+    throw new LocalApiError('The local chat response is invalid.');
   }
-  throw new LocalApiError('The local chat response is invalid.');
+  const statuses = assistants.map((assistant) => assistant.status);
+  const firstPending = statuses.indexOf('pending');
+  const firstInstalling = statuses.indexOf('installing');
+  const firstFailed = statuses.indexOf('failed');
+  const installedPrefix = statuses.findIndex((status) => status !== 'installed');
+  const prefixLength = installedPrefix === -1 ? statuses.length : installedPrefix;
+  const valid = (
+    (value.state === 'planned' && statuses.every((status) => status === 'pending')) ||
+    (value.state === 'installed' && statuses.every((status) => status === 'installed')) ||
+    (value.state === 'installing' && firstFailed === -1 && statuses.every((status, index) => (
+      index < prefixLength ||
+      (index === prefixLength && firstInstalling === prefixLength) ||
+      (index >= prefixLength && status === 'pending')
+    ))) ||
+    (value.state === 'failed' && (
+      statuses.every((status) => status === 'pending') ||
+      (firstFailed === prefixLength && statuses.every((status, index) => (
+        index < prefixLength || index === firstFailed || status === 'pending'
+      )))
+    )) ||
+    (value.state === 'stopped' && firstInstalling === -1 && firstFailed === -1 && statuses.every((status, index) => (
+      index < prefixLength || (firstPending === prefixLength && status === 'pending')
+    )))
+  );
+  if (!valid) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    type: 'assistant-install-plan',
+    state: value.state,
+    plan_id: value.plan_id,
+    team_id: value.team_id,
+    team_name: canonicalTeam(expectedTeamName),
+    assistants,
+    ...(failed ? { status: value.status } : {}),
+  };
 }
 
 function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
@@ -1057,8 +1006,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       reply: value.reply,
     };
   }
-  if (value.type === 'assistant-install') {
-    return parseAssistantInstallEvent(value, expectedTeamId, expectedTeamName);
+  if (value.type === 'assistant-install-plan') {
+    return parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName);
   }
   if (value.type === 'assistant-uninstall') {
     return parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName);

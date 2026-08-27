@@ -1,20 +1,21 @@
-"""Socket-scoped discovery, confirmation, and Assistant lifecycle execution."""
+"""Socket-scoped automatic install plans and confirmed destructive lifecycle work."""
 
 from __future__ import annotations
 
 import asyncio
 import concurrent.futures
 import contextlib
+import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol
 
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from team import bridge as team
 
-from chat import assistant_install, assistant_proposal, assistant_uninstall, local, store_catalog
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -35,65 +36,50 @@ SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 
 @dataclass(slots=True)
 class Operation:
-    proposal: assistant_proposal.Proposal
+    proposal: assistant_proposal.UninstallProposal
     future: concurrent.futures.Future
     delivery: asyncio.Task | None = None
 
 
 class Connection(Protocol):
     closed: bool
-    lifecycle_proposal: assistant_proposal.Proposal | None
+    lifecycle_proposal: assistant_proposal.UninstallProposal | None
     lifecycle: Operation | None
 
 
-def _assistant_identity(proposal: assistant_proposal.Proposal) -> dict[str, object]:
+def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[str, object]:
     assistant = proposal.assistant
     identity: dict[str, object] = {
         "id": assistant.assistant_id,
         "name": assistant.name,
         "summary": assistant.summary,
     }
-    if isinstance(proposal, assistant_proposal.UninstallProposal):
-        identity["version"] = proposal.assistant_version
-    else:
-        identity["providers"] = sorted({item.provider for item in assistant.integrations})
+    identity["version"] = proposal.assistant_version
     return identity
 
 
-def _event_type(proposal: assistant_proposal.Proposal) -> str:
-    return (
-        "assistant-uninstall"
-        if isinstance(proposal, assistant_proposal.UninstallProposal)
-        else "assistant-install"
-    )
-
-
 def _proposal_event(
-    proposal: assistant_proposal.Proposal,
+    proposal: assistant_proposal.UninstallProposal,
     terminal: Mapping[str, object],
 ) -> dict[str, object]:
     return {
-        "type": _event_type(proposal),
+        "type": "assistant-uninstall",
         "state": "proposed",
         "proposal_id": proposal.proposal_id,
         "team_id": proposal.team_id,
         "reply": terminal["reply"],
-        "expires_in": (
-            assistant_proposal.UNINSTALL_PROPOSAL_TTL_SECONDS
-            if isinstance(proposal, assistant_proposal.UninstallProposal)
-            else assistant_proposal.INSTALL_PROPOSAL_TTL_SECONDS
-        ),
+        "expires_in": assistant_proposal.UNINSTALL_PROPOSAL_TTL_SECONDS,
         "assistant": _assistant_identity(proposal),
     }
 
 
 def _event(
-    proposal: assistant_proposal.Proposal,
+    proposal: assistant_proposal.UninstallProposal,
     state: str,
     **fields: object,
 ) -> dict[str, object]:
     return {
-        "type": _event_type(proposal),
+        "type": "assistant-uninstall",
         "state": state,
         "proposal_id": proposal.proposal_id,
         "assistant_id": proposal.assistant.assistant_id,
@@ -104,16 +90,9 @@ def _event(
 def _discover(
     team_id: str,
     payload: dict[str, object],
-) -> store_catalog.CatalogAssistant | assistant_proposal.UninstallCandidate | None:
+) -> assistant_proposal.UninstallCandidate | None:
     message = payload["message"]
-    if assistant_proposal.uninstall_requested(message):
-        return assistant_uninstall.discover(team_id, message)
-    return assistant_install.discover(
-        team_id,
-        message,
-        tuple(payload["assistant_ids"]),
-        _STORE_CATALOG,
-    )
+    return assistant_uninstall.discover(team_id, message) if assistant_proposal.uninstall_requested(message) else None
 
 
 def submit_discovery(
@@ -147,7 +126,7 @@ def cancel_discovery(future: concurrent.futures.Future | None) -> None:
 
 async def _await_discovery(
     future: concurrent.futures.Future | None,
-) -> store_catalog.CatalogAssistant | assistant_proposal.UninstallCandidate | None:
+) -> assistant_proposal.UninstallCandidate | None:
     if future is None:
         return None
     try:
@@ -156,11 +135,7 @@ async def _await_discovery(
         raise
     except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
         return None
-    return (
-        candidate
-        if isinstance(candidate, store_catalog.CatalogAssistant | assistant_proposal.UninstallCandidate)
-        else None
-    )
+    return candidate if isinstance(candidate, assistant_proposal.UninstallCandidate) else None
 
 
 async def attach_proposal(
@@ -186,20 +161,12 @@ async def attach_proposal(
     if candidate is None or connection.lifecycle_proposal is not None:
         return event
     try:
-        if isinstance(candidate, assistant_proposal.UninstallCandidate):
-            proposal = assistant_proposal.create_uninstall_proposal(
-                team_id,
-                candidate,
-                language_exemplar=language_exemplar,
-                now=monotonic(),
-            )
-        else:
-            proposal = assistant_proposal.create_install_proposal(
-                team_id,
-                candidate,
-                language_exemplar=language_exemplar,
-                now=monotonic(),
-            )
+        proposal = assistant_proposal.create_uninstall_proposal(
+            team_id,
+            candidate,
+            language_exemplar=language_exemplar,
+            now=monotonic(),
+        )
     except ValueError:
         return event
     connection.lifecycle_proposal = proposal
@@ -214,10 +181,10 @@ async def _deliver(
 ) -> None:
     task = asyncio.current_task()
     try:
-        result: assistant_install.InstallResult | assistant_uninstall.UninstallResult | None = None
+        result: assistant_uninstall.UninstallResult | None = None
         with contextlib.suppress(Exception):
             resolved = await asyncio.wrap_future(operation.future)
-            if isinstance(resolved, assistant_install.InstallResult | assistant_uninstall.UninstallResult):
+            if isinstance(resolved, assistant_uninstall.UninstallResult):
                 result = resolved
         if connection.closed:
             return
@@ -230,45 +197,15 @@ async def _deliver(
 
 
 def _result_event(
-    proposal: assistant_proposal.Proposal,
-    result: assistant_install.InstallResult | assistant_uninstall.UninstallResult | None,
+    proposal: assistant_proposal.UninstallProposal,
+    result: assistant_uninstall.UninstallResult | None,
 ) -> dict[str, object]:
-    if isinstance(proposal, assistant_proposal.UninstallProposal):
-        return _uninstall_result_event(proposal, result)
-    return _install_result_event(proposal, result)
-
-
-def _install_result_event(
-    proposal: assistant_proposal.InstallProposal,
-    result: assistant_install.InstallResult | assistant_uninstall.UninstallResult | None,
-) -> dict[str, object]:
-    if (
-        isinstance(result, assistant_install.InstallResult)
-        and 200 <= result.status < 300
-        and result.installed is not None
-    ):
-        labels = result.labels
-        return _event(
-            proposal,
-            "installed",
-            team_id=proposal.team_id,
-            installed=result.installed,
-            **(
-                {
-                    "assistant_version": labels.assistant_version,
-                    "actions": [{"id": action.action_id, "label": action.label} for action in labels.actions],
-                }
-                if labels is not None
-                else {}
-            ),
-        )
-    status = result.status if result is not None and 400 <= result.status <= 599 else 502
-    return _event(proposal, "failed", status=status)
+    return _uninstall_result_event(proposal, result)
 
 
 def _uninstall_result_event(
     proposal: assistant_proposal.UninstallProposal,
-    result: assistant_install.InstallResult | assistant_uninstall.UninstallResult | None,
+    result: assistant_uninstall.UninstallResult | None,
 ) -> dict[str, object]:
     if (
         isinstance(result, assistant_uninstall.UninstallResult)
@@ -288,11 +225,10 @@ def _uninstall_result_event(
 async def _dispatch(
     websocket: WebSocket,
     connection: Connection,
-    proposal: assistant_proposal.Proposal,
+    proposal: assistant_proposal.UninstallProposal,
     send_event: SendEvent,
 ) -> None:
-    state = "uninstalling" if isinstance(proposal, assistant_proposal.UninstallProposal) else "installing"
-    if not await send_event(websocket, _event(proposal, state)):
+    if not await send_event(websocket, _event(proposal, "uninstalling")):
         connection.closed = True
         return
     try:
@@ -305,28 +241,10 @@ async def _dispatch(
     operation.delivery = asyncio.create_task(_deliver(websocket, connection, operation, send_event))
 
 
-def _install_then_label(proposal: assistant_proposal.InstallProposal) -> assistant_install.InstallResult:
-    result = assistant_install.install(proposal)
-    if result.installed is None or not 200 <= result.status < 300 or proposal.language_exemplar is None:
-        return result
-    with contextlib.suppress(Exception):
-        response = local.installed_action_labels(
-            proposal.team_id,
-            proposal.assistant.assistant_id,
-            proposal.language_exemplar,
-        )
-        labels = assistant_install.action_labels(response, proposal)
-        if labels is not None:
-            return replace(result, labels=labels)
-    return result
-
-
 def _execute(
-    proposal: assistant_proposal.Proposal,
-) -> assistant_install.InstallResult | assistant_uninstall.UninstallResult:
-    if isinstance(proposal, assistant_proposal.UninstallProposal):
-        return assistant_uninstall.uninstall(proposal)
-    return _install_then_label(proposal)
+    proposal: assistant_proposal.UninstallProposal,
+) -> assistant_uninstall.UninstallResult:
+    return assistant_uninstall.uninstall(proposal)
 
 
 async def resolve(
@@ -342,10 +260,8 @@ async def resolve(
         return False
     if payload["files"] != []:
         decision = "ambiguous"
-    elif isinstance(proposal, assistant_proposal.UninstallProposal):
-        decision = assistant_proposal.classify_uninstall_confirmation(payload["message"])
     else:
-        decision = assistant_proposal.classify_install_confirmation(payload["message"])
+        decision = assistant_proposal.classify_uninstall_confirmation(payload["message"])
     if not proposal.valid_for(team_id, monotonic()):
         connection.lifecycle_proposal = None
         if decision != "ambiguous":
@@ -362,6 +278,32 @@ async def resolve(
         return True
     connection.lifecycle_proposal = None
     return False
+
+
+def submit_preparation(
+    team_id: str,
+    payload: dict[str, object],
+) -> concurrent.futures.Future | None:
+    """Start the deterministic gap gate and stateless planner on its bounded lane."""
+    try:
+        return submit_in_context(
+            _DISCOVERY_EXECUTOR,
+            assistant_plan.prepare,
+            team_id,
+            payload,
+            _STORE_CATALOG,
+        )
+    except (ExecutorSaturatedError, OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError):
+        return None
+
+
+def submit_plan(
+    plan: assistant_plan.Plan,
+    stopped: threading.Event,
+    progress: Callable[[tuple[dict[str, object], ...]], None],
+) -> concurrent.futures.Future:
+    """Admit one complete sequential plan before any item starts."""
+    return submit_in_context(_LIFECYCLE_EXECUTOR, assistant_plan.execute, plan, stopped, progress)
 
 
 async def close(connection: Connection) -> None:

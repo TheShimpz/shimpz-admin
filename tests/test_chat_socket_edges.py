@@ -81,7 +81,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
         permit.release.assert_called_once_with()
 
         with (
-            mock.patch.dict(socket.os.environ, {"SHIMPZ_ADMIN_ALLOWED_ORIGINS": "bad"}),
+            mock.patch.dict(socket.socket_boundary.os.environ, {"SHIMPZ_ADMIN_ALLOWED_ORIGINS": "bad"}),
             self.assertRaises(RuntimeError),
         ):
             socket._configured_origins()

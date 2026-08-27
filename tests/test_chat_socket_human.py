@@ -65,7 +65,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict[str, object]) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v6", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
 
     async def _open_challenge(self, kind: str) -> _Socket:
         websocket = _Socket(self.admin_app.app, token=self.token)
