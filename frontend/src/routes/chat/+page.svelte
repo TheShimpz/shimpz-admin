@@ -43,12 +43,14 @@
   let progressEvents = $state([]);
   let progressSequence = $state(0);
   let stopping = $state(false);
+  let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
   const lifecycleExpiryTimers = new Map();
+  const lifecycleIconCaptures = new Map();
   let reconnectAttempt = 0;
   const MAX_RECONNECT_ATTEMPTS = 5;
   let integrationsOpen = $state(false);
@@ -109,6 +111,7 @@
   let lifecycleDecisionDisabled = $derived(
     composerBusy ||
       stopping ||
+      lifecycleDecisionPending ||
       !socketReady ||
       !socket ||
       chatTeamId !== selectedTeamId,
@@ -180,13 +183,56 @@
   function lifecycleIconSource(lifecycle) {
     const assistantId = encodeURIComponent(lifecycle.assistant.id);
     if (lifecycle.operation === 'uninstall') {
-      if (!chatTeamId || lifecycle.state === 'uninstalled') return undefined;
+      if (lifecycle.state === 'uninstalled') return lifecycle.iconSnapshot;
+      if (!chatTeamId) return undefined;
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
     if (lifecycle.state === 'installed' && chatTeamId) {
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
     return `/api/assistants/${assistantId}/catalog-icon`;
+  }
+
+  function imageDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Assistant icon snapshot failed'));
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function captureUninstallIcon(proposalId, assistantId, teamId) {
+    const existing = lifecycleIconCaptures.get(proposalId);
+    if (existing) return existing.promise;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const source = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+    const promise = fetch(source, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok || response.headers.get('content-type')?.split(';', 1)[0] !== 'image/png') return;
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 1024 * 1024 || blob.type !== 'image/png') return;
+      const snapshot = await imageDataUrl(blob);
+      if (typeof snapshot !== 'string' || !snapshot.startsWith('data:image/png;base64,')) return;
+      turns = turns.map((turn) => (
+        turn.lifecycle?.proposal_id === proposalId &&
+        turn.lifecycle.operation === 'uninstall' &&
+        turn.lifecycle.assistant.id === assistantId
+          ? { ...turn, lifecycle: { ...turn.lifecycle, iconSnapshot: snapshot } }
+          : turn
+      ));
+    }).catch(() => undefined).finally(() => clearTimeout(timer));
+    lifecycleIconCaptures.set(proposalId, { controller, promise });
+    return promise;
+  }
+
+  function clearLifecycleIconCaptures() {
+    for (const capture of lifecycleIconCaptures.values()) capture.controller.abort();
+    lifecycleIconCaptures.clear();
   }
 
   function clearLifecycleExpiry(proposalId) {
@@ -242,6 +288,13 @@
         },
       }];
       scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
+      if (operation === 'uninstall') {
+        void captureUninstallIcon(
+          incoming.proposal_id,
+          incoming.assistant.id,
+          incoming.team_id,
+        );
+      }
       return true;
     }
     const index = lifecycleTurnIndex(incoming.proposal_id);
@@ -744,6 +797,7 @@
 
   function activateTeam(nextTeamId) {
     closeSocket();
+    clearLifecycleIconCaptures();
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
     stopping = false;
@@ -936,8 +990,24 @@
     }
   }
 
-  function submitLifecycleDecision(decision) {
-    return submitMessage(decision, { focusActiveTurn: false, projectUserTurn: false });
+  async function submitLifecycleDecision(decision) {
+    if (lifecycleDecisionPending) return false;
+    lifecycleDecisionPending = true;
+    try {
+      const pendingUninstall = turns.findLast((turn) => (
+        turn.lifecycle?.operation === 'uninstall' && turn.lifecycle.state === 'proposed'
+      ))?.lifecycle;
+      if (decision === 'yes' && pendingUninstall && chatTeamId) {
+        await captureUninstallIcon(
+          pendingUninstall.proposal_id,
+          pendingUninstall.assistant.id,
+          chatTeamId,
+        );
+      }
+      return submitMessage(decision, { focusActiveTurn: false, projectUserTurn: false });
+    } finally {
+      lifecycleDecisionPending = false;
+    }
   }
 
   function send(event) {
@@ -1055,6 +1125,7 @@
     return () => {
       mounted = false;
       closeSocket();
+      clearLifecycleIconCaptures();
     };
   });
 </script>

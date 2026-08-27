@@ -242,6 +242,7 @@ async function routeReadyChat(page, {
   });
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => {
     assistantIconRequests.push(route.request().url());
+    if (!assistantInstalled) return route.fulfill({ status: 404 });
     return route.fulfill({
       contentType: 'image/png',
       body: Buffer.from(
@@ -793,7 +794,12 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
 
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect(task).toContainText('Uninstalled');
-  await expect(task.locator('img')).toHaveCount(0);
+  await expect(task.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
+  const completedIcon = await task.locator('img').getAttribute('src');
+  expect(await page.evaluate(async () => (
+    await fetch('/api/teams/marketing/assistants/shimpz-cloudflare/icon')
+  ).status)).toBe(404);
+  await expect(task.locator('img')).toHaveAttribute('src', completedIcon);
   await expect(task.getByRole('button')).toHaveCount(0);
   const outcome = page.locator('.shimpz-message--assistant').last();
   await expect(outcome).toContainText(
