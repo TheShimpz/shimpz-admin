@@ -557,6 +557,45 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.body, b"")
 
+    def test_stored_input_inventory_and_clear_keep_the_public_contract_exact(self) -> None:
+        inventory = self.admin_app.team.TeamResponse(
+            200,
+            {
+                "stored_inputs": [
+                    {
+                        "assistant_id": "whatsapp",
+                        "stored_input_id": "whatsapp-token",
+                        "status": "stored",
+                    }
+                ]
+            },
+        )
+        with mock.patch.object(
+            self.admin_app.action_stored_input,
+            "list_assistant_stored_inputs",
+            return_value=inventory,
+        ):
+            listed = self.admin_app.team_assistant_stored_inputs("team_1")
+        self.assertEqual(json.loads(listed.body), inventory.body)
+        self.assertEqual(listed.headers["cache-control"], "no-store")
+
+        cleared = self.admin_app.team.TeamResponse(200, {"cleared": True})
+        with mock.patch.object(
+            self.admin_app.action_stored_input,
+            "clear_assistant_stored_input",
+            return_value=cleared,
+        ) as clear:
+            response = asyncio.run(
+                self.admin_app.team_assistant_stored_input_clear(
+                    "team_1",
+                    "whatsapp",
+                    "whatsapp-token",
+                )
+            )
+        clear.assert_called_once_with("team_1", "whatsapp", "whatsapp-token")
+        self.assertEqual(json.loads(response.body), {"cleared": True})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+
     def test_authorize_body_requires_only_the_exact_integration_pair(self) -> None:
         for request_body in (
             b"{}",

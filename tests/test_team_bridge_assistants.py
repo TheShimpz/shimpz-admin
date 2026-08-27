@@ -22,6 +22,7 @@ from mfa_helper import configure_supervisor
 from team import bridge as team
 from team import transport
 
+from action import stored_input as action_stored_input
 from integrations import assistants as integrations
 
 LOCAL_TEAM_RESIDUES = [
@@ -267,6 +268,63 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         self.assertEqual(
             invalid,
             team.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
+        )
+
+    def test_projects_only_bounded_stored_input_metadata_and_exact_clear(self):
+        metadata = {
+            "assistant_id": "whatsapp",
+            "stored_input_id": "whatsapp-token",
+            "status": "stored",
+        }
+        _TeamHandler.response_body = json.dumps(
+            {
+                "team_id": "team_1",
+                "stored_inputs": [metadata],
+                "trace_id": "f" * 32,
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        listed = action_stored_input.list_assistant_stored_inputs("team_1")
+
+        self.assertEqual(listed, team.TeamResponse(200, {"stored_inputs": [metadata]}))
+        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistant-stored-inputs")
+        self.assertNotRegex(json.dumps(listed.body), r'"value"|"generation"')
+
+        _TeamHandler.response_body = json.dumps(
+            {
+                "team_id": "team_1",
+                "assistant_id": "whatsapp",
+                "stored_input_id": "whatsapp-token",
+                "cleared": True,
+                "trace_id": "e" * 32,
+            },
+            separators=(",", ":"),
+        ).encode()
+        cleared = action_stored_input.clear_assistant_stored_input(
+            "team_1",
+            "whatsapp",
+            "whatsapp-token",
+        )
+
+        self.assertEqual(cleared, team.TeamResponse(200, {"cleared": True}))
+        self.assertEqual(
+            (_TeamHandler.requests[-1]["method"], _TeamHandler.requests[-1]["path"]),
+            ("DELETE", "/v1/teams/team_1/assistant-stored-inputs/whatsapp/whatsapp-token"),
+        )
+
+        _TeamHandler.response_body = json.dumps(
+            {
+                "team_id": "team_1",
+                "stored_inputs": [{**metadata, "value": "must-not-cross"}],
+                "trace_id": "f" * 32,
+            },
+            separators=(",", ":"),
+        ).encode()
+        invalid = action_stored_input.list_assistant_stored_inputs("team_1")
+        self.assertEqual(
+            invalid,
+            team.TeamResponse(502, {"detail": "Assistant Stored Input inventory is invalid."}),
         )
 
     def test_destroy_requires_the_authoritative_name_and_forwards_no_confirmation_secret(self):

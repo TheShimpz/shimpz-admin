@@ -40,6 +40,7 @@ from team import bridge as team
 from team import files as team_files
 
 import browser
+from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
 from chat import socket as chat_socket
@@ -671,6 +672,31 @@ def team_assistant_integrations(team_id: str):
     response = _team_response(lambda: integrations.list_assistant_integrations(team_id))
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.get("/api/teams/{team_id}/assistant-stored-inputs")
+def team_assistant_stored_inputs(team_id: str):
+    response = _team_response(lambda: action_stored_input.list_assistant_stored_inputs(team_id))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.delete("/api/teams/{team_id}/assistant-stored-inputs/{assistant_id}/{stored_input_id}")
+async def team_assistant_stored_input_clear(
+    team_id: str,
+    assistant_id: str,
+    stored_input_id: str,
+):
+    try:
+        response = await asyncio.to_thread(
+            action_stored_input.clear_assistant_stored_input,
+            team_id,
+            assistant_id,
+            stored_input_id,
+        )
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return JSONResponse(response.body, status_code=response.status, headers={"Cache-Control": "no-store"})
 
 
 async def team_assistant_integration_authorize(team_id: str, challenge_id: str, request: Request):
