@@ -14,6 +14,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -206,6 +207,21 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             response,
             team.TeamResponse(409, {"detail": "assistant already installed"}),
         )
+
+    def test_install_uses_its_full_lifecycle_timeout_budget(self):
+        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, {})) as call:
+            team.install_assistant(
+                "team_1",
+                {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+            )
+
+        call.assert_called_once_with(
+            "POST",
+            "/v1/teams/team_1/assistants",
+            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+            timeout=team.ASSISTANT_INSTALL_TIMEOUT_SECONDS,
+        )
+        self.assertGreater(team.ASSISTANT_INSTALL_TIMEOUT_SECONDS, team.CONTROL_TIMEOUT_SECONDS)
 
     def test_fetches_an_installed_assistant_icon_as_bounded_png(self):
         icon = b"\x89PNG\r\n\x1a\ncanonical"

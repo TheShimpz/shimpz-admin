@@ -38,6 +38,7 @@ MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 ACTION_LABEL_TIMEOUT_SECONDS = 15
 CAPABILITY_PLAN_TIMEOUT_SECONDS = 65
+ASSISTANT_INSTALL_TIMEOUT_SECONDS = 360
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
@@ -489,6 +490,7 @@ def install_assistant(team_id: object, payload: object) -> TeamResponse:
         "POST",
         _assistant_path(team_id),
         {"assistant_id": assistant_id, "source_digest": source_digest},
+        timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
 
 
