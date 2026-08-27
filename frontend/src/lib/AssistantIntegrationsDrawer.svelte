@@ -23,8 +23,6 @@
 
   let closeButton = $state();
   let expandedAssistantId = $state('');
-  let provider = $derived(pending?.requirements?.[0]?.provider ?? '');
-  let providerLabel = $derived(assistantIntegrationProviderLabel(provider));
   let copy = $derived($t('assistantIntegrations'));
   let groups = $derived.by(() => {
     const grouped = new Map();
@@ -44,9 +42,9 @@
     expandedAssistantId = expandedAssistantId === assistantId ? '' : assistantId;
   }
 
-  async function connect(challengeId) {
+  async function connect(challengeId, requirement) {
     try {
-      await onconnect?.(challengeId);
+      await onconnect?.(challengeId, requirement);
     } catch {
       // The parent exposes the localized failure in the persistent chat error area.
     }
@@ -87,14 +85,25 @@
       {#if pending}
         <Notice class="pending" variant="warning">
           <strong>{copy.pendingTitle}</strong>
-          <p>{$t('assistantIntegrations.pendingLead', { provider: providerLabel })}</p>
-          <Toolbar>
-            <Button type="button" disabled={working === 'connect'} onclick={() => connect(pending.challenge_id)}>
-              {working === 'connect'
-                ? $t('assistantIntegrations.connecting', { provider: providerLabel })
-                : copy.connect}
-            </Button>
-          </Toolbar>
+          {#each pending.requirements as requirement (`${requirement.assistant_id}/${requirement.integration_id}`)}
+            {@const requirementKey = `${requirement.assistant_id}/${requirement.integration_id}`}
+            {@const requirementProvider = assistantIntegrationProviderLabel(requirement.provider)}
+            <div class="pending-requirement">
+              <p>{$t('assistantIntegrations.pendingLead', { provider: requirementProvider })}</p>
+              <Toolbar>
+                <Button
+                  type="button"
+                  disabled={Boolean(working)}
+                  aria-label={`${$t('assistantIntegrations.authorize', { provider: requirementProvider })} — ${requirement.name}`}
+                  onclick={() => connect(pending.challenge_id, requirement)}
+                >
+                  {working === requirementKey
+                    ? $t('assistantIntegrations.connecting', { provider: requirementProvider })
+                    : $t('assistantIntegrations.authorize', { provider: requirementProvider })}
+                </Button>
+              </Toolbar>
+            </div>
+          {/each}
         </Notice>
       {/if}
 
@@ -160,6 +169,7 @@
   :global(.pending) { display: grid; gap: 0.45rem; margin-bottom: 0.9rem; }
   :global(.pending strong) { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   :global(.pending p) { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
+  .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.55rem; }
   .assistant-groups { display: grid; gap: 0.8rem; }
   :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); background: var(--surface-2); }
   :global(.assistant-group [data-slot="card-title"]) { font-size: 0.82rem; }
@@ -173,5 +183,6 @@
   .assistant-details p { margin: 0; padding: 0.75rem; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
   @media (max-width: 420px) {
     :global(.assistant-group > [data-slot="card-header"]) { flex-direction: row; align-items: center; }
+    .pending-requirement { grid-template-columns: 1fr; }
   }
 </style>

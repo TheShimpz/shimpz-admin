@@ -20,6 +20,8 @@ import {
 
 const TURN_ID = 'a'.repeat(32);
 const CHALLENGE_ID = 'b'.repeat(32);
+const ASSISTANT_ID = 'shimpz-cloudflare';
+const INTEGRATION_ID = 'cloudflare';
 
 test('recognizes only the closed OAuth failure return marker', () => {
   assert.equal(oauthReturnFailure('https://local.shimpz.com/chat?oauth=start-failed'), true);
@@ -719,7 +721,7 @@ test('starts only a trusted Cloudflare authorization', async () => {
       await authorizeAssistantIntegration(async (url, options) => {
         calls.push({ url, options });
         return response(200, { authorization_url: authorizationUrl, completion_mode: 'code' });
-      }, 'team_1', CHALLENGE_ID),
+      }, 'team_1', CHALLENGE_ID, ASSISTANT_ID, INTEGRATION_ID),
       { authorization_url: authorizationUrl, completion_mode: 'code' },
     );
   } finally {
@@ -731,7 +733,10 @@ test('starts only a trusted Cloudflare authorization', async () => {
     `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
   );
   assert.equal(calls[0].options.method, 'POST');
-  assert.equal(calls[0].options.body, '{}');
+  assert.equal(
+    calls[0].options.body,
+    JSON.stringify({ assistant_id: ASSISTANT_ID, integration_id: INTEGRATION_ID }),
+  );
 
   const readOnlyUrl = authorizationUrl.replace('dns.read+dns.write', 'dns.read');
   assert.deepEqual(
@@ -739,6 +744,8 @@ test('starts only a trusted Cloudflare authorization', async () => {
       async () => response(200, { authorization_url: readOnlyUrl, completion_mode: 'code' }),
       'team_1',
       CHALLENGE_ID,
+      ASSISTANT_ID,
+      INTEGRATION_ID,
     ),
     { authorization_url: readOnlyUrl, completion_mode: 'code' },
   );
@@ -760,7 +767,13 @@ test('starts only a trusted Cloudflare authorization', async () => {
     { authorization_url: authorizationUrl, completion_mode: 'code', code_verifier: 'must-not-cross' },
   ]) {
     await assert.rejects(
-      authorizeAssistantIntegration(async () => response(200, body), 'team_1', CHALLENGE_ID),
+      authorizeAssistantIntegration(
+        async () => response(200, body),
+        'team_1',
+        CHALLENGE_ID,
+        ASSISTANT_ID,
+        INTEGRATION_ID,
+      ),
       /authorization response is invalid/,
     );
   }
@@ -781,6 +794,8 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
         async () => response(200, { authorization_url: loopbackUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
+        ASSISTANT_ID,
+        INTEGRATION_ID,
       ),
       { authorization_url: loopbackUrl, completion_mode: 'automatic' },
     );
@@ -789,6 +804,8 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
         async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
+        ASSISTANT_ID,
+        INTEGRATION_ID,
       ),
       /authorization response is invalid/,
     );
@@ -801,6 +818,8 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
         async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
+        ASSISTANT_ID,
+        INTEGRATION_ID,
       ),
       { authorization_url: hostedUrl, completion_mode: 'automatic' },
     );
@@ -810,6 +829,8 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
           async () => response(200, { authorization_url: authorizationUrl, completion_mode: 'automatic' }),
           'team_1',
           CHALLENGE_ID,
+          ASSISTANT_ID,
+          INTEGRATION_ID,
         ),
         /authorization response is invalid/,
       );

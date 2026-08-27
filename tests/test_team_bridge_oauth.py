@@ -104,6 +104,8 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         response = integrations.start_local_assistant_integration_authorization(
             "team_1",
             "c" * 32,
+            "shimpz-cloudflare",
+            "cloudflare",
             "d" * 43,
             "hosted",
         )
@@ -116,7 +118,12 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(request["body"]),
-            {"callback_mode": "hosted", "session_binding": "d" * 43},
+            {
+                "assistant_id": "shimpz-cloudflare",
+                "integration_id": "cloudflare",
+                "callback_mode": "hosted",
+                "session_binding": "d" * 43,
+            },
         )
         self.assertNotRegex(bytes(request["body"]).decode(), r"token|code|verifier|client")
 
@@ -128,6 +135,8 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         read_only = integrations.start_local_assistant_integration_authorization(
             "team_1",
             "c" * 32,
+            "shimpz-cloudflare",
+            "cloudflare",
             "d" * 43,
             "hosted",
         )
@@ -141,13 +150,20 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         out_of_band = integrations.start_local_assistant_integration_authorization(
             "team_1",
             "c" * 32,
+            "shimpz-cloudflare",
+            "cloudflare",
             "d" * 43,
             "out-of-band",
         )
         self.assertEqual(out_of_band, team.TeamResponse(200, {"authorization_url": out_of_band_url}))
         self.assertEqual(
             json.loads(_TeamHandler.requests[-1]["body"]),
-            {"callback_mode": "out-of-band", "session_binding": "d" * 43},
+            {
+                "assistant_id": "shimpz-cloudflare",
+                "integration_id": "cloudflare",
+                "callback_mode": "out-of-band",
+                "session_binding": "d" * 43,
+            },
         )
 
         for invalid_url in (
@@ -166,7 +182,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 separators=(",", ":"),
             ).encode()
             invalid = integrations.start_local_assistant_integration_authorization(
-                "team_1", "c" * 32, "d" * 43, "hosted"
+                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "hosted"
             )
             self.assertEqual(
                 invalid,
@@ -175,7 +191,12 @@ class TeamOAuthBridgeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(team.TeamRequestError, "callback mode"):
             integrations.start_local_assistant_integration_authorization(
-                "team_1", "c" * 32, "d" * 43, "https://evil.example"
+                "team_1",
+                "c" * 32,
+                "shimpz-cloudflare",
+                "cloudflare",
+                "d" * 43,
+                "https://evil.example",
             )
 
         for invalid_envelope in (
@@ -185,7 +206,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         ):
             _TeamHandler.response_body = json.dumps(invalid_envelope, separators=(",", ":")).encode()
             invalid = integrations.start_local_assistant_integration_authorization(
-                "team_1", "c" * 32, "d" * 43, "hosted"
+                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "hosted"
             )
             self.assertEqual(
                 invalid,

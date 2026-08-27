@@ -675,8 +675,11 @@ def team_assistant_integrations(team_id: str):
 
 async def team_assistant_integration_authorize(team_id: str, challenge_id: str, request: Request):
     payload = await _bounded_json_object(request)
-    if payload:
-        raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
+    if set(payload) != {"assistant_id", "integration_id"}:
+        raise HTTPException(
+            status_code=400,
+            detail="request body must contain only assistant_id and integration_id",
+        )
     session_token = request.cookies.get(COOKIE, "")
     preparation = None
     authorized = False
@@ -694,6 +697,8 @@ async def team_assistant_integration_authorize(team_id: str, challenge_id: str, 
             integrations.start_local_assistant_integration_authorization,
             canonical_team,
             canonical_challenge,
+            payload["assistant_id"],
+            payload["integration_id"],
             preparation.session_binding,
             callback_mode,
         )

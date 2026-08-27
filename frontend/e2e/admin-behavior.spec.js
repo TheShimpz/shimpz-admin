@@ -1255,12 +1255,12 @@ test('renders dynamic Integration data in the current language', async ({ page }
   await expect(dialog.getByRole('button', { name: 'Autorizar no X' })).toBeVisible();
 });
 
-test('presents one dynamic authorization at a time for a shared provider', async ({ page }) => {
+test('presents individual authorization controls for every pending Integration', async ({ page }) => {
   await page.addInitScript(() => {
     const nativeOpen = window.open;
     window.open = function captureAuthorizationState(...args) {
-      const buttons = document.querySelectorAll('dialog[open] button');
-      const authorizeButton = buttons.item(buttons.length - 1);
+      const buttons = [...document.querySelectorAll('dialog[open] button')];
+      const authorizeButton = buttons.find((button) => button.textContent?.includes('Opening'));
       window.authorizationStateAtOpen = {
         disabled: authorizeButton?.disabled ?? false,
         text: authorizeButton?.textContent?.trim() ?? '',
@@ -1304,19 +1304,26 @@ test('presents one dynamic authorization at a time for a shared provider', async
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Review my DNS');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect a required account' });
-  await expect(dialog).toContainText('Start with Cloudflare, using only these reviewed permissions');
   await expect(dialog.getByText('zone.read', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('dns.write', { exact: true })).toHaveCount(0);
-  const authorize = dialog.getByRole('button', { name: 'Authorize next integration' });
+  await expect(dialog.getByText('dns.write', { exact: true })).toBeVisible();
+  const zoneAuthorize = dialog.getByRole('button', { name: 'Authorize on Cloudflare — Cloudflare zones' });
+  const dnsAuthorize = dialog.getByRole('button', { name: 'Authorize on Cloudflare — Cloudflare DNS' });
+  await expect(zoneAuthorize).toBeEnabled();
+  await expect(dnsAuthorize).toBeEnabled();
   const popupPromise = page.waitForEvent('popup');
-  await authorize.click();
+  await dnsAuthorize.click();
   const popup = await popupPromise;
   expect(await page.evaluate(() => window.authorizationStateAtOpen)).toEqual({
     disabled: true,
     text: 'Opening Cloudflare…',
   });
-  await expect(dialog.getByRole('button', { name: 'Opening Cloudflare…' })).toBeDisabled();
+  await expect(dnsAuthorize).toBeDisabled();
+  await expect(zoneAuthorize).toBeDisabled();
   await expect.poll(() => Boolean(authorizeRoute)).toBe(true);
+  expect(authorizeRoute.request().postDataJSON()).toEqual({
+    assistant_id: 'shimpz-cloudflare',
+    integration_id: 'cloudflare-dns',
+  });
   await authorizeRoute.abort();
   await popup.close();
 });

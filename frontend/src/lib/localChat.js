@@ -694,10 +694,24 @@ export async function listAssistantIntegrations(fetcher, teamId) {
   return { integrations };
 }
 
-export async function authorizeAssistantIntegration(fetcher, teamId, challengeId) {
+export async function authorizeAssistantIntegration(
+  fetcher,
+  teamId,
+  challengeId,
+  assistantId,
+  integrationId,
+) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
   requireTeam(teamId);
   if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
+    throw new LocalApiError('Invalid Assistant authorization request.');
+  }
+  let assistant;
+  let integration;
+  try {
+    assistant = canonicalId(assistantId, 'Invalid Assistant authorization request.');
+    integration = canonicalId(integrationId, 'Invalid Assistant authorization request.');
+  } catch {
     throw new LocalApiError('Invalid Assistant authorization request.');
   }
   const response = await fetcher(
@@ -705,7 +719,7 @@ export async function authorizeAssistantIntegration(fetcher, teamId, challengeId
     {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({ assistant_id: assistant, integration_id: integration }),
     },
   );
   const body = await jsonObject(response);

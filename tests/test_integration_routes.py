@@ -114,7 +114,7 @@ class OAuthRoutesTest(unittest.TestCase):
         request = _request(
             "POST",
             "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b"{}",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
             cookie=f"shimpz_admin={self.session}",
             origin="http://127.0.0.1:7777",
         )
@@ -150,15 +150,15 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertRegex(query["handoff"][0], r"^[0-9a-f]{64}$")
         self.assertEqual(response.headers["cache-control"], "no-store")
         arguments = start.call_args.args
-        self.assertEqual(arguments[:2], ("team_1", "a" * 32))
-        self.assertRegex(arguments[2], r"^[A-Za-z0-9_-]{43}$")
-        self.assertEqual(arguments[3], "loopback")
+        self.assertEqual(arguments[:4], ("team_1", "a" * 32, "shimpz-cloudflare", "cloudflare"))
+        self.assertRegex(arguments[4], r"^[A-Za-z0-9_-]{43}$")
+        self.assertEqual(arguments[5], "loopback")
 
     def test_authorization_failure_always_releases_the_handoff_reservation(self) -> None:
         request = _request(
             "POST",
             "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b"{}",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
             cookie=f"shimpz_admin={self.session}",
             origin="http://127.0.0.1:7777",
         )
@@ -224,7 +224,7 @@ class OAuthRoutesTest(unittest.TestCase):
         authorize_request = _request(
             "POST",
             "https://local.shimpz.com/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b"{}",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
             cookie=f"shimpz_admin={self.session}",
             origin="https://local.shimpz.com",
         )
@@ -332,7 +332,7 @@ class OAuthRoutesTest(unittest.TestCase):
                 request = _request(
                     "POST",
                     origin + "/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-                    body=b"{}",
+                    body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
                     cookie=f"shimpz_admin={self.session}",
                     origin=origin,
                 )
@@ -346,7 +346,7 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
             + "a" * 32
             + "/authorize",
-            body=b"{}",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
             cookie=f"shimpz_admin={self.session}",
             origin="https://developer.example.test",
         )
@@ -370,8 +370,8 @@ class OAuthRoutesTest(unittest.TestCase):
             )
         body = json.loads(authorized.body)
         self.assertEqual(body, {"authorization_url": provider_url, "completion_mode": "code"})
-        binding = start.call_args.args[2]
-        self.assertEqual(start.call_args.args[3], "out-of-band")
+        binding = start.call_args.args[4]
+        self.assertEqual(start.call_args.args[5], "out-of-band")
 
         code = "c1." + "b" * 43 + "." + "d" * 64
         complete_request = _request(
@@ -422,7 +422,7 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
             + "a" * 32
             + "/authorize",
-            body=b"{}",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
             cookie=f"shimpz_admin={self.session}",
             origin="https://developer.example.test",
         )
@@ -462,7 +462,7 @@ class OAuthRoutesTest(unittest.TestCase):
         ) as cancel:
             response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, cancel_request))
         self.assertEqual(response.status_code, 204)
-        cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[2])
+        cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[4])
 
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
         binding = "d" * 43
@@ -557,16 +557,23 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.body, b"")
 
-    def test_authorize_body_must_be_exactly_empty(self) -> None:
-        request = _request(
-            "POST",
-            "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b'{"client_id":"must-not-cross"}',
-            cookie=f"shimpz_admin={self.session}",
-        )
-        with self.assertRaises(HTTPException) as raised:
-            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-        self.assertEqual(raised.exception.status_code, 400)
+    def test_authorize_body_requires_only_the_exact_integration_pair(self) -> None:
+        for request_body in (
+            b"{}",
+            b'{"assistant_id":"shimpz-cloudflare"}',
+            b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare","client_id":"must-not-cross"}',
+        ):
+            request = _request(
+                "POST",
+                "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/"
+                + "a" * 32
+                + "/authorize",
+                body=request_body,
+                cookie=f"shimpz_admin={self.session}",
+            )
+            with self.subTest(request_body=request_body), self.assertRaises(HTTPException) as raised:
+                asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+            self.assertEqual(raised.exception.status_code, 400)
 
 
 if __name__ == "__main__":

@@ -849,15 +849,20 @@
     if (next && chatTeamId) void refreshIntegrations(chatTeamId);
   }
 
-  async function authorizeIntegration(challengeId) {
+  async function authorizeIntegration(challengeId, requirement) {
     const teamId = chatTeamId;
     if (
       !teamId ||
       integrationWorking ||
       !integrationChallenge ||
-      integrationChallenge.challenge_id !== challengeId
+      integrationChallenge.challenge_id !== challengeId ||
+      !integrationChallenge.requirements.some((candidate) => (
+        candidate.assistant_id === requirement?.assistant_id &&
+        candidate.integration_id === requirement?.integration_id
+      ))
     ) throw new Error(integrationsCopy.authorizationFailed);
-    integrationWorking = 'connect';
+    const requirementKey = `${requirement.assistant_id}/${requirement.integration_id}`;
+    integrationWorking = requirementKey;
     flushSync();
     const expectedCompletionMode = $sessionContext.oauthCompletionMode;
     // Code completion needs a separate tab opened while this click still owns browser activation.
@@ -867,7 +872,13 @@
     if (authorizationWindow) authorizationWindow.opener = null;
     let authorizationStarted = false;
     try {
-      const authorization = await authorizeAssistantIntegration(fetch, teamId, challengeId);
+      const authorization = await authorizeAssistantIntegration(
+        fetch,
+        teamId,
+        challengeId,
+        requirement.assistant_id,
+        requirement.integration_id,
+      );
       authorizationStarted = true;
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.authorizationFailed);

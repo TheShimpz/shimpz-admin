@@ -72,7 +72,13 @@ class AppOAuthEdgeTests(unittest.TestCase):
         unavailable = self.admin_app.team.TeamResponse(503, {"error": "offline"})
         preparation = self.preparation()
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            mock.patch.object(
+                self.admin_app,
+                "_bounded_json_object",
+                new=mock.AsyncMock(
+                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
+                ),
+            ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "issue", return_value=preparation),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "discard") as discard,
@@ -87,7 +93,13 @@ class AppOAuthEdgeTests(unittest.TestCase):
         discard.assert_called_once_with(preparation.token)
 
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            mock.patch.object(
+                self.admin_app,
+                "_bounded_json_object",
+                new=mock.AsyncMock(
+                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
+                ),
+            ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
         ):
             self.assert_status(
@@ -96,7 +108,13 @@ class AppOAuthEdgeTests(unittest.TestCase):
             )
 
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            mock.patch.object(
+                self.admin_app,
+                "_bounded_json_object",
+                new=mock.AsyncMock(
+                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
+                ),
+            ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(
                 self.admin_app.OAUTH_HANDOFFS,
