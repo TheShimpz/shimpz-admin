@@ -49,6 +49,7 @@ COPY backend/app.py backend/auth.py backend/authentication_state.py backend/brow
     backend/model_catalog.json backend/notifications.py \
     backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
 COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
+COPY backend/action/stored_input.py ./action/
 COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
     backend/chat/assistant_plan.py backend/chat/assistant_proposal.py backend/chat/assistant_uninstall.py \
     backend/chat/connection.py backend/chat/executor.py \
