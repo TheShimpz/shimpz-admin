@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -45,6 +46,42 @@ def _integration(**overrides: object) -> dict[str, object]:
 
 
 class IntegrationProjectionEdgeTests(unittest.TestCase):
+    def test_inventory_projects_only_bounded_metadata_from_exact_route(self) -> None:
+        integration = _integration(
+            id="x-integration",
+            name="Cloudflare integration",
+            summary="Inspect zones and DNS records with your connected Cloudflare integration.",
+            scopes=["dns.read", "offline_access", "zone.read"],
+            integration={"id": "123", "name": "Shimpz", "username": "shimpz"},
+            expires_at="2026-07-20T12:00:00Z",
+        )
+        response = assistants.TeamResponse(
+            200,
+            {"team_id": "team_1", "integrations": [integration], "trace_id": "f" * 32},
+        )
+        with mock.patch.object(assistants.transport, "_call", return_value=response) as call:
+            projected = assistants.list_assistant_integrations("team_1")
+
+        self.assertEqual(projected, assistants.TeamResponse(200, {"integrations": [integration]}))
+        call.assert_called_once_with("GET", "/v1/teams/team_1/assistant-integrations")
+        self.assertNotRegex(json.dumps(projected.body), r"token|code|verifier|client_secret")
+
+        invalid = assistants._project_integration_inventory(
+            assistants.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "integrations": [{**integration, "access_token": "must-not-cross"}],
+                    "trace_id": "f" * 32,
+                },
+            ),
+            "team_1",
+        )
+        self.assertEqual(
+            invalid,
+            assistants.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
+        )
+
     def test_scalar_and_nested_canonicalizers_reject_invalid_values(self) -> None:
         operations = (
             lambda: assistants._canonical_team_id("Bad"),
