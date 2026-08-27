@@ -20,12 +20,14 @@
     authorizeAssistantIntegration,
     cancelAssistantIntegrationAuthorization,
     chatSocketUrl,
+    clearAssistantStoredInput,
     completeAssistantIntegration,
     createChatFrame,
     createHumanResponseFrame,
     createStopFrame,
     createSyncFrame,
     listAssistantIntegrations,
+    listAssistantStoredInputs,
     parseChatEvent,
     oauthReturnFailure,
     restoreOAuthChatTurns,
@@ -62,8 +64,10 @@
   let humanWorking = $state(false);
   let humanExpiredId = $state('');
   let integrations = $state([]);
+  let storedInputs = $state([]);
   let integrationsReady = $state(false);
   let integrationWorking = $state('');
+  let storedInputWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
   let stopButton = $state();
@@ -544,8 +548,10 @@
     integrationsDialogOpen = false;
     integrationsReady = false;
     integrationWorking = '';
+    storedInputWorking = '';
     if (includeInventory) {
       integrations = [];
+      storedInputs = [];
     }
   }
 
@@ -859,21 +865,63 @@
   async function refreshIntegrations(teamId) {
     integrationsReady = false;
     try {
-      const inventory = await listAssistantIntegrations(fetch, teamId);
+      const [integrationInventory, storedInputInventory] = await Promise.all([
+        listAssistantIntegrations(fetch, teamId),
+        listAssistantStoredInputs(fetch, teamId),
+      ]);
       if (chatTeamId !== teamId) return;
       const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-      if (inventory.integrations.some((integration) => !installed.has(integration.assistant_id))) {
+      if (
+        integrationInventory.integrations.some((integration) => !installed.has(integration.assistant_id)) ||
+        storedInputInventory.stored_inputs.some((item) => !installed.has(item.assistant_id))
+      ) {
         throw new Error(integrationsCopy.inventoryFailed);
       }
-      integrations = inventory.integrations;
+      integrations = integrationInventory.integrations;
+      storedInputs = storedInputInventory.stored_inputs;
       integrationsReady = true;
     } catch (reason) {
       if (chatTeamId !== teamId) return;
       integrations = [];
+      storedInputs = [];
       setError(
         integrationsCopy.inventoryFailed,
         reason instanceof Error ? reason.message : integrationsCopy.inventoryFailed,
       );
+    }
+  }
+
+  async function clearStoredInput(item) {
+    const teamId = chatTeamId;
+    const key = `${item?.assistant_id}/${item?.stored_input_id}`;
+    if (
+      !teamId ||
+      storedInputWorking ||
+      !storedInputs.some((candidate) => (
+        candidate.assistant_id === item?.assistant_id &&
+        candidate.stored_input_id === item?.stored_input_id &&
+        candidate.status === 'stored'
+      ))
+    ) throw new Error(integrationsCopy.storedInputClearFailed);
+    storedInputWorking = key;
+    try {
+      await clearAssistantStoredInput(fetch, teamId, item.assistant_id, item.stored_input_id);
+      if (chatTeamId !== teamId) return;
+      storedInputs = storedInputs.map((candidate) => (
+        candidate.assistant_id === item.assistant_id &&
+        candidate.stored_input_id === item.stored_input_id
+          ? { ...candidate, status: 'missing' }
+          : candidate
+      ));
+    } catch (reason) {
+      if (chatTeamId !== teamId) return;
+      setError(
+        integrationsCopy.storedInputClearFailed,
+        reason instanceof Error ? reason.message : integrationsCopy.storedInputClearFailed,
+      );
+      throw reason;
+    } finally {
+      if (chatTeamId === teamId) storedInputWorking = '';
     }
   }
 
@@ -1380,11 +1428,14 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           {integrations}
+          {storedInputs}
+          {assistantNames}
           synced={integrationsReady}
           pending={integrationChallenge}
-          working={integrationWorking}
+          working={integrationWorking || storedInputWorking}
           onclose={closeIntegrations}
           onconnect={authorizeIntegration}
+          onclearstoredinput={clearStoredInput}
         />
         <AssistantIntegrationsDialog
           open={integrationsDialogOpen}

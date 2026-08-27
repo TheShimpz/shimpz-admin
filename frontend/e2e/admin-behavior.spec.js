@@ -155,6 +155,7 @@ async function routeReadyChat(page, {
   holdReply = false,
   terminalError = false,
   whatsappInstalled = false,
+  storedInputStatus = '',
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -166,6 +167,7 @@ async function routeReadyChat(page, {
   let humanRejectionIndex = 0;
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
+  let storedInputClears = 0;
   let assistantInstalled = assistantUninstall || !assistantPlan;
   let cloudflareInstalled = assistantInstalled;
   let uninstallProposed = false;
@@ -349,6 +351,27 @@ async function routeReadyChat(page, {
       ],
     }),
   }));
+  await page.route('**/api/teams/marketing/assistant-stored-inputs', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      stored_inputs: storedInputStatus ? [{
+        assistant_id: 'whatsapp',
+        stored_input_id: 'whatsapp-token',
+        status: storedInputStatus,
+      }] : [],
+    }),
+  }));
+  await page.route(
+    '**/api/teams/marketing/assistant-stored-inputs/whatsapp/whatsapp-token',
+    (route) => {
+      storedInputClears += 1;
+      storedInputStatus = 'missing';
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ cleared: true }),
+      });
+    },
+  );
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
     const connection = chatConnections;
     chatConnections += 1;
@@ -583,6 +606,7 @@ async function routeReadyChat(page, {
     releaseInferenceWrite: () => releaseInferenceWrite(),
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseReply: () => releaseReply(),
+    storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
   };
 }
@@ -892,6 +916,31 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   });
   await page.getByRole('button', { name: 'Close integrations' }).click();
   await expect(drawer).toBeHidden();
+});
+
+test('renders and clears a persistent Action input without exposing its value', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    whatsappInstalled: true,
+    storedInputStatus: 'stored',
+  });
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const storedInputs = drawer.getByRole('region', { name: 'Stored Action inputs' });
+  await expect(storedInputs.getByText('WhatsApp', { exact: true })).toBeVisible();
+  await expect(storedInputs.getByText('whatsapp-token', { exact: true })).toBeVisible();
+  await expect(storedInputs.getByText('Stored securely. Future Actions reuse it.', { exact: true }))
+    .toBeVisible();
+  await expect(drawer).not.toContainText('must-not-cross');
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+  await storedInputs.getByRole('button', { name: 'Clear', exact: true }).click();
+
+  await expect(storedInputs.getByText('Requested just in time on first use.', { exact: true }))
+    .toBeVisible();
+  await expect(storedInputs.getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0);
+  expect(chat.storedInputClears()).toBe(1);
 });
 
 test('opens and closes an Assistant integration from the whole card header', async ({ page }) => {

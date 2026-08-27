@@ -14,11 +14,14 @@
   let {
     open = false,
     integrations = [],
+    storedInputs = [],
+    assistantNames = new Map(),
     synced = false,
     pending = undefined,
     working = '',
     onclose = undefined,
     onconnect = undefined,
+    onclearstoredinput = undefined,
   } = $props();
 
   let closeButton = $state();
@@ -45,6 +48,14 @@
   async function connect(challengeId, requirement) {
     try {
       await onconnect?.(challengeId, requirement);
+    } catch {
+      // The parent exposes the localized failure in the persistent chat error area.
+    }
+  }
+
+  async function clearStoredInput(item) {
+    try {
+      await onclearstoredinput?.(item);
     } catch {
       // The parent exposes the localized failure in the persistent chat error area.
     }
@@ -109,7 +120,7 @@
 
       {#if !synced}
         <EmptyState compact title={copy.loading} />
-      {:else if groups.length === 0}
+      {:else if groups.length === 0 && storedInputs.length === 0}
         <EmptyState compact title={copy.empty} />
       {/if}
     </div>
@@ -155,6 +166,33 @@
         {/each}
       </div>
     {/if}
+
+    {#if synced && storedInputs.length > 0}
+      <section class="stored-inputs" aria-labelledby="assistant-stored-inputs-title">
+        <h3 id="assistant-stored-inputs-title">{copy.storedInputsTitle}</h3>
+        {#each storedInputs as item (`${item.assistant_id}/${item.stored_input_id}`)}
+          {@const itemKey = `${item.assistant_id}/${item.stored_input_id}`}
+          <div class="stored-input-row">
+            <div>
+              <strong>{assistantNames.get(item.assistant_id) ?? item.assistant_id}</strong>
+              <code>{item.stored_input_id}</code>
+              <span>{item.status === 'stored' ? copy.storedInputStored : copy.storedInputMissing}</span>
+            </div>
+            {#if item.status === 'stored'}
+              <Button
+                variant="danger"
+                size="compact"
+                type="button"
+                disabled={Boolean(working)}
+                onclick={() => clearStoredInput(item)}
+              >
+                {working === itemKey ? copy.storedInputClearing : copy.storedInputClear}
+              </Button>
+            {/if}
+          </div>
+        {/each}
+      </section>
+    {/if}
   </ScrollArea>
 </Drawer>
 
@@ -181,8 +219,16 @@
   :global(.assistant-toggle[aria-expanded="true"] svg) { transform: rotate(180deg); }
   .assistant-details[hidden] { display: none; }
   .assistant-details p { margin: 0; padding: 0.75rem; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
+  .stored-inputs { display: grid; gap: 0.55rem; margin-top: 1rem; }
+  .stored-inputs h3 { margin: 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .stored-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border: 1px solid var(--border); padding: 0.7rem; background: var(--surface-1); }
+  .stored-input-row > div { display: grid; min-width: 0; gap: 0.18rem; }
+  .stored-input-row strong { color: var(--text); font-size: 0.7rem; }
+  .stored-input-row code { color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; overflow-wrap: anywhere; }
+  .stored-input-row span { color: var(--text-faint); font-size: 0.62rem; }
   @media (max-width: 420px) {
     :global(.assistant-group > [data-slot="card-header"]) { flex-direction: row; align-items: center; }
     .pending-requirement { grid-template-columns: 1fr; }
+    .stored-input-row { grid-template-columns: 1fr; }
   }
 </style>
