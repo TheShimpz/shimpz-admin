@@ -377,8 +377,13 @@ function canonicalHumanRequest(value) {
   const input = canonicalHumanInputBase(value, base);
   if (HUMAN_LENGTH_LIMITS.has(base.kind)) {
     const limit = HUMAN_LENGTH_LIMITS.get(base.kind);
+    const storedInput = base.kind === 'input:password' && Object.hasOwn(value, 'stored_input')
+      ? canonicalId(value.stored_input)
+      : undefined;
+    const lengthKeys = [...baseKeys, 'label', 'required', 'placeholder', 'min_length', 'max_length'];
+    if (storedInput !== undefined) lengthKeys.push('stored_input');
     if (
-      !exactKeys(value, [...baseKeys, 'label', 'required', 'placeholder', 'min_length', 'max_length']) ||
+      !exactKeys(value, lengthKeys) ||
       (value.placeholder !== null && typeof value.placeholder !== 'string') ||
       (typeof value.placeholder === 'string' && canonicalPublicText(value.placeholder, 120) !== value.placeholder) ||
       !Number.isSafeInteger(value.min_length) ||
@@ -392,6 +397,7 @@ function canonicalHumanRequest(value) {
       placeholder: value.placeholder,
       min_length: value.min_length,
       max_length: value.max_length,
+      ...(storedInput === undefined ? {} : { stored_input: storedInput }),
     };
   }
   if (HUMAN_SINGLE_CHOICE_KINDS.has(base.kind)) {

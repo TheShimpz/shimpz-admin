@@ -33,6 +33,7 @@
   let kind = $derived(request?.kind ?? '');
   let isAuth = $derived(kind.startsWith('auth:'));
   let isInput = $derived(kind.startsWith('input:'));
+  let isStoredInput = $derived(kind === 'input:password' && Boolean(request?.stored_input));
   let copy = $derived($t('humanRequest'));
   let rejected = $derived(Boolean(rejection));
   let locked = $derived(rejection?.reason === 'authentication-locked');
@@ -143,7 +144,7 @@
     }
     validationError = '';
     const responseValue = fieldValue;
-    if (kind === 'auth:password') {
+    if (kind === 'auth:password' || kind === 'input:password') {
       fieldValue = undefined;
       fieldValid = false;
     }
@@ -182,6 +183,7 @@
     onsubmit={submit}
   >
     <p class="request-context">{#each contextParts as part}{#if part.emphasized}<strong><bdi>{part.text}</bdi></strong>{:else}{part.text}{/if}{/each}</p>
+    {#if isStoredInput}<Notice>{copy.storedInputLead}</Notice>{/if}
 
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">

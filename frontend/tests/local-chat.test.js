@@ -237,6 +237,16 @@ test('chat accepts every exact bounded public human request presentation', () =>
     assert.deepEqual(parsed, challenge);
     assert.notEqual(parsed.request, challenge.request);
   }
+
+  const storedInput = humanChallenge('input:password');
+  storedInput.request.stored_input = 'whatsapp-token';
+  assert.deepEqual(
+    parseChatEvent(storedInput, 'team_1', 'Marketing').request.stored_input,
+    'whatsapp-token',
+  );
+  const wrongKind = humanChallenge('input:text');
+  wrongKind.request.stored_input = 'whatsapp-token';
+  assert.throws(() => parseChatEvent(wrongKind, 'team_1', 'Marketing'), /invalid/i);
 });
 
 test('chat accepts only exact challenge-bound human authentication rejections', () => {
