@@ -207,6 +207,52 @@ class AssistantPlanPreparationTests(unittest.TestCase):
 
         self.assertEqual(result, assistant_plan.Preparation(error_status=409))
 
+    def test_inventory_reads_overlap_with_local_supervisor_authority(self) -> None:
+        barrier = threading.Barrier(2)
+        assertions: list[str] = []
+
+        def response(path, value):
+            assertion = assistant_plan.team.transport._local_assertion(
+                "GET",
+                path,
+                None,
+                content_type=None,
+                filename=None,
+                bindings=assistant_plan.team.transport._RequestBindings(),
+            )
+            assertions.append(assertion)
+            barrier.wait(timeout=1)
+            return value
+
+        identity = assistant_plan.team.transport.local_supervisor.new_identity()
+        session = "v1:9999999999:0123456789abcdef:" + ("a" * 64)
+        with (
+            assistant_plan.team.supervisor_session(
+                session,
+                account=False,
+                local_identity=identity,
+            ),
+            mock.patch.object(
+                assistant_plan.team,
+                "list_installed_assistants",
+                side_effect=lambda _team_id: response(
+                    "/v1/teams/team_1/assistants",
+                    _installed(),
+                ),
+            ),
+            mock.patch.object(
+                assistant_plan.team,
+                "list_assistants",
+                side_effect=lambda: response("/v1/assistants", _registry()),
+            ),
+        ):
+            result = assistant_plan._enabled_capabilities("team_1", ())
+
+        self.assertEqual(result, ({}, ()))
+        self.assertEqual(len(assertions), 2)
+        self.assertTrue(all(assertions))
+        self.assertEqual(len(set(assertions)), 2)
+
 
 class AssistantPlanExecutionTests(unittest.TestCase):
     def _plan(self, *assistants: store_catalog.CatalogAssistant) -> assistant_plan.Plan:

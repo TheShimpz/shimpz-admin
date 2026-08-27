@@ -5,9 +5,11 @@ from __future__ import annotations
 import secrets
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
+from chat.executor import submit_in_context
 from team import bridge as team
 
 from chat import assistant_install, assistant_inventory, assistant_proposal, local, store_catalog
@@ -54,8 +56,13 @@ def _enabled_capabilities(
     team_id: str,
     enabled_ids: tuple[str, ...],
 ) -> tuple[dict[str, assistant_inventory.InstalledAssistant], tuple[assistant_proposal.Capability, ...]] | None:
-    installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
-    registry = assistant_inventory.registry(team.list_assistants())
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-inventory") as executor:
+        installed_future = submit_in_context(executor, team.list_installed_assistants, team_id)
+        registry_future = submit_in_context(executor, team.list_assistants)
+        installed_response = installed_future.result()
+        registry_response = registry_future.result()
+    installed = assistant_inventory.installed(installed_response)
+    registry = assistant_inventory.registry(registry_response)
     if any(
         assistant_id not in registry
         or assistant_id not in installed
