@@ -900,6 +900,10 @@ def assistants_list():
     return _team_response(team.list_assistants)
 
 
+def local_assistants_list():
+    return _team_response(team.list_local_assistants)
+
+
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
     return _team_response(lambda: team.list_installed_assistants(team_id))
@@ -911,6 +915,23 @@ async def team_assistant_install(team_id: str, request: Request):
     return await run_in_threadpool(
         _team_response,
         lambda: team.install_assistant(team_id, payload),
+    )
+
+
+async def team_local_assistant_install(team_id: str, request: Request):
+    payload = await _bounded_json_object(request)
+    return await run_in_threadpool(
+        _team_response,
+        lambda: team.install_local_assistant(team_id, payload),
+    )
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/local-assistants", local_assistants_list, methods=["GET"])
+    app.add_api_route(
+        "/api/teams/{team_id}/assistants/local",
+        team_local_assistant_install,
+        methods=["POST"],
     )
 
 

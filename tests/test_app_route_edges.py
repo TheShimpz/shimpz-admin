@@ -277,6 +277,7 @@ class AppRouteEdgeTests(unittest.TestCase):
             (self.admin_app.teams_list, self.admin_app.team, "list_teams", ()),
             (self.admin_app.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
             (self.admin_app.assistants_list, self.admin_app.team, "list_assistants", ()),
+            (self.admin_app.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
             (
                 self.admin_app.team_assistants_list,
                 self.admin_app.team,
@@ -308,6 +309,17 @@ class AppRouteEdgeTests(unittest.TestCase):
             mock.patch.object(self.admin_app.team, "install_assistant", return_value=response),
         ):
             installed = asyncio.run(self.admin_app.team_assistant_install("team_1", mock.Mock()))
+        self.assertEqual(installed.status_code, 200)
+
+        with (
+            mock.patch.object(
+                self.admin_app,
+                "_bounded_json_object",
+                new=mock.AsyncMock(return_value={"image_id": "x"}),
+            ),
+            mock.patch.object(self.admin_app.team, "install_local_assistant", return_value=response),
+        ):
+            installed = asyncio.run(self.admin_app.team_local_assistant_install("team_1", mock.Mock()))
         self.assertEqual(installed.status_code, 200)
 
         with (

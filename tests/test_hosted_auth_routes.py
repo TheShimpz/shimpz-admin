@@ -166,6 +166,8 @@ class HostedAuthRouteTests(unittest.TestCase):
         self.assertNotIn("/api/space/bootstrap", self.admin_app.OPEN_API)
         self.assertNotIn(("/api/space/host", "DELETE"), routes)
         self.assertNotIn("/api/space/host", self.admin_app.OPEN_API)
+        self.assertNotIn(("/api/local-assistants", "GET"), routes)
+        self.assertNotIn(("/api/teams/{team_id}/assistants/local", "POST"), routes)
         self.assertEqual(asyncio.run(_asgi_request(self.admin_app.app, "/api/admin/setup")), 401)
         self.assertEqual(
             asyncio.run(_asgi_request(self.admin_app.app, "/api/space/bootstrap", method="DELETE")),

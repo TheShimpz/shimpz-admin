@@ -396,6 +396,11 @@ def list_assistants() -> TeamResponse:
     return _call("GET", "/v1/assistants")
 
 
+def list_local_assistants() -> TeamResponse:
+    """Return unpublished snapshots exposed only by the Local Team controller."""
+    return _call("GET", "/v1/local-assistants")
+
+
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"
@@ -490,6 +495,18 @@ def install_assistant(team_id: object, payload: object) -> TeamResponse:
         "POST",
         _assistant_path(team_id),
         {"assistant_id": assistant_id, "source_digest": source_digest},
+        timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
+    )
+
+
+def install_local_assistant(team_id: object, payload: object) -> TeamResponse:
+    if not isinstance(payload, dict) or set(payload) != {"image_id"}:
+        raise TeamRequestError("request body must contain only image_id")
+    image_id = canonical_source_digest(payload["image_id"])
+    return _call(
+        "POST",
+        f"{_assistant_path(team_id)}/local",
+        {"image_id": image_id},
         timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
 

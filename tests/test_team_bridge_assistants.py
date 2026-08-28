@@ -166,25 +166,33 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         team.list_assistants()
+        team.list_local_assistants()
         team.list_installed_assistants("team_1")
         team.install_assistant(
             "team_1",
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
         )
         team.uninstall_assistant("team_1", "hello-pulse")
+        team.install_local_assistant("team_1", {"image_id": "sha256:" + ("b" * 64)})
 
         self.assertEqual(
             [(item["method"], item["path"]) for item in _TeamHandler.requests],
             [
                 ("GET", "/v1/assistants"),
+                ("GET", "/v1/local-assistants"),
                 ("GET", "/v1/teams/team_1/assistants"),
                 ("POST", "/v1/teams/team_1/assistants"),
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
+                ("POST", "/v1/teams/team_1/assistants/local"),
             ],
         )
         self.assertEqual(
-            json.loads(_TeamHandler.requests[2]["body"]),
+            json.loads(_TeamHandler.requests[3]["body"]),
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
+        )
+        self.assertEqual(
+            json.loads(_TeamHandler.requests[5]["body"]),
+            {"image_id": "sha256:" + ("b" * 64)},
         )
         for request in _TeamHandler.requests:
             self.assertEqual(request["headers"]["accept"], "application/json")

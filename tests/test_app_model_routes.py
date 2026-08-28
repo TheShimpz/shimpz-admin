@@ -48,6 +48,8 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/model-providers/{provider}", "DELETE"),
                 ("/api/teams/{team_id}/inference", "GET"),
                 ("/api/teams/{team_id}/inference", "PUT"),
+                ("/api/local-assistants", "GET"),
+                ("/api/teams/{team_id}/assistants/local", "POST"),
             }.issubset(routes)
         )
         websocket_paths = {
