@@ -86,6 +86,16 @@ def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
         if not _trace_id(response.body["trace_id"]):
             raise ValueError("Team trace identifier is invalid")
         allowed.add("trace_id")
+    retained = response.body.get("staged_image_retained")
+    remove_command = response.body.get("remove_command")
+    if retained is not None or remove_command is not None:
+        try:
+            image_id = team.canonical_source_digest(retained)
+        except team.TeamRequestError as exc:
+            raise ValueError("Local Assistant retained image is invalid") from exc
+        if remove_command != f"docker image rm {image_id}":
+            raise ValueError("Local Assistant removal command is invalid")
+        allowed.update({"staged_image_retained", "remove_command"})
     uninstalled = response.body.get("uninstalled")
     if (
         set(response.body) != allowed

@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  installLocalAssistant,
   installAssistant,
   LocalApiError,
   listAssistantCatalog,
   listInstalledAssistants,
+  listLocalAssistantSnapshots,
   safeApiError,
   uninstallAssistant,
 } from '../src/lib/localApi.js';
 
 const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
+const LOCAL_IMAGE_ID = `sha256:${'b'.repeat(64)}`;
 
 function response(status, body) {
   return {
@@ -106,6 +109,104 @@ test('uninstalls through the exact Team route and accepts idempotent absence', a
     url: '/api/teams/team_1/assistants/hello-pulse',
     options: { method: 'DELETE', headers: { Accept: 'application/json' } },
   }]);
+});
+
+test('lists and installs only exact unpublished Local Assistant snapshots', async () => {
+  const snapshot = {
+    assistant_id: 'hello-pulse',
+    assistant_version: '1.2.3',
+    created_at: '2026-08-28T17:00:00Z',
+    image_id: LOCAL_IMAGE_ID,
+    platform: 'linux/amd64',
+    provenance: 'local',
+    unpublished: true,
+  };
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/api/local-assistants') {
+      return response(200, { assistants: [snapshot], trace_id: 'c'.repeat(32) });
+    }
+    return response(200, {
+      assistant: 'hello-pulse',
+      image_id: LOCAL_IMAGE_ID,
+      installed: false,
+      updated: true,
+      provenance: 'local',
+      unpublished: true,
+      trace_id: 'd'.repeat(32),
+    });
+  };
+
+  assert.deepEqual(await listLocalAssistantSnapshots(fetcher), [snapshot]);
+  assert.deepEqual(await installLocalAssistant(fetcher, 'team_1', LOCAL_IMAGE_ID), {
+    assistant: 'hello-pulse',
+    image_id: LOCAL_IMAGE_ID,
+    installed: false,
+    updated: true,
+  });
+  assert.deepEqual(calls[1], {
+    url: '/api/teams/team_1/assistants/local',
+    options: {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id: LOCAL_IMAGE_ID }),
+    },
+  });
+});
+
+test('rejects malformed Local snapshot inventories, requests, and acknowledgements', async () => {
+  await assert.rejects(
+    listLocalAssistantSnapshots(async () => response(200, {
+      assistants: [{
+        assistant_id: 'hello-pulse',
+        assistant_version: '1.2.3',
+        created_at: 'yesterday',
+        image_id: LOCAL_IMAGE_ID,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+    })),
+    /inventory is invalid/,
+  );
+  await assert.rejects(installLocalAssistant(async () => response(200, {}), 'team_1', 'latest'), /Invalid/);
+  await assert.rejects(
+    installLocalAssistant(async () => response(200, {
+      assistant: 'hello-pulse',
+      image_id: LOCAL_IMAGE_ID,
+      installed: true,
+      provenance: 'published',
+      unpublished: true,
+    }), 'team_1', LOCAL_IMAGE_ID),
+    /invalid response/,
+  );
+});
+
+test('validates the exact retained Local image removal command', async () => {
+  assert.deepEqual(
+    await uninstallAssistant(async () => response(200, {
+      assistant: 'hello-pulse',
+      uninstalled: true,
+      staged_image_retained: LOCAL_IMAGE_ID,
+      remove_command: `docker image rm ${LOCAL_IMAGE_ID}`,
+    }), 'team_1', 'hello-pulse'),
+    {
+      assistant: 'hello-pulse',
+      uninstalled: true,
+      staged_image_retained: LOCAL_IMAGE_ID,
+      remove_command: `docker image rm ${LOCAL_IMAGE_ID}`,
+    },
+  );
+  await assert.rejects(
+    uninstallAssistant(async () => response(200, {
+      assistant: 'hello-pulse',
+      uninstalled: true,
+      staged_image_retained: LOCAL_IMAGE_ID,
+      remove_command: 'docker image prune',
+    }), 'team_1', 'hello-pulse'),
+    /invalid response/,
+  );
 });
 
 test('uninstall fails closed on invalid requests, status, or acknowledgements', async () => {

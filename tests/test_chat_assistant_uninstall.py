@@ -181,6 +181,29 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 assistant_uninstall.UninstallResult(200, False),
             )
 
+    def test_local_uninstall_accepts_only_the_exact_retained_image_command(self) -> None:
+        image_id = "sha256:" + ("d" * 64)
+        valid = assistant_uninstall.team.TeamResponse(
+            200,
+            {
+                "assistant": "shimpz-cloudflare",
+                "uninstalled": True,
+                "staged_image_retained": image_id,
+                "remove_command": f"docker image rm {image_id}",
+            },
+        )
+        invalid = assistant_uninstall.team.TeamResponse(
+            200,
+            {
+                **valid.body,
+                "remove_command": "docker image prune",
+            },
+        )
+
+        self.assertTrue(assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"))
+        with self.assertRaises(ValueError):
+            assistant_uninstall._uninstall_body(invalid, "shimpz-cloudflare")
+
     def test_malformed_absence_or_success_never_claims_removal(self) -> None:
         responses = (
             assistant_uninstall.team.TeamResponse(404, {"code": "assistant-not-allowlisted"}),
