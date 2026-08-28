@@ -200,7 +200,19 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
             },
         )
 
-        self.assertTrue(assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"))
+        self.assertEqual(
+            assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"),
+            (True, image_id, f"docker image rm {image_id}"),
+        )
+        self.assertEqual(
+            assistant_uninstall._project_result(valid, "shimpz-cloudflare"),
+            assistant_uninstall.UninstallResult(
+                200,
+                True,
+                image_id,
+                f"docker image rm {image_id}",
+            ),
+        )
         with self.assertRaises(ValueError):
             assistant_uninstall._uninstall_body(invalid, "shimpz-cloudflare")
 

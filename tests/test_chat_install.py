@@ -108,6 +108,28 @@ class ChatLifecycleTests(unittest.TestCase):
                 "uninstalled": True,
             },
         )
+        image_id = "sha256:" + ("d" * 64)
+        self.assertEqual(
+            lifecycle._result_event(
+                proposal,
+                assistant_uninstall.UninstallResult(
+                    200,
+                    True,
+                    image_id,
+                    f"docker image rm {image_id}",
+                ),
+            ),
+            {
+                "type": "assistant-uninstall",
+                "state": "uninstalled",
+                "proposal_id": "c" * 32,
+                "assistant_id": "shimpz-cloudflare",
+                "team_id": "team_1",
+                "uninstalled": True,
+                "staged_image_retained": image_id,
+                "remove_command": f"docker image rm {image_id}",
+            },
+        )
 
     def test_install_language_cannot_confirm_uninstall(self) -> None:
         async def scenario() -> None:

@@ -11,6 +11,7 @@ import {
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /\p{C}/u;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -1029,10 +1030,18 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
     };
   }
   if (value.state === 'uninstalled') {
+    const retained = 'staged_image_retained' in value || 'remove_command' in value;
+    const expectedKeys = [...base, 'team_id', 'uninstalled'];
+    if (retained) expectedKeys.push('staged_image_retained', 'remove_command');
     if (
-      !exactKeys(value, [...base, 'team_id', 'uninstalled']) ||
+      !exactKeys(value, expectedKeys) ||
       value.team_id !== expectedTeamId ||
-      typeof value.uninstalled !== 'boolean'
+      typeof value.uninstalled !== 'boolean' ||
+      (retained && (
+        typeof value.staged_image_retained !== 'string' ||
+        !SHA256_RE.test(value.staged_image_retained) ||
+        value.remove_command !== `docker image rm ${value.staged_image_retained}`
+      ))
     ) throw new LocalApiError('The local chat response is invalid.');
     return {
       type: 'assistant-uninstall',
@@ -1041,6 +1050,12 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       assistant_id: assistantId,
       team_id: value.team_id,
       uninstalled: value.uninstalled,
+      ...(retained
+        ? {
+            staged_image_retained: value.staged_image_retained,
+            remove_command: value.remove_command,
+          }
+        : {}),
     };
   }
   if (value.state === 'failed') {

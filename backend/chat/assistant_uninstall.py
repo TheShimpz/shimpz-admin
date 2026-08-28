@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from team import bridge as team
-
 from chat import assistant_inventory, assistant_proposal
 from protocol.http.v1 import websocket as chat_ws_common
+from team import bridge as team
 
 
 @dataclass(frozen=True, slots=True)
 class UninstallResult:
     status: int
     uninstalled: bool | None = None
+    staged_image_retained: str | None = None
+    remove_command: str | None = None
 
 
 def discover(team_id: str, message: object) -> assistant_proposal.UninstallCandidate | None:
@@ -56,10 +57,10 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
     if not 200 <= response.status < 300:
         return UninstallResult(response.status)
     try:
-        uninstalled = _uninstall_body(response, assistant_id)
+        projected = _uninstall_body(response, assistant_id)
     except ValueError:
         return UninstallResult(502)
-    return UninstallResult(response.status, uninstalled)
+    return UninstallResult(response.status, *projected)
 
 
 def _trace_id(value: object) -> bool:
@@ -78,7 +79,7 @@ def _is_exact_absence(response: team.TeamResponse) -> bool:
     )
 
 
-def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
+def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> tuple[bool, str | None, str | None]:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant uninstall result is invalid")
     allowed = {"assistant", "uninstalled"}
@@ -103,4 +104,4 @@ def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
         or not isinstance(uninstalled, bool)
     ):
         raise ValueError("Assistant uninstall result is invalid")
-    return uninstalled
+    return uninstalled, retained, remove_command

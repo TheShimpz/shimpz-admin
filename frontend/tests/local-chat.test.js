@@ -516,6 +516,7 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
 
 test('chat admits only the exact conversational Assistant uninstall lifecycle', () => {
   const proposalId = 'd'.repeat(32);
+  const imageId = `sha256:${'e'.repeat(64)}`;
   const proposed = {
     type: 'assistant-uninstall',
     state: 'proposed',
@@ -548,6 +549,12 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
       assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: false,
     },
     {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: true,
+      staged_image_retained: imageId,
+      remove_command: `docker image rm ${imageId}`,
+    },
+    {
       type: 'assistant-uninstall', state: 'cancelled', proposal_id: proposalId,
       assistant_id: 'shimpz-cloudflare',
     },
@@ -564,6 +571,7 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
 
 test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall events', () => {
   const proposalId = 'd'.repeat(32);
+  const imageId = `sha256:${'e'.repeat(64)}`;
   const proposed = {
     type: 'assistant-uninstall',
     state: 'proposed',
@@ -591,6 +599,17 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall
     {
       type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
       assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: 'yes',
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: true,
+      staged_image_retained: imageId,
+    },
+    {
+      type: 'assistant-uninstall', state: 'uninstalled', proposal_id: proposalId,
+      assistant_id: 'shimpz-cloudflare', team_id: 'team_1', uninstalled: true,
+      staged_image_retained: imageId,
+      remove_command: 'docker image prune',
     },
     {
       type: 'assistant-uninstall', state: 'uninstalling', proposal_id: proposalId,

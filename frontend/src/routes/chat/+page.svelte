@@ -411,7 +411,17 @@
     const updated = {
       ...current,
       state,
-      ...(incoming.state === 'uninstalled' ? { uninstalled: incoming.uninstalled } : {}),
+      ...(incoming.state === 'uninstalled'
+        ? {
+            uninstalled: incoming.uninstalled,
+            ...(incoming.remove_command
+              ? {
+                  staged_image_retained: incoming.staged_image_retained,
+                  remove_command: incoming.remove_command,
+                }
+              : {}),
+          }
+        : {}),
       ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
     };
     turns = turns.map((turn, turnIndex) => (
@@ -456,7 +466,9 @@
       assistant: escapeMarkdownText(uninstall.assistant.name),
       version: escapeMarkdownText(uninstall.assistant.version),
       team: escapeMarkdownText(team.name),
-    });
+    }) + (uninstall.remove_command
+      ? `\n\n${$t('chatPage.uninstall.retainedReply', { command: uninstall.remove_command })}`
+      : '');
     const nextTurns = turns.map((turn, turnIndex) => (
       turnIndex === index
         ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }

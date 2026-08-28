@@ -11,11 +11,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from team import bridge as team
-
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -211,15 +210,32 @@ def _uninstall_result_event(
         isinstance(result, assistant_uninstall.UninstallResult)
         and 200 <= result.status < 300
         and result.uninstalled is not None
+        and _valid_retained_image(result)
     ):
-        return _event(
+        event = _event(
             proposal,
             "uninstalled",
             team_id=proposal.team_id,
             uninstalled=result.uninstalled,
         )
+        if result.staged_image_retained is not None:
+            event["staged_image_retained"] = result.staged_image_retained
+            event["remove_command"] = result.remove_command
+        return event
     status = result.status if result is not None and 400 <= result.status <= 599 else 502
     return _event(proposal, "failed", status=status)
+
+
+def _valid_retained_image(result: assistant_uninstall.UninstallResult) -> bool:
+    retained = result.staged_image_retained
+    command = result.remove_command
+    if retained is None or command is None:
+        return retained is None and command is None
+    try:
+        image_id = assistant_uninstall.team.canonical_source_digest(retained)
+    except assistant_uninstall.team.TeamRequestError:
+        return False
+    return command == f"docker image rm {image_id}"
 
 
 async def _dispatch(

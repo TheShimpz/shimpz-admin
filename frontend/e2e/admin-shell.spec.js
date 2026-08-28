@@ -681,6 +681,10 @@ test('opens the Store destination workflow through shared modal controls', async
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   let installed = false;
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body>Store test frame</body></html>',
+  }));
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -735,6 +739,19 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
       }),
     });
   });
+  await page.route('**/api/teams/marketing/assistants/whatsapp', async (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    installed = false;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistant: 'whatsapp',
+        uninstalled: true,
+        staged_image_retained: imageId,
+        remove_command: `docker image rm ${imageId}`,
+      }),
+    });
+  });
 
   await page.goto('/assistants/');
 
@@ -745,6 +762,18 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(panel.getByRole('button', { name: 'Installing…' })).toBeVisible();
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
+
+  const storeFrame = page.frames().find((frame) => frame.url().startsWith('https://shimpz.com/'));
+  expect(storeFrame).toBeDefined();
+  await storeFrame.evaluate(() => window.parent.postMessage({
+    type: 'shimpz:assistant-uninstall',
+    version: 2,
+    assistant: 'whatsapp',
+  }, '*'));
+  await expect(page.getByRole('dialog', { name: 'Uninstall whatsapp?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  await expect(page.getByText(`docker image rm ${imageId}`, { exact: false })).toBeVisible();
 });
 
 test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
