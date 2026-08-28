@@ -60,7 +60,7 @@ COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assis
     backend/chat/store_catalog.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
-COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/transport.py ./team/
+COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py backend/protocol/http/v1/supervisor.py \
     backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build

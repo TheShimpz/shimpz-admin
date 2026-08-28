@@ -10,7 +10,6 @@ process holds no Docker socket and has no host configuration write surface.
 """
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -27,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
 
 import auth
+import browser
 import host_reset
 import local_auth
 import models
@@ -35,11 +35,6 @@ import platform_release
 import space_reset
 import state
 import supervisor
-from team import assets as team_assets
-from team import bridge as team
-from team import files as team_files
-
-import browser
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
@@ -48,6 +43,10 @@ from integrations import account as account_identity
 from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
+from team import assets as team_assets
+from team import bridge as team
+from team import files as team_files
+from team import http as team_http
 
 log = logging.getLogger("shimpz-admin")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -501,45 +500,10 @@ if ADMIN_PROFILE == "local":
     app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])
 
 
-# ── Teams + Assistants: authenticated control plane for team. Every route stays under
-# /api/ and outside OPEN_API, so the current profile's Supervisor session is required before the
-# private bearer bridge can run. Admin has no Docker socket and preserves bounded Team JSON/status. ──
-def _team_response(action):
-    try:
-        response = action()
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    return JSONResponse(status_code=response.status, content=response.body)
-
-
-async def _bounded_json_object(request: Request, max_bytes: int = team.MAX_JSON_BODY_BYTES) -> dict:
-    """Read one JSON object without allowing an Action request to grow without bound."""
-    content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
-    if content_type != "application/json":
-        raise HTTPException(status_code=415, detail="content type must be application/json")
-    raw_length = request.headers.get("content-length")
-    if raw_length is not None:
-        if not raw_length.isascii() or not raw_length.isdigit():
-            raise HTTPException(status_code=400, detail="invalid content length")
-        if int(raw_length) > max_bytes:
-            raise HTTPException(status_code=413, detail="request body too large")
-
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > max_bytes:
-            raise HTTPException(status_code=413, detail="request body too large")
-    try:
-        payload = json.loads(
-            body,
-            object_pairs_hook=chat_ws_common.unique_json_object,
-            parse_constant=chat_ws_common._reject_json_constant,
-        )
-    except json.JSONDecodeError, UnicodeError, RecursionError, ValueError:
-        raise HTTPException(status_code=400, detail="request body must be valid JSON") from None
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="request body must be a JSON object")
-    return payload
+# Teams and Assistants stay outside OPEN_API. Admin keeps Supervisor authentication while this
+# adapter preserves Team's bounded status and JSON contract without gaining Docker access.
+_team_response = team_http.response
+_bounded_json_object = team_http.bounded_json_object
 
 
 def model_providers_status():
