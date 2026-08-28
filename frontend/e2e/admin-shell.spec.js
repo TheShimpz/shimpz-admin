@@ -678,6 +678,75 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
 });
 
+test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
+  const imageId = `sha256:${'b'.repeat(64)}`;
+  let installed = false;
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [
+      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+    ] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      assistants: [{
+        assistant_id: 'whatsapp',
+        assistant_version: '0.1.0',
+        created_at: '2026-08-28T17:00:00Z',
+        image_id: imageId,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+      trace_id: 'c'.repeat(32),
+    }),
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      assistants: installed
+        ? [{ assistant: 'whatsapp', assistant_version: '0.1.0', status: 'running' }]
+        : [],
+    }),
+  }));
+  await page.route('**/api/teams/marketing/assistants/local', async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({ image_id: imageId });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    installed = true;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistant: 'whatsapp',
+        image_id: imageId,
+        installed: true,
+        provenance: 'local',
+        unpublished: true,
+        trace_id: 'd'.repeat(32),
+      }),
+    });
+  });
+
+  await page.goto('/assistants/');
+
+  const panel = page.getByRole('region', { name: 'Staged on this machine' });
+  await expect(panel).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
+  await expect(panel).toContainText(imageId);
+  await panel.getByRole('button', { name: 'Install or replace' }).click();
+  await expect(panel.getByRole('button', { name: 'Installing…' })).toBeVisible();
+  await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
+  await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
+});
+
 test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({

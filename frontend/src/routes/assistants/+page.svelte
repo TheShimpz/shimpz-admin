@@ -16,8 +16,15 @@
   } from '$lib/assistantIntent.js';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
-  import { installAssistant, safeApiError, uninstallAssistant } from '$lib/localApi.js';
+  import {
+    installAssistant,
+    installLocalAssistant,
+    listLocalAssistantSnapshots,
+    safeApiError,
+    uninstallAssistant,
+  } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
+  import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
 
@@ -47,10 +54,16 @@
   let activeStoreUrl = '';
   let storeSnapshotStatus = 'loading';
   let storeSnapshotInstalled = [];
+  let localSnapshots = $state([]);
+  let localSnapshotPhase = $state('idle');
+  let localSnapshotError = $state('');
+  let localSnapshotRequest = 0;
+  let localInstallImageId = $state('');
   const storeActionLatch = createStoreActionLatch();
 
   let currentLocale = $derived($locale);
   let copy = $derived($t('assistantStore'));
+  let localCopy = $derived($t('store'));
   let destinationCopy = $derived($t('assistantDestination'));
   let storeLocale = $derived(currentLocale);
   let storePageUrl = $derived(`https://shimpz.com/${storeLocale}/assistants`);
@@ -58,6 +71,7 @@
     `${storePageUrl}/embed?store-protocol=${STORE_LIFECYCLE_PROTOCOL_VERSION}&admin-frame=${frameReload}`,
   );
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
+  let localProfile = $derived($sessionContext.profile === 'local');
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
       (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
@@ -507,12 +521,55 @@
     }
   }
 
+  async function loadLocalSnapshots() {
+    if (!localProfile) return;
+    const request = ++localSnapshotRequest;
+    localSnapshotPhase = 'loading';
+    localSnapshotError = '';
+    try {
+      const snapshots = await listLocalAssistantSnapshots(fetch);
+      if (request !== localSnapshotRequest) return;
+      localSnapshots = snapshots;
+      localSnapshotPhase = 'ready';
+    } catch (error) {
+      if (request !== localSnapshotRequest) return;
+      localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
+      localSnapshotPhase = 'error';
+    }
+  }
+
+  async function installLocalSnapshot(snapshot) {
+    const team = activeTeamRecord;
+    if (!team || localInstallImageId) return;
+    localInstallImageId = snapshot.image_id;
+    localSnapshotError = '';
+    try {
+      const installed = await installLocalAssistant(fetch, team.id, snapshot.image_id);
+      await refreshInstalled(team.id);
+      showAdminNotice({
+        tone: 'success',
+        label: localCopy.localInstalledLabel,
+        message: $t('store.localInstalledMessage', {
+          assistant: installed.assistant,
+          team: team.name,
+        }),
+      });
+      await loadLocalSnapshots();
+    } catch (error) {
+      localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
+      localSnapshotPhase = 'error';
+    } finally {
+      localInstallImageId = '';
+    }
+  }
+
   onMount(() => {
     frameMounted = true;
     activeStoreUrl = storeUrl;
     window.addEventListener('message', handleStoreMessage);
     framePhase = 'loading';
     waitForStoreFrame();
+    if (localProfile) void loadLocalSnapshots();
     return () => {
       frameMounted = false;
       clearFrameTimeout();
@@ -550,6 +607,68 @@
     </div>
   {/snippet}
 </PageIntro>
+
+{#if localProfile}
+  <Card
+    class="local-snapshot-panel"
+    aria-label={localCopy.localTitle}
+    aria-busy={localSnapshotPhase === 'loading' || Boolean(localInstallImageId)}
+  >
+    <div class="local-snapshot-heading">
+      <p class="local-snapshot-kicker">{localCopy.localKicker}</p>
+      <h2>{localCopy.localTitle}</h2>
+      <p>{localCopy.localLead}</p>
+    </div>
+    <Notice variant="warning">{localCopy.localRisk}</Notice>
+
+    {#if !activeTeamRecord}
+      <Notice variant="info">{localCopy.localNoTeam}</Notice>
+    {/if}
+    {#if localSnapshotError}
+      <Notice variant="error">{localSnapshotError}</Notice>
+    {/if}
+
+    {#if localSnapshotPhase === 'loading' && localSnapshots.length === 0}
+      <div class="local-snapshot-loading" role="status">
+        <span>{localCopy.localLoading}</span>
+        <Skeleton width="8rem" height="0.35rem" />
+      </div>
+    {:else if localSnapshots.length === 0 && localSnapshotPhase === 'ready'}
+      <EmptyState compact title={localCopy.localEmpty} />
+    {:else if localSnapshots.length > 0}
+      <ul class="local-snapshot-list">
+        {#each localSnapshots as snapshot (snapshot.image_id)}
+          <li class="local-snapshot-item" aria-busy={localInstallImageId === snapshot.image_id}>
+            <div class="local-snapshot-identity">
+              <strong>{snapshot.assistant_id}</strong>
+              <span>v{snapshot.assistant_version} · {snapshot.platform}</span>
+              <code>{snapshot.image_id}</code>
+              <time datetime={snapshot.created_at}>{snapshot.created_at}</time>
+            </div>
+            <Button
+              type="button"
+              onclick={() => installLocalSnapshot(snapshot)}
+              disabled={!activeTeamRecord || Boolean(localInstallImageId)}
+            >
+              {localInstallImageId === snapshot.image_id ? localCopy.localInstalling : localCopy.localInstall}
+            </Button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    {#if localSnapshotPhase === 'error'}
+      <Toolbar class="local-snapshot-actions">
+        <Button
+          variant="secondary"
+          type="button"
+          onclick={loadLocalSnapshots}
+          disabled={Boolean(localInstallImageId)}
+        >{localCopy.localRetry}</Button>
+      </Toolbar>
+    {/if}
+  </Card>
+{/if}
 
 <Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
       <div class="frame-stage" style={`height:${frameHeight}px`}>
@@ -799,6 +918,38 @@
     border: 0;
     background: #000;
     clip-path: none;
+  }
+  :global(.shimpz-card.local-snapshot-panel) {
+    display: grid;
+    gap: var(--shimpz-space-4);
+    margin-block-start: var(--shimpz-space-4);
+  }
+  .local-snapshot-heading { display: grid; gap: var(--shimpz-space-2); }
+  .local-snapshot-heading h2, .local-snapshot-heading p { margin: 0; }
+  .local-snapshot-heading h2 { font-size: clamp(1.25rem, 2vw, 1.65rem); }
+  .local-snapshot-heading > p:last-child { max-width: 56rem; color: var(--text-dim); line-height: 1.6; }
+  .local-snapshot-kicker {
+    color: var(--accent);
+    font: 600 0.68rem/1.4 var(--font-mono);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .local-snapshot-loading { display: grid; gap: var(--shimpz-space-2); color: var(--text-dim); }
+  .local-snapshot-list { display: grid; gap: var(--shimpz-space-3); margin: 0; padding: 0; list-style: none; }
+  .local-snapshot-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--shimpz-space-4);
+    padding-block: var(--shimpz-space-3);
+    border-block-start: 1px solid var(--shimpz-color-border-subtle);
+  }
+  .local-snapshot-identity { display: grid; min-width: 0; gap: 0.25rem; }
+  .local-snapshot-identity span, .local-snapshot-identity time { color: var(--text-dim); font-size: 0.82rem; }
+  .local-snapshot-identity code { overflow-wrap: anywhere; color: var(--text); font-size: 0.75rem; }
+  @media (max-width: 680px) {
+    .local-snapshot-item { align-items: stretch; flex-direction: column; }
+    .local-snapshot-item :global(.shimpz-button) { width: 100%; }
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }

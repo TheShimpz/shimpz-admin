@@ -11,17 +11,25 @@ import {
 
 test('admits only Admin-projected OAuth completion modes', () => {
   for (const mode of ['automatic', 'code', null]) {
-    setSessionContext({ oauth_completion_mode: mode });
+    setSessionContext({ oauth_completion_mode: mode, profile: 'local' });
     assert.equal(get(sessionContext).oauthCompletionMode, mode);
+    assert.equal(get(sessionContext).profile, 'local');
   }
 
   for (const mode of [undefined, '', 'popup', 1]) {
     assert.throws(
-      () => setSessionContext({ oauth_completion_mode: mode }),
+      () => setSessionContext({ oauth_completion_mode: mode, profile: 'local' }),
       /invalid OAuth completion mode/,
     );
   }
 
+  for (const profile of [undefined, '', 'developer']) {
+    assert.throws(
+      () => setSessionContext({ oauth_completion_mode: null, profile }),
+      /invalid Admin profile/,
+    );
+  }
+
   clearSessionContext();
-  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null });
+  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null, profile: null });
 });
