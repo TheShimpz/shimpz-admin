@@ -596,6 +596,24 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(json.loads(response.body), {"cleared": True})
         self.assertEqual(response.headers["cache-control"], "no-store")
 
+        with (
+            mock.patch.object(
+                self.admin_app.action_stored_input,
+                "clear_assistant_stored_input",
+                side_effect=self.admin_app.team.TeamRequestError("invalid stored input"),
+            ),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            asyncio.run(
+                self.admin_app.team_assistant_stored_input_clear(
+                    "team_1",
+                    "whatsapp",
+                    "bad",
+                )
+            )
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail, "invalid stored input")
+
     def test_authorize_body_requires_only_the_exact_integration_pair(self) -> None:
         for request_body in (
             b"{}",

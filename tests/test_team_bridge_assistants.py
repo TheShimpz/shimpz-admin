@@ -446,6 +446,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                     "extra": True,
                 },
             ),
+            lambda: team.install_local_assistant("team_1", {}),
             lambda: team.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:

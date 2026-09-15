@@ -43,6 +43,12 @@ def _claims() -> dict[str, object]:
 
 
 class PayloadEdges(unittest.TestCase):
+    def test_action_presentation_text_rejects_noncanonical_values(self) -> None:
+        for value in (object(), "bad\x00value"):
+            self.assertIsNone(payload.canonical_language_exemplar(value))
+        for value in (object(), "e\u0301", " label "):
+            self.assertIsNone(payload.canonical_action_label(value))
+
     def test_scalar_validators_and_filename_edges(self) -> None:
         self.assertIsNone(payload.canonical_source_digest(None))
         self.assertIsNone(payload.canonical_assurance_handle(None))

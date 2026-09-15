@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -20,6 +21,101 @@ from chat import human, local, socket
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
+    def test_continuation_stop_saturation_and_detached_finish_are_terminal(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            turn = socket._Turn(None, "capability-plan", stop_requested=True)
+            connection = socket._Connection(active=turn)
+            with mock.patch.object(socket, "_send_terminal_once", new=mock.AsyncMock()) as send:
+                await socket._continue_team_turn(websocket, connection, turn, "team_1", {})
+            send.assert_awaited_once()
+            self.assertIsNone(connection.active)
+
+            turn = socket._Turn(None, "capability-plan")
+            connection = socket._Connection(active=turn)
+            with (
+                mock.patch.object(socket, "_submit_team_turn", side_effect=socket.ExecutorSaturatedError),
+                mock.patch.object(socket, "_send_terminal_once", new=mock.AsyncMock()) as send,
+            ):
+                await socket._continue_team_turn(websocket, connection, turn, "team_1", {})
+            self.assertEqual(send.await_args.args[-1]["status"], 429)
+            self.assertIsNone(connection.active)
+
+            active = socket._Turn(None, "chat")
+            detached = socket._Turn(None, "capability-plan", stop_requested=True)
+            connection = socket._Connection(active=active)
+            with mock.patch.object(socket, "_send_terminal_once", new=mock.AsyncMock()):
+                await socket._continue_team_turn(websocket, connection, detached, "team_1", {})
+            self.assertIs(connection.active, active)
+
+            detached = socket._Turn(None, "capability-plan")
+            with (
+                mock.patch.object(socket, "_submit_team_turn", side_effect=socket.ExecutorSaturatedError),
+                mock.patch.object(socket, "_send_terminal_once", new=mock.AsyncMock()),
+            ):
+                await socket._continue_team_turn(websocket, connection, detached, "team_1", {})
+            self.assertIs(connection.active, active)
+
+            detached = socket._Turn(None, "chat")
+            connection = socket._Connection(active=active)
+            with mock.patch.object(socket, "_send_terminal_once", new=mock.AsyncMock()):
+                await socket._finish_active_turn(websocket, connection, detached, {"type": "done"})
+            self.assertIs(connection.active, active)
+
+        asyncio.run(scenario())
+
+    def test_lifecycle_stop_cancels_nonplan_work_and_emits_once(self) -> None:
+        async def scenario() -> None:
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            turn = socket._Turn(future, "chat", lifecycle_stop=threading.Event())
+            connection = socket._Connection(active=turn)
+            task = socket._request_stop(mock.AsyncMock(), connection, turn, "team_1", emit=True)
+            self.assertIsNotNone(task)
+            self.assertTrue(future.cancelled())
+            self.assertTrue(turn.lifecycle_stop.is_set())
+            await task
+
+            turn = socket._Turn(None, "chat", lifecycle_stop=threading.Event())
+            task = socket._request_stop(mock.AsyncMock(), socket._Connection(active=turn), turn, "team_1", emit=True)
+            self.assertIsNotNone(task)
+            await task
+
+            future = concurrent.futures.Future()
+            turn = socket._Turn(future, "chat", lifecycle_stop=threading.Event())
+            self.assertIsNone(
+                socket._request_stop(
+                    mock.AsyncMock(),
+                    socket._Connection(active=turn),
+                    turn,
+                    "team_1",
+                    emit=False,
+                )
+            )
+            self.assertTrue(future.cancelled())
+
+        asyncio.run(scenario())
+
+    def test_direct_start_saturation_and_missing_preparation_are_bounded(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            connection = socket._Connection()
+            with mock.patch.object(socket, "_submit_team_turn", side_effect=socket.ExecutorSaturatedError):
+                await socket._start_direct_turn(websocket, connection, "team_1", {}, None)
+            self.assertIsNone(connection.active)
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
+
+            frame = {"type": "chat", "message": "hello", "files": [], "assistant_ids": []}
+            start = mock.AsyncMock()
+            with (
+                mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
+                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=None),
+                mock.patch.object(socket, "_start_direct_turn", new=start),
+            ):
+                await socket._dispatch_chat(websocket, socket._Connection(), "team_1", frame)
+            start.assert_awaited_once()
+
+        asyncio.run(scenario())
+
     def test_turn_keeps_only_a_repr_hidden_bounded_language_exemplar(self) -> None:
         turn = socket._Turn(None, "chat", language_exemplar="Liste minhas zonas DNS")
 

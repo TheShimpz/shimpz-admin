@@ -109,6 +109,7 @@ class TeamActionLabelBridgeTest(unittest.TestCase):
                 ]
             ),
             _body(actions=[{"id": "list-zones", "label": API_KEY}]),
+            _body(actions=[None]),
             _body(actions=[{"id": "Bad", "label": "Listar zonas DNS"}]),
             _body(actions=[{"id": "list-zones", "label": "\u202eDNS"}]),
             {**valid, "extra": True},

@@ -195,6 +195,29 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             _execute(HTTP / "verify.py", modules={"supervisor": fake})
 
+    def test_rejects_each_action_presentation_vector_family_drift(self) -> None:
+        from backend.protocol.http.v1 import payload
+
+        def fake_payload(**overrides):
+            fake = types.ModuleType("payload")
+            fake.__dict__.update(vars(payload))
+            fake.__dict__.update(overrides)
+            return fake
+
+        exemplar = payload.canonical_language_exemplar
+        label = payload.canonical_action_label
+        modules = (
+            fake_payload(canonical_language_exemplar=lambda _value: None),
+            fake_payload(
+                canonical_language_exemplar=lambda value: exemplar(value) if exemplar(value) is not None else "accepted"
+            ),
+            fake_payload(canonical_action_label=lambda _value: None),
+            fake_payload(canonical_action_label=lambda value: label(value) if label(value) is not None else "accepted"),
+        )
+        for fake in modules:
+            with self.subTest(fake=fake), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", modules={"payload": fake})
+
 
 if __name__ == "__main__":
     unittest.main()

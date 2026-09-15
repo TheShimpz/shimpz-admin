@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import sys
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_proposal, assistant_uninstall, lifecycle
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, lifecycle
 
 
 def _proposal() -> assistant_proposal.UninstallProposal:
@@ -42,6 +43,20 @@ def _connection(**changes):
 
 
 class ChatLifecycleTests(unittest.TestCase):
+    def test_discovery_cancellation_and_worker_failures_are_bounded(self) -> None:
+        async def scenario() -> None:
+            pending: concurrent.futures.Future[object] = concurrent.futures.Future()
+            lifecycle.cancel_discovery(pending)
+            self.assertTrue(pending.cancelled())
+            with self.assertRaises(asyncio.CancelledError):
+                await lifecycle._await_discovery(pending)
+
+            failed: concurrent.futures.Future[object] = concurrent.futures.Future()
+            failed.set_exception(ValueError("invalid inventory"))
+            self.assertIsNone(await lifecycle._await_discovery(failed))
+
+        asyncio.run(scenario())
+
     def test_discovery_and_preparation_saturation_are_optional(self) -> None:
         with mock.patch.object(
             lifecycle,
@@ -166,6 +181,45 @@ class ChatLifecycleTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_proposal_timeout_and_invalid_candidate_leave_the_turn_unchanged(self) -> None:
+        async def scenario() -> None:
+            event = {"type": "done", "reply": "Done."}
+            pending: concurrent.futures.Future[object] = concurrent.futures.Future()
+            connection = _connection()
+            with mock.patch.object(lifecycle, "_await_discovery", new=mock.AsyncMock(side_effect=TimeoutError)):
+                self.assertIs(
+                    await lifecycle.attach_proposal(
+                        connection,
+                        pending,
+                        "team_1",
+                        event,
+                        language_exemplar="remove",
+                    ),
+                    event,
+                )
+            self.assertTrue(pending.cancelled())
+
+            candidate = assistant_proposal.UninstallCandidate(_proposal().assistant, "0.4.4")
+            completed: concurrent.futures.Future[object] = concurrent.futures.Future()
+            completed.set_result(candidate)
+            with mock.patch.object(
+                lifecycle.assistant_proposal,
+                "create_uninstall_proposal",
+                side_effect=ValueError,
+            ):
+                self.assertIs(
+                    await lifecycle.attach_proposal(
+                        connection,
+                        completed,
+                        "team_1",
+                        event,
+                        language_exemplar="remove",
+                    ),
+                    event,
+                )
+
+        asyncio.run(scenario())
+
     def test_invalid_worker_result_is_projected_as_failure(self) -> None:
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
@@ -185,6 +239,122 @@ class ChatLifecycleTests(unittest.TestCase):
             self.assertEqual(events[0]["state"], "failed")
             self.assertEqual(events[0]["status"], 502)
             self.assertIsNone(connection.lifecycle)
+
+        asyncio.run(scenario())
+
+    def test_closed_or_failed_delivery_cannot_outlive_socket_authority(self) -> None:
+        async def scenario() -> None:
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_result(assistant_uninstall.UninstallResult(200, True))
+            operation = lifecycle.Operation(_proposal(), future)
+            closed = _connection(closed=True, lifecycle=operation)
+            send = mock.AsyncMock(return_value=True)
+            await lifecycle._deliver(mock.sentinel.websocket, closed, operation, send)
+            send.assert_not_awaited()
+
+            operation = lifecycle.Operation(_proposal(), future)
+            connected = _connection(lifecycle=operation)
+            send = mock.AsyncMock(return_value=False)
+            await lifecycle._deliver(mock.sentinel.websocket, connected, operation, send)
+            self.assertTrue(connected.closed)
+            self.assertIs(connected.lifecycle, operation)
+
+        asyncio.run(scenario())
+
+    def test_invalid_retained_image_and_saturated_uninstall_are_fail_closed(self) -> None:
+        invalid = assistant_uninstall.UninstallResult(
+            200,
+            True,
+            "invalid",
+            "docker image rm invalid",
+        )
+        self.assertFalse(lifecycle._valid_retained_image(invalid))
+
+        async def scenario() -> None:
+            connection = _connection()
+            send = mock.AsyncMock(return_value=True)
+            with mock.patch.object(
+                lifecycle,
+                "submit_in_context",
+                side_effect=lifecycle.ExecutorSaturatedError,
+            ):
+                await lifecycle._dispatch(mock.sentinel.websocket, connection, _proposal(), send)
+            self.assertEqual(send.await_count, 2)
+            self.assertEqual(send.await_args_list[-1].args[1]["status"], 429)
+
+        asyncio.run(scenario())
+
+    def test_expired_cancelled_and_file_confirmation_resolution_is_exact(self) -> None:
+        async def scenario() -> None:
+            send = mock.AsyncMock(return_value=True)
+            proposal = _proposal()
+
+            connection = _connection(lifecycle_proposal=proposal)
+            with mock.patch.object(lifecycle, "monotonic", return_value=10.0):
+                self.assertFalse(
+                    await lifecycle.resolve(
+                        mock.sentinel.websocket,
+                        connection,
+                        "team_1",
+                        {"message": "yes", "files": ["file"]},
+                        send,
+                    )
+                )
+
+            connection.lifecycle_proposal = proposal
+            with mock.patch.object(lifecycle, "monotonic", return_value=10_000.0):
+                self.assertTrue(
+                    await lifecycle.resolve(
+                        mock.sentinel.websocket,
+                        connection,
+                        "team_1",
+                        {"message": "yes", "files": []},
+                        send,
+                    )
+                )
+            self.assertEqual(send.await_args.args[1]["state"], "expired")
+
+            connection.lifecycle_proposal = proposal
+            with mock.patch.object(lifecycle, "monotonic", return_value=10_000.0):
+                self.assertFalse(
+                    await lifecycle.resolve(
+                        mock.sentinel.websocket,
+                        connection,
+                        "team_1",
+                        {"message": "maybe", "files": []},
+                        send,
+                    )
+                )
+
+            connection.lifecycle_proposal = proposal
+            with mock.patch.object(lifecycle, "monotonic", return_value=10.0):
+                self.assertTrue(
+                    await lifecycle.resolve(
+                        mock.sentinel.websocket,
+                        connection,
+                        "team_1",
+                        {"message": "não", "files": []},
+                        send,
+                    )
+                )
+            self.assertEqual(send.await_args.args[1]["state"], "cancelled")
+
+        asyncio.run(scenario())
+
+    def test_plan_submission_and_close_without_delivery_use_the_bounded_lane(self) -> None:
+        sentinel = mock.sentinel.future
+        plan = mock.Mock(spec=assistant_plan.Plan)
+        stopped = threading.Event()
+        progress = mock.Mock()
+        with mock.patch.object(lifecycle, "submit_in_context", return_value=sentinel) as submit:
+            self.assertIs(lifecycle.submit_plan(plan, stopped, progress), sentinel)
+        submit.assert_called_once_with(lifecycle._LIFECYCLE_EXECUTOR, assistant_plan.execute, plan, stopped, progress)
+
+        async def scenario() -> None:
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            connection = _connection(lifecycle=lifecycle.Operation(_proposal(), future))
+            await lifecycle.close(connection)
+            self.assertTrue(future.cancelled())
 
         asyncio.run(scenario())
 
