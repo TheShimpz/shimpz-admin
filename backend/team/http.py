@@ -6,8 +6,9 @@ import json
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from protocol.http.v1 import websocket as chat_ws_common
 from team import bridge
+
+from protocol.http.v1 import websocket as chat_ws_common
 
 
 def response(action) -> JSONResponse:

@@ -11,10 +11,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from team import bridge as team
+
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -309,7 +310,7 @@ def submit_preparation(
             payload,
             _STORE_CATALOG,
         )
-    except (ExecutorSaturatedError, OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError):
+    except ExecutorSaturatedError, OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
         return None
 
 

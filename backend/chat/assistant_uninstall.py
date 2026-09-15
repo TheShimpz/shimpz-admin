@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from team import bridge as team
+
 from chat import assistant_inventory, assistant_proposal
 from protocol.http.v1 import websocket as chat_ws_common
-from team import bridge as team
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +48,13 @@ def uninstall(proposal: assistant_proposal.UninstallProposal) -> UninstallResult
 
 
 def _project_result(response: object, assistant_id: str) -> UninstallResult:
-    if not isinstance(response, team.TeamResponse) or not isinstance(response.status, int) or isinstance(
-        response.status,
-        bool,
+    if (
+        not isinstance(response, team.TeamResponse)
+        or not isinstance(response.status, int)
+        or isinstance(
+            response.status,
+            bool,
+        )
     ):
         return UninstallResult(502)
     if response.status == 404 and _is_exact_absence(response):
