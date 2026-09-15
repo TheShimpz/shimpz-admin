@@ -91,9 +91,7 @@ class ChatWebSocketTests(unittest.TestCase):
             summary="Manage Cloudflare zones and DNS records.",
             source_digest="sha256:" + ("d" * 64),
             icon_digest="sha256:" + ("e" * 64),
-            integrations=(
-                self.chat_socket.lifecycle.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),
-            ),
+            integrations=(self.chat_socket.lifecycle.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
             actions=("list-zones",),
         )
 
@@ -673,10 +671,7 @@ class ChatWebSocketTests(unittest.TestCase):
     def test_automatic_composed_plan_installs_then_dispatches_the_original_task_once(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()
-            installed = tuple(
-                {**item, "status": "installed"}
-                for item in self.assistant_plan.initial_items(plan)
-            )
+            installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             preparation = self._future(self.assistant_plan.Preparation(plan))
             job = self._future(self.assistant_plan.Result("installed", installed))
             response = self.chat_socket.local.PublicResponse(
@@ -762,9 +757,7 @@ class ChatWebSocketTests(unittest.TestCase):
             items[0] = {**items[0], "status": "installed"}
             items[1] = {**items[1], "status": "failed"}
             preparation = self._future(self.assistant_plan.Preparation(plan))
-            job = self._future(
-                self.assistant_plan.Result("failed", tuple(items), 503)
-            )
+            job = self._future(self.assistant_plan.Result("failed", tuple(items), 503))
             with (
                 mock.patch.object(self.chat_socket.lifecycle, "submit_preparation", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job),
@@ -782,11 +775,14 @@ class ChatWebSocketTests(unittest.TestCase):
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 failed = await websocket.next_json()
-                self.assertEqual((failed["type"], failed["state"], failed["status"]), (
-                    "assistant-install-plan",
-                    "failed",
-                    503,
-                ))
+                self.assertEqual(
+                    (failed["type"], failed["state"], failed["status"]),
+                    (
+                        "assistant-install-plan",
+                        "failed",
+                        503,
+                    ),
+                )
                 self.assertEqual(
                     [item["status"] for item in failed["assistants"]],
                     ["installed", "failed"],
@@ -846,10 +842,7 @@ class ChatWebSocketTests(unittest.TestCase):
     def test_completed_plan_continues_into_the_team_owned_integration_gate(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()
-            items = tuple(
-                {**item, "status": "installed"}
-                for item in self.assistant_plan.initial_items(plan)
-            )
+            items = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,

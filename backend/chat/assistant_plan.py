@@ -46,8 +46,7 @@ def _planner_candidate(assistant: store_catalog.CatalogAssistant) -> dict[str, o
         "summary": assistant.summary,
         "actions": list(assistant.actions),
         "integrations": [
-            {"id": integration.provider, "provider": integration.provider}
-            for integration in assistant.integrations
+            {"id": integration.provider, "provider": integration.provider} for integration in assistant.integrations
         ],
     }
 
@@ -64,9 +63,7 @@ def _enabled_capabilities(
     installed = assistant_inventory.installed(installed_response)
     registry = assistant_inventory.registry(registry_response)
     if any(
-        assistant_id not in registry
-        or assistant_id not in installed
-        or installed[assistant_id].status != "running"
+        assistant_id not in registry or assistant_id not in installed or installed[assistant_id].status != "running"
         for assistant_id in enabled_ids
     ):
         return None
@@ -166,7 +163,7 @@ def prepare(
             team_id,
             frozenset(assistant.assistant_id for assistant in shortlist),
         )
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return Preparation(error_status=502)
     return _prepared_plan(team_id, enabled_ids, shortlist, selected)
 
@@ -213,13 +210,13 @@ def _install_and_prove_running(
 ) -> int | None:
     try:
         result = assistant_install.install_publication(team_id, assistant)
-    except (OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError):
+    except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
         return 502
     if result.installed is None or not 200 <= result.status < 300:
         return result.status if 400 <= result.status <= 599 else 502
     try:
         installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
-    except (TypeError, ValueError, team.TeamRequestError):
+    except TypeError, ValueError, team.TeamRequestError:
         return 502
     current = installed.get(assistant.assistant_id)
     return None if current is not None and current.status == "running" else 502

@@ -41,9 +41,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
         previous_store = cls.admin_app.state.STORE_PATH
         previous_origins = cls.chat_socket.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.chat_socket.STATIC_ORIGINS = frozenset(
-            {"http://localhost:7777", "http://127.0.0.1:7777"}
-        )
+        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
         cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 

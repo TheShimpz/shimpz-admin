@@ -318,17 +318,10 @@ def uninstall_requested(message: object) -> bool:
 def _identity_targets(capability: Capability) -> frozenset[str]:
     exact = {_search_text(capability.assistant_id), _search_text(capability.name)}
     short_tokens = tuple(
-        token
-        for token in _search_text(capability.name).split()
-        if token not in {"assistant", "assistente", "shimpz"}
+        token for token in _search_text(capability.name).split() if token not in {"assistant", "assistente", "shimpz"}
     )
     aliases = exact | ({" ".join(short_tokens), *short_tokens} if short_tokens else set())
-    targets = {
-        target
-        for value in exact
-        if value
-        for target in (value, f"a {value}", f"o {value}", f"the {value}")
-    }
+    targets = {target for value in exact if value for target in (value, f"a {value}", f"o {value}", f"the {value}")}
     for alias in aliases:
         if not alias:
             continue

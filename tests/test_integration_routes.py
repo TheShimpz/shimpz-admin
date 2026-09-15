@@ -604,9 +604,7 @@ class OAuthRoutesTest(unittest.TestCase):
         ):
             request = _request(
                 "POST",
-                "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/"
-                + "a" * 32
-                + "/authorize",
+                "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
                 body=request_body,
                 cookie=f"shimpz_admin={self.session}",
             )

@@ -92,7 +92,8 @@ def clear_assistant_stored_input(
         return response
     if (
         response.status != 200
-        or set(response.body) != {
+        or set(response.body)
+        != {
             "team_id",
             "assistant_id",
             "stored_input_id",

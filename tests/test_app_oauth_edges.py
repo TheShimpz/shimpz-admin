@@ -75,9 +75,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
             mock.patch.object(
                 self.admin_app,
                 "_bounded_json_object",
-                new=mock.AsyncMock(
-                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
-                ),
+                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
             ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "issue", return_value=preparation),
@@ -96,9 +94,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
             mock.patch.object(
                 self.admin_app,
                 "_bounded_json_object",
-                new=mock.AsyncMock(
-                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
-                ),
+                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
             ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
         ):
@@ -111,9 +107,7 @@ class AppOAuthEdgeTests(unittest.TestCase):
             mock.patch.object(
                 self.admin_app,
                 "_bounded_json_object",
-                new=mock.AsyncMock(
-                    return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
-                ),
+                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
             ),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(
