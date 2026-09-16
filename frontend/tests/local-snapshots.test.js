@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupLocalAssistantSnapshots } from '../src/lib/localSnapshots.js';
+import { groupLocalAssistantSnapshots, withoutLocallyStagedAssistants } from '../src/lib/localSnapshots.js';
 
 function snapshot(assistantId, createdAt, imageCharacter) {
   return {
@@ -54,4 +54,18 @@ test('fails closed on a timestamp outside the validated Local API contract', () 
     () => groupLocalAssistantSnapshots([snapshot('whatsapp', 'not-a-time', 'a')]),
     /Invalid Local Assistant snapshot timestamp/,
   );
+});
+
+test('a staged Local identity shadows the matching Store publication', () => {
+  const localGroups = groupLocalAssistantSnapshots([
+    snapshot('shimpz-cloudflare', '2026-09-15T08:00:00Z', 'c'),
+  ]);
+  const published = [
+    { assistant_id: 'shimpz-cloudflare' },
+    { assistant_id: 'another-assistant' },
+  ];
+
+  assert.deepEqual(withoutLocallyStagedAssistants(published, localGroups), [
+    { assistant_id: 'another-assistant' },
+  ]);
 });

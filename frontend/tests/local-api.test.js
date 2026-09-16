@@ -8,6 +8,7 @@ import {
   listAssistantCatalog,
   listInstalledAssistants,
   listLocalAssistantSnapshots,
+  listPublicAssistantCatalog,
   safeApiError,
   uninstallAssistant,
 } from '../src/lib/localApi.js';
@@ -331,6 +332,49 @@ test('projects only bounded display identities from the local Assistant catalog'
     { id: 'hello-pulse', name: 'Hello Pulse', summary: 'First' },
     { id: 'salesnator', name: 'Salesnator', summary: 'Second' },
   ]);
+});
+
+test('projects the strict public Assistant catalog used by native cards', async () => {
+  const assistant = {
+    assistant_id: 'shimpz-cloudflare',
+    assistant_version: '0.4.5',
+    creators: ['@shimpz'],
+    icon_digest: `sha256:${'b'.repeat(64)}`,
+    name: 'Shimpz Cloudflare',
+    source_digest: SOURCE_DIGEST,
+    summary: 'Manage Cloudflare DNS.',
+  };
+  const fetcher = async (url, options) => {
+    assert.equal(url, '/api/assistant-catalog');
+    assert.deepEqual(options, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    return response(200, { version: 1, assistants: [assistant] });
+  };
+
+  assert.deepEqual(await listPublicAssistantCatalog(fetcher), [assistant]);
+});
+
+test('rejects malformed public Assistant catalog projections', async () => {
+  const valid = {
+    assistant_id: 'shimpz-cloudflare',
+    assistant_version: '0.4.5',
+    creators: ['@shimpz'],
+    icon_digest: `sha256:${'b'.repeat(64)}`,
+    name: 'Shimpz Cloudflare',
+    source_digest: SOURCE_DIGEST,
+    summary: 'Manage Cloudflare DNS.',
+  };
+  for (const body of [
+    { version: 2, assistants: [] },
+    { version: 1, assistants: [{ ...valid, extra: true }] },
+    { version: 1, assistants: [{ ...valid, creators: [] }] },
+    { version: 1, assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
+    { version: 1, assistants: [valid, valid] },
+  ]) {
+    await assert.rejects(
+      listPublicAssistantCatalog(async () => response(200, body)),
+      (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
+    );
+  }
 });
 
 test('rejects malformed or ambiguous Assistant catalog identities', async () => {

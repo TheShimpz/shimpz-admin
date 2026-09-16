@@ -29,3 +29,10 @@ export function groupLocalAssistantSnapshots(snapshots) {
       };
     });
 }
+
+/** Hide a publication whenever this Local machine stages the same Assistant identity. */
+export function withoutLocallyStagedAssistants(published, localGroups) {
+  if (!Array.isArray(published) || !Array.isArray(localGroups)) return [];
+  const localIds = new Set(localGroups.map((group) => group.assistant_id));
+  return published.filter((assistant) => !localIds.has(assistant.assistant_id));
+}

@@ -12,9 +12,11 @@ const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
+const MAX_PUBLIC_ASSISTANTS = 256;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 export { LocalApiError };
 
@@ -66,6 +68,70 @@ export async function listAssistantCatalog(fetcher) {
     }
     seen.add(id);
     return { id, name, summary };
+  });
+}
+
+/** Read the exact bounded public Store projection used by the native Admin catalog. */
+export async function listPublicAssistantCatalog(fetcher) {
+  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant catalog request.');
+  const response = await fetcher('/api/assistant-catalog', {
+    cache: 'no-store', headers: { Accept: 'application/json' },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(
+      safeApiError(body, 'The Assistant catalog is unavailable.'),
+      response.status,
+    );
+  }
+  if (
+    !exactKeys(body, ['assistants', 'version']) ||
+    body.version !== 1 ||
+    !Array.isArray(body.assistants) ||
+    body.assistants.length > MAX_PUBLIC_ASSISTANTS
+  ) {
+    throw new LocalApiError('The Assistant catalog is invalid.', response.status);
+  }
+  const seen = new Set();
+  return body.assistants.map((entry) => {
+    if (
+      !exactKeys(entry, [
+        'assistant_id',
+        'assistant_version',
+        'creators',
+        'icon_digest',
+        'name',
+        'source_digest',
+        'summary',
+      ]) ||
+      typeof entry.assistant_id !== 'string' ||
+      entry.assistant_id.length > 80 ||
+      !ASSISTANT_ID_RE.test(entry.assistant_id) ||
+      typeof entry.assistant_version !== 'string' ||
+      !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
+      typeof entry.name !== 'string' ||
+      entry.name !== entry.name.trim() ||
+      !entry.name ||
+      entry.name.length > 80 ||
+      CONTROL_RE.test(entry.name) ||
+      typeof entry.summary !== 'string' ||
+      entry.summary !== entry.summary.trim() ||
+      !entry.summary ||
+      entry.summary.length > 160 ||
+      CONTROL_RE.test(entry.summary) ||
+      !Array.isArray(entry.creators) ||
+      entry.creators.length < 1 ||
+      entry.creators.length > 16 ||
+      entry.creators.some((creator) => typeof creator !== 'string' || !PUBLIC_CREATOR_RE.test(creator)) ||
+      new Set(entry.creators).size !== entry.creators.length ||
+      !SHA256_RE.test(entry.source_digest) ||
+      !SHA256_RE.test(entry.icon_digest) ||
+      seen.has(entry.assistant_id)
+    ) {
+      throw new LocalApiError('The Assistant catalog is invalid.', response.status);
+    }
+    seen.add(entry.assistant_id);
+    return { ...entry, creators: [...entry.creators] };
   });
 }
 
