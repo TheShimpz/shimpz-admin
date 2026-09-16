@@ -842,6 +842,75 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText(`docker image rm ${imageId}`, { exact: false })).toBeVisible();
 });
 
+test('blocks a Local build when the Assistant is installed from a publication', async ({ page }) => {
+  const imageId = `sha256:${'b'.repeat(64)}`;
+  const localIcon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
+    'base64',
+  );
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body>Store test frame</body></html>',
+  }));
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [
+      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+    ] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      assistants: [{
+        assistant_id: 'whatsapp',
+        assistant_version: '0.2.1',
+        name: 'WhatsApp Automation',
+        summary: 'Send and manage WhatsApp messages from your Team.',
+        declared_creators: ['@shimpz'],
+        created_at: '2026-08-28T17:00:00Z',
+        image_id: imageId,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+      trace_id: 'c'.repeat(32),
+    }),
+  }));
+  await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: localIcon,
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      assistants: [{
+        assistant: 'whatsapp',
+        assistant_version: '0.2.1',
+        status: 'running',
+        provenance: 'published',
+      }],
+    }),
+  }));
+
+  await page.goto('/assistants/');
+
+  const card = page.getByRole('article', { name: 'whatsapp — Local' });
+  await expect(card).not.toHaveClass(/is-installed/);
+  await expect(card.getByRole('button', { name: 'Install or replace' })).toBeDisabled();
+  await expect(card.getByRole('alert')).toHaveText(
+    'Uninstall the published Assistant before installing this Local build.',
+  );
+});
+
 test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
