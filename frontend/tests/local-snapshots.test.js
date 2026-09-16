@@ -7,6 +7,9 @@ function snapshot(assistantId, createdAt, imageCharacter) {
   return {
     assistant_id: assistantId,
     assistant_version: '0.2.1',
+    name: assistantId === 'whatsapp' ? 'WhatsApp Automation' : 'Shimpz Cloudflare',
+    summary: 'Automate trusted work from this machine.',
+    declared_creators: ['@shimpz'],
     created_at: createdAt,
     image_id: `sha256:${imageCharacter.repeat(64)}`,
     platform: 'linux/amd64',

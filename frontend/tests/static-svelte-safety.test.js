@@ -49,14 +49,14 @@ test('static presentation: declared Admin sources instantiate the canonical prim
     ['../src/lib/AuthScreen.svelte', ['Card']],
     ['../src/lib/ChatContextControls.svelte', ['ChoiceItem', 'DialogFrame', 'Modal']],
     ['../src/lib/ExecutionReceipt.svelte', ['Disclosure']],
-    ['../src/lib/LocalAssistantInstallDialog.svelte', ['Card', 'DialogFrame', 'Modal', 'Notice']],
+    ['../src/lib/LocalAssistantInstallDialog.svelte', ['Card', 'ChoiceItem', 'DialogFrame', 'Modal', 'Notice']],
     ['../src/lib/LocaleMenu.svelte', ['DropdownMenu']],
     ['../src/lib/NotificationCenter.svelte', ['Card', 'EmptyState', 'ScrollArea', 'Toolbar']],
     ['../src/lib/ProviderSetupGate.svelte', ['Card']],
     ['../src/lib/ShimpzThinking.svelte', ['Disclosure']],
     ['../src/lib/TeamSidebar.svelte', ['Notice']],
     ['../src/routes/chat/+page.svelte', ['AssistantIcon', 'ChatTask', 'EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
-    ['../src/routes/assistants/+page.svelte', ['AssistantIcon', 'Card', 'Disclosure', 'EmptyState', 'PageIntro', 'Skeleton', 'StatusBadge', 'Toolbar']],
+    ['../src/routes/assistants/+page.svelte', ['AssistantCard', 'Card', 'EmptyState', 'PageIntro', 'Skeleton', 'Toolbar']],
   ]);
   for (const [path, primitives] of contracts) {
     const source = readFileSync(new URL(path, import.meta.url), 'utf8');

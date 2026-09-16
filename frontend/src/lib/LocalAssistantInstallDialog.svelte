@@ -1,21 +1,23 @@
 <script>
-  import { Button, Card, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { Button, Card, ChoiceItem, DialogFrame, Modal, Notice } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
 
   let {
     open = $bindable(false),
     snapshot = null,
+    snapshots = [],
     team = null,
     busy = false,
     error = '',
     onconfirm = () => {},
     oncancel = () => {},
+    onselect = () => {},
   } = $props();
 
   let dialog = $state();
   let copy = $derived($t('store'));
   let title = $derived($t('store.localConfirmTitle', {
-    assistant: snapshot?.assistant_id ?? '',
+    assistant: snapshot?.name ?? snapshot?.assistant_id ?? '',
   }));
 
   $effect(() => {
@@ -44,6 +46,24 @@
       lead={copy.localLead}
     >
       <Notice variant="warning">{copy.localRisk}</Notice>
+      {#if snapshots.length > 1}
+        <div class="local-build-selector">
+          <span>{$t('store.localBuilds', { count: snapshots.length - 1 })}</span>
+          <ul>
+            {#each snapshots as build (build.image_id)}
+              <li>
+                <ChoiceItem
+                  title={`v${build.assistant_version} · ${build.platform}`}
+                  description={build.image_id}
+                  selected={build.image_id === snapshot?.image_id}
+                  disabled={busy}
+                  onclick={() => onselect(build)}
+                />
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
       {#if snapshot}
         <Card class="local-install-target" padding="compact">
           <span>{copy.localExactImage}</span>
@@ -83,4 +103,13 @@
   }
   :global(.local-install-target strong) { font-size: 0.85rem; }
   :global(.local-install-target code) { overflow-wrap: anywhere; color: var(--accent); font-size: 0.65rem; }
+  .local-build-selector { display: grid; gap: var(--shimpz-space-2); }
+  .local-build-selector > span {
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .local-build-selector ul { display: grid; gap: var(--shimpz-space-2); margin: 0; padding: 0; list-style: none; }
 </style>

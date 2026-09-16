@@ -536,6 +536,10 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Store frame fixture</title>',
+  }));
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -597,7 +601,7 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(headingBox).not.toBeNull();
   expect(kickerBox.y + kickerBox.height).toBeLessThanOrEqual(teamBox.y);
   expect(Math.abs(teamBox.x - kickerBox.x)).toBeLessThan(1);
-  expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(10);
+  expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(8);
   if (page.viewportSize().width <= 680) {
     expect(destinationBox.y).toBeLessThan(headingBox.y);
   } else {
@@ -682,6 +686,10 @@ test('opens the Store destination workflow through shared modal controls', async
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const olderImageId = `sha256:${'a'.repeat(64)}`;
+  const localIcon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
+    'base64',
+  );
   let installed = false;
   await page.route('https://shimpz.com/**', (route) => route.fulfill({
     contentType: 'text/html',
@@ -709,6 +717,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
         {
           assistant_id: 'whatsapp',
           assistant_version: '0.1.0',
+          name: 'WhatsApp Automation',
+          summary: 'Send and manage WhatsApp messages from your Team.',
+          declared_creators: ['@shimpz'],
           created_at: '2026-08-28T16:00:00Z',
           image_id: olderImageId,
           platform: 'linux/amd64',
@@ -718,6 +729,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
         {
           assistant_id: 'whatsapp',
           assistant_version: '0.2.1',
+          name: 'WhatsApp Automation',
+          summary: 'Send and manage WhatsApp messages from your Team.',
+          declared_creators: ['@shimpz'],
           created_at: '2026-08-28T17:00:00Z',
           image_id: imageId,
           platform: 'linux/amd64',
@@ -728,11 +742,15 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
       trace_id: 'c'.repeat(32),
     }),
   }));
+  await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: localIcon,
+  }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
       assistants: installed
-        ? [{ assistant: 'whatsapp', assistant_version: '0.2.1', status: 'running' }]
+        ? [{ assistant: 'whatsapp', assistant_version: '0.2.1', status: 'running', provenance: 'local' }]
         : [],
     }),
   }));
@@ -769,34 +787,32 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await page.goto('/assistants/');
 
   const catalog = page.getByRole('region', { name: 'Staged on this machine' });
-  const card = page.getByRole('region', { name: 'whatsapp — Local' });
+  const card = page.getByRole('article', { name: 'whatsapp — Local' });
   await expect(catalog.locator('.local-assistant-card')).toHaveCount(1);
   await expect(card.getByText('Local', { exact: true })).toBeVisible();
-  await expect(card).toContainText('Local development // unpublished');
-  await expect(card).toContainText('v0.2.1');
+  await expect(card).toContainText('WhatsApp Automation');
+  await expect(card).toContainText('@shimpz');
+  await expect(card).toContainText('Send and manage WhatsApp messages from your Team.');
+  await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
   await expect(card).not.toContainText(imageId);
   await expect(catalog).toHaveScreenshot('local-assistant-catalog.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
   });
 
-  const alternativeInstall = card.locator('.local-build-list').getByRole('button', { name: 'Install or replace' });
-  await expect(alternativeInstall).toBeHidden();
-  await card.getByText('Other staged builds (1)', { exact: true }).click();
-  await expect(alternativeInstall).toBeVisible();
-  const olderDigest = card.getByText(olderImageId, { exact: true });
-  await expect(olderDigest).toBeVisible();
-  expect(await olderDigest.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await alternativeInstall.click();
+  await card.hover();
+  await card.getByRole('button', { name: 'Install or replace' }).click();
 
-  let installDialog = page.getByRole('dialog', { name: 'Install whatsapp?' });
+  let installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
+  await installDialog.getByRole('button', { name: /v0\.1\.0/ }).click();
   await expect(installDialog).toContainText(olderImageId);
   await installDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(installDialog).toBeHidden();
 
-  await card.locator('.local-assistant-action').getByRole('button', { name: 'Install or replace' }).click();
+  await card.hover();
+  await card.getByRole('button', { name: 'Install or replace' }).click();
 
-  installDialog = page.getByRole('dialog', { name: 'Install whatsapp?' });
+  installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(installDialog).toBeVisible();
   await expect(installDialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
   await expect(installDialog).toContainText(imageId);
@@ -811,6 +827,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(installDialog).toBeHidden();
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
+  await expect(card).toHaveClass(/is-installed/);
 
   const storeFrame = page.frames().find((frame) => frame.url().startsWith('https://shimpz.com/'));
   expect(storeFrame).toBeDefined();

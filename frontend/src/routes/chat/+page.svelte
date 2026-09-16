@@ -296,6 +296,7 @@
     if (existing) return existing.promise;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
+    let captured = false;
     const source = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
     const promise = fetch(source, {
       cache: 'no-store',
@@ -307,13 +308,19 @@
       if (!blob.size || blob.size > 1024 * 1024 || blob.type !== 'image/png') return;
       const snapshot = await imageDataUrl(blob);
       if (typeof snapshot !== 'string' || !snapshot.startsWith('data:image/png;base64,')) return;
+      captured = true;
       turns = turns.map((turn) => (
         turn.lifecycle?.proposal_id === proposalId &&
         turn.lifecycle.assistant.id === assistantId
           ? { ...turn, lifecycle: { ...turn.lifecycle, iconSnapshot: snapshot } }
           : turn
       ));
-    }).catch(() => undefined).finally(() => clearTimeout(timer));
+    }).catch(() => undefined).finally(() => {
+      clearTimeout(timer);
+      if (!captured && lifecycleIconCaptures.get(proposalId)?.promise === promise) {
+        lifecycleIconCaptures.delete(proposalId);
+      }
+    });
     lifecycleIconCaptures.set(proposalId, { controller, promise });
     return promise;
   }

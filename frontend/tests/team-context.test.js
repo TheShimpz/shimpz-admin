@@ -41,7 +41,7 @@ function response(status, body) {
 }
 
 function installedAssistant(assistant, status = 'running') {
-  return { assistant, assistant_version: '1.2.3', status };
+  return { assistant, assistant_version: '1.2.3', status, provenance: 'published' };
 }
 
 function fixtureFetcher(overrides = {}) {

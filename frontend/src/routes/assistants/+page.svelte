@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { ActionLink, AssistantIcon, Button, Card, ChoiceItem, DialogFrame, Disclosure, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, StatusBadge, TextField, Toolbar } from '@shimpz/frontend';
+  import { ActionLink, AssistantCard, Button, Card, ChoiceItem, DialogFrame, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
   import {
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
@@ -25,6 +25,7 @@
     uninstallAssistant,
   } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
+  import { loadLocalAssistantIcon } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
@@ -64,6 +65,9 @@
   let localInstallDialogOpen = $state(false);
   let localInstallDialogError = $state('');
   let pendingLocalSnapshot = $state(null);
+  let pendingLocalSnapshots = $state([]);
+  let localIconUrls = $state({});
+  let localIconRequest = 0;
   const storeActionLatch = createStoreActionLatch();
 
   let currentLocale = $derived($locale);
@@ -540,6 +544,7 @@
       if (request !== localSnapshotRequest) return;
       localSnapshots = snapshots;
       localSnapshotPhase = 'ready';
+      void loadLocalSnapshotIcons(snapshots);
     } catch (error) {
       if (request !== localSnapshotRequest) return;
       localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
@@ -547,18 +552,51 @@
     }
   }
 
-  function beginLocalSnapshotInstall(snapshot) {
+  function releaseLocalIconUrls() {
+    for (const url of Object.values(localIconUrls)) URL.revokeObjectURL(url);
+    localIconUrls = {};
+  }
+
+  async function loadLocalSnapshotIcons(snapshots) {
+    const request = ++localIconRequest;
+    releaseLocalIconUrls();
+    const primarySnapshots = groupLocalAssistantSnapshots(snapshots).map((group) => group.primary);
+    await Promise.allSettled(primarySnapshots.map(async (snapshot) => {
+      try {
+        const icon = await loadLocalAssistantIcon(fetch, snapshot.image_id);
+        if (request !== localIconRequest) return;
+        const url = URL.createObjectURL(icon);
+        if (request !== localIconRequest) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        localIconUrls = { ...localIconUrls, [snapshot.image_id]: url };
+      } catch {
+        // The shared card retains its bounded fallback icon when preview is unavailable.
+      }
+    }));
+  }
+
+  function beginLocalSnapshotInstall(group) {
     const team = activeTeamRecord;
     if (!team || busy || dialogOpen || localInstallDialogOpen || localInstallImageId) return;
-    pendingLocalSnapshot = snapshot;
+    pendingLocalSnapshot = group.primary;
+    pendingLocalSnapshots = [group.primary, ...group.alternatives];
     localInstallDialogError = '';
     localInstallDialogOpen = true;
+  }
+
+  function selectLocalSnapshot(snapshot) {
+    if (!localInstallImageId && pendingLocalSnapshots.some((entry) => entry.image_id === snapshot.image_id)) {
+      pendingLocalSnapshot = snapshot;
+    }
   }
 
   function closeLocalSnapshotInstall() {
     if (localInstallImageId) return;
     localInstallDialogOpen = false;
     pendingLocalSnapshot = null;
+    pendingLocalSnapshots = [];
     localInstallDialogError = '';
   }
 
@@ -573,6 +611,7 @@
       await refreshInstalled(team.id);
       localInstallDialogOpen = false;
       pendingLocalSnapshot = null;
+      pendingLocalSnapshots = [];
       showAdminNotice({
         tone: 'success',
         label: localCopy.localInstalledLabel,
@@ -598,6 +637,8 @@
     if (localProfile) void loadLocalSnapshots();
     return () => {
       frameMounted = false;
+      localIconRequest += 1;
+      releaseLocalIconUrls();
       clearFrameTimeout();
       window.removeEventListener('message', handleStoreMessage);
     };
@@ -643,6 +684,9 @@
     {#if !activeTeamRecord && localSnapshotGroups.length > 0}
       <Notice variant="info">{localCopy.localNoTeam}</Notice>
     {/if}
+    {#if localSnapshotGroups.length > 0}
+      <Notice variant="warning">{localCopy.localRisk}</Notice>
+    {/if}
     {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
 
     {#if localSnapshotPhase === 'loading' && localSnapshotGroups.length === 0}
@@ -655,55 +699,34 @@
     {:else if localSnapshotGroups.length > 0}
       <div class="local-assistant-grid">
         {#each localSnapshotGroups as group (group.assistant_id)}
-          <Card
+          {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
+          {@const publishedConflict = installed?.provenance === 'published'}
+          {@const installing = [group.primary, ...group.alternatives].some(
+            (snapshot) => snapshot.image_id === localInstallImageId,
+          )}
+          <AssistantCard
             class="local-assistant-card"
-            padding="none"
+            name={group.primary.name}
+            meta={group.primary.declared_creators.join(', ')}
+            summary={group.primary.summary}
+            iconSrc={localIconUrls[group.primary.image_id]}
+            iconLoading="lazy"
+            badge={localCopy.localBadge}
+            badgeTone="local"
+            installed={installed?.provenance === 'local'}
+            actionLabel={localCopy.localInstall}
+            actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || publishedConflict}
+            actionPersistent={installing || publishedConflict}
+            actionStatus={installing
+              ? localCopy.localInstalling
+              : publishedConflict
+                ? localCopy.localPublishedConflict
+                : undefined}
+            actionError={publishedConflict}
+            onaction={() => beginLocalSnapshotInstall(group)}
             aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
-            aria-busy={localInstallImageId === group.primary.image_id}
-          >
-            <div class="local-assistant-details">
-              <div class="local-assistant-heading">
-                <AssistantIcon assistant={group.assistant_id} size={64} />
-                <div class="local-assistant-identity">
-                  <h2 title={group.assistant_id}>{group.assistant_id}</h2>
-                  <p dir="ltr">v{group.primary.assistant_version} · {group.primary.platform}</p>
-                </div>
-                <StatusBadge tone="warning">{localCopy.localBadge}</StatusBadge>
-              </div>
-              <p class="local-assistant-summary">{localCopy.localKicker}</p>
-
-              {#if group.alternatives.length > 0}
-                <Disclosure class="local-builds">
-                  {#snippet summary()}
-                    {$t('store.localBuilds', { count: group.alternatives.length })}
-                  {/snippet}
-                  <ul class="local-build-list">
-                    {#each group.alternatives as snapshot (snapshot.image_id)}
-                      <li>
-                        <div>
-                          <strong dir="ltr">v{snapshot.assistant_version}</strong>
-                          <code dir="ltr">{snapshot.image_id}</code>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          type="button"
-                          onclick={() => beginLocalSnapshotInstall(snapshot)}
-                          disabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
-                        >{localCopy.localInstall}</Button>
-                      </li>
-                    {/each}
-                  </ul>
-                </Disclosure>
-              {/if}
-            </div>
-            <div class="local-assistant-action">
-              <Button
-                type="button"
-                onclick={() => beginLocalSnapshotInstall(group.primary)}
-                disabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
-              >{localCopy.localInstall}</Button>
-            </div>
-          </Card>
+            aria-busy={installing}
+          />
         {/each}
       </div>
     {/if}
@@ -861,11 +884,13 @@
 <LocalAssistantInstallDialog
   bind:open={localInstallDialogOpen}
   snapshot={pendingLocalSnapshot}
+  snapshots={pendingLocalSnapshots}
   team={activeTeamRecord}
   busy={Boolean(localInstallImageId)}
   error={localInstallDialogError}
   onconfirm={installLocalSnapshot}
   oncancel={closeLocalSnapshotInstall}
+  onselect={selectLocalSnapshot}
 />
 
 <style>
@@ -988,39 +1013,9 @@
   .local-assistant-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 23rem));
-    gap: var(--shimpz-space-3);
+    gap: 1rem;
   }
-  :global(.shimpz-card.local-assistant-card) {
-    transition: border-color 0.18s ease, transform 0.18s var(--ease);
-  }
-  :global(.shimpz-card.local-assistant-card:hover),
-  :global(.shimpz-card.local-assistant-card:focus-within) {
-    border-color: color-mix(in srgb, var(--accent) 58%, var(--shimpz-color-border));
-    transform: translateY(-2px);
-  }
-  .local-assistant-details { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: var(--shimpz-space-4); }
-  .local-assistant-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-3); }
-  .local-assistant-identity { min-width: 0; }
-  .local-assistant-identity h2 { overflow: hidden; margin: 0; font-size: 1.05rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-  .local-assistant-identity p { overflow: hidden; margin: 0.25rem 0 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.62rem; text-overflow: ellipsis; white-space: nowrap; }
-  .local-assistant-summary { margin: 0; color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; }
-  .local-assistant-action { padding: var(--shimpz-space-3) var(--shimpz-space-4) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border-subtle); }
-  .local-assistant-action :global(.shimpz-button) { width: 100%; }
-  .local-build-list { display: grid; gap: var(--shimpz-space-2); margin: 0; padding: 0; list-style: none; }
-  .local-build-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); }
-  .local-build-list li > div { display: grid; min-width: 0; gap: 0.15rem; }
-  .local-build-list strong { font-size: 0.75rem; }
-  .local-build-list code { overflow-wrap: anywhere; color: var(--text-faint); font-size: 0.58rem; }
   :global(.shimpz-card.local-assistant-loading > [data-slot="card-content"]) { display: grid; gap: var(--shimpz-space-2); color: var(--text-dim); }
-  @media (max-width: 520px) {
-    .local-build-list li { align-items: stretch; grid-template-columns: 1fr; }
-    .local-build-list :global(.shimpz-button) { width: 100%; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :global(.shimpz-card.local-assistant-card) { transition: none; }
-    :global(.shimpz-card.local-assistant-card:hover),
-    :global(.shimpz-card.local-assistant-card:focus-within) { transform: none; }
-  }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
   :global(.shimpz-embed.frame-ready) { opacity: 1; }

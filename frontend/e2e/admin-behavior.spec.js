@@ -234,16 +234,19 @@ async function routeReadyChat(page, {
             assistant: 'shimpz-cloudflare',
             assistant_version: '0.4.1',
             status: 'running',
+            provenance: 'published',
           },
           ...(assistantPlan || whatsappInstalled ? [{
             assistant: 'whatsapp',
             assistant_version: '0.1.0',
             status: 'running',
+            provenance: 'published',
           }] : []),
           ...(multipleIntegrations ? [{
             assistant: 'shimpz-slack',
             assistant_version: '1.2.3',
             status: 'running',
+            provenance: 'published',
           }] : []),
         ] : [],
       }),
@@ -792,6 +795,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   }));
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 
+  await page.waitForTimeout(2100);
   await uninstall.click();
   await expect(task).toHaveAttribute('data-state', 'pending');
   expect(chat.chatFrames()).toHaveLength(1);
@@ -2067,6 +2071,7 @@ test('keeps a first Store install ready while local display metadata catches up'
             assistant: 'shimpz-cloudflare',
             assistant_version: '0.1.0',
             status: 'running',
+            provenance: 'published',
           }]
           : [],
       }),

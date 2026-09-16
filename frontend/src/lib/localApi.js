@@ -14,6 +14,7 @@ const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 
 export { LocalApiError };
 
@@ -95,19 +96,20 @@ export async function listInstalledAssistants(fetcher, teamId) {
     const assistantVersion = entry?.assistant_version;
     const status = entry?.status;
     if (
-      !exactKeys(entry, ['assistant', 'assistant_version', 'status']) ||
+      !exactKeys(entry, ['assistant', 'assistant_version', 'provenance', 'status']) ||
       typeof assistant !== 'string' ||
       assistant.length > 80 ||
       !ASSISTANT_ID_RE.test(assistant) ||
       typeof assistantVersion !== 'string' ||
       !SEMANTIC_VERSION_RE.test(assistantVersion) ||
       !RUNTIME_STATUS_RE.test(status) ||
+      !['local', 'published'].includes(entry.provenance) ||
       seen.has(assistant)
     ) {
       throw new LocalApiError('The installed Assistant inventory is invalid.', response.status);
     }
     seen.add(assistant);
-    return { assistant, assistant_version: assistantVersion, status };
+    return { assistant, assistant_version: assistantVersion, status, provenance: entry.provenance };
   });
 }
 
@@ -143,7 +145,7 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
   return { assistant: assistantId, installed: installBody.installed };
 }
 
-/** List bounded unpublished snapshots without projecting source or Creator metadata. */
+/** List bounded unpublished snapshots with explicitly unverified display declarations. */
 export async function listLocalAssistantSnapshots(fetcher) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Local Assistant snapshot request.');
   const response = await fetcher('/api/local-assistants', {
@@ -172,15 +174,33 @@ export async function listLocalAssistantSnapshots(fetcher) {
         'assistant_id',
         'assistant_version',
         'created_at',
+        'declared_creators',
         'image_id',
+        'name',
         'platform',
         'provenance',
+        'summary',
         'unpublished',
       ]) ||
       typeof entry.assistant_id !== 'string' ||
       !ASSISTANT_ID_RE.test(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
+      typeof entry.name !== 'string' ||
+      entry.name !== entry.name.trim() ||
+      !entry.name ||
+      entry.name.length > 80 ||
+      CONTROL_RE.test(entry.name) ||
+      typeof entry.summary !== 'string' ||
+      entry.summary !== entry.summary.trim() ||
+      !entry.summary ||
+      entry.summary.length > 160 ||
+      CONTROL_RE.test(entry.summary) ||
+      !Array.isArray(entry.declared_creators) ||
+      entry.declared_creators.length < 1 ||
+      entry.declared_creators.length > 4 ||
+      entry.declared_creators.some((creator) => typeof creator !== 'string' || !CREATOR_RE.test(creator)) ||
+      new Set(entry.declared_creators).size !== entry.declared_creators.length ||
       typeof entry.created_at !== 'string' ||
       !CREATED_AT_RE.test(entry.created_at) ||
       Number.isNaN(Date.parse(entry.created_at)) ||
