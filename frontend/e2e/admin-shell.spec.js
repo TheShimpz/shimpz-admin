@@ -556,6 +556,10 @@ test('opens the Store destination workflow through shared modal controls', async
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
+  }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -565,8 +569,17 @@ test('opens the Store destination workflow through shared modal controls', async
     body: JSON.stringify({ files: [] }),
   }));
 
+  const localInventory = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/api/local-assistants'
+  ));
   await page.goto('/assistants/');
+  await localInventory;
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
   const storeFrame = page.locator('.store-frame');
+  await expect(page.getByRole('region', { name: 'Staged on this machine' })).toHaveCount(0);
+  await expect(storeFrame).toBeVisible();
   await expect(storeFrame).toHaveCSS('border-top-width', '0px');
   await expect(storeFrame).toHaveCSS('border-right-width', '0px');
   await expect(storeFrame).toHaveCSS('border-bottom-width', '0px');

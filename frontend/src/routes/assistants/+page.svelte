@@ -675,11 +675,11 @@
   {/snippet}
 </PageIntro>
 
-{#if localProfile}
+{#if localProfile && (localSnapshotGroups.length > 0 || localSnapshotPhase === 'error')}
   <section
     class="local-assistant-catalog"
     aria-label={localCopy.localTitle}
-    aria-busy={localSnapshotPhase === 'loading' || Boolean(localInstallImageId)}
+    aria-busy={Boolean(localInstallImageId)}
   >
     {#if !activeTeamRecord && localSnapshotGroups.length > 0}
       <Notice variant="info">{localCopy.localNoTeam}</Notice>
@@ -689,14 +689,7 @@
     {/if}
     {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
 
-    {#if localSnapshotPhase === 'loading' && localSnapshotGroups.length === 0}
-      <Card class="local-assistant-loading" padding="compact" role="status">
-        <span>{localCopy.localLoading}</span>
-        <Skeleton width="8rem" height="0.35rem" />
-      </Card>
-    {:else if localSnapshotGroups.length === 0 && localSnapshotPhase === 'ready'}
-      <EmptyState compact title={localCopy.localEmpty} />
-    {:else if localSnapshotGroups.length > 0}
+    {#if localSnapshotGroups.length > 0}
       <div class="local-assistant-grid">
         {#each localSnapshotGroups as group (group.assistant_id)}
           {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
@@ -1015,7 +1008,6 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 23rem));
     gap: 1rem;
   }
-  :global(.shimpz-card.local-assistant-loading > [data-slot="card-content"]) { display: grid; gap: var(--shimpz-space-2); color: var(--text-dim); }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
   :global(.shimpz-embed.frame-ready) { opacity: 1; }
