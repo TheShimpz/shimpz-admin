@@ -696,6 +696,52 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
 });
 
+test('keeps Local snapshot failures visible without rendering cards', async ({ page }) => {
+  await page.route('https://shimpz.com/**', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Store frame fixture</title>',
+  }));
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: '{}',
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ files: [] }),
+  }));
+
+  const localInventory = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/api/local-assistants'
+  ));
+  await page.goto('/assistants/');
+  await localInventory;
+
+  const localRegion = page.getByRole('region', { name: 'Staged on this machine' });
+  await expect(localRegion).toBeVisible();
+  await expect(localRegion.getByText('Local Assistant snapshots are unavailable.', { exact: true })).toBeVisible();
+  await expect(localRegion.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
+  await expect(localRegion.locator('.local-assistant-card')).toHaveCount(0);
+  await expect(page.locator('.store-frame')).toBeVisible();
+});
+
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const olderImageId = `sha256:${'a'.repeat(64)}`;
