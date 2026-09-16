@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { ActionLink, Button, Card, ChoiceItem, DialogFrame, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
+  import { ActionLink, AssistantIcon, Button, Card, ChoiceItem, DialogFrame, Disclosure, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, StatusBadge, TextField, Toolbar } from '@shimpz/frontend';
   import {
     STORE_FRAME_MAX_HEIGHT,
     STORE_FRAME_MIN_HEIGHT,
@@ -16,6 +16,7 @@
   } from '$lib/assistantIntent.js';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
+  import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
   import {
     installAssistant,
     installLocalAssistant,
@@ -24,6 +25,7 @@
     uninstallAssistant,
   } from '$lib/localApi.js';
   import { t, locale } from '$lib/i18n.js';
+  import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
@@ -59,6 +61,9 @@
   let localSnapshotError = $state('');
   let localSnapshotRequest = 0;
   let localInstallImageId = $state('');
+  let localInstallDialogOpen = $state(false);
+  let localInstallDialogError = $state('');
+  let pendingLocalSnapshot = $state(null);
   const storeActionLatch = createStoreActionLatch();
 
   let currentLocale = $derived($locale);
@@ -72,6 +77,7 @@
   );
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let localProfile = $derived($sessionContext.profile === 'local');
+  let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
       (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
@@ -368,7 +374,7 @@
       return;
     }
     if (acknowledgeStoreInstallIntent(event, iframeElement?.contentWindow)) {
-      if (!storeActionLatch.acquire('install')) {
+      if (localInstallDialogOpen || localInstallImageId || !storeActionLatch.acquire('install')) {
         publishStoreSnapshot();
         return;
       }
@@ -376,7 +382,7 @@
       return;
     }
     if (acknowledgeStoreUninstallIntent(event, iframeElement?.contentWindow)) {
-      if (!storeActionLatch.acquire('uninstall')) {
+      if (localInstallDialogOpen || localInstallImageId || !storeActionLatch.acquire('uninstall')) {
         publishStoreSnapshot();
         return;
       }
@@ -541,14 +547,32 @@
     }
   }
 
-  async function installLocalSnapshot(snapshot) {
+  function beginLocalSnapshotInstall(snapshot) {
     const team = activeTeamRecord;
-    if (!team || localInstallImageId) return;
+    if (!team || busy || dialogOpen || localInstallDialogOpen || localInstallImageId) return;
+    pendingLocalSnapshot = snapshot;
+    localInstallDialogError = '';
+    localInstallDialogOpen = true;
+  }
+
+  function closeLocalSnapshotInstall() {
+    if (localInstallImageId) return;
+    localInstallDialogOpen = false;
+    pendingLocalSnapshot = null;
+    localInstallDialogError = '';
+  }
+
+  async function installLocalSnapshot() {
+    const team = activeTeamRecord;
+    const snapshot = pendingLocalSnapshot;
+    if (!team || !snapshot || busy || localInstallImageId) return;
     localInstallImageId = snapshot.image_id;
-    localSnapshotError = '';
+    localInstallDialogError = '';
     try {
       const installed = await installLocalAssistant(fetch, team.id, snapshot.image_id);
       await refreshInstalled(team.id);
+      localInstallDialogOpen = false;
+      pendingLocalSnapshot = null;
       showAdminNotice({
         tone: 'success',
         label: localCopy.localInstalledLabel,
@@ -557,10 +581,9 @@
           team: team.name,
         }),
       });
-      await loadLocalSnapshots();
+      void loadLocalSnapshots();
     } catch (error) {
-      localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
-      localSnapshotPhase = 'error';
+      localInstallDialogError = error instanceof Error ? error.message : localCopy.localFailure;
     } finally {
       localInstallImageId = '';
     }
@@ -612,52 +635,77 @@
 </PageIntro>
 
 {#if localProfile}
-  <Card
-    class="local-snapshot-panel"
+  <section
+    class="local-assistant-catalog"
     aria-label={localCopy.localTitle}
     aria-busy={localSnapshotPhase === 'loading' || Boolean(localInstallImageId)}
   >
-    <div class="local-snapshot-heading">
-      <p class="local-snapshot-kicker">{localCopy.localKicker}</p>
-      <h2>{localCopy.localTitle}</h2>
-      <p>{localCopy.localLead}</p>
-    </div>
-    <Notice variant="warning">{localCopy.localRisk}</Notice>
-
-    {#if !activeTeamRecord}
+    {#if !activeTeamRecord && localSnapshotGroups.length > 0}
       <Notice variant="info">{localCopy.localNoTeam}</Notice>
     {/if}
-    {#if localSnapshotError}
-      <Notice variant="error">{localSnapshotError}</Notice>
-    {/if}
+    {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
 
-    {#if localSnapshotPhase === 'loading' && localSnapshots.length === 0}
-      <div class="local-snapshot-loading" role="status">
+    {#if localSnapshotPhase === 'loading' && localSnapshotGroups.length === 0}
+      <Card class="local-assistant-loading" padding="compact" role="status">
         <span>{localCopy.localLoading}</span>
         <Skeleton width="8rem" height="0.35rem" />
-      </div>
-    {:else if localSnapshots.length === 0 && localSnapshotPhase === 'ready'}
+      </Card>
+    {:else if localSnapshotGroups.length === 0 && localSnapshotPhase === 'ready'}
       <EmptyState compact title={localCopy.localEmpty} />
-    {:else if localSnapshots.length > 0}
-      <ul class="local-snapshot-list">
-        {#each localSnapshots as snapshot (snapshot.image_id)}
-          <li class="local-snapshot-item" aria-busy={localInstallImageId === snapshot.image_id}>
-            <div class="local-snapshot-identity">
-              <strong>{snapshot.assistant_id}</strong>
-              <span>v{snapshot.assistant_version} · {snapshot.platform}</span>
-              <code>{snapshot.image_id}</code>
-              <time datetime={snapshot.created_at}>{snapshot.created_at}</time>
+    {:else if localSnapshotGroups.length > 0}
+      <div class="local-assistant-grid">
+        {#each localSnapshotGroups as group (group.assistant_id)}
+          <Card
+            class="local-assistant-card"
+            padding="none"
+            aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
+            aria-busy={localInstallImageId === group.primary.image_id}
+          >
+            <div class="local-assistant-details">
+              <div class="local-assistant-heading">
+                <AssistantIcon assistant={group.assistant_id} size={64} />
+                <div class="local-assistant-identity">
+                  <h2 title={group.assistant_id}>{group.assistant_id}</h2>
+                  <p dir="ltr">v{group.primary.assistant_version} · {group.primary.platform}</p>
+                </div>
+                <StatusBadge tone="warning">{localCopy.localBadge}</StatusBadge>
+              </div>
+              <p class="local-assistant-summary">{localCopy.localKicker}</p>
+
+              {#if group.alternatives.length > 0}
+                <Disclosure class="local-builds">
+                  {#snippet summary()}
+                    {$t('store.localBuilds', { count: group.alternatives.length })}
+                  {/snippet}
+                  <ul class="local-build-list">
+                    {#each group.alternatives as snapshot (snapshot.image_id)}
+                      <li>
+                        <div>
+                          <strong dir="ltr">v{snapshot.assistant_version}</strong>
+                          <code dir="ltr">{snapshot.image_id}</code>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          onclick={() => beginLocalSnapshotInstall(snapshot)}
+                          disabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
+                        >{localCopy.localInstall}</Button>
+                      </li>
+                    {/each}
+                  </ul>
+                </Disclosure>
+              {/if}
             </div>
-            <Button
-              type="button"
-              onclick={() => installLocalSnapshot(snapshot)}
-              disabled={!activeTeamRecord || Boolean(localInstallImageId)}
-            >
-              {localInstallImageId === snapshot.image_id ? localCopy.localInstalling : localCopy.localInstall}
-            </Button>
-          </li>
+            <div class="local-assistant-action">
+              <Button
+                type="button"
+                onclick={() => beginLocalSnapshotInstall(group.primary)}
+                disabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
+              >{localCopy.localInstall}</Button>
+            </div>
+          </Card>
         {/each}
-      </ul>
+      </div>
     {/if}
 
     {#if localSnapshotPhase === 'error'}
@@ -670,7 +718,7 @@
         >{localCopy.localRetry}</Button>
       </Toolbar>
     {/if}
-  </Card>
+  </section>
 {/if}
 
 <Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
@@ -810,6 +858,16 @@
   onconfirm={confirmAssistantAction}
   oncancel={cancelAssistantDialog} />
 
+<LocalAssistantInstallDialog
+  bind:open={localInstallDialogOpen}
+  snapshot={pendingLocalSnapshot}
+  team={activeTeamRecord}
+  busy={Boolean(localInstallImageId)}
+  error={localInstallDialogError}
+  onconfirm={installLocalSnapshot}
+  oncancel={closeLocalSnapshotInstall}
+/>
+
 <style>
   .destination-context {
     display: grid;
@@ -922,37 +980,46 @@
     background: #000;
     clip-path: none;
   }
-  :global(.shimpz-card.local-snapshot-panel) {
+  .local-assistant-catalog {
     display: grid;
-    gap: var(--shimpz-space-4);
+    gap: var(--shimpz-space-3);
     margin-block-start: var(--shimpz-space-4);
   }
-  .local-snapshot-heading { display: grid; gap: var(--shimpz-space-2); }
-  .local-snapshot-heading h2, .local-snapshot-heading p { margin: 0; }
-  .local-snapshot-heading h2 { font-size: clamp(1.25rem, 2vw, 1.65rem); }
-  .local-snapshot-heading > p:last-child { max-width: 56rem; color: var(--text-dim); line-height: 1.6; }
-  .local-snapshot-kicker {
-    color: var(--accent);
-    font: 600 0.68rem/1.4 var(--font-mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
+  .local-assistant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 23rem));
+    gap: var(--shimpz-space-3);
   }
-  .local-snapshot-loading { display: grid; gap: var(--shimpz-space-2); color: var(--text-dim); }
-  .local-snapshot-list { display: grid; gap: var(--shimpz-space-3); margin: 0; padding: 0; list-style: none; }
-  .local-snapshot-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--shimpz-space-4);
-    padding-block: var(--shimpz-space-3);
-    border-block-start: 1px solid var(--shimpz-color-border-subtle);
+  :global(.shimpz-card.local-assistant-card) {
+    transition: border-color 0.18s ease, transform 0.18s var(--ease);
   }
-  .local-snapshot-identity { display: grid; min-width: 0; gap: 0.25rem; }
-  .local-snapshot-identity span, .local-snapshot-identity time { color: var(--text-dim); font-size: 0.82rem; }
-  .local-snapshot-identity code { overflow-wrap: anywhere; color: var(--text); font-size: 0.75rem; }
-  @media (max-width: 680px) {
-    .local-snapshot-item { align-items: stretch; flex-direction: column; }
-    .local-snapshot-item :global(.shimpz-button) { width: 100%; }
+  :global(.shimpz-card.local-assistant-card:hover),
+  :global(.shimpz-card.local-assistant-card:focus-within) {
+    border-color: color-mix(in srgb, var(--accent) 58%, var(--shimpz-color-border));
+    transform: translateY(-2px);
+  }
+  .local-assistant-details { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: var(--shimpz-space-4); }
+  .local-assistant-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-3); }
+  .local-assistant-identity { min-width: 0; }
+  .local-assistant-identity h2 { overflow: hidden; margin: 0; font-size: 1.05rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+  .local-assistant-identity p { overflow: hidden; margin: 0.25rem 0 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.62rem; text-overflow: ellipsis; white-space: nowrap; }
+  .local-assistant-summary { margin: 0; color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; }
+  .local-assistant-action { padding: var(--shimpz-space-3) var(--shimpz-space-4) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border-subtle); }
+  .local-assistant-action :global(.shimpz-button) { width: 100%; }
+  .local-build-list { display: grid; gap: var(--shimpz-space-2); margin: 0; padding: 0; list-style: none; }
+  .local-build-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); }
+  .local-build-list li > div { display: grid; min-width: 0; gap: 0.15rem; }
+  .local-build-list strong { font-size: 0.75rem; }
+  .local-build-list code { overflow-wrap: anywhere; color: var(--text-faint); font-size: 0.58rem; }
+  :global(.shimpz-card.local-assistant-loading > [data-slot="card-content"]) { display: grid; gap: var(--shimpz-space-2); color: var(--text-dim); }
+  @media (max-width: 520px) {
+    .local-build-list li { align-items: stretch; grid-template-columns: 1fr; }
+    .local-build-list :global(.shimpz-button) { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.shimpz-card.local-assistant-card) { transition: none; }
+    :global(.shimpz-card.local-assistant-card:hover),
+    :global(.shimpz-card.local-assistant-card:focus-within) { transform: none; }
   }
   .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
   :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }

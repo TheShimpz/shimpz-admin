@@ -18,6 +18,13 @@ test('localizes Assistant lifecycle feedback in every Admin locale', () => {
     'assistantUninstalledMessage',
     'assistantUninstallFailureTitle',
     'assistantUninstallFailureLead',
+    'localBadge',
+    'localBuilds',
+    'localConfirmTitle',
+    'localExactImage',
+    'localKicker',
+    'localRisk',
+    'localTitle',
   ];
   for (const [locale, localeMessages] of Object.entries(messages)) {
     for (const key of keys) {

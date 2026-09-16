@@ -170,6 +170,20 @@ test('rejects malformed Local snapshot inventories, requests, and acknowledgemen
     })),
     /inventory is invalid/,
   );
+  await assert.rejects(
+    listLocalAssistantSnapshots(async () => response(200, {
+      assistants: [{
+        assistant_id: 'hello-pulse',
+        assistant_version: '1.2.3',
+        created_at: '2026-13-40T25:61:61Z',
+        image_id: LOCAL_IMAGE_ID,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+    })),
+    /inventory is invalid/,
+  );
   await assert.rejects(installLocalAssistant(async () => response(200, {}), 'team_1', 'latest'), /Invalid/);
   await assert.rejects(
     installLocalAssistant(async () => response(200, {

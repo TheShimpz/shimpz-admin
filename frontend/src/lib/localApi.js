@@ -183,6 +183,7 @@ export async function listLocalAssistantSnapshots(fetcher) {
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
       typeof entry.created_at !== 'string' ||
       !CREATED_AT_RE.test(entry.created_at) ||
+      Number.isNaN(Date.parse(entry.created_at)) ||
       !SHA256_RE.test(entry.image_id) ||
       !['linux/amd64', 'linux/arm64'].includes(entry.platform) ||
       entry.provenance !== 'local' ||

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 const visualStylePath = new URL('./visual-contract.css', import.meta.url).pathname;
 const visualContract = {
@@ -680,6 +681,7 @@ test('opens the Store destination workflow through shared modal controls', async
 
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
+  const olderImageId = `sha256:${'a'.repeat(64)}`;
   let installed = false;
   await page.route('https://shimpz.com/**', (route) => route.fulfill({
     contentType: 'text/html',
@@ -703,15 +705,26 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      assistants: [{
-        assistant_id: 'whatsapp',
-        assistant_version: '0.1.0',
-        created_at: '2026-08-28T17:00:00Z',
-        image_id: imageId,
-        platform: 'linux/amd64',
-        provenance: 'local',
-        unpublished: true,
-      }],
+      assistants: [
+        {
+          assistant_id: 'whatsapp',
+          assistant_version: '0.1.0',
+          created_at: '2026-08-28T16:00:00Z',
+          image_id: olderImageId,
+          platform: 'linux/amd64',
+          provenance: 'local',
+          unpublished: true,
+        },
+        {
+          assistant_id: 'whatsapp',
+          assistant_version: '0.2.1',
+          created_at: '2026-08-28T17:00:00Z',
+          image_id: imageId,
+          platform: 'linux/amd64',
+          provenance: 'local',
+          unpublished: true,
+        },
+      ],
       trace_id: 'c'.repeat(32),
     }),
   }));
@@ -719,7 +732,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     contentType: 'application/json',
     body: JSON.stringify({
       assistants: installed
-        ? [{ assistant: 'whatsapp', assistant_version: '0.1.0', status: 'running' }]
+        ? [{ assistant: 'whatsapp', assistant_version: '0.2.1', status: 'running' }]
         : [],
     }),
   }));
@@ -755,11 +768,47 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
 
   await page.goto('/assistants/');
 
-  const panel = page.getByRole('region', { name: 'Staged on this machine' });
-  await expect(panel).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
-  await expect(panel).toContainText(imageId);
-  await panel.getByRole('button', { name: 'Install or replace' }).click();
-  await expect(panel.getByRole('button', { name: 'Installing…' })).toBeVisible();
+  const catalog = page.getByRole('region', { name: 'Staged on this machine' });
+  const card = page.getByRole('region', { name: 'whatsapp — Local' });
+  await expect(catalog.locator('.local-assistant-card')).toHaveCount(1);
+  await expect(card.getByText('Local', { exact: true })).toBeVisible();
+  await expect(card).toContainText('Local development // unpublished');
+  await expect(card).toContainText('v0.2.1');
+  await expect(card).not.toContainText(imageId);
+  await expect(catalog).toHaveScreenshot('local-assistant-catalog.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+
+  const alternativeInstall = card.locator('.local-build-list').getByRole('button', { name: 'Install or replace' });
+  await expect(alternativeInstall).toBeHidden();
+  await card.getByText('Other staged builds (1)', { exact: true }).click();
+  await expect(alternativeInstall).toBeVisible();
+  const olderDigest = card.getByText(olderImageId, { exact: true });
+  await expect(olderDigest).toBeVisible();
+  expect(await olderDigest.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await alternativeInstall.click();
+
+  let installDialog = page.getByRole('dialog', { name: 'Install whatsapp?' });
+  await expect(installDialog).toContainText(olderImageId);
+  await installDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(installDialog).toBeHidden();
+
+  await card.locator('.local-assistant-action').getByRole('button', { name: 'Install or replace' }).click();
+
+  installDialog = page.getByRole('dialog', { name: 'Install whatsapp?' });
+  await expect(installDialog).toBeVisible();
+  await expect(installDialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
+  await expect(installDialog).toContainText(imageId);
+  await expect(installDialog).toContainText('Marketing');
+  expect((await new AxeBuilder({ page }).include('dialog[open]').analyze()).violations).toEqual([]);
+  await expect(installDialog).toHaveScreenshot('local-assistant-install-dialog.png', {
+    animations: 'disabled',
+    maxDiffPixels: 100,
+  });
+  await installDialog.getByRole('button', { name: 'Install or replace' }).click();
+  await expect(installDialog.getByRole('button', { name: 'Installing…' })).toBeVisible();
+  await expect(installDialog).toBeHidden();
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
 
