@@ -177,6 +177,40 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 )
                 self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
 
+            websocket.reset_mock()
+            self.assertIsNone(
+                await task_resume.admit(
+                    websocket,
+                    socket._Connection(active=socket._Turn(None, "chat")),
+                    valid,
+                    _resume_operations(),
+                )
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+
+            websocket.reset_mock()
+            self.assertIsNone(
+                await task_resume.admit(
+                    websocket,
+                    socket._Connection(pending_challenge_id="c" * 32),
+                    valid,
+                    _resume_operations(),
+                )
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+
+            websocket.reset_mock()
+            with mock.patch.object(socket.lifecycle, "submit_preparation") as prepare:
+                await task_resume.dispatch(
+                    websocket,
+                    socket._Connection(),
+                    "team_1",
+                    {**valid, "extra": True},
+                    _resume_operations(),
+                )
+            prepare.assert_not_called()
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
+
         asyncio.run(scenario())
 
     def test_resume_task_plans_the_prior_objective_and_falls_back_to_the_current_message(self) -> None:

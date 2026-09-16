@@ -46,7 +46,6 @@ _wait_for_thread = chat_socket_fixtures.wait_for_thread
 
 
 class ChatWebSocketTests(ChatWebSocketCase):
-
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
             with mock.patch.object(self.admin_app, "_session_ok", side_effect=AssertionError("auth must not run")):
