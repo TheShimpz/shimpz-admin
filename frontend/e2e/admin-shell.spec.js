@@ -717,7 +717,11 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
-    body: '{}',
+    body: JSON.stringify({
+      error: 'Local Assistant snapshots are unavailable',
+      code: 'local-assistant-snapshots-unavailable',
+      trace_id: 'c'.repeat(32),
+    }),
   }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -736,7 +740,7 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
 
   const localRegion = page.getByRole('region', { name: 'Staged on this machine' });
   await expect(localRegion).toBeVisible();
-  await expect(localRegion.getByText('Local Assistant snapshots are unavailable.', { exact: true })).toBeVisible();
+  await expect(localRegion.getByText('Local Assistant snapshots are unavailable', { exact: true })).toBeVisible();
   await expect(localRegion.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
   await expect(localRegion.locator('.local-assistant-card')).toHaveCount(0);
   await expect(page.locator('.store-frame')).toBeVisible();
