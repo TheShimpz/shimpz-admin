@@ -104,12 +104,40 @@ class AssistantInventoryEdges(unittest.TestCase):
             team.TeamResponse(200, {"assistants": [None]}),
             team.TeamResponse(
                 200,
-                {"assistants": [{"assistant": "valid", "assistant_version": "invalid", "status": "running"}]},
+                {
+                    "assistants": [
+                        {
+                            "assistant": "valid",
+                            "assistant_version": "invalid",
+                            "provenance": "published",
+                            "status": "running",
+                        }
+                    ]
+                },
             ),
         )
         for response in responses:
             with self.subTest(response=response), self.assertRaises(ValueError):
                 assistant_inventory.installed(response)
+
+    def test_installed_inventory_retains_closed_provenance(self) -> None:
+        response = team.TeamResponse(
+            200,
+            {
+                "assistants": [
+                    {
+                        "assistant": "valid",
+                        "assistant_version": "1.0.0",
+                        "provenance": "local",
+                        "status": "running",
+                    }
+                ]
+            },
+        )
+
+        installed = assistant_inventory.installed(response)
+
+        self.assertEqual(installed["valid"].provenance, "local")
 
     def test_registry_rejects_each_closed_shape_and_text(self) -> None:
         responses = (

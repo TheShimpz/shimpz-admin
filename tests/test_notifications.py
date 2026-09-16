@@ -53,7 +53,12 @@ def _installed(**statuses: str) -> team.TeamResponse:
         200,
         {
             "assistants": [
-                {"assistant": assistant_id, "assistant_version": "0.1.0", "status": status}
+                {
+                    "assistant": assistant_id,
+                    "assistant_version": "0.1.0",
+                    "provenance": "published",
+                    "status": status,
+                }
                 for assistant_id, status in statuses.items()
             ],
             "trace_id": TRACE_ID,

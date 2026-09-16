@@ -232,14 +232,46 @@ class NotificationEdgeTests(unittest.TestCase):
             _response(200, {"assistants": [{}]}),
             _response(
                 200,
-                {"assistants": [{"assistant": "assistant", "assistant_version": "1.0.0", "status": "unknown"}]},
+                {
+                    "assistants": [
+                        {
+                            "assistant": "assistant",
+                            "assistant_version": "1.0.0",
+                            "provenance": "published",
+                            "status": "unknown",
+                        }
+                    ]
+                },
             ),
             _response(
                 200,
                 {
                     "assistants": [
-                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "running"},
-                        {"assistant": "assistant", "assistant_version": "1.0.0", "status": "running"},
+                        {
+                            "assistant": "assistant",
+                            "assistant_version": "1.0.0",
+                            "provenance": "untrusted",
+                            "status": "running",
+                        }
+                    ]
+                },
+            ),
+            _response(
+                200,
+                {
+                    "assistants": [
+                        {
+                            "assistant": "assistant",
+                            "assistant_version": "1.0.0",
+                            "provenance": "published",
+                            "status": "running",
+                        },
+                        {
+                            "assistant": "assistant",
+                            "assistant_version": "1.0.0",
+                            "provenance": "published",
+                            "status": "running",
+                        },
                     ]
                 },
             ),
@@ -247,6 +279,24 @@ class NotificationEdgeTests(unittest.TestCase):
         for response in invalid_assistants:
             with self.assertRaises((OSError, ValueError, team.TeamRequestError)):
                 notifications._installed(response)
+        self.assertEqual(
+            notifications._installed(
+                _response(
+                    200,
+                    {
+                        "assistants": [
+                            {
+                                "assistant": "assistant",
+                                "assistant_version": "1.0.0",
+                                "provenance": "local",
+                                "status": "running",
+                            }
+                        ]
+                    },
+                )
+            ),
+            {"assistant": "running"},
+        )
 
     def test_pruning_resolution_and_reconciliation_edges(self) -> None:
         records = [

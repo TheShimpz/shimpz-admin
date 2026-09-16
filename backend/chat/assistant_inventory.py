@@ -13,12 +13,14 @@ from protocol.http.v1 import websocket as chat_ws_common
 MAX_ASSISTANTS = 128
 SEMANTIC_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _RUNTIME_STATUS = re.compile(r"^[a-z]{2,24}$")
+_PROVENANCES = frozenset({"local", "published"})
 
 
 @dataclass(frozen=True, slots=True)
 class InstalledAssistant:
     assistant_id: str
     version: str
+    provenance: str
     status: str
 
 
@@ -48,21 +50,28 @@ def installed(response: object) -> dict[str, InstalledAssistant]:
         raise ValueError("installed Assistant inventory is invalid")
     result: dict[str, InstalledAssistant] = {}
     for item in raw:
-        if not isinstance(item, dict) or set(item) != {"assistant", "assistant_version", "status"}:
+        if not isinstance(item, dict) or set(item) != {
+            "assistant",
+            "assistant_version",
+            "provenance",
+            "status",
+        }:
             raise ValueError("installed Assistant fields are invalid")
         assistant_id = team.canonical_assistant_id(item["assistant"])
         version = item["assistant_version"]
+        provenance = item["provenance"]
         status = item["status"]
         if (
             assistant_id != item["assistant"]
             or not isinstance(version, str)
             or SEMANTIC_VERSION.fullmatch(version) is None
+            or provenance not in _PROVENANCES
             or not isinstance(status, str)
             or _RUNTIME_STATUS.fullmatch(status) is None
             or assistant_id in result
         ):
             raise ValueError("installed Assistant identity is invalid")
-        result[assistant_id] = InstalledAssistant(assistant_id, version, status)
+        result[assistant_id] = InstalledAssistant(assistant_id, version, provenance, status)
     return result
 
 

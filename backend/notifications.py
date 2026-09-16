@@ -56,6 +56,7 @@ _EXECUTABLE_REFERENCE_RE = re.compile(
 _RUNTIME_STATUSES = frozenset(
     {"created", "restarting", "running", "removing", "paused", "exited", "dead", "outdated", "invalid"}
 )
+_PROVENANCES = frozenset({"local", "published"})
 
 _STORE_LOCK = threading.RLock()
 _SYNC_LOCK = threading.Lock()
@@ -454,15 +455,22 @@ def _installed(response: team.TeamResponse) -> dict[str, str]:
         raise ValueError("invalid Assistant inventory")
     result: dict[str, str] = {}
     for item in inventory:
-        if not isinstance(item, dict) or set(item) != {"assistant", "assistant_version", "status"}:
+        if not isinstance(item, dict) or set(item) != {
+            "assistant",
+            "assistant_version",
+            "provenance",
+            "status",
+        }:
             raise ValueError("invalid Assistant inventory")
         assistant_id = team.canonical_assistant_id(item["assistant"])
         assistant_version = item["assistant_version"]
+        provenance = item["provenance"]
         status = item["status"]
         if (
             assistant_id != item["assistant"]
             or not isinstance(assistant_version, str)
             or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None
+            or provenance not in _PROVENANCES
             or not isinstance(status, str)
             or status not in _RUNTIME_STATUSES
         ):

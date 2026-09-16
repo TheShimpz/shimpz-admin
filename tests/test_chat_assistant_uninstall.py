@@ -18,7 +18,12 @@ def _installed(*items: tuple[str, str]):
         200,
         {
             "assistants": [
-                {"assistant": assistant_id, "assistant_version": version, "status": "running"}
+                {
+                    "assistant": assistant_id,
+                    "assistant_version": version,
+                    "provenance": "published",
+                    "status": "running",
+                }
                 for assistant_id, version in items
             ],
             "trace_id": "a" * 32,
