@@ -2,18 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { ActionLink, AssistantCard, Button, Card, ChoiceItem, DialogFrame, EmbedFrame, EmptyState, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
-  import {
-    STORE_FRAME_MAX_HEIGHT,
-    STORE_FRAME_MIN_HEIGHT,
-    STORE_LIFECYCLE_PROTOCOL_VERSION,
-    acknowledgeStoreFrame,
-    acknowledgeStoreInstallIntent,
-    acknowledgeStoreUninstallIntent,
-    createStoreActionLatch,
-    postStoreAssistantState,
-    projectInstalledAssistantIds,
-  } from '$lib/assistantIntent.js';
+  import { AssistantCard, Button, ChoiceItem, DialogFrame, Modal, Notice, PageIntro, TextField, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
   import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
@@ -21,17 +10,16 @@
     installAssistant,
     installLocalAssistant,
     listLocalAssistantSnapshots,
+    listPublicAssistantCatalog,
     safeApiError,
     uninstallAssistant,
   } from '$lib/localApi.js';
-  import { t, locale } from '$lib/i18n.js';
+  import { t } from '$lib/i18n.js';
   import { loadLocalAssistantIcon } from '$lib/localAssistantIcons.js';
-  import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
+  import { groupLocalAssistantSnapshots, withoutLocallyStagedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
-
-  const FRAME_READY_TIMEOUT_MS = 8000;
 
   let dialogError = $state('');
   let busy = $state(false);
@@ -44,19 +32,14 @@
   let selectedTeam = $state('');
   let pendingAssistant = $state('');
   let pendingSourceDigest = $state('');
-  let iframeElement = $state();
   let dialogOpen = $state(false);
   let dialogAction = $state('install');
   let dialogMode = $state('install');
   let dialogAttempt = 0;
-  let framePhase = $state('loading');
-  let frameHeight = $state(420);
-  let frameReload = $state(0);
-  let frameTimeout;
-  let frameMounted = false;
-  let activeStoreUrl = '';
-  let storeSnapshotStatus = 'loading';
-  let storeSnapshotInstalled = [];
+  let publicAssistants = $state([]);
+  let publicCatalogPhase = $state('loading');
+  let publicCatalogError = $state('');
+  let publicCatalogRequest = 0;
   let localSnapshots = $state([]);
   let localSnapshotPhase = $state('idle');
   let localSnapshotError = $state('');
@@ -68,20 +51,15 @@
   let pendingLocalSnapshots = $state([]);
   let localIconUrls = $state({});
   let localIconRequest = 0;
-  const storeActionLatch = createStoreActionLatch();
-
-  let currentLocale = $derived($locale);
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
   let destinationCopy = $derived($t('assistantDestination'));
-  let storeLocale = $derived(currentLocale);
-  let storePageUrl = $derived(`https://shimpz.com/${storeLocale}/assistants`);
-  let storeUrl = $derived(
-    `${storePageUrl}/embed?store-protocol=${STORE_LIFECYCLE_PROTOCOL_VERSION}&admin-frame=${frameReload}`,
-  );
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let localProfile = $derived($sessionContext.profile === 'local');
   let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
+  let visiblePublicAssistants = $derived(
+    withoutLocallyStagedAssistants(publicAssistants, localSnapshotGroups),
+  );
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
       (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
@@ -91,7 +69,10 @@
   );
   let selectedTeamRecord = $derived(runningTeams.find((team) => team.id === selectedTeam) ?? null);
   let pendingAssistantName = $derived(
-    $teamContext.catalog.find((entry) => entry.id === pendingAssistant)?.name ?? pendingAssistant,
+    localSnapshotGroups.find((entry) => entry.assistant_id === pendingAssistant)?.primary.name ??
+      publicAssistants.find((entry) => entry.assistant_id === pendingAssistant)?.name ??
+      $teamContext.catalog.find((entry) => entry.id === pendingAssistant)?.name ??
+      pendingAssistant,
   );
   let dialogTitle = $derived(
     dialogAction === 'uninstall'
@@ -232,30 +213,6 @@
     }
   }
 
-  $effect(() => {
-    const context = $teamContext;
-    if (context.phase === 'ready') {
-      publishStoreSnapshot('ready', projectInstalledAssistantIds(context.installedAssistants));
-    } else if (context.phase === 'error') {
-      publishStoreSnapshot('error', []);
-    } else {
-      publishStoreSnapshot('loading', []);
-    }
-  });
-
-  function publishStoreSnapshot(
-    status = storeSnapshotStatus,
-    installed = storeSnapshotInstalled,
-  ) {
-    storeSnapshotStatus = status;
-    storeSnapshotInstalled = status === 'ready' ? [...installed] : [];
-    postStoreAssistantState(
-      iframeElement?.contentWindow,
-      storeSnapshotStatus,
-      storeSnapshotInstalled,
-    );
-  }
-
   function waitForTeamContext() {
     if (!['idle', 'loading'].includes($teamContext.phase)) return Promise.resolve();
     return new Promise((resolve) => {
@@ -272,28 +229,12 @@
 
   async function refreshInstalled(teamId) {
     if (!teamId || $teamContext.selectedTeamId !== teamId) {
-      const status = $teamContext.phase === 'ready'
-        ? 'ready'
-        : $teamContext.phase === 'error'
-          ? 'error'
-          : 'loading';
-      publishStoreSnapshot(
-        status,
-        status === 'ready'
-          ? projectInstalledAssistantIds($teamContext.installedAssistants)
-          : [],
-      );
-      return status === 'ready';
+      return $teamContext.phase === 'ready';
     }
     try {
       await refreshTeamInventory(fetch);
-      publishStoreSnapshot(
-        'ready',
-        projectInstalledAssistantIds($teamContext.installedAssistants),
-      );
       return true;
     } catch {
-      publishStoreSnapshot('error', []);
       return false;
     }
   }
@@ -336,64 +277,6 @@
       : 'install';
   }
 
-  function clearFrameTimeout() {
-    if (frameTimeout) window.clearTimeout(frameTimeout);
-    frameTimeout = undefined;
-  }
-
-  function waitForStoreFrame() {
-    clearFrameTimeout();
-    frameTimeout = window.setTimeout(() => {
-      if (framePhase === 'loading') framePhase = 'error';
-    }, FRAME_READY_TIMEOUT_MS);
-  }
-
-  function storeFrameLoaded() {
-    if (framePhase === 'loading') waitForStoreFrame();
-  }
-
-  function reloadStoreFrame() {
-    framePhase = 'loading';
-    frameHeight = 420;
-    frameReload += 1;
-    waitForStoreFrame();
-  }
-
-  $effect(() => {
-    const nextStoreUrl = storeUrl;
-    if (!frameMounted || nextStoreUrl === activeStoreUrl) return;
-    activeStoreUrl = nextStoreUrl;
-    framePhase = 'loading';
-    frameHeight = 420;
-    waitForStoreFrame();
-  });
-
-  function handleStoreMessage(event) {
-    const measuredHeight = acknowledgeStoreFrame(event, iframeElement?.contentWindow);
-    if (measuredHeight !== null) {
-      frameHeight = Math.min(STORE_FRAME_MAX_HEIGHT, Math.max(STORE_FRAME_MIN_HEIGHT, measuredHeight));
-      framePhase = 'ready';
-      clearFrameTimeout();
-      publishStoreSnapshot();
-      return;
-    }
-    if (acknowledgeStoreInstallIntent(event, iframeElement?.contentWindow)) {
-      if (localInstallDialogOpen || localInstallImageId || !storeActionLatch.acquire('install')) {
-        publishStoreSnapshot();
-        return;
-      }
-      void runStoreInstall(event.data.assistant, event.data.source_digest);
-      return;
-    }
-    if (acknowledgeStoreUninstallIntent(event, iframeElement?.contentWindow)) {
-      if (localInstallDialogOpen || localInstallImageId || !storeActionLatch.acquire('uninstall')) {
-        publishStoreSnapshot();
-        return;
-      }
-      void runStoreUninstall(event.data.assistant);
-    }
-  }
-
   async function confirmInstall() {
     if (
       busy ||
@@ -428,26 +311,9 @@
     }
   }
 
-  async function runStoreInstall(assistantId, sourceDigest) {
-    try {
-      await beginInstall(assistantId, sourceDigest);
-    } catch (error) {
-      dialogError = error instanceof Error ? error.message : copy.genericFailure;
-      if (dialogOpen) {
-        dialogMode = 'error';
-      } else {
-        storeActionLatch.release('install');
-      }
-      publishStoreSnapshot();
-    }
-  }
-
   function finishAssistantDialog() {
     dialogAttempt += 1;
-    const action = dialogAction;
     dialogOpen = false;
-    storeActionLatch.release(action);
-    publishStoreSnapshot();
   }
 
   function closeAssistantDialog() {
@@ -503,15 +369,11 @@
     void confirmInstall();
   }
 
-  function beginStoreUninstall(assistantId) {
+  function beginAssistantUninstall(assistantId) {
     const installed = $teamContext.phase === 'ready'
       ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId)
       : null;
-    if (!activeTeamRecord || !installed || busy) {
-      storeActionLatch.release('uninstall');
-      publishStoreSnapshot();
-      return;
-    }
+    if (!activeTeamRecord || !installed || busy) return;
     dialogAction = 'uninstall';
     pendingAssistant = installed.assistant;
     selectedTeam = activeTeamRecord.id;
@@ -520,17 +382,20 @@
     showAssistantDialog();
   }
 
-  function runStoreUninstall(assistantId) {
+  async function loadPublicCatalog() {
+    const request = ++publicCatalogRequest;
+    publicCatalogPhase = 'loading';
+    publicCatalogError = '';
     try {
-      beginStoreUninstall(assistantId);
+      const assistants = await listPublicAssistantCatalog(fetch);
+      if (request !== publicCatalogRequest) return;
+      publicAssistants = assistants;
+      publicCatalogPhase = 'ready';
     } catch (error) {
-      dialogError = error instanceof Error ? error.message : copy.genericFailure;
-      if (dialogOpen) {
-        dialogMode = 'error';
-      } else {
-        storeActionLatch.release('uninstall');
-      }
-      publishStoreSnapshot();
+      if (request !== publicCatalogRequest) return;
+      publicAssistants = [];
+      publicCatalogError = error instanceof Error ? error.message : copy.genericFailure;
+      publicCatalogPhase = 'error';
     }
   }
 
@@ -629,18 +494,13 @@
   }
 
   onMount(() => {
-    frameMounted = true;
-    activeStoreUrl = storeUrl;
-    window.addEventListener('message', handleStoreMessage);
-    framePhase = 'loading';
-    waitForStoreFrame();
+    void loadPublicCatalog();
     if (localProfile) void loadLocalSnapshots();
     return () => {
-      frameMounted = false;
+      publicCatalogRequest += 1;
+      localSnapshotRequest += 1;
       localIconRequest += 1;
       releaseLocalIconUrls();
-      clearFrameTimeout();
-      window.removeEventListener('message', handleStoreMessage);
     };
   });
 </script>
@@ -675,99 +535,90 @@
   {/snippet}
 </PageIntro>
 
-{#if localProfile && (localSnapshotGroups.length > 0 || localSnapshotPhase === 'error')}
-  <section
-    class="local-assistant-catalog"
-    aria-label={localCopy.localTitle}
-    aria-busy={Boolean(localInstallImageId)}
-  >
-    {#if !activeTeamRecord && localSnapshotGroups.length > 0}
-      <Notice variant="info">{localCopy.localNoTeam}</Notice>
-    {/if}
-    {#if localSnapshotGroups.length > 0}
-      <Notice variant="warning">{localCopy.localRisk}</Notice>
-    {/if}
-    {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
+<section
+  class="assistant-catalog"
+  aria-label={$t('store.frameTitle')}
+  aria-busy={publicCatalogPhase === 'loading' || localSnapshotPhase === 'loading' || Boolean(localInstallImageId)}
+>
+  {#if !activeTeamRecord && (localSnapshotGroups.length > 0 || visiblePublicAssistants.length > 0)}
+    <Notice variant="info">{localCopy.localNoTeam}</Notice>
+  {/if}
+  {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
+  {#if publicCatalogError}<Notice variant="error">{publicCatalogError}</Notice>{/if}
 
-    {#if localSnapshotGroups.length > 0}
-      <div class="local-assistant-grid">
-        {#each localSnapshotGroups as group (group.assistant_id)}
-          {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
-          {@const publishedConflict = installed?.provenance === 'published'}
-          {@const installing = [group.primary, ...group.alternatives].some(
-            (snapshot) => snapshot.image_id === localInstallImageId,
-          )}
-          <AssistantCard
-            class="local-assistant-card"
-            name={group.primary.name}
-            meta={group.primary.declared_creators.join(', ')}
-            summary={group.primary.summary}
-            iconSrc={localIconUrls[group.primary.image_id]}
-            iconLoading="lazy"
-            badge={localCopy.localBadge}
-            badgeTone="local"
-            installed={installed?.provenance === 'local'}
-            actionLabel={localCopy.localInstall}
-            actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || publishedConflict}
-            actionPersistent={installing || publishedConflict}
-            actionStatus={installing
-              ? localCopy.localInstalling
-              : publishedConflict
-                ? localCopy.localPublishedConflict
-                : undefined}
-            actionError={publishedConflict}
-            onaction={() => beginLocalSnapshotInstall(group)}
-            aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
-            aria-busy={installing}
-          />
-        {/each}
-      </div>
-    {/if}
+  <div class="assistant-grid">
+    {#each localSnapshotGroups as group (group.assistant_id)}
+      {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
+      {@const localInstalled = installed?.provenance === 'local'}
+      {@const installing = [group.primary, ...group.alternatives].some(
+        (snapshot) => snapshot.image_id === localInstallImageId,
+      )}
+      <AssistantCard
+        id={`assistant-${group.assistant_id}`}
+        class="assistant-card local-assistant-card"
+        name={group.primary.name}
+        meta={group.primary.declared_creators.join(', ')}
+        summary={group.primary.summary}
+        iconSrc={localIconUrls[group.primary.image_id]}
+        iconLoading="lazy"
+        badge={localCopy.localBadge}
+        badgeTone="local"
+        installed={localInstalled}
+        actionLabel={localInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
+        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
+        actionTone={localInstalled ? 'danger' : 'install'}
+        actionIcon={localInstalled ? 'uninstall' : 'add'}
+        actionPersistent={installing}
+        actionStatus={installing ? localCopy.localInstalling : undefined}
+        onaction={() => localInstalled
+          ? beginAssistantUninstall(group.assistant_id)
+          : beginLocalSnapshotInstall(group)}
+        aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
+        aria-busy={installing}
+      />
+    {/each}
 
-    {#if localSnapshotPhase === 'error'}
-      <Toolbar class="local-snapshot-actions">
-        <Button
-          variant="secondary"
-          type="button"
-          onclick={loadLocalSnapshots}
-          disabled={Boolean(localInstallImageId)}
-        >{localCopy.localRetry}</Button>
-      </Toolbar>
-    {/if}
-  </section>
-{/if}
+    {#each visiblePublicAssistants as assistant (assistant.assistant_id)}
+      {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === assistant.assistant_id)}
+      {@const publicationInstalled = installed?.provenance === 'published'}
+      {@const localBindingWithoutSnapshot = installed?.provenance === 'local'}
+      <AssistantCard
+        id={`assistant-${assistant.assistant_id}`}
+        class="assistant-card"
+        name={assistant.name}
+        meta={assistant.creators.join(', ')}
+        summary={assistant.summary}
+        iconSrc={`/api/assistants/${assistant.assistant_id}/catalog-icon`}
+        iconLoading="lazy"
+        badge={localCopy.publicBadge}
+        installed={publicationInstalled}
+        actionLabel={publicationInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
+        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || localBindingWithoutSnapshot}
+        actionTone={publicationInstalled ? 'danger' : 'install'}
+        actionIcon={publicationInstalled ? 'uninstall' : 'add'}
+        actionPersistent={localBindingWithoutSnapshot}
+        actionStatus={localBindingWithoutSnapshot ? localCopy.localInstalledLabel : undefined}
+        onaction={() => publicationInstalled
+          ? beginAssistantUninstall(assistant.assistant_id)
+          : beginInstall(assistant.assistant_id, assistant.source_digest)}
+        aria-label={assistant.assistant_id}
+      />
+    {/each}
+  </div>
 
-<Card class="store-frame" padding="none" aria-label={$t('store.frameTitle')} aria-busy={framePhase === 'loading'}>
-      <div class="frame-stage" style={`height:${frameHeight}px`}>
-        <EmbedFrame
-          bind:element={iframeElement}
-          src={storeUrl}
-          title={$t('store.frameTitle')}
-          class={framePhase === 'ready' ? 'frame-ready' : undefined}
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-          referrerpolicy="no-referrer"
-          onload={storeFrameLoaded}
-        />
-        {#if framePhase === 'loading'}
-          <div class="frame-state" role="status">
-            <EmptyState compact title={copy.frameLoading}>
-              <Skeleton width="8rem" height="0.35rem" />
-            </EmptyState>
-          </div>
-        {:else if framePhase === 'error'}
-          <div class="frame-state" role="alert">
-            <EmptyState title={copy.frameFailureTitle} description={copy.frameFailureLead}>
-              {#snippet actions()}
-              <Toolbar class="frame-actions">
-              <Button variant="secondary" type="button" onclick={reloadStoreFrame}>{copy.retryStore}</Button>
-              <ActionLink href={storePageUrl} target="_blank" rel="noopener noreferrer">{copy.openStore}<span aria-hidden="true">↗</span></ActionLink>
-              </Toolbar>
-              {/snippet}
-            </EmptyState>
-          </div>
-        {/if}
-      </div>
-</Card>
+  {#if localSnapshotPhase === 'error' || publicCatalogPhase === 'error'}
+    <Toolbar class="catalog-actions">
+      {#if localSnapshotPhase === 'error'}
+        <Button variant="secondary" type="button" onclick={loadLocalSnapshots} disabled={Boolean(localInstallImageId)}>
+          {localCopy.localRetry}
+        </Button>
+      {/if}
+      {#if publicCatalogPhase === 'error'}
+        <Button variant="secondary" type="button" onclick={loadPublicCatalog}>{copy.retryStore}</Button>
+      {/if}
+    </Toolbar>
+  {/if}
+</section>
 
 <Modal
   id="store-team-destination-dialog"
@@ -991,29 +842,20 @@
   .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
   .destination-empty { color: var(--text-dim); }
 
-  :global(.shimpz-card.store-frame) {
-    position: relative;
-    margin-block-start: var(--shimpz-space-4);
-    border: 0;
-    background: #000;
-    clip-path: none;
-  }
-  .local-assistant-catalog {
+  .assistant-catalog {
     display: grid;
     gap: var(--shimpz-space-3);
     margin-block-start: var(--shimpz-space-4);
   }
-  .local-assistant-grid {
+  .assistant-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 23rem));
     gap: 1rem;
   }
-  .frame-stage { position: relative; min-height: 20rem; transition: height 0.22s var(--ease); }
-  :global(.shimpz-embed) { display: block; width: 100%; height: 100%; border: 0; background: #000; opacity: 0; transition: opacity 0.18s ease; }
-  :global(.shimpz-embed.frame-ready) { opacity: 1; }
-  .frame-state { position: absolute; z-index: 1; inset: 0; display: grid; min-height: 20rem; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 240, 255, 0.06), transparent 38%), #000; }
-  @media (max-width: 520px) {
-    :global(.frame-actions) { display: grid; width: 100%; }
-    :global(.frame-actions .shimpz-action-link), :global(.frame-actions .shimpz-button) { width: 100%; }
+  @media (max-width: 720px) {
+    .assistant-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 540px) {
+    .assistant-grid { grid-template-columns: 1fr; }
   }
 </style>

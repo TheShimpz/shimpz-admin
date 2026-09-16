@@ -310,9 +310,24 @@ test('renders authenticated navigation with canonical primitives', async ({ page
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.4.5',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Shimpz Cloudflare',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+      }],
+    }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
   }));
 
   await page.goto('/assistants/');
@@ -321,7 +336,7 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
   await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
-  await expect(page.getByText('Loading the Assistant Store…', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Shimpz Assistant Store' })).toBeVisible();
   await page.addStyleTag({ path: visualStylePath });
   await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
 
@@ -536,10 +551,6 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
 });
 
 test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><title>Store frame fixture</title>',
-  }));
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -555,6 +566,21 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.4.5',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Shimpz Cloudflare',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+      }],
+    }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -577,14 +603,9 @@ test('opens the Store destination workflow through shared modal controls', async
   await page.evaluate(() => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
-  const storeFrame = page.locator('.store-frame');
-  await expect(page.getByRole('region', { name: 'Staged on this machine' })).toHaveCount(0);
-  await expect(storeFrame).toBeVisible();
-  await expect(storeFrame).toHaveCSS('border-top-width', '0px');
-  await expect(storeFrame).toHaveCSS('border-right-width', '0px');
-  await expect(storeFrame).toHaveCSS('border-bottom-width', '0px');
-  await expect(storeFrame).toHaveCSS('border-left-width', '0px');
-  await expect(storeFrame).toHaveCSS('clip-path', 'none');
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  await expect(catalog).toBeVisible();
+  await expect(page.locator('iframe')).toHaveCount(0);
   const destination = page.getByRole('button', { name: /marketing/i });
   const destinationContext = page.locator('.destination-context');
   const destinationKicker = destinationContext.getByText('Installation destination', { exact: true });
@@ -637,13 +658,13 @@ test('opens the Store destination workflow through shared modal controls', async
     ),
   ]);
   expect(teamFontSize).toBeGreaterThan(headingFontSize);
-  const [introBox, storeBox] = await Promise.all([
+  const [introBox, catalogBox] = await Promise.all([
     intro.boundingBox(),
-    storeFrame.boundingBox(),
+    catalog.boundingBox(),
   ]);
   expect(introBox).not.toBeNull();
-  expect(storeBox).not.toBeNull();
-  expect(storeBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
+  expect(catalogBox).not.toBeNull();
+  expect(catalogBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
   await expect(intro).toHaveScreenshot('store-destination.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
@@ -679,8 +700,8 @@ test('opens the Store destination workflow through shared modal controls', async
 
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: 'Português' }).click();
-  await expect(page.locator('iframe')).toHaveAttribute('src', /\/pt\/assistants\/embed/);
-  await expect(page.getByText('Carregando a Store de Assistants…')).toBeVisible();
+  await expect(page.locator('.destination-kicker')).toHaveText('Destino das instalações');
+  await expect(page.locator('iframe')).toHaveCount(0);
 
   await page.getByRole('button', { name: /Português/ }).click();
   await page.getByRole('menuitemradio', { name: 'العربية' }).click();
@@ -697,10 +718,6 @@ test('opens the Store destination workflow through shared modal controls', async
 });
 
 test('keeps Local snapshot failures visible without rendering cards', async ({ page }) => {
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><title>Store frame fixture</title>',
-  }));
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -713,6 +730,10 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ version: 1, assistants: [] }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     status: 503,
@@ -738,12 +759,11 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
   await page.goto('/assistants/');
   await localInventory;
 
-  const localRegion = page.getByRole('region', { name: 'Staged on this machine' });
-  await expect(localRegion).toBeVisible();
-  await expect(localRegion.getByText('Local Assistant snapshots are unavailable', { exact: true })).toBeVisible();
-  await expect(localRegion.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
-  await expect(localRegion.locator('.local-assistant-card')).toHaveCount(0);
-  await expect(page.locator('.store-frame')).toBeVisible();
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  await expect(catalog).toBeVisible();
+  await expect(catalog.getByText('Local Assistant snapshots are unavailable', { exact: true })).toBeVisible();
+  await expect(catalog.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
+  await expect(catalog.locator('.local-assistant-card')).toHaveCount(0);
 });
 
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
@@ -754,10 +774,6 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     'base64',
   );
   let installed = false;
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html><body>Store test frame</body></html>',
-  }));
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -772,6 +788,21 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'whatsapp',
+        assistant_version: '0.2.0',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Published WhatsApp',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        summary: 'This publication must be shadowed by the staged Local build.',
+      }],
+    }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -849,15 +880,18 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
 
   await page.goto('/assistants/');
 
-  const catalog = page.getByRole('region', { name: 'Staged on this machine' });
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
   const card = page.getByRole('article', { name: 'whatsapp — Local' });
   await expect(catalog.locator('.local-assistant-card')).toHaveCount(1);
+  await expect(catalog.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
+  await expect(catalog.getByText('Local snapshots are not published', { exact: false })).toHaveCount(0);
   await expect(card.getByText('Local', { exact: true })).toBeVisible();
   await expect(card).toContainText('WhatsApp Automation');
   await expect(card).toContainText('@shimpz');
   await expect(card).toContainText('Send and manage WhatsApp messages from your Team.');
   await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
   await expect(card).not.toContainText(imageId);
+  await expect(card).not.toHaveClass(/is-installed/);
   await expect(catalog).toHaveScreenshot('local-assistant-catalog.png', {
     animations: 'disabled',
     maxDiffPixels: 100,
@@ -892,29 +926,24 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
   await expect(card).toHaveClass(/is-installed/);
 
-  const storeFrame = page.frames().find((frame) => frame.url().startsWith('https://shimpz.com/'));
-  expect(storeFrame).toBeDefined();
-  await storeFrame.evaluate(() => window.parent.postMessage({
-    type: 'shimpz:assistant-uninstall',
-    version: 2,
-    assistant: 'whatsapp',
-  }, '*'));
-  await expect(page.getByRole('dialog', { name: 'Uninstall whatsapp?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await card.hover();
+  const uninstallAction = card.locator('button.assistant-action-button');
+  await expect(uninstallAction).toHaveText('Uninstall Assistant');
+  await uninstallAction.click();
+  const uninstallDialog = page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' });
+  await expect(uninstallDialog).toBeVisible();
+  await uninstallDialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
   await expect(page.getByText(`docker image rm ${imageId}`, { exact: false })).toBeVisible();
 });
 
-test('blocks a Local build when the Assistant is installed from a publication', async ({ page }) => {
+test('lets an explicit Local install replace the matching publication', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
     'base64',
   );
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html><body>Store test frame</body></html>',
-  }));
+  let provenance = 'published';
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -929,6 +958,21 @@ test('blocks a Local build when the Assistant is installed from a publication', 
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'whatsapp',
+        assistant_version: '0.2.0',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Published WhatsApp',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        summary: 'This publication must be shadowed by the staged Local build.',
+      }],
+    }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -959,19 +1003,36 @@ test('blocks a Local build when the Assistant is installed from a publication', 
         assistant: 'whatsapp',
         assistant_version: '0.2.1',
         status: 'running',
-        provenance: 'published',
+        provenance,
       }],
     }),
   }));
+  await page.route('**/api/teams/marketing/assistants/local', async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({ image_id: imageId });
+    provenance = 'local';
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistant: 'whatsapp',
+        image_id: imageId,
+        installed: true,
+        provenance: 'local',
+        unpublished: true,
+      }),
+    });
+  });
 
   await page.goto('/assistants/');
 
   const card = page.getByRole('article', { name: 'whatsapp — Local' });
   await expect(card).not.toHaveClass(/is-installed/);
-  await expect(card.getByRole('button', { name: 'Install or replace' })).toBeDisabled();
-  await expect(card.getByRole('alert')).toHaveText(
-    'Uninstall the published Assistant before installing this Local build.',
-  );
+  await expect(page.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
+  await card.hover();
+  await card.getByRole('button', { name: 'Install or replace' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
+  await expect(dialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
+  await dialog.getByRole('button', { name: 'Install or replace' }).click();
+  await expect(card).toHaveClass(/is-installed/);
 });
 
 test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
@@ -988,9 +1049,9 @@ test('keeps the Store destination guidance when no Team exists', async ({ page }
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ version: 1, assistants: [] }),
   }));
 
   await page.goto('/assistants/');

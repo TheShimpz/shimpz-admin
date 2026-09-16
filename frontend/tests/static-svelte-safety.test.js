@@ -56,7 +56,7 @@ test('static presentation: declared Admin sources instantiate the canonical prim
     ['../src/lib/ShimpzThinking.svelte', ['Disclosure']],
     ['../src/lib/TeamSidebar.svelte', ['Notice']],
     ['../src/routes/chat/+page.svelte', ['AssistantIcon', 'ChatTask', 'EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
-    ['../src/routes/assistants/+page.svelte', ['AssistantCard', 'Card', 'EmptyState', 'PageIntro', 'Skeleton', 'Toolbar']],
+    ['../src/routes/assistants/+page.svelte', ['AssistantCard', 'DialogFrame', 'Modal', 'Notice', 'PageIntro', 'Toolbar']],
   ]);
   for (const [path, primitives] of contracts) {
     const source = readFileSync(new URL(path, import.meta.url), 'utf8');
