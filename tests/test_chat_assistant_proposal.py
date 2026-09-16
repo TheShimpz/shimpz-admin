@@ -27,6 +27,30 @@ def _candidate(
 
 
 class AssistantProposalTests(unittest.TestCase):
+    def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
+        accepted = (
+            "Você mesmo consegue habilitar?",
+            "pode instalar",
+            "Can you enable it!",
+        )
+        rejected = (
+            "como faço para habilitar o modo escuro",
+            "pode instalar o malware também",
+            "sim",
+            "",
+        )
+        for message in accepted:
+            with self.subTest(message=message):
+                self.assertTrue(assistant_proposal.capability_continuation(message))
+        for message in rejected:
+            with self.subTest(message=message):
+                self.assertFalse(assistant_proposal.capability_continuation(message))
+
+        self.assertEqual(
+            assistant_proposal.classify_uninstall_confirmation("pode instalar"),
+            "ambiguous",
+        )
+
     def test_shortlists_explicit_and_composed_intent_without_a_baked_mapping(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate(

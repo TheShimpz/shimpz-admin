@@ -308,6 +308,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "Waiting to install",
+        "resuming": "Resuming this task",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -702,6 +703,7 @@ export const messages = {
       "install": {
         "label": "Instalação de Assistant",
         "pending": "Aguardando instalação",
+        "resuming": "Retomando esta tarefa",
         "working": "Instalando",
         "complete": "Instalado",
         "failed": "Falha na instalação"
@@ -1096,6 +1098,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "En espera de instalación",
+        "resuming": "Reanudando esta tarea",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -1490,6 +1493,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "等待安装",
+        "resuming": "正在继续此任务",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -1884,6 +1888,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "En attente d’installation",
+        "resuming": "Reprise de cette tâche",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -2278,6 +2283,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "Wartet auf Installation",
+        "resuming": "Diese Aufgabe wird fortgesetzt",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -2672,6 +2678,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "インストール待ち",
+        "resuming": "このタスクを再開中",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"
@@ -3066,6 +3073,7 @@ export const messages = {
       "install": {
         "label": "Assistant installation",
         "pending": "في انتظار التثبيت",
+        "resuming": "استئناف هذه المهمة",
         "working": "Installing",
         "complete": "Installed",
         "failed": "Installation failed"

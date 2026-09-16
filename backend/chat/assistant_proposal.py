@@ -85,6 +85,26 @@ _UNINSTALL_NEGATIVE = frozenset(
         "no",
     }
 )
+_CAPABILITY_CONTINUATIONS = frozenset(
+    {
+        "activate it",
+        "ative",
+        "can you enable it",
+        "can you install it",
+        "consegue habilitar",
+        "could you enable it",
+        "enable it",
+        "habilite",
+        "install it",
+        "instale",
+        "please enable it",
+        "pode ativar",
+        "pode habilitar",
+        "pode instalar",
+        "voce consegue habilitar",
+        "voce mesmo consegue habilitar",
+    }
+)
 _UNINSTALL_PREFIXES = (
     "can you ",
     "could you ",
@@ -173,6 +193,11 @@ def _classify_confirmation(
 def classify_uninstall_confirmation(value: object) -> Decision:
     """Classify only a complete uninstall-specific user response."""
     return _classify_confirmation(value, _UNINSTALL_AFFIRMATIVE, _UNINSTALL_NEGATIVE)
+
+
+def capability_continuation(value: object) -> bool:
+    """Accept only one complete request to resume a prior capability objective."""
+    return _classify_confirmation(value, _CAPABILITY_CONTINUATIONS, frozenset()) == "confirm"
 
 
 def _search_text(value: str) -> str:

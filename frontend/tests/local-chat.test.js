@@ -4,12 +4,14 @@ import test from 'node:test';
 import {
   CHAT_WS_PROTOCOL,
   authorizeAssistantIntegration,
+  capabilityContinuation,
   cancelAssistantIntegrationAuthorization,
   chatSocketUrl,
   clearAssistantStoredInput,
   completeAssistantIntegration,
   createChatFrame,
   createHumanResponseFrame,
+  createResumeTaskFrame,
   createStopFrame,
   createSyncFrame,
   listAssistantIntegrations,
@@ -140,6 +142,54 @@ test('chat builds only the versioned WebSocket contract', () => {
     chatSocketUrl({ protocol: 'https:', host: 'shimpz.com' }, 'team_1'),
     'wss://shimpz.com/api/teams/team_1/chat/ws',
   );
+});
+
+test('chat resumes only one exact prior capability objective', () => {
+  const objective = {
+    message: 'Lista minhas zonas DNS no Cloudflare',
+    files: [],
+    assistant_ids: [],
+  };
+  assert.equal(capabilityContinuation('Você mesmo consegue habilitar?'), true);
+  assert.equal(capabilityContinuation('como faço para habilitar o modo escuro'), false);
+  assert.deepEqual(
+    createResumeTaskFrame(
+      'team_1',
+      { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
+      objective,
+    ),
+    {
+      type: 'resume-task',
+      message: 'Você mesmo consegue habilitar?',
+      objective: 'Lista minhas zonas DNS no Cloudflare',
+      files: [],
+      assistant_ids: [],
+      objective_assistant_ids: [],
+    },
+  );
+  for (const [current, prior] of [
+    [
+      { message: 'como faço para habilitar o modo escuro', files: [], assistant_ids: [] },
+      objective,
+    ],
+    [
+      { message: 'pode instalar', files: ['a'.repeat(32)], assistant_ids: [] },
+      objective,
+    ],
+    [
+      { message: 'pode instalar', files: [], assistant_ids: ['whatsapp'] },
+      objective,
+    ],
+    [
+      { message: 'pode instalar', files: [], assistant_ids: [] },
+      { ...objective, message: 'pode habilitar' },
+    ],
+  ]) {
+    assert.throws(
+      () => createResumeTaskFrame('team_1', current, prior),
+      /Invalid task resume request/,
+    );
+  }
 });
 
 function humanRequest(kind) {

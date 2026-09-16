@@ -774,6 +774,61 @@ async def _admit_chat_payload(
     return payload
 
 
+async def _admit_resume_payloads(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]] | None:
+    if set(frame) != {
+        "type",
+        "message",
+        "objective",
+        "files",
+        "assistant_ids",
+        "objective_assistant_ids",
+    }:
+        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
+        return None
+    try:
+        payload = team.canonical_chat_payload(
+            {
+                "message": frame["message"],
+                "files": frame["files"],
+                "assistant_ids": frame["assistant_ids"],
+            }
+        )
+        objective = team.canonical_chat_payload(
+            {
+                "message": frame["objective"],
+                "files": [],
+                "assistant_ids": frame["objective_assistant_ids"],
+            }
+        )
+    except team.TeamRequestError:
+        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
+        return None
+    if (
+        payload["files"]
+        or payload["assistant_ids"] != objective["assistant_ids"]
+        or not assistant_proposal.capability_continuation(payload["message"])
+        or assistant_proposal.capability_continuation(objective["message"])
+        or assistant_proposal.uninstall_requested(objective["message"])
+    ):
+        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
+        return None
+    if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
+        await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
+        return None
+    if connection.pending_challenge_id is not None:
+        await _send_event(
+            websocket,
+            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
+        )
+        return None
+    return payload, objective
+
+
 async def _start_direct_turn(
     websocket: WebSocket,
     connection: _Connection,
@@ -850,6 +905,51 @@ async def _dispatch_chat(
     )
 
 
+async def _dispatch_resume_task(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    frame: dict[str, object],
+) -> None:
+    admitted = await _admit_resume_payloads(websocket, connection, team_id, frame)
+    if admitted is None:
+        return
+    payload, objective = admitted
+    preparation = lifecycle.submit_preparation(team_id, objective)
+    if preparation is None:
+        await _start_direct_turn(
+            websocket,
+            connection,
+            team_id,
+            payload,
+            team_contract.canonical_language_exemplar(payload["message"]),
+        )
+        return
+    turn = _Turn(
+        future=preparation,
+        operation="capability-plan",
+        language_exemplar=team_contract.canonical_language_exemplar(objective["message"]),
+        lifecycle_stop=threading.Event(),
+    )
+    connection.active = turn
+    turn.delivery = asyncio.create_task(
+        plan_delivery.deliver_preparation(
+            websocket,
+            connection,
+            turn,
+            team_id,
+            objective,
+            plan_delivery.Operations(
+                send_event=_send_event,
+                finish_turn=_finish_active_turn,
+                continue_turn=_continue_team_turn,
+                error_terminal=_error_terminal,
+            ),
+            fallback_payload=payload,
+        )
+    )
+
+
 async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
     if connection.sync_task is not None:
         sent = await _send_sync_terminal_once(
@@ -888,6 +988,8 @@ async def _dispatch(
         await _dispatch_sync(websocket, connection, team_id)
     elif frame_type == "chat":
         await _dispatch_chat(websocket, connection, team_id, frame)
+    elif frame_type == "resume-task":
+        await _dispatch_resume_task(websocket, connection, team_id, frame)
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
     elif frame_type == "human-response":

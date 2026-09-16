@@ -194,6 +194,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             *,
             connection: Connection | None = None,
             stop_requested: bool = False,
+            fallback_payload: dict[str, object] | None = None,
         ) -> plan_delivery.Operations:
             operations = _operations()
             turn = Turn(None, "capability-plan", stop_requested=stop_requested)
@@ -209,6 +210,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     "team_1",
                     {"message": "send", "files": [], "assistant_ids": []},
                     operations,
+                    fallback_payload=fallback_payload,
                 )
             return operations
 
@@ -216,8 +218,15 @@ class PlanDeliveryEdges(unittest.TestCase):
             closed = await deliver(assistant_plan.Preparation(), connection=Connection(closed=True))
             closed.continue_turn.assert_not_awaited()
 
-            direct = await deliver(assistant_plan.Preparation())
-            direct.continue_turn.assert_awaited_once()
+            fallback = {"message": "enable it", "files": [], "assistant_ids": []}
+            direct = await deliver(assistant_plan.Preparation(), fallback_payload=fallback)
+            direct.continue_turn.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                mock.ANY,
+                mock.ANY,
+                "team_1",
+                fallback,
+            )
 
             error = await deliver(assistant_plan.Preparation(error_status=503))
             error.error_terminal.assert_called_once()
@@ -245,6 +254,36 @@ class PlanDeliveryEdges(unittest.TestCase):
             exhausted = await deliver(ChangingPreparation())
             exhausted.continue_turn.assert_not_awaited()
             exhausted.finish_turn.assert_not_awaited()
+
+            operations = _operations()
+            plan = _plan()
+            objective = {"message": "send", "files": [], "assistant_ids": []}
+            with (
+                mock.patch.object(
+                    plan_delivery,
+                    "_preparation_result",
+                    new=mock.AsyncMock(return_value=assistant_plan.Preparation(plan=plan)),
+                ),
+                mock.patch.object(plan_delivery, "_deliver_admitted", new=mock.AsyncMock()) as admitted,
+            ):
+                await plan_delivery.deliver_preparation(
+                    mock.sentinel.websocket,
+                    Connection(),
+                    Turn(None, "capability-plan"),
+                    "team_1",
+                    objective,
+                    operations,
+                    fallback_payload=fallback,
+                )
+            admitted.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                mock.ANY,
+                mock.ANY,
+                "team_1",
+                objective,
+                plan,
+                operations,
+            )
 
         asyncio.run(scenario())
 

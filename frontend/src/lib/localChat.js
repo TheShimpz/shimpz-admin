@@ -27,6 +27,24 @@ const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
+const CAPABILITY_CONTINUATIONS = new Set([
+  'activate it',
+  'ative',
+  'can you enable it',
+  'can you install it',
+  'consegue habilitar',
+  'could you enable it',
+  'enable it',
+  'habilite',
+  'install it',
+  'instale',
+  'please enable it',
+  'pode ativar',
+  'pode habilitar',
+  'pode instalar',
+  'voce consegue habilitar',
+  'voce mesmo consegue habilitar',
+]);
 export const CHAT_PROGRESS_PHASES = Object.freeze([
   'admin-preparation',
   'reply-validation',
@@ -585,9 +603,7 @@ export function oauthReturnFailure(value) {
   );
 }
 
-/** Build the only chat frame accepted by shimpz.chat.v7. Provider/model/keys remain server-owned. */
-export function createChatFrame(teamId, turn) {
-  requireTeam(teamId);
+function canonicalChatTurn(turn) {
   if (
     !turn ||
     typeof turn !== 'object' ||
@@ -615,10 +631,53 @@ export function createChatFrame(teamId, turn) {
     throw new LocalApiError('Invalid local chat request.');
   }
   return {
-    type: 'chat',
     message,
     files: [...turn.files],
     assistant_ids: [...turn.assistant_ids],
+  };
+}
+
+function normalizedCapabilityContinuation(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 160) return '';
+  return value
+    .toLocaleLowerCase('en-US')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[\s.!?,;:]+$/g, '');
+}
+
+export function capabilityContinuation(value) {
+  return CAPABILITY_CONTINUATIONS.has(normalizedCapabilityContinuation(value));
+}
+
+/** Build the ordinary chat frame accepted by shimpz.chat.v7. */
+export function createChatFrame(teamId, turn) {
+  requireTeam(teamId);
+  return { type: 'chat', ...canonicalChatTurn(turn) };
+}
+
+/** Build Local Admin's one-use resume frame without persisting the prior objective. */
+export function createResumeTaskFrame(teamId, turn, objectiveTurn) {
+  requireTeam(teamId);
+  const current = canonicalChatTurn(turn);
+  const objective = canonicalChatTurn(objectiveTurn);
+  if (
+    current.files.length !== 0 ||
+    objective.files.length !== 0 ||
+    !capabilityContinuation(current.message) ||
+    capabilityContinuation(objective.message) ||
+    current.assistant_ids.length !== objective.assistant_ids.length ||
+    current.assistant_ids.some((assistantId, index) => assistantId !== objective.assistant_ids[index])
+  ) throw new LocalApiError('Invalid task resume request.');
+  return {
+    type: 'resume-task',
+    message: current.message,
+    objective: objective.message,
+    files: [],
+    assistant_ids: current.assistant_ids,
+    objective_assistant_ids: objective.assistant_ids,
   };
 }
 

@@ -116,6 +116,105 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
+        valid = {
+            "type": "resume-task",
+            "message": "Você mesmo consegue habilitar?",
+            "objective": "Lista minhas zonas DNS no Cloudflare",
+            "files": [],
+            "assistant_ids": [],
+            "objective_assistant_ids": [],
+        }
+
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            admitted = await socket._admit_resume_payloads(
+                websocket,
+                socket._Connection(),
+                "team_1",
+                valid,
+            )
+            self.assertEqual(
+                admitted,
+                (
+                    {"message": valid["message"], "files": [], "assistant_ids": []},
+                    {"message": valid["objective"], "files": [], "assistant_ids": []},
+                ),
+            )
+            websocket.send_json.assert_not_awaited()
+
+            invalid = (
+                {**valid, "extra": True},
+                {**valid, "files": ["a" * 32]},
+                {**valid, "assistant_ids": ["whatsapp"]},
+                {**valid, "message": "como faço para habilitar o modo escuro"},
+                {**valid, "objective": "pode habilitar"},
+                {**valid, "objective": "desinstale o assistant do Cloudflare"},
+            )
+            for frame in invalid:
+                websocket.reset_mock()
+                self.assertIsNone(
+                    await socket._admit_resume_payloads(
+                        websocket,
+                        socket._Connection(),
+                        "team_1",
+                        frame,
+                    )
+                )
+                self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
+
+        asyncio.run(scenario())
+
+    def test_resume_task_plans_the_prior_objective_and_falls_back_to_the_current_message(self) -> None:
+        frame = {
+            "type": "resume-task",
+            "message": "Você mesmo consegue habilitar?",
+            "objective": "Lista minhas zonas DNS no Cloudflare",
+            "files": [],
+            "assistant_ids": [],
+            "objective_assistant_ids": [],
+        }
+
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            start = mock.AsyncMock()
+            with (
+                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=None) as prepare,
+                mock.patch.object(socket, "_start_direct_turn", new=start),
+            ):
+                await socket._dispatch_resume_task(websocket, socket._Connection(), "team_1", frame)
+            objective = {"message": frame["objective"], "files": [], "assistant_ids": []}
+            current = {"message": frame["message"], "files": [], "assistant_ids": []}
+            prepare.assert_called_once_with("team_1", objective)
+            start.assert_awaited_once_with(
+                websocket,
+                mock.ANY,
+                "team_1",
+                current,
+                "Você mesmo consegue habilitar?",
+            )
+
+            preparation: concurrent.futures.Future[object] = concurrent.futures.Future()
+            deliver = mock.AsyncMock()
+            connection = socket._Connection()
+            with (
+                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=preparation),
+                mock.patch.object(socket.plan_delivery, "deliver_preparation", new=deliver),
+            ):
+                await socket._dispatch_resume_task(websocket, connection, "team_1", frame)
+                await connection.active.delivery
+            deliver.assert_awaited_once_with(
+                websocket,
+                connection,
+                connection.active,
+                "team_1",
+                objective,
+                mock.ANY,
+                fallback_payload=current,
+            )
+
+        asyncio.run(scenario())
+
     def test_turn_keeps_only_a_repr_hidden_bounded_language_exemplar(self) -> None:
         turn = socket._Turn(None, "chat", language_exemplar="Liste minhas zonas DNS")
 
@@ -378,6 +477,16 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 {"type": "stop"},
                 authenticate,
             )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+            with mock.patch.object(socket, "_dispatch_resume_task", new=mock.AsyncMock()) as resume:
+                await socket._dispatch(
+                    websocket,
+                    socket._Connection(lifecycle_proposal=mock.sentinel.proposal),
+                    "team_1",
+                    {"type": "resume-task"},
+                    authenticate,
+                )
+            resume.assert_not_awaited()
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
 
         asyncio.run(scenario())

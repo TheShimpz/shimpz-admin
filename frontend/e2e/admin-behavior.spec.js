@@ -140,6 +140,7 @@ async function routeReadyChat(page, {
   holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
   disconnectHumanResponse = false,
+  disconnectFirstChat = false,
   holdHumanResponse = false,
   humanKind = '',
   humanExpiresIn = 300,
@@ -167,6 +168,7 @@ async function routeReadyChat(page, {
   let humanRejectionIndex = 0;
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
+  let firstChatDisconnected = false;
   let storedInputClears = 0;
   let assistantInstalled = assistantUninstall || !assistantPlan;
   let cloudflareInstalled = assistantInstalled;
@@ -427,8 +429,13 @@ async function routeReadyChat(page, {
           return;
         }
         socket.send(JSON.stringify({ type: 'sync-empty' }));
-      } else if (frame.type === 'chat') {
+      } else if (frame.type === 'chat' || frame.type === 'resume-task') {
         chatFrames.push(frame);
+        if (disconnectFirstChat && !firstChatDisconnected && frame.type === 'chat') {
+          firstChatDisconnected = true;
+          socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
+          return;
+        }
         if (assistantPlan && !assistantInstalled) {
           const planId = 'd'.repeat(32);
           const assistants = [
@@ -748,6 +755,44 @@ test('installs a composed Assistant plan automatically and continues the origina
   );
 });
 
+test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    disconnectFirstChat: true,
+    reply: 'Task complete.',
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Lista minhas zonas DNS no Cloudflare');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('The secure chat connection was interrupted. Reconnecting…')).toBeVisible();
+  await expect(composer).toBeEnabled();
+
+  await composer.fill('Você mesmo consegue habilitar?');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Task complete.')).toBeVisible();
+  const resumed = page.locator('.resumed-task');
+  await expect(resumed).toContainText('Resuming this task');
+  await expect(resumed).toContainText('Lista minhas zonas DNS no Cloudflare');
+
+  expect(chat.chatFrames()).toHaveLength(2);
+  expect(chat.chatFrames()[1]).toEqual({
+    type: 'resume-task',
+    message: 'Você mesmo consegue habilitar?',
+    objective: 'Lista minhas zonas DNS no Cloudflare',
+    files: [],
+    assistant_ids: [],
+    objective_assistant_ids: [],
+  });
+  const persistedBrowserState = await page.evaluate(() => JSON.stringify({
+    local: Object.entries(localStorage),
+    session: Object.entries(sessionStorage),
+  }));
+  expect(persistedBrowserState).not.toContain('Lista minhas zonas DNS no Cloudflare');
+  expect(persistedBrowserState).not.toContain('Você mesmo consegue habilitar?');
+});
+
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const chat = await routeReadyChat(page, {
@@ -859,7 +904,7 @@ test('never falls back to the Store icon when model context leaves an uninstall 
 });
 
 test('cancels an Assistant uninstall without projecting a confirmation reply', async ({ page }) => {
-  await routeReadyChat(page, { assistantUninstall: true });
+  const chat = await routeReadyChat(page, { assistantUninstall: true });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -873,6 +918,11 @@ test('cancels an Assistant uninstall without projecting a confirmation reply', a
   await expect(task).toContainText('Cancelled');
   await expect(task.getByRole('button')).toHaveCount(0);
   await expect(composer).toBeFocused();
+
+  await composer.fill('pode instalar');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('The Team could not complete this turn.')).toBeVisible();
+  expect(chat.chatFrames().at(-1).type).toBe('chat');
 });
 
 test('renders the integrations drawer as a responsive Sheet surface', async ({ page }) => {

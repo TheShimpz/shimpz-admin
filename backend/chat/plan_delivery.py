@@ -135,12 +135,20 @@ async def deliver_preparation(
     team_id: str,
     payload: dict[str, object],
     operations: Operations,
+    *,
+    fallback_payload: dict[str, object] | None = None,
 ) -> None:
     preparation = await _preparation_result(turn)
     if connection.closed:
         return
     if preparation is None or (preparation.plan is None and preparation.error_status is None):
-        await operations.continue_turn(websocket, connection, turn, team_id, payload)
+        await operations.continue_turn(
+            websocket,
+            connection,
+            turn,
+            team_id,
+            payload if fallback_payload is None else fallback_payload,
+        )
     elif preparation.error_status is not None:
         detail = "Assistant capability planning could not complete; retry the task"
         await operations.finish_turn(

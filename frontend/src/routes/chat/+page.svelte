@@ -18,12 +18,14 @@
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
+    capabilityContinuation,
     cancelAssistantIntegrationAuthorization,
     chatSocketUrl,
     clearAssistantStoredInput,
     completeAssistantIntegration,
     createChatFrame,
     createHumanResponseFrame,
+    createResumeTaskFrame,
     createStopFrame,
     createSyncFrame,
     listAssistantIntegrations,
@@ -73,6 +75,7 @@
   let stopButton = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
+  let capabilityObjective = null;
 
   let copy = $derived($t('chatPage'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
@@ -770,6 +773,7 @@
         }
         if (incoming.type === 'assistant-uninstall') {
           if (!busy || stopping || syncing) throw new Error('unexpected Assistant lifecycle event');
+          capabilityObjective = null;
           const receipt = progressEvents.map((item) => ({ ...item }));
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
@@ -857,6 +861,7 @@
   function activateTeam(nextTeamId) {
     closeSocket();
     clearLifecycleIconCaptures();
+    capabilityObjective = null;
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
     stopping = false;
@@ -1060,6 +1065,7 @@
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
+    useCapabilityObjective = true,
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
@@ -1072,12 +1078,30 @@
       !socket
     ) return false;
     let frame;
+    let resumedObjective = '';
+    const assistantIds = [...$teamContext.selectedAssistantIds];
+    const continuation = useCapabilityObjective && capabilityContinuation(normalized);
+    const sameAssistantIds = continuation && capabilityObjective
+      ? assistantIds.length === capabilityObjective.assistant_ids.length &&
+        assistantIds.every((assistantId, index) => (
+          assistantId === capabilityObjective.assistant_ids[index]
+        ))
+      : false;
+    const resumable = continuation && sameAssistantIds ? capabilityObjective : null;
+    if (continuation && capabilityObjective && !sameAssistantIds) capabilityObjective = null;
     try {
-      frame = createChatFrame(teamId, {
+      const currentTurn = {
         message: normalized,
         files: [],
-        assistant_ids: $teamContext.selectedAssistantIds,
-      });
+        assistant_ids: assistantIds,
+      };
+      if (resumable) {
+        frame = createResumeTaskFrame(teamId, currentTurn, resumable);
+        resumedObjective = resumable.message;
+        capabilityObjective = null;
+      } else {
+        frame = createChatFrame(teamId, currentTurn);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       return false;
@@ -1086,11 +1110,22 @@
     resetProgress();
     clearError();
     if (projectUserTurn) {
-      turns = [...turns, { role: 'user', text: normalized }];
+      turns = [...turns, {
+        role: 'user',
+        text: normalized,
+        ...(resumedObjective ? { resumedObjective } : {}),
+      }];
       void revealLatestExchange();
     }
     try {
       socket.send(JSON.stringify(frame));
+      if (useCapabilityObjective && !continuation) {
+        capabilityObjective = {
+          message: normalized,
+          files: [],
+          assistant_ids: assistantIds,
+        };
+      }
       if (focusActiveTurn) void focusStop();
       return true;
     } catch (reason) {
@@ -1116,7 +1151,11 @@
           chatTeamId,
         );
       }
-      return submitMessage(decision, { focusActiveTurn: false, projectUserTurn: false });
+      return submitMessage(decision, {
+        focusActiveTurn: false,
+        projectUserTurn: false,
+        useCapabilityObjective: false,
+      });
     } finally {
       lifecycleDecisionPending = false;
     }
@@ -1261,6 +1300,12 @@
             <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
               {#if exchange.user}
                 <Message variant="user" author={copy.you}>
+                  {#if exchange.user.resumedObjective}
+                    <div class="resumed-task">
+                      <strong>{copy.install.resuming}</strong>
+                      <span>{exchange.user.resumedObjective}</span>
+                    </div>
+                  {/if}
                   <p>{exchange.user.text}</p>
                 </Message>
               {/if}
@@ -1599,6 +1644,24 @@
     white-space: pre-wrap;
     line-height: 1.55;
     overflow-wrap: anywhere;
+  }
+
+  .resumed-task {
+    display: grid;
+    gap: 0.2rem;
+    margin-bottom: 0.7rem;
+    padding-left: 0.7rem;
+    border-left: 2px solid currentColor;
+    color: var(--text-faint);
+    line-height: 1.45;
+  }
+
+  .resumed-task strong {
+    color: currentColor;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   :global(.assistant-lifecycle-task) {
