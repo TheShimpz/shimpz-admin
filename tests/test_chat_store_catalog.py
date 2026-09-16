@@ -86,6 +86,8 @@ class StoreCatalogTests(unittest.TestCase):
                     icon_digest=ICON_DIGEST,
                     integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
                     actions=("list-zones",),
+                    assistant_version="1.2.3",
+                    creators=("@shimpz",),
                 ),
             ),
         )

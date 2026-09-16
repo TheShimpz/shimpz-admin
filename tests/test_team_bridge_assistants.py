@@ -730,6 +730,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         (route.path, method) for route in admin_app.app.routes for method in (getattr(route, "methods", None) or set())
     }
     expected = {
+        ("/api/assistant-catalog", "GET"),
         ("/api/assistants", "GET"),
         ("/api/assistants/{assistant_id}/catalog-icon", "GET"),
         ("/api/teams/{team_id}", "DELETE"),

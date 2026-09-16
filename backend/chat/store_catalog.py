@@ -83,6 +83,8 @@ class CatalogAssistant:
     icon_digest: str
     integrations: tuple[CatalogIntegration, ...]
     actions: tuple[str, ...]
+    assistant_version: str = ""
+    creators: tuple[str, ...] = ()
 
 
 def _text(value: object, maximum: int) -> str:
@@ -179,6 +181,8 @@ def _assistant(value: object) -> CatalogAssistant:
         icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),
         actions=_actions(value["actions"]),
+        assistant_version=value["assistant_version"],
+        creators=creators,
     )
 
 

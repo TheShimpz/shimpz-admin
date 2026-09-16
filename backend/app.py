@@ -135,6 +135,11 @@ app.add_api_route(
     methods=["GET"],
 )
 app.add_api_route(
+    "/api/assistant-catalog",
+    chat_assets.assistant_catalog,
+    methods=["GET"],
+)
+app.add_api_route(
     "/api/assistants/{assistant_id}/catalog-icon",
     chat_assets.assistant_icon,
     methods=["GET"],
