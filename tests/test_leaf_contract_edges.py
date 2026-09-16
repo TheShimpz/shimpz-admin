@@ -127,6 +127,15 @@ class AssetProjectionEdgeTests(unittest.TestCase):
         self.assertEqual(response.body, b"png")
         self.assertEqual(response.headers["cache-control"], "no-store")
 
+        with mock.patch.object(
+            bridge,
+            "local_assistant_icon",
+            return_value=transport.TeamAssetResponse(200, b"local-png", {}),
+        ) as local_assistant_icon:
+            response = assets.local_assistant_icon("a" * 64)
+        local_assistant_icon.assert_called_once_with("sha256:" + "a" * 64)
+        self.assertEqual(response.body, b"local-png")
+
 
 class PayloadEdgeTests(unittest.TestCase):
     def test_chat_payload_limits_and_duplicates_fail_closed(self) -> None:

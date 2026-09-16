@@ -61,7 +61,7 @@ def security_headers(ui_dir: Path) -> dict[str, str]:
             "frame-ancestors 'none'",
             "frame-src https://shimpz.com",
             "form-action 'self'",
-            "img-src 'self' data:",
+            "img-src 'self' data: blob:",
             "font-src 'self'",
             f"script-src {script_policy}",
             # Svelte uses inline style attributes for runtime frame sizing. Scripts remain hash-bound.

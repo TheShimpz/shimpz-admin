@@ -38,6 +38,7 @@ class BrowserPolicyTests(unittest.TestCase):
         self.assertIn(f"'sha256-{digest}'", script_directive)
         self.assertNotIn("'unsafe-inline'", script_directive)
         self.assertIn("style-src 'self' 'unsafe-inline'", policy)
+        self.assertIn("img-src 'self' data: blob:", policy)
 
     def test_oauth_redirect_rejects_unknown_failure_values(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "invalid OAuth redirect failure"):

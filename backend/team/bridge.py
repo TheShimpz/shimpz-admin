@@ -401,6 +401,12 @@ def list_local_assistants() -> TeamResponse:
     return _call("GET", "/v1/local-assistants")
 
 
+def local_assistant_icon(image_id: object) -> TeamAssetResponse:
+    """Return the admitted PNG preview for one exact unpublished image."""
+    digest = canonical_source_digest(image_id)
+    return _call_asset(f"/v1/local-assistants/{digest.removeprefix('sha256:')}/icon")
+
+
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"

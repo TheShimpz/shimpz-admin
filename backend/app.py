@@ -894,6 +894,11 @@ async def team_local_assistant_install(team_id: str, request: Request):
 if ADMIN_PROFILE == "local":
     app.add_api_route("/api/local-assistants", local_assistants_list, methods=["GET"])
     app.add_api_route(
+        "/api/local-assistants/{image_hash}/icon",
+        team_assets.local_assistant_icon,
+        methods=["GET"],
+    )
+    app.add_api_route(
         "/api/teams/{team_id}/assistants/local",
         team_local_assistant_install,
         methods=["POST"],

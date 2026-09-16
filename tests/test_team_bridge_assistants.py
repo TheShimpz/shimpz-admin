@@ -240,6 +240,18 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         self.assertEqual(request["path"], "/v1/teams/team_1/assistants/hello-pulse/icon")
         self.assertEqual(request["headers"]["accept"], "image/png")
 
+    def test_fetches_an_exact_local_assistant_icon_as_bounded_png(self):
+        icon = b"\x89PNG\r\n\x1a\nlocal"
+        _TeamHandler.response_headers = {"Content-Type": "image/png"}
+        _TeamHandler.response_body = icon
+
+        response = team.local_assistant_icon("sha256:" + ("c" * 64))
+
+        self.assertEqual(response, team.TeamAssetResponse(200, icon, {}))
+        request = _TeamHandler.requests[-1]
+        self.assertEqual(request["path"], "/v1/local-assistants/" + ("c" * 64) + "/icon")
+        self.assertEqual(request["headers"]["accept"], "image/png")
+
     def test_rejects_an_invalid_assistant_icon_response(self):
         _TeamHandler.response_headers = {"Content-Type": "application/octet-stream"}
         _TeamHandler.response_body = b"not an admitted icon"

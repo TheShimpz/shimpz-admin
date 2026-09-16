@@ -27,3 +27,7 @@ def _response(action) -> Response:
 
 def assistant_icon(team_id: str, assistant_id: str) -> Response:
     return _response(lambda: bridge.assistant_icon(team_id, assistant_id))
+
+
+def local_assistant_icon(image_hash: str) -> Response:
+    return _response(lambda: bridge.local_assistant_icon(f"sha256:{image_hash}"))
