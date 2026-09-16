@@ -28,6 +28,7 @@ from chat import (
     plan_delivery,
     projection,
     socket_boundary,
+    task_resume,
 )
 from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
@@ -621,76 +622,6 @@ async def _deliver_human_response(
             connection.sync_task = None
 
 
-async def _human_payload(
-    frame: dict[str, object],
-    request: dict[str, object],
-    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
-) -> tuple[
-    dict[str, object] | None,
-    dict[str, str] | None,
-    dict[str, object] | None,
-    tuple[int, str] | None,
-]:
-    canonical = chat_ws_common.canonical_human_response(frame)
-    challenge_id = canonical["challenge_id"]
-    if canonical["decision"] == "deny":
-        return {"challenge_id": challenge_id, "decision": "deny"}, None, None, None
-    value = canonical.pop("value")
-    if not human.browser_value(request, value):
-        raise FrameError(400, "human response does not match its request")
-    kind = request.get("kind")
-    if kind not in human.AUTH_KINDS:
-        return (
-            {
-                "challenge_id": challenge_id,
-                "decision": "submit",
-                "value": value,
-            },
-            None,
-            None,
-            None,
-        )
-    frame.pop("value", None)
-    password = value
-    # human.browser_value already proves that authentication responses are bounded strings.
-    result = human.AuthenticationResult("unavailable")
-    with contextlib.suppress(Exception):
-        result = await authenticate(kind, password)
-    del password
-    del value
-    if result.status == "verified":
-        return (
-            {
-                "challenge_id": challenge_id,
-                "decision": "submit",
-                "value": True,
-            },
-            {"kind": kind, "challenge_id": challenge_id},
-            None,
-            None,
-        )
-    if result.status in {"denied", "locked"}:
-        reason = "authentication-denied" if result.status == "denied" else "authentication-locked"
-        return (
-            None,
-            None,
-            {
-                "type": "human-response-rejected",
-                "challenge_id": challenge_id,
-                "reason": reason,
-                "attempts_remaining": result.attempts_remaining,
-                "retry_after": result.retry_after,
-            },
-            None,
-        )
-    return (
-        {"challenge_id": challenge_id, "decision": "deny"},
-        None,
-        None,
-        (503, "authentication is unavailable"),
-    )
-
-
 async def _dispatch_human_response(
     websocket: WebSocket,
     connection: _Connection,
@@ -710,7 +641,11 @@ async def _dispatch_human_response(
         await _send_event(websocket, _error_terminal(409, "the human challenge is not pending"))
         return
     try:
-        payload, assurance, rejection, authentication_failure = await _human_payload(frame, request, authenticate)
+        payload, assurance, rejection, authentication_failure = await human.response_payload(
+            frame,
+            request,
+            authenticate,
+        )
         if rejection is not None:
             if not await _send_event(websocket, rejection):
                 connection.closed = True
@@ -772,61 +707,6 @@ async def _admit_chat_payload(
         )
         return None
     return payload
-
-
-async def _admit_resume_payloads(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    frame: dict[str, object],
-) -> tuple[dict[str, object], dict[str, object]] | None:
-    if set(frame) != {
-        "type",
-        "message",
-        "objective",
-        "files",
-        "assistant_ids",
-        "objective_assistant_ids",
-    }:
-        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
-        return None
-    try:
-        payload = team.canonical_chat_payload(
-            {
-                "message": frame["message"],
-                "files": frame["files"],
-                "assistant_ids": frame["assistant_ids"],
-            }
-        )
-        objective = team.canonical_chat_payload(
-            {
-                "message": frame["objective"],
-                "files": [],
-                "assistant_ids": frame["objective_assistant_ids"],
-            }
-        )
-    except team.TeamRequestError:
-        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
-        return None
-    if (
-        payload["files"]
-        or payload["assistant_ids"] != objective["assistant_ids"]
-        or not assistant_proposal.capability_continuation(payload["message"])
-        or assistant_proposal.capability_continuation(objective["message"])
-        or assistant_proposal.uninstall_requested(objective["message"])
-    ):
-        await _send_event(websocket, _error_terminal(400, "invalid task resume request"))
-        return None
-    if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
-        return None
-    if connection.pending_challenge_id is not None:
-        await _send_event(
-            websocket,
-            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
-        )
-        return None
-    return payload, objective
 
 
 async def _start_direct_turn(
@@ -905,51 +785,6 @@ async def _dispatch_chat(
     )
 
 
-async def _dispatch_resume_task(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    frame: dict[str, object],
-) -> None:
-    admitted = await _admit_resume_payloads(websocket, connection, team_id, frame)
-    if admitted is None:
-        return
-    payload, objective = admitted
-    preparation = lifecycle.submit_preparation(team_id, objective)
-    if preparation is None:
-        await _start_direct_turn(
-            websocket,
-            connection,
-            team_id,
-            payload,
-            team_contract.canonical_language_exemplar(payload["message"]),
-        )
-        return
-    turn = _Turn(
-        future=preparation,
-        operation="capability-plan",
-        language_exemplar=team_contract.canonical_language_exemplar(objective["message"]),
-        lifecycle_stop=threading.Event(),
-    )
-    connection.active = turn
-    turn.delivery = asyncio.create_task(
-        plan_delivery.deliver_preparation(
-            websocket,
-            connection,
-            turn,
-            team_id,
-            objective,
-            plan_delivery.Operations(
-                send_event=_send_event,
-                finish_turn=_finish_active_turn,
-                continue_turn=_continue_team_turn,
-                error_terminal=_error_terminal,
-            ),
-            fallback_payload=payload,
-        )
-    )
-
-
 async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
     if connection.sync_task is not None:
         sent = await _send_sync_terminal_once(
@@ -989,7 +824,23 @@ async def _dispatch(
     elif frame_type == "chat":
         await _dispatch_chat(websocket, connection, team_id, frame)
     elif frame_type == "resume-task":
-        await _dispatch_resume_task(websocket, connection, team_id, frame)
+        await task_resume.dispatch(
+            websocket,
+            connection,
+            team_id,
+            frame,
+            task_resume.Operations(
+                send_event=_send_event,
+                start_direct=_start_direct_turn,
+                plan=plan_delivery.Operations(
+                    send_event=_send_event,
+                    finish_turn=_finish_active_turn,
+                    continue_turn=_continue_team_turn,
+                    error_terminal=_error_terminal,
+                ),
+                error_terminal=_error_terminal,
+            ),
+        )
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
     elif frame_type == "human-response":

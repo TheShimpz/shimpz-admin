@@ -17,7 +17,21 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
-from chat import human, local, socket
+from chat import human, local, plan_delivery, socket, task_resume
+
+
+def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Operations:
+    return task_resume.Operations(
+        send_event=socket._send_event,
+        start_direct=start_direct,
+        plan=plan_delivery.Operations(
+            send_event=socket._send_event,
+            finish_turn=socket._finish_active_turn,
+            continue_turn=socket._continue_team_turn,
+            error_terminal=socket._error_terminal,
+        ),
+        error_terminal=socket._error_terminal,
+    )
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
@@ -128,11 +142,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            admitted = await socket._admit_resume_payloads(
+            admitted = await task_resume.admit(
                 websocket,
                 socket._Connection(),
-                "team_1",
                 valid,
+                _resume_operations(),
             )
             self.assertEqual(
                 admitted,
@@ -154,11 +168,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
             for frame in invalid:
                 websocket.reset_mock()
                 self.assertIsNone(
-                    await socket._admit_resume_payloads(
+                    await task_resume.admit(
                         websocket,
                         socket._Connection(),
-                        "team_1",
                         frame,
+                        _resume_operations(),
                     )
                 )
                 self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
@@ -182,7 +196,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(socket.lifecycle, "submit_preparation", return_value=None) as prepare,
                 mock.patch.object(socket, "_start_direct_turn", new=start),
             ):
-                await socket._dispatch_resume_task(websocket, socket._Connection(), "team_1", frame)
+                await task_resume.dispatch(
+                    websocket,
+                    socket._Connection(),
+                    "team_1",
+                    frame,
+                    _resume_operations(start),
+                )
             objective = {"message": frame["objective"], "files": [], "assistant_ids": []}
             current = {"message": frame["message"], "files": [], "assistant_ids": []}
             prepare.assert_called_once_with("team_1", objective)
@@ -201,7 +221,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(socket.lifecycle, "submit_preparation", return_value=preparation),
                 mock.patch.object(socket.plan_delivery, "deliver_preparation", new=deliver),
             ):
-                await socket._dispatch_resume_task(websocket, connection, "team_1", frame)
+                await task_resume.dispatch(
+                    websocket,
+                    connection,
+                    "team_1",
+                    frame,
+                    _resume_operations(),
+                )
                 await connection.active.delivery
             deliver.assert_awaited_once_with(
                 websocket,
@@ -429,7 +455,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNotNone(task)
             await task
 
-            deny, assurance, rejection, failure = await socket._human_payload(
+            deny, assurance, rejection, failure = await human.response_payload(
                 {"type": "human-response", "challenge_id": "a" * 32, "decision": "deny"},
                 {"kind": "approval"},
                 authenticate,
@@ -440,7 +466,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNone(failure)
 
             request = {"kind": "auth:password"}
-            payload, assurance, rejection, failure = await socket._human_payload(
+            payload, assurance, rejection, failure = await human.response_payload(
                 {
                     "type": "human-response",
                     "challenge_id": "a" * 32,
@@ -478,7 +504,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 authenticate,
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
-            with mock.patch.object(socket, "_dispatch_resume_task", new=mock.AsyncMock()) as resume:
+            with mock.patch.object(socket.task_resume, "dispatch", new=mock.AsyncMock()) as resume:
                 await socket._dispatch(
                     websocket,
                     socket._Connection(lifecycle_proposal=mock.sentinel.proposal),
@@ -678,7 +704,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 "decision": "submit",
                 "value": "password",
             }
-            payload, assurance, rejection, failure = await socket._human_payload(
+            payload, assurance, rejection, failure = await human.response_payload(
                 dict(frame),
                 auth_request,
                 unavailable,
@@ -746,8 +772,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
             )
             websocket = mock.AsyncMock()
             with mock.patch.object(
-                socket,
-                "_human_payload",
+                socket.human,
+                "response_payload",
                 new=mock.AsyncMock(return_value=(None, None, None, None)),
             ):
                 await socket._dispatch_human_response(websocket, malformed, "team_1", dict(frame), unavailable)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -62,6 +63,77 @@ class AuthenticationResult:
     status: str
     attempts_remaining: int = 0
     retry_after: int = 0
+
+
+async def response_payload(
+    frame: dict[str, object],
+    request: dict[str, object],
+    authenticate: Callable[[str, str], Awaitable[AuthenticationResult]],
+) -> tuple[
+    dict[str, object] | None,
+    dict[str, str] | None,
+    dict[str, object] | None,
+    tuple[int, str] | None,
+]:
+    """Project one browser value onto the exact Team continuation payload."""
+    canonical = chat_ws_common.canonical_human_response(frame)
+    challenge_id = canonical["challenge_id"]
+    if canonical["decision"] == "deny":
+        return {"challenge_id": challenge_id, "decision": "deny"}, None, None, None
+    value = canonical.pop("value")
+    if not browser_value(request, value):
+        raise chat_ws_common.FrameError(400, "human response does not match its request")
+    kind = request.get("kind")
+    if kind not in AUTH_KINDS:
+        return (
+            {
+                "challenge_id": challenge_id,
+                "decision": "submit",
+                "value": value,
+            },
+            None,
+            None,
+            None,
+        )
+    frame.pop("value", None)
+    password = value
+    # browser_value already proves that authentication responses are bounded strings.
+    result = AuthenticationResult("unavailable")
+    with contextlib.suppress(Exception):
+        result = await authenticate(kind, password)
+    del password
+    del value
+    if result.status == "verified":
+        return (
+            {
+                "challenge_id": challenge_id,
+                "decision": "submit",
+                "value": True,
+            },
+            {"kind": kind, "challenge_id": challenge_id},
+            None,
+            None,
+        )
+    if result.status in {"denied", "locked"}:
+        reason = "authentication-denied" if result.status == "denied" else "authentication-locked"
+        return (
+            None,
+            None,
+            {
+                "type": "human-response-rejected",
+                "challenge_id": challenge_id,
+                "reason": reason,
+                "attempts_remaining": result.attempts_remaining,
+                "retry_after": result.retry_after,
+            },
+            None,
+        )
+    return (
+        {"challenge_id": challenge_id, "decision": "deny"},
+        None,
+        None,
+        (503, "authentication is unavailable"),
+    )
 
 
 class LocalPasswordAuthority:
