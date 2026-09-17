@@ -78,6 +78,7 @@
   let capabilityObjective = null;
 
   let copy = $derived($t('chatPage'));
+  let storeCopy = $derived($t('store'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
@@ -214,6 +215,7 @@
     if (assistant.status === 'installed' && chatTeamId) {
       return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
     }
+    if (assistant.provenance === 'local') return undefined;
     return `/api/assistants/${assistantId}/catalog-icon`;
   }
 
@@ -1331,7 +1333,7 @@
                         {/snippet}
                         {#snippet planDetails()}
                           {#if assistant.provenance === 'local'}
-                            <span class="assistant-lifecycle-provenance">LOCAL</span>
+                            <span class="assistant-lifecycle-provenance">{storeCopy.localBadge}</span>
                           {/if}
                           {#if assistant.status === 'failed' && exchange.assistant.installPlan.status}
                             <span class="assistant-lifecycle-detail-copy">
@@ -1685,6 +1687,7 @@
     color: var(--shimpz-color-yellow);
     font-weight: 700;
     letter-spacing: 0.08em;
+    text-transform: uppercase;
     border: 1px solid color-mix(in srgb, var(--shimpz-color-yellow) 72%, transparent);
   }
 
