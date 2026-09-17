@@ -147,7 +147,7 @@ def _planning_catalog(
         else:
             try:
                 local_assistants = local_catalog.primary(local_future.result())
-            except (TypeError, ValueError, team.TeamRequestError):
+            except TypeError, ValueError, team.TeamRequestError:
                 return None
     local_ids = {assistant.assistant_id for assistant in local_assistants}
     combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
