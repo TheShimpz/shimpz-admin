@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import profile as admin_profile
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -309,6 +310,7 @@ def submit_preparation(
             team_id,
             payload,
             _STORE_CATALOG,
+            admin_profile.require() == "local",
         )
     except ExecutorSaturatedError, OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
         return None

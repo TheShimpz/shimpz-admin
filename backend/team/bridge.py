@@ -517,6 +517,18 @@ def install_local_assistant(team_id: object, payload: object) -> TeamResponse:
     )
 
 
+def install_fresh_local_assistant(team_id: object, payload: object) -> TeamResponse:
+    if not isinstance(payload, dict) or set(payload) != {"image_id"}:
+        raise TeamRequestError("request body must contain only image_id")
+    image_id = canonical_source_digest(payload["image_id"])
+    return _call(
+        "POST",
+        f"{_assistant_path(team_id)}/local/fresh",
+        {"image_id": image_id},
+        timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
+    )
+
+
 def uninstall_assistant(team_id: object, assistant_id: object) -> TeamResponse:
     return _call("DELETE", _assistant_path(team_id, assistant_id))
 

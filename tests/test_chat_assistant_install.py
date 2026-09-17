@@ -10,7 +10,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_install, store_catalog
+from datetime import UTC, datetime
+
+from chat import assistant_install, local_catalog, store_catalog
 
 
 def _candidate() -> store_catalog.CatalogAssistant:
@@ -72,6 +74,38 @@ class AssistantInstallTests(unittest.TestCase):
                     assistant_install.install_publication("team_1", _candidate()),
                     expected,
                 )
+
+    def test_submits_only_the_exact_fresh_local_snapshot(self) -> None:
+        candidate = local_catalog.LocalAssistant(
+            assistant_id="shimpz-cloudflare",
+            name="Shimpz Cloudflare",
+            summary="Manage Cloudflare zones and DNS records.",
+            image_id="sha256:" + ("c" * 64),
+            integrations=(store_catalog.CatalogIntegration("cloudflare", ()),),
+            actions=("list-zones",),
+            assistant_version="0.4.5",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+        response = assistant_install.team.TeamResponse(
+            200,
+            {
+                "assistant": "shimpz-cloudflare",
+                "installed": True,
+                "provenance": "local",
+                "image_id": candidate.image_id,
+                "unpublished": True,
+                "trace_id": "d" * 32,
+            },
+        )
+        with mock.patch.object(
+            assistant_install.team,
+            "install_fresh_local_assistant",
+            return_value=response,
+        ) as install:
+            result = assistant_install.install_local_snapshot("team_1", candidate)
+
+        self.assertEqual(result, assistant_install.InstallResult(200, True))
+        install.assert_called_once_with("team_1", {"image_id": candidate.image_id})
 
     def test_success_projection_requires_exact_identity_boolean_and_trace(self) -> None:
         malformed = (

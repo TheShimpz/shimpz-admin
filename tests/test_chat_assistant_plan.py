@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_install, assistant_plan, store_catalog
+from chat import assistant_install, assistant_plan, local_catalog, store_catalog
 
 
 def _candidate(
@@ -74,6 +74,35 @@ def _payload(message: str, assistant_ids: tuple[str, ...] = ()) -> dict[str, obj
     return {"message": message, "files": [], "assistant_ids": list(assistant_ids)}
 
 
+def _local_inventory(
+    assistant_id: str = "cloudflare",
+    *,
+    image_character: str = "d",
+    created_at: str = "2026-09-15T09:00:00Z",
+) -> assistant_plan.team.TeamResponse:
+    return assistant_plan.team.TeamResponse(
+        200,
+        {
+            "assistants": [
+                {
+                    "assistant_id": assistant_id,
+                    "assistant_version": "0.4.5",
+                    "name": "Cloudflare",
+                    "summary": "Provides reviewed Cloudflare automation.",
+                    "declared_creators": ["@shimpz"],
+                    "actions": ["configure-domain"],
+                    "integrations": ["cloudflare"],
+                    "image_id": "sha256:" + (image_character * 64),
+                    "platform": "linux/amd64",
+                    "created_at": created_at,
+                    "provenance": "local",
+                    "unpublished": True,
+                }
+            ]
+        },
+    )
+
+
 class AssistantPlanPreparationTests(unittest.TestCase):
     def _prepare(
         self,
@@ -84,9 +113,15 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         installed=None,
         registry=None,
         assistant_ids: tuple[str, ...] = (),
+        local_inventory=None,
     ) -> tuple[assistant_plan.Preparation, mock.Mock]:
         store = mock.Mock()
         store.get.return_value = catalog
+        local_response = (
+            local_inventory
+            if local_inventory is not None
+            else assistant_plan.team.TeamResponse(200, {"assistants": []})
+        )
         with (
             mock.patch.object(
                 assistant_plan.team,
@@ -98,6 +133,11 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "list_assistants",
                 return_value=registry if registry is not None else _registry(),
             ),
+            mock.patch.object(
+                assistant_plan.team,
+                "list_local_assistants",
+                return_value=local_response,
+            ),
             mock.patch.object(assistant_plan.local, "capability_plan", return_value=planner) as plan,
             mock.patch.object(assistant_plan.secrets, "token_hex", return_value="a" * 32),
         ):
@@ -105,6 +145,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "team_1",
                 _payload(message, assistant_ids),
                 store,
+                local_inventory is not None,
             )
         return result, plan
 
@@ -159,6 +200,65 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(request[:2], ("team_1", objective))
         self.assertEqual([item["id"] for item in request[2]], ["cloudflare", "whatsapp"])
         self.assertNotIn("source_digest", repr(request[2]))
+
+    def test_local_snapshot_shadows_same_id_publication_for_chat_install(self) -> None:
+        result, planner = self._prepare(
+            "Configure Cloudflare",
+            (CLOUDFLARE,),
+            assistant_plan.team.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "status": "install-required",
+                    "assistant_ids": ["cloudflare"],
+                },
+            ),
+            local_inventory=_local_inventory(),
+        )
+
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        selected = result.plan.assistants[0]
+        self.assertIsInstance(selected, local_catalog.LocalAssistant)
+        self.assertEqual(selected.image_id, "sha256:" + ("d" * 64))
+        request = planner.call_args.args[2]
+        self.assertNotIn("image_id", repr(request))
+        self.assertNotIn("source_digest", repr(request))
+
+    def test_store_outage_still_plans_a_local_only_assistant(self) -> None:
+        store = mock.Mock()
+        store.get.side_effect = store_catalog.CatalogUnavailableError("offline")
+        with (
+            mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()),
+            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()),
+            mock.patch.object(assistant_plan.team, "list_local_assistants", return_value=_local_inventory()),
+            mock.patch.object(
+                assistant_plan.local,
+                "capability_plan",
+                return_value=assistant_plan.team.TeamResponse(
+                    200,
+                    {
+                        "team_id": "team_1",
+                        "status": "install-required",
+                        "assistant_ids": ["cloudflare"],
+                    },
+                ),
+            ),
+        ):
+            result = assistant_plan.prepare("team_1", _payload("Configure Cloudflare"), store, True)
+
+        self.assertIsNotNone(result.plan)
+
+    def test_invalid_local_inventory_never_falls_back_to_publication(self) -> None:
+        result, planner = self._prepare(
+            "Configure Cloudflare",
+            (CLOUDFLARE,),
+            assistant_plan.team.TeamResponse(200, {}),
+            local_inventory=assistant_plan.team.TeamResponse(503, {"detail": "unavailable"}),
+        )
+
+        self.assertEqual(result, assistant_plan.Preparation())
+        planner.assert_not_called()
 
     def test_nonrunning_explicit_scope_never_reaches_the_planner(self) -> None:
         result, planner = self._prepare(
@@ -260,7 +360,10 @@ class AssistantPlanPreparationTests(unittest.TestCase):
 
 
 class AssistantPlanExecutionTests(unittest.TestCase):
-    def _plan(self, *assistants: store_catalog.CatalogAssistant) -> assistant_plan.Plan:
+    def _plan(
+        self,
+        *assistants: store_catalog.CatalogAssistant | local_catalog.LocalAssistant,
+    ) -> assistant_plan.Plan:
         ids = tuple(item.assistant_id for item in assistants)
         return assistant_plan.Plan("b" * 32, "team_1", assistants, ids)
 
@@ -388,6 +491,29 @@ class AssistantPlanExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.state, "failed")
         self.assertEqual(result.status, 502)
+
+    def test_installs_an_exact_local_snapshot_through_the_fresh_only_route(self) -> None:
+        local_assistant = local_catalog.primary(_local_inventory())[0]
+        with (
+            mock.patch.object(
+                assistant_plan.assistant_install,
+                "install_local_snapshot",
+                return_value=assistant_install.InstallResult(200, True),
+            ) as install,
+            mock.patch.object(
+                assistant_plan.team,
+                "list_installed_assistants",
+                return_value=_installed(("cloudflare", "running")),
+            ),
+        ):
+            result = assistant_plan.execute(
+                self._plan(local_assistant),
+                threading.Event(),
+                lambda _items: None,
+            )
+
+        self.assertEqual(result.state, "installed")
+        install.assert_called_once_with("team_1", local_assistant)
 
     def test_team_request_exception_marks_the_current_item_failed(self) -> None:
         with mock.patch.object(

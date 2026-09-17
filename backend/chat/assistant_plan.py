@@ -12,7 +12,7 @@ from typing import Literal
 from chat.executor import submit_in_context
 from team import bridge as team
 
-from chat import assistant_install, assistant_inventory, assistant_proposal, local, store_catalog
+from chat import assistant_install, assistant_inventory, assistant_proposal, local, local_catalog, store_catalog
 
 MAX_PLAN_ASSISTANTS = 4
 MAX_CHAT_ASSISTANTS = 16
@@ -22,7 +22,7 @@ MAX_CHAT_ASSISTANTS = 16
 class Plan:
     plan_id: str
     team_id: str
-    assistants: tuple[store_catalog.CatalogAssistant, ...]
+    assistants: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]
     dispatch_ids: tuple[str, ...]
 
 
@@ -39,7 +39,9 @@ class Result:
     status: int | None = None
 
 
-def _planner_candidate(assistant: store_catalog.CatalogAssistant) -> dict[str, object]:
+def _planner_candidate(
+    assistant: store_catalog.CatalogAssistant | local_catalog.LocalAssistant,
+) -> dict[str, object]:
     return {
         "id": assistant.assistant_id,
         "name": assistant.name,
@@ -87,9 +89,9 @@ def _selected_ids(response: team.TeamResponse, team_id: str, expected_ids: froze
     return selected
 
 
-def _public_enabled_capabilities(
+def _enabled_capabilities_with_providers(
     enabled: tuple[assistant_proposal.Capability, ...],
-    catalog: tuple[store_catalog.CatalogAssistant, ...],
+    catalog: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
 ) -> tuple[assistant_proposal.Capability, ...]:
     providers = {
         assistant.assistant_id: tuple(integration.provider for integration in assistant.integrations)
@@ -110,7 +112,7 @@ def _public_enabled_capabilities(
 def _prepared_plan(
     team_id: str,
     enabled_ids: tuple[str, ...],
-    shortlist: tuple[store_catalog.CatalogAssistant, ...],
+    shortlist: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
     selected: tuple[str, ...],
 ) -> Preparation:
     if not selected:
@@ -129,10 +131,34 @@ def _prepared_plan(
     )
 
 
+def _planning_catalog(
+    catalog: store_catalog.StoreCatalog,
+    include_local: bool,
+) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...] | None:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-catalog") as executor:
+        public_future = submit_in_context(executor, catalog.get)
+        local_future = submit_in_context(executor, team.list_local_assistants) if include_local else None
+        try:
+            public = public_future.result()
+        except store_catalog.CatalogUnavailableError:
+            public = ()
+        if local_future is None:
+            local_assistants = ()
+        else:
+            try:
+                local_assistants = local_catalog.primary(local_future.result())
+            except (TypeError, ValueError, team.TeamRequestError):
+                return None
+    local_ids = {assistant.assistant_id for assistant in local_assistants}
+    combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
+    return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
+
+
 def prepare(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
+    include_local: bool = False,
 ) -> Preparation:
     """Apply the deterministic gap gate, then admit only an exact planner subset."""
     enabled_ids = tuple(payload["assistant_ids"])
@@ -140,12 +166,14 @@ def prepare(
     if capabilities is None:
         return Preparation()
     installed, enabled = capabilities
-    public_catalog = catalog.get()
+    planning_catalog = _planning_catalog(catalog, include_local)
+    if planning_catalog is None:
+        return Preparation()
     shortlist = assistant_proposal.capability_shortlist(
         payload["message"],
-        public_catalog,
+        planning_catalog,
         installed_ids=frozenset(installed),
-        enabled=_public_enabled_capabilities(enabled, public_catalog),
+        enabled=_enabled_capabilities_with_providers(enabled, planning_catalog),
     )
     if not shortlist:
         return Preparation()
@@ -206,10 +234,14 @@ def event(
 
 def _install_and_prove_running(
     team_id: str,
-    assistant: store_catalog.CatalogAssistant,
+    assistant: store_catalog.CatalogAssistant | local_catalog.LocalAssistant,
 ) -> int | None:
     try:
-        result = assistant_install.install_publication(team_id, assistant)
+        result = (
+            assistant_install.install_local_snapshot(team_id, assistant)
+            if isinstance(assistant, local_catalog.LocalAssistant)
+            else assistant_install.install_publication(team_id, assistant)
+        )
     except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
         return 502
     if result.installed is None or not 200 <= result.status < 300:

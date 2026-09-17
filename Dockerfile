@@ -57,7 +57,7 @@ COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assis
     backend/chat/payloads.py \
     backend/chat/plan_delivery.py backend/chat/progress.py backend/chat/projection.py backend/chat/socket.py \
     backend/chat/socket_boundary.py backend/chat/task_resume.py \
-    backend/chat/store_catalog.py ./chat/
+    backend/chat/local_catalog.py backend/chat/store_catalog.py ./chat/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/transport.py ./team/
