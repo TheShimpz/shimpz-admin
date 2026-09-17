@@ -118,6 +118,8 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     assistant_version: '1.2.3',
     name: 'Hello Pulse',
     summary: 'Says hello from a Local snapshot.',
+    actions: ['say-hello'],
+    integrations: [],
     declared_creators: ['@shimpz'],
     created_at: '2026-08-28T17:00:00Z',
     image_id: LOCAL_IMAGE_ID,
