@@ -186,9 +186,13 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 assistant_uninstall.UninstallResult(200, False),
             )
 
-    def test_local_uninstall_accepts_only_the_exact_retained_image_command(self) -> None:
+    def test_local_uninstall_rejects_retired_image_fields(self) -> None:
         image_id = "sha256:" + ("d" * 64)
         valid = assistant_uninstall.team.TeamResponse(
+            200,
+            {"assistant": "shimpz-cloudflare", "uninstalled": True},
+        )
+        retired = assistant_uninstall.team.TeamResponse(
             200,
             {
                 "assistant": "shimpz-cloudflare",
@@ -197,29 +201,17 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 "remove_command": f"docker image rm {image_id}",
             },
         )
-        invalid = assistant_uninstall.team.TeamResponse(
-            200,
-            {
-                **valid.body,
-                "remove_command": "docker image prune",
-            },
-        )
-
-        self.assertEqual(
-            assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"),
-            (True, image_id, f"docker image rm {image_id}"),
-        )
+        self.assertTrue(assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"))
         self.assertEqual(
             assistant_uninstall._project_result(valid, "shimpz-cloudflare"),
-            assistant_uninstall.UninstallResult(
-                200,
-                True,
-                image_id,
-                f"docker image rm {image_id}",
-            ),
+            assistant_uninstall.UninstallResult(200, True),
         )
         with self.assertRaises(ValueError):
-            assistant_uninstall._uninstall_body(invalid, "shimpz-cloudflare")
+            assistant_uninstall._uninstall_body(retired, "shimpz-cloudflare")
+        self.assertEqual(
+            assistant_uninstall._project_result(retired, "shimpz-cloudflare"),
+            assistant_uninstall.UninstallResult(502),
+        )
 
     def test_malformed_absence_or_success_never_claims_removal(self) -> None:
         responses = (

@@ -293,7 +293,7 @@
     uninstalling = true;
     uninstallError = '';
     try {
-      const result = await uninstallAssistant(fetch, team.id, assistant.id);
+      await uninstallAssistant(fetch, team.id, assistant.id);
       let refreshed = false;
       try {
         await refreshTeamInventory(fetch);
@@ -313,9 +313,7 @@
           : 'store.assistantUninstallRefreshMessage', {
           assistant: assistant.name,
           team: team.name,
-        }) + (result.remove_command
-          ? ` ${$t('store.localImageRetainedMessage', { command: result.remove_command })}`
-          : ''),
+        }),
       });
       reopenAssistantDialog();
     } catch (error) {

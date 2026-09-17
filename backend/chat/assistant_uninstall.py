@@ -14,8 +14,6 @@ from protocol.http.v1 import websocket as chat_ws_common
 class UninstallResult:
     status: int
     uninstalled: bool | None = None
-    staged_image_retained: str | None = None
-    remove_command: str | None = None
 
 
 def discover(team_id: str, message: object) -> assistant_proposal.UninstallCandidate | None:
@@ -65,7 +63,7 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
         projected = _uninstall_body(response, assistant_id)
     except ValueError:
         return UninstallResult(502)
-    return UninstallResult(response.status, *projected)
+    return UninstallResult(response.status, projected)
 
 
 def _trace_id(value: object) -> bool:
@@ -84,7 +82,7 @@ def _is_exact_absence(response: team.TeamResponse) -> bool:
     )
 
 
-def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> tuple[bool, str | None, str | None]:
+def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant uninstall result is invalid")
     allowed = {"assistant", "uninstalled"}
@@ -92,16 +90,6 @@ def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> tuple[boo
         if not _trace_id(response.body["trace_id"]):
             raise ValueError("Team trace identifier is invalid")
         allowed.add("trace_id")
-    retained = response.body.get("staged_image_retained")
-    remove_command = response.body.get("remove_command")
-    if retained is not None or remove_command is not None:
-        try:
-            image_id = team.canonical_source_digest(retained)
-        except team.TeamRequestError as exc:
-            raise ValueError("Local Assistant retained image is invalid") from exc
-        if remove_command != f"docker image rm {image_id}":
-            raise ValueError("Local Assistant removal command is invalid")
-        allowed.update({"staged_image_retained", "remove_command"})
     uninstalled = response.body.get("uninstalled")
     if (
         set(response.body) != allowed
@@ -109,4 +97,4 @@ def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> tuple[boo
         or not isinstance(uninstalled, bool)
     ):
         raise ValueError("Assistant uninstall result is invalid")
-    return uninstalled, retained, remove_command
+    return uninstalled

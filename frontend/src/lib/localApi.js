@@ -366,20 +366,14 @@ export async function uninstallAssistant(fetcher, teamId, assistantId) {
       response.status,
     );
   }
-  const retained = 'staged_image_retained' in body || 'remove_command' in body;
   const expectedKeys = 'trace_id' in body
     ? ['assistant', 'trace_id', 'uninstalled']
     : ['assistant', 'uninstalled'];
-  if (retained) expectedKeys.push('staged_image_retained', 'remove_command');
   if (
     !exactKeys(body, expectedKeys) ||
     ('trace_id' in body && (typeof body.trace_id !== 'string' || !TRACE_ID_RE.test(body.trace_id))) ||
     body.assistant !== assistantId ||
-    typeof body.uninstalled !== 'boolean' ||
-    (retained && (
-      !SHA256_RE.test(body.staged_image_retained) ||
-      body.remove_command !== `docker image rm ${body.staged_image_retained}`
-    ))
+    typeof body.uninstalled !== 'boolean'
   ) {
     throw new LocalApiError(
       'The local Assistant uninstall returned an invalid response.',
@@ -389,11 +383,5 @@ export async function uninstallAssistant(fetcher, teamId, assistantId) {
   return {
     assistant: assistantId,
     uninstalled: body.uninstalled,
-    ...(retained
-      ? {
-          staged_image_retained: body.staged_image_retained,
-          remove_command: body.remove_command,
-        }
-      : {}),
   };
 }

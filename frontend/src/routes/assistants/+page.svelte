@@ -349,12 +349,9 @@
     busy = true;
     dialogError = '';
     try {
-      const result = await uninstallAssistant(fetch, team.id, assistantId);
+      await uninstallAssistant(fetch, team.id, assistantId);
       const refreshed = await refreshInstalled(team.id);
       finishAssistantDialog();
-      const retainedMessage = result.remove_command
-        ? ` ${$t('store.localImageRetainedMessage', { command: result.remove_command })}`
-        : '';
       showAdminNotice({
         tone: refreshed ? 'success' : 'info',
         label: $t(refreshed
@@ -365,7 +362,7 @@
           : 'store.assistantUninstallRefreshMessage', {
           assistant: assistantName,
           team: team.name,
-        }) + retainedMessage,
+        }),
       });
     } catch (error) {
       const failure = error instanceof Error ? error.message : copy.genericFailure;

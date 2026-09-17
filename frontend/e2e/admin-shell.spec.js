@@ -1034,8 +1034,6 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
       body: JSON.stringify({
         assistant: 'whatsapp',
         uninstalled: true,
-        staged_image_retained: imageId,
-        remove_command: `docker image rm ${imageId}`,
       }),
     });
   });
@@ -1094,9 +1092,11 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await uninstallAction.click();
   const uninstallDialog = page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' });
   await expect(uninstallDialog).toBeVisible();
+  await expect(uninstallDialog.getByText(/unused image is retired automatically/)).toBeVisible();
+  await expect(uninstallDialog.getByText(/requires staging it again/)).toBeVisible();
   await uninstallDialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
-  await expect(page.getByText(`docker image rm ${imageId}`, { exact: false })).toBeVisible();
+  await expect(page.getByText(/docker image rm/)).toHaveCount(0);
 });
 
 test('lets an explicit Local install replace the matching publication', async ({ page }) => {

@@ -819,7 +819,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
-    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team.',
+    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. For a Local build, its unused image is retired automatically once no Team binding or container references it.',
   );
   const confirmation = task.getByText('Uninstall this Assistant from this Team?', { exact: true });
   await expect(confirmation).toHaveCSS('text-align', 'right');
@@ -865,7 +865,10 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(outcome).toContainText(
     'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.',
   );
-  await expect(outcome).toContainText('You can install it again whenever you want.');
+  await expect(outcome).toContainText(
+    'A published release can be installed again. A Local build must be staged again first.',
+  );
+  await expect(outcome).not.toContainText('docker image rm');
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
   expect(chat.assistantIconRequests().some((url) => url.includes('/catalog-icon'))).toBe(false);

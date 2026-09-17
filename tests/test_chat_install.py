@@ -123,29 +123,6 @@ class ChatLifecycleTests(unittest.TestCase):
                 "uninstalled": True,
             },
         )
-        image_id = "sha256:" + ("d" * 64)
-        self.assertEqual(
-            lifecycle._result_event(
-                proposal,
-                assistant_uninstall.UninstallResult(
-                    200,
-                    True,
-                    image_id,
-                    f"docker image rm {image_id}",
-                ),
-            ),
-            {
-                "type": "assistant-uninstall",
-                "state": "uninstalled",
-                "proposal_id": "c" * 32,
-                "assistant_id": "shimpz-cloudflare",
-                "team_id": "team_1",
-                "uninstalled": True,
-                "staged_image_retained": image_id,
-                "remove_command": f"docker image rm {image_id}",
-            },
-        )
-
     def test_install_language_cannot_confirm_uninstall(self) -> None:
         async def scenario() -> None:
             connection = _connection(lifecycle_proposal=_proposal())
@@ -261,15 +238,7 @@ class ChatLifecycleTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_invalid_retained_image_and_saturated_uninstall_are_fail_closed(self) -> None:
-        invalid = assistant_uninstall.UninstallResult(
-            200,
-            True,
-            "invalid",
-            "docker image rm invalid",
-        )
-        self.assertFalse(lifecycle._valid_retained_image(invalid))
-
+    def test_saturated_uninstall_is_fail_closed(self) -> None:
         async def scenario() -> None:
             connection = _connection()
             send = mock.AsyncMock(return_value=True)

@@ -222,19 +222,15 @@ test('rejects malformed Local snapshot inventories, requests, and acknowledgemen
   );
 });
 
-test('validates the exact retained Local image removal command', async () => {
+test('accepts only the closed Assistant uninstall acknowledgement', async () => {
   assert.deepEqual(
     await uninstallAssistant(async () => response(200, {
       assistant: 'hello-pulse',
       uninstalled: true,
-      staged_image_retained: LOCAL_IMAGE_ID,
-      remove_command: `docker image rm ${LOCAL_IMAGE_ID}`,
     }), 'team_1', 'hello-pulse'),
     {
       assistant: 'hello-pulse',
       uninstalled: true,
-      staged_image_retained: LOCAL_IMAGE_ID,
-      remove_command: `docker image rm ${LOCAL_IMAGE_ID}`,
     },
   );
   await assert.rejects(
@@ -242,7 +238,7 @@ test('validates the exact retained Local image removal command', async () => {
       assistant: 'hello-pulse',
       uninstalled: true,
       staged_image_retained: LOCAL_IMAGE_ID,
-      remove_command: 'docker image prune',
+      remove_command: `docker image rm ${LOCAL_IMAGE_ID}`,
     }), 'team_1', 'hello-pulse'),
     /invalid response/,
   );
