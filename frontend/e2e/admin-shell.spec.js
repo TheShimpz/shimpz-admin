@@ -717,7 +717,154 @@ test('opens the Store destination workflow through shared modal controls', async
   expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
 });
 
-test('keeps Local snapshot failures visible without rendering cards', async ({ page }) => {
+test('never renders a matching publication while Local snapshots are settling', async ({ page }) => {
+  const imageId = `sha256:${'b'.repeat(64)}`;
+  const localIcon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
+    'base64',
+  );
+  let releaseLocalInventory;
+  const localInventoryGate = new Promise((resolve) => { releaseLocalInventory = resolve; });
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [{
+      assistant: 'shimpz-cloudflare',
+      assistant_version: '0.4.5',
+      status: 'running',
+      provenance: 'local',
+    }] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [
+        {
+          assistant_id: 'another-assistant',
+          assistant_version: '1.0.0',
+          creators: ['@creator'],
+          icon_digest: `sha256:${'d'.repeat(64)}`,
+          name: 'Published Helper',
+          source_digest: `sha256:${'c'.repeat(64)}`,
+          summary: 'A publication without a staged Local counterpart.',
+        },
+        {
+          assistant_id: 'shimpz-cloudflare',
+          assistant_version: '0.4.4',
+          creators: ['@shimpz'],
+          icon_digest: `sha256:${'e'.repeat(64)}`,
+          name: 'Published Cloudflare',
+          source_digest: `sha256:${'f'.repeat(64)}`,
+          summary: 'This publication must never render while Local inventory is pending.',
+        },
+      ],
+    }),
+  }));
+  await page.route('**/api/local-assistants', async (route) => {
+    await localInventoryGate;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        assistants: [{
+          assistant_id: 'shimpz-cloudflare',
+          assistant_version: '0.4.5',
+          name: 'Shimpz Cloudflare',
+          summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+          actions: ['list-zones'],
+          integrations: ['cloudflare'],
+          declared_creators: ['@shimpz'],
+          created_at: '2026-09-17T07:00:00Z',
+          image_id: imageId,
+          platform: 'linux/amd64',
+          provenance: 'local',
+          unpublished: true,
+        }],
+        trace_id: 'c'.repeat(32),
+      }),
+    });
+  });
+  await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: localIcon,
+  }));
+
+  const publicInventory = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/api/assistant-catalog'
+  ));
+  await page.goto('/assistants/');
+  await publicInventory;
+
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  await expect(catalog.locator('.assistant-catalog-loading')).toBeVisible();
+  await expect(catalog.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
+  await expect(catalog.getByText('Published Helper', { exact: true })).toHaveCount(0);
+  await expect(catalog.getByRole('button', { name: 'Install or replace' })).toHaveCount(0);
+
+  releaseLocalInventory();
+
+  const localCard = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  await expect(localCard).toBeVisible();
+  await expect(localCard).toHaveClass(/is-installed/);
+  await expect(localCard.getByText('Local', { exact: true })).toBeVisible();
+  await expect(catalog.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
+  await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
+  await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
+});
+
+test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {
+  let localInventoryRequests = 0;
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ profile: 'hosted', authenticated: true, account_id: 'account-1' }),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ version: 1, assistants: [{
+      assistant_id: 'published-helper',
+      assistant_version: '1.0.0',
+      creators: ['@creator'],
+      icon_digest: `sha256:${'e'.repeat(64)}`,
+      name: 'Published Helper',
+      source_digest: `sha256:${'f'.repeat(64)}`,
+      summary: 'A published Assistant available to Hosted.',
+    }] }),
+  }));
+  await page.route('**/api/local-assistants', (route) => {
+    localInventoryRequests += 1;
+    return route.fulfill({ status: 500, body: '{}' });
+  });
+
+  await page.goto('/assistants/');
+
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
+  await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
+  expect(localInventoryRequests).toBe(0);
+});
+
+test('keeps public discovery available when Local snapshot enumeration fails', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -733,7 +880,15 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
   }));
   await page.route('**/api/assistant-catalog', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ version: 1, assistants: [] }),
+    body: JSON.stringify({ version: 1, assistants: [{
+      assistant_id: 'published-helper',
+      assistant_version: '1.0.0',
+      creators: ['@creator'],
+      icon_digest: `sha256:${'e'.repeat(64)}`,
+      name: 'Published Helper',
+      source_digest: `sha256:${'f'.repeat(64)}`,
+      summary: 'Public discovery remains available after an explicit Local inventory failure.',
+    }] }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     status: 503,
@@ -764,6 +919,7 @@ test('keeps Local snapshot failures visible without rendering cards', async ({ p
   await expect(catalog.getByText('Local Assistant snapshots are unavailable', { exact: true })).toBeVisible();
   await expect(catalog.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
   await expect(catalog.locator('.local-assistant-card')).toHaveCount(0);
+  await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
 });
 
 test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {

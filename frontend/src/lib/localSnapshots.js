@@ -36,3 +36,9 @@ export function withoutLocallyStagedAssistants(published, localGroups) {
   const localIds = new Set(localGroups.map((group) => group.assistant_id));
   return published.filter((assistant) => !localIds.has(assistant.assistant_id));
 }
+
+/** Do not project publications until Local identity shadowing can be applied. */
+export function projectPublishedAssistants(published, localGroups, localInventorySettled) {
+  if (localInventorySettled !== true) return [];
+  return withoutLocallyStagedAssistants(published, localGroups);
+}

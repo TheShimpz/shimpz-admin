@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { AssistantCard, Button, ChoiceItem, DialogFrame, Modal, Notice, PageIntro, TextField, Toolbar } from '@shimpz/frontend';
+  import { AssistantCard, Button, ChoiceItem, DialogFrame, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
   import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
@@ -16,7 +16,7 @@
   } from '$lib/localApi.js';
   import { t } from '$lib/i18n.js';
   import { loadLocalAssistantIcon } from '$lib/localAssistantIcons.js';
-  import { groupLocalAssistantSnapshots, withoutLocallyStagedAssistants } from '$lib/localSnapshots.js';
+  import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
@@ -42,6 +42,7 @@
   let publicCatalogRequest = 0;
   let localSnapshots = $state([]);
   let localSnapshotPhase = $state('idle');
+  let localSnapshotSettled = $state(false);
   let localSnapshotError = $state('');
   let localSnapshotRequest = 0;
   let localInstallImageId = $state('');
@@ -58,7 +59,17 @@
   let localProfile = $derived($sessionContext.profile === 'local');
   let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
   let visiblePublicAssistants = $derived(
-    withoutLocallyStagedAssistants(publicAssistants, localSnapshotGroups),
+    projectPublishedAssistants(
+      publicAssistants,
+      localSnapshotGroups,
+      !localProfile || localSnapshotSettled,
+    ),
+  );
+  let catalogPresentationPending = $derived(
+    publicCatalogPhase === 'loading' || (localProfile && !localSnapshotSettled),
+  );
+  let catalogBusy = $derived(
+    catalogPresentationPending || localSnapshotPhase === 'loading' || Boolean(localInstallImageId),
   );
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
@@ -409,11 +420,13 @@
       if (request !== localSnapshotRequest) return;
       localSnapshots = snapshots;
       localSnapshotPhase = 'ready';
+      localSnapshotSettled = true;
       void loadLocalSnapshotIcons(snapshots);
     } catch (error) {
       if (request !== localSnapshotRequest) return;
       localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
       localSnapshotPhase = 'error';
+      localSnapshotSettled = true;
     }
   }
 
@@ -538,7 +551,7 @@
 <section
   class="assistant-catalog"
   aria-label={$t('store.frameTitle')}
-  aria-busy={publicCatalogPhase === 'loading' || localSnapshotPhase === 'loading' || Boolean(localInstallImageId)}
+  aria-busy={catalogBusy}
 >
   {#if !activeTeamRecord && (localSnapshotGroups.length > 0 || visiblePublicAssistants.length > 0)}
     <Notice variant="info">{localCopy.localNoTeam}</Notice>
@@ -547,6 +560,10 @@
   {#if publicCatalogError}<Notice variant="error">{publicCatalogError}</Notice>{/if}
 
   <div class="assistant-grid">
+    {#if catalogPresentationPending}
+      <Skeleton class="assistant-catalog-loading" height="18rem" />
+    {/if}
+
     {#each localSnapshotGroups as group (group.assistant_id)}
       {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
       {@const localInstalled = installed?.provenance === 'local'}

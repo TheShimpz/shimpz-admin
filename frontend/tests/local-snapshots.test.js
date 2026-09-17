@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { groupLocalAssistantSnapshots, withoutLocallyStagedAssistants } from '../src/lib/localSnapshots.js';
+import {
+  groupLocalAssistantSnapshots,
+  projectPublishedAssistants,
+  withoutLocallyStagedAssistants,
+} from '../src/lib/localSnapshots.js';
 
 function snapshot(assistantId, createdAt, imageCharacter) {
   return {
@@ -68,6 +72,22 @@ test('a staged Local identity shadows the matching Store publication', () => {
   ];
 
   assert.deepEqual(withoutLocallyStagedAssistants(published, localGroups), [
+    { assistant_id: 'another-assistant' },
+  ]);
+});
+
+test('withholds publications until the first Local snapshot inventory settles', () => {
+  const published = [
+    { assistant_id: 'shimpz-cloudflare' },
+    { assistant_id: 'another-assistant' },
+  ];
+  const localGroups = groupLocalAssistantSnapshots([
+    snapshot('shimpz-cloudflare', '2026-09-15T08:00:00Z', 'c'),
+  ]);
+
+  assert.deepEqual(projectPublishedAssistants(published, [], false), []);
+  assert.deepEqual(projectPublishedAssistants(published, [], true), published);
+  assert.deepEqual(projectPublishedAssistants(published, localGroups, true), [
     { assistant_id: 'another-assistant' },
   ]);
 });
