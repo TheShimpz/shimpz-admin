@@ -400,9 +400,15 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
   await expect(page.getByText('Technical detail: Team catalog unavailable.')).toBeVisible();
 });
 
-test('releases a non-Chat route after Team hydration without waiting for a model', async ({ page }) => {
+test('keeps boot visible until the initial Assistant card already has its final icon', async ({ page }) => {
   const teamGate = deferred();
-  const inferenceGate = deferred();
+  const iconGate = deferred();
+  const iconRequested = deferred();
+  const imageId = `sha256:${'a'.repeat(64)}`;
+  const icon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
+    'base64',
+  );
   await page.route('**/api/**', (route) => json(
     route,
     { detail: 'Unavailable outside this boot contract.' },
@@ -419,32 +425,96 @@ test('releases a non-Chat route after Team hydration without waiting for a model
   });
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
   await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/teams/marketing/files', (route) => json(route, { files: [] }));
-  await page.route('**/api/model-providers', (route) => json(route, {
-    providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
-      ...provider,
-      configured: true,
-      masked: '••••1234',
-    })),
+  await page.route('**/api/assistant-catalog', (route) => json(route, {
+    version: 1,
+    assistants: [],
   }));
-  await page.route('**/api/teams/marketing/inference', async (route) => {
-    await inferenceGate.promise;
-    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' });
+  await page.route('**/api/local-assistants', (route) => json(route, {
+    assistants: [{
+      assistant_id: 'shimpz-cloudflare',
+      assistant_version: '0.4.5',
+      name: 'Shimpz Cloudflare',
+      summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+      actions: ['list-zones'],
+      integrations: ['cloudflare'],
+      declared_creators: ['@shimpz'],
+      created_at: '2026-09-17T07:00:00Z',
+      image_id: imageId,
+      platform: 'linux/amd64',
+      provenance: 'local',
+      unpublished: true,
+    }],
+    trace_id: 'c'.repeat(32),
+  }));
+  await page.route('**/api/local-assistants/*/icon', async (route) => {
+    iconRequested.resolve();
+    await iconGate.promise;
+    await route.fulfill({ contentType: 'image/png', body: icon });
   });
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html><body style="margin:0;background:#000"></body></html>',
+
+  await page.goto('/assistants/');
+  const boot = page.locator('[data-slot="boot-screen"]');
+  const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  await expect(boot).toBeVisible();
+  teamGate.resolve();
+  await iconRequested.promise;
+  await expect(boot).toBeVisible();
+  await expect(card).toBeHidden();
+
+  await page.evaluate(() => {
+    window.__assistantInterimPaint = false;
+    const observer = new MutationObserver(() => {
+      const currentBoot = document.querySelector('[data-slot="boot-screen"]');
+      const currentCard = document.querySelector('[aria-label="shimpz-cloudflare — Local"]');
+      if (!currentBoot && currentCard && !currentCard.querySelector('img[src^="blob:"]')) {
+        window.__assistantInterimPaint = true;
+      }
+    });
+    observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+  });
+  iconGate.resolve();
+
+  await expect(boot).toHaveCount(0);
+  await expect(card).toBeVisible();
+  await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
+  expect(await page.evaluate(() => window.__assistantInterimPaint)).toBe(false);
+});
+
+test('releases the Assistants route when initial catalog hydration does not settle', async ({ page }) => {
+  const catalogGate = deferred();
+  const catalogRequested = deferred();
+  await page.route('**/api/**', (route) => json(
+    route,
+    { detail: 'Unavailable outside this boot contract.' },
+    503,
+  ));
+  await routeSession(page, {
+    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+  });
+  await page.route('**/api/teams', (route) => json(route, {
+    teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+  }));
+  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
+  await page.route('**/api/assistant-catalog', async (route) => {
+    catalogRequested.resolve();
+    await catalogGate.promise;
+    await json(route, { version: 1, assistants: [] });
+  });
+  await page.route('**/api/local-assistants', (route) => json(route, {
+    assistants: [],
+    trace_id: 'c'.repeat(32),
   }));
 
   await page.goto('/assistants/');
   const boot = page.locator('[data-slot="boot-screen"]');
+  await catalogRequested.promise;
   await expect(boot).toBeVisible();
-  const inferenceRequest = page.waitForRequest('**/api/teams/marketing/inference');
-  teamGate.resolve();
-  await inferenceRequest;
-  await expect(boot).toHaveCount(0);
-  await expect(page.getByText('Loading the Assistant Store…')).toBeVisible();
-  inferenceGate.resolve();
+  await expect(boot).toHaveCount(0, { timeout: 3500 });
+  await expect(page.locator('.assistant-catalog-loading')).toBeVisible();
+
+  catalogGate.resolve();
+  await expect(page.locator('.assistant-catalog-loading')).toHaveCount(0);
 });
 
 test('releases to retry when the session check reaches an error', async ({ page }) => {

@@ -1,10 +1,11 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { onMount } from 'svelte';
+  import { getContext, onMount, tick } from 'svelte';
   import { AssistantCard, Button, ChoiceItem, DialogFrame, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
+  import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
   import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
   import {
     installAssistant,
@@ -15,11 +16,13 @@
     uninstallAssistant,
   } from '$lib/localApi.js';
   import { t } from '$lib/i18n.js';
-  import { loadLocalAssistantIcon } from '$lib/localAssistantIcons.js';
+  import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { jsonObject } from '$lib/validate.js';
+
+  const ICON_PRESENTATION_BUDGET_MS = 1500;
 
   let dialogError = $state('');
   let busy = $state(false);
@@ -39,19 +42,21 @@
   let publicAssistants = $state([]);
   let publicCatalogPhase = $state('loading');
   let publicCatalogError = $state('');
-  let publicCatalogRequest = 0;
   let localSnapshots = $state([]);
   let localSnapshotPhase = $state('idle');
   let localSnapshotSettled = $state(false);
   let localSnapshotError = $state('');
-  let localSnapshotRequest = 0;
   let localInstallImageId = $state('');
   let localInstallDialogOpen = $state(false);
   let localInstallDialogError = $state('');
   let pendingLocalSnapshot = $state(null);
   let pendingLocalSnapshots = $state([]);
-  let localIconUrls = $state({});
-  let localIconRequest = 0;
+  let catalogIconUrls = $state({});
+  let catalogPresentationSettled = $state(false);
+  let catalogRefreshing = $state(false);
+  let catalogPresentationRequest = 0;
+  let catalogPresentationController = null;
+  const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
   let destinationCopy = $derived($t('assistantDestination'));
@@ -66,10 +71,10 @@
     ),
   );
   let catalogPresentationPending = $derived(
-    publicCatalogPhase === 'loading' || (localProfile && !localSnapshotSettled),
+    !catalogPresentationSettled,
   );
   let catalogBusy = $derived(
-    catalogPresentationPending || localSnapshotPhase === 'loading' || Boolean(localInstallImageId),
+    catalogPresentationPending || catalogRefreshing || Boolean(localInstallImageId),
   );
   let pendingAssistantAvailable = $derived(
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
@@ -393,66 +398,162 @@
     showAssistantDialog();
   }
 
-  async function loadPublicCatalog() {
-    const request = ++publicCatalogRequest;
-    publicCatalogPhase = 'loading';
+  function localIconKey(snapshot) {
+    return `local:${snapshot.image_id}`;
+  }
+
+  function publicIconKey(assistant) {
+    return `public:${assistant.assistant_id}:${assistant.icon_digest}`;
+  }
+
+  function boundedFailure(error, fallback) {
+    return error instanceof Error && error.name !== 'AbortError' ? error.message : fallback;
+  }
+
+  function decodeImage(image, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('The Assistant icon request was aborted.', 'AbortError'));
+        return;
+      }
+      const abort = () => {
+        reject(new DOMException('The Assistant icon request was aborted.', 'AbortError'));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      image.decode().then(resolve, reject).finally(() => {
+        signal.removeEventListener('abort', abort);
+      });
+    });
+  }
+
+  async function decodedIconUrl(icon, signal) {
+    const url = URL.createObjectURL(icon);
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    try {
+      await decodeImage(image, signal);
+      if (signal.aborted) throw new DOMException('The Assistant icon request was aborted.', 'AbortError');
+      return url;
+    } catch (error) {
+      image.src = '';
+      URL.revokeObjectURL(url);
+      throw error;
+    }
+  }
+
+  function releaseCatalogIconUrls() {
+    for (const url of Object.values(catalogIconUrls)) URL.revokeObjectURL(url);
+    catalogIconUrls = {};
+  }
+
+  function releaseObsoleteIconUrls(previousUrls, nextUrls) {
+    for (const [key, url] of Object.entries(previousUrls)) {
+      if (nextUrls[key] !== url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function nextPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  async function loadCatalogPresentation() {
+    const request = ++catalogPresentationRequest;
+    catalogPresentationController?.abort();
+    const controller = new AbortController();
+    catalogPresentationController = controller;
+    catalogRefreshing = true;
     publicCatalogError = '';
-    try {
-      const assistants = await listPublicAssistantCatalog(fetch);
-      if (request !== publicCatalogRequest) return;
-      publicAssistants = assistants;
-      publicCatalogPhase = 'ready';
-    } catch (error) {
-      if (request !== publicCatalogRequest) return;
-      publicAssistants = [];
-      publicCatalogError = error instanceof Error ? error.message : copy.genericFailure;
-      publicCatalogPhase = 'error';
+    if (!catalogPresentationSettled) publicCatalogPhase = 'loading';
+    if (localProfile) {
+      localSnapshotError = '';
+      if (!catalogPresentationSettled) localSnapshotPhase = 'loading';
     }
-  }
 
-  async function loadLocalSnapshots() {
-    if (!localProfile) return;
-    const request = ++localSnapshotRequest;
-    localSnapshotPhase = 'loading';
-    localSnapshotError = '';
-    try {
-      const snapshots = await listLocalAssistantSnapshots(fetch);
-      if (request !== localSnapshotRequest) return;
-      localSnapshots = snapshots;
-      localSnapshotPhase = 'ready';
-      localSnapshotSettled = true;
-      void loadLocalSnapshotIcons(snapshots);
-    } catch (error) {
-      if (request !== localSnapshotRequest) return;
-      localSnapshotError = error instanceof Error ? error.message : localCopy.localFailure;
-      localSnapshotPhase = 'error';
-      localSnapshotSettled = true;
+    const [publicResult, localResult] = await Promise.allSettled([
+      listPublicAssistantCatalog(fetch, controller.signal),
+      localProfile
+        ? listLocalAssistantSnapshots(fetch, controller.signal)
+        : Promise.resolve(localSnapshots),
+    ]);
+    if (request !== catalogPresentationRequest) return;
+
+    const nextPublicAssistants = publicResult.status === 'fulfilled' ? publicResult.value : [];
+    const nextPublicPhase = publicResult.status === 'fulfilled' ? 'ready' : 'error';
+    const nextPublicError = publicResult.status === 'fulfilled'
+      ? ''
+      : boundedFailure(publicResult.reason, copy.genericFailure);
+
+    const nextLocalSnapshots = localResult.status === 'fulfilled' ? localResult.value : [];
+    const nextLocalPhase = localResult.status === 'fulfilled' ? 'ready' : 'error';
+    const nextLocalError = localResult.status === 'fulfilled'
+      ? ''
+      : boundedFailure(localResult.reason, localCopy.localFailure);
+
+    const groups = groupLocalAssistantSnapshots(nextLocalSnapshots);
+    const published = projectPublishedAssistants(nextPublicAssistants, groups, true);
+    const entries = [
+      ...groups.map((group) => ({
+        key: localIconKey(group.primary),
+        load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
+          signal: controller.signal,
+        }),
+      })),
+      ...published.map((assistant) => ({
+        key: publicIconKey(assistant),
+        load: () => loadPublicAssistantIcon(fetch, assistant.assistant_id, {
+          signal: controller.signal,
+        }),
+      })),
+    ];
+    const previousUrls = catalogIconUrls;
+    const nextUrls = {};
+    const createdUrls = [];
+    for (const entry of entries) {
+      if (previousUrls[entry.key]) nextUrls[entry.key] = previousUrls[entry.key];
     }
-  }
 
-  function releaseLocalIconUrls() {
-    for (const url of Object.values(localIconUrls)) URL.revokeObjectURL(url);
-    localIconUrls = {};
-  }
-
-  async function loadLocalSnapshotIcons(snapshots) {
-    const request = ++localIconRequest;
-    releaseLocalIconUrls();
-    const primarySnapshots = groupLocalAssistantSnapshots(snapshots).map((group) => group.primary);
-    await Promise.allSettled(primarySnapshots.map(async (snapshot) => {
+    const iconTimeout = globalThis.setTimeout(
+      () => controller.abort(),
+      ICON_PRESENTATION_BUDGET_MS,
+    );
+    await Promise.allSettled(entries.map(async (entry) => {
+      if (nextUrls[entry.key]) return;
       try {
-        const icon = await loadLocalAssistantIcon(fetch, snapshot.image_id);
-        if (request !== localIconRequest) return;
-        const url = URL.createObjectURL(icon);
-        if (request !== localIconRequest) {
+        const url = await decodedIconUrl(await entry.load(), controller.signal);
+        if (request !== catalogPresentationRequest) {
           URL.revokeObjectURL(url);
           return;
         }
-        localIconUrls = { ...localIconUrls, [snapshot.image_id]: url };
+        createdUrls.push(url);
+        nextUrls[entry.key] = url;
       } catch {
         // The shared card retains its bounded fallback icon when preview is unavailable.
       }
     }));
+    globalThis.clearTimeout(iconTimeout);
+    if (request !== catalogPresentationRequest) {
+      for (const url of createdUrls) URL.revokeObjectURL(url);
+      return;
+    }
+
+    publicAssistants = nextPublicAssistants;
+    publicCatalogPhase = nextPublicPhase;
+    publicCatalogError = nextPublicError;
+    if (localProfile) {
+      localSnapshots = nextLocalSnapshots;
+      localSnapshotPhase = nextLocalPhase;
+      localSnapshotError = nextLocalError;
+      localSnapshotSettled = true;
+    }
+    catalogIconUrls = nextUrls;
+    catalogPresentationSettled = true;
+    catalogRefreshing = false;
+    await tick();
+    await nextPaint();
+    releaseObsoleteIconUrls(previousUrls, nextUrls);
+    if (request !== catalogPresentationRequest) return;
+    initialViewReadiness?.settleAssistants?.();
   }
 
   function beginLocalSnapshotInstall(group) {
@@ -498,7 +599,7 @@
           team: team.name,
         }),
       });
-      void loadLocalSnapshots();
+      void loadCatalogPresentation();
     } catch (error) {
       localInstallDialogError = error instanceof Error ? error.message : localCopy.localFailure;
     } finally {
@@ -507,13 +608,11 @@
   }
 
   onMount(() => {
-    void loadPublicCatalog();
-    if (localProfile) void loadLocalSnapshots();
+    void loadCatalogPresentation();
     return () => {
-      publicCatalogRequest += 1;
-      localSnapshotRequest += 1;
-      localIconRequest += 1;
-      releaseLocalIconUrls();
+      catalogPresentationRequest += 1;
+      catalogPresentationController?.abort();
+      releaseCatalogIconUrls();
     };
   });
 </script>
@@ -562,9 +661,8 @@
   <div class="assistant-grid">
     {#if catalogPresentationPending}
       <Skeleton class="assistant-catalog-loading" height="18rem" />
-    {/if}
-
-    {#each localSnapshotGroups as group (group.assistant_id)}
+    {:else}
+      {#each localSnapshotGroups as group (group.assistant_id)}
       {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
       {@const localInstalled = installed?.provenance === 'local'}
       {@const installing = [group.primary, ...group.alternatives].some(
@@ -576,8 +674,8 @@
         name={group.primary.name}
         meta={group.primary.declared_creators.join(', ')}
         summary={group.primary.summary}
-        iconSrc={localIconUrls[group.primary.image_id]}
-        iconLoading="lazy"
+        iconSrc={catalogIconUrls[localIconKey(group.primary)]}
+        iconLoading="eager"
         badge={localCopy.localBadge}
         badgeTone="local"
         installed={localInstalled}
@@ -593,9 +691,9 @@
         aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
         aria-busy={installing}
       />
-    {/each}
+      {/each}
 
-    {#each visiblePublicAssistants as assistant (assistant.assistant_id)}
+      {#each visiblePublicAssistants as assistant (assistant.assistant_id)}
       {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === assistant.assistant_id)}
       {@const publicationInstalled = installed?.provenance === 'published'}
       {@const localBindingWithoutSnapshot = installed?.provenance === 'local'}
@@ -605,8 +703,8 @@
         name={assistant.name}
         meta={assistant.creators.join(', ')}
         summary={assistant.summary}
-        iconSrc={`/api/assistants/${assistant.assistant_id}/catalog-icon`}
-        iconLoading="lazy"
+        iconSrc={catalogIconUrls[publicIconKey(assistant)]}
+        iconLoading="eager"
         badge={localCopy.publicBadge}
         installed={publicationInstalled}
         actionLabel={publicationInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
@@ -620,18 +718,19 @@
           : beginInstall(assistant.assistant_id, assistant.source_digest)}
         aria-label={assistant.assistant_id}
       />
-    {/each}
+      {/each}
+    {/if}
   </div>
 
   {#if localSnapshotPhase === 'error' || publicCatalogPhase === 'error'}
     <Toolbar class="catalog-actions">
       {#if localSnapshotPhase === 'error'}
-        <Button variant="secondary" type="button" onclick={loadLocalSnapshots} disabled={Boolean(localInstallImageId)}>
+        <Button variant="secondary" type="button" onclick={loadCatalogPresentation} disabled={Boolean(localInstallImageId)}>
           {localCopy.localRetry}
         </Button>
       {/if}
       {#if publicCatalogPhase === 'error'}
-        <Button variant="secondary" type="button" onclick={loadPublicCatalog}>{copy.retryStore}</Button>
+        <Button variant="secondary" type="button" onclick={loadCatalogPresentation}>{copy.retryStore}</Button>
       {/if}
     </Toolbar>
   {/if}

@@ -72,11 +72,11 @@ export async function listAssistantCatalog(fetcher) {
 }
 
 /** Read the exact bounded public Store projection used by the native Admin catalog. */
-export async function listPublicAssistantCatalog(fetcher) {
+export async function listPublicAssistantCatalog(fetcher, signal) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant catalog request.');
-  const response = await fetcher('/api/assistant-catalog', {
-    cache: 'no-store', headers: { Accept: 'application/json' },
-  });
+  const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
+  if (signal) options.signal = signal;
+  const response = await fetcher('/api/assistant-catalog', options);
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -212,11 +212,11 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
 }
 
 /** List bounded unpublished snapshots with explicitly unverified display declarations. */
-export async function listLocalAssistantSnapshots(fetcher) {
+export async function listLocalAssistantSnapshots(fetcher, signal) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Local Assistant snapshot request.');
-  const response = await fetcher('/api/local-assistants', {
-    cache: 'no-store', headers: { Accept: 'application/json' },
-  });
+  const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
+  if (signal) options.signal = signal;
+  const response = await fetcher('/api/local-assistants', options);
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(

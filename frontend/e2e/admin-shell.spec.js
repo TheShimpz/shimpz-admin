@@ -807,15 +807,17 @@ test('never renders a matching publication while Local snapshots are settling', 
   await page.goto('/assistants/');
   await publicInventory;
 
-  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
-  await expect(catalog.locator('.assistant-catalog-loading')).toBeVisible();
-  await expect(catalog.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
-  await expect(catalog.getByText('Published Helper', { exact: true })).toHaveCount(0);
-  await expect(catalog.getByRole('button', { name: 'Install or replace' })).toHaveCount(0);
+  const boot = page.locator('[data-slot="boot-screen"]');
+  const catalog = page.locator('section.assistant-catalog');
+  await expect(boot).toBeVisible();
+  await expect(catalog).toBeHidden();
+  await expect(page.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Published Helper', { exact: true })).toHaveCount(0);
 
   releaseLocalInventory();
 
   const localCard = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  await expect(boot).toHaveCount(0);
   await expect(localCard).toBeVisible();
   await expect(localCard).toHaveClass(/is-installed/);
   await expect(localCard.getByText('Local', { exact: true })).toBeVisible();

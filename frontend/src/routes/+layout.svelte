@@ -3,13 +3,14 @@
   import '../app.css';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { onMount, tick } from 'svelte';
+  import { onMount, setContext, tick } from 'svelte';
   import QRCode from 'qrcode';
   import AdminShell from '$lib/AdminShell.svelte';
   import AuthScreen from '$lib/AuthScreen.svelte';
   import BootScreen from '$lib/BootScreen.svelte';
   import { clearAdminNotice } from '$lib/adminNotice.js';
   import { locale, LOCALES, t } from '$lib/i18n.js';
+  import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
   import { clearModelContext, modelContext } from '$lib/modelContext.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '$lib/passkey.js';
   import { clearSessionContext, setSessionContext } from '$lib/sessionContext.js';
@@ -29,6 +30,14 @@
   let busy = $state(false);
   let initialBoot = $state(true);
   let redirectAfterAuthentication = $state(false);
+  let assistantsViewSettled = $state(false);
+  let assistantsViewDeadlineReached = $state(false);
+
+  setContext(INITIAL_VIEW_READINESS, {
+    settleAssistants() {
+      assistantsViewSettled = true;
+    },
+  });
 
   let active = $derived(
     page.url.pathname.startsWith('/chat')
@@ -38,12 +47,27 @@
         : '',
   );
   let sessionSettled = $derived(phase !== 'checking' || error !== '');
+  let exactAssistantsRoute = $derived(/^\/assistants\/?$/.test(page.url.pathname));
   let initialStateSettled = $derived.by(() => {
     if (phase !== 'ready') return sessionSettled;
+    if (!['ready', 'error'].includes($teamContext.phase)) return false;
+    if (exactAssistantsRoute) return assistantsViewSettled || assistantsViewDeadlineReached;
     if ($teamContext.phase === 'error') return true;
-    if ($teamContext.phase !== 'ready') return false;
     if (!$teamContext.selectedTeamId || active !== 'chat') return true;
     return $modelContext.phase === 'ready' || $modelContext.phase === 'error';
+  });
+
+  $effect(() => {
+    if (
+      !initialBoot ||
+      phase !== 'ready' ||
+      !exactAssistantsRoute ||
+      assistantsViewSettled
+    ) return;
+    const timeout = globalThis.setTimeout(() => {
+      assistantsViewDeadlineReached = true;
+    }, 2200);
+    return () => globalThis.clearTimeout(timeout);
   });
 
   $effect(() => {

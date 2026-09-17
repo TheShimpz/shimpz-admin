@@ -113,6 +113,7 @@ test('uninstalls through the exact Team route and accepts idempotent absence', a
 });
 
 test('lists and installs only exact unpublished Local Assistant snapshots', async () => {
+  const controller = new AbortController();
   const snapshot = {
     assistant_id: 'hello-pulse',
     assistant_version: '1.2.3',
@@ -144,13 +145,14 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     });
   };
 
-  assert.deepEqual(await listLocalAssistantSnapshots(fetcher), [snapshot]);
+  assert.deepEqual(await listLocalAssistantSnapshots(fetcher, controller.signal), [snapshot]);
   assert.deepEqual(await installLocalAssistant(fetcher, 'team_1', LOCAL_IMAGE_ID), {
     assistant: 'hello-pulse',
     image_id: LOCAL_IMAGE_ID,
     installed: false,
     updated: true,
   });
+  assert.equal(calls[0].options.signal, controller.signal);
   assert.deepEqual(calls[1], {
     url: '/api/teams/team_1/assistants/local',
     options: {
@@ -337,6 +339,7 @@ test('projects only bounded display identities from the local Assistant catalog'
 });
 
 test('projects the strict public Assistant catalog used by native cards', async () => {
+  const controller = new AbortController();
   const assistant = {
     assistant_id: 'shimpz-cloudflare',
     assistant_version: '0.4.5',
@@ -348,11 +351,15 @@ test('projects the strict public Assistant catalog used by native cards', async 
   };
   const fetcher = async (url, options) => {
     assert.equal(url, '/api/assistant-catalog');
-    assert.deepEqual(options, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    assert.deepEqual(options, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
     return response(200, { version: 1, assistants: [assistant] });
   };
 
-  assert.deepEqual(await listPublicAssistantCatalog(fetcher), [assistant]);
+  assert.deepEqual(await listPublicAssistantCatalog(fetcher, controller.signal), [assistant]);
 });
 
 test('rejects malformed public Assistant catalog projections', async () => {
