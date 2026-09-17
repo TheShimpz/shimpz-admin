@@ -466,12 +466,14 @@ test('chat admits only the exact aggregate Assistant installation plan lifecycle
       name: 'Shimpz Cloudflare',
       summary: 'Manage Cloudflare zones and DNS records.',
       providers: ['cloudflare'],
+      provenance: 'local',
     },
     {
       id: 'whatsapp',
       name: 'WhatsApp',
       summary: 'Send reviewed WhatsApp messages.',
       providers: ['meta', 'whatsapp'],
+      provenance: 'published',
     },
   ];
   const frame = (state, statuses, extra = {}) => ({
@@ -509,6 +511,7 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     name: 'Shimpz Cloudflare',
     summary: 'Manage Cloudflare zones and DNS records.',
     providers: ['cloudflare'],
+    provenance: 'local',
     status: 'pending',
   };
   const whatsapp = {
@@ -516,6 +519,7 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     name: 'WhatsApp',
     summary: 'Send reviewed WhatsApp messages.',
     providers: ['meta', 'whatsapp'],
+    provenance: 'published',
     status: 'pending',
   };
   const planned = {
@@ -533,6 +537,7 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     { ...planned, assistants: [cloudflare, cloudflare] },
     { ...planned, assistants: [] },
     { ...planned, assistants: Array.from({ length: 5 }, (_, index) => ({ ...cloudflare, id: `item-${index}` })) },
+    { ...planned, assistants: [{ ...cloudflare, provenance: 'private' }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, providers: ['x', 'cloudflare'] }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, providers: ['cloudflare', 'cloudflare'] }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, status: 'installing' }, whatsapp] },

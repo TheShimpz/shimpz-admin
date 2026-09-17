@@ -203,6 +203,7 @@ def _items(plan: Plan, states: dict[str, str]) -> tuple[dict[str, object], ...]:
             "name": assistant.name,
             "summary": assistant.summary,
             "providers": sorted({integration.provider for integration in assistant.integrations}),
+            "provenance": "local" if isinstance(assistant, local_catalog.LocalAssistant) else "published",
             "status": states[assistant.assistant_id],
         }
         for assistant in plan.assistants

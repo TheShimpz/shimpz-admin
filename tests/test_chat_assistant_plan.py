@@ -539,6 +539,16 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         self.assertNotIn("digest", repr(event))
         self.assertNotIn("objective", repr(event))
 
+    def test_event_discloses_only_closed_install_provenance(self) -> None:
+        local = local_catalog.primary(_local_inventory())[0]
+        plan = self._plan(CLOUDFLARE, local)
+
+        items = assistant_plan.initial_items(plan)
+
+        self.assertEqual([item["provenance"] for item in items], ["published", "local"])
+        self.assertNotIn("image_id", repr(items))
+        self.assertNotIn("source_digest", repr(items))
+
 
 if __name__ == "__main__":
     unittest.main()

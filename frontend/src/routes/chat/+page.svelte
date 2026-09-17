@@ -247,6 +247,7 @@
         return assistant.id !== next.id ||
           assistant.name !== next.name ||
           assistant.summary !== next.summary ||
+          assistant.provenance !== next.provenance ||
           assistant.providers.join('\0') !== next.providers.join('\0');
       })
     ) throw new Error('mismatched install plan');
@@ -1329,6 +1330,9 @@
                           />
                         {/snippet}
                         {#snippet planDetails()}
+                          {#if assistant.provenance === 'local'}
+                            <span class="assistant-lifecycle-provenance">LOCAL</span>
+                          {/if}
                           {#if assistant.status === 'failed' && exchange.assistant.installPlan.status}
                             <span class="assistant-lifecycle-detail-copy">
                               HTTP {exchange.assistant.installPlan.status}
@@ -1343,7 +1347,9 @@
                           state={installPlanVisualState(assistant.status)}
                           status={installPlanStatus(assistant.status)}
                           media={planMedia}
-                          details={assistant.status === 'failed' ? planDetails : undefined}
+                          details={assistant.provenance === 'local' || assistant.status === 'failed'
+                            ? planDetails
+                            : undefined}
                         />
                       {/each}
                     </div>
@@ -1671,6 +1677,15 @@
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;
+  }
+
+  :global(.assistant-lifecycle-task .assistant-lifecycle-provenance) {
+    display: inline-block;
+    padding: 0.18rem 0.42rem;
+    color: var(--shimpz-color-yellow);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border: 1px solid color-mix(in srgb, var(--shimpz-color-yellow) 72%, transparent);
   }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-confirm-copy) {

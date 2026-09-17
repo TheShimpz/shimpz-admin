@@ -952,9 +952,10 @@ function canonicalInstallPlanAssistant(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'summary', 'providers', 'status']) ||
+    !exactKeys(value, ['id', 'name', 'summary', 'providers', 'provenance', 'status']) ||
     !Array.isArray(value.providers) ||
     value.providers.length > MAX_INSTALL_PROVIDERS ||
+    !['local', 'published'].includes(value.provenance) ||
     !['pending', 'installing', 'installed', 'failed'].includes(value.status)
   ) throw new LocalApiError('The local chat response is invalid.');
   const providers = value.providers.map((provider) => canonicalId(provider));
@@ -967,6 +968,7 @@ function canonicalInstallPlanAssistant(value) {
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 160),
     providers,
+    provenance: value.provenance,
     status: value.status,
   };
 }
