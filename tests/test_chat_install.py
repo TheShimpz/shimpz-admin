@@ -123,6 +123,7 @@ class ChatLifecycleTests(unittest.TestCase):
                 "uninstalled": True,
             },
         )
+
     def test_install_language_cannot_confirm_uninstall(self) -> None:
         async def scenario() -> None:
             connection = _connection(lifecycle_proposal=_proposal())
