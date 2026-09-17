@@ -819,7 +819,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
-    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. For a Local build, its unused image is retired automatically once no Team binding or container references it.',
+    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. For a Local build, its unused image is retired automatically once no Team binding or container references it. To use that build again, it must be staged again.',
   );
   const confirmation = task.getByText('Uninstall this Assistant from this Team?', { exact: true });
   await expect(confirmation).toHaveCSS('text-align', 'right');
