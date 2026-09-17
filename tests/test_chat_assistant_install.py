@@ -27,6 +27,19 @@ def _candidate() -> store_catalog.CatalogAssistant:
     )
 
 
+def _local_candidate() -> local_catalog.LocalAssistant:
+    return local_catalog.LocalAssistant(
+        assistant_id="shimpz-cloudflare",
+        name="Shimpz Cloudflare",
+        summary="Manage Cloudflare zones and DNS records.",
+        image_id="sha256:" + ("c" * 64),
+        integrations=(store_catalog.CatalogIntegration("cloudflare", ()),),
+        actions=("list-zones",),
+        assistant_version="0.4.5",
+        created_at=datetime(2026, 9, 15, tzinfo=UTC),
+    )
+
+
 class AssistantInstallTests(unittest.TestCase):
     def test_submits_only_the_exact_store_publication(self) -> None:
         response = assistant_install.team.TeamResponse(
@@ -53,7 +66,7 @@ class AssistantInstallTests(unittest.TestCase):
             },
         )
 
-    def test_rejects_malformed_success_and_redacts_failure_body(self) -> None:
+    def test_rejects_malformed_success_and_preserves_failure_status_without_body(self) -> None:
         cases = (
             (
                 assistant_install.team.TeamResponse(200, {"assistant": "other", "installed": True}),
@@ -76,16 +89,7 @@ class AssistantInstallTests(unittest.TestCase):
                 )
 
     def test_submits_only_the_exact_fresh_local_snapshot(self) -> None:
-        candidate = local_catalog.LocalAssistant(
-            assistant_id="shimpz-cloudflare",
-            name="Shimpz Cloudflare",
-            summary="Manage Cloudflare zones and DNS records.",
-            image_id="sha256:" + ("c" * 64),
-            integrations=(store_catalog.CatalogIntegration("cloudflare", ()),),
-            actions=("list-zones",),
-            assistant_version="0.4.5",
-            created_at=datetime(2026, 9, 15, tzinfo=UTC),
-        )
+        candidate = _local_candidate()
         response = assistant_install.team.TeamResponse(
             200,
             {
@@ -106,6 +110,68 @@ class AssistantInstallTests(unittest.TestCase):
 
         self.assertEqual(result, assistant_install.InstallResult(200, True))
         install.assert_called_once_with("team_1", {"image_id": candidate.image_id})
+
+    def test_rejects_malformed_local_results_and_preserves_failure_status_without_body(self) -> None:
+        candidate = _local_candidate()
+        valid = {
+            "assistant": candidate.assistant_id,
+            "installed": True,
+            "provenance": "local",
+            "image_id": candidate.image_id,
+            "unpublished": True,
+        }
+        cases = (
+            (object(), assistant_install.InstallResult(502)),
+            (assistant_install.team.TeamResponse("200", {}), assistant_install.InstallResult(502)),
+            (assistant_install.team.TeamResponse(True, {}), assistant_install.InstallResult(502)),
+            (
+                assistant_install.team.TeamResponse(409, {"detail": "/private/path"}),
+                assistant_install.InstallResult(409),
+            ),
+            (assistant_install.team.TeamResponse(200, valid), assistant_install.InstallResult(200, True)),
+            (assistant_install.team.TeamResponse(200, []), assistant_install.InstallResult(502)),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "trace_id": "bad"}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "extra": True}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "assistant": "other"}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "image_id": "sha256:" + ("d" * 64)}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "provenance": "published"}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "unpublished": False}),
+                assistant_install.InstallResult(502),
+            ),
+            (
+                assistant_install.team.TeamResponse(200, {**valid, "installed": 1}),
+                assistant_install.InstallResult(502),
+            ),
+        )
+        for response, expected in cases:
+            with (
+                self.subTest(response=response),
+                mock.patch.object(
+                    assistant_install.team,
+                    "install_fresh_local_assistant",
+                    return_value=response,
+                ),
+            ):
+                self.assertEqual(
+                    assistant_install.install_local_snapshot("team_1", candidate),
+                    expected,
+                )
 
     def test_success_projection_requires_exact_identity_boolean_and_trace(self) -> None:
         malformed = (

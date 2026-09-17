@@ -98,6 +98,7 @@ class StoredInputProjectionEdges(unittest.TestCase):
 class AssistantInventoryEdges(unittest.TestCase):
     def test_installed_inventory_rejects_each_closed_shape(self) -> None:
         responses = (
+            object(),
             team.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
             team.TeamResponse(200, {"assistants": [], "extra": True}),
             team.TeamResponse(200, {"assistants": None}),

@@ -465,6 +465,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 },
             ),
             lambda: team.install_local_assistant("team_1", {}),
+            lambda: team.install_fresh_local_assistant("team_1", {}),
             lambda: team.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:
