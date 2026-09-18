@@ -36,6 +36,7 @@ class Connection:
     sync_terminal_sent: bool = False
     lifecycle_proposal: UninstallProposal | None = None
     lifecycle: lifecycle.Operation | None = None
+    ignore_idle_stop_once: bool = False
     closed: bool = False
 
 

@@ -139,6 +139,7 @@ async function routeReadyChat(page, {
   assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
   targetlessUninstallGuidance = false,
+  holdTargetlessUninstallGuidance = false,
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
@@ -177,6 +178,7 @@ async function routeReadyChat(page, {
   let cloudflareInstalled = assistantInstalled;
   let uninstallProposed = false;
   let targetlessGuidanceSent = false;
+  let targetlessGuidancePending = false;
   let advanceAssistantPlan = () => {};
   let completeAssistantPlan = () => {};
   let releaseAssistantPlan = () => {};
@@ -443,11 +445,13 @@ async function routeReadyChat(page, {
         }
         if (targetlessUninstallGuidance && !targetlessGuidanceSent) {
           targetlessGuidanceSent = true;
-          socket.send(JSON.stringify({
+          const sendTargetlessGuidance = () => socket.send(JSON.stringify({
             type: 'assistant-uninstall',
             state: 'target-required',
             team_id: 'marketing',
           }));
+          if (holdTargetlessUninstallGuidance) targetlessGuidancePending = true;
+          else sendTargetlessGuidance();
           return;
         }
         if (assistantPlan && !assistantInstalled) {
@@ -625,6 +629,15 @@ async function routeReadyChat(page, {
         }
         deliverHumanResponse();
       } else if (frame.type === 'stop') {
+        if (targetlessGuidancePending) {
+          targetlessGuidancePending = false;
+          socket.send(JSON.stringify({
+            type: 'assistant-uninstall',
+            state: 'target-required',
+            team_id: 'marketing',
+          }));
+          return;
+        }
         if (!holdStop) socket.send(JSON.stringify({ type: 'stopped' }));
       }
     });
@@ -878,6 +891,27 @@ test('asks for an Assistant name when uninstall has no pending target', async ({
   await composer.press('Enter');
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   expect(chat.chatFrames().map((frame) => frame.type)).toEqual(['chat', 'chat']);
+});
+
+test('keeps target-required guidance valid when Stop races its response', async ({ page }) => {
+  await routeReadyChat(page, {
+    targetlessUninstallGuidance: true,
+    holdTargetlessUninstallGuidance: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('desinstale');
+  await composer.press('Enter');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+
+  await expect(page.getByText(
+    'Name the Assistant you want to uninstall, for example: “uninstall Cloudflare”.',
+    { exact: true },
+  )).toBeVisible();
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+  await expect(page.getByText('The secure chat response was invalid.', { exact: true })).toHaveCount(0);
 });
 
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {

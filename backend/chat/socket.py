@@ -743,15 +743,16 @@ async def _dispatch_chat(
     payload = await _admit_chat_payload(websocket, connection, team_id, frame)
     if payload is None:
         return
+    connection.ignore_idle_stop_once = False
     had_lifecycle_proposal = connection.lifecycle_proposal is not None
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
     if (
-        not had_lifecycle_proposal
-        and payload["files"] == []
+        payload["files"] == []
         and assistant_proposal.targetless_uninstall_requested(payload["message"])
     ):
+        connection.ignore_idle_stop_once = True
         await _send_event(websocket, lifecycle.target_required_event(team_id))
         return
     if not had_lifecycle_proposal and assistant_proposal.uninstall_requested(payload["message"]):
@@ -805,6 +806,9 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
             raise WebSocketDisconnect(1008)
         return
     if connection.active is None and connection.pending_challenge_id is None:
+        if connection.ignore_idle_stop_once:
+            connection.ignore_idle_stop_once = False
+            return
         await _send_event(websocket, _error_terminal(409, "no active chat turn"))
         return
     if connection.active is None:

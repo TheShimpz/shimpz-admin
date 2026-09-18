@@ -35,6 +35,35 @@ def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Op
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
+    def test_targetless_uninstall_guidance_survives_a_retired_ambiguous_proposal(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            connection = socket._Connection(lifecycle_proposal=mock.sentinel.proposal)
+
+            async def retire_proposal(*_args) -> bool:
+                connection.lifecycle_proposal = None
+                return False
+
+            with (
+                mock.patch.object(socket.lifecycle, "resolve", side_effect=retire_proposal),
+                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
+                mock.patch.object(socket.lifecycle, "submit_preparation") as prepare,
+            ):
+                await socket._dispatch_chat(
+                    websocket,
+                    connection,
+                    "team_1",
+                    {"type": "chat", "message": "uninstall", "files": [], "assistant_ids": []},
+                )
+
+            send.assert_awaited_once_with(
+                websocket,
+                {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
+            )
+            prepare.assert_not_called()
+
+        asyncio.run(scenario())
+
     def test_continuation_stop_saturation_and_detached_finish_are_terminal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()

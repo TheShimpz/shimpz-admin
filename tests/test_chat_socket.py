@@ -745,6 +745,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 discover.assert_not_called()
                 turn.assert_not_called()
 
+                await websocket.send_json({"type": "stop"})
                 await websocket.send_json(
                     {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
                 )

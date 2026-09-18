@@ -777,7 +777,7 @@
           return;
         }
         if (incoming.type === 'assistant-uninstall') {
-          if (!busy || stopping || syncing) throw new Error('unexpected Assistant lifecycle event');
+          if (!busy || syncing) throw new Error('unexpected Assistant lifecycle event');
           capabilityObjective = null;
           const receipt = progressEvents.map((item) => ({ ...item }));
           if (incoming.state === 'target-required') {
@@ -788,11 +788,13 @@
               receipt,
             }];
             busy = false;
+            stopping = false;
             resetProgress();
             clearError();
             void revealLatestExchange();
             return;
           }
+          if (stopping) throw new Error('unexpected Assistant lifecycle event');
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
           resetProgress();
