@@ -819,7 +819,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
-    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. A Local snapshot remains staged on this machine so it can be installed again. To delete it permanently, run shimpz assistant unstage from its project.',
+    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. If it is a Local build, its snapshot remains staged on this machine so it can be installed again. To delete that snapshot permanently, run shimpz assistant unstage from its project.',
   );
   const confirmation = task.getByText('Uninstall this Assistant from this Team?', { exact: true });
   await expect(confirmation).toHaveCSS('text-align', 'right');
@@ -866,7 +866,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.',
   );
   await expect(outcome).toContainText(
-    'A published release can be installed again. A Local snapshot remains staged and can be installed again.',
+    'A published release can be installed again. For a Local build, its snapshot remains staged and can be installed again.',
   );
   await expect(outcome).not.toContainText('docker image rm');
   await expect(composer).toBeEnabled();
