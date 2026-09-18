@@ -30,6 +30,12 @@ class AssistantProposalTests(unittest.TestCase):
     def test_installation_only_request_binds_the_complete_message_to_the_plan(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
+        generic = _candidate("generic-assistant", name="Assistant", provider="")
+        cloudflare_audit = _candidate(
+            "cloudflare-audit",
+            name="Cloudflare Audit",
+            provider="cloudflare-audit",
+        )
         accepted = (
             ("instala o cloudflare", (cloudflare,)),
             ("Por favor, instale o Shimpz Cloudflare neste Time.", (cloudflare,)),
@@ -37,12 +43,18 @@ class AssistantProposalTests(unittest.TestCase):
             ("install the Cloudflare Assistant", (cloudflare,)),
             ("instale o Cloudflare Assistant", (cloudflare,)),
             ("instale o cloudflare e o whatsapp", (cloudflare, whatsapp)),
+            ("install Assistant", (generic,)),
         )
         rejected = (
+            (None, (cloudflare,)),
             ("instale", (cloudflare,)),
             ("instale o cloudflare e liste minhas zonas", (cloudflare,)),
             ("configure o cloudflare", (cloudflare,)),
             ("instale o cloudflare", (cloudflare, whatsapp)),
+            (
+                "install the Cloudflare Assistant and Cloudflare Audit",
+                (cloudflare, cloudflare_audit),
+            ),
             ("instale o cloudflare", ()),
         )
         for message, assistants in accepted:
