@@ -1052,6 +1052,18 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
 }
 
 function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
+  if (value.state === 'target-required') {
+    if (
+      !exactKeys(value, ['type', 'state', 'team_id']) ||
+      value.team_id !== expectedTeamId
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return {
+      type: 'assistant-uninstall',
+      state: 'target-required',
+      team_id: value.team_id,
+      team_name: canonicalTeam(expectedTeamName),
+    };
+  }
   const base = ['type', 'state', 'proposal_id', 'assistant_id'];
   if (value.state === 'proposed') {
     if (

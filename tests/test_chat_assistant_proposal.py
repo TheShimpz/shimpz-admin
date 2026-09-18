@@ -204,6 +204,16 @@ class AssistantProposalTests(unittest.TestCase):
             with self.subTest(message=message):
                 self.assertEqual(assistant_proposal.classify_uninstall_confirmation(message), expected)
 
+    def test_targetless_uninstall_guidance_uses_only_literal_uninstall_imperatives(self) -> None:
+        accepted = ("desinstale", "Pode desinstalar!", "uninstall it", "please uninstall")
+        rejected = ("sim", "ok", "remova", "desinstale o Cloudflare", "uninstall the Assistant", "")
+        for message in accepted:
+            with self.subTest(message=message):
+                self.assertTrue(assistant_proposal.targetless_uninstall_requested(message))
+        for message in rejected:
+            with self.subTest(message=message):
+                self.assertFalse(assistant_proposal.targetless_uninstall_requested(message))
+
     def test_uninstall_requires_a_directly_bound_unique_assistant_identity(self) -> None:
         cloudflare = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability(

@@ -619,6 +619,29 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
   ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
 });
 
+test('chat admits only the exact target-required uninstall guidance', () => {
+  assert.deepEqual(
+    parseChatEvent(
+      { type: 'assistant-uninstall', state: 'target-required', team_id: 'team_1' },
+      'team_1',
+      'Marketing',
+    ),
+    {
+      type: 'assistant-uninstall',
+      state: 'target-required',
+      team_id: 'team_1',
+      team_name: 'Marketing',
+    },
+  );
+  for (const invalid of [
+    { type: 'assistant-uninstall', state: 'target-required', team_id: 'other_team' },
+    { type: 'assistant-uninstall', state: 'target-required', team_id: 'team_1', reply: 'unsafe' },
+    { type: 'assistant-uninstall', state: 'target-required' },
+  ]) {
+    assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
+  }
+});
+
 test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall events', () => {
   const proposalId = 'd'.repeat(32);
   const imageId = `sha256:${'e'.repeat(64)}`;

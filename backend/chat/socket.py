@@ -747,6 +747,13 @@ async def _dispatch_chat(
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
+    if (
+        not had_lifecycle_proposal
+        and payload["files"] == []
+        and assistant_proposal.targetless_uninstall_requested(payload["message"])
+    ):
+        await _send_event(websocket, lifecycle.target_required_event(team_id))
+        return
     if not had_lifecycle_proposal and assistant_proposal.uninstall_requested(payload["message"]):
         await _start_direct_turn(
             websocket,

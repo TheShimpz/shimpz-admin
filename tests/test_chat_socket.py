@@ -720,6 +720,40 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
+    def test_targetless_uninstall_requests_a_name_without_brain_or_inventory_discovery(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Tudo certo."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation") as prepare,
+                mock.patch.object(self.chat_socket.lifecycle, "submit_discovery") as discover,
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []}
+                )
+
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
+                )
+                prepare.assert_not_called()
+                discover.assert_not_called()
+                turn.assert_not_called()
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                turn.assert_called_once()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_partial_plan_failure_never_dispatches_the_task_or_rolls_back_success(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()

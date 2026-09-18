@@ -85,6 +85,17 @@ _UNINSTALL_NEGATIVE = frozenset(
         "no",
     }
 )
+_TARGETLESS_UNINSTALL_REQUESTS = frozenset(
+    {
+        "desinstala",
+        "desinstalar",
+        "desinstale",
+        "pode desinstalar",
+        "please uninstall",
+        "uninstall",
+        "uninstall it",
+    }
+)
 _CAPABILITY_CONTINUATIONS = frozenset(
     {
         "activate it",
@@ -223,6 +234,11 @@ def _classify_confirmation(
 def classify_uninstall_confirmation(value: object) -> Decision:
     """Classify only a complete uninstall-specific user response."""
     return _classify_confirmation(value, _UNINSTALL_AFFIRMATIVE, _UNINSTALL_NEGATIVE)
+
+
+def targetless_uninstall_requested(value: object) -> bool:
+    """Recognize only a complete uninstall imperative that names no target."""
+    return _classify_confirmation(value, _TARGETLESS_UNINSTALL_REQUESTS, frozenset()) == "confirm"
 
 
 def capability_continuation(value: object) -> bool:

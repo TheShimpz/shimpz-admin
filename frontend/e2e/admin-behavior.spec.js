@@ -138,6 +138,7 @@ async function routeReadyChat(page, {
   holdAssistantIcon = false,
   assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
+  targetlessUninstallGuidance = false,
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
@@ -175,6 +176,7 @@ async function routeReadyChat(page, {
   let assistantInstalled = assistantUninstall || !assistantPlan;
   let cloudflareInstalled = assistantInstalled;
   let uninstallProposed = false;
+  let targetlessGuidanceSent = false;
   let advanceAssistantPlan = () => {};
   let completeAssistantPlan = () => {};
   let releaseAssistantPlan = () => {};
@@ -437,6 +439,15 @@ async function routeReadyChat(page, {
         if (disconnectFirstChat && !firstChatDisconnected && frame.type === 'chat') {
           firstChatDisconnected = true;
           socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
+          return;
+        }
+        if (targetlessUninstallGuidance && !targetlessGuidanceSent) {
+          targetlessGuidanceSent = true;
+          socket.send(JSON.stringify({
+            type: 'assistant-uninstall',
+            state: 'target-required',
+            team_id: 'marketing',
+          }));
           return;
         }
         if (assistantPlan && !assistantInstalled) {
@@ -845,6 +856,28 @@ test('resumes one prior capability objective after reconnect and installs its As
   }));
   expect(persistedBrowserState).not.toContain('Lista minhas zonas DNS no Cloudflare');
   expect(persistedBrowserState).not.toContain('Você mesmo consegue habilitar?');
+});
+
+test('asks for an Assistant name when uninstall has no pending target', async ({ page }) => {
+  const chat = await routeReadyChat(page, { targetlessUninstallGuidance: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('desinstale');
+  await composer.press('Enter');
+
+  await expect(page.getByText(
+    'Name the Assistant you want to uninstall, for example: “uninstall Cloudflare”.',
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+
+  await composer.fill('ok');
+  await composer.press('Enter');
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  expect(chat.chatFrames().map((frame) => frame.type)).toEqual(['chat', 'chat']);
 });
 
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {

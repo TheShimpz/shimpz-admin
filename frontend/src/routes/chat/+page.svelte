@@ -780,6 +780,19 @@
           if (!busy || stopping || syncing) throw new Error('unexpected Assistant lifecycle event');
           capabilityObjective = null;
           const receipt = progressEvents.map((item) => ({ ...item }));
+          if (incoming.state === 'target-required') {
+            turns = [...turns, {
+              role: 'assistant',
+              text: copy.uninstall.targetRequired,
+              author: incoming.team_name,
+              receipt,
+            }];
+            busy = false;
+            resetProgress();
+            clearError();
+            void revealLatestExchange();
+            return;
+          }
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
           resetProgress();

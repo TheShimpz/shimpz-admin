@@ -48,6 +48,11 @@ class Connection(Protocol):
     lifecycle: Operation | None
 
 
+def target_required_event(team_id: str) -> dict[str, object]:
+    """Return the exact non-destructive guidance event for a targetless uninstall request."""
+    return {"type": "assistant-uninstall", "state": "target-required", "team_id": team_id}
+
+
 def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[str, object]:
     assistant = proposal.assistant
     identity: dict[str, object] = {
