@@ -7,7 +7,7 @@ import secrets
 import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
@@ -143,8 +143,29 @@ _UNINSTALL_SUFFIXES = (
     " from the team",
     "",
 )
+_INSTALL_PREFIXES = (
+    "can you ",
+    "could you ",
+    "eu quero ",
+    "gostaria de ",
+    "i want to ",
+    "please ",
+    "pode ",
+    "por favor ",
+    "quero que voce ",
+    "quero ",
+    "",
+)
+_INSTALL_VERBS = ("instala ", "instale ", "instalar ", "install ")
+_INSTALL_SUFFIXES = (" neste time", " no time", " on this team", " por favor", " please", "")
+_INSTALL_TARGET_SEPARATOR = re.compile(r"\s+(?:and|e)\s+")
 
 Decision = Literal["confirm", "cancel", "ambiguous"]
+
+
+class AssistantIdentity(Protocol):
+    assistant_id: str
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,7 +376,27 @@ def uninstall_requested(message: object) -> bool:
     return _uninstall_target(message) is not None
 
 
-def _identity_targets(capability: Capability) -> frozenset[str]:
+def _installation_targets(message: object) -> tuple[str, ...]:
+    if not isinstance(message, str) or not message.strip() or len(message) > 500:
+        return ()
+    normalized = _search_text(message)
+    for prefix in _INSTALL_PREFIXES:
+        if not normalized.startswith(prefix):
+            continue
+        remainder = normalized[len(prefix) :]
+        for verb in _INSTALL_VERBS:
+            if not remainder.startswith(verb):
+                continue
+            target = remainder[len(verb) :]
+            for suffix in _INSTALL_SUFFIXES:
+                if suffix and target.endswith(suffix):
+                    target = target[: -len(suffix)]
+                    break
+            return tuple(part.strip() for part in _INSTALL_TARGET_SEPARATOR.split(target) if part.strip())
+    return ()
+
+
+def _identity_targets(capability: AssistantIdentity) -> frozenset[str]:
     exact = {_search_text(capability.assistant_id), _search_text(capability.name)}
     short_tokens = tuple(
         token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
@@ -393,7 +434,36 @@ def _identity_targets(capability: Capability) -> frozenset[str]:
     return frozenset(targets)
 
 
-def _short_name(capability: Capability) -> str | None:
+def _installation_identity_targets(assistant: AssistantIdentity) -> frozenset[str]:
+    short_name = _short_name(assistant)
+    if short_name is None:
+        return _identity_targets(assistant)
+    return _identity_targets(assistant) | {
+        short_name,
+        f"a {short_name}",
+        f"o {short_name}",
+        f"the {short_name}",
+    }
+
+
+def installation_only_requested(message: object, assistants: Iterable[AssistantIdentity]) -> bool:
+    """Recognize only an exact install command bound to every admitted plan identity."""
+    planned = tuple(assistants)
+    targets = _installation_targets(message)
+    if not planned or not targets or len(targets) != len(planned):
+        return False
+    selected: set[str] = set()
+    for target in targets:
+        matches = tuple(
+            assistant for assistant in planned if target in _installation_identity_targets(assistant)
+        )
+        if len(matches) != 1:
+            return False
+        selected.add(matches[0].assistant_id)
+    return selected == {assistant.assistant_id for assistant in planned}
+
+
+def _short_name(capability: AssistantIdentity) -> str | None:
     tokens = tuple(
         token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
     )

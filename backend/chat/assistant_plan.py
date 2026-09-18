@@ -220,7 +220,13 @@ def event(
     assistants: tuple[dict[str, object], ...],
     *,
     status: int | None = None,
+    continuation: Literal["dispatch", "none"] | None = None,
 ) -> dict[str, object]:
+    if state == "installed":
+        if continuation not in {"dispatch", "none"}:
+            raise ValueError("installed Assistant plan continuation is invalid")
+    elif continuation is not None:
+        raise ValueError("Assistant plan continuation is only valid after installation")
     payload: dict[str, object] = {
         "type": "assistant-install-plan",
         "state": state,
@@ -230,6 +236,8 @@ def event(
     }
     if status is not None:
         payload["status"] = status
+    if continuation is not None:
+        payload["continuation"] = continuation
     return payload
 
 

@@ -27,6 +27,29 @@ def _candidate(
 
 
 class AssistantProposalTests(unittest.TestCase):
+    def test_installation_only_request_binds_the_complete_message_to_the_plan(self) -> None:
+        cloudflare = _candidate()
+        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
+        accepted = (
+            ("instala o cloudflare", (cloudflare,)),
+            ("Por favor, instale o Shimpz Cloudflare neste Time.", (cloudflare,)),
+            ("install Cloudflare Assistant", (cloudflare,)),
+            ("instale o cloudflare e o whatsapp", (cloudflare, whatsapp)),
+        )
+        rejected = (
+            ("instale", (cloudflare,)),
+            ("instale o cloudflare e liste minhas zonas", (cloudflare,)),
+            ("configure o cloudflare", (cloudflare,)),
+            ("instale o cloudflare", (cloudflare, whatsapp)),
+            ("instale o cloudflare", ()),
+        )
+        for message, assistants in accepted:
+            with self.subTest(message=message):
+                self.assertTrue(assistant_proposal.installation_only_requested(message, assistants))
+        for message, assistants in rejected:
+            with self.subTest(message=message):
+                self.assertFalse(assistant_proposal.installation_only_requested(message, assistants))
+
     def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
         accepted = (
             "Você mesmo consegue habilitar?",

@@ -132,6 +132,7 @@ function humanRequest(kind) {
 
 async function routeReadyChat(page, {
   assistantPlan = false,
+  assistantPlanContinuation = 'dispatch',
   holdAssistantPlan = false,
   holdStop = false,
   holdAssistantIcon = false,
@@ -456,7 +457,7 @@ async function routeReadyChat(page, {
               provenance: 'published',
             },
           ];
-          const sendPlan = (state, statuses) => socket.send(JSON.stringify({
+          const sendPlan = (state, statuses, extra = {}) => socket.send(JSON.stringify({
             type: 'assistant-install-plan',
             state,
             plan_id: planId,
@@ -465,6 +466,7 @@ async function routeReadyChat(page, {
               ...assistant,
               status: statuses[index],
             })),
+            ...extra,
           }));
           sendPlan('planned', ['pending', 'pending']);
           sendPlan('installing', ['installing', 'pending']);
@@ -477,13 +479,14 @@ async function routeReadyChat(page, {
             if (planCompleted) return;
             planCompleted = true;
             assistantInstalled = true;
-            sendPlan('installed', ['installed', 'installed']);
+            sendPlan('installed', ['installed', 'installed'], { continuation: assistantPlanContinuation });
           };
           let planReleased = false;
           releaseAssistantPlan = () => {
             completeAssistantPlan();
             if (planReleased) return;
             planReleased = true;
+            if (assistantPlanContinuation === 'none') return;
             socket.send(JSON.stringify({
               type: 'done',
               team_id: 'marketing',
@@ -778,6 +781,32 @@ test('installs a composed Assistant plan automatically and continues the origina
   expect(chat.chatFrames()[0].message).toBe(
     'Configure my Cloudflare domain and send the result on WhatsApp',
   );
+});
+
+test('ends an explicit Assistant installation at the installed plan', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    assistantPlanContinuation: 'none',
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Install Cloudflare and WhatsApp');
+  await composer.press('Enter');
+
+  const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(tasks).toHaveCount(2);
+  await expect(tasks.nth(0)).toHaveAttribute('data-state', 'complete');
+  await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+  await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
+
+  await composer.fill('Please install it');
+  await composer.press('Enter');
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  expect(chat.chatFrames()).toHaveLength(2);
+  expect(chat.chatFrames()[1].type).toBe('chat');
 });
 
 test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {

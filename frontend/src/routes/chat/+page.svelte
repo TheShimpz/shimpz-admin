@@ -761,6 +761,11 @@
           }
           if (incoming.state === 'installed') {
             void refreshTeamInventory(fetch).catch(() => undefined);
+            if (incoming.continuation === 'none') {
+              capabilityObjective = null;
+              busy = false;
+              clearError();
+            }
             return;
           }
           busy = false;

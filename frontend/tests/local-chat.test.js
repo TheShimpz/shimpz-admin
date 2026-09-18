@@ -490,7 +490,7 @@ test('chat admits only the exact aggregate Assistant installation plan lifecycle
     frame('installing', ['installed', 'pending']),
     frame('installing', ['installed', 'installing']),
     frame('installing', ['installed', 'installed']),
-    frame('installed', ['installed', 'installed']),
+    frame('installed', ['installed', 'installed'], { continuation: 'dispatch' }),
     frame('failed', ['pending', 'pending'], { status: 429 }),
     frame('failed', ['installed', 'failed'], { status: 503 }),
     frame('stopped', ['installed', 'pending']),
@@ -542,6 +542,7 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     { ...planned, assistants: [{ ...cloudflare, providers: ['cloudflare', 'cloudflare'] }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, status: 'installing' }, whatsapp] },
     { ...planned, state: 'installed' },
+    { ...planned, state: 'installed', continuation: 'later' },
     {
       ...planned,
       state: 'installing',

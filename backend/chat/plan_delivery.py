@@ -13,7 +13,7 @@ from chat.connection import Connection, Turn
 from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 
-from chat import assistant_plan, lifecycle
+from chat import assistant_plan, assistant_proposal, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -118,8 +118,20 @@ async def _deliver_admitted(
     result = await _run_job(websocket, connection, turn, plan, operations.send_event)
     if connection.closed or result is None:
         return
-    terminal = assistant_plan.event(plan, result.state, result.assistants, status=result.status)
-    if result.state != "installed":
+    continuation = (
+        "none"
+        if result.state == "installed"
+        and assistant_proposal.installation_only_requested(payload["message"], plan.assistants)
+        else "dispatch"
+    )
+    terminal = assistant_plan.event(
+        plan,
+        result.state,
+        result.assistants,
+        status=result.status,
+        continuation=continuation if result.state == "installed" else None,
+    )
+    if result.state != "installed" or continuation == "none":
         await operations.finish_turn(websocket, connection, turn, terminal)
     elif not await operations.send_event(websocket, terminal):
         connection.closed = True

@@ -539,6 +539,19 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         self.assertNotIn("digest", repr(event))
         self.assertNotIn("objective", repr(event))
 
+    def test_only_an_installed_plan_carries_one_exact_continuation(self) -> None:
+        plan = self._plan(CLOUDFLARE)
+        installed = tuple({**item, "status": "installed"} for item in assistant_plan.initial_items(plan))
+
+        self.assertEqual(
+            assistant_plan.event(plan, "installed", installed, continuation="none")["continuation"],
+            "none",
+        )
+        with self.assertRaises(ValueError):
+            assistant_plan.event(plan, "installed", installed)
+        with self.assertRaises(ValueError):
+            assistant_plan.event(plan, "planned", assistant_plan.initial_items(plan), continuation="dispatch")
+
     def test_event_discloses_only_closed_install_provenance(self) -> None:
         local = local_catalog.primary(_local_inventory())[0]
         plan = self._plan(CLOUDFLARE, local)
