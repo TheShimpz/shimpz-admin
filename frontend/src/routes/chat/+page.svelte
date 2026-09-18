@@ -513,7 +513,10 @@
   async function focusStop(fromElement) {
     await tick();
     if (fromElement && document.activeElement !== fromElement) return;
-    if (mounted && busy && !syncing && !lifecycleWorking && !integrationChallenge && !humanChallenge) {
+    if (
+      mounted && busy && !syncing && (!lifecycleWorking || installPlanWorking) &&
+      !integrationChallenge && !humanChallenge
+    ) {
       stopButton?.focus({ preventScroll: true });
     }
   }
@@ -749,8 +752,10 @@
           if (!busy || syncing) throw new Error('unexpected Assistant install plan event');
           const receipt = progressEvents.map((item) => ({ ...item }));
           applyInstallPlanEvent(incoming, receipt);
+          const restoreStoppedFocus = stopping && document.activeElement === document.body;
           stopping = false;
           resetProgress();
+          if (restoreStoppedFocus) void focusStop();
           if (incoming.state === 'planned' || incoming.state === 'installing') {
             return;
           }

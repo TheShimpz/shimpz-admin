@@ -133,6 +133,7 @@ function humanRequest(kind) {
 async function routeReadyChat(page, {
   assistantPlan = false,
   holdAssistantPlan = false,
+  holdStop = false,
   holdAssistantIcon = false,
   assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
@@ -610,7 +611,7 @@ async function routeReadyChat(page, {
         }
         deliverHumanResponse();
       } else if (frame.type === 'stop') {
-        socket.send(JSON.stringify({ type: 'stopped' }));
+        if (!holdStop) socket.send(JSON.stringify({ type: 'stopped' }));
       }
     });
   });
@@ -711,6 +712,7 @@ test('installs a composed Assistant plan automatically and continues the origina
   const chat = await routeReadyChat(page, {
     assistantPlan: true,
     holdAssistantPlan: true,
+    holdStop: true,
   });
   await page.goto('/chat/');
 
@@ -737,8 +739,11 @@ test('installs a composed Assistant plan automatically and continues the origina
   expect(await tasks.nth(0).evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
     .toBe('rgb(252, 238, 10)');
   const installPlan = page.getByRole('group', { name: 'Assistant installation' });
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeFocused();
+  const stop = page.getByRole('button', { name: 'Stop', exact: true });
+  await expect(stop).toBeFocused();
+  expect(await installPlan.getAttribute('tabindex')).toBeNull();
   expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(false);
+  await expect(installPlan).toHaveCSS('outline-style', 'none');
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -746,7 +751,11 @@ test('installs a composed Assistant plan automatically and continues the origina
   }));
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 
+  await stop.click();
+  await expect(stop).toBeDisabled();
+  await expect(page.locator('body')).toBeFocused();
   chat.advanceAssistantPlan();
+  await expect(stop).toBeFocused();
   await expect(tasks.nth(0)).toHaveAttribute('data-state', 'complete');
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'working');
   chat.completeAssistantPlan();
