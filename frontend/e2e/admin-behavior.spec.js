@@ -737,8 +737,8 @@ test('installs a composed Assistant plan automatically and continues the origina
   expect(await tasks.nth(0).evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
     .toBe('rgb(252, 238, 10)');
   const installPlan = page.getByRole('group', { name: 'Assistant installation' });
-  await expect(installPlan).toBeFocused();
-  expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeFocused();
+  expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(false);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,

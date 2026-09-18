@@ -752,13 +752,10 @@
           stopping = false;
           resetProgress();
           if (incoming.state === 'planned' || incoming.state === 'installing') {
-            void focusLifecycleTask(`plan-${incoming.plan_id}`);
             return;
           }
           if (incoming.state === 'installed') {
-            const focusedPlan = document.getElementById(`assistant-lifecycle-plan-${incoming.plan_id}`);
             void refreshTeamInventory(fetch).catch(() => undefined);
-            if (focusedPlan && document.activeElement === focusedPlan) void focusStop(focusedPlan);
             return;
           }
           busy = false;
@@ -1313,10 +1310,8 @@
                   {#if exchange.assistant.installPlan}
                     <div
                       class="assistant-install-plan"
-                      id={`assistant-lifecycle-plan-${exchange.assistant.installPlan.plan_id}`}
                       role="group"
                       aria-label={copy.install.label}
-                      tabindex="-1"
                     >
                       {#each exchange.assistant.installPlan.assistants as assistant (assistant.id)}
                         {#snippet planMedia()}
