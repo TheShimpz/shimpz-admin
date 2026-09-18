@@ -754,14 +754,14 @@ async def _dispatch_chat(
         connection.ignore_idle_stop_once = True
         await _send_event(websocket, lifecycle.target_required_event(team_id))
         return
-    if not had_lifecycle_proposal and assistant_proposal.uninstall_requested(payload["message"]):
+    if assistant_proposal.uninstall_requested(payload["message"]):
         await _start_direct_turn(
             websocket,
             connection,
             team_id,
             payload,
             language_exemplar,
-            discovery_future=lifecycle.submit_discovery(team_id, payload),
+            discovery_future=None if had_lifecycle_proposal else lifecycle.submit_discovery(team_id, payload),
         )
         return
     preparation = lifecycle.submit_preparation(team_id, payload)
