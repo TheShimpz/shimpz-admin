@@ -676,9 +676,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 self.assertEqual((completed["state"], completed["continuation"]), ("installed", "none"))
                 turn.assert_not_called()
 
-                await websocket.send_json(
-                    {"type": "chat", "message": "Olá", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "Olá", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 turn.assert_called_once()
                 await websocket.disconnect()
@@ -733,9 +731,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []})
 
                 self.assertEqual(
                     await websocket.next_json(),
@@ -748,9 +744,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 await websocket.send_json({"type": "stop"})
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                await websocket.send_json(
-                    {"type": "chat", "message": "ok", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "ok", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 turn.assert_called_once()
                 await websocket.disconnect()

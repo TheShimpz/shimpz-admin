@@ -476,9 +476,7 @@ def installation_only_requested(message: object, assistants: Iterable[AssistantI
         return False
     selected: set[str] = set()
     for target in targets:
-        matches = tuple(
-            assistant for assistant in planned if target in _installation_identity_targets(assistant)
-        )
+        matches = tuple(assistant for assistant in planned if target in _installation_identity_targets(assistant))
         if len(matches) != 1:
             return False
         selected.add(matches[0].assistant_id)
