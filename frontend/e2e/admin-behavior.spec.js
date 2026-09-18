@@ -174,6 +174,7 @@ async function routeReadyChat(page, {
   let cloudflareInstalled = assistantInstalled;
   let uninstallProposed = false;
   let advanceAssistantPlan = () => {};
+  let completeAssistantPlan = () => {};
   let releaseAssistantPlan = () => {};
   let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
@@ -444,12 +445,14 @@ async function routeReadyChat(page, {
               name: 'Shimpz Cloudflare',
               summary: assistantSummary,
               providers: ['cloudflare'],
+              provenance: 'local',
             },
             {
               id: 'whatsapp',
               name: 'WhatsApp',
               summary: 'Send reviewed WhatsApp messages.',
               providers: ['whatsapp'],
+              provenance: 'published',
             },
           ];
           const sendPlan = (state, statuses) => socket.send(JSON.stringify({
@@ -468,9 +471,18 @@ async function routeReadyChat(page, {
             cloudflareInstalled = true;
             sendPlan('installing', ['installed', 'installing']);
           };
-          releaseAssistantPlan = () => {
+          let planCompleted = false;
+          completeAssistantPlan = () => {
+            if (planCompleted) return;
+            planCompleted = true;
             assistantInstalled = true;
             sendPlan('installed', ['installed', 'installed']);
+          };
+          let planReleased = false;
+          releaseAssistantPlan = () => {
+            completeAssistantPlan();
+            if (planReleased) return;
+            planReleased = true;
             socket.send(JSON.stringify({
               type: 'done',
               team_id: 'marketing',
@@ -609,6 +621,7 @@ async function routeReadyChat(page, {
     humanResponses: () => humanResponses,
     inferenceWrites: () => inferenceWrites,
     advanceAssistantPlan: () => advanceAssistantPlan(),
+    completeAssistantPlan: () => completeAssistantPlan(),
     releaseAssistantPlan: () => releaseAssistantPlan(),
     releaseAssistantUninstall: () => releaseAssistantUninstall(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
@@ -704,7 +717,7 @@ test('installs a composed Assistant plan automatically and continues the origina
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await expect(composer).toBeEnabled();
   await composer.fill('Configure my Cloudflare domain and send the result on WhatsApp');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await composer.press('Enter');
 
   const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
   await expect(tasks).toHaveCount(2);
@@ -712,10 +725,8 @@ test('installs a composed Assistant plan automatically and continues the origina
   await expect(tasks.nth(0)).toHaveAttribute('data-state', 'working');
   await expect(tasks.nth(1)).toContainText('WhatsApp');
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'pending');
-  await expect(tasks.nth(0).locator('img')).toHaveAttribute(
-    'src',
-    '/api/assistants/shimpz-cloudflare/catalog-icon',
-  );
+  await expect(tasks.nth(0).locator('img')).toHaveCount(0);
+  await expect(tasks.nth(0)).toContainText('Local');
   await expect(tasks.nth(1).locator('img')).toHaveAttribute(
     'src',
     '/api/assistants/whatsapp/catalog-icon',
@@ -725,7 +736,9 @@ test('installs a composed Assistant plan automatically and continues the origina
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
   expect(await tasks.nth(0).evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
     .toBe('rgb(252, 238, 10)');
-  await expect(page.getByRole('group', { name: 'Assistant installation' })).toBeFocused();
+  const installPlan = page.getByRole('group', { name: 'Assistant installation' });
+  await expect(installPlan).toBeFocused();
+  expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -736,8 +749,11 @@ test('installs a composed Assistant plan automatically and continues the origina
   chat.advanceAssistantPlan();
   await expect(tasks.nth(0)).toHaveAttribute('data-state', 'complete');
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'working');
-  chat.releaseAssistantPlan();
+  chat.completeAssistantPlan();
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeFocused();
+  expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(false);
+  chat.releaseAssistantPlan();
   await expect(tasks.nth(0).locator('img')).toHaveAttribute(
     'src',
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',

@@ -510,8 +510,9 @@
     composerInput?.focus({ preventScroll: true });
   }
 
-  async function focusStop() {
+  async function focusStop(fromElement) {
     await tick();
+    if (fromElement && document.activeElement !== fromElement) return;
     if (mounted && busy && !syncing && !lifecycleWorking && !integrationChallenge && !humanChallenge) {
       stopButton?.focus({ preventScroll: true });
     }
@@ -755,7 +756,9 @@
             return;
           }
           if (incoming.state === 'installed') {
+            const focusedPlan = document.getElementById(`assistant-lifecycle-plan-${incoming.plan_id}`);
             void refreshTeamInventory(fetch).catch(() => undefined);
+            if (focusedPlan && document.activeElement === focusedPlan) void focusStop(focusedPlan);
             return;
           }
           busy = false;
