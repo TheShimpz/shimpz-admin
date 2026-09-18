@@ -254,6 +254,7 @@ class AssistantProposalTests(unittest.TestCase):
         )
         self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstala o storage", (cloud_storage,)))
         self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstale o assistant", (generic_name,)))
+        self.assertIsNone(assistant_proposal.select_uninstall_candidate("remove o cloudflare", (cloudflare,)))
 
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(

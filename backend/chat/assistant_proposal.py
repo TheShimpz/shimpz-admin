@@ -135,6 +135,7 @@ _SHORT_NAME_UNINSTALL_VERBS = frozenset(
         "uninstall ",
     }
 )
+_GENERIC_ASSISTANT_NAME_TOKENS = frozenset({"assistant", "assistente", "shimpz"})
 _UNINSTALL_SUFFIXES = (
     " deste time",
     " do time",
@@ -357,7 +358,7 @@ def uninstall_requested(message: object) -> bool:
 def _identity_targets(capability: Capability) -> frozenset[str]:
     exact = {_search_text(capability.assistant_id), _search_text(capability.name)}
     short_tokens = tuple(
-        token for token in _search_text(capability.name).split() if token not in {"assistant", "assistente", "shimpz"}
+        token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
     )
     aliases = exact | ({" ".join(short_tokens), *short_tokens} if short_tokens else set())
     targets = {target for value in exact if value for target in (value, f"a {value}", f"o {value}", f"the {value}")}
@@ -394,7 +395,7 @@ def _identity_targets(capability: Capability) -> frozenset[str]:
 
 def _short_name(capability: Capability) -> str | None:
     tokens = tuple(
-        token for token in _search_text(capability.name).split() if token not in {"assistant", "assistente", "shimpz"}
+        token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
     )
     return " ".join(tokens) or None
 
