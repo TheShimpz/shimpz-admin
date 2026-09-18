@@ -127,6 +127,14 @@ _UNINSTALL_VERBS = (
     "remover ",
     "uninstall ",
 )
+_SHORT_NAME_UNINSTALL_VERBS = frozenset(
+    {
+        "desinstala ",
+        "desinstale ",
+        "desinstalar ",
+        "uninstall ",
+    }
+)
 _UNINSTALL_SUFFIXES = (
     " deste time",
     " do time",
@@ -315,7 +323,7 @@ def capability_shortlist(
     return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
 
 
-def _uninstall_target(message: object) -> str | None:
+def _uninstall_request(message: object) -> tuple[str, bool] | None:
     if not isinstance(message, str) or not message.strip() or len(message) > 500:
         return None
     normalized = _search_text(message)
@@ -331,8 +339,14 @@ def _uninstall_target(message: object) -> str | None:
                 if suffix and target.endswith(suffix):
                     target = target[: -len(suffix)]
                     break
-            return target.strip() or None
+            normalized_target = target.strip()
+            return (normalized_target, verb in _SHORT_NAME_UNINSTALL_VERBS) if normalized_target else None
     return None
+
+
+def _uninstall_target(message: object) -> str | None:
+    request = _uninstall_request(message)
+    return request[0] if request is not None else None
 
 
 def uninstall_requested(message: object) -> bool:
@@ -366,6 +380,10 @@ def _identity_targets(capability: Capability) -> frozenset[str]:
                 f"o assistant da {alias}",
                 f"o assistant de {alias}",
                 f"o assistant do {alias}",
+                f"o assistente {alias}",
+                f"o assistente da {alias}",
+                f"o assistente de {alias}",
+                f"o assistente do {alias}",
                 f"the assistant {alias}",
                 f"{alias} assistant",
                 f"{alias} assistente",
@@ -374,16 +392,53 @@ def _identity_targets(capability: Capability) -> frozenset[str]:
     return frozenset(targets)
 
 
+def _short_name(capability: Capability) -> str | None:
+    tokens = tuple(
+        token for token in _search_text(capability.name).split() if token not in {"assistant", "assistente", "shimpz"}
+    )
+    return " ".join(tokens) or None
+
+
+def _short_name_target(target: str, capability: Capability) -> str | None:
+    short_name = _short_name(capability)
+    if short_name is None:
+        return None
+    forms = {short_name, f"a {short_name}", f"o {short_name}", f"the {short_name}"}
+    return short_name if target in forms else None
+
+
+def _short_name_is_unique(
+    short_name: str, selected: UninstallCandidate, candidates: tuple[UninstallCandidate, ...]
+) -> bool:
+    return all(
+        candidate is selected or f" {short_name} " not in f" {_search_text(candidate.assistant.name)} "
+        for candidate in candidates
+    )
+
+
 def select_uninstall_candidate(
     message: object,
     candidates: tuple[UninstallCandidate, ...],
 ) -> UninstallCandidate | None:
     """Select one installed Assistant only from a directly bound destructive request."""
-    target = _uninstall_target(message)
-    if target is None:
+    request = _uninstall_request(message)
+    if request is None:
         return None
+    target, allows_short_name = request
     matches = tuple(candidate for candidate in candidates if target in _identity_targets(candidate.assistant))
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if matches or not allows_short_name:
+        return None
+    short_matches = tuple(
+        (candidate, short_name)
+        for candidate in candidates
+        if (short_name := _short_name_target(target, candidate.assistant)) is not None
+    )
+    if len(short_matches) != 1:
+        return None
+    candidate, short_name = short_matches[0]
+    return candidate if _short_name_is_unique(short_name, candidate, candidates) else None
 
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:

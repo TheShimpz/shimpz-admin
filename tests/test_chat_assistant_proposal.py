@@ -202,6 +202,8 @@ class AssistantProposalTests(unittest.TestCase):
         )
         accepted = (
             "Desinstale o Shimpz Cloudflare",
+            "desinstala o cloudflare",
+            "desinstala o assistente cloudflare",
             "quero desinstalar o assistant do Cloudflare",
             "remove the Shimpz Cloudflare from this team",
             "please uninstall Cloudflare assistant",
@@ -214,6 +216,7 @@ class AssistantProposalTests(unittest.TestCase):
                 )
         rejected = (
             "remova o registro DNS da Cloudflare",
+            "remove o cloudflare",
             "não desinstale o Shimpz Cloudflare",
             "use o Shimpz Cloudflare",
             "desinstale o assistant",
@@ -230,6 +233,27 @@ class AssistantProposalTests(unittest.TestCase):
                 (cloudflare, other),
             )
         )
+
+        cloud_storage = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability(
+                "shimpz-cloud-storage",
+                "Shimpz Cloud Storage",
+                "Manage stored objects.",
+                ("list-objects",),
+            ),
+            "1.0.0",
+        )
+        generic_name = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability(
+                "generic-assistant",
+                "Shimpz Assistant",
+                "Provides reviewed operations.",
+                ("inspect",),
+            ),
+            "1.0.0",
+        )
+        self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstala o storage", (cloud_storage,)))
+        self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstale o assistant", (generic_name,)))
 
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(

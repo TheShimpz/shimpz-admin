@@ -100,7 +100,7 @@ class AssistantUninstallDiscoveryTests(unittest.TestCase):
         ):
             candidate = assistant_uninstall.discover(
                 "team_1",
-                "Desinstale o assistant do Cloudflare",
+                "desinstala o cloudflare",
             )
 
         self.assertIsNotNone(candidate)

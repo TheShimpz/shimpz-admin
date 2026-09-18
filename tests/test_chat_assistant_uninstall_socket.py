@@ -94,7 +94,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 await websocket.send_json(
                     {
                         "type": "chat",
-                        "message": "Desinstale o Assistant do Cloudflare",
+                        "message": "desinstala o cloudflare",
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
                     }
@@ -146,7 +146,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(proposal.assistant_version, "0.4.4")
                 self.assertEqual(
                     proposal.language_exemplar,
-                    "Desinstale o Assistant do Cloudflare",
+                    "desinstala o cloudflare",
                 )
                 self.assertEqual(turn.call_count, 1)
                 await websocket.disconnect()
