@@ -257,6 +257,7 @@ class AssistantProposalTests(unittest.TestCase):
             "use o Shimpz Cloudflare",
             "desinstale o assistant",
             "desinstale o Cloudflare",
+            "Uninstall the Cloudflare Assistant",
         )
         for message in rejected:
             with self.subTest(message=message):
