@@ -34,6 +34,8 @@ class AssistantProposalTests(unittest.TestCase):
             ("instala o cloudflare", (cloudflare,)),
             ("Por favor, instale o Shimpz Cloudflare neste Time.", (cloudflare,)),
             ("install Cloudflare Assistant", (cloudflare,)),
+            ("install the Cloudflare Assistant", (cloudflare,)),
+            ("instale o Cloudflare Assistant", (cloudflare,)),
             ("instale o cloudflare e o whatsapp", (cloudflare, whatsapp)),
         )
         rejected = (
@@ -240,6 +242,7 @@ class AssistantProposalTests(unittest.TestCase):
             "quero desinstalar o assistant do Cloudflare",
             "remove the Shimpz Cloudflare from this team",
             "please uninstall Cloudflare assistant",
+            "Uninstall the Cloudflare Assistant",
         )
         for message in accepted:
             with self.subTest(message=message):
