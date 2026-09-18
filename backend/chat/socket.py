@@ -743,7 +743,6 @@ async def _dispatch_chat(
     payload = await _admit_chat_payload(websocket, connection, team_id, frame)
     if payload is None:
         return
-    connection.ignore_idle_stop_once = False
     had_lifecycle_proposal = connection.lifecycle_proposal is not None
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
@@ -824,6 +823,8 @@ async def _dispatch(
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
+    if frame_type != "stop":
+        connection.ignore_idle_stop_once = False
     if connection.lifecycle is not None:
         await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle operation is already active"))
         return
