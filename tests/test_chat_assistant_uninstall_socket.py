@@ -94,7 +94,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 await websocket.send_json(
                     {
                         "type": "chat",
-                        "message": "desinstala o cloudflare",
+                        "message": "agora desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
                     }
@@ -146,9 +146,54 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(proposal.assistant_version, "0.4.4")
                 self.assertEqual(
                     proposal.language_exemplar,
-                    "desinstala o cloudflare",
+                    "agora desinstale o cloudflare",
                 )
                 self.assertEqual(turn.call_count, 1)
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_augmented_uninstall_never_confirms_a_pending_proposal(self) -> None:
+        async def scenario() -> None:
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Vou preparar a remoção."},
+            )
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                mock.patch.object(
+                    self.chat_socket.lifecycle.assistant_uninstall,
+                    "discover",
+                    return_value=self._uninstall_candidate(),
+                ),
+                mock.patch.object(self.chat_socket.lifecycle.assistant_uninstall, "uninstall") as uninstall,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "desinstale o cloudflare",
+                        "files": [],
+                        "assistant_ids": ["shimpz-cloudflare"],
+                    }
+                )
+                proposed = await websocket.next_json()
+                self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
+
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "agora desinstale",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
+                )
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
+                )
+                uninstall.assert_not_called()
                 await websocket.disconnect()
 
         asyncio.run(scenario())

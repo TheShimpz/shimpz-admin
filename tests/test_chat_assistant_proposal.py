@@ -38,6 +38,10 @@ class AssistantProposalTests(unittest.TestCase):
         )
         accepted = (
             ("instala o cloudflare", (cloudflare,)),
+            ("agora instale o cloudflare", (cloudflare,)),
+            ("e agora, por favor, instale o cloudflare", (cloudflare,)),
+            ("now install the Cloudflare Assistant", (cloudflare,)),
+            ("and now install the Cloudflare Assistant", (cloudflare,)),
             ("Por favor, instale o Shimpz Cloudflare neste Time.", (cloudflare,)),
             ("install Cloudflare Assistant", (cloudflare,)),
             ("install the Cloudflare Assistant", (cloudflare,)),
@@ -49,6 +53,9 @@ class AssistantProposalTests(unittest.TestCase):
             (None, (cloudflare,)),
             ("instale", (cloudflare,)),
             ("instale o cloudflare e liste minhas zonas", (cloudflare,)),
+            ("agora instale o cloudflare e liste minhas zonas", (cloudflare,)),
+            ("agora agora instale o cloudflare", (cloudflare,)),
+            ("talvez agora instale o cloudflare", (cloudflare,)),
             ("configure o cloudflare", (cloudflare,)),
             ("instale o cloudflare", (cloudflare, whatsapp)),
             (
@@ -87,6 +94,7 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.classify_uninstall_confirmation("pode instalar"),
             "ambiguous",
         )
+        self.assertFalse(assistant_proposal.capability_continuation("agora pode instalar"))
 
     def test_shortlists_explicit_and_composed_intent_without_a_baked_mapping(self) -> None:
         cloudflare = _candidate()
@@ -210,6 +218,8 @@ class AssistantProposalTests(unittest.TestCase):
             "não": "cancel",
             "nao remova": "cancel",
             "do not uninstall": "cancel",
+            "agora desinstale": "ambiguous",
+            "now uninstall": "ambiguous",
             "install it": "ambiguous",
             "pode instalar": "ambiguous",
             "uninstall it and continue": "ambiguous",
@@ -219,7 +229,14 @@ class AssistantProposalTests(unittest.TestCase):
                 self.assertEqual(assistant_proposal.classify_uninstall_confirmation(message), expected)
 
     def test_targetless_uninstall_guidance_uses_only_literal_uninstall_imperatives(self) -> None:
-        accepted = ("desinstale", "Pode desinstalar!", "uninstall it", "please uninstall")
+        accepted = (
+            "desinstale",
+            "agora desinstale",
+            "now uninstall",
+            "Pode desinstalar!",
+            "uninstall it",
+            "please uninstall",
+        )
         rejected = ("sim", "ok", "remova", "desinstale o Cloudflare", "uninstall the Assistant", "")
         for message in accepted:
             with self.subTest(message=message):
@@ -249,6 +266,10 @@ class AssistantProposalTests(unittest.TestCase):
         )
         accepted = (
             "Desinstale o Shimpz Cloudflare",
+            "agora desinstale o cloudflare",
+            "e agora, por favor, desinstale o Shimpz Cloudflare",
+            "now uninstall the Cloudflare Assistant",
+            "and now uninstall the Cloudflare Assistant",
             "desinstala o cloudflare",
             "desinstala o assistente cloudflare",
             "quero desinstalar o assistant do Cloudflare",
@@ -264,6 +285,9 @@ class AssistantProposalTests(unittest.TestCase):
                 )
         rejected = (
             "remova o registro DNS da Cloudflare",
+            "agora não desinstale o Shimpz Cloudflare",
+            "agora agora desinstale o Shimpz Cloudflare",
+            "talvez agora desinstale o Shimpz Cloudflare",
             "remove o cloudflare",
             "não desinstale o Shimpz Cloudflare",
             "use o Shimpz Cloudflare",

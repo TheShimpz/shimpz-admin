@@ -668,7 +668,12 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "instala o cloudflare", "files": [], "assistant_ids": []}
+                    {
+                        "type": "chat",
+                        "message": "agora instale o cloudflare",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
                 )
 
                 self.assertEqual((await websocket.next_json())["state"], "planned")

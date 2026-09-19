@@ -170,6 +170,7 @@ _INSTALL_PREFIXES = (
 _INSTALL_VERBS = ("instala ", "instale ", "instalar ", "install ")
 _INSTALL_SUFFIXES = (" neste time", " no time", " on this team", " por favor", " please", "")
 _INSTALL_TARGET_SEPARATOR = re.compile(r"\s+(?:and|e)\s+")
+_LIFECYCLE_SEQUENCE_LEAD_INS = ("and now ", "e agora ", "agora ", "now ")
 
 Decision = Literal["confirm", "cancel", "ambiguous"]
 
@@ -238,7 +239,10 @@ def classify_uninstall_confirmation(value: object) -> Decision:
 
 def targetless_uninstall_requested(value: object) -> bool:
     """Recognize only a complete uninstall imperative that names no target."""
-    return _classify_confirmation(value, _TARGETLESS_UNINSTALL_REQUESTS, frozenset()) == "confirm"
+    if not isinstance(value, str) or not value.strip() or len(value) > 160:
+        return False
+    normalized = _strip_lifecycle_sequence_lead_in(_search_text(value))
+    return _classify_confirmation(normalized, _TARGETLESS_UNINSTALL_REQUESTS, frozenset()) == "confirm"
 
 
 def capability_continuation(value: object) -> bool:
@@ -248,6 +252,13 @@ def capability_continuation(value: object) -> bool:
 
 def _search_text(value: str) -> str:
     return " ".join(_SEARCH_SEPARATOR.sub(" ", _fold(value)).split())
+
+
+def _strip_lifecycle_sequence_lead_in(value: str) -> str:
+    for lead_in in _LIFECYCLE_SEQUENCE_LEAD_INS:
+        if value.startswith(lead_in):
+            return value[len(lead_in) :]
+    return value
 
 
 def _tokens(*values: str) -> frozenset[str]:
@@ -364,7 +375,7 @@ def capability_shortlist(
 def _uninstall_request(message: object) -> tuple[str, bool] | None:
     if not isinstance(message, str) or not message.strip() or len(message) > 500:
         return None
-    normalized = _search_text(message)
+    normalized = _strip_lifecycle_sequence_lead_in(_search_text(message))
     for prefix in _UNINSTALL_PREFIXES:
         if not normalized.startswith(prefix):
             continue
@@ -395,7 +406,7 @@ def uninstall_requested(message: object) -> bool:
 def _installation_targets(message: object) -> tuple[str, ...]:
     if not isinstance(message, str) or not message.strip() or len(message) > 500:
         return ()
-    normalized = _search_text(message)
+    normalized = _strip_lifecycle_sequence_lead_in(_search_text(message))
     for prefix in _INSTALL_PREFIXES:
         if not normalized.startswith(prefix):
             continue
