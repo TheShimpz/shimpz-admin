@@ -556,6 +556,14 @@ def resumable_turn(team_id: object) -> str | None:
         raise HistoryUnavailableError("chat history resumable turn is invalid") from None
 
 
+def finish_resumable_turn(turn_id: object) -> None:
+    canonical_turn = _turn_id(turn_id)
+    if _absent():
+        return
+    with _database() as database:
+        database.execute("DELETE FROM resumable_turn WHERE turn_id = ?", (canonical_turn,))
+
+
 def clear_team(team_id: object) -> int:
     canonical_team = _team_id(team_id)
     if _absent():

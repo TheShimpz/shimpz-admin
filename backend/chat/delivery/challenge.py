@@ -45,6 +45,7 @@ async def deliver(
             operations.error_terminal(503, "Admin chat history is unavailable"),
         )
         return
+    connection.pending_history_id = turn.history_id
     remember_challenge(connection, challenge, challenge_type)
     if not await operations.send_event(websocket, challenge):
         connection.closed = True

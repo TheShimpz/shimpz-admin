@@ -27,15 +27,25 @@ async def turn(
     connection: Connection,
     active: Turn,
     event: Mapping[str, object],
+    *,
+    finish_history: bool = False,
 ) -> bool:
     if connection.closed or active.terminal_sent:
         return False
     projected = event
     try:
-        await history_delivery.terminal(event.get("team_id"), active.history_id, event)
+        await history_delivery.terminal(
+            event.get("team_id"),
+            active.history_id,
+            event,
+            finish_history=finish_history,
+        )
     except (history.HistoryUnavailableError, ValueError):
         log.exception("Admin chat reply history commit failed")
         projected = error_terminal(503, "Admin chat history is unavailable")
+    else:
+        if (event.get("type") == "done" or finish_history) and active.history_id == connection.pending_history_id:
+            connection.pending_history_id = None
     active.terminal_sent = True
     if not await _send(websocket, projected):
         connection.closed = True
@@ -47,15 +57,20 @@ async def resumed(
     websocket: WebSocket,
     connection: Connection,
     event: Mapping[str, object],
+    *,
+    finish_history: bool = False,
 ) -> bool:
     if connection.closed or connection.sync_terminal_sent:
         return False
     projected = event
-    try:
-        await history_delivery.resumed_terminal(event)
-    except (history.HistoryUnavailableError, ValueError):
-        log.exception("Admin resumed chat reply history commit failed")
-        projected = error_terminal(503, "Admin chat history is unavailable")
+    if finish_history:
+        try:
+            await history_delivery.resumed_terminal(connection.pending_history_id, event)
+        except (history.HistoryUnavailableError, ValueError):
+            log.exception("Admin resumed chat reply history commit failed")
+            projected = error_terminal(503, "Admin chat history is unavailable")
+        else:
+            connection.pending_history_id = None
     connection.sync_terminal_sent = True
     if not await _send(websocket, projected):
         connection.closed = True

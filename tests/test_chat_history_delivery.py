@@ -12,7 +12,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from chat.delivery import sync as sync_delivery
+
 from chat import socket
+from tests import chat_socket_fixtures
 
 
 class ChatHistoryDeliveryTests(unittest.TestCase):
@@ -82,6 +85,128 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             projected = websocket.send_json.await_args.args[0]
             self.assertEqual(projected["type"], "error")
             self.assertEqual(projected["status"], 503)
+
+        asyncio.run(scenario())
+
+    def test_resumed_non_reply_terminal_releases_the_exact_challenge(self) -> None:
+        async def scenario() -> None:
+            turn_id = socket.history.new_turn_id()
+            self.assertTrue(socket.history.append_user("team_1", turn_id, "Approve the Action"))
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
+            connection = socket._Connection(pending_history_id=turn_id)
+            websocket = mock.AsyncMock()
+
+            await sync_delivery.human(
+                websocket,
+                connection,
+                "team_1",
+                chat_socket_fixtures.human_challenge("approval"),
+                socket._SYNC_OPERATIONS,
+            )
+            self.assertEqual(connection.pending_history_id, turn_id)
+            self.assertTrue(
+                await socket._send_sync_terminal_once(
+                    websocket,
+                    connection,
+                    {"type": "error", "status": 409, "detail": "Action denied"},
+                    finish_history=True,
+                )
+            )
+            self.assertIsNone(socket.history.resumable_turn("team_1"))
+            self.assertIsNone(connection.pending_history_id)
+
+        asyncio.run(scenario())
+
+    def test_empty_sync_releases_an_abandoned_challenge(self) -> None:
+        async def scenario() -> None:
+            turn_id = socket.history.new_turn_id()
+            self.assertTrue(socket.history.append_user("team_1", turn_id, "Expired approval"))
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
+            connection = socket._Connection(
+                pending_challenge_id="b" * 32,
+                pending_challenge_type="human",
+                pending_history_id=turn_id,
+            )
+            websocket = mock.AsyncMock()
+
+            await sync_delivery.empty(websocket, connection, socket._SYNC_OPERATIONS)
+
+            self.assertIsNone(socket.history.resumable_turn("team_1"))
+            self.assertIsNone(connection.pending_challenge_id)
+            websocket.send_json.assert_awaited_once_with({"type": "sync-empty"})
+
+        asyncio.run(scenario())
+
+    def test_empty_sync_never_releases_a_newer_binding(self) -> None:
+        async def scenario() -> None:
+            first = socket.history.new_turn_id()
+            second = socket.history.new_turn_id()
+            self.assertTrue(socket.history.append_user("team_1", first, "Expired approval"))
+            self.assertTrue(socket.history.append_user("team_1", second, "New approval"))
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", first))
+            connection = socket._Connection(pending_history_id=first)
+
+            socket.history.finish_resumable_turn(first)
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", second))
+            await sync_delivery.empty(mock.AsyncMock(), connection, socket._SYNC_OPERATIONS)
+
+            self.assertEqual(socket.history.resumable_turn("team_1"), second)
+
+        asyncio.run(scenario())
+
+    def test_uncertain_integration_resume_preserves_the_binding(self) -> None:
+        async def scenario() -> None:
+            turn_id = socket.history.new_turn_id()
+            self.assertTrue(socket.history.append_user("team_1", turn_id, "Connect Cloudflare"))
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
+            connection = socket._Connection(pending_history_id=turn_id)
+            pending = chat_socket_fixtures.integration_challenge().websocket_event("team_1")
+            websocket = mock.AsyncMock()
+
+            await sync_delivery.integration_terminal(
+                websocket,
+                connection,
+                "team_1",
+                pending,
+                socket.local.PublicResponse(503, {"code": "offline"}),
+                socket._SYNC_OPERATIONS,
+            )
+
+            self.assertEqual(socket.history.resumable_turn("team_1"), turn_id)
+            self.assertEqual(connection.pending_challenge_id, pending["challenge_id"])
+            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "error")
+
+        asyncio.run(scenario())
+
+    def test_uncertain_human_resume_preserves_the_binding(self) -> None:
+        async def scenario() -> None:
+            turn_id = socket.history.new_turn_id()
+            self.assertTrue(socket.history.append_user("team_1", turn_id, "Approve the Action"))
+            self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
+            connection = socket._Connection(
+                pending_challenge_id="b" * 32,
+                pending_challenge_type="human",
+                pending_history_id=turn_id,
+            )
+            future = asyncio.get_running_loop().create_future()
+            websocket = mock.AsyncMock()
+            with mock.patch.object(
+                socket,
+                "_await_progress_result",
+                new=mock.AsyncMock(return_value=socket.local.PublicResponse(503, {"code": "offline"})),
+            ):
+                await socket._deliver_human_response(
+                    websocket,
+                    connection,
+                    "team_1",
+                    future,
+                    asyncio.Queue(),
+                    None,
+                )
+
+            self.assertEqual(socket.history.resumable_turn("team_1"), turn_id)
+            self.assertEqual(connection.pending_challenge_id, "b" * 32)
+            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "error")
 
         asyncio.run(scenario())
 

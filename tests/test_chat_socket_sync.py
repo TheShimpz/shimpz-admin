@@ -90,6 +90,12 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def _accepted(message: dict) -> bool:
         return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
 
+    def _bind_history(self, message: str) -> str:
+        turn_id = self.admin_app.chat_history.new_turn_id()
+        self.assertTrue(self.admin_app.chat_history.append_user("team_1", turn_id, message))
+        self.assertTrue(self.admin_app.chat_history.bind_resumable_turn("team_1", turn_id))
+        return turn_id
+
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
@@ -150,6 +156,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "turn", return_value=completed) as turn,
             ):
+                self._bind_history("Expired integration")
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
@@ -253,6 +260,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
+                self._bind_history("Resume integration")
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
@@ -296,6 +304,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
+                self._bind_history("Stop resumed integration")
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
@@ -335,19 +344,21 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = self.chat_socket._Connection(sync_terminal_sent=True)
 
-            await self.chat_socket._deliver_integration_sync(
+            await self.chat_socket.sync_delivery.integration(
                 websocket,
                 connection,
                 "team_1",
                 pending,
                 mismatch,
+                self.chat_socket._SYNC_OPERATIONS,
             )
-            await self.chat_socket._deliver_integration_sync(
+            await self.chat_socket.sync_delivery.integration(
                 websocket,
                 connection,
                 "team_1",
                 pending,
                 pending,
+                self.chat_socket._SYNC_OPERATIONS,
             )
 
             websocket.send_json.assert_not_awaited()
@@ -360,8 +371,8 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(
-                    self.chat_socket,
-                    "_deliver_human_sync",
+                    self.chat_socket.sync_delivery,
+                    "human",
                     side_effect=RuntimeError("must not escape"),
                 ),
             ):

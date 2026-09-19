@@ -129,6 +129,20 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertTrue(history.append_install("marketing", turn_id, event))
         self.assertIsNone(history.resumable_turn("marketing"))
 
+    def test_finishing_one_resumable_turn_never_releases_its_successor(self) -> None:
+        first = history.new_turn_id()
+        second = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", first, "First gated request"))
+        self.assertTrue(history.append_user("marketing", second, "Second gated request"))
+        self.assertTrue(history.bind_resumable_turn("marketing", first))
+
+        history.finish_resumable_turn(first)
+        self.assertIsNone(history.resumable_turn("marketing"))
+        self.assertTrue(history.bind_resumable_turn("marketing", second))
+
+        history.finish_resumable_turn(first)
+        self.assertEqual(history.resumable_turn("marketing"), second)
+
     def test_pages_without_eviction_and_never_crosses_team_scope(self) -> None:
         expected = []
         for index in range(history.PAGE_ROWS * 2 + 7):

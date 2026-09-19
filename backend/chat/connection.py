@@ -40,6 +40,7 @@ class Connection:
     ignore_idle_stop_once: bool = False
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)
+    pending_history_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

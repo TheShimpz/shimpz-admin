@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from chat.delivery import plan as plan_delivery
+from chat.delivery import sync as sync_delivery
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
@@ -513,11 +514,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
             empty = team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
-            await socket._deliver_integration_sync(websocket, connection, "team_1", empty, None)
+            await sync_delivery.integration(
+                websocket, connection, "team_1", empty, None, socket._SYNC_OPERATIONS
+            )
             self.assertIsNone(connection.pending_challenge_id)
 
             connection = socket._Connection()
-            await socket._deliver_integration_sync(websocket, connection, "team_1", object(), None)
+            await sync_delivery.integration(
+                websocket, connection, "team_1", object(), None, socket._SYNC_OPERATIONS
+            )
             self.assertTrue(connection.sync_terminal_sent)
 
             pending = local.PublicResponse(
@@ -532,11 +537,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 },
             )
             connection = socket._Connection()
-            await socket._deliver_integration_sync(websocket, connection, "team_1", pending, None)
+            await sync_delivery.integration(
+                websocket, connection, "team_1", pending, None, socket._SYNC_OPERATIONS
+            )
             self.assertTrue(connection.sync_terminal_sent)
 
             connection = socket._Connection()
-            await socket._deliver_human_sync(websocket, connection, "team_1", empty)
+            await sync_delivery.human(websocket, connection, "team_1", empty, socket._SYNC_OPERATIONS)
             self.assertIsNone(connection.pending_challenge_id)
 
         asyncio.run(scenario())
@@ -626,7 +633,10 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNone(failure)
 
             await socket._dispatch_stop(websocket, socket._Connection(), "team_1")
-            pending = socket._Connection(pending_challenge_id="a" * 32)
+            pending = socket._Connection(
+                pending_challenge_id="a" * 32,
+                pending_history_id="a" * 32,
+            )
             await socket._dispatch_stop(websocket, pending, "team_1")
             self.assertIsNotNone(pending.active)
 
@@ -707,7 +717,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             await socket._deliver_turn(websocket, detached, socket._Turn(None, "chat"), "team_1")
 
             failure = local.PublicResponse(503, {"team_id": "team_1"})
-            self.assertEqual(socket._pending_error(failure, "team_1", "human")["status"], 503)
+            self.assertEqual(sync_delivery.pending_error(failure, "team_1", "human")["status"], 503)
 
             pending = local.PublicResponse(
                 428,
@@ -721,14 +731,21 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 },
             )
             invalid_resumed = team.TeamResponse(428, {"status": "integrations-required"})
-            await socket._deliver_integration_sync(
+            await sync_delivery.integration(
                 websocket,
                 socket._Connection(),
                 "team_1",
                 pending,
                 invalid_resumed,
+                socket._SYNC_OPERATIONS,
             )
-            await socket._deliver_human_sync(websocket, socket._Connection(), "team_1", failure)
+            await sync_delivery.human(
+                websocket,
+                socket._Connection(),
+                "team_1",
+                failure,
+                socket._SYNC_OPERATIONS,
+            )
 
         asyncio.run(scenario())
 

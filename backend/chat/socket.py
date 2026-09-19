@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, Mapping
 
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
+from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
@@ -66,7 +67,6 @@ _error_terminal = projection.error_terminal
 _projected_event = projection.projected_event
 turn_terminal = projection.turn_terminal
 integration_challenge_event = projection.integration_challenge_event
-human_challenge_event = projection.human_challenge_event
 _first_challenge = projection.first_challenge
 _stop_accepted = projection.stop_accepted
 
@@ -100,6 +100,13 @@ async def _send_sync_event(
         connection.closed = True
         return False
     return True
+
+
+_SYNC_OPERATIONS = sync_delivery.Operations(
+    send_event=_send_sync_event,
+    send_terminal=_send_sync_terminal_once,
+    error_terminal=_error_terminal,
+)
 
 
 _progress_channel = progress_transport.channel
@@ -278,110 +285,9 @@ def _sync_snapshot(
         # exact pending challenge remains the controller-owned binding for the paused turn.
         resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"], progress)
         return _SyncSnapshot("integration", pending_integration, resumed)
-    if not _is_empty_pending(pending_integration, team_id):
+    if not sync_delivery.is_empty_pending(pending_integration, team_id):
         return _SyncSnapshot("integration", pending_integration)
     return _SyncSnapshot("human", local.pending_human(team_id))
-
-
-def _is_empty_pending(response: object, team_id: str) -> bool:
-    return (
-        isinstance(response, team.TeamResponse)
-        and isinstance(response.status, int)
-        and not isinstance(response.status, bool)
-        and 200 <= response.status < 300
-        and isinstance(response.body, dict)
-        and response.body == {"team_id": team_id, "status": "none"}
-    )
-
-
-def _pending_error(response: object, team_id: str, challenge_type: str) -> dict[str, object]:
-    if (
-        isinstance(response, team.TeamResponse)
-        and isinstance(response.status, int)
-        and not isinstance(response.status, bool)
-        and not 200 <= response.status < 300
-    ):
-        return turn_terminal(response, team_id)
-    return _error_terminal(502, f"the Assistant {challenge_type} challenge was invalid")
-
-
-async def _deliver_integration_sync(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    pending_response: object,
-    resumed_response: object,
-) -> None:
-    """Deliver one explicit integration synchronization result."""
-    pending = integration_challenge_event(pending_response, team_id)
-    if pending is None:
-        if _is_empty_pending(pending_response, team_id):
-            _forget_challenge(connection)
-            await _send_sync_event(websocket, connection, {"type": "sync-empty"})
-            return
-        await _send_sync_terminal_once(
-            websocket,
-            connection,
-            _pending_error(pending_response, team_id, "integration"),
-        )
-        return
-    if resumed_response is None:
-        await _send_sync_terminal_once(
-            websocket,
-            connection,
-            _error_terminal(502, "the Assistant integration challenge was invalid"),
-        )
-        return
-
-    resumed, challenge_type = _first_challenge(resumed_response, team_id)
-    if resumed is not None and challenge_type is not None:
-        pending_turn_id = pending_response.body.get("turn_id")
-        resumed_turn_id = resumed_response.body.get("turn_id")
-        if pending_turn_id != resumed_turn_id:
-            await _send_sync_terminal_once(
-                websocket,
-                connection,
-                _error_terminal(502, "the Assistant integration challenge was invalid"),
-            )
-            return
-        _remember_challenge(connection, resumed, challenge_type)
-        await _send_sync_event(websocket, connection, resumed)
-        return
-
-    if isinstance(resumed_response, team.TeamResponse) and (
-        resumed_response.status == 428
-        or (
-            isinstance(resumed_response.body, dict)
-            and resumed_response.body.get("status") in {"human-required", "integrations-required"}
-        )
-    ):
-        event = _error_terminal(502, "the Assistant integration challenge was invalid")
-    else:
-        event = turn_terminal(resumed_response, team_id)
-    _forget_challenge(connection)
-    await _send_sync_terminal_once(websocket, connection, event)
-
-
-async def _deliver_human_sync(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    pending_response: object,
-) -> None:
-    pending = human_challenge_event(pending_response, team_id)
-    if pending is not None:
-        _remember_challenge(connection, pending, "human")
-        await _send_sync_event(websocket, connection, pending)
-        return
-    if _is_empty_pending(pending_response, team_id):
-        _forget_challenge(connection)
-        await _send_sync_event(websocket, connection, {"type": "sync-empty"})
-        return
-    await _send_sync_terminal_once(
-        websocket,
-        connection,
-        _pending_error(pending_response, team_id, "human"),
-    )
 
 
 async def _load_sync_snapshot(
@@ -418,20 +324,28 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
     try:
         completed = False
         with contextlib.suppress(Exception):
+            connection.pending_history_id = await history_delivery.observe(team_id)
             snapshot = await _load_sync_snapshot(websocket, connection, team_id)
             if snapshot is None:
                 return
             if connection.closed:
                 return
             if snapshot.challenge_type == "human":
-                await _deliver_human_sync(websocket, connection, team_id, snapshot.pending)
+                await sync_delivery.human(
+                    websocket,
+                    connection,
+                    team_id,
+                    snapshot.pending,
+                    _SYNC_OPERATIONS,
+                )
             else:
-                await _deliver_integration_sync(
+                await sync_delivery.integration(
                     websocket,
                     connection,
                     team_id,
                     snapshot.pending,
                     snapshot.resumed,
+                    _SYNC_OPERATIONS,
                 )
             completed = True
         if (
@@ -471,7 +385,13 @@ async def _run_stop(
             return
         if accepted is True:
             _forget_challenge(connection)
-            await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
+            await _send_terminal_once(
+                websocket,
+                connection,
+                turn,
+                {"type": "stopped"},
+                finish_history=True,
+            )
         elif accepted is None:
             status = response.status if isinstance(response, team.TeamResponse) else 502
             await _send_terminal_once(
@@ -486,6 +406,7 @@ async def _run_stop(
                 connection,
                 turn,
                 _error_terminal(409, "no active chat turn"),
+                finish_history=True,
             )
         # ``False`` races safely with a turn that has already finished; its normal terminal wins.
     finally:
@@ -571,21 +492,30 @@ async def _deliver_human_response(
             if not connection.closed:
                 await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
             return
-        _forget_challenge(connection)
         if authentication_failure is not None:
-            event = (
-                _error_terminal(*authentication_failure)
-                if _authenticated_denial(response)
-                else turn_terminal(response, team_id)
+            confirmed = _authenticated_denial(response)
+            event = _error_terminal(*authentication_failure) if confirmed else turn_terminal(response, team_id)
+            if event.get("type") == "done":
+                confirmed = True
+            if confirmed:
+                _forget_challenge(connection)
+            await _send_sync_terminal_once(
+                websocket,
+                connection,
+                event,
+                finish_history=confirmed,
             )
-            await _send_sync_terminal_once(websocket, connection, event)
             return
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
             _remember_challenge(connection, challenge, challenge_type)
             await _send_sync_event(websocket, connection, challenge)
             return
-        await _send_sync_terminal_once(websocket, connection, turn_terminal(response, team_id))
+        event = turn_terminal(response, team_id)
+        confirmed = event.get("type") == "done"
+        if confirmed:
+            _forget_challenge(connection)
+        await _send_sync_terminal_once(websocket, connection, event, finish_history=confirmed)
     finally:
         if connection.sync_task is task:
             connection.sync_task = None
@@ -818,7 +748,21 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
         await _send_event(websocket, _error_terminal(409, "no active chat turn"))
         return
     if connection.active is None:
-        connection.active = _Turn(future=None, operation="pending-stop")
+        history_id = connection.pending_history_id
+        if history_id is None:
+            try:
+                history_id = await history_delivery.resume(team_id)
+            except (history.HistoryUnavailableError, ValueError):
+                await _send_event(
+                    websocket,
+                    _error_terminal(503, "Admin chat history is unavailable"),
+                )
+                return
+        connection.active = _Turn(
+            future=None,
+            operation="pending-stop",
+            history_id=history_id,
+        )
     _request_stop(websocket, connection, connection.active, team_id, emit=True)
 
 
