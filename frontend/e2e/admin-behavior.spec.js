@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
@@ -756,17 +757,18 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 
-test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown', async ({ page }) => {
+test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
   await composer.fill('First prompt');
-  await composer.press('Enter');
+  await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   await expect(composer).toBeEnabled();
   await composer.fill('Second prompt');
-  await composer.press('Enter');
+  await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(2);
   await expect(composer).toHaveValue('');
 
@@ -861,6 +863,71 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
   await composer.press('ArrowUp');
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('Install Cloudflare');
+});
+
+test('restores the installed Assistant card after a successful OAuth return @browser-sensitive', async ({ page, baseURL }) => {
+  const turnId = 'c'.repeat(32);
+  const callbackPath = `/api/oauth/cloudflare/callback?state=${'s'.repeat(43)}&claim=${'c'.repeat(64)}`;
+  let callbackObserved = false;
+  const callbackServer = createServer((request, response) => {
+    callbackObserved = request.url === callbackPath;
+    response.writeHead(303, {
+      'Cache-Control': 'no-store',
+      Location: new URL('/chat', baseURL).href,
+    });
+    response.end();
+  });
+  await new Promise((resolve) => callbackServer.listen(0, '127.0.0.1', resolve));
+  const callbackAddress = callbackServer.address();
+  if (!callbackAddress || typeof callbackAddress === 'string') {
+    throw new Error('OAuth return test server did not bind a TCP address');
+  }
+  const chat = await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
+        {
+          id: `${turnId}:install`,
+          kind: 'assistant-install',
+          state: 'installed',
+          assistants: [{
+            id: 'shimpz-cloudflare',
+            name: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            providers: ['cloudflare'],
+            provenance: 'local',
+            status: 'installed',
+          }],
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.unroute('**/api/**');
+
+  try {
+    await page.goto(`http://127.0.0.1:${callbackAddress.port}${callbackPath}`);
+
+    expect(callbackObserved).toBe(true);
+    await expect(page).toHaveURL(/\/chat$/);
+    const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+    await expect(task).toHaveCount(1);
+    await expect(task).toHaveAttribute('data-state', 'complete');
+    await expect(task).toContainText('Shimpz Cloudflare');
+    await expect(page.getByText('Installed', { exact: true })).toHaveCount(1);
+    await expect.poll(() => chat.historyRequests()).toEqual([null]);
+
+    await page.reload();
+    await expect(task).toHaveCount(1);
+    await expect(task).toHaveAttribute('data-state', 'complete');
+    await expect(page.getByText('Installed', { exact: true })).toHaveCount(1);
+    await expect.poll(() => chat.historyRequests()).toEqual([null, null]);
+  } finally {
+    await new Promise((resolve, reject) => callbackServer.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    }));
+  }
 });
 
 test('keeps chat available when durable history cannot be loaded', async ({ page }) => {

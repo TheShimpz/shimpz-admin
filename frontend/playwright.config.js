@@ -14,6 +14,16 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'mobile', use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
+    {
+      name: 'firefox-browser-sensitive',
+      grep: /@browser-sensitive/,
+      use: { browserName: 'firefox', viewport: { width: 1440, height: 1000 } },
+    },
+    {
+      name: 'webkit-browser-sensitive',
+      grep: /@browser-sensitive/,
+      use: { browserName: 'webkit', viewport: { width: 1440, height: 1000 } },
+    },
   ],
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1',
