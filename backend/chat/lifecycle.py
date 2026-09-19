@@ -57,6 +57,19 @@ def target_required_event(team_id: str) -> dict[str, object]:
     return {"type": "assistant-uninstall", "state": "target-required", "team_id": team_id}
 
 
+def reuses_history(connection: Connection, payload: dict[str, object]) -> bool:
+    return (
+        connection.lifecycle_proposal is not None
+        and payload["files"] == []
+        and assistant_proposal.classify_uninstall_confirmation(payload["message"]) != "ambiguous"
+    )
+
+
+def retain_history(connection: Connection, history_id: str | None, event: Mapping[str, object]) -> None:
+    if event.get("type") == "assistant-uninstall" and event.get("state") == "proposed":
+        connection.admitted_history_id = history_id
+
+
 def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[str, object]:
     assistant = proposal.assistant
     identity: dict[str, object] = {

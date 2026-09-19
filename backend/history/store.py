@@ -19,7 +19,7 @@ from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
@@ -101,7 +101,11 @@ def _initialize(database: sqlite3.Connection) -> None:
             UNIQUE (team_id, event_key)
         );
         CREATE INDEX transcript_team_position ON transcript (team_id, position);
-        PRAGMA user_version = 1;
+        CREATE TABLE active_turn (
+            team_id TEXT PRIMARY KEY,
+            turn_id TEXT NOT NULL
+        );
+        PRAGMA user_version = 2;
         """
     )
 
@@ -136,12 +140,30 @@ def _encoded(payload: Mapping[str, object]) -> str:
     return encoded
 
 
-def _append(team_id: str, event_key: str, payload: Mapping[str, object]) -> bool:
+def _append(
+    team_id: str,
+    event_key: str,
+    payload: Mapping[str, object],
+    *,
+    active_turn: str | None = None,
+    finish_turn: str | None = None,
+) -> bool:
     with _database() as database:
         cursor = database.execute(
             "INSERT OR IGNORE INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
             (team_id, event_key, _encoded(payload)),
         )
+        if cursor.rowcount == 1 and active_turn is not None:
+            database.execute(
+                "INSERT INTO active_turn (team_id, turn_id) VALUES (?, ?) "
+                "ON CONFLICT(team_id) DO UPDATE SET turn_id = excluded.turn_id",
+                (team_id, active_turn),
+            )
+        if finish_turn is not None:
+            database.execute(
+                "DELETE FROM active_turn WHERE team_id = ? AND turn_id = ?",
+                (team_id, finish_turn),
+            )
         return cursor.rowcount == 1
 
 
@@ -153,6 +175,7 @@ def append_user(team_id: object, turn_id: object, message: object) -> bool:
         canonical_team,
         f"{canonical_turn}:user",
         {"kind": "message", "role": "user", "text": text},
+        active_turn=canonical_turn,
     )
 
 
@@ -169,6 +192,7 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
         canonical_team,
         f"{canonical_turn}:reply",
         {"kind": "message", "role": "assistant", "text": reply, "author": author},
+        finish_turn=canonical_turn,
     )
 
 
@@ -249,10 +273,13 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
 def append_install(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
+    payload = _install_payload(event, canonical_team)
+    finished = payload["state"] != "installed" or event.get("continuation") == "none"
     return _append(
         canonical_team,
         f"{canonical_turn}:install",
-        _install_payload(event, canonical_team),
+        payload,
+        finish_turn=canonical_turn if finished else None,
     )
 
 
@@ -265,6 +292,7 @@ def append_guidance(team_id: object, turn_id: object, code: object) -> bool:
         canonical_team,
         f"{canonical_turn}:guidance",
         {"kind": "guidance", "code": code},
+        finish_turn=canonical_turn,
     )
 
 
@@ -332,6 +360,7 @@ def append_uninstall(
         canonical_team,
         f"{canonical_turn}:uninstall",
         _uninstall_payload(event, canonical_team, assistant),
+        finish_turn=canonical_turn,
     )
 
 
@@ -488,12 +517,43 @@ def _absent() -> bool:
     return False
 
 
+def active_turn(team_id: object) -> str | None:
+    canonical_team = _team_id(team_id)
+    if _absent():
+        return None
+    with _database() as database:
+        row = database.execute(
+            "SELECT turn_id FROM active_turn WHERE team_id = ?",
+            (canonical_team,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        return _turn_id(row[0])
+    except ValueError:
+        raise HistoryUnavailableError("chat history active turn is invalid") from None
+
+
+def finish_turn(team_id: object, turn_id: object) -> bool:
+    canonical_team = _team_id(team_id)
+    canonical_turn = _turn_id(turn_id)
+    if _absent():
+        return False
+    with _database() as database:
+        cursor = database.execute(
+            "DELETE FROM active_turn WHERE team_id = ? AND turn_id = ?",
+            (canonical_team, canonical_turn),
+        )
+        return cursor.rowcount == 1
+
+
 def clear_team(team_id: object) -> int:
     canonical_team = _team_id(team_id)
     if _absent():
         return 0
     with _database() as database:
         cursor = database.execute("DELETE FROM transcript WHERE team_id = ?", (canonical_team,))
+        database.execute("DELETE FROM active_turn WHERE team_id = ?", (canonical_team,))
         return cursor.rowcount
 
 
@@ -502,4 +562,5 @@ def clear_all() -> int:
         return 0
     with _database() as database:
         cursor = database.execute("DELETE FROM transcript")
+        database.execute("DELETE FROM active_turn")
         return cursor.rowcount

@@ -380,6 +380,8 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                     return_value=self.completed,
                 ) as resume,
             ):
+                history_id = self.admin_app.chat_history.new_turn_id()
+                self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})

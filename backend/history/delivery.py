@@ -34,8 +34,19 @@ async def terminal(
     turn_id: str | None,
     event: Mapping[str, object],
 ) -> None:
-    if turn_id is None or event.get("type") != "done":
+    if turn_id is None:
         return
+    if event.get("type") == "done":
+        await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+
+
+async def resumed_terminal(event: Mapping[str, object]) -> None:
+    if not _enabled or event.get("type") != "done":
+        return
+    team_id = event.get("team_id")
+    turn_id = await asyncio.to_thread(store.active_turn, team_id)
+    if turn_id is None:
+        raise store.HistoryUnavailableError("chat history active turn is unavailable")
     await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
 
 

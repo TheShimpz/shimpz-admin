@@ -84,6 +84,38 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertNotIn("plan_id", install)
         self.assertNotIn("continuation", install)
 
+    def test_tracks_only_the_current_unfinished_presentation_turn(self) -> None:
+        first = history.new_turn_id()
+        second = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", first, "Install and list zones"))
+        self.assertEqual(history.active_turn("marketing"), first)
+
+        self.assertTrue(history.append_install("marketing", first, _installed_event()))
+        self.assertEqual(history.active_turn("marketing"), first)
+        self.assertTrue(history.append_user("marketing", second, "Newest request"))
+        self.assertEqual(history.active_turn("marketing"), second)
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                second,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": "Finished.",
+                },
+            )
+        )
+        self.assertIsNone(history.active_turn("marketing"))
+
+    def test_installation_only_terminal_clears_active_turn(self) -> None:
+        turn_id = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn_id, "Install Cloudflare"))
+        event = {**_installed_event(), "continuation": "none"}
+
+        self.assertTrue(history.append_install("marketing", turn_id, event))
+        self.assertIsNone(history.active_turn("marketing"))
+
     def test_pages_without_eviction_and_never_crosses_team_scope(self) -> None:
         expected = []
         for index in range(history.PAGE_ROWS * 2 + 7):

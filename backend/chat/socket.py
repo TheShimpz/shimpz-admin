@@ -112,8 +112,14 @@ async def _send_sync_terminal_once(
 ) -> bool:
     if connection.closed or connection.sync_terminal_sent:
         return False
+    projected = event
+    try:
+        await history_delivery.resumed_terminal(event)
+    except (history.HistoryUnavailableError, ValueError):
+        log.exception("Admin resumed chat reply history commit failed")
+        projected = _error_terminal(503, "Admin chat history is unavailable")
     connection.sync_terminal_sent = True
-    if not await _send_event(websocket, event):
+    if not await _send_event(websocket, projected):
         connection.closed = True
         return False
     return True
@@ -234,6 +240,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             event,
             language_exemplar=turn.language_exemplar,
         )
+        lifecycle.retain_history(connection, turn.history_id, event)
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -694,9 +701,13 @@ async def _admit_chat_payload(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    if not await _commit_user_history(websocket, connection, team_id, payload["message"]):
-        return None
-    return payload
+    admitted = lifecycle.reuses_history(connection, payload) or await _commit_user_history(
+        websocket,
+        connection,
+        team_id,
+        payload["message"],
+    )
+    return payload if admitted else None
 
 
 async def _commit_user_history(

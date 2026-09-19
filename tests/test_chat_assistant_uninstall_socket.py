@@ -155,6 +155,15 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(turn.call_count, 1)
                 await websocket.disconnect()
 
+            entries = self.admin_app.chat_history.page("team_1")["entries"]
+            self.assertEqual(
+                [(entry["kind"], entry.get("text")) for entry in entries],
+                [
+                    ("message", "agora desinstale o cloudflare"),
+                    ("assistant-uninstall", None),
+                ],
+            )
+
         asyncio.run(scenario())
 
     def test_augmented_uninstall_never_confirms_a_pending_proposal(self) -> None:
