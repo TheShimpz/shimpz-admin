@@ -400,7 +400,7 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
   await expect(page.getByText('Technical detail: Team catalog unavailable.')).toBeVisible();
 });
 
-test('keeps boot visible until the initial Assistant card already has its final icon', async ({ page }) => {
+test('keeps boot visible until the initial Assistant icon presentation settles', async ({ page }) => {
   const teamGate = deferred();
   const iconGate = deferred();
   const iconRequested = deferred();

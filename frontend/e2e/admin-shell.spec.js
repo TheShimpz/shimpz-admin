@@ -826,6 +826,83 @@ test('never renders a matching publication while Local snapshots are settling', 
   await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
 });
 
+test('renders Assistant identities immediately during in-app icon hydration', async ({ page }) => {
+  const imageId = `sha256:${'b'.repeat(64)}`;
+  const localIcon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
+    'base64',
+  );
+  let releaseIcon;
+  let markIconRequested;
+  const iconGate = new Promise((resolve) => { releaseIcon = resolve; });
+  const iconRequested = new Promise((resolve) => { markIconRequested = resolve; });
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+  }));
+  await page.route('**/api/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [] }),
+  }));
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ version: 1, assistants: [] }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.4.5',
+        name: 'Shimpz Cloudflare',
+        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+        actions: ['list-zones'],
+        integrations: ['cloudflare'],
+        declared_creators: ['@shimpz'],
+        created_at: '2026-09-17T07:00:00Z',
+        image_id: imageId,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+      trace_id: 'c'.repeat(32),
+    }),
+  }));
+  await page.route('**/api/local-assistants/*/icon', async (route) => {
+    markIconRequested();
+    await iconGate;
+    await route.fulfill({ contentType: 'image/png', body: localIcon });
+  });
+
+  await page.goto('/teams/');
+  await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
+  await page.getByRole('link', { name: /assistants/i }).click();
+  await iconRequested;
+
+  const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  try {
+    expect(await page.evaluate(() => {
+      const visibleCard = document.querySelector('[aria-label="shimpz-cloudflare — Local"]');
+      return {
+        cardVisible: Boolean(visibleCard && getComputedStyle(visibleCard).visibility === 'visible'),
+        iconImageVisible: Boolean(visibleCard?.querySelector('.shimpz-assistant-icon img')),
+      };
+    })).toEqual({ cardVisible: true, iconImageVisible: false });
+  } finally {
+    releaseIcon();
+  }
+  await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
+});
+
 test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {
   let localInventoryRequests = 0;
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));

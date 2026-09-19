@@ -467,90 +467,96 @@
       if (!catalogPresentationSettled) localSnapshotPhase = 'loading';
     }
 
-    const [publicResult, localResult] = await Promise.allSettled([
-      listPublicAssistantCatalog(fetch, controller.signal),
-      localProfile
-        ? listLocalAssistantSnapshots(fetch, controller.signal)
-        : Promise.resolve(localSnapshots),
-    ]);
-    if (request !== catalogPresentationRequest) return;
+    try {
+      const [publicResult, localResult] = await Promise.allSettled([
+        listPublicAssistantCatalog(fetch, controller.signal),
+        localProfile
+          ? listLocalAssistantSnapshots(fetch, controller.signal)
+          : Promise.resolve(localSnapshots),
+      ]);
+      if (request !== catalogPresentationRequest) return;
 
-    const nextPublicAssistants = publicResult.status === 'fulfilled' ? publicResult.value : [];
-    const nextPublicPhase = publicResult.status === 'fulfilled' ? 'ready' : 'error';
-    const nextPublicError = publicResult.status === 'fulfilled'
-      ? ''
-      : boundedFailure(publicResult.reason, copy.genericFailure);
+      const nextPublicAssistants = publicResult.status === 'fulfilled' ? publicResult.value : [];
+      const nextPublicPhase = publicResult.status === 'fulfilled' ? 'ready' : 'error';
+      const nextPublicError = publicResult.status === 'fulfilled'
+        ? ''
+        : boundedFailure(publicResult.reason, copy.genericFailure);
 
-    const nextLocalSnapshots = localResult.status === 'fulfilled' ? localResult.value : [];
-    const nextLocalPhase = localResult.status === 'fulfilled' ? 'ready' : 'error';
-    const nextLocalError = localResult.status === 'fulfilled'
-      ? ''
-      : boundedFailure(localResult.reason, localCopy.localFailure);
+      const nextLocalSnapshots = localResult.status === 'fulfilled' ? localResult.value : [];
+      const nextLocalPhase = localResult.status === 'fulfilled' ? 'ready' : 'error';
+      const nextLocalError = localResult.status === 'fulfilled'
+        ? ''
+        : boundedFailure(localResult.reason, localCopy.localFailure);
 
-    const groups = groupLocalAssistantSnapshots(nextLocalSnapshots);
-    const published = projectPublishedAssistants(nextPublicAssistants, groups, true);
-    const entries = [
-      ...groups.map((group) => ({
-        key: localIconKey(group.primary),
-        load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
-          signal: controller.signal,
-        }),
-      })),
-      ...published.map((assistant) => ({
-        key: publicIconKey(assistant),
-        load: () => loadPublicAssistantIcon(fetch, assistant.assistant_id, {
-          signal: controller.signal,
-        }),
-      })),
-    ];
-    const previousUrls = catalogIconUrls;
-    const nextUrls = {};
-    const createdUrls = [];
-    for (const entry of entries) {
-      if (previousUrls[entry.key]) nextUrls[entry.key] = previousUrls[entry.key];
-    }
-
-    const iconTimeout = globalThis.setTimeout(
-      () => controller.abort(),
-      ICON_PRESENTATION_BUDGET_MS,
-    );
-    await Promise.allSettled(entries.map(async (entry) => {
-      if (nextUrls[entry.key]) return;
-      try {
-        const url = await decodedIconUrl(await entry.load(), controller.signal);
-        if (request !== catalogPresentationRequest) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        createdUrls.push(url);
-        nextUrls[entry.key] = url;
-      } catch {
-        // The shared card retains its bounded fallback icon when preview is unavailable.
+      const groups = groupLocalAssistantSnapshots(nextLocalSnapshots);
+      const published = projectPublishedAssistants(nextPublicAssistants, groups, true);
+      const iconController = new AbortController();
+      const abortIcons = () => iconController.abort();
+      controller.signal.addEventListener('abort', abortIcons, { once: true });
+      const entries = [
+        ...groups.map((group) => ({
+          key: localIconKey(group.primary),
+          load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
+            signal: iconController.signal,
+          }),
+        })),
+        ...published.map((assistant) => ({
+          key: publicIconKey(assistant),
+          load: () => loadPublicAssistantIcon(fetch, assistant.assistant_id, {
+            signal: iconController.signal,
+          }),
+        })),
+      ];
+      const previousUrls = catalogIconUrls;
+      const nextUrls = {};
+      for (const entry of entries) {
+        if (previousUrls[entry.key]) nextUrls[entry.key] = previousUrls[entry.key];
       }
-    }));
-    globalThis.clearTimeout(iconTimeout);
-    if (request !== catalogPresentationRequest) {
-      for (const url of createdUrls) URL.revokeObjectURL(url);
-      return;
-    }
 
-    publicAssistants = nextPublicAssistants;
-    publicCatalogPhase = nextPublicPhase;
-    publicCatalogError = nextPublicError;
-    if (localProfile) {
-      localSnapshots = nextLocalSnapshots;
-      localSnapshotPhase = nextLocalPhase;
-      localSnapshotError = nextLocalError;
-      localSnapshotSettled = true;
+      publicAssistants = nextPublicAssistants;
+      publicCatalogPhase = nextPublicPhase;
+      publicCatalogError = nextPublicError;
+      if (localProfile) {
+        localSnapshots = nextLocalSnapshots;
+        localSnapshotPhase = nextLocalPhase;
+        localSnapshotError = nextLocalError;
+        localSnapshotSettled = true;
+      }
+      catalogIconUrls = nextUrls;
+      catalogPresentationSettled = true;
+      catalogRefreshing = false;
+      await tick();
+      await nextPaint();
+      releaseObsoleteIconUrls(previousUrls, nextUrls);
+      if (request !== catalogPresentationRequest) return;
+
+      const iconTimeout = globalThis.setTimeout(
+        () => iconController.abort(),
+        ICON_PRESENTATION_BUDGET_MS,
+      );
+      await Promise.allSettled(entries.map(async (entry) => {
+        if (nextUrls[entry.key]) return;
+        try {
+          const url = await decodedIconUrl(await entry.load(), iconController.signal);
+          if (request !== catalogPresentationRequest) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          nextUrls[entry.key] = url;
+          catalogIconUrls = { ...nextUrls };
+        } catch {
+          // The shared card retains its bounded fallback icon when preview is unavailable.
+        }
+      }));
+      globalThis.clearTimeout(iconTimeout);
+      controller.signal.removeEventListener('abort', abortIcons);
+      if (request !== catalogPresentationRequest) return;
+      await tick();
+      await nextPaint();
+      if (request === catalogPresentationRequest) initialViewReadiness?.settleAssistants?.();
+    } finally {
+      if (request === catalogPresentationRequest) catalogRefreshing = false;
     }
-    catalogIconUrls = nextUrls;
-    catalogPresentationSettled = true;
-    catalogRefreshing = false;
-    await tick();
-    await nextPaint();
-    releaseObsoleteIconUrls(previousUrls, nextUrls);
-    if (request !== catalogPresentationRequest) return;
-    initialViewReadiness?.settleAssistants?.();
   }
 
   function beginLocalSnapshotInstall(group) {
