@@ -7,13 +7,14 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat import assistant_proposal, lifecycle, plan_delivery
 from chat.connection import Connection, Turn
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
-from protocol.http.v1 import payload as team_contract
 from team import bridge as team
+
+from chat import assistant_proposal, lifecycle, plan_delivery
+from protocol.http.v1 import payload as team_contract
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 StartDirect = Callable[[WebSocket, Connection, str, dict[str, object], str | None], Awaitable[None]]

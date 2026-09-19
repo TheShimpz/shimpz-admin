@@ -24,9 +24,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from protocol.http.v1 import websocket as chat_ws_common
 from starlette.concurrency import run_in_threadpool
 from team import bridge as team
+
+from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 

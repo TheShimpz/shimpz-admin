@@ -14,6 +14,12 @@ import logging
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 
+from chat.executor import ExecutorSaturatedError, submit_in_context
+from fastapi import WebSocket, WebSocketDisconnect
+from history import delivery as history_delivery
+from history import store as history
+from team import bridge as team
+
 from chat import (
     assistant_proposal,
     connection,
@@ -27,13 +33,8 @@ from chat import (
     task_resume,
 )
 from chat import progress as progress_transport
-from chat.executor import ExecutorSaturatedError, submit_in_context
-from fastapi import WebSocket, WebSocketDisconnect
-from history import delivery as history_delivery
-from history import store as history
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
-from team import bridge as team
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v7"
 MAX_FRAME_BYTES = socket_boundary.MAX_FRAME_BYTES

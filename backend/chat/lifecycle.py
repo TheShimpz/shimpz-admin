@@ -13,11 +13,12 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from history import store as history
 from team import bridge as team
+
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,

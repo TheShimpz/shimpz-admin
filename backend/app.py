@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
 
 import auth
-import browser
 import host_reset
 import local_auth
 import models
@@ -35,20 +34,22 @@ import platform_release
 import space_reset
 import state
 import supervisor
-from action import stored_input as action_stored_input
-from chat import assets as chat_assets
-from chat import human as chat_human
-from chat import socket as chat_socket
 from history import delivery as chat_history_delivery
 from history import http as chat_history_http
-from integrations import account as account_identity
-from integrations import assistants as integrations
-from integrations import handoff as handoff_store
-from protocol.http.v1 import websocket as chat_ws_common
 from team import assets as team_assets
 from team import bridge as team
 from team import files as team_files
 from team import http as team_http
+
+import browser
+from action import stored_input as action_stored_input
+from chat import assets as chat_assets
+from chat import human as chat_human
+from chat import socket as chat_socket
+from integrations import account as account_identity
+from integrations import assistants as integrations
+from integrations import handoff as handoff_store
+from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 chat_history = chat_history_http.store

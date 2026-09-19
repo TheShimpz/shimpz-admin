@@ -7,8 +7,9 @@ import concurrent.futures
 import threading
 from dataclasses import dataclass, field
 
-from chat import lifecycle
 from chat.assistant_proposal import UninstallProposal
+
+from chat import lifecycle
 
 
 @dataclass(slots=True)
