@@ -58,6 +58,31 @@ class PlanDeliveryEdges(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_uncommitted_install_plan_fails_before_dispatch(self) -> None:
+        async def scenario() -> None:
+            plan = assistant_plan.Plan("a" * 32, "team_1", (), ())
+            terminal = assistant_plan.Result("installed", ())
+            operations = _operations()
+            turn = Turn(None, "assistant-plan", history_id="b" * 32)
+            with (
+                mock.patch.object(plan_delivery, "_run_job", new=mock.AsyncMock(return_value=terminal)),
+                mock.patch.object(plan_delivery.history, "append_install", return_value=False),
+            ):
+                await plan_delivery._deliver_admitted(
+                    mock.sentinel.websocket,
+                    Connection(),
+                    turn,
+                    "team_1",
+                    {"message": "do the task", "files": [], "assistant_ids": []},
+                    plan,
+                    operations,
+                )
+            operations.finish_turn.assert_awaited_once()
+            operations.send_event.assert_not_awaited()
+            operations.continue_turn.assert_not_awaited()
+
+        asyncio.run(scenario())
+
     def test_progress_channel_and_failed_live_update_stop_the_plan(self) -> None:
         async def scenario() -> None:
             queue, report = plan_delivery._progress_channel()

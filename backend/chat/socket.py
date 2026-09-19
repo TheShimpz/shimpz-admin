@@ -22,6 +22,7 @@ from team import bridge as team
 
 from chat import (
     assistant_proposal,
+    challenge_delivery,
     connection,
     human,
     lanes,
@@ -31,6 +32,7 @@ from chat import (
     projection,
     socket_boundary,
     task_resume,
+    terminal_delivery,
 )
 from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
@@ -71,6 +73,8 @@ _stop_accepted = projection.stop_accepted
 
 _remember_challenge = connection.remember_challenge
 _forget_challenge = connection.forget_challenge
+_send_terminal_once = terminal_delivery.turn
+_send_sync_terminal_once = terminal_delivery.resumed
 
 
 def _cancel_discovery(turn: _Turn) -> None:
@@ -81,47 +85,6 @@ async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool
     try:
         await websocket.send_json(dict(event))
     except WebSocketDisconnect, RuntimeError, OSError:
-        return False
-    return True
-
-
-async def _send_terminal_once(
-    websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
-    event: Mapping[str, object],
-) -> bool:
-    if connection.closed or turn.terminal_sent:
-        return False
-    projected = event
-    try:
-        await history_delivery.terminal(event.get("team_id"), turn.history_id, event)
-    except (history.HistoryUnavailableError, ValueError):
-        log.exception("Admin chat reply history commit failed")
-        projected = _error_terminal(503, "Admin chat history is unavailable")
-    turn.terminal_sent = True
-    if not await _send_event(websocket, projected):
-        connection.closed = True
-        return False
-    return True
-
-
-async def _send_sync_terminal_once(
-    websocket: WebSocket,
-    connection: _Connection,
-    event: Mapping[str, object],
-) -> bool:
-    if connection.closed or connection.sync_terminal_sent:
-        return False
-    projected = event
-    try:
-        await history_delivery.resumed_terminal(event)
-    except (history.HistoryUnavailableError, ValueError):
-        log.exception("Admin resumed chat reply history commit failed")
-        projected = _error_terminal(503, "Admin chat history is unavailable")
-    connection.sync_terminal_sent = True
-    if not await _send_event(websocket, projected):
-        connection.closed = True
         return False
     return True
 
@@ -218,9 +181,19 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         if challenge is not None and challenge_type is not None:
             _cancel_discovery(turn)
             connection.lifecycle_proposal = None
-            _remember_challenge(connection, challenge, challenge_type)
-            if not await _send_event(websocket, challenge):
-                connection.closed = True
+            await challenge_delivery.deliver(
+                websocket,
+                connection,
+                turn,
+                team_id,
+                challenge,
+                challenge_type,
+                challenge_delivery.Operations(
+                    send_event=_send_event,
+                    send_terminal=_send_terminal_once,
+                    error_terminal=_error_terminal,
+                ),
+            )
             return
         if isinstance(response, team.TeamResponse) and (
             response.status == 428

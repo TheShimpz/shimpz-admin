@@ -37,17 +37,29 @@ async def terminal(
     if turn_id is None:
         return
     if event.get("type") == "done":
-        await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+        if not committed:
+            raise store.HistoryUnavailableError("chat history reply was not committed")
+
+
+async def challenge(team_id: str, turn_id: str | None) -> None:
+    if turn_id is None:
+        return
+    committed = await asyncio.to_thread(store.bind_resumable_turn, team_id, turn_id)
+    if not committed:
+        raise store.HistoryUnavailableError("chat history challenge was not bound")
 
 
 async def resumed_terminal(event: Mapping[str, object]) -> None:
     if not _enabled or event.get("type") != "done":
         return
     team_id = event.get("team_id")
-    turn_id = await asyncio.to_thread(store.active_turn, team_id)
+    turn_id = await asyncio.to_thread(store.resumable_turn, team_id)
     if turn_id is None:
-        raise store.HistoryUnavailableError("chat history active turn is unavailable")
-    await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+        raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
+    committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+    if not committed:
+        raise store.HistoryUnavailableError("chat history resumed reply was not committed")
 
 
 async def guidance(team_id: str, turn_id: str | None, code: str) -> None:

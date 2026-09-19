@@ -194,6 +194,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 resume.side_effect = resume_integrations
                 history_id = self.admin_app.chat_history.new_turn_id()
                 self.admin_app.chat_history.append_user("team_1", history_id, "Publish after OAuth")
+                self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})
@@ -216,7 +217,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
                 await websocket.disconnect()
 
-            self.assertIsNone(self.admin_app.chat_history.active_turn("team_1"))
+            self.assertIsNone(self.admin_app.chat_history.resumable_turn("team_1"))
             self.assertEqual(
                 [entry.get("text") for entry in self.admin_app.chat_history.page("team_1")["entries"]],
                 ["Publish after OAuth", "Published."],

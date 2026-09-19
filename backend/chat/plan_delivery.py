@@ -134,7 +134,14 @@ async def _deliver_admitted(
     )
     if turn.history_id is not None:
         try:
-            await asyncio.to_thread(history.append_install, team_id, turn.history_id, terminal)
+            committed = await asyncio.to_thread(
+                history.append_install,
+                team_id,
+                turn.history_id,
+                terminal,
+            )
+            if not committed:
+                raise history.HistoryUnavailableError("chat history install was not committed")
         except (history.HistoryUnavailableError, ValueError):
             await operations.finish_turn(
                 websocket,

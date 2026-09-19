@@ -129,6 +129,22 @@ class ChatLifecycleTests(unittest.TestCase):
             },
         )
 
+    def test_uncommitted_uninstall_is_not_reported_as_durable(self) -> None:
+        async def scenario() -> None:
+            event = lifecycle._result_event(
+                _proposal(),
+                assistant_uninstall.UninstallResult(200, True),
+            )
+            with mock.patch.object(lifecycle.history, "append_uninstall", return_value=False):
+                committed = await lifecycle._commit_uninstall(
+                    _proposal(),
+                    "a" * 32,
+                    event,
+                )
+            self.assertFalse(committed)
+
+        asyncio.run(scenario())
+
     def test_install_language_cannot_confirm_uninstall(self) -> None:
         async def scenario() -> None:
             connection = _connection(lifecycle_proposal=_proposal())

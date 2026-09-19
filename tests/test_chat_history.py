@@ -51,9 +51,9 @@ class ChatHistoryTests(unittest.TestCase):
         second = history.new_turn_id()
 
         self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
-        self.assertFalse(history.append_user("marketing", first, "Install Cloudflare"))
+        self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
         self.assertTrue(history.append_install("marketing", first, _installed_event()))
-        self.assertFalse(history.append_install("marketing", first, _installed_event()))
+        self.assertTrue(history.append_install("marketing", first, _installed_event()))
         self.assertTrue(history.append_user("marketing", second, "List my DNS zones"))
         self.assertTrue(
             history.append_reply(
@@ -84,16 +84,28 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertNotIn("plan_id", install)
         self.assertNotIn("continuation", install)
 
-    def test_tracks_only_the_current_unfinished_presentation_turn(self) -> None:
+    def test_correlates_concurrent_resumable_turns_by_challenge(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", first, "Install and list zones"))
-        self.assertEqual(history.active_turn("marketing"), first)
-
         self.assertTrue(history.append_install("marketing", first, _installed_event()))
-        self.assertEqual(history.active_turn("marketing"), first)
+        self.assertTrue(history.bind_resumable_turn("marketing", first))
         self.assertTrue(history.append_user("marketing", second, "Newest request"))
-        self.assertEqual(history.active_turn("marketing"), second)
+        self.assertFalse(history.bind_resumable_turn("marketing", second))
+        self.assertEqual(history.resumable_turn("marketing"), first)
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                first,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": "First finished.",
+                },
+            )
+        )
+        self.assertIsNone(history.resumable_turn("marketing"))
         self.assertTrue(
             history.append_reply(
                 "marketing",
@@ -106,15 +118,16 @@ class ChatHistoryTests(unittest.TestCase):
                 },
             )
         )
-        self.assertIsNone(history.active_turn("marketing"))
+        self.assertIsNone(history.resumable_turn("marketing"))
 
     def test_installation_only_terminal_clears_active_turn(self) -> None:
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Install Cloudflare"))
+        self.assertTrue(history.bind_resumable_turn("marketing", turn_id))
         event = {**_installed_event(), "continuation": "none"}
 
         self.assertTrue(history.append_install("marketing", turn_id, event))
-        self.assertIsNone(history.active_turn("marketing"))
+        self.assertIsNone(history.resumable_turn("marketing"))
 
     def test_pages_without_eviction_and_never_crosses_team_scope(self) -> None:
         expected = []

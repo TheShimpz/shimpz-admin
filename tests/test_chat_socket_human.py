@@ -382,6 +382,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
             ):
                 history_id = self.admin_app.chat_history.new_turn_id()
                 self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
+                self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "sync"})

@@ -336,13 +336,15 @@ async def _commit_uninstall(
     if history_id is None:
         return True
     try:
-        await asyncio.to_thread(
+        committed = await asyncio.to_thread(
             history.append_uninstall,
             proposal.team_id,
             history_id,
             _assistant_identity(proposal),
             event,
         )
+        if not committed:
+            raise history.HistoryUnavailableError("chat history uninstall was not committed")
     except (history.HistoryUnavailableError, ValueError):
         log.exception("Admin chat uninstall history commit failed")
         return False
