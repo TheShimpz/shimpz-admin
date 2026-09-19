@@ -84,14 +84,24 @@ async function routeSetup(page) {
 }
 
 async function routeAssistantStoreUninstall(page) {
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: `<!doctype html><html><body><button type="button">Uninstall</button><script>
-      parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
-      document.querySelector('button').addEventListener('click', () => parent.postMessage({
-        type: 'shimpz:assistant-uninstall', version: 2, assistant: 'shimpz-cloudflare'
-      }, '*'));
-    </script></body></html>`,
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.4.1',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Shimpz Cloudflare',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+      }],
+    }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
   }));
 }
 
@@ -2362,7 +2372,7 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   }));
 
   await page.goto('/assistants/');
-  await page.frameLocator('iframe').getByRole('button', { name: 'Uninstall' }).click();
+  await page.getByRole('button', { name: 'Uninstall' }).click();
   const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
@@ -2437,7 +2447,7 @@ test('reports a committed uninstall when the Team inventory cannot refresh', asy
   });
 
   await page.goto('/assistants/');
-  await page.frameLocator('iframe').getByRole('button', { name: 'Uninstall' }).click();
+  await page.getByRole('button', { name: 'Uninstall' }).click();
   const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
 
@@ -2515,29 +2525,35 @@ test('keeps a first Store install ready while local display metadata catches up'
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
-  await page.route('https://shimpz.com/**', (route) => route.fulfill({
-    contentType: 'text/html',
-    body: `<!doctype html><html><body data-status="loading" data-installed="">
-      <button type="button">Install</button>
-      <script>
-        parent.postMessage({ type: 'shimpz:assistant-store-frame', version: 2, height: 420 }, '*');
-        window.addEventListener('message', (event) => {
-          if (event.data?.type !== 'shimpz:assistant-store-state') return;
-          document.body.dataset.status = event.data.status;
-          document.body.dataset.installed = event.data.installed.join(',');
-        });
-        document.querySelector('button').addEventListener('click', () => parent.postMessage({
-          type: 'shimpz:assistant-install',
-          version: 2,
-          assistant: 'shimpz-cloudflare',
-          source_digest: 'sha256:${'4'.repeat(64)}'
-        }, '*'));
-      </script>
-    </body></html>`,
+  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 1,
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.1.0',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'e'.repeat(64)}`,
+        name: 'Shimpz Cloudflare',
+        source_digest: `sha256:${'4'.repeat(64)}`,
+        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+      }],
+    }),
+  }));
+  await page.route('**/api/local-assistants', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
+  }));
+  await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
   }));
 
   await page.goto('/assistants/');
-  await page.frameLocator('iframe').getByRole('button', { name: 'Install' }).click();
+  await page.getByRole('button', { name: 'Install or replace' }).click();
   const dialog = page.getByRole('dialog', { name: 'Install this Assistant?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Confirm install' }).click();
@@ -2546,11 +2562,7 @@ test('keeps a first Store install ready while local display metadata catches up'
     'Shimpz Cloudflare is ready in Marketing.',
   );
   await expect(page.getByText('The installed Assistant inventory is invalid.', { exact: true })).toHaveCount(0);
-  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-status', 'ready');
-  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute(
-    'data-installed',
-    'shimpz-cloudflare',
-  );
+  await expect(page.getByRole('button', { name: 'Uninstall' })).toBeVisible();
   expect(catalogReads).toBeGreaterThanOrEqual(2);
 });
 
