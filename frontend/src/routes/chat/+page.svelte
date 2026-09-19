@@ -76,7 +76,7 @@
   let scrollRequest = 0;
   let capabilityObjective = null;
   let promptHistoryIndex = -1;
-  let historyLoading = $state(false);
+  let historyLoading = $state(true);
   let historyWorking = $state(false);
   let historyBefore = $state(null);
   let historyGeneration = 0;
@@ -184,6 +184,17 @@
     if (lifecycle.state === 'expired') return lifecycleMessages.expired;
     if (lifecycle.state === 'unknown') return lifecycleMessages.unknown ?? copy.disconnected;
     return lifecycleMessages.failed;
+  }
+
+  function lifecycleOutcome(lifecycle, team) {
+    if (lifecycle.state !== 'uninstalled') return '';
+    const outcomeKey = lifecycle.uninstalled ? 'uninstalledReply' : 'absentReply';
+    const outcome = $t(`chatPage.uninstall.${outcomeKey}`, {
+      assistant: escapeMarkdownText(lifecycle.assistant.name),
+      version: escapeMarkdownText(lifecycle.assistant.version),
+      team: escapeMarkdownText(team),
+    });
+    return `${outcome}\n\n${copy.uninstall.reinstall}`;
   }
 
   function lifecycleIconSource(lifecycle) {
@@ -577,23 +588,11 @@
       $teamContext.selectedTeamId !== incoming.team_id ||
       $teamContext.selectedAssistantIds.includes(incoming.assistant_id)
     ) throw new Error('uninstalled Assistant inventory mismatch');
-    const outcomeKey = uninstall.uninstalled ? 'uninstalledReply' : 'absentReply';
-    const outcome = $t(`chatPage.uninstall.${outcomeKey}`, {
-      assistant: escapeMarkdownText(uninstall.assistant.name),
-      version: escapeMarkdownText(uninstall.assistant.version),
-      team: escapeMarkdownText(team.name),
-    });
-    const nextTurns = turns.map((turn, turnIndex) => (
+    turns = turns.map((turn, turnIndex) => (
       turnIndex === index
         ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
         : turn
     ));
-    nextTurns.splice(index + 1, 0, {
-      role: 'assistant',
-      text: `${outcome}\n\n${copy.uninstall.reinstall}`,
-      author: team.name,
-    });
-    turns = nextTurns;
     void revealLatestExchange();
   }
 
@@ -1444,6 +1443,7 @@
     oauthFailedOnReturn = oauthReturnFailure(location.href);
     const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
+    else historyLoading = false;
     if (oauthFailedOnReturn) {
       busy = false;
       resetProgress();
@@ -1471,6 +1471,7 @@
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
           aria-busy={composerBusy && !integrationChallenge && !humanChallenge}
+          inert={historyLoading}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         <ScrollArea class="turns" bind:element={turnsViewport}>
@@ -1608,6 +1609,12 @@
                         : undefined}
                       tabindex={lifecycle.state === 'working' ? -1 : undefined}
                     />
+                    {#if lifecycle.state === 'uninstalled'}
+                      <Markdown
+                        markdown={lifecycleOutcome(lifecycle, exchange.assistant.author)}
+                        variant="chat"
+                      />
+                    {/if}
                   {/if}
                   <ExecutionReceipt
                     events={exchange.assistant.receipt ?? []}

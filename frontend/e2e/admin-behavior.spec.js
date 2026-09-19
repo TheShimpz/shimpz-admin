@@ -162,6 +162,7 @@ async function routeReadyChat(page, {
   whatsappInstalled = false,
   storedInputStatus = '',
   historyStatus = 200,
+  holdHistory = false,
   history = { entries: [], before: null },
   olderHistory = null,
   reply,
@@ -198,6 +199,10 @@ async function routeReadyChat(page, {
   let releaseAssistantIcon;
   const assistantIconHold = new Promise((resolve) => {
     releaseAssistantIcon = resolve;
+  });
+  let releaseHistory;
+  const historyHold = new Promise((resolve) => {
+    releaseHistory = resolve;
   });
   const chatFrames = [];
   const assistantIconRequests = [];
@@ -305,9 +310,10 @@ async function routeReadyChat(page, {
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
-  await page.route('**/api/teams/marketing/chat/history**', (route) => {
+  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
     const requestUrl = new URL(route.request().url());
     historyRequests.push(requestUrl.searchParams.get('before'));
+    if (holdHistory) await historyHold;
     return route.fulfill({
       status: historyStatus,
       contentType: 'application/json',
@@ -672,6 +678,7 @@ async function routeReadyChat(page, {
     releaseAssistantIcon: () => releaseAssistantIcon(),
     releaseInferenceWrite: () => releaseInferenceWrite(),
     releaseHumanResponse: () => releaseHumanResponse(),
+    releaseHistory: () => releaseHistory(),
     releaseReply: () => releaseReply(),
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
@@ -868,6 +875,48 @@ test('keeps chat available when durable history cannot be loaded', async ({ page
   await composer.fill('Continue without restored history');
   await composer.press('Enter');
   await expect(page.getByText('The live chat still works.', { exact: true })).toBeVisible();
+});
+
+test('keeps the chat controls inert until durable history is ready', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdHistory: true });
+  await page.goto('/chat/');
+
+  const conversation = page.locator('.conversation');
+  await expect(conversation).toHaveAttribute('inert', '');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeDisabled();
+  chat.releaseHistory();
+  await expect(conversation).not.toHaveAttribute('inert', '');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+});
+
+test('restores the terminal uninstall outcome from durable history', async ({ page }) => {
+  const turnId = 'c'.repeat(32);
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Uninstall Cloudflare' },
+        {
+          id: `${turnId}:uninstall`,
+          kind: 'assistant-uninstall',
+          state: 'uninstalled',
+          assistant: {
+            id: 'shimpz-cloudflare',
+            name: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            version: '0.4.1',
+          },
+          uninstalled: true,
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+
+  const outcome = 'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.';
+  await expect(page.getByText(outcome, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(outcome, { exact: true })).toBeVisible();
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
