@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -35,6 +36,18 @@ def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Op
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.temporary.cleanup)
+        previous = socket.history.STORE_PATH
+        socket.history.STORE_PATH = Path(cls.temporary.name) / "chat-history.sqlite3"
+        cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
+
+    def setUp(self) -> None:
+        socket.history.STORE_PATH.unlink(missing_ok=True)
+        socket.history_delivery.configure("local")
+
     def test_targetless_uninstall_guidance_survives_a_retired_ambiguous_proposal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
