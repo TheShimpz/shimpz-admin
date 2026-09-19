@@ -76,6 +76,7 @@
   let turnsViewport = $state();
   let scrollRequest = 0;
   let capabilityObjective = null;
+  let promptHistoryIndex = -1;
 
   let copy = $derived($t('chatPage'));
   let storeCopy = $derived($t('store'));
@@ -887,6 +888,7 @@
     stopping = false;
     lifecycleOutcomePending = null;
     draft = '';
+    promptHistoryIndex = -1;
     turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
     busy = turns.length > 0;
     resetProgress();
@@ -1183,10 +1185,55 @@
 
   function send(event) {
     event.preventDefault();
-    if (submitMessage(draft)) draft = '';
+    if (submitMessage(draft)) {
+      draft = '';
+      promptHistoryIndex = -1;
+    }
+  }
+
+  function sentPrompts() {
+    return turns.filter((turn) => turn.role === 'user').map((turn) => turn.text);
+  }
+
+  function navigatePromptHistory(event) {
+    if (
+      !['ArrowUp', 'ArrowDown'].includes(event.key) ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.isComposing
+    ) return false;
+    const prompts = sentPrompts();
+    if (prompts.length === 0) return false;
+    if (promptHistoryIndex < 0) {
+      if (event.key !== 'ArrowUp' || draft !== '') return false;
+      promptHistoryIndex = 0;
+    } else {
+      const current = prompts[prompts.length - 1 - promptHistoryIndex];
+      if (draft !== current) {
+        promptHistoryIndex = -1;
+        return false;
+      }
+      if (event.key === 'ArrowUp') {
+        promptHistoryIndex = Math.min(promptHistoryIndex + 1, prompts.length - 1);
+      } else if (promptHistoryIndex === 0) {
+        promptHistoryIndex = -1;
+        draft = '';
+        event.preventDefault();
+        return true;
+      } else {
+        promptHistoryIndex -= 1;
+      }
+    }
+    draft = prompts[prompts.length - 1 - promptHistoryIndex];
+    event.preventDefault();
+    return true;
   }
 
   function handleComposerKeydown(event) {
+    if (navigatePromptHistory(event)) return;
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) promptHistoryIndex = -1;
     if (
       event.key !== 'Enter' ||
       event.ctrlKey ||

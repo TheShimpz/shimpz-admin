@@ -733,6 +733,41 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 
+test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown', async ({ page }) => {
+  const chat = await routeReadyChat(page);
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('First prompt');
+  await composer.press('Enter');
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  await expect(composer).toBeEnabled();
+  await composer.fill('Second prompt');
+  await composer.press('Enter');
+  await expect.poll(() => chat.chatFrames().length).toBe(2);
+  await expect(composer).toHaveValue('');
+
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('Second prompt');
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('First prompt');
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('First prompt');
+  await composer.press('ArrowDown');
+  await expect(composer).toHaveValue('Second prompt');
+  await composer.press('ArrowDown');
+  await expect(composer).toHaveValue('');
+  await composer.press('ArrowDown');
+  await expect(composer).toHaveValue('');
+
+  await composer.fill('Manual draft');
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('Manual draft');
+  await composer.fill('');
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('Second prompt');
+});
+
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
