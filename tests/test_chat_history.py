@@ -206,6 +206,17 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertEqual(history.clear_all(), 1)
         self.assertEqual(history.clear_all(), 0)
 
+    def test_cleanup_overwrites_deleted_transcript_bytes(self) -> None:
+        team_marker = "private-team-transcript-7b2d"
+        space_marker = "private-space-transcript-9e4f"
+        history.append_user("marketing", history.new_turn_id(), team_marker)
+        history.append_user("sales", history.new_turn_id(), space_marker)
+
+        self.assertEqual(history.clear_team("marketing"), 1)
+        self.assertNotIn(team_marker.encode(), self.path.read_bytes())
+        self.assertEqual(history.clear_all(), 1)
+        self.assertNotIn(space_marker.encode(), self.path.read_bytes())
+
     def test_hosted_delivery_never_opens_the_local_history_store(self) -> None:
         delivery.configure("hosted")
         self.addCleanup(delivery.configure, "local")

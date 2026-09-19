@@ -79,6 +79,7 @@ def _private_file(path: Path) -> None:
 
 def _initialize(database: sqlite3.Connection) -> None:
     database.execute("PRAGMA trusted_schema = OFF")
+    database.execute("PRAGMA secure_delete = ON")
     database.execute("PRAGMA journal_mode = DELETE")
     database.execute("PRAGMA synchronous = FULL")
     version = database.execute("PRAGMA user_version").fetchone()[0]
