@@ -174,6 +174,25 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.path.with_name(f"{self.path.name}-wal").exists())
 
+    def test_preserves_maximum_length_multibyte_reply(self) -> None:
+        turn_id = history.new_turn_id()
+        reply = "界" * history.MAX_REPLY_CHARS
+
+        self.assertTrue(history.append_user("marketing", turn_id, "Reply in Chinese"))
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                turn_id,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": reply,
+                },
+            )
+        )
+        self.assertEqual(history.page("marketing")["entries"][-1]["text"], reply)
+
     def test_rejects_invalid_cursor_and_wrong_schema_version(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")
         with self.assertRaises(ValueError):
