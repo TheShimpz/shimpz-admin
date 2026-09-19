@@ -9,6 +9,7 @@ import json
 import re
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -19,6 +20,8 @@ CATALOG_TTL_SECONDS = 60
 MAX_CATALOG_BYTES = 512 * 1024
 MAX_ICON_BYTES = 1024 * 1024
 MAX_ASSISTANTS = 256
+# Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
+MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
 _ASSISTANT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -282,7 +285,33 @@ class StoreCatalog:
             return assistants
 
 
+class StoreIconCache:
+    """Bound immutable, digest-verified Store icon bytes in process memory."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._icons: OrderedDict[tuple[str, str], bytes] = OrderedDict()
+        self._cached_bytes = 0
+
+    def get(self, key: tuple[str, str]) -> bytes | None:
+        with self._lock:
+            contents = self._icons.get(key)
+            if contents is not None:
+                self._icons.move_to_end(key)
+            return contents
+
+    def remember(self, key: tuple[str, str], contents: bytes) -> None:
+        with self._lock:
+            self._cached_bytes -= len(self._icons.pop(key, b""))
+            self._icons[key] = contents
+            self._cached_bytes += len(contents)
+            while len(self._icons) > MAX_ASSISTANTS or self._cached_bytes > MAX_CACHED_ICON_BYTES:
+                _, evicted = self._icons.popitem(last=False)
+                self._cached_bytes -= len(evicted)
+
+
 CATALOG = StoreCatalog()
+ICON_CACHE = StoreIconCache()
 
 
 def _icon_content_length(response: http.client.HTTPResponse) -> int:
@@ -299,15 +328,21 @@ def fetch_assistant_icon(
     assistant_id: str,
     *,
     catalog: StoreCatalog | None = None,
+    cache: StoreIconCache | None = None,
     connection_factory: Callable[..., http.client.HTTPSConnection] = http.client.HTTPSConnection,
 ) -> bytes:
     """Fetch one current public Assistant icon without accepting browser-supplied digests."""
     if _ASSISTANT_ID.fullmatch(assistant_id) is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
-    assistants = (catalog or CATALOG).get()
+    assistants = (CATALOG if catalog is None else catalog).get()
     assistant = next((item for item in assistants if item.assistant_id == assistant_id), None)
     if assistant is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
+    icon_cache = ICON_CACHE if cache is None else cache
+    cache_key = (assistant.source_digest, assistant.icon_digest)
+    cached = icon_cache.get(cache_key)
+    if cached is not None:
+        return cached
     source_hash = assistant.source_digest.removeprefix("sha256:")
     icon_hash = assistant.icon_digest.removeprefix("sha256:")
     path = f"/api/assistant-icons/{source_hash}/{icon_hash}.png"
@@ -330,6 +365,7 @@ def fetch_assistant_icon(
             raise
         raise CatalogUnavailableError("Store icon is unavailable") from exc
     else:
+        icon_cache.remember(cache_key, contents)
         return contents
     finally:
         if connection is not None:

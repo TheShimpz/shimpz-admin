@@ -72,6 +72,9 @@ class _Connection:
 
 
 class StoreCatalogTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.icon_cache = store_catalog.StoreIconCache()
+
     def test_projects_only_bounded_discovery_metadata(self) -> None:
         result = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
 
@@ -213,6 +216,7 @@ class StoreCatalogTests(unittest.TestCase):
         result = store_catalog.fetch_assistant_icon(
             "shimpz-cloudflare",
             catalog=catalog,
+            cache=self.icon_cache,
             connection_factory=factory,
         )
 
@@ -231,12 +235,12 @@ class StoreCatalogTests(unittest.TestCase):
     def test_icon_lookup_rejects_invalid_and_absent_assistant_ids_before_egress(self) -> None:
         catalog = mock.Mock(spec=store_catalog.StoreCatalog)
         with self.assertRaises(store_catalog.CatalogAssistantNotFoundError):
-            store_catalog.fetch_assistant_icon("Invalid", catalog=catalog)
+            store_catalog.fetch_assistant_icon("Invalid", catalog=catalog, cache=self.icon_cache)
         catalog.get.assert_not_called()
 
         catalog.get.return_value = ()
         with self.assertRaises(store_catalog.CatalogAssistantNotFoundError):
-            store_catalog.fetch_assistant_icon("missing", catalog=catalog)
+            store_catalog.fetch_assistant_icon("missing", catalog=catalog, cache=self.icon_cache)
         catalog.get.assert_called_once_with()
 
     def test_icon_fetch_rejects_untrusted_status_type_length_and_contents(self) -> None:
@@ -269,6 +273,7 @@ class StoreCatalogTests(unittest.TestCase):
                     store_catalog.fetch_assistant_icon(
                         "shimpz-cloudflare",
                         catalog=catalog,
+                        cache=self.icon_cache,
                         connection_factory=lambda *_args, selected=connection, **_kwargs: selected,
                     )
                 self.assertTrue(connection.closed)
@@ -283,6 +288,7 @@ class StoreCatalogTests(unittest.TestCase):
         ):
             store_catalog.fetch_assistant_icon(
                 "shimpz-cloudflare",
+                cache=self.icon_cache,
                 connection_factory=mock.Mock(side_effect=OSError("offline")),
             )
 
@@ -293,10 +299,172 @@ class StoreCatalogTests(unittest.TestCase):
             store_catalog.fetch_assistant_icon(
                 "shimpz-cloudflare",
                 catalog=catalog,
+                cache=self.icon_cache,
                 connection_factory=lambda *_args, **_kwargs: connection,
             ),
             ICON_BYTES,
         )
+
+    def test_icon_cache_reuses_verified_bytes_after_current_catalog_resolution(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        catalog = mock.Mock(spec=store_catalog.StoreCatalog)
+        catalog.get.return_value = assistants
+        factory = mock.Mock(return_value=_Connection(_Response(ICON_BYTES, content_type="image/png")))
+
+        for _ in range(2):
+            self.assertEqual(
+                store_catalog.fetch_assistant_icon(
+                    "shimpz-cloudflare",
+                    catalog=catalog,
+                    cache=self.icon_cache,
+                    connection_factory=factory,
+                ),
+                ICON_BYTES,
+            )
+
+        self.assertEqual(catalog.get.call_count, 2)
+        factory.assert_called_once_with(
+            store_catalog.CATALOG_HOST,
+            443,
+            timeout=store_catalog.CATALOG_TIMEOUT_SECONDS,
+        )
+
+    def test_icon_fetch_uses_the_production_catalog_and_cache_singletons(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        catalog = mock.Mock(spec=store_catalog.StoreCatalog)
+        catalog.get.return_value = assistants
+        cache = store_catalog.StoreIconCache()
+        factory = mock.Mock(return_value=_Connection(_Response(ICON_BYTES, content_type="image/png")))
+        with (
+            mock.patch.object(store_catalog, "CATALOG", catalog),
+            mock.patch.object(store_catalog, "ICON_CACHE", cache),
+        ):
+            for _ in range(2):
+                self.assertEqual(
+                    store_catalog.fetch_assistant_icon(
+                        "shimpz-cloudflare",
+                        connection_factory=factory,
+                    ),
+                    ICON_BYTES,
+                )
+
+        self.assertEqual(catalog.get.call_count, 2)
+        self.assertEqual(factory.call_count, 1)
+
+    def test_icon_cache_never_bypasses_current_catalog_absence_or_failure(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
+        factory = mock.Mock(return_value=connection)
+        for second, expected in (
+            ((), store_catalog.CatalogAssistantNotFoundError),
+            (store_catalog.CatalogUnavailableError("offline"), store_catalog.CatalogUnavailableError),
+        ):
+            with self.subTest(expected=expected.__name__):
+                catalog = mock.Mock(spec=store_catalog.StoreCatalog)
+                catalog.get.side_effect = (assistants, second)
+                cache = store_catalog.StoreIconCache()
+                self.assertEqual(
+                    store_catalog.fetch_assistant_icon(
+                        "shimpz-cloudflare",
+                        catalog=catalog,
+                        cache=cache,
+                        connection_factory=factory,
+                    ),
+                    ICON_BYTES,
+                )
+                with self.assertRaises(expected):
+                    store_catalog.fetch_assistant_icon(
+                        "shimpz-cloudflare",
+                        catalog=catalog,
+                        cache=cache,
+                        connection_factory=factory,
+                    )
+
+        self.assertEqual(factory.call_count, 2)
+
+    def test_icon_cache_keys_the_exact_catalog_publication(self) -> None:
+        first = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        second = store_catalog.validate_catalog(
+            {
+                "version": 1,
+                "assistants": [
+                    _assistant(source_digest="sha256:" + ("c" * 64), icon_digest=VERIFIED_ICON_DIGEST)
+                ],
+            }
+        )
+        catalog = mock.Mock(spec=store_catalog.StoreCatalog)
+        catalog.get.side_effect = (first, second)
+        connections = [
+            _Connection(_Response(ICON_BYTES, content_type="image/png")),
+            _Connection(_Response(ICON_BYTES, content_type="image/png")),
+        ]
+        factory = mock.Mock(side_effect=connections)
+
+        for _ in range(2):
+            self.assertEqual(
+                store_catalog.fetch_assistant_icon(
+                    "shimpz-cloudflare",
+                    catalog=catalog,
+                    cache=self.icon_cache,
+                    connection_factory=factory,
+                ),
+                ICON_BYTES,
+            )
+
+        self.assertEqual(factory.call_count, 2)
+        self.assertIn("/" + ("a" * 64) + "/", connections[0].request_value[1])
+        self.assertIn("/" + ("c" * 64) + "/", connections[1].request_value[1])
+
+    def test_icon_cache_does_not_negative_cache_transport_or_admission_failure(self) -> None:
+        assistants = store_catalog.validate_catalog(
+            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        )
+        for factory in (
+            mock.Mock(side_effect=OSError("offline")),
+            mock.Mock(
+                side_effect=[
+                    _Connection(_Response(b"wrong", content_type="image/png")),
+                    _Connection(_Response(b"wrong", content_type="image/png")),
+                ]
+            ),
+        ):
+            with self.subTest(factory=factory):
+                catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+                cache = store_catalog.StoreIconCache()
+                for _ in range(2):
+                    with self.assertRaises(store_catalog.CatalogUnavailableError):
+                        store_catalog.fetch_assistant_icon(
+                            "shimpz-cloudflare",
+                            catalog=catalog,
+                            cache=cache,
+                            connection_factory=factory,
+                        )
+                self.assertEqual(factory.call_count, 2)
+
+    def test_icon_cache_enforces_independent_lru_byte_and_count_bounds(self) -> None:
+        cache = store_catalog.StoreIconCache()
+        keys = [(f"source-{value}", f"icon-{value}") for value in range(store_catalog.MAX_ASSISTANTS + 1)]
+        large_icon = b"x" * store_catalog.MAX_ICON_BYTES
+        for key in keys[:8]:
+            cache.remember(key, large_icon)
+        self.assertIs(cache.get(keys[0]), large_icon)
+        cache.remember(keys[8], large_icon)
+        self.assertIsNone(cache.get(keys[1]))
+        self.assertIs(cache.get(keys[0]), large_icon)
+
+        cache = store_catalog.StoreIconCache()
+        for key in keys:
+            cache.remember(key, b"x")
+        self.assertIsNone(cache.get(keys[0]))
+        self.assertEqual(cache.get(keys[-1]), b"x")
 
     def test_content_length_and_stream_length_are_independently_bounded(self) -> None:
         response = _Response(b"{}")
