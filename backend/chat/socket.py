@@ -14,6 +14,9 @@ import logging
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 
+from chat.delivery import challenge as challenge_delivery
+from chat.delivery import plan as plan_delivery
+from chat.delivery import terminal as terminal_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
@@ -22,17 +25,14 @@ from team import bridge as team
 
 from chat import (
     assistant_proposal,
-    challenge_delivery,
     connection,
     human,
     lanes,
     lifecycle,
     local,
-    plan_delivery,
     projection,
     socket_boundary,
     task_resume,
-    terminal_delivery,
 )
 from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract

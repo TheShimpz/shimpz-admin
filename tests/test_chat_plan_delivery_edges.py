@@ -13,8 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from chat.connection import Connection, Turn
+from chat.delivery import plan as plan_delivery
 
-from chat import assistant_plan, plan_delivery
+from chat import assistant_plan
 
 
 def _plan() -> assistant_plan.Plan:

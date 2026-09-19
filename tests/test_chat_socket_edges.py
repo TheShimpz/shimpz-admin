@@ -15,10 +15,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from chat.delivery import plan as plan_delivery
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
-from chat import human, local, plan_delivery, socket, task_resume
+from chat import human, local, socket, task_resume
 
 
 def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Operations:

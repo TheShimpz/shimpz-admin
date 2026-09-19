@@ -8,12 +8,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from chat.connection import Connection, Turn
+from chat.delivery import plan as plan_delivery
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
 from team import bridge as team
 
-from chat import assistant_proposal, lifecycle, plan_delivery
+from chat import assistant_proposal, lifecycle
 from protocol.http.v1 import payload as team_contract
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
