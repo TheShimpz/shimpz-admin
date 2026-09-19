@@ -37,14 +37,18 @@ class ChatWebSocketCase(unittest.TestCase):
         cls.assistant_plan = importlib.import_module("chat.assistant_plan")
         cls.team = importlib.import_module("team.bridge")
         previous_store = cls.admin_app.state.STORE_PATH
+        previous_history_store = cls.admin_app.chat_history.STORE_PATH
         previous_origins = cls.chat_socket.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
+        cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
         cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
         cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
+        self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
         secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
         self.token = self.admin_app.auth.issue_session(secret, "totp")
 

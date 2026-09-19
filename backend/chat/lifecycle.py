@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import logging
 import profile as admin_profile
 import threading
 import time
@@ -16,7 +17,7 @@ from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, sub
 from fastapi import WebSocket
 from team import bridge as team
 
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
+from chat import assistant_plan, assistant_proposal, assistant_uninstall, history, store_catalog
 
 _DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -31,6 +32,7 @@ _LIFECYCLE_EXECUTOR = BoundedThreadPoolExecutor(
 _STORE_CATALOG = store_catalog.CATALOG
 DISCOVERY_GRACE_SECONDS = 0.25
 monotonic = time.monotonic
+log = logging.getLogger("shimpz-admin")
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 
@@ -40,12 +42,14 @@ class Operation:
     proposal: assistant_proposal.UninstallProposal
     future: concurrent.futures.Future
     delivery: asyncio.Task | None = None
+    history_id: str | None = None
 
 
 class Connection(Protocol):
     closed: bool
     lifecycle_proposal: assistant_proposal.UninstallProposal | None
     lifecycle: Operation | None
+    admitted_history_id: str | None
 
 
 def target_required_event(team_id: str) -> dict[str, object]:
@@ -195,6 +199,8 @@ async def _deliver(
         if connection.closed:
             return
         event = _result_event(operation.proposal, result)
+        if not await _commit_uninstall(operation.proposal, operation.history_id, event):
+            event = _history_error()
         if not await send_event(websocket, event):
             connection.closed = True
     finally:
@@ -233,6 +239,7 @@ async def _dispatch(
     connection: Connection,
     proposal: assistant_proposal.UninstallProposal,
     send_event: SendEvent,
+    history_id: str | None = None,
 ) -> None:
     if not await send_event(websocket, _event(proposal, "uninstalling")):
         connection.closed = True
@@ -240,9 +247,12 @@ async def _dispatch(
     try:
         future = submit_in_context(_LIFECYCLE_EXECUTOR, _execute, proposal)
     except ExecutorSaturatedError:
-        await send_event(websocket, _event(proposal, "failed", status=429))
+        event = _event(proposal, "failed", status=429)
+        if not await _commit_uninstall(proposal, history_id, event):
+            event = _history_error()
+        await send_event(websocket, event)
         return
-    operation = Operation(proposal=proposal, future=future)
+    operation = Operation(proposal=proposal, future=future, history_id=history_id)
     connection.lifecycle = operation
     operation.delivery = asyncio.create_task(_deliver(websocket, connection, operation, send_event))
 
@@ -271,19 +281,58 @@ async def resolve(
     if not proposal.valid_for(team_id, monotonic()):
         connection.lifecycle_proposal = None
         if decision != "ambiguous":
-            await send_event(websocket, _event(proposal, "expired"))
+            history_id = _take_history_id(connection)
+            event = _event(proposal, "expired")
+            if not await _commit_uninstall(proposal, history_id, event):
+                event = _history_error()
+            await send_event(websocket, event)
             return True
         return False
     if decision == "confirm":
         connection.lifecycle_proposal = None
-        await _dispatch(websocket, connection, proposal, send_event)
+        await _dispatch(websocket, connection, proposal, send_event, _take_history_id(connection))
         return True
     if decision == "cancel":
         connection.lifecycle_proposal = None
-        await send_event(websocket, _event(proposal, "cancelled"))
+        history_id = _take_history_id(connection)
+        event = _event(proposal, "cancelled")
+        if not await _commit_uninstall(proposal, history_id, event):
+            event = _history_error()
+        await send_event(websocket, event)
         return True
     connection.lifecycle_proposal = None
     return False
+
+
+def _take_history_id(connection: Connection) -> str | None:
+    history_id = connection.admitted_history_id
+    connection.admitted_history_id = None
+    return history_id
+
+
+def _history_error() -> dict[str, object]:
+    return {"type": "error", "status": 503, "detail": "Admin chat history is unavailable"}
+
+
+async def _commit_uninstall(
+    proposal: assistant_proposal.UninstallProposal,
+    history_id: str | None,
+    event: Mapping[str, object],
+) -> bool:
+    if history_id is None:
+        return True
+    try:
+        await asyncio.to_thread(
+            history.append_uninstall,
+            proposal.team_id,
+            history_id,
+            _assistant_identity(proposal),
+            event,
+        )
+    except (history.HistoryUnavailableError, ValueError):
+        log.exception("Admin chat uninstall history commit failed")
+        return False
+    return True
 
 
 def submit_preparation(

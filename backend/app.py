@@ -42,6 +42,7 @@ from team import http as team_http
 import browser
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
+from chat import history as chat_history
 from chat import human as chat_human
 from chat import socket as chat_socket
 from integrations import account as account_identity
@@ -472,10 +473,39 @@ async def _host_reset_password(password: object) -> None:
     await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
 
 
+def _cleanup_history(response: team.TeamResponse, cleanup) -> team.TeamResponse:
+    if not 200 <= response.status < 300:
+        return response
+    try:
+        cleanup()
+    except chat_history.HistoryUnavailableError:
+        log.exception("Admin chat history cleanup is unavailable")
+        return team.TeamResponse(
+            503,
+            {"detail": "Team state was removed, but Admin chat history cleanup did not complete"},
+        )
+    return response
+
+
+def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
+    response = action()
+    if response == team.TeamResponse(404, {"detail": "Team not found"}):
+        response = team.TeamResponse(200, {"deleted": False})
+    return _cleanup_history(response, lambda: chat_history.clear_team(team_id))
+
+
+def _space_reset_with_history(action) -> team.TeamResponse:
+    return _cleanup_history(action(), chat_history.clear_all)
+
+
+def _space_reset_response(action) -> JSONResponse:
+    return _team_response(lambda: _space_reset_with_history(action))
+
+
 def _established_host_reset(capability_digest: str) -> JSONResponse:
     binding = f"host-reset-v1:{capability_digest}"
     with _team_session_scope({COOKIE: binding}, authority_kind="host-reset"):
-        return _team_response(team.reset_space)
+        return _space_reset_response(team.reset_space)
 
 
 async def local_space_host_reset(request: Request):
@@ -484,7 +514,7 @@ async def local_space_host_reset(request: Request):
         setup_lock=_ADMIN_SETUP_LOCK,
         read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
         verify_password=_host_reset_password,
-        bootstrap_reset=lambda: _team_response(team.bootstrap_reset_space),
+        bootstrap_reset=lambda: _space_reset_response(team.bootstrap_reset_space),
         established_reset=_established_host_reset,
     )
 
@@ -498,7 +528,7 @@ async def local_space_reset(request: Request):
         request,
         max_password_chars=MAX_PASSWORD_CHARS,
         read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
-        team_response=_team_response,
+        team_response=_space_reset_response,
     )
 
 
@@ -606,7 +636,7 @@ async def teams_destroy(team_id: str, request: Request):
 
     return await run_in_threadpool(
         _team_response,
-        lambda: team.destroy(team_id, team_name),
+        lambda: _team_delete_with_history(team_id, lambda: team.destroy(team_id, team_name)),
     )
 
 
@@ -635,6 +665,25 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
         allowed_origins=_allowed_browser_origins,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,
     )
+
+
+@app.get("/api/teams/{team_id}/chat/history")
+def team_chat_history(team_id: str, before: str | None = None):
+    try:
+        resolved = team.resolve_team_name(team_id)
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if isinstance(resolved, team.TeamResponse):
+        return _team_response(lambda: resolved)
+    try:
+        response = JSONResponse(chat_history.page(team_id, before=before))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except chat_history.HistoryUnavailableError:
+        log.exception("Admin chat history is unavailable")
+        raise HTTPException(status_code=503, detail="Admin chat history is unavailable") from None
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/teams/{team_id}/assistant-integrations")

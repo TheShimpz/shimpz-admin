@@ -21,6 +21,7 @@ from team import bridge as team
 from chat import (
     assistant_proposal,
     connection,
+    history,
     human,
     lanes,
     lifecycle,
@@ -106,8 +107,20 @@ async def _send_terminal_once(
 ) -> bool:
     if connection.closed or turn.terminal_sent:
         return False
+    projected = event
+    if event.get("type") == "done" and turn.history_id is not None:
+        try:
+            await asyncio.to_thread(
+                history.append_reply,
+                event.get("team_id"),
+                turn.history_id,
+                event,
+            )
+        except (history.HistoryUnavailableError, ValueError):
+            log.exception("Admin chat reply history commit failed")
+            projected = _error_terminal(503, "Admin chat history is unavailable")
     turn.terminal_sent = True
-    if not await _send_event(websocket, event):
+    if not await _send_event(websocket, projected):
         connection.closed = True
         return False
     return True
@@ -706,7 +719,35 @@ async def _admit_chat_payload(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
+    if not await _commit_user_history(websocket, connection, team_id, payload["message"]):
+        return None
     return payload
+
+
+async def _commit_user_history(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    message: object,
+) -> bool:
+    history_id = history.new_turn_id()
+    try:
+        committed = await asyncio.to_thread(history.append_user, team_id, history_id, message)
+    except (history.HistoryUnavailableError, ValueError):
+        log.exception("Admin chat user history commit failed")
+        await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
+        return False
+    if not committed:
+        await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
+        return False
+    connection.admitted_history_id = history_id
+    return True
+
+
+def _take_history_id(connection: _Connection) -> str | None:
+    history_id = connection.admitted_history_id
+    connection.admitted_history_id = None
+    return history_id
 
 
 async def _start_direct_turn(
@@ -729,6 +770,7 @@ async def _start_direct_turn(
         language_exemplar=language_exemplar,
         discovery_future=discovery_future,
         progress=progress,
+        history_id=_take_history_id(connection),
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
@@ -749,7 +791,23 @@ async def _dispatch_chat(
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
     if payload["files"] == [] and assistant_proposal.targetless_uninstall_requested(payload["message"]):
         connection.ignore_idle_stop_once = True
-        await _send_event(websocket, lifecycle.target_required_event(team_id))
+        history_id = _take_history_id(connection)
+        try:
+            committed = await asyncio.to_thread(
+                history.append_guidance,
+                team_id,
+                history_id,
+                "uninstall-target-required",
+            )
+        except (history.HistoryUnavailableError, ValueError):
+            committed = False
+            log.exception("Admin chat guidance history commit failed")
+        await _send_event(
+            websocket,
+            lifecycle.target_required_event(team_id)
+            if committed
+            else _error_terminal(503, "Admin chat history is unavailable"),
+        )
         return
     if assistant_proposal.uninstall_requested(payload["message"]):
         await _start_direct_turn(
@@ -770,6 +828,7 @@ async def _dispatch_chat(
         operation="capability-plan",
         language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
+        history_id=_take_history_id(connection),
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(

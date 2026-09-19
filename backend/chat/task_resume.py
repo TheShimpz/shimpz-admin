@@ -11,7 +11,7 @@ from chat.connection import Connection, Turn
 from fastapi import WebSocket
 from team import bridge as team
 
-from chat import assistant_proposal, lifecycle, plan_delivery
+from chat import assistant_proposal, history, lifecycle, plan_delivery
 from protocol.http.v1 import payload as team_contract
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
@@ -96,6 +96,16 @@ async def dispatch(
     if admitted is None:
         return
     payload, objective = admitted
+    history_id = history.new_turn_id()
+    try:
+        committed = await asyncio.to_thread(history.append_user, team_id, history_id, payload["message"])
+    except (history.HistoryUnavailableError, ValueError):
+        await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
+        return
+    if not committed:
+        await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
+        return
+    connection.admitted_history_id = history_id
     preparation = lifecycle.submit_preparation(team_id, objective)
     if preparation is None:
         await operations.start_direct(
@@ -111,7 +121,9 @@ async def dispatch(
         operation="capability-plan",
         language_exemplar=team_contract.canonical_language_exemplar(objective["message"]),
         lifecycle_stop=threading.Event(),
+        history_id=connection.admitted_history_id,
     )
+    connection.admitted_history_id = None
     connection.active = turn
     turn.delivery = asyncio.create_task(
         plan_delivery.deliver_preparation(

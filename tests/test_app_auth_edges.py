@@ -86,6 +86,9 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         previous_store = cls.admin_app.state.STORE_PATH
         cls.admin_app.state.STORE_PATH = cls.store
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        previous_history_store = cls.admin_app.chat_history.STORE_PATH
+        cls.admin_app.chat_history.STORE_PATH = root / "chat-history.sqlite3"
+        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
 
     def setUp(self) -> None:
         self.store.unlink(missing_ok=True)
@@ -327,7 +330,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
         team_response = self.admin_app.JSONResponse({"reset": True})
         with (
             mock.patch.object(self.admin_app, "_team_session_scope", return_value=nullcontext()) as scope,
-            mock.patch.object(self.admin_app, "_team_response", return_value=team_response) as response,
+            mock.patch.object(self.admin_app, "_space_reset_response", return_value=team_response) as response,
         ):
             self.assertIs(self.admin_app._established_host_reset("d" * 64), team_response)
         scope.assert_called_once_with(

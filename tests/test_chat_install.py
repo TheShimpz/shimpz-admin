@@ -37,7 +37,12 @@ def _proposal() -> assistant_proposal.UninstallProposal:
 
 
 def _connection(**changes):
-    values = {"closed": False, "lifecycle_proposal": None, "lifecycle": None}
+    values = {
+        "closed": False,
+        "lifecycle_proposal": None,
+        "lifecycle": None,
+        "admitted_history_id": None,
+    }
     values.update(changes)
     return SimpleNamespace(**values)
 

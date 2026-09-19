@@ -189,10 +189,16 @@ def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamRespon
         return TeamResponse(404, {"detail": "Team not found"})
 
 
+def resolve_team_name(team_id: object) -> TeamResponse | str:
+    """Resolve one current Team name from the strict controller inventory."""
+    canonical_id = canonical_team_id(team_id)
+    return _authoritative_team_name(list_teams(), canonical_id)
+
+
 def destroy(team_id: object, expected_team_name: object) -> TeamResponse:
     canonical_id = canonical_team_id(team_id)
     expected_name = canonical_team_name(expected_team_name)
-    authoritative = _authoritative_team_name(list_teams(), canonical_id)
+    authoritative = resolve_team_name(canonical_id)
     if isinstance(authoritative, TeamResponse):
         return authoritative
     if authoritative != expected_name:

@@ -52,7 +52,7 @@ COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
 COPY backend/action/stored_input.py ./action/
 COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
     backend/chat/assistant_plan.py backend/chat/assistant_proposal.py backend/chat/assistant_uninstall.py \
-    backend/chat/connection.py backend/chat/executor.py \
+    backend/chat/connection.py backend/chat/executor.py backend/chat/history.py \
     backend/chat/human.py backend/chat/lanes.py backend/chat/lifecycle.py backend/chat/local.py \
     backend/chat/payloads.py \
     backend/chat/plan_delivery.py backend/chat/progress.py backend/chat/projection.py backend/chat/socket.py \

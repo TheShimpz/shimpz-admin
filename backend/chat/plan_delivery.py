@@ -13,7 +13,7 @@ from chat.connection import Connection, Turn
 from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 
-from chat import assistant_plan, assistant_proposal, lifecycle
+from chat import assistant_plan, assistant_proposal, history, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -131,6 +131,17 @@ async def _deliver_admitted(
         status=result.status,
         continuation=continuation if result.state == "installed" else None,
     )
+    if turn.history_id is not None:
+        try:
+            await asyncio.to_thread(history.append_install, team_id, turn.history_id, terminal)
+        except (history.HistoryUnavailableError, ValueError):
+            await operations.finish_turn(
+                websocket,
+                connection,
+                turn,
+                operations.error_terminal(503, "Admin chat history is unavailable"),
+            )
+            return
     if result.state != "installed" or continuation == "none":
         await operations.finish_turn(websocket, connection, turn, terminal)
     elif not await operations.send_event(websocket, terminal):

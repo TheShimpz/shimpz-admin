@@ -24,6 +24,7 @@ class Turn:
     terminal_sent: bool = False
     language_exemplar: str | None = field(default=None, repr=False)
     lifecycle_stop: threading.Event | None = field(default=None, repr=False)
+    history_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -38,6 +39,7 @@ class Connection:
     lifecycle: lifecycle.Operation | None = None
     ignore_idle_stop_once: bool = False
     closed: bool = False
+    admitted_history_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

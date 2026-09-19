@@ -82,6 +82,9 @@ class AppRouteEdgeTests(unittest.TestCase):
         ):
             sys.modules.pop("app", None)
             cls.admin_app = importlib.import_module("app")
+        previous_history_store = cls.admin_app.chat_history.STORE_PATH
+        cls.admin_app.chat_history.STORE_PATH = root / "chat-history.sqlite3"
+        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
 
     def assert_async_status(self, expected: int, awaitable) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
@@ -239,6 +242,59 @@ class AppRouteEdgeTests(unittest.TestCase):
         ):
             response = asyncio.run(self.admin_app.teams_destroy("team_1", request))
         self.assertEqual(response.status_code, 200)
+
+    def test_chat_history_is_team_gated_and_never_cached(self) -> None:
+        page = {
+            "entries": [{"id": "a" * 32 + ":user", "kind": "message", "role": "user", "text": "Hello"}],
+            "before": None,
+        }
+        with (
+            mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
+        ):
+            response = self.admin_app.team_chat_history("marketing", None)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(json.loads(response.body), page)
+        loaded.assert_called_once_with("marketing", before=None)
+
+        missing = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
+        with (
+            mock.patch.object(self.admin_app.team, "resolve_team_name", return_value=missing),
+            mock.patch.object(self.admin_app.chat_history, "page") as loaded,
+        ):
+            response = self.admin_app.team_chat_history("marketing", None)
+        self.assertEqual(response.status_code, 404)
+        loaded.assert_not_called()
+
+    def test_team_lifecycle_cleanup_fails_loud_after_authoritative_success(self) -> None:
+        deleted = self.admin_app.team.TeamResponse(200, {"deleted": True})
+        failed = self.admin_app.team.TeamResponse(503, {"detail": "unavailable"})
+        with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=3) as cleared:
+            self.assertIs(self.admin_app._team_delete_with_history("marketing", lambda: deleted), deleted)
+        cleared.assert_called_once_with("marketing")
+
+        with mock.patch.object(self.admin_app.chat_history, "clear_team") as cleared:
+            self.assertIs(self.admin_app._team_delete_with_history("marketing", lambda: failed), failed)
+        cleared.assert_not_called()
+
+        absent = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
+        with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=1) as cleared:
+            response = self.admin_app._team_delete_with_history("marketing", lambda: absent)
+        self.assertEqual(response, self.admin_app.team.TeamResponse(200, {"deleted": False}))
+        cleared.assert_called_once_with("marketing")
+
+        with mock.patch.object(
+            self.admin_app.chat_history,
+            "clear_team",
+            side_effect=self.admin_app.chat_history.HistoryUnavailableError("full"),
+        ):
+            response = self.admin_app._team_delete_with_history("marketing", lambda: deleted)
+        self.assertEqual(response.status, 503)
+
+        with mock.patch.object(self.admin_app.chat_history, "clear_all", return_value=4) as cleared:
+            self.assertIs(self.admin_app._space_reset_with_history(lambda: deleted), deleted)
+        cleared.assert_called_once_with()
 
     def test_hosted_team_deletion_maps_session_and_sudo_statuses(self) -> None:
         request = _json_request({}, cookie="token")
