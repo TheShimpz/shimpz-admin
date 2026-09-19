@@ -243,7 +243,7 @@ async function routeReadyChat(page, {
     }),
   }));
   await page.route('**/api/teams/marketing/assistants', async (route) => {
-    if (holdAssistantInventoryRefresh && assistantInstalled) await assistantInventoryHold;
+    if (holdAssistantInventoryRefresh && !assistantInstalled) await assistantInventoryHold;
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -1107,6 +1107,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     assistantUninstall: true,
     holdAssistantIcon: true,
     holdAssistantUninstall: true,
+    holdAssistantInventoryRefresh: true,
   });
   await page.goto('/chat/');
 
@@ -1162,6 +1163,11 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
 
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect(task).toContainText('Uninstalled');
+  await expect(page.getByText(
+    'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.',
+    { exact: true },
+  )).toHaveCount(0);
+  chat.releaseAssistantInventory();
   await expect(task.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
   const completedIcon = await task.locator('img').getAttribute('src');
   expect(await page.evaluate(async () => (

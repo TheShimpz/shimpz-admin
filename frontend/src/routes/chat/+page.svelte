@@ -37,8 +37,9 @@
 
 
   let mounted = $state(false);
-  let socketTeamId = '';
+  let socketTeamId = $state('');
   let draft = $state('');
+  let draftTeamId = '';
   let turns = $state([]);
   let busy = $state(false);
   let syncing = $state(false);
@@ -102,8 +103,11 @@
   let lifecycleWorking = $derived(turns.some((turn) => (
     turn.lifecycle?.state === 'working'
   )) || installPlanWorking);
+  let historyHydrating = $derived(
+    Boolean(chatTeamId) && (historyLoading || socketTeamId !== chatTeamId),
+  );
   let composerBusy = $derived(
-    busy || syncing || lifecycleOutcomePending !== null || historyLoading,
+    busy || syncing || lifecycleOutcomePending !== null || historyHydrating,
   );
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
@@ -117,7 +121,7 @@
       : busy ? thinking : '',
   );
   let contextLoading = $derived(
-    $teamContext.phase === 'idle' || $teamContext.phase === 'loading' || historyLoading,
+    $teamContext.phase === 'idle' || $teamContext.phase === 'loading' || historyHydrating,
   );
   let contextFailed = $derived($teamContext.phase === 'error');
   let contextErrorDetail = $derived(
@@ -994,7 +998,8 @@
     reconnectAttempt = 0;
     stopping = false;
     lifecycleOutcomePending = null;
-    draft = '';
+    if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
+    if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
     turns = [];
     busy = false;
@@ -1471,7 +1476,7 @@
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
           aria-busy={composerBusy && !integrationChallenge && !humanChallenge}
-          inert={historyLoading}
+          inert={historyHydrating}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         <ScrollArea class="turns" bind:element={turnsViewport}>
@@ -1609,7 +1614,7 @@
                         : undefined}
                       tabindex={lifecycle.state === 'working' ? -1 : undefined}
                     />
-                    {#if lifecycle.state === 'uninstalled'}
+                    {#if lifecycle.state === 'uninstalled' && lifecycle.completionAnnounced}
                       <Markdown
                         markdown={lifecycleOutcome(lifecycle, exchange.assistant.author)}
                         variant="chat"
@@ -1724,7 +1729,7 @@
           onretry={retryHumanAuthentication}
           onexpire={expireHumanRequest}
         />
-        {#if historyLoading}
+        {#if historyHydrating}
           <section class="history-loading" aria-live="polite">
             <EmptyState title={copy.loading} />
           </section>
