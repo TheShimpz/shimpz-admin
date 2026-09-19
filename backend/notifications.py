@@ -23,9 +23,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from team import bridge as team
-
+from fastapi import FastAPI, HTTPException
 from protocol.http.v1 import websocket as chat_ws_common
+from starlette.concurrency import run_in_threadpool
+from team import bridge as team
 
 log = logging.getLogger("shimpz-admin")
 
@@ -78,6 +79,30 @@ class NotificationStoreError(RuntimeError):
 
 class ReleaseFeedError(OSError):
     """The optional public release feed could not be safely consumed."""
+
+
+def _list():
+    return list_notifications()
+
+
+async def _sync():
+    return await run_in_threadpool(sync)
+
+
+def _read_notification(notification_id: str):
+    try:
+        return mark_read(notification_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="notification not found") from None
+
+
+def register(app: FastAPI) -> None:
+    """Register the authenticated notification HTTP surface."""
+    app.add_api_route("/api/notifications", _list, methods=["GET"])
+    app.add_api_route("/api/notifications/sync", _sync, methods=["POST"])
+    app.add_api_route("/api/notifications/{notification_id}/read", _read_notification, methods=["POST"])
+    app.add_api_route("/api/notifications/read-all", mark_all_read, methods=["POST"])
+    app.add_api_route("/api/notifications", clear, methods=["DELETE"])
 
 
 def _utc_now() -> str:

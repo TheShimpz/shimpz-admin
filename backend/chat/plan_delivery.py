@@ -9,11 +9,11 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
+from chat import assistant_plan, assistant_proposal, lifecycle
 from chat.connection import Connection, Turn
 from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
-
-from chat import assistant_plan, assistant_proposal, history, lifecycle
+from history import store as history
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]

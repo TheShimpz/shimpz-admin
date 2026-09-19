@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import sys
 import tempfile
@@ -12,7 +13,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import history
+from history import delivery
+from history import store as history
 
 
 def _installed_event() -> dict[str, object]:
@@ -159,6 +161,10 @@ class ChatHistoryTests(unittest.TestCase):
             )
 
     def test_team_and_space_cleanup_are_idempotent(self) -> None:
+        self.assertEqual(history.clear_team("marketing"), 0)
+        self.assertEqual(history.clear_all(), 0)
+        self.assertFalse(self.path.exists())
+
         history.append_user("marketing", history.new_turn_id(), "One")
         history.append_user("sales", history.new_turn_id(), "Two")
 
@@ -167,6 +173,14 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertEqual(history.page("marketing")["entries"], [])
         self.assertEqual(history.clear_all(), 1)
         self.assertEqual(history.clear_all(), 0)
+
+    def test_hosted_delivery_never_opens_the_local_history_store(self) -> None:
+        delivery.configure("hosted")
+        self.addCleanup(delivery.configure, "local")
+
+        with mock.patch.object(history, "append_user") as append:
+            self.assertIsNone(asyncio.run(delivery.admit("marketing", "Hello")))
+        append.assert_not_called()
 
     def test_store_and_directory_are_private(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")

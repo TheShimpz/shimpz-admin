@@ -1,4 +1,4 @@
-"""Durable, presentation-only Local Admin chat history."""
+"""Durable, presentation-only Local Admin chat history storage."""
 
 from __future__ import annotations
 
@@ -478,13 +478,28 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
 
 
+def _absent() -> bool:
+    try:
+        STORE_PATH.lstat()
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        raise HistoryUnavailableError("chat history store is unavailable") from exc
+    return False
+
+
 def clear_team(team_id: object) -> int:
+    canonical_team = _team_id(team_id)
+    if _absent():
+        return 0
     with _database() as database:
-        cursor = database.execute("DELETE FROM transcript WHERE team_id = ?", (_team_id(team_id),))
+        cursor = database.execute("DELETE FROM transcript WHERE team_id = ?", (canonical_team,))
         return cursor.rowcount
 
 
 def clear_all() -> int:
+    if _absent():
+        return 0
     with _database() as database:
         cursor = database.execute("DELETE FROM transcript")
         return cursor.rowcount

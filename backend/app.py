@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
 
 import auth
+import browser
 import host_reset
 import local_auth
 import models
@@ -34,27 +35,28 @@ import platform_release
 import space_reset
 import state
 import supervisor
+from action import stored_input as action_stored_input
+from chat import assets as chat_assets
+from chat import human as chat_human
+from chat import socket as chat_socket
+from history import delivery as chat_history_delivery
+from history import http as chat_history_http
+from integrations import account as account_identity
+from integrations import assistants as integrations
+from integrations import handoff as handoff_store
+from protocol.http.v1 import websocket as chat_ws_common
 from team import assets as team_assets
 from team import bridge as team
 from team import files as team_files
 from team import http as team_http
 
-import browser
-from action import stored_input as action_stored_input
-from chat import assets as chat_assets
-from chat import history as chat_history
-from chat import human as chat_human
-from chat import socket as chat_socket
-from integrations import account as account_identity
-from integrations import assistants as integrations
-from integrations import handoff as handoff_store
-from protocol.http.v1 import websocket as chat_ws_common
-
 log = logging.getLogger("shimpz-admin")
+chat_history = chat_history_http.store
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 
 ADMIN_PROFILE = profile.require()
+chat_history_delivery.configure(ADMIN_PROFILE)
 _AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
     partial(
         chat_human.authenticate_local,
@@ -130,6 +132,7 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
+notifications.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,
@@ -473,29 +476,15 @@ async def _host_reset_password(password: object) -> None:
     await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
 
 
-def _cleanup_history(response: team.TeamResponse, cleanup) -> team.TeamResponse:
-    if not 200 <= response.status < 300:
-        return response
-    try:
-        cleanup()
-    except chat_history.HistoryUnavailableError:
-        log.exception("Admin chat history cleanup is unavailable")
-        return team.TeamResponse(
-            503,
-            {"detail": "Team state was removed, but Admin chat history cleanup did not complete"},
-        )
-    return response
-
-
 def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
+    if ADMIN_PROFILE == "local":
+        return chat_history_http.team_delete(team_id, action)
     response = action()
-    if response == team.TeamResponse(404, {"detail": "Team not found"}):
-        response = team.TeamResponse(200, {"deleted": False})
-    return _cleanup_history(response, lambda: chat_history.clear_team(team_id))
+    return team.TeamResponse(200, {"deleted": False}) if response.status == 404 else response
 
 
 def _space_reset_with_history(action) -> team.TeamResponse:
-    return _cleanup_history(action(), chat_history.clear_all)
+    return chat_history_http.space_reset(action)
 
 
 def _space_reset_response(action) -> JSONResponse:
@@ -589,7 +578,10 @@ def teams_create(payload: dict):
     team_id = team.to_team_id(team_name)
     if not team_id:
         raise HTTPException(status_code=400, detail="team name has no usable characters")
-    response = _team_response(lambda: team.create(team_id, team_name))
+    result = team.create(team_id, team_name)
+    if ADMIN_PROFILE == "local":
+        result = chat_history_http.team_created(team_id, result)
+    response = _team_response(lambda: result)
     if 200 <= response.status_code < 300:
         log.info("team created: %s", team_id)
     return response
@@ -667,23 +659,12 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
     )
 
 
-@app.get("/api/teams/{team_id}/chat/history")
 def team_chat_history(team_id: str, before: str | None = None):
-    try:
-        resolved = team.resolve_team_name(team_id)
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    if isinstance(resolved, team.TeamResponse):
-        return _team_response(lambda: resolved)
-    try:
-        response = JSONResponse(chat_history.page(team_id, before=before))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except chat_history.HistoryUnavailableError:
-        log.exception("Admin chat history is unavailable")
-        raise HTTPException(status_code=503, detail="Admin chat history is unavailable") from None
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return chat_history_http.page(team_id, before)
+
+
+if ADMIN_PROFILE == "local":
+    app.add_api_route("/api/teams/{team_id}/chat/history", team_chat_history, methods=["GET"])
 
 
 @app.get("/api/teams/{team_id}/assistant-integrations")
@@ -962,35 +943,6 @@ if ADMIN_PROFILE == "local":
 @app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
 def team_assistant_uninstall(team_id: str, assistant_id: str):
     return _team_response(lambda: team.uninstall_assistant(team_id, assistant_id))
-
-
-@app.get("/api/notifications")
-def notification_list():
-    return notifications.list_notifications()
-
-
-@app.post("/api/notifications/sync")
-async def notification_sync():
-    # Feed I/O plus local controller reconciliation must never block the ASGI event loop.
-    return await run_in_threadpool(notifications.sync)
-
-
-@app.post("/api/notifications/{notification_id}/read")
-def notification_read(notification_id: str):
-    try:
-        return notifications.mark_read(notification_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="notification not found") from None
-
-
-@app.post("/api/notifications/read-all")
-def notifications_read_all():
-    return notifications.mark_all_read()
-
-
-@app.delete("/api/notifications")
-def notifications_clear():
-    return notifications.clear()
 
 
 @app.get("/api/teams/{team_id}/files")

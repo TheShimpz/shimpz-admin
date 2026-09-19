@@ -198,6 +198,23 @@ class AppRouteEdgeTests(unittest.TestCase):
         ):
             self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 409)
 
+    def test_new_local_team_clears_only_stale_history_for_its_id(self) -> None:
+        created = self.admin_app.team.TeamResponse(
+            201,
+            {"team_id": "marketing", "team_name": "Marketing", "status": "running", "created": True},
+        )
+        existing = self.admin_app.team.TeamResponse(
+            200,
+            {"team_id": "marketing", "team_name": "Marketing", "status": "running", "created": False},
+        )
+        with (
+            mock.patch.object(self.admin_app.team, "create", side_effect=(created, existing)),
+            mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=2) as cleared,
+        ):
+            self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 201)
+            self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 200)
+        cleared.assert_called_once_with("marketing")
+
     def test_local_team_deletion_validates_confirmation_and_authority_failures(self) -> None:
         request = _json_request({}, cookie="token")
         cases = (({"team_name": "Marketing"}, 400), ({"team_name": 1, "password": "secret"}, 400))
@@ -295,6 +312,13 @@ class AppRouteEdgeTests(unittest.TestCase):
         with mock.patch.object(self.admin_app.chat_history, "clear_all", return_value=4) as cleared:
             self.assertIs(self.admin_app._space_reset_with_history(lambda: deleted), deleted)
         cleared.assert_called_once_with()
+
+        with (
+            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
+            mock.patch.object(self.admin_app.chat_history, "clear_team") as cleared,
+        ):
+            self.assertIs(self.admin_app._team_delete_with_history("marketing", lambda: deleted), deleted)
+        cleared.assert_not_called()
 
     def test_hosted_team_deletion_maps_session_and_sudo_statuses(self) -> None:
         request = _json_request({}, cookie="token")

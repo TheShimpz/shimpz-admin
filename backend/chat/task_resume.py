@@ -7,12 +7,13 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
+from chat import assistant_proposal, lifecycle, plan_delivery
 from chat.connection import Connection, Turn
 from fastapi import WebSocket
-from team import bridge as team
-
-from chat import assistant_proposal, history, lifecycle, plan_delivery
+from history import delivery as history_delivery
+from history import store as history
 from protocol.http.v1 import payload as team_contract
+from team import bridge as team
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 StartDirect = Callable[[WebSocket, Connection, str, dict[str, object], str | None], Awaitable[None]]
@@ -96,13 +97,9 @@ async def dispatch(
     if admitted is None:
         return
     payload, objective = admitted
-    history_id = history.new_turn_id()
     try:
-        committed = await asyncio.to_thread(history.append_user, team_id, history_id, payload["message"])
+        history_id = await history_delivery.admit(team_id, payload["message"])
     except (history.HistoryUnavailableError, ValueError):
-        await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
-        return
-    if not committed:
         await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
         return
     connection.admitted_history_id = history_id

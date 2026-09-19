@@ -7,9 +7,8 @@ import concurrent.futures
 import threading
 from dataclasses import dataclass, field
 
-from chat.assistant_proposal import UninstallProposal
-
 from chat import lifecycle
+from chat.assistant_proposal import UninstallProposal
 
 
 @dataclass(slots=True)
@@ -47,3 +46,22 @@ class SyncSnapshot:
     challenge_type: str
     pending: object
     resumed: object | None = None
+
+
+def remember_challenge(
+    connection: Connection,
+    challenge: dict[str, object],
+    challenge_type: str,
+) -> None:
+    connection.pending_challenge_id = challenge["challenge_id"]
+    connection.pending_challenge_type = challenge_type
+    request = challenge.get("request")
+    connection.pending_human_request = (
+        dict(request) if challenge_type == "human" and isinstance(request, dict) else None
+    )
+
+
+def forget_challenge(connection: Connection) -> None:
+    connection.pending_challenge_id = None
+    connection.pending_challenge_type = None
+    connection.pending_human_request = None
