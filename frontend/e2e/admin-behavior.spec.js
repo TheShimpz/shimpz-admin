@@ -822,6 +822,7 @@ test('ends an explicit Assistant installation at the installed plan', async ({ p
   await expect(tasks).toHaveCount(2);
   await expect(tasks.nth(0)).toHaveAttribute('data-state', 'complete');
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
+  await expect(page.locator('.assistant-install-plan').locator('xpath=ancestor::article').locator('.markdown')).toHaveCount(0);
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);

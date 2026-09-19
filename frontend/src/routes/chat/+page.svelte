@@ -1331,7 +1331,9 @@
               {/if}
               {#if exchange.assistant}
                 <Message variant="assistant" author={exchange.assistant.author}>
-                  <Markdown markdown={exchange.assistant.text} variant="chat" />
+                  {#if !exchange.assistant.installPlan}
+                    <Markdown markdown={exchange.assistant.text} variant="chat" />
+                  {/if}
                   {#if exchange.assistant.installPlan}
                     <div
                       class="assistant-install-plan"
