@@ -4,6 +4,10 @@ import { createServer } from 'node:http';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+// The page-level WebSocket transport mock is stateful. Keep this file ordered while
+// the independent shell and boot contracts continue using the full worker pool.
+test.describe.configure({ mode: 'default' });
+
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
 );
