@@ -777,6 +777,8 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect.poll(() => chat.syncFrames()).toBeGreaterThan(0);
+  await expect(composer).toBeEnabled();
   await composer.fill('First prompt');
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
