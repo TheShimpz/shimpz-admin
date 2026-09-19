@@ -161,6 +161,7 @@ async function routeReadyChat(page, {
   terminalError = false,
   whatsappInstalled = false,
   storedInputStatus = '',
+  historyStatus = 200,
   history = { entries: [], before: null },
   olderHistory = null,
   reply,
@@ -308,8 +309,11 @@ async function routeReadyChat(page, {
     const requestUrl = new URL(route.request().url());
     historyRequests.push(requestUrl.searchParams.get('before'));
     return route.fulfill({
+      status: historyStatus,
       contentType: 'application/json',
-      body: JSON.stringify(requestUrl.searchParams.has('before') ? olderHistory : history),
+      body: JSON.stringify(historyStatus === 200
+        ? requestUrl.searchParams.has('before') ? olderHistory : history
+        : { detail: 'Synthetic history failure.' }),
     });
   });
   await page.route('**/api/model-providers', (route) => route.fulfill({
@@ -850,6 +854,20 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
   await composer.press('ArrowUp');
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('Install Cloudflare');
+});
+
+test('keeps chat available when durable history cannot be loaded', async ({ page }) => {
+  await routeReadyChat(page, { historyStatus: 503, reply: 'The live chat still works.' });
+  await page.goto('/chat/');
+
+  const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
+  await expect(notice).toContainText('Local chat data is unavailable.');
+  await expect(notice).toContainText('Synthetic history failure.');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Continue without restored history');
+  await composer.press('Enter');
+  await expect(page.getByText('The live chat still works.', { exact: true })).toBeVisible();
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {

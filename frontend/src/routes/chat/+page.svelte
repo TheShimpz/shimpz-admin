@@ -290,6 +290,7 @@
         copy.loadFailed,
         reason instanceof Error ? reason.message : copy.loadFailed,
       );
+      connectSocket(teamId);
     }
   }
 
