@@ -60,10 +60,6 @@ const MAX_CHAT_PROGRESS_EVENTS = 2052;
 const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const MAX_PROGRESS_ASSISTANT_ID_CHARS = 40;
 const MAX_PROGRESS_ACTION_ID_CHARS = 80;
-const OAUTH_CHAT_STORAGE_KEY = 'shimpz:oauth-chat:v1';
-const OAUTH_CHAT_STORAGE_TTL_MS = 10 * 60 * 1000;
-const MAX_OAUTH_CHAT_TURNS = 64;
-const MAX_OAUTH_CHAT_STORAGE_BYTES = 256 * 1024;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -95,101 +91,6 @@ export function assistantIntegrationProviderLabel(provider) {
   if (provider === 'x') return 'X';
   if (provider === 'whatsapp') return 'WhatsApp';
   return provider.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
-}
-
-function oauthChatTurn(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (
-    value.role === 'user' &&
-    exactKeys(value, ['role', 'text']) &&
-    typeof value.text === 'string' &&
-    value.text.length > 0 &&
-    value.text.length <= MAX_MESSAGE_CHARS &&
-    !CHAT_TEXT_CONTROL_RE.test(value.text)
-  ) {
-    return { role: 'user', text: value.text };
-  }
-  if (
-    value.role === 'assistant' &&
-    exactKeys(value, ['role', 'text', 'author']) &&
-    typeof value.text === 'string' &&
-    value.text.length > 0 &&
-    value.text.length <= MAX_REPLY_CHARS &&
-    !CHAT_TEXT_CONTROL_RE.test(value.text)
-  ) {
-    try {
-      return { role: 'assistant', text: value.text, author: canonicalTeam(value.author) };
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-export function stashOAuthChatTurns(storage, teamId, turns, now = Date.now()) {
-  try {
-    requireTeam(teamId);
-    if (
-      !storage ||
-      typeof storage.setItem !== 'function' ||
-      !Array.isArray(turns) ||
-      turns.length > MAX_OAUTH_CHAT_TURNS ||
-      !Number.isSafeInteger(now) ||
-      now < 0
-    ) return false;
-    const canonical = turns.map(oauthChatTurn);
-    if (canonical.some((turn) => turn === null)) return false;
-    const encoded = JSON.stringify({
-      version: 1,
-      team_id: teamId,
-      expires_at: now + OAUTH_CHAT_STORAGE_TTL_MS,
-      turns: canonical,
-    });
-    if (new TextEncoder().encode(encoded).length > MAX_OAUTH_CHAT_STORAGE_BYTES) return false;
-    storage.setItem(OAUTH_CHAT_STORAGE_KEY, encoded);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function restoreOAuthChatTurns(storage, teamId, now = Date.now()) {
-  try {
-    requireTeam(teamId);
-    if (
-      !storage ||
-      typeof storage.getItem !== 'function' ||
-      typeof storage.removeItem !== 'function' ||
-      !Number.isSafeInteger(now) ||
-      now < 0
-    ) return [];
-    const raw = storage.getItem(OAUTH_CHAT_STORAGE_KEY);
-    if (raw === null) return [];
-    const value = JSON.parse(raw);
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Array.isArray(value) ||
-      !exactKeys(value, ['version', 'team_id', 'expires_at', 'turns'])
-    ) {
-      storage.removeItem(OAUTH_CHAT_STORAGE_KEY);
-      return [];
-    }
-    if (value.team_id !== teamId) return [];
-    storage.removeItem(OAUTH_CHAT_STORAGE_KEY);
-    if (
-      value.version !== 1 ||
-      !Number.isSafeInteger(value.expires_at) ||
-      value.expires_at <= now ||
-      value.expires_at > now + OAUTH_CHAT_STORAGE_TTL_MS ||
-      !Array.isArray(value.turns) ||
-      value.turns.length > MAX_OAUTH_CHAT_TURNS
-    ) return [];
-    const canonical = value.turns.map(oauthChatTurn);
-    return canonical.some((turn) => turn === null) ? [] : canonical;
-  } catch {
-    return [];
-  }
 }
 
 function requireTeam(teamId) {

@@ -4,6 +4,7 @@
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
+  import { listChatHistory } from '$lib/chatHistory.js';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import { localizedEventLabel } from '$lib/executionProgress.js';
@@ -32,8 +33,6 @@
     listAssistantStoredInputs,
     parseChatEvent,
     oauthReturnFailure,
-    restoreOAuthChatTurns,
-    stashOAuthChatTurns,
   } from '$lib/localChat.js';
 
 
@@ -77,6 +76,10 @@
   let scrollRequest = 0;
   let capabilityObjective = null;
   let promptHistoryIndex = -1;
+  let historyLoading = $state(false);
+  let historyWorking = $state(false);
+  let historyBefore = $state(null);
+  let historyGeneration = 0;
 
   let copy = $derived($t('chatPage'));
   let storeCopy = $derived($t('store'));
@@ -99,7 +102,9 @@
   let lifecycleWorking = $derived(turns.some((turn) => (
     turn.lifecycle?.state === 'working'
   )) || installPlanWorking);
-  let composerBusy = $derived(busy || syncing || lifecycleOutcomePending !== null);
+  let composerBusy = $derived(
+    busy || syncing || lifecycleOutcomePending !== null || historyLoading,
+  );
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
@@ -112,7 +117,7 @@
       : busy ? thinking : '',
   );
   let contextLoading = $derived(
-    $teamContext.phase === 'idle' || $teamContext.phase === 'loading',
+    $teamContext.phase === 'idle' || $teamContext.phase === 'loading' || historyLoading,
   );
   let contextFailed = $derived($teamContext.phase === 'error');
   let contextErrorDetail = $derived(
@@ -152,14 +157,6 @@
   function resetProgress() {
     progressEvents = [];
     progressSequence = 0;
-  }
-
-  function oauthTurns() {
-    return turns.map((turn) => (
-      turn.role === 'user'
-        ? { role: 'user', text: turn.text }
-        : { role: 'assistant', text: turn.text, author: turn.author }
-    ));
   }
 
   function lifecycleProposalReply(assistant) {
@@ -222,6 +219,116 @@
 
   function installPlanTurnIndex(planId) {
     return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
+  }
+
+  function historyTurn(entry, author) {
+    if (entry.kind === 'message') {
+      return {
+        historyId: entry.id,
+        role: entry.role,
+        text: entry.text,
+        ...(entry.role === 'assistant' ? { author: entry.author } : {}),
+      };
+    }
+    if (entry.kind === 'guidance') {
+      return {
+        historyId: entry.id,
+        role: 'assistant',
+        text: copy.uninstall.targetRequired,
+        author,
+      };
+    }
+    if (entry.kind === 'assistant-install') {
+      return {
+        historyId: entry.id,
+        role: 'assistant',
+        text: entry.state === 'installed'
+          ? copy.install.complete
+          : entry.state === 'failed'
+            ? copy.install.failed
+            : copy.disconnected,
+        author,
+        installPlan: {
+          plan_id: `history-${entry.id}`,
+          state: entry.state,
+          assistants: entry.assistants,
+          ...(entry.status ? { status: entry.status } : {}),
+        },
+      };
+    }
+    return {
+      historyId: entry.id,
+      role: 'assistant',
+      text: '',
+      author,
+      lifecycle: {
+        proposal_id: `history-${entry.id}`,
+        assistant: entry.assistant,
+        state: entry.state,
+        completionAnnounced: true,
+        ...(entry.state === 'uninstalled' ? { uninstalled: entry.uninstalled } : {}),
+        ...(entry.status ? { status: entry.status } : {}),
+      },
+    };
+  }
+
+  async function hydrateHistory(teamId, generation) {
+    try {
+      const page = await listChatHistory(fetch, teamId);
+      if (generation !== historyGeneration || chatTeamId !== teamId) return;
+      const team = $teamContext.teams.find((entry) => entry.id === teamId);
+      if (!team) throw new Error(copy.loadFailed);
+      turns = page.entries.map((entry) => historyTurn(entry, team.name));
+      historyBefore = page.before;
+      historyLoading = false;
+      connectSocket(teamId);
+      if (turns.length > 0) void revealLatestExchange();
+    } catch (reason) {
+      if (generation !== historyGeneration || chatTeamId !== teamId) return;
+      historyLoading = false;
+      setError(
+        copy.loadFailed,
+        reason instanceof Error ? reason.message : copy.loadFailed,
+      );
+    }
+  }
+
+  async function loadOlderHistory() {
+    const teamId = chatTeamId;
+    const before = historyBefore;
+    if (!teamId || !before || historyWorking) return;
+    historyWorking = true;
+    const generation = historyGeneration;
+    const viewport = turnsViewport;
+    const previousHeight = viewport?.scrollHeight ?? 0;
+    const previousTop = viewport?.scrollTop ?? 0;
+    try {
+      const page = await listChatHistory(fetch, teamId, before);
+      if (generation !== historyGeneration || chatTeamId !== teamId) return;
+      const known = new Set(turns.map((turn) => turn.historyId).filter(Boolean));
+      if (page.entries.some((entry) => known.has(entry.id))) throw new Error(copy.loadFailed);
+      const team = $teamContext.teams.find((entry) => entry.id === teamId);
+      if (!team) throw new Error(copy.loadFailed);
+      turns = [
+        ...page.entries.map((entry) => historyTurn(entry, team.name)),
+        ...turns,
+      ];
+      historyBefore = page.before;
+      await tick();
+      if (viewport && viewport === turnsViewport) {
+        viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;
+      }
+      clearError();
+    } catch (reason) {
+      if (generation === historyGeneration && chatTeamId === teamId) {
+        setError(
+          copy.loadFailed,
+          reason instanceof Error ? reason.message : copy.loadFailed,
+        );
+      }
+    } finally {
+      if (generation === historyGeneration && chatTeamId === teamId) historyWorking = false;
+    }
   }
 
   function applyInstallPlanEvent(incoming, receipt) {
@@ -889,14 +996,18 @@
     lifecycleOutcomePending = null;
     draft = '';
     promptHistoryIndex = -1;
-    turns = nextTeamId ? restoreOAuthChatTurns(sessionStorage, nextTeamId) : [];
-    busy = turns.length > 0;
+    turns = [];
+    busy = false;
+    historyBefore = null;
+    historyWorking = false;
+    historyLoading = Boolean(nextTeamId);
+    const generation = ++historyGeneration;
     resetProgress();
     scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
     clearError();
-    if (nextTeamId) connectSocket(nextTeamId);
+    if (nextTeamId) void hydrateHistory(nextTeamId, generation);
   }
 
   function closeIntegrations() {
@@ -1014,7 +1125,6 @@
       if (authorization.completion_mode !== expectedCompletionMode) {
         throw new Error(integrationsCopy.authorizationFailed);
       }
-      stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
       if (authorization.completion_mode === 'code') {
         if (!authorizationWindow || authorizationWindow.closed) {
           throw new Error(integrationsCopy.authorizationFailed);
@@ -1058,7 +1168,6 @@
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.completionFailed);
       }
-      stashOAuthChatTurns(sessionStorage, teamId, oauthTurns());
       location.assign('/chat');
     } catch (reason) {
       if (chatTeamId === teamId) {
@@ -1342,6 +1451,7 @@
     }
     return () => {
       mounted = false;
+      historyGeneration += 1;
       closeSocket();
       clearLifecycleIconCaptures();
     };
@@ -1363,6 +1473,19 @@
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         <ScrollArea class="turns" bind:element={turnsViewport}>
+          {#if historyBefore}
+            <div class="history-older">
+              <Button
+                variant="ghost"
+                size="compact"
+                type="button"
+                onclick={loadOlderHistory}
+                disabled={historyWorking}
+              >
+                {copy.olderMessages}
+              </Button>
+            </div>
+          {/if}
           {#each exchanges as exchange, index}
             <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
               {#if exchange.user}
@@ -1378,7 +1501,9 @@
               {/if}
               {#if exchange.assistant}
                 <Message variant="assistant" author={exchange.assistant.author}>
-                  {#if !exchange.assistant.installPlan}
+                  {#if !exchange.assistant.installPlan && (
+                    !exchange.assistant.lifecycle || exchange.assistant.lifecycle.state === 'proposed'
+                  )}
                     <Markdown markdown={exchange.assistant.text} variant="chat" />
                   {/if}
                   {#if exchange.assistant.installPlan}
@@ -1591,6 +1716,11 @@
           onretry={retryHumanAuthentication}
           onexpire={expireHumanRequest}
         />
+        {#if historyLoading}
+          <section class="history-loading" aria-live="polite">
+            <EmptyState title={copy.loading} />
+          </section>
+        {/if}
       </div>
     {:else}
       <section class="provider-setup" aria-live="polite">
@@ -1637,6 +1767,15 @@
     overflow: hidden;
   }
 
+  .history-loading {
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--surface-1);
+  }
+
   .conversation {
     --chat-rail-gutter: 0.8rem;
     --chat-rail-width: 48rem;
@@ -1678,6 +1817,11 @@
       var(--chat-rail-gutter),
       calc((100% - var(--chat-rail-width)) / 2)
     );
+  }
+
+  .history-older {
+    display: flex;
+    justify-content: center;
   }
 
   .empty-conversation :global(.turns) {

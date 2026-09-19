@@ -161,6 +161,8 @@ async function routeReadyChat(page, {
   terminalError = false,
   whatsappInstalled = false,
   storedInputStatus = '',
+  history = { entries: [], before: null },
+  olderHistory = null,
   reply,
 } = {}) {
   let inferenceWrites = 0;
@@ -198,6 +200,7 @@ async function routeReadyChat(page, {
   });
   const chatFrames = [];
   const assistantIconRequests = [];
+  const historyRequests = [];
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
     contentType: 'application/json',
@@ -301,6 +304,14 @@ async function routeReadyChat(page, {
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
+  await page.route('**/api/teams/marketing/chat/history**', (route) => {
+    const requestUrl = new URL(route.request().url());
+    historyRequests.push(requestUrl.searchParams.get('before'));
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(requestUrl.searchParams.has('before') ? olderHistory : history),
+    });
+  });
   await page.route('**/api/model-providers', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -647,6 +658,7 @@ async function routeReadyChat(page, {
     chatFrames: () => chatFrames,
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
+    historyRequests: () => historyRequests,
     inferenceWrites: () => inferenceWrites,
     advanceAssistantPlan: () => advanceAssistantPlan(),
     completeAssistantPlan: () => completeAssistantPlan(),
@@ -766,6 +778,78 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
   await composer.fill('');
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('Second prompt');
+});
+
+test('restores durable Team history, terminal Assistant cards and older prompts after reload', async ({ page }) => {
+  const firstTurn = 'a'.repeat(32);
+  const secondTurn = 'b'.repeat(32);
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${secondTurn}:user`, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
+        {
+          id: `${secondTurn}:install`,
+          kind: 'assistant-install',
+          state: 'installed',
+          assistants: [{
+            id: 'shimpz-cloudflare',
+            name: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            providers: ['cloudflare'],
+            provenance: 'local',
+            status: 'installed',
+          }],
+        },
+        {
+          id: `${secondTurn}:reply`,
+          kind: 'message',
+          role: 'assistant',
+          text: 'Your zone is example.com.',
+          author: 'Marketing',
+        },
+      ],
+      before: cursor,
+    },
+    olderHistory: {
+      entries: [
+        { id: `${firstTurn}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        {
+          id: `${firstTurn}:reply`,
+          kind: 'message',
+          role: 'assistant',
+          text: 'I will install the required Assistant.',
+          author: 'Marketing',
+        },
+      ],
+      before: null,
+    },
+  });
+
+  await page.goto('/chat/');
+  const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(task).toHaveCount(1);
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect(task).toContainText('Shimpz Cloudflare');
+  await expect(page.getByText('Installed', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('Your zone is example.com.', { exact: true })).toBeVisible();
+  await expect.poll(() => chat.historyRequests()).toEqual([null]);
+
+  await page.reload();
+  await expect(task).toHaveCount(1);
+  await expect(page.getByText('Your zone is example.com.', { exact: true })).toBeVisible();
+  await expect.poll(() => chat.historyRequests()).toEqual([null, null]);
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('List my Cloudflare DNS zones');
+  await composer.fill('');
+  await page.getByRole('button', { name: 'Load older messages' }).click();
+  await expect(page.getByText('Install Cloudflare', { exact: true })).toBeVisible();
+  await expect.poll(() => chat.historyRequests()).toEqual([null, null, cursor]);
+  await composer.press('ArrowUp');
+  await composer.press('ArrowUp');
+  await expect(composer).toHaveValue('Install Cloudflare');
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {

@@ -18,8 +18,6 @@ import {
   listAssistantStoredInputs,
   oauthReturnFailure,
   parseChatEvent,
-  restoreOAuthChatTurns,
-  stashOAuthChatTurns,
 } from '../src/lib/localChat.js';
 
 const TURN_ID = 'a'.repeat(32);
@@ -38,46 +36,6 @@ test('recognizes only the closed OAuth failure return marker', () => {
     'not a URL',
   ]) assert.equal(oauthReturnFailure(value), false);
 });
-test('restores one bounded OAuth conversation from session storage exactly once', () => {
-  const values = new Map();
-  const storage = {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
-    removeItem: (key) => values.delete(key),
-  };
-  const turns = [
-    { role: 'user', text: 'List my DNS zones.' },
-    { role: 'assistant', text: 'Authorization is required.\nPlease continue.', author: 'Marketing' },
-  ];
-
-  assert.equal(stashOAuthChatTurns(storage, 'team_1', turns, 1_000), true);
-  assert.deepEqual(restoreOAuthChatTurns(storage, 'team_2', 1_001), []);
-  assert.deepEqual(restoreOAuthChatTurns(storage, 'team_1', 1_001), turns);
-  assert.deepEqual(restoreOAuthChatTurns(storage, 'team_1', 1_002), []);
-});
-
-test('rejects expired, malformed, oversized and storage-failing OAuth conversation state', () => {
-  const values = new Map();
-  const storage = {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
-    removeItem: (key) => values.delete(key),
-  };
-  assert.equal(stashOAuthChatTurns(storage, 'team_1', [{ role: 'user', text: 'Hello' }], 1_000), true);
-  assert.deepEqual(restoreOAuthChatTurns(storage, 'team_1', 601_001), []);
-  assert.equal(
-    stashOAuthChatTurns(storage, 'team_1', [{ role: 'user', text: 'x'.repeat(16_001) }], 1_000),
-    false,
-  );
-  assert.equal(
-    stashOAuthChatTurns({ setItem: () => { throw new Error('denied'); } }, 'team_1', [], 1_000),
-    false,
-  );
-  values.set('shimpz:oauth-chat:v1', '{"version":1,"token":"must-not-cross"}');
-  assert.deepEqual(restoreOAuthChatTurns(storage, 'team_1', 1_001), []);
-  assert.equal(values.size, 0);
-});
-
 function integrationRequirement() {
   return {
     assistant_id: 'social-publisher',
