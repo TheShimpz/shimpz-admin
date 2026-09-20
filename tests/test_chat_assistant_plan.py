@@ -225,7 +225,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertNotIn("image_id", repr(request))
         self.assertNotIn("source_digest", repr(request))
 
-    def test_store_outage_fails_closed_even_with_a_local_snapshot(self) -> None:
+    def test_store_outage_proceeds_without_a_capability_plan(self) -> None:
         store = mock.Mock()
         store.get.side_effect = store_catalog.CatalogUnavailableError("offline")
         with (
@@ -244,18 +244,26 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                     },
                 ),
             ),
-            self.assertRaises(store_catalog.CatalogUnavailableError),
         ):
-            assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
+            result = assistant_plan.prepare_capability(
+                "team_1",
+                _payload("Configure Cloudflare"),
+                store,
+                True,
+            )
+
+        self.assertEqual(result, assistant_plan.Preparation())
 
     def test_invalid_local_inventory_never_falls_back_to_publication(self) -> None:
-        with self.assertRaises(ValueError):
-            self._prepare(
-                "Configure Cloudflare",
-                (CLOUDFLARE,),
-                assistant_plan.team.TeamResponse(200, {}),
-                local_inventory=assistant_plan.team.TeamResponse(503, {"detail": "unavailable"}),
-            )
+        result, planner = self._prepare(
+            "Configure Cloudflare",
+            (CLOUDFLARE,),
+            assistant_plan.team.TeamResponse(200, {}),
+            local_inventory=assistant_plan.team.TeamResponse(503, {"detail": "unavailable"}),
+        )
+
+        self.assertEqual(result, assistant_plan.Preparation())
+        planner.assert_not_called()
 
     def test_nonrunning_explicit_scope_never_reaches_the_planner(self) -> None:
         result, planner = self._prepare(
@@ -270,7 +278,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(result, assistant_plan.Preparation())
         planner.assert_not_called()
 
-    def test_unknown_duplicate_or_inconsistent_planner_selection_fails_closed(self) -> None:
+    def test_unknown_duplicate_or_inconsistent_planner_selection_installs_nothing(self) -> None:
         bodies = (
             {"team_id": "team_1", "status": "install-required", "assistant_ids": ["unknown"]},
             {
@@ -287,7 +295,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                     (CLOUDFLARE,),
                     assistant_plan.team.TeamResponse(200, body),
                 )
-                self.assertEqual(result, assistant_plan.Preparation(error_status=502))
+                self.assertEqual(result, assistant_plan.Preparation())
 
     def test_scope_overflow_fails_before_any_installation(self) -> None:
         enabled_ids = tuple(f"enabled-{index}" for index in range(15))

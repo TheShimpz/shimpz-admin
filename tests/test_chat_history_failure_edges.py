@@ -153,7 +153,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     "admit",
                     new=mock.AsyncMock(side_effect=socket.history.HistoryUnavailableError("offline")),
                 ),
-                mock.patch.object(task_resume.lifecycle, "submit_preparation") as prepare,
+                mock.patch.object(task_resume.lifecycle, "submit_resume") as prepare,
             ):
                 await task_resume.dispatch(
                     websocket,

@@ -337,7 +337,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
 
             websocket.reset_mock()
-            with mock.patch.object(socket.lifecycle, "submit_preparation") as prepare:
+            with mock.patch.object(socket.lifecycle, "submit_resume") as prepare:
                 await task_resume.dispatch(
                     websocket,
                     socket._Connection(),
@@ -365,7 +365,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             with (
                 mock.patch.object(
                     socket.lifecycle,
-                    "submit_preparation",
+                    "submit_resume",
                     side_effect=socket.ExecutorSaturatedError,
                 ) as prepare,
             ):
@@ -384,8 +384,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
             deliver = mock.AsyncMock()
             connection = socket._Connection()
             with (
-                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=preparation),
-                mock.patch.object(socket.plan_delivery, "deliver_preparation", new=deliver),
+                mock.patch.object(socket.lifecycle, "submit_resume", return_value=preparation),
+                mock.patch.object(socket.route_delivery, "deliver", new=deliver),
             ):
                 await task_resume.dispatch(
                     websocket,

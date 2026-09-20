@@ -53,14 +53,14 @@ class ChatLifecycleTests(unittest.TestCase):
             lifecycle,
             "submit_in_context",
             side_effect=lifecycle.ExecutorSaturatedError,
-        ), mock.patch.object(lifecycle.admin_profile, "require", return_value="local"):
+        ):
             with self.assertRaises(lifecycle.ExecutorSaturatedError):
                 lifecycle.submit_route(
                     "team_1",
                     {"message": "Desinstale o Cloudflare", "assistant_ids": []},
                 )
             with self.assertRaises(lifecycle.ExecutorSaturatedError):
-                lifecycle.submit_preparation(
+                lifecycle.submit_resume(
                     "team_1",
                     {"message": "Configure Cloudflare", "assistant_ids": []},
                 )

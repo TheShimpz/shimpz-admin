@@ -21,8 +21,13 @@ class ChatTaskResumeTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
-                    return_value=self._future(self.assistant_plan.Preparation(plan)),
+                    "submit_resume",
+                    return_value=self._future(
+                        self.assistant_route.Result(
+                            "ordinary-task",
+                            preparation=self.assistant_plan.Preparation(plan),
+                        )
+                    ),
                 ) as prepare,
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -64,6 +69,64 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled", "shimpz-cloudflare", "whatsapp"],
                     },
                 )
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_exact_install_resume_terminates_without_a_brain_turn(self) -> None:
+        async def scenario() -> None:
+            original = self._automatic_plan()
+            plan = self.assistant_plan.Plan(
+                original.plan_id,
+                original.team_id,
+                original.assistants,
+                original.dispatch_ids,
+                True,
+            )
+            installed = tuple(
+                {**item, "status": "installed"}
+                for item in self.assistant_plan.initial_items(plan)
+            )
+            with (
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_resume",
+                    return_value=self._future(
+                        self.assistant_route.Result(
+                            "assistant-install",
+                            preparation=self.assistant_plan.Preparation(plan),
+                        )
+                    ),
+                ),
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_plan",
+                    return_value=self._future(
+                        self.assistant_plan.Result("installed", installed)
+                    ),
+                ),
+                mock.patch.object(self.chat_socket.local, "turn") as turn,
+            ):
+                websocket = Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "resume-task",
+                        "message": "Você mesmo consegue habilitar?",
+                        "objective": "Instale Cloudflare e WhatsApp",
+                        "files": [],
+                        "assistant_ids": [],
+                        "objective_assistant_ids": [],
+                    }
+                )
+
+                self.assertEqual((await websocket.next_json())["state"], "planned")
+                completed = await websocket.next_json()
+                self.assertEqual(
+                    (completed["state"], completed["continuation"]),
+                    ("installed", "none"),
+                )
+                turn.assert_not_called()
                 await websocket.disconnect()
 
         asyncio.run(scenario())

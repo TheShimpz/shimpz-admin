@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
+from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import delivery as history_delivery
@@ -104,13 +105,13 @@ async def dispatch(
         return
     connection.admitted_history_id = history_id
     try:
-        preparation = lifecycle.submit_preparation(team_id, objective)
+        preparation = lifecycle.submit_resume(team_id, objective)
     except ExecutorSaturatedError:
         await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = Turn(
         future=preparation,
-        operation="capability-plan",
+        operation="assistant-route",
         language_exemplar=team_contract.canonical_language_exemplar(objective["message"]),
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
@@ -118,13 +119,17 @@ async def dispatch(
     connection.admitted_history_id = None
     connection.active = turn
     turn.delivery = asyncio.create_task(
-        plan_delivery.deliver_preparation(
+        route_delivery.deliver(
             websocket,
             connection,
             turn,
             team_id,
             objective,
-            operations.plan,
+            route_delivery.Operations(
+                plan=operations.plan,
+                finish_turn=operations.plan.finish_turn,
+                error_terminal=operations.error_terminal,
+            ),
             fallback_payload=payload,
         )
     )

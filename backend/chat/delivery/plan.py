@@ -75,14 +75,6 @@ async def _await_result(
     return result if isinstance(result, assistant_plan.Result) else None
 
 
-async def _preparation_result(turn: Turn) -> assistant_plan.Preparation | None:
-    preparation = None
-    with contextlib.suppress(Exception):
-        if turn.future is not None:
-            preparation = await asyncio.wrap_future(turn.future)
-    return preparation if isinstance(preparation, assistant_plan.Preparation) else None
-
-
 async def _run_job(
     websocket: WebSocket,
     connection: Connection,
@@ -177,52 +169,6 @@ async def _deliver_already_installed(
     if not await _commit_install(team_id, turn, terminal):
         terminal = operations.error_terminal(503, "Admin chat history is unavailable")
     await operations.finish_turn(websocket, connection, turn, terminal)
-
-
-async def deliver_preparation(
-    websocket: WebSocket,
-    connection: Connection,
-    turn: Turn,
-    team_id: str,
-    payload: dict[str, object],
-    operations: Operations,
-    *,
-    fallback_payload: dict[str, object] | None = None,
-) -> None:
-    preparation = await _preparation_result(turn)
-    if connection.closed:
-        return
-    if preparation is None:
-        await operations.finish_turn(
-            websocket,
-            connection,
-            turn,
-            operations.error_terminal(503, "Assistant capability preparation is unavailable"),
-        )
-        return
-    if (
-        fallback_payload is not None
-        and preparation.plan is None
-        and preparation.already_installed is None
-        and preparation.error_status is None
-    ):
-        await operations.continue_turn(
-            websocket,
-            connection,
-            turn,
-            team_id,
-            fallback_payload,
-        )
-        return
-    await deliver_result(
-        websocket,
-        connection,
-        turn,
-        team_id,
-        payload,
-        preparation,
-        operations,
-    )
 
 
 async def deliver_result(

@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures
 import contextlib
 import logging
-import profile as admin_profile
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -292,18 +291,17 @@ async def _commit_uninstall(
     return True
 
 
-def submit_preparation(
+def submit_resume(
     team_id: str,
     payload: dict[str, object],
 ) -> concurrent.futures.Future:
-    """Admit reconnect-only capability preparation without semantic fallback."""
+    """Admit one reconnect objective through the same structured route."""
     return submit_in_context(
         _PLAN_EXECUTOR,
-        assistant_plan.prepare_capability,
+        assistant_route.prepare_resume,
         team_id,
         payload,
         _STORE_CATALOG,
-        admin_profile.require() == "local",
     )
 
 

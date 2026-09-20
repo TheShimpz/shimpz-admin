@@ -128,11 +128,13 @@ def _prepare_uninstall(team_id: str, payload: dict[str, object], query: str) -> 
     return Result("assistant-uninstall", uninstall=matches[0])
 
 
-def prepare(
+def _prepare(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool | None = None,
+    *,
+    allow_uninstall: bool,
 ) -> Result:
     """Classify once, then lazily open only the required bounded directory."""
     intent, query, _selected = _route(team_id, payload["message"], None, [])
@@ -149,4 +151,26 @@ def prepare(
     local_enabled = admin_profile.require() == "local" if include_local is None else include_local
     if intent == "assistant-install":
         return _prepare_install(team_id, payload, query, catalog, local_enabled)
+    if not allow_uninstall:
+        return Result("unresolved", error_status=422)
     return _prepare_uninstall(team_id, payload, query)
+
+
+def prepare(
+    team_id: str,
+    payload: dict[str, object],
+    catalog: store_catalog.StoreCatalog,
+    include_local: bool | None = None,
+) -> Result:
+    """Classify a fresh chat turn and open only its required bounded directory."""
+    return _prepare(team_id, payload, catalog, include_local, allow_uninstall=True)
+
+
+def prepare_resume(
+    team_id: str,
+    payload: dict[str, object],
+    catalog: store_catalog.StoreCatalog,
+    include_local: bool | None = None,
+) -> Result:
+    """Reclassify a reconnect objective without admitting destructive lifecycle work."""
+    return _prepare(team_id, payload, catalog, include_local, allow_uninstall=False)

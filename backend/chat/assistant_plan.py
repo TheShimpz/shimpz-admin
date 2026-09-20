@@ -193,8 +193,7 @@ def _prepare_gap(
         [_planner_candidate(assistant) for assistant in shortlist],
     )
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
-        status = response.status if isinstance(response, team.TeamResponse) and 400 <= response.status <= 599 else 502
-        return Preparation(error_status=status)
+        return Preparation()
     try:
         selected = _selected_ids(
             response,
@@ -202,7 +201,7 @@ def _prepare_gap(
             frozenset(assistant.assistant_id for assistant in shortlist),
         )
     except TypeError, ValueError:
-        return Preparation(error_status=502)
+        return Preparation()
     return _prepared_plan(team_id, enabled_ids, shortlist, selected)
 
 
@@ -214,7 +213,10 @@ def prepare_capability(
 ) -> Preparation:
     """Resolve exact current state, then apply the deterministic missing-capability gate."""
     installed, registry = team_inventory(team_id)
-    available = planning_catalog(catalog, include_local)
+    try:
+        available = planning_catalog(catalog, include_local)
+    except (OSError, ValueError, team.TeamRequestError):
+        return Preparation()
     return _prepare_gap(team_id, payload, available, installed, registry)
 
 

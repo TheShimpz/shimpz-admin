@@ -162,13 +162,12 @@ class AssistantPlanEdges(unittest.TestCase):
             assistant_plan._selected_ids(team.TeamResponse(200, {}), "team_1", frozenset())
         self.assertEqual(assistant_plan._prepared_plan("team_1", (), (), ()), assistant_plan.Preparation())
 
-    def test_planner_preserves_safe_errors_and_normalizes_invalid_responses(self) -> None:
+    def test_unavailable_or_invalid_planner_installs_nothing(self) -> None:
         candidate = _catalog_assistant("whatsapp", provider="whatsapp")
         catalog = mock.Mock()
         catalog.get.return_value = (candidate,)
         responses: tuple[object, ...] = (team.TeamResponse(409, {}), object())
-        expected = (409, 502)
-        for response, status in zip(responses, expected, strict=True):
+        for response in responses:
             with (
                 self.subTest(response=response),
                 mock.patch.object(assistant_plan, "team_inventory", return_value=({}, {})),
@@ -181,7 +180,7 @@ class AssistantPlanEdges(unittest.TestCase):
                     {"message": "send", "assistant_ids": []},
                     catalog,
                 )
-            self.assertEqual(result, assistant_plan.Preparation(error_status=status))
+            self.assertEqual(result, assistant_plan.Preparation())
 
     def test_install_and_runtime_recheck_exceptions_become_bad_gateway(self) -> None:
         candidate = _catalog_assistant("whatsapp", provider="whatsapp")

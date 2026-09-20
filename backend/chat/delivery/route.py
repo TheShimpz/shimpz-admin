@@ -48,6 +48,8 @@ async def deliver(
     team_id: str,
     payload: dict[str, object],
     operations: Operations,
+    *,
+    fallback_payload: dict[str, object] | None = None,
 ) -> None:
     """Deliver the closed route result; failure never falls through to ordinary Brain."""
     try:
@@ -88,6 +90,20 @@ async def deliver(
             return
         if result.preparation is None:
             raise assistant_route.RouteError(503)
+        if (
+            fallback_payload is not None
+            and result.preparation.plan is None
+            and result.preparation.already_installed is None
+            and result.preparation.error_status is None
+        ):
+            await operations.plan.continue_turn(
+                websocket,
+                connection,
+                turn,
+                team_id,
+                fallback_payload,
+            )
+            return
         await plan_delivery.deliver_result(
             websocket,
             connection,

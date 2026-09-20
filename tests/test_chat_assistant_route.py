@@ -158,6 +158,25 @@ class AssistantRouteTests(unittest.TestCase):
         ), self.assertRaisesRegex(assistant_route.RouteError, "structured Assistant routing failed"):
             assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
 
+    def test_resume_rejects_uninstall_before_opening_the_installed_directory(self) -> None:
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                return_value=response("assistant-uninstall", "cloudflare"),
+            ),
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates") as directory,
+        ):
+            result = assistant_route.prepare_resume(
+                "team_1",
+                payload("desinstale o cloudflare"),
+                mock.sentinel.catalog,
+                False,
+            )
+
+        self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
+        directory.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
