@@ -1005,6 +1005,19 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 team.TeamResponse(502, {"code": "chat-response-invalid"}),
             )
 
+        valid_unresolved = {**invalid_unresolved, "query": ""}
+        with (
+            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, valid_unresolved)),
+        ):
+            self.assertEqual(
+                local.intent_route("team_1", "instale", "assistant-install", candidates),
+                team.TeamResponse(
+                    200,
+                    {key: value for key, value in valid_unresolved.items() if key != "trace_id"},
+                ),
+            )
+
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()
         base = {
