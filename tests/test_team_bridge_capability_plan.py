@@ -68,6 +68,51 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
                 )
             call.assert_not_called()
 
+    def test_intent_route_calls_only_the_fixed_route_with_private_model_binding(self) -> None:
+        payload = {
+            "objective": "desinstale o cloudflare",
+            "expected_intent": "assistant-uninstall",
+            "candidates": [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}],
+        }
+        expected = team.TeamResponse(200, {"intent": "assistant-uninstall"})
+        with mock.patch.object(team, "_call", return_value=expected) as call:
+            response = team.intent_route(
+                "team_1",
+                payload,
+                provider="openai",
+                api_key=API_KEY,
+            )
+
+        self.assertIs(response, expected)
+        call.assert_called_once_with(
+            "POST",
+            "/v1/teams/team_1/chat/intent-route",
+            payload,
+            model_credential=("openai", API_KEY),
+            timeout=team.INTENT_ROUTE_TIMEOUT_SECONDS,
+        )
+        self.assertNotIn(API_KEY, repr(response))
+
+    def test_intent_route_rejects_added_or_missing_payload_fields_before_team(self) -> None:
+        invalid = (
+            {"objective": "hello", "expected_intent": None},
+            {"objective": "hello", "expected_intent": None, "candidates": [], "extra": True},
+            [],
+        )
+        for payload in invalid:
+            with (
+                self.subTest(payload=payload),
+                mock.patch.object(team, "_call") as call,
+                self.assertRaises(team.TeamRequestError),
+            ):
+                team.intent_route(
+                    "team_1",
+                    payload,
+                    provider="openai",
+                    api_key=API_KEY,
+                )
+            call.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

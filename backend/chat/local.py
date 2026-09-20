@@ -80,6 +80,11 @@ ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation", "reply-validation"})
 PUBLIC_PROGRESS_PHASES = progress_contract.PHASES | ADMIN_PROGRESS_PHASES
 MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 4
 MAX_CAPABILITY_PLAN_IDS = 4
+MAX_INTENT_ROUTE_IDS = 4
+MAX_INTENT_ROUTE_CANDIDATES = 8
+MAX_INTENT_ROUTE_QUERY_CHARS = 160
+MAX_INTENT_ROUTE_NAME_CHARS = 80
+MAX_INTENT_ROUTE_SUMMARY_CHARS = 160
 
 
 def _ignore_progress(_event: dict[str, object]) -> None:
@@ -321,6 +326,123 @@ def capability_plan(
         response.status,
         {"team_id": canonical_id, "status": status, "assistant_ids": assistant_ids},
     )
+
+
+def _intent_route_directory(
+    expected_intent: object,
+    candidates: object,
+) -> tuple[str | None, list[dict[str, object]], list[str]]:
+    if expected_intent not in {None, "assistant-install", "assistant-uninstall"}:
+        raise team.TeamRequestError("invalid expected Assistant lifecycle intent")
+    if not isinstance(candidates, list) or len(candidates) > MAX_INTENT_ROUTE_CANDIDATES:
+        raise team.TeamRequestError("invalid Assistant directory")
+    expected_ids: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or set(candidate) != {"id", "name", "summary"}:
+            raise team.TeamRequestError("invalid Assistant directory")
+        assistant_id = team.canonical_assistant_id(candidate["id"])
+        name = candidate["name"]
+        summary = candidate["summary"]
+        if (
+            not isinstance(name, str)
+            or name.strip() != name
+            or not 1 <= len(name) <= MAX_INTENT_ROUTE_NAME_CHARS
+            or not isinstance(summary, str)
+            or summary.strip() != summary
+            or len(summary) > MAX_INTENT_ROUTE_SUMMARY_CHARS
+            or (expected_intent == "assistant-uninstall" and summary)
+        ):
+            raise team.TeamRequestError("invalid Assistant directory")
+        expected_ids.append(assistant_id)
+    if expected_intent is None:
+        if candidates:
+            raise team.TeamRequestError("classification cannot include an Assistant directory")
+    elif not candidates or expected_ids != sorted(set(expected_ids)):
+        raise team.TeamRequestError("Assistant directory must be non-empty, unique, and sorted")
+    return expected_intent, candidates, expected_ids
+
+
+def _project_intent_route(
+    response: team.TeamResponse,
+    canonical_id: str,
+    expected_intent: str | None,
+    expected_ids: list[str],
+) -> team.TeamResponse:
+    body = response.body
+    if set(body) != {"team_id", "intent", "query", "assistant_ids", "trace_id"}:
+        raise ValueError("invalid intent route fields")
+    intent = body["intent"]
+    query = body["query"]
+    raw_ids = body["assistant_ids"]
+    trace_id = body["trace_id"]
+    if (
+        body["team_id"] != canonical_id
+        or intent not in {"ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"}
+        or not isinstance(query, str)
+        or query.strip() != query
+        or len(query) > MAX_INTENT_ROUTE_QUERY_CHARS
+        or not isinstance(raw_ids, list)
+        or len(raw_ids) > MAX_INTENT_ROUTE_IDS
+        or not isinstance(trace_id, str)
+        or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+    ):
+        raise ValueError("invalid intent route identity")
+    assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
+    if assistant_ids != sorted(set(assistant_ids)) or any(value not in expected_ids for value in assistant_ids):
+        raise ValueError("invalid intent route selection")
+    if expected_intent is None:
+        if assistant_ids or (intent in {"ordinary-task", "unresolved"} and query):
+            raise ValueError("invalid intent route classification")
+    elif intent == "unresolved":
+        if query or assistant_ids:
+            raise ValueError("invalid unresolved intent route")
+    elif (
+        intent != expected_intent
+        or query
+        or not assistant_ids
+        or (expected_intent == "assistant-uninstall" and len(assistant_ids) != 1)
+    ):
+        raise ValueError("invalid intent route selection")
+    return PublicResponse(
+        response.status,
+        {
+            "team_id": canonical_id,
+            "intent": intent,
+            "query": query,
+            "assistant_ids": assistant_ids,
+        },
+    )
+
+
+def intent_route(
+    team_id: object,
+    objective: object,
+    expected_intent: object,
+    candidates: list[dict[str, object]],
+) -> team.TeamResponse:
+    """Project one credential-bound structured route without lifecycle authority."""
+    canonical_id = team.canonical_team_id(team_id)
+    expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
+    credential = _model_credential(canonical_id)
+    if isinstance(credential, team.TeamResponse):
+        return credential
+    provider, api_key = credential
+    response = team.intent_route(
+        canonical_id,
+        {
+            "objective": objective,
+            "expected_intent": expected,
+            "candidates": directory,
+        },
+        provider=provider,
+        api_key=api_key,
+    )
+    if not 200 <= response.status < 300:
+        return _safe_error(response)
+    try:
+        return _project_intent_route(response, canonical_id, expected, expected_ids)
+    except KeyError, TypeError, ValueError, team.TeamRequestError:
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
 
 
 def _challenge_envelope(

@@ -838,6 +838,103 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
+    def test_intent_route_uses_one_request_scoped_credential_and_strips_trace(self) -> None:
+        api_key = "sk-test-0123456789"
+        candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
+        upstream = team.TeamResponse(
+            200,
+            {
+                "team_id": "team_1",
+                "intent": "assistant-uninstall",
+                "query": "",
+                "assistant_ids": ["cloudflare"],
+                "trace_id": TRACE_ID,
+            },
+        )
+        with (
+            mock.patch.object(
+                team,
+                "get_inference",
+                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-5.5"}),
+            ),
+            mock.patch.object(models, "resolve_api_key", return_value=api_key),
+            mock.patch.object(team, "intent_route", return_value=upstream) as route,
+        ):
+            response = local.intent_route(
+                "team_1",
+                "desinstale o cloudflare",
+                "assistant-uninstall",
+                candidates,
+            )
+
+        self.assertEqual(
+            response,
+            team.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "intent": "assistant-uninstall",
+                    "query": "",
+                    "assistant_ids": ["cloudflare"],
+                },
+            ),
+        )
+        route.assert_called_once_with(
+            "team_1",
+            {
+                "objective": "desinstale o cloudflare",
+                "expected_intent": "assistant-uninstall",
+                "candidates": candidates,
+            },
+            provider="openai",
+            api_key=api_key,
+        )
+        self.assertNotIn(api_key, repr(response))
+        self.assertNotIn("trace_id", response.body)
+
+    def test_intent_route_rejects_invalid_input_and_inconsistent_team_output(self) -> None:
+        candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
+        invalid_input = (
+            ("unknown", candidates),
+            (None, candidates),
+            ("assistant-uninstall", [{"id": "cloudflare", "name": "Cloudflare", "summary": "private"}]),
+        )
+        for expected, directory in invalid_input:
+            with self.subTest(expected=expected, directory=directory), self.assertRaises(team.TeamRequestError):
+                local.intent_route("team_1", "objective", expected, directory)
+
+        base = {
+            "team_id": "team_1",
+            "intent": "assistant-uninstall",
+            "query": "",
+            "assistant_ids": ["cloudflare"],
+            "trace_id": TRACE_ID,
+        }
+        invalid_output = (
+            {**base, "team_id": "team_2"},
+            {**base, "assistant_ids": ["unknown"]},
+            {**base, "assistant_ids": []},
+            {**base, "intent": "assistant-install"},
+            {**base, "query": "cloudflare"},
+            {**base, "trace_id": "bad"},
+            {**base, "extra": True},
+        )
+        for body in invalid_output:
+            with (
+                self.subTest(body=body),
+                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
+            ):
+                self.assertEqual(
+                    local.intent_route(
+                        "team_1",
+                        "desinstale o cloudflare",
+                        "assistant-uninstall",
+                        candidates,
+                    ),
+                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                )
+
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()
         base = {

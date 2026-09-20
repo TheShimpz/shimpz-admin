@@ -38,6 +38,7 @@ MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 ACTION_LABEL_TIMEOUT_SECONDS = 15
 CAPABILITY_PLAN_TIMEOUT_SECONDS = 65
+INTENT_ROUTE_TIMEOUT_SECONDS = 15
 ASSISTANT_INSTALL_TIMEOUT_SECONDS = 360
 
 _FILE_ID_RE = team_contract.FILE_ID_RE
@@ -324,6 +325,26 @@ def capability_plan(
         payload,
         model_credential=(provider, api_key),
         timeout=CAPABILITY_PLAN_TIMEOUT_SECONDS,
+    )
+
+
+def intent_route(
+    team_id: object,
+    payload: object,
+    *,
+    provider: str,
+    api_key: str,
+) -> TeamResponse:
+    """Request one stateless route over an optional caller-supplied closed directory."""
+    canonical_id = canonical_team_id(team_id)
+    if not isinstance(payload, dict) or set(payload) != {"objective", "expected_intent", "candidates"}:
+        raise TeamRequestError("intent route requires objective, expected_intent, and candidates")
+    return _call(
+        "POST",
+        f"/v1/teams/{canonical_id}/chat/intent-route",
+        payload,
+        model_credential=(provider, api_key),
+        timeout=INTENT_ROUTE_TIMEOUT_SECONDS,
     )
 
 
