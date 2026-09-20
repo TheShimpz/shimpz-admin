@@ -12,9 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import models
-from team import bridge as team
-
 from chat import local
+from team import bridge as team
 
 TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
@@ -898,6 +897,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         invalid_input = (
             ("unknown", candidates),
             (None, candidates),
+            ("assistant-install", "invalid"),
+            ("assistant-install", [{"id": "cloudflare", "name": "Cloudflare"}]),
+            ("assistant-install", []),
+            ("assistant-install", [*candidates, *candidates]),
             ("assistant-uninstall", [{"id": "cloudflare", "name": "Cloudflare", "summary": "private"}]),
         )
         for expected, directory in invalid_input:
@@ -933,6 +936,33 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         "assistant-uninstall",
                         candidates,
                     ),
+                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                )
+
+        classification_invalid = (
+            {
+                "team_id": "team_1",
+                "intent": "ordinary-task",
+                "query": "unexpected",
+                "assistant_ids": [],
+                "trace_id": TRACE_ID,
+            },
+            {
+                "team_id": "team_1",
+                "intent": "unresolved",
+                "query": "unexpected",
+                "assistant_ids": [],
+                "trace_id": TRACE_ID,
+            },
+        )
+        for body in classification_invalid:
+            with (
+                self.subTest(body=body),
+                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
+            ):
+                self.assertEqual(
+                    local.intent_route("team_1", "faça isso", None, []),
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 

@@ -8,13 +8,13 @@ import contextlib
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from typing import cast
 
+from chat import assistant_plan, assistant_proposal, lifecycle
 from chat.connection import Connection, Turn
 from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import store as history
-
-from chat import assistant_plan, assistant_proposal, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -236,13 +236,14 @@ async def deliver_result(
             preparation.already_installed,
             operations,
         )
-    elif preparation.plan is not None:
+    else:
+        admitted = cast(assistant_plan.Plan, preparation.plan)
         await _deliver_admitted(
             websocket,
             connection,
             turn,
             team_id,
             payload,
-            preparation.plan,
+            admitted,
             operations,
         )

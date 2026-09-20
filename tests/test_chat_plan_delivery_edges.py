@@ -12,10 +12,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from chat import assistant_plan, assistant_proposal, assistant_route
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
-
-from chat import assistant_plan, assistant_proposal
+from chat.delivery import route as route_delivery
+from team import bridge as team
 
 
 def _plan() -> assistant_plan.Plan:
@@ -31,6 +32,20 @@ def _operations(**changes) -> plan_delivery.Operations:
     }
     values.update(changes)
     return plan_delivery.Operations(**values)
+
+
+def _route_operations() -> route_delivery.Operations:
+    return route_delivery.Operations(
+        plan=_operations(),
+        finish_turn=mock.AsyncMock(),
+        error_terminal=mock.Mock(return_value={"type": "error"}),
+    )
+
+
+def _completed(value: object) -> concurrent.futures.Future[object]:
+    future: concurrent.futures.Future[object] = concurrent.futures.Future()
+    future.set_result(value)
+    return future
 
 
 class PlanDeliveryEdges(unittest.TestCase):
@@ -89,6 +104,150 @@ class PlanDeliveryEdges(unittest.TestCase):
                 mock.ANY,
                 {"type": "error"},
             )
+
+        asyncio.run(scenario())
+
+    def test_route_result_rejects_missing_failed_and_invalid_work(self) -> None:
+        async def scenario() -> None:
+            with self.assertRaises(assistant_route.RouteError):
+                await route_delivery._result(Turn(None, "assistant-route"))
+
+            invalid = Turn(_completed(object()), "assistant-route")
+            with self.assertRaises(assistant_route.RouteError):
+                await route_delivery._result(invalid)
+
+            for error in (OSError("offline"), team.TeamRequestError("invalid")):
+                future: concurrent.futures.Future[object] = concurrent.futures.Future()
+                future.set_exception(error)
+                with self.subTest(error=error), self.assertRaises(assistant_route.RouteError):
+                    await route_delivery._result(Turn(future, "assistant-route"))
+
+            routed: concurrent.futures.Future[object] = concurrent.futures.Future()
+            routed.set_exception(assistant_route.RouteError(502))
+            with self.assertRaises(assistant_route.RouteError):
+                await route_delivery._result(Turn(routed, "assistant-route"))
+
+            cancelled: concurrent.futures.Future[object] = concurrent.futures.Future()
+            cancelled.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await route_delivery._result(Turn(cancelled, "assistant-route"))
+
+        asyncio.run(scenario())
+
+    def test_route_delivery_handles_closed_stopped_and_invalid_results(self) -> None:
+        async def scenario() -> None:
+            result = assistant_route.Result("ordinary-task", preparation=assistant_plan.Preparation())
+            operations = _route_operations()
+            await route_delivery._deliver_result(
+                mock.sentinel.websocket,
+                Connection(closed=True),
+                Turn(_completed(result), "assistant-route"),
+                "team_1",
+                {},
+                operations,
+                None,
+            )
+            operations.finish_turn.assert_not_awaited()
+
+            operations = _route_operations()
+            await route_delivery._deliver_result(
+                mock.sentinel.websocket,
+                Connection(),
+                Turn(_completed(result), "assistant-route", stop_requested=True),
+                "team_1",
+                {},
+                operations,
+                None,
+            )
+            operations.finish_turn.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                mock.ANY,
+                mock.ANY,
+                {"type": "stopped"},
+            )
+
+            invalid_results = (
+                assistant_route.Result("assistant-uninstall"),
+                assistant_route.Result("ordinary-task"),
+            )
+            for invalid in invalid_results:
+                with self.subTest(invalid=invalid), self.assertRaises(assistant_route.RouteError):
+                    await route_delivery._deliver_result(
+                        mock.sentinel.websocket,
+                        Connection(),
+                        Turn(_completed(invalid), "assistant-route"),
+                        "team_1",
+                        {},
+                        _route_operations(),
+                        None,
+                    )
+
+        asyncio.run(scenario())
+
+    def test_route_resume_continues_only_an_empty_capability_preparation(self) -> None:
+        async def scenario() -> None:
+            fallback = {"message": "continue", "files": [], "assistant_ids": []}
+            preparation = assistant_plan.Preparation()
+            result = assistant_route.Result("ordinary-task", preparation=preparation)
+            operations = _route_operations()
+            await route_delivery._deliver_result(
+                mock.sentinel.websocket,
+                Connection(),
+                Turn(_completed(result), "assistant-route"),
+                "team_1",
+                {"message": "objective"},
+                operations,
+                fallback,
+            )
+            operations.plan.continue_turn.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                mock.ANY,
+                mock.ANY,
+                "team_1",
+                fallback,
+            )
+
+        asyncio.run(scenario())
+
+    def test_route_delivery_turns_router_failures_into_one_terminal_event(self) -> None:
+        async def scenario() -> None:
+            operations = _route_operations()
+            turn = Turn(None, "assistant-route")
+            connection = Connection(active=turn)
+            await route_delivery.deliver(
+                mock.sentinel.websocket,
+                connection,
+                turn,
+                "team_1",
+                {},
+                operations,
+            )
+            operations.finish_turn.assert_awaited_once()
+            self.assertIsNone(connection.active)
+
+            operations = _route_operations()
+            closed = Connection(closed=True)
+            await route_delivery.deliver(
+                mock.sentinel.websocket,
+                closed,
+                Turn(None, "assistant-route"),
+                "team_1",
+                {},
+                operations,
+            )
+            operations.finish_turn.assert_not_awaited()
+
+            operations = _route_operations()
+            terminal = Turn(None, "assistant-route", terminal_sent=True)
+            await route_delivery.deliver(
+                mock.sentinel.websocket,
+                Connection(),
+                terminal,
+                "team_1",
+                {},
+                operations,
+            )
+            operations.finish_turn.assert_not_awaited()
 
         asyncio.run(scenario())
 
