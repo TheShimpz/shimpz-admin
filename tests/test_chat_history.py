@@ -129,6 +129,22 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertTrue(history.append_install("marketing", turn_id, event))
         self.assertIsNone(history.resumable_turn("marketing"))
 
+    def test_already_installed_outcome_round_trips_without_lifecycle_authority(self) -> None:
+        turn_id = history.new_turn_id()
+        event = {
+            **_installed_event(),
+            "continuation": "none",
+            "outcome": "already-installed",
+        }
+
+        self.assertTrue(history.append_user("marketing", turn_id, "Install Cloudflare"))
+        self.assertTrue(history.append_install("marketing", turn_id, event))
+
+        installed = history.page("marketing")["entries"][1]
+        self.assertEqual(installed["outcome"], "already-installed")
+        self.assertNotIn("continuation", installed)
+        self.assertNotIn("plan_id", installed)
+
     def test_finishing_one_resumable_turn_never_releases_its_successor(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()

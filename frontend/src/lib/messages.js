@@ -310,6 +310,7 @@ export const messages = {
         "resuming": "Resuming this task",
         "working": "Installing",
         "complete": "Installed",
+        "already": "Already installed",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -704,6 +705,7 @@ export const messages = {
         "resuming": "Retomando esta tarefa",
         "working": "Instalando",
         "complete": "Instalado",
+        "already": "Já instalado",
         "failed": "Falha na instalação"
       },
       "uninstall": {
@@ -1098,6 +1100,7 @@ export const messages = {
         "resuming": "Reanudando esta tarea",
         "working": "Installing",
         "complete": "Installed",
+        "already": "Ya está instalado",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -1492,6 +1495,7 @@ export const messages = {
         "resuming": "正在继续此任务",
         "working": "Installing",
         "complete": "Installed",
+        "already": "已安装",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -1886,6 +1890,7 @@ export const messages = {
         "resuming": "Reprise de cette tâche",
         "working": "Installing",
         "complete": "Installed",
+        "already": "Déjà installé",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -2280,6 +2285,7 @@ export const messages = {
         "resuming": "Diese Aufgabe wird fortgesetzt",
         "working": "Installing",
         "complete": "Installed",
+        "already": "Bereits installiert",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -2674,6 +2680,7 @@ export const messages = {
         "resuming": "このタスクを再開中",
         "working": "Installing",
         "complete": "Installed",
+        "already": "インストール済み",
         "failed": "Installation failed"
       },
       "uninstall": {
@@ -3068,6 +3075,7 @@ export const messages = {
         "resuming": "استئناف هذه المهمة",
         "working": "Installing",
         "complete": "Installed",
+        "already": "مثبّت بالفعل",
         "failed": "Installation failed"
       },
       "uninstall": {

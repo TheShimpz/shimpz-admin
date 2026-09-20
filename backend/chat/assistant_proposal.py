@@ -479,19 +479,35 @@ def _installation_identity_targets(assistant: AssistantIdentity) -> frozenset[st
     }
 
 
+def installation_selection(
+    message: object,
+    assistants: Iterable[AssistantIdentity],
+) -> tuple[AssistantIdentity, ...]:
+    """Resolve every exact install target to one unique admitted identity."""
+    candidates = tuple(assistants)
+    targets = _installation_targets(message)
+    if not candidates or not targets:
+        return ()
+    selected: dict[str, AssistantIdentity] = {}
+    for target in targets:
+        matches = tuple(
+            assistant for assistant in candidates if target in _installation_identity_targets(assistant)
+        )
+        if len(matches) != 1:
+            return ()
+        selected[matches[0].assistant_id] = matches[0]
+    if len(selected) != len(targets):
+        return ()
+    return tuple(selected[assistant_id] for assistant_id in sorted(selected))
+
+
 def installation_only_requested(message: object, assistants: Iterable[AssistantIdentity]) -> bool:
     """Recognize only an exact install command bound to every admitted plan identity."""
     planned = tuple(assistants)
-    targets = _installation_targets(message)
-    if not planned or not targets or len(targets) != len(planned):
-        return False
-    selected: set[str] = set()
-    for target in targets:
-        matches = tuple(assistant for assistant in planned if target in _installation_identity_targets(assistant))
-        if len(matches) != 1:
-            return False
-        selected.add(matches[0].assistant_id)
-    return selected == {assistant.assistant_id for assistant in planned}
+    selected = installation_selection(message, planned)
+    return bool(planned) and {assistant.assistant_id for assistant in selected} == {
+        assistant.assistant_id for assistant in planned
+    }
 
 
 def _short_name(capability: AssistantIdentity) -> str | None:

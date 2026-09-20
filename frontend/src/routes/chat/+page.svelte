@@ -215,10 +215,12 @@
     return 'failed';
   }
 
-  function installPlanStatus(status) {
+  function installPlanStatus(status, outcome) {
     if (status === 'pending') return copy.install.pending;
     if (status === 'installing') return copy.install.working;
-    if (status === 'installed') return copy.install.complete;
+    if (status === 'installed') {
+      return outcome === 'already-installed' ? copy.install.already : copy.install.complete;
+    }
     if (status === 'unknown') return copy.disconnected;
     return copy.install.failed;
   }
@@ -258,7 +260,7 @@
         historyId: entry.id,
         role: 'assistant',
         text: entry.state === 'installed'
-          ? copy.install.complete
+          ? (entry.outcome === 'already-installed' ? copy.install.already : copy.install.complete)
           : entry.state === 'failed'
             ? copy.install.failed
             : copy.disconnected,
@@ -267,6 +269,7 @@
           plan_id: `history-${entry.id}`,
           state: entry.state,
           assistants: entry.assistants,
+          ...(entry.outcome ? { outcome: entry.outcome } : {}),
           ...(entry.status ? { status: entry.status } : {}),
         },
       };
@@ -348,6 +351,22 @@
   }
 
   function applyInstallPlanEvent(incoming, receipt) {
+    if (incoming.outcome === 'already-installed') {
+      if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install result');
+      turns = [...turns, {
+        role: 'assistant',
+        text: copy.install.already,
+        author: incoming.team_name,
+        receipt,
+        installPlan: {
+          plan_id: incoming.plan_id,
+          state: incoming.state,
+          outcome: incoming.outcome,
+          assistants: incoming.assistants,
+        },
+      }];
+      return;
+    }
     if (incoming.state === 'planned') {
       if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install plan');
       turns = [...turns, {
@@ -1543,7 +1562,10 @@
                           title={assistant.name}
                           description={assistant.summary}
                           state={installPlanVisualState(assistant.status)}
-                          status={installPlanStatus(assistant.status)}
+                          status={installPlanStatus(
+                            assistant.status,
+                            exchange.assistant.installPlan.outcome,
+                          )}
                           media={planMedia}
                           details={assistant.provenance === 'local' || assistant.status === 'failed'
                             ? planDetails

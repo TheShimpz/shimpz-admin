@@ -147,6 +147,7 @@ function humanRequest(kind) {
 
 async function routeReadyChat(page, {
   assistantPlan = false,
+  alreadyInstalledResult = false,
   assistantPlanContinuation = 'dispatch',
   holdAssistantPlan = false,
   holdStop = false,
@@ -488,6 +489,25 @@ async function routeReadyChat(page, {
           }));
           if (holdTargetlessUninstallGuidance) targetlessGuidancePending = true;
           else sendTargetlessGuidance();
+          return;
+        }
+        if (alreadyInstalledResult) {
+          socket.send(JSON.stringify({
+            type: 'assistant-install-plan',
+            state: 'installed',
+            plan_id: 'f'.repeat(32),
+            team_id: 'marketing',
+            assistants: [{
+              id: 'shimpz-cloudflare',
+              name: 'Shimpz Cloudflare',
+              summary: assistantSummary,
+              providers: [],
+              provenance: 'local',
+              status: 'installed',
+            }],
+            continuation: 'none',
+            outcome: 'already-installed',
+          }));
           return;
         }
         if (assistantPlan && !assistantInstalled) {
@@ -946,6 +966,38 @@ test('restores the installed Assistant card after a successful OAuth return @bro
   }
 });
 
+test('restores an already-installed Assistant result from durable history', async ({ page }) => {
+  const turnId = 'a'.repeat(32);
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        {
+          id: `${turnId}:install`,
+          kind: 'assistant-install',
+          state: 'installed',
+          outcome: 'already-installed',
+          assistants: [{
+            id: 'shimpz-cloudflare',
+            name: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            providers: [],
+            provenance: 'local',
+            status: 'installed',
+          }],
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+
+  const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(task).toContainText('Already installed');
+  await page.reload();
+  await expect(task).toContainText('Already installed');
+});
+
 test('keeps chat available when durable history cannot be loaded', async ({ page }) => {
   await routeReadyChat(page, { historyStatus: 503, reply: 'The live chat still works.' });
   await page.goto('/chat/');
@@ -1108,6 +1160,24 @@ test('ends an explicit Assistant installation at the installed plan', async ({ p
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   expect(chat.chatFrames()).toHaveLength(2);
   expect(chat.chatFrames()[1].type).toBe('chat');
+});
+
+test('reports a repeated exact Assistant install from authoritative current state', async ({ page }) => {
+  const chat = await routeReadyChat(page, { alreadyInstalledResult: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('instala o cloudflare');
+  await composer.press('Enter');
+
+  const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(task).toHaveCount(1);
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect(task).toContainText('Shimpz Cloudflare');
+  await expect(task).toContainText('Already installed');
+  await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  expect(chat.chatFrames()).toHaveLength(1);
 });
 
 test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {

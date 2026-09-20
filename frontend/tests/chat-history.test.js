@@ -78,9 +78,21 @@ test('loads older Team chat history with only an opaque cursor', async () => {
   }
 });
 
+test('loads the exact already-installed terminal outcome', async () => {
+  const entry = { ...installedEntry(), outcome: 'already-installed' };
+  const result = await listChatHistory(
+    async () => response(200, { entries: [entry], before: null }),
+    'marketing',
+  );
+
+  assert.deepEqual(result.entries, [entry]);
+});
+
 test('fails closed on malformed or secret-bearing chat history', async () => {
   const invalidEntries = [
     { ...installedEntry(), access_token: 'must-not-cross' },
+    { ...installedEntry(), outcome: 'unknown' },
+    { ...installedEntry(), state: 'stopped', outcome: 'already-installed' },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], providers: ['dns', 'dns'] }] },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], status: 'pending' }] },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], name: 'Cloud\u202eFlare' }] },

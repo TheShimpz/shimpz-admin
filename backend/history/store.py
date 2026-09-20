@@ -235,6 +235,8 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
     expected = {"type", "state", "plan_id", "team_id", "assistants"}
     if state == "installed":
         expected.add("continuation")
+        if "outcome" in event:
+            expected.add("outcome")
     elif state == "failed":
         expected.add("status")
     elif state != "stopped":
@@ -255,6 +257,8 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
     if state == "installed" and (
         event.get("continuation") not in {"dispatch", "none"}
         or any(item["status"] != "installed" for item in canonical)
+        or ("outcome" in event and event.get("outcome") != "already-installed")
+        or ("outcome" in event and event.get("continuation") != "none")
     ):
         raise ValueError("chat history installed result is invalid")
     if state == "failed" and (
@@ -268,6 +272,7 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
         "state": state,
         "assistants": canonical,
         **({"status": event["status"]} if state == "failed" else {}),
+        **({"outcome": event["outcome"]} if "outcome" in event else {}),
     }
 
 
@@ -428,6 +433,8 @@ def _validate_stored_guidance(payload: dict[str, object]) -> None:
 def _validate_stored_install(payload: dict[str, object]) -> None:
     state = payload.get("state")
     expected = {"kind", "state", "assistants"} | ({"status"} if state == "failed" else set())
+    if "outcome" in payload:
+        expected.add("outcome")
     assistants = payload.get("assistants")
     if set(payload) != expected or state not in {"installed", "failed", "stopped"}:
         raise ValueError("invalid stored install")
@@ -438,6 +445,8 @@ def _validate_stored_install(payload: dict[str, object]) -> None:
     if identifiers != sorted(set(identifiers)):
         raise ValueError("invalid stored install")
     if state == "installed" and any(item["status"] != "installed" for item in canonical):
+        raise ValueError("invalid stored install")
+    if "outcome" in payload and (state != "installed" or payload.get("outcome") != "already-installed"):
         raise ValueError("invalid stored install")
     if state == "failed":
         status = payload.get("status")

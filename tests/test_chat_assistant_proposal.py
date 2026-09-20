@@ -71,6 +71,32 @@ class AssistantProposalTests(unittest.TestCase):
             with self.subTest(message=message):
                 self.assertFalse(assistant_proposal.installation_only_requested(message, assistants))
 
+    def test_installation_selection_resolves_only_every_unique_named_target(self) -> None:
+        cloudflare = _candidate()
+        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
+
+        self.assertEqual(
+            assistant_proposal.installation_selection(
+                "instale o cloudflare",
+                (whatsapp, cloudflare),
+            ),
+            (cloudflare,),
+        )
+        self.assertEqual(
+            assistant_proposal.installation_selection(
+                "instale o cloudflare e o whatsapp",
+                (whatsapp, cloudflare),
+            ),
+            (cloudflare, whatsapp),
+        )
+        self.assertEqual(
+            assistant_proposal.installation_selection(
+                "instale o cloudflare e liste as zonas",
+                (whatsapp, cloudflare),
+            ),
+            (),
+        )
+
     def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
         accepted = (
             "Você mesmo consegue habilitar?",

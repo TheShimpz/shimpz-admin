@@ -122,7 +122,10 @@ async def _deliver_admitted(
     continuation = (
         "none"
         if result.state == "installed"
-        and assistant_proposal.installation_only_requested(payload["message"], plan.assistants)
+        and assistant_proposal.installation_only_requested(
+            payload["message"],
+            plan.terminal_assistants or plan.assistants,
+        )
         else "dispatch"
     )
     terminal = assistant_plan.event(
@@ -132,24 +135,14 @@ async def _deliver_admitted(
         status=result.status,
         continuation=continuation if result.state == "installed" else None,
     )
-    if turn.history_id is not None:
-        try:
-            committed = await asyncio.to_thread(
-                history.append_install,
-                team_id,
-                turn.history_id,
-                terminal,
-            )
-            if not committed:
-                raise history.HistoryUnavailableError("chat history install was not committed")
-        except (history.HistoryUnavailableError, ValueError):
-            await operations.finish_turn(
-                websocket,
-                connection,
-                turn,
-                operations.error_terminal(503, "Admin chat history is unavailable"),
-            )
-            return
+    if not await _commit_install(team_id, turn, terminal):
+        await operations.finish_turn(
+            websocket,
+            connection,
+            turn,
+            operations.error_terminal(503, "Admin chat history is unavailable"),
+        )
+        return
     if result.state != "installed" or continuation == "none":
         await operations.finish_turn(websocket, connection, turn, terminal)
     elif not await operations.send_event(websocket, terminal):
@@ -157,6 +150,41 @@ async def _deliver_admitted(
     else:
         dispatch_payload = {**payload, "assistant_ids": list(plan.dispatch_ids)}
         await operations.continue_turn(websocket, connection, turn, team_id, dispatch_payload)
+
+
+async def _commit_install(
+    team_id: str,
+    turn: Turn,
+    terminal: Mapping[str, object],
+) -> bool:
+    if turn.history_id is None:
+        return True
+    try:
+        committed = await asyncio.to_thread(
+            history.append_install,
+            team_id,
+            turn.history_id,
+            terminal,
+        )
+        if not committed:
+            raise history.HistoryUnavailableError("chat history install was not committed")
+    except (history.HistoryUnavailableError, ValueError):
+        return False
+    return True
+
+
+async def _deliver_already_installed(
+    websocket: WebSocket,
+    connection: Connection,
+    turn: Turn,
+    team_id: str,
+    result: assistant_plan.AlreadyInstalled,
+    operations: Operations,
+) -> None:
+    terminal = assistant_plan.already_installed_event(result)
+    if not await _commit_install(team_id, turn, terminal):
+        terminal = operations.error_terminal(503, "Admin chat history is unavailable")
+    await operations.finish_turn(websocket, connection, turn, terminal)
 
 
 async def deliver_preparation(
@@ -172,7 +200,11 @@ async def deliver_preparation(
     preparation = await _preparation_result(turn)
     if connection.closed:
         return
-    if preparation is None or (preparation.plan is None and preparation.error_status is None):
+    if preparation is None or (
+        preparation.plan is None
+        and preparation.already_installed is None
+        and preparation.error_status is None
+    ):
         await operations.continue_turn(
             websocket,
             connection,
@@ -190,6 +222,15 @@ async def deliver_preparation(
         )
     elif turn.stop_requested:
         await operations.finish_turn(websocket, connection, turn, {"type": "stopped"})
+    elif preparation.already_installed is not None:
+        await _deliver_already_installed(
+            websocket,
+            connection,
+            turn,
+            team_id,
+            preparation.already_installed,
+            operations,
+        )
     elif preparation.plan is not None:
         await _deliver_admitted(
             websocket,

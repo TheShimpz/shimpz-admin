@@ -894,7 +894,10 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
   const failed = value.state === 'failed';
   const fields = ['type', 'state', 'plan_id', 'team_id', 'assistants'];
   if (failed) fields.push('status');
-  if (value.state === 'installed') fields.push('continuation');
+  if (value.state === 'installed') {
+    fields.push('continuation');
+    if ('outcome' in value) fields.push('outcome');
+  }
   if (
     !exactKeys(value, fields) ||
     !['planned', 'installing', 'installed', 'failed', 'stopped'].includes(value.state) ||
@@ -908,7 +911,12 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
       value.status < 400 ||
       value.status > 599
     )) ||
-    (value.state === 'installed' && !['dispatch', 'none'].includes(value.continuation))
+    (value.state === 'installed' && (
+      !['dispatch', 'none'].includes(value.continuation) ||
+      ('outcome' in value && (
+        value.outcome !== 'already-installed' || value.continuation !== 'none'
+      ))
+    ))
   ) throw new LocalApiError('The local chat response is invalid.');
   const assistants = value.assistants.map(canonicalInstallPlanAssistant);
   const ids = assistants.map((assistant) => assistant.id);
@@ -948,6 +956,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
     team_name: canonicalTeam(expectedTeamName),
     assistants,
     ...(value.state === 'installed' ? { continuation: value.continuation } : {}),
+    ...('outcome' in value ? { outcome: value.outcome } : {}),
     ...(failed ? { status: value.status } : {}),
   };
 }

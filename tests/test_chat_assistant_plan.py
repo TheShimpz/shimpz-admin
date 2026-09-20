@@ -173,6 +173,90 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(result, assistant_plan.Preparation())
         planner.assert_not_called()
 
+    def test_exact_install_of_running_assistant_returns_terminal_current_state(self) -> None:
+        result, planner = self._prepare(
+            "instala o cloudflare",
+            (CLOUDFLARE,),
+            assistant_plan.team.TeamResponse(500, {}),
+            installed=_installed(("cloudflare", "running")),
+            registry=_registry(("cloudflare", ("configure-domain",))),
+            assistant_ids=("stale-scope",),
+        )
+
+        self.assertIsNone(result.plan)
+        self.assertIsNotNone(result.already_installed)
+        assert result.already_installed is not None
+        self.assertEqual(result.already_installed.plan_id, "a" * 32)
+        self.assertEqual(
+            result.already_installed.assistants,
+            (
+                {
+                    "id": "cloudflare",
+                    "name": "Cloudflare",
+                    "summary": "Provides unrelated reviewed operations.",
+                    "providers": [],
+                    "provenance": "published",
+                    "status": "installed",
+                },
+            ),
+        )
+        planner.assert_not_called()
+
+    def test_nonrunning_or_partial_install_request_never_claims_already_installed(self) -> None:
+        cases = (
+            ("instala o cloudflare", _installed(("cloudflare", "stopped"))),
+            (
+                "instala o cloudflare e o whatsapp",
+                _installed(("cloudflare", "running")),
+            ),
+        )
+        registry = _registry(
+            ("cloudflare", ("configure-domain",)),
+            ("whatsapp", ("send-message",)),
+        )
+        for message, installed in cases:
+            with self.subTest(message=message):
+                result, _planner = self._prepare(
+                    message,
+                    (CLOUDFLARE, WHATSAPP),
+                    assistant_plan.team.TeamResponse(200, {
+                        "team_id": "team_1",
+                        "status": "sufficient",
+                        "assistant_ids": [],
+                    }),
+                    installed=installed,
+                    registry=registry,
+                )
+                self.assertIsNone(result.already_installed)
+
+    def test_already_installed_requires_registry_wide_unique_identity(self) -> None:
+        result, planner = self._prepare(
+            "install the cloudflare assistant",
+            (),
+            assistant_plan.team.TeamResponse(500, {}),
+            installed=_installed(("cloudflare", "running")),
+            registry=_registry(
+                ("cloudflare", ("configure-domain",)),
+                ("cloudflare-audit", ("audit-domain",)),
+            ),
+        )
+
+        self.assertIsNone(result.already_installed)
+        planner.assert_not_called()
+
+    def test_already_installed_result_never_exceeds_protocol_plan_limit(self) -> None:
+        assistant_ids = ("alpha", "beta", "gamma", "delta", "epsilon")
+        result, planner = self._prepare(
+            "install alpha and beta and gamma and delta and epsilon",
+            (),
+            assistant_plan.team.TeamResponse(500, {}),
+            installed=_installed(*((assistant_id, "running") for assistant_id in assistant_ids)),
+            registry=_registry(*((assistant_id, (f"use-{assistant_id}",)) for assistant_id in assistant_ids)),
+        )
+
+        self.assertIsNone(result.already_installed)
+        planner.assert_not_called()
+
     def test_composed_selection_is_an_exact_sorted_subset_and_dispatch_union(self) -> None:
         objective = "Configure meu domínio Cloudflare e envie uma mensagem no WhatsApp"
         result, planner = self._prepare(
@@ -200,6 +284,37 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(request[:2], ("team_1", objective))
         self.assertEqual([item["id"] for item in request[2]], ["cloudflare", "whatsapp"])
         self.assertNotIn("source_digest", repr(request[2]))
+
+    def test_mixed_exact_install_tracks_installed_and_missing_terminal_identities(self) -> None:
+        result, planner = self._prepare(
+            "instale o cloudflare e o whatsapp",
+            (CLOUDFLARE, WHATSAPP),
+            assistant_plan.team.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "status": "install-required",
+                    "assistant_ids": ["whatsapp"],
+                },
+            ),
+            installed=_installed(("cloudflare", "running")),
+            registry=_registry(
+                ("cloudflare", ("configure-domain",)),
+                ("whatsapp", ("send-message",)),
+            ),
+        )
+
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        self.assertEqual(
+            tuple(assistant.assistant_id for assistant in result.plan.assistants),
+            ("whatsapp",),
+        )
+        self.assertEqual(
+            tuple(assistant.assistant_id for assistant in result.plan.terminal_assistants),
+            ("cloudflare", "whatsapp"),
+        )
+        planner.assert_called_once()
 
     def test_local_snapshot_shadows_same_id_publication_for_chat_install(self) -> None:
         result, planner = self._prepare(
@@ -351,9 +466,9 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 side_effect=lambda: response("/v1/assistants", _registry()),
             ),
         ):
-            result = assistant_plan._enabled_capabilities("team_1", ())
+            result = assistant_plan._team_inventory("team_1")
 
-        self.assertEqual(result, ({}, ()))
+        self.assertEqual(result, ({}, {}))
         self.assertEqual(len(assertions), 2)
         self.assertTrue(all(assertions))
         self.assertEqual(len(set(assertions)), 2)
@@ -551,6 +666,35 @@ class AssistantPlanExecutionTests(unittest.TestCase):
             assistant_plan.event(plan, "installed", installed)
         with self.assertRaises(ValueError):
             assistant_plan.event(plan, "planned", assistant_plan.initial_items(plan), continuation="dispatch")
+
+    def test_already_installed_event_is_terminal_without_claiming_fresh_work(self) -> None:
+        result = assistant_plan.AlreadyInstalled(
+            "c" * 32,
+            "team_1",
+            (
+                {
+                    "id": "cloudflare",
+                    "name": "Cloudflare",
+                    "summary": "Provides reviewed Cloudflare automation.",
+                    "providers": [],
+                    "provenance": "published",
+                    "status": "installed",
+                },
+            ),
+        )
+
+        self.assertEqual(
+            assistant_plan.already_installed_event(result),
+            {
+                "type": "assistant-install-plan",
+                "state": "installed",
+                "plan_id": "c" * 32,
+                "team_id": "team_1",
+                "assistants": list(result.assistants),
+                "continuation": "none",
+                "outcome": "already-installed",
+            },
+        )
 
     def test_event_discloses_only_closed_install_provenance(self) -> None:
         local = local_catalog.primary(_local_inventory())[0]

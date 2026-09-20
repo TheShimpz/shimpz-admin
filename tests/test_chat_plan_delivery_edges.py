@@ -293,6 +293,7 @@ class PlanDeliveryEdges(unittest.TestCase):
 
             class ChangingPreparation:
                 error_status = None
+                already_installed = None
 
                 def __init__(self) -> None:
                     self.reads = 0

@@ -166,13 +166,13 @@ class AssistantPlanEdges(unittest.TestCase):
         candidate = _catalog_assistant("whatsapp", provider="whatsapp")
         catalog = mock.Mock()
         catalog.get.return_value = (candidate,)
-        enabled = ({}, ())
         responses: tuple[object, ...] = (team.TeamResponse(409, {}), object())
         expected = (409, 502)
         for response, status in zip(responses, expected, strict=True):
             with (
                 self.subTest(response=response),
-                mock.patch.object(assistant_plan, "_enabled_capabilities", return_value=enabled),
+                mock.patch.object(assistant_plan, "_team_inventory", return_value=({}, {})),
+                mock.patch.object(assistant_plan, "_enabled_capabilities", return_value=()),
                 mock.patch.object(assistant_proposal, "capability_shortlist", return_value=(candidate,)),
                 mock.patch.object(assistant_plan.local, "capability_plan", return_value=response),
             ):

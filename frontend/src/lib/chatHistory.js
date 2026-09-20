@@ -107,12 +107,16 @@ function messageEntry(value, suffix, status) {
 
 function installEntry(value, suffix, status) {
   const failed = value.state === 'failed';
+  const alreadyInstalled = value.outcome === 'already-installed';
   if (
     suffix !== 'install' ||
     !exactKeys(value, failed
       ? ['assistants', 'id', 'kind', 'state', 'status']
-      : ['assistants', 'id', 'kind', 'state']) ||
+      : alreadyInstalled
+        ? ['assistants', 'id', 'kind', 'outcome', 'state']
+        : ['assistants', 'id', 'kind', 'state']) ||
     !['installed', 'failed', 'stopped'].includes(value.state) ||
+    (alreadyInstalled && value.state !== 'installed') ||
     !Array.isArray(value.assistants) ||
     value.assistants.length < 1 ||
     value.assistants.length > MAX_ASSISTANTS ||
@@ -128,6 +132,7 @@ function installEntry(value, suffix, status) {
     kind: 'assistant-install',
     state: value.state,
     assistants,
+    ...(alreadyInstalled ? { outcome: value.outcome } : {}),
     ...(failed ? { status: value.status } : {}),
   };
 }
