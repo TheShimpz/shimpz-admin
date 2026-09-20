@@ -55,7 +55,7 @@ class ChatWebSocketCase(unittest.TestCase):
         route = mock.patch.object(
             self.chat_socket.lifecycle,
             "submit_route",
-            side_effect=lambda _team_id, _payload: self._route_future(self.assistant_plan.Preparation()),
+            side_effect=lambda _team_id, _payload, _reference: self._route_future(self.assistant_plan.Preparation()),
         )
         route.start()
         self.addCleanup(route.stop)

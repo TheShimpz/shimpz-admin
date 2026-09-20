@@ -16,7 +16,14 @@ from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, sub
 from fastapi import WebSocket
 from history import store as history
 
-from chat import assistant_plan, assistant_proposal, assistant_route, assistant_uninstall, store_catalog
+from chat import (
+    assistant_plan,
+    assistant_proposal,
+    assistant_reference,
+    assistant_route,
+    assistant_uninstall,
+    store_catalog,
+)
 
 _PLAN_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -49,6 +56,7 @@ class Connection(Protocol):
     lifecycle_proposal: assistant_proposal.UninstallProposal | None
     lifecycle: Operation | None
     admitted_history_id: str | None
+    assistant_reference: assistant_reference.AssistantReference | None
 
 
 def reuses_history(connection: Connection, payload: dict[str, object]) -> bool:
@@ -106,6 +114,7 @@ def _event(
 def submit_route(
     team_id: str,
     payload: dict[str, object],
+    reference: assistant_reference.AssistantReference | None,
 ) -> concurrent.futures.Future:
     """Admit one complete structured preparation job for a fresh chat objective."""
     return submit_in_context(
@@ -114,6 +123,8 @@ def submit_route(
         team_id,
         payload,
         _STORE_CATALOG,
+        None,
+        reference,
     )
 
 
@@ -150,6 +161,13 @@ async def _deliver(
         event = _result_event(operation.proposal, result)
         if not await _commit_uninstall(operation.proposal, operation.history_id, event):
             event = _history_error()
+        if event.get("type") == "assistant-uninstall" and event.get("state") == "uninstalled":
+            connection.assistant_reference = assistant_reference.AssistantReference(
+                operation.proposal.assistant.assistant_id,
+                operation.proposal.assistant.name,
+            )
+        else:
+            connection.assistant_reference = None
         if not await send_event(websocket, event):
             connection.closed = True
     finally:
@@ -191,6 +209,7 @@ async def _dispatch(
     history_id: str | None = None,
 ) -> None:
     if not await send_event(websocket, _event(proposal, "uninstalling")):
+        connection.assistant_reference = None
         connection.closed = True
         return
     try:
@@ -199,6 +218,7 @@ async def _dispatch(
         event = _event(proposal, "failed", status=429)
         if not await _commit_uninstall(proposal, history_id, event):
             event = _history_error()
+        connection.assistant_reference = None
         await send_event(websocket, event)
         return
     operation = Operation(proposal=proposal, future=future, history_id=history_id)
@@ -229,6 +249,7 @@ async def resolve(
         decision = assistant_proposal.classify_uninstall_confirmation(payload["message"])
     if not proposal.valid_for(team_id, monotonic()):
         connection.lifecycle_proposal = None
+        connection.assistant_reference = None
         if decision != "ambiguous":
             history_id = _take_history_id(connection)
             event = _event(proposal, "expired")
@@ -243,6 +264,7 @@ async def resolve(
         return True
     if decision == "cancel":
         connection.lifecycle_proposal = None
+        connection.assistant_reference = None
         history_id = _take_history_id(connection)
         event = _event(proposal, "cancelled")
         if not await _commit_uninstall(proposal, history_id, event):
@@ -250,6 +272,7 @@ async def resolve(
         await send_event(websocket, event)
         return True
     connection.lifecycle_proposal = None
+    connection.assistant_reference = None
     return False
 
 

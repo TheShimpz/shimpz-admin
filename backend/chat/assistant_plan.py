@@ -25,6 +25,7 @@ class Plan:
     assistants: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]
     dispatch_ids: tuple[str, ...]
     terminal: bool = False
+    lifecycle_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +137,7 @@ def _prepared_plan(
     *,
     terminal: bool = False,
     dispatch_selected: tuple[str, ...] | None = None,
+    lifecycle_ids: tuple[str, ...] = (),
 ) -> Preparation:
     if not selected:
         return Preparation()
@@ -150,6 +152,7 @@ def _prepared_plan(
             assistants=tuple(expected[assistant_id] for assistant_id in selected),
             dispatch_ids=dispatch_ids,
             terminal=terminal,
+            lifecycle_ids=lifecycle_ids,
         )
     )
 
@@ -265,6 +268,7 @@ def prepare_install(
         missing,
         terminal=True,
         dispatch_selected=selected_ids,
+        lifecycle_ids=selected_ids,
     )
 
 

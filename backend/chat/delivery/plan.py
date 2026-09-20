@@ -14,7 +14,7 @@ from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import store as history
 
-from chat import assistant_plan, lifecycle
+from chat import assistant_plan, assistant_reference, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -28,6 +28,24 @@ class Operations:
     finish_turn: FinishTurn
     continue_turn: ContinueTurn
     error_terminal: ErrorTerminal
+
+
+def _remember_single_install(
+    connection: Connection,
+    assistants: tuple[dict[str, object], ...],
+) -> None:
+    reference = assistant_reference.from_item(assistants[0]) if len(assistants) == 1 else None
+    connection.assistant_reference = reference
+
+
+def _remember_terminal_plan(
+    connection: Connection,
+    plan: assistant_plan.Plan,
+    result: assistant_plan.Result,
+) -> None:
+    item_by_id = {item["id"]: item for item in result.assistants}
+    assistants = tuple(item_by_id[assistant_id] for assistant_id in plan.lifecycle_ids if assistant_id in item_by_id)
+    _remember_single_install(connection, assistants if len(assistants) == len(plan.lifecycle_ids) else ())
 
 
 def _progress_channel() -> tuple[
@@ -120,6 +138,7 @@ async def _deliver_admitted(
         continuation=continuation if result.state == "installed" else None,
     )
     if not await _commit_install(team_id, turn, terminal):
+        connection.assistant_reference = None
         await operations.finish_turn(
             websocket,
             connection,
@@ -127,6 +146,10 @@ async def _deliver_admitted(
             operations.error_terminal(503, "Admin chat history is unavailable"),
         )
         return
+    if result.state == "installed" and continuation == "none" and plan.terminal:
+        _remember_terminal_plan(connection, plan, result)
+    else:
+        connection.assistant_reference = None
     if result.state != "installed" or continuation == "none":
         await operations.finish_turn(websocket, connection, turn, terminal)
     elif not await operations.send_event(websocket, terminal):
@@ -167,7 +190,10 @@ async def _deliver_already_installed(
 ) -> None:
     terminal = assistant_plan.already_installed_event(result)
     if not await _commit_install(team_id, turn, terminal):
+        connection.assistant_reference = None
         terminal = operations.error_terminal(503, "Admin chat history is unavailable")
+    else:
+        _remember_single_install(connection, result.assistants)
     await operations.finish_turn(websocket, connection, turn, terminal)
 
 
@@ -190,6 +216,7 @@ async def deliver_result(
             payload,
         )
     elif preparation.error_status is not None:
+        connection.assistant_reference = None
         detail = "Assistant capability planning could not complete; retry the task"
         await operations.finish_turn(
             websocket,
@@ -198,6 +225,7 @@ async def deliver_result(
             operations.error_terminal(preparation.error_status, detail),
         )
     elif turn.stop_requested:
+        connection.assistant_reference = None
         await operations.finish_turn(websocket, connection, turn, {"type": "stopped"})
     elif preparation.already_installed is not None:
         await _deliver_already_installed(

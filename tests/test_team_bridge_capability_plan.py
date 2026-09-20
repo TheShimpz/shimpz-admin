@@ -73,6 +73,7 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "objective": "desinstale o cloudflare",
             "expected_intent": "assistant-uninstall",
             "candidates": [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}],
+            "lifecycle_reference": None,
         }
         expected = team.TeamResponse(200, {"intent": "assistant-uninstall"})
         with mock.patch.object(team, "_call", return_value=expected) as call:
@@ -96,7 +97,13 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
     def test_intent_route_rejects_added_or_missing_payload_fields_before_team(self) -> None:
         invalid = (
             {"objective": "hello", "expected_intent": None},
-            {"objective": "hello", "expected_intent": None, "candidates": [], "extra": True},
+            {
+                "objective": "hello",
+                "expected_intent": None,
+                "candidates": [],
+                "lifecycle_reference": None,
+                "extra": True,
+            },
             [],
         )
         for payload in invalid:

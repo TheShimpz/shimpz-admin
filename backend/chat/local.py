@@ -21,7 +21,7 @@ from http import HTTPStatus
 import models
 from team import bridge as team
 
-from chat import human
+from chat import assistant_reference, human
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -362,6 +362,20 @@ def _intent_route_directory(
     return expected_intent, candidates, expected_ids
 
 
+def _intent_route_reference(
+    expected_intent: str | None,
+    reference: assistant_reference.AssistantReference | None,
+) -> dict[str, str] | None:
+    if reference is None:
+        return None
+    if expected_intent is not None or not isinstance(reference, assistant_reference.AssistantReference):
+        raise team.TeamRequestError("Assistant lifecycle reference is classification-only")
+    return {
+        "id": team.canonical_assistant_id(reference.assistant_id),
+        "name": chat_ws_common.public_text(reference.name, MAX_INTENT_ROUTE_NAME_CHARS),
+    }
+
+
 def _project_intent_route(
     response: team.TeamResponse,
     canonical_id: str,
@@ -419,10 +433,12 @@ def intent_route(
     objective: object,
     expected_intent: object,
     candidates: list[dict[str, object]],
+    reference: assistant_reference.AssistantReference | None = None,
 ) -> team.TeamResponse:
     """Project one credential-bound structured route without lifecycle authority."""
     canonical_id = team.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
+    projected_reference = _intent_route_reference(expected, reference)
     credential = _model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
@@ -433,6 +449,7 @@ def intent_route(
             "objective": objective,
             "expected_intent": expected,
             "candidates": directory,
+            "lifecycle_reference": projected_reference,
         },
         provider=provider,
         api_key=api_key,

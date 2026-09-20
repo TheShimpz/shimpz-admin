@@ -14,7 +14,16 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, lifecycle
+from chat import (
+    assistant_plan,
+    assistant_proposal,
+    assistant_reference,
+    assistant_uninstall,
+    lifecycle,
+)
+from chat import (
+    connection as chat_connection,
+)
 
 
 def _proposal() -> assistant_proposal.UninstallProposal:
@@ -42,12 +51,22 @@ def _connection(**changes):
         "lifecycle_proposal": None,
         "lifecycle": None,
         "admitted_history_id": None,
+        "assistant_reference": None,
     }
     values.update(changes)
     return SimpleNamespace(**values)
 
 
 class ChatLifecycleTests(unittest.TestCase):
+    def test_new_socket_has_no_cross_connection_assistant_reference(self) -> None:
+        first = chat_connection.Connection(
+            assistant_reference=assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        )
+        second = chat_connection.Connection()
+
+        self.assertIsNotNone(first.assistant_reference)
+        self.assertIsNone(second.assistant_reference)
+
     def test_route_and_reconnect_preparation_saturation_are_explicit(self) -> None:
         with mock.patch.object(
             lifecycle,
@@ -58,12 +77,30 @@ class ChatLifecycleTests(unittest.TestCase):
                 lifecycle.submit_route(
                     "team_1",
                     {"message": "Desinstale o Cloudflare", "assistant_ids": []},
+                    None,
                 )
             with self.assertRaises(lifecycle.ExecutorSaturatedError):
                 lifecycle.submit_resume(
                     "team_1",
                     {"message": "Configure Cloudflare", "assistant_ids": []},
                 )
+
+    def test_route_submission_captures_one_immutable_reference(self) -> None:
+        sentinel = mock.sentinel.future
+        reference = assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        payload = {"message": "instale ele de novo", "assistant_ids": []}
+        with mock.patch.object(lifecycle, "submit_in_context", return_value=sentinel) as submit:
+            self.assertIs(lifecycle.submit_route("team_1", payload, reference), sentinel)
+
+        submit.assert_called_once_with(
+            lifecycle._PLAN_EXECUTOR,
+            lifecycle.assistant_route.prepare,
+            "team_1",
+            payload,
+            lifecycle._STORE_CATALOG,
+            None,
+            reference,
+        )
 
     def test_uninstall_events_expose_only_bounded_team_identity(self) -> None:
         proposal = _proposal()
@@ -166,7 +203,31 @@ class ChatLifecycleTests(unittest.TestCase):
 
             self.assertEqual(events[0]["state"], "failed")
             self.assertEqual(events[0]["status"], 502)
+            self.assertIsNone(connection.assistant_reference)
             self.assertIsNone(connection.lifecycle)
+
+        asyncio.run(scenario())
+
+    def test_successful_uninstall_remembers_only_the_assistant_identity(self) -> None:
+        async def scenario() -> None:
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_result(assistant_uninstall.UninstallResult(200, True))
+            connection = _connection()
+            operation = lifecycle.Operation(_proposal(), future)
+            connection.lifecycle = operation
+            operation.delivery = asyncio.current_task()
+
+            await lifecycle._deliver(
+                mock.sentinel.websocket,
+                connection,
+                operation,
+                mock.AsyncMock(return_value=True),
+            )
+
+            self.assertEqual(
+                connection.assistant_reference,
+                assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare"),
+            )
 
         asyncio.run(scenario())
 

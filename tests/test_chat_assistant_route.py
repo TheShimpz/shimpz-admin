@@ -11,7 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 
-from chat import assistant_inventory, assistant_plan, assistant_proposal, assistant_route, local, store_catalog
+from chat import (
+    assistant_inventory,
+    assistant_plan,
+    assistant_proposal,
+    assistant_reference,
+    assistant_route,
+    local,
+    store_catalog,
+)
 
 DIGEST = "sha256:" + ("a" * 64)
 
@@ -54,7 +62,7 @@ class AssistantRouteTests(unittest.TestCase):
             result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
-        route.assert_called_once_with("team_1", "liste minhas zonas", None, [])
+        route.assert_called_once_with("team_1", "liste minhas zonas", None, [], None)
         gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:
@@ -75,7 +83,14 @@ class AssistantRouteTests(unittest.TestCase):
                 return_value=(installed, (assistant,)),
             ),
         ):
-            result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog, False)
+            reference = assistant_reference.AssistantReference("prior-assistant", "Prior Assistant")
+            result = assistant_route.prepare(
+                "team_1",
+                payload("instale o cloudflare"),
+                mock.sentinel.catalog,
+                False,
+                reference,
+            )
 
         self.assertEqual(result.intent, "assistant-install")
         self.assertIsNotNone(result.preparation)
@@ -84,8 +99,11 @@ class AssistantRouteTests(unittest.TestCase):
             tuple(item.assistant_id for item in result.preparation.plan.assistants),
             (assistant.assistant_id,),
         )
+        self.assertEqual(result.preparation.plan.lifecycle_ids, (assistant.assistant_id,))
         self.assertEqual(route.call_count, 2)
+        self.assertIs(route.call_args_list[0].args[4], reference)
         self.assertEqual(route.call_args_list[1].args[2], "assistant-install")
+        self.assertIsNone(route.call_args_list[1].args[4])
 
     def test_repeated_install_returns_the_current_state_without_install_work(self) -> None:
         assistant = cloudflare()

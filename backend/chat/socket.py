@@ -658,7 +658,7 @@ async def _dispatch_chat(
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
     try:
-        preparation = lifecycle.submit_route(team_id, payload)
+        preparation = lifecycle.submit_route(team_id, payload, connection.assistant_reference)
     except ExecutorSaturatedError:
         connection.ignore_idle_stop_once = True
         await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))

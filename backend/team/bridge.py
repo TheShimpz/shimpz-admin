@@ -337,8 +337,13 @@ def intent_route(
 ) -> TeamResponse:
     """Request one stateless route over an optional caller-supplied closed directory."""
     canonical_id = canonical_team_id(team_id)
-    if not isinstance(payload, dict) or set(payload) != {"objective", "expected_intent", "candidates"}:
-        raise TeamRequestError("intent route requires objective, expected_intent, and candidates")
+    if not isinstance(payload, dict) or set(payload) != {
+        "objective",
+        "expected_intent",
+        "candidates",
+        "lifecycle_reference",
+    }:
+        raise TeamRequestError("intent route requires objective, expected_intent, candidates, and lifecycle_reference")
     return _call(
         "POST",
         f"/v1/teams/{canonical_id}/chat/intent-route",

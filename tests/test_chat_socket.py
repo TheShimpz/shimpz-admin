@@ -656,8 +656,9 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 plan.plan_id,
                 plan.team_id,
                 (assistant,),
-                ("already-enabled", "shimpz-cloudflare"),
+                ("shimpz-cloudflare",),
                 True,
+                ("shimpz-cloudflare",),
             )
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             response = self.chat_socket.local.PublicResponse(
@@ -672,7 +673,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         self._route_future(self.assistant_plan.Preparation(plan), "assistant-install"),
                         self._route_future(self.assistant_plan.Preparation()),
                     ),
-                ),
+                ) as route,
                 mock.patch.object(
                     self.chat_socket.lifecycle,
                     "submit_plan",
@@ -700,6 +701,9 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
                 await websocket.send_json({"type": "chat", "message": "Olá", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "done")
+                reference = route.call_args_list[1].args[2]
+                self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
+                self.assertEqual(reference.name, "Shimpz Cloudflare")
                 turn.assert_called_once()
                 await websocket.disconnect()
 

@@ -33,14 +33,18 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 self.assistant_plan.Preparation(already_installed=result),
                 "assistant-install",
             )
+            response = self.chat_socket.local.PublicResponse(
+                200,
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
+            )
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
                     "submit_route",
-                    return_value=preparation,
-                ),
+                    side_effect=(preparation, self._route_future(self.assistant_plan.Preparation())),
+                ) as route,
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan") as submit_plan,
-                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -59,6 +63,14 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 )
                 submit_plan.assert_not_called()
                 turn.assert_not_called()
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "liste as zonas", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                reference = route.call_args_list[1].args[2]
+                self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
+                self.assertEqual(reference.name, "Shimpz Cloudflare")
                 await websocket.disconnect()
 
         asyncio.run(scenario())

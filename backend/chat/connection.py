@@ -8,6 +8,7 @@ import threading
 from dataclasses import dataclass, field
 
 from chat.assistant_proposal import UninstallProposal
+from chat.assistant_reference import AssistantReference
 
 from chat import lifecycle
 
@@ -36,6 +37,7 @@ class Connection:
     sync_terminal_sent: bool = False
     lifecycle_proposal: UninstallProposal | None = None
     lifecycle: lifecycle.Operation | None = None
+    assistant_reference: AssistantReference | None = None
     ignore_idle_stop_once: bool = False
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)

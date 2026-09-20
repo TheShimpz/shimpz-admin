@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 
-from chat import assistant_plan
+from chat import assistant_plan, assistant_reference
 
 
 def _plan() -> assistant_plan.Plan:
@@ -34,6 +34,28 @@ def _operations(**changes) -> plan_delivery.Operations:
 
 
 class PlanDeliveryEdges(unittest.TestCase):
+    def test_composed_explicit_install_clears_the_single_assistant_reference(self) -> None:
+        connection = Connection(assistant_reference=assistant_reference.AssistantReference("prior", "Prior"))
+        plan = assistant_plan.Plan(
+            "a" * 32,
+            "team_1",
+            (),
+            ("cloudflare", "whatsapp"),
+            True,
+            ("cloudflare", "whatsapp"),
+        )
+        result = assistant_plan.Result(
+            "installed",
+            (
+                {"id": "cloudflare", "name": "Cloudflare"},
+                {"id": "whatsapp", "name": "WhatsApp"},
+            ),
+        )
+
+        plan_delivery._remember_terminal_plan(connection, plan, result)
+
+        self.assertIsNone(connection.assistant_reference)
+
     def test_uncommitted_already_installed_result_fails_closed(self) -> None:
         async def scenario() -> None:
             result = assistant_plan.AlreadyInstalled(

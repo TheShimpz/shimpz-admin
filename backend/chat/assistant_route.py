@@ -10,7 +10,15 @@ from typing import Literal
 from chat.executor import submit_in_context
 from team import bridge as team
 
-from chat import assistant_inventory, assistant_plan, assistant_proposal, assistant_uninstall, local, store_catalog
+from chat import (
+    assistant_inventory,
+    assistant_plan,
+    assistant_proposal,
+    assistant_reference,
+    assistant_uninstall,
+    local,
+    store_catalog,
+)
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
 Guidance = Literal[
@@ -44,8 +52,9 @@ def _route(
     objective: object,
     expected_intent: str | None,
     candidates: list[dict[str, object]],
+    reference: assistant_reference.AssistantReference | None = None,
 ) -> tuple[Intent, str, tuple[str, ...]]:
-    response = local.intent_route(team_id, objective, expected_intent, candidates)
+    response = local.intent_route(team_id, objective, expected_intent, candidates, reference)
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
         raise RouteError(_safe_status(response))
     body = response.body
@@ -139,11 +148,12 @@ def _prepare(
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool | None = None,
+    reference: assistant_reference.AssistantReference | None = None,
     *,
     allow_uninstall: bool,
 ) -> Result:
     """Classify once, then lazily open only the required bounded directory."""
-    intent, query, _selected = _route(team_id, payload["message"], None, [])
+    intent, query, _selected = _route(team_id, payload["message"], None, [], reference)
     if intent == "ordinary-task":
         preparation = assistant_plan.prepare_capability(
             team_id,
@@ -169,9 +179,10 @@ def prepare(
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool | None = None,
+    reference: assistant_reference.AssistantReference | None = None,
 ) -> Result:
     """Classify a fresh chat turn and open only its required bounded directory."""
-    return _prepare(team_id, payload, catalog, include_local, allow_uninstall=True)
+    return _prepare(team_id, payload, catalog, include_local, reference, allow_uninstall=True)
 
 
 def prepare_resume(
@@ -181,4 +192,4 @@ def prepare_resume(
     include_local: bool | None = None,
 ) -> Result:
     """Reclassify a reconnect objective without admitting destructive lifecycle work."""
-    return _prepare(team_id, payload, catalog, include_local, allow_uninstall=False)
+    return _prepare(team_id, payload, catalog, include_local, None, allow_uninstall=False)
