@@ -966,6 +966,45 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
+        valid_classification = {
+            "team_id": "team_1",
+            "intent": "ordinary-task",
+            "query": "",
+            "assistant_ids": [],
+            "trace_id": TRACE_ID,
+        }
+        with (
+            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(
+                team,
+                "intent_route",
+                return_value=team.TeamResponse(200, valid_classification),
+            ),
+        ):
+            self.assertEqual(
+                local.intent_route("team_1", "faça isso", None, []),
+                team.TeamResponse(
+                    200,
+                    {key: value for key, value in valid_classification.items() if key != "trace_id"},
+                ),
+            )
+
+        invalid_unresolved = {
+            "team_id": "team_1",
+            "intent": "unresolved",
+            "query": "unexpected",
+            "assistant_ids": [],
+            "trace_id": TRACE_ID,
+        }
+        with (
+            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, invalid_unresolved)),
+        ):
+            self.assertEqual(
+                local.intent_route("team_1", "instale", "assistant-install", candidates),
+                team.TeamResponse(502, {"code": "chat-response-invalid"}),
+            )
+
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()
         base = {
