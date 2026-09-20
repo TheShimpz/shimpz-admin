@@ -18,10 +18,10 @@ sys.path.insert(0, str(ROOT / "backend"))
 import auth
 import models
 import state
+from chat.delivery import progress as chat_progress
 from team import assets, bridge, transport
 
 from chat import payloads
-from chat import progress as chat_progress
 
 
 class AuthenticationEdgeTests(unittest.TestCase):

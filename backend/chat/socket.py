@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, Mapping
 
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
+from chat.delivery import progress as progress_transport
 from chat.delivery import route as route_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
@@ -35,7 +36,6 @@ from chat import (
     socket_boundary,
     task_resume,
 )
-from chat import progress as progress_transport
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
