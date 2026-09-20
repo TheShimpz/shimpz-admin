@@ -14,7 +14,7 @@ from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import store as history
 
-from chat import assistant_plan, assistant_reference, lifecycle
+from chat import assistant_plan, assistant_proposal, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -34,7 +34,7 @@ def _remember_single_install(
     connection: Connection,
     assistants: tuple[dict[str, object], ...],
 ) -> None:
-    reference = assistant_reference.from_item(assistants[0]) if len(assistants) == 1 else None
+    reference = assistant_proposal.reference_from_item(assistants[0]) if len(assistants) == 1 else None
     connection.assistant_reference = reference
 
 

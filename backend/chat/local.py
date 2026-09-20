@@ -21,7 +21,7 @@ from http import HTTPStatus
 import models
 from team import bridge as team
 
-from chat import assistant_reference, human
+from chat import assistant_proposal, human
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -364,11 +364,11 @@ def _intent_route_directory(
 
 def _intent_route_reference(
     expected_intent: str | None,
-    reference: assistant_reference.AssistantReference | None,
+    reference: assistant_proposal.AssistantReference | None,
 ) -> dict[str, str] | None:
     if reference is None:
         return None
-    if expected_intent is not None or not isinstance(reference, assistant_reference.AssistantReference):
+    if expected_intent is not None or not isinstance(reference, assistant_proposal.AssistantReference):
         raise team.TeamRequestError("Assistant lifecycle reference is classification-only")
     return {
         "id": team.canonical_assistant_id(reference.assistant_id),
@@ -433,7 +433,7 @@ def intent_route(
     objective: object,
     expected_intent: object,
     candidates: list[dict[str, object]],
-    reference: assistant_reference.AssistantReference | None = None,
+    reference: assistant_proposal.AssistantReference | None = None,
 ) -> team.TeamResponse:
     """Project one credential-bound structured route without lifecycle authority."""
     canonical_id = team.canonical_team_id(team_id)

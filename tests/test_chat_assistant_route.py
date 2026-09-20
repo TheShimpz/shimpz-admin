@@ -15,7 +15,6 @@ from chat import (
     assistant_inventory,
     assistant_plan,
     assistant_proposal,
-    assistant_reference,
     assistant_route,
     local,
     store_catalog,
@@ -83,7 +82,7 @@ class AssistantRouteTests(unittest.TestCase):
                 return_value=(installed, (assistant,)),
             ),
         ):
-            reference = assistant_reference.AssistantReference("prior-assistant", "Prior Assistant")
+            reference = assistant_proposal.AssistantReference("prior-assistant", "Prior Assistant")
             result = assistant_route.prepare(
                 "team_1",
                 payload("instale o cloudflare"),

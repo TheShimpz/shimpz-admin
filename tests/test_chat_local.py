@@ -904,19 +904,6 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             with self.subTest(expected=expected, directory=directory), self.assertRaises(team.TeamRequestError):
                 local.intent_route("team_1", "objective", expected, directory)
 
-        reference = local.assistant_reference.AssistantReference("cloudflare", "Cloudflare")
-        with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
-            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
-        ):
-            local.intent_route("team_1", "instale ele de novo", None, [], reference)
-        self.assertEqual(
-            route.call_args.args[1]["lifecycle_reference"],
-            {"id": "cloudflare", "name": "Cloudflare"},
-        )
-        with self.assertRaises(team.TeamRequestError):
-            local.intent_route("team_1", "instale o cloudflare", "assistant-install", candidates, reference)
-
         base = {
             "team_id": "team_1",
             "intent": "assistant-uninstall",

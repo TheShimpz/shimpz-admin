@@ -14,7 +14,6 @@ from chat import (
     assistant_inventory,
     assistant_plan,
     assistant_proposal,
-    assistant_reference,
     assistant_uninstall,
     local,
     store_catalog,
@@ -52,7 +51,7 @@ def _route(
     objective: object,
     expected_intent: str | None,
     candidates: list[dict[str, object]],
-    reference: assistant_reference.AssistantReference | None = None,
+    reference: assistant_proposal.AssistantReference | None = None,
 ) -> tuple[Intent, str, tuple[str, ...]]:
     response = local.intent_route(team_id, objective, expected_intent, candidates, reference)
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
@@ -148,7 +147,7 @@ def _prepare(
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool | None = None,
-    reference: assistant_reference.AssistantReference | None = None,
+    reference: assistant_proposal.AssistantReference | None = None,
     *,
     allow_uninstall: bool,
 ) -> Result:
@@ -179,7 +178,7 @@ def prepare(
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool | None = None,
-    reference: assistant_reference.AssistantReference | None = None,
+    reference: assistant_proposal.AssistantReference | None = None,
 ) -> Result:
     """Classify a fresh chat turn and open only its required bounded directory."""
     return _prepare(team_id, payload, catalog, include_local, reference, allow_uninstall=True)

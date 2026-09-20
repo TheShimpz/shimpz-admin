@@ -19,7 +19,6 @@ from history import store as history
 from chat import (
     assistant_plan,
     assistant_proposal,
-    assistant_reference,
     assistant_route,
     assistant_uninstall,
     store_catalog,
@@ -56,7 +55,7 @@ class Connection(Protocol):
     lifecycle_proposal: assistant_proposal.UninstallProposal | None
     lifecycle: Operation | None
     admitted_history_id: str | None
-    assistant_reference: assistant_reference.AssistantReference | None
+    assistant_reference: assistant_proposal.AssistantReference | None
 
 
 def reuses_history(connection: Connection, payload: dict[str, object]) -> bool:
@@ -114,7 +113,7 @@ def _event(
 def submit_route(
     team_id: str,
     payload: dict[str, object],
-    reference: assistant_reference.AssistantReference | None,
+    reference: assistant_proposal.AssistantReference | None,
 ) -> concurrent.futures.Future:
     """Admit one complete structured preparation job for a fresh chat objective."""
     return submit_in_context(
@@ -162,7 +161,7 @@ async def _deliver(
         if not await _commit_uninstall(operation.proposal, operation.history_id, event):
             event = _history_error()
         if event.get("type") == "assistant-uninstall" and event.get("state") == "uninstalled":
-            connection.assistant_reference = assistant_reference.AssistantReference(
+            connection.assistant_reference = assistant_proposal.AssistantReference(
                 operation.proposal.assistant.assistant_id,
                 operation.proposal.assistant.name,
             )

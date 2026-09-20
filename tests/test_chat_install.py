@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat import (
     assistant_plan,
     assistant_proposal,
-    assistant_reference,
     assistant_uninstall,
     lifecycle,
 )
@@ -60,7 +59,7 @@ def _connection(**changes):
 class ChatLifecycleTests(unittest.TestCase):
     def test_new_socket_has_no_cross_connection_assistant_reference(self) -> None:
         first = chat_connection.Connection(
-            assistant_reference=assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+            assistant_reference=assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
         )
         second = chat_connection.Connection()
 
@@ -87,7 +86,7 @@ class ChatLifecycleTests(unittest.TestCase):
 
     def test_route_submission_captures_one_immutable_reference(self) -> None:
         sentinel = mock.sentinel.future
-        reference = assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
         payload = {"message": "instale ele de novo", "assistant_ids": []}
         with mock.patch.object(lifecycle, "submit_in_context", return_value=sentinel) as submit:
             self.assertIs(lifecycle.submit_route("team_1", payload, reference), sentinel)
@@ -226,7 +225,7 @@ class ChatLifecycleTests(unittest.TestCase):
 
             self.assertEqual(
                 connection.assistant_reference,
-                assistant_reference.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare"),
+                assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare"),
             )
 
         asyncio.run(scenario())

@@ -7,8 +7,7 @@ import concurrent.futures
 import threading
 from dataclasses import dataclass, field
 
-from chat.assistant_proposal import UninstallProposal
-from chat.assistant_reference import AssistantReference
+from chat.assistant_proposal import AssistantReference, UninstallProposal
 
 from chat import lifecycle
 

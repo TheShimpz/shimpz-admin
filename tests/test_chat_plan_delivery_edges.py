@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 
-from chat import assistant_plan, assistant_reference
+from chat import assistant_plan, assistant_proposal
 
 
 def _plan() -> assistant_plan.Plan:
@@ -35,7 +35,7 @@ def _operations(**changes) -> plan_delivery.Operations:
 
 class PlanDeliveryEdges(unittest.TestCase):
     def test_composed_explicit_install_clears_the_single_assistant_reference(self) -> None:
-        connection = Connection(assistant_reference=assistant_reference.AssistantReference("prior", "Prior"))
+        connection = Connection(assistant_reference=assistant_proposal.AssistantReference("prior", "Prior"))
         plan = assistant_plan.Plan(
             "a" * 32,
             "team_1",
