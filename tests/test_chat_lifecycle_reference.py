@@ -12,8 +12,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_proposal, local, socket
 from team import bridge as team
+
+from chat import assistant_proposal, local, socket
 
 TRACE_ID = "a" * 32
 

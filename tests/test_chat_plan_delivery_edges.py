@@ -12,11 +12,12 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_plan, assistant_proposal, assistant_route
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from team import bridge as team
+
+from chat import assistant_plan, assistant_proposal, assistant_route
 
 
 def _plan() -> assistant_plan.Plan:
