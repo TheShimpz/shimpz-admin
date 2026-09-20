@@ -27,6 +27,14 @@ def _candidate(
 
 
 class AssistantProposalTests(unittest.TestCase):
+    def test_reference_projection_accepts_only_an_exact_string_identity(self) -> None:
+        self.assertIsNone(assistant_proposal.reference_from_item(None))
+        self.assertIsNone(assistant_proposal.reference_from_item({"id": "cloudflare"}))
+        self.assertEqual(
+            assistant_proposal.reference_from_item({"id": "cloudflare", "name": "Cloudflare"}),
+            assistant_proposal.AssistantReference("cloudflare", "Cloudflare"),
+        )
+
     def test_install_directory_shortlist_is_bounded_and_semantic(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
@@ -38,6 +46,23 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.install_shortlist("unknown", (whatsapp, cloudflare)),
             (),
         )
+        self.assertEqual(assistant_proposal.install_shortlist("...", (cloudflare,)), ())
+        self.assertEqual(
+            assistant_proposal.install_shortlist("Shimpz Cloudflare", (whatsapp, cloudflare)),
+            (cloudflare,),
+        )
+
+    def test_install_directory_rejects_a_tie_across_the_shortlist_boundary(self) -> None:
+        candidates = tuple(
+            _candidate(
+                f"cloudflare-{index}",
+                name=f"Cloudflare {index}",
+                summary="Provides reviewed Cloudflare automation.",
+            )
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
+        )
+
+        self.assertEqual(assistant_proposal.install_shortlist("cloudflare", candidates), ())
 
     def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
         accepted = (

@@ -317,6 +317,27 @@ class AssistantPlanPreparationTests(unittest.TestCase):
 
         self.assertEqual(result, assistant_plan.Preparation(error_status=409))
 
+    def test_explicit_install_rejects_invalid_structured_selections(self) -> None:
+        payload = _payload("Instale o Cloudflare")
+        self.assertEqual(
+            assistant_plan.prepare_install("team_1", payload, (), {}, (CLOUDFLARE,)),
+            assistant_plan.Preparation(error_status=422),
+        )
+        self.assertEqual(
+            assistant_plan.prepare_install(
+                "team_1",
+                payload,
+                tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_PLAN_ASSISTANTS + 1)),
+                {},
+                (CLOUDFLARE,),
+            ),
+            assistant_plan.Preparation(error_status=422),
+        )
+        self.assertEqual(
+            assistant_plan.prepare_install("team_1", payload, ("unknown",), {}, (CLOUDFLARE,)),
+            assistant_plan.Preparation(error_status=409),
+        )
+
     def test_inventory_reads_overlap_with_local_supervisor_authority(self) -> None:
         barrier = threading.Barrier(2)
         assertions: list[str] = []

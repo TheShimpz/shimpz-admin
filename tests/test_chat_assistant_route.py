@@ -52,6 +52,39 @@ def cloudflare() -> store_catalog.CatalogAssistant:
 
 
 class AssistantRouteTests(unittest.TestCase):
+    def test_route_rejects_invalid_structured_responses(self) -> None:
+        invalid = (
+            local.PublicResponse(200, {"team_id": "team_1"}),
+            local.PublicResponse(
+                200,
+                {
+                    "team_id": "team_2",
+                    "intent": "ordinary-task",
+                    "query": "",
+                    "assistant_ids": [],
+                },
+            ),
+        )
+        for routed in invalid:
+            with (
+                self.subTest(routed=routed),
+                mock.patch.object(assistant_route.local, "intent_route", return_value=routed),
+                self.assertRaises(assistant_route.RouteError),
+            ):
+                assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
+
+    def test_catalog_state_reads_inventory_and_directory_concurrently(self) -> None:
+        installed = {"cloudflare": mock.sentinel.installed}
+        available = (cloudflare(),)
+        with (
+            mock.patch.object(assistant_route.assistant_plan, "team_inventory", return_value=(installed, {})),
+            mock.patch.object(assistant_route.assistant_plan, "planning_catalog", return_value=available),
+        ):
+            self.assertEqual(
+                assistant_route._catalog_state("team_1", mock.sentinel.catalog, True),
+                (installed, available),
+            )
+
     def test_ordinary_task_runs_the_existing_capability_gate(self) -> None:
         prepared = assistant_plan.Preparation()
         with (
@@ -155,6 +188,30 @@ class AssistantRouteTests(unittest.TestCase):
         )
         catalog_state.assert_not_called()
 
+    def test_install_unknown_or_unresolved_target_returns_guidance(self) -> None:
+        assistant = cloudflare()
+        cases = (
+            ("unknown", response("assistant-install", "unknown")),
+            ("cloudflare", response("unresolved")),
+        )
+        for query, selection in cases:
+            with (
+                self.subTest(query=query),
+                mock.patch.object(
+                    assistant_route.local,
+                    "intent_route",
+                    side_effect=(response("assistant-install", query), selection),
+                ),
+                mock.patch.object(assistant_route, "_catalog_state", return_value=({}, (assistant,))),
+            ):
+                result = assistant_route.prepare(
+                    "team_1",
+                    payload(f"instale {query}"),
+                    mock.sentinel.catalog,
+                    False,
+                )
+            self.assertEqual(result.guidance, "assistant-install-target-required")
+
     def test_uninstall_opens_only_the_installed_name_directory(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability(
@@ -183,6 +240,69 @@ class AssistantRouteTests(unittest.TestCase):
             route.call_args_list[1].args[3],
             [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
         )
+
+    def test_uninstall_missing_unknown_or_unresolved_target_returns_guidance(self) -> None:
+        candidate = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
+            "0.4.5",
+        )
+        cases = (
+            (response("assistant-uninstall"), (candidate,), None),
+            (response("assistant-uninstall", "unknown"), (candidate,), None),
+            (response("assistant-uninstall", "cloudflare"), (candidate,), response("unresolved")),
+        )
+        for initial, candidates, selection in cases:
+            route = (
+                mock.patch.object(assistant_route.local, "intent_route", return_value=initial)
+                if selection is None
+                else mock.patch.object(
+                    assistant_route.local,
+                    "intent_route",
+                    side_effect=(initial, selection),
+                )
+            )
+            with (
+                self.subTest(initial=initial),
+                route,
+                mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=candidates),
+            ):
+                result = assistant_route.prepare(
+                    "team_1",
+                    payload("desinstale"),
+                    mock.sentinel.catalog,
+                    False,
+                )
+            self.assertEqual(result.guidance, "assistant-uninstall-target-required")
+
+    def test_uninstall_selection_must_resolve_to_exactly_one_current_candidate(self) -> None:
+        candidate = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
+            "0.4.5",
+        )
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                side_effect=(
+                    response("assistant-uninstall", "cloudflare"),
+                    response("assistant-uninstall", assistant_ids=["different"]),
+                ),
+            ),
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            self.assertRaises(assistant_route.RouteError),
+        ):
+            assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog, False)
+
+    def test_lifecycle_request_with_files_is_rejected_before_directories_open(self) -> None:
+        attached = payload("instale o cloudflare")
+        attached["files"] = ["a" * 32]
+        with mock.patch.object(
+            assistant_route.local,
+            "intent_route",
+            return_value=response("assistant-install", "cloudflare"),
+        ):
+            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog, False)
+        self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
 
     def test_unresolved_or_failed_route_never_becomes_an_ordinary_task(self) -> None:
         with mock.patch.object(

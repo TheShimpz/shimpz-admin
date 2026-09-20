@@ -306,16 +306,9 @@ def capability_shortlist(
 
 def _bounded_shortlist[AssistantT](
     ranked: list[tuple[int, str, AssistantT]],
-    direct: Callable[[AssistantT], bool],
-    *,
-    allow_ambiguous_ties: bool = False,
 ) -> tuple[AssistantT, ...]:
     strong = tuple(item for item in ranked if item[0] >= MINIMUM_MATCH_SCORE)
     if not strong:
-        return ()
-    top_score = strong[0][0]
-    top = tuple(item[2] for item in strong if item[0] == top_score)
-    if not allow_ambiguous_ties and len(top) > 1 and any(not direct(candidate) for candidate in top):
         return ()
     if (
         len(strong) > MAX_CAPABILITY_SHORTLIST
@@ -356,11 +349,7 @@ def install_shortlist(
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_shortlist(
-        ranked,
-        lambda candidate: _direct_candidate_match(search, candidate),
-        allow_ambiguous_ties=True,
-    )
+    return _bounded_shortlist(ranked)
 
 
 def uninstall_shortlist(
@@ -377,15 +366,11 @@ def uninstall_shortlist(
         assistant = candidate.assistant
         return _directory_identity_score(search, tokens, assistant.assistant_id, assistant.name)
 
-    def direct(candidate: UninstallCandidate) -> bool:
-        assistant = candidate.assistant
-        return _contains_phrase(search, assistant.assistant_id) or _contains_phrase(search, assistant.name)
-
     ranked = sorted(
         ((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_shortlist(ranked, direct, allow_ambiguous_ties=True)
+    return _bounded_shortlist(ranked)
 
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:
