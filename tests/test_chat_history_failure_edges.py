@@ -65,9 +65,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
-                        assistant_route.Result("assistant-uninstall")
-                    ),
+                    return_value=_future(assistant_route.Result("assistant-uninstall")),
                 ),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):

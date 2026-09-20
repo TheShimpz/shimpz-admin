@@ -285,7 +285,7 @@ async def _commit_uninstall(
         )
         if not committed:
             raise history.HistoryUnavailableError("chat history uninstall was not committed")
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat uninstall history commit failed")
         return False
     return True

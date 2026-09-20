@@ -73,9 +73,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 ("shimpz-cloudflare", "whatsapp"),
                 True,
             )
-            installed = tuple(
-                {**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan)
-            )
+            installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,

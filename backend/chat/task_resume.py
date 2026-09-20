@@ -100,7 +100,7 @@ async def dispatch(
     payload, objective = admitted
     try:
         history_id = await history_delivery.admit(team_id, payload["message"])
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
         return
     connection.admitted_history_id = history_id

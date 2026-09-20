@@ -582,8 +582,9 @@ class ChatHistoryTests(unittest.TestCase):
             ),
         )
         for function, arguments in invalid_calls:
-            with self.subTest(function=function.__name__, arguments=arguments), self.assertRaises(
-                (ValueError, history.HistoryUnavailableError)
+            with (
+                self.subTest(function=function.__name__, arguments=arguments),
+                self.assertRaises((ValueError, history.HistoryUnavailableError)),
             ):
                 function(*arguments)
 
@@ -594,9 +595,7 @@ class ChatHistoryTests(unittest.TestCase):
             ("uninstalled", {"team_id": "marketing", "uninstalled": False}),
         ):
             event = {**base_event, "state": state, **fields}
-            self.assertTrue(
-                history.append_uninstall("marketing", history.new_turn_id(), assistant, event)
-            )
+            self.assertTrue(history.append_uninstall("marketing", history.new_turn_id(), assistant, event))
 
         history._validate_stored_install(
             {
@@ -717,11 +716,14 @@ class ChatHistoryTests(unittest.TestCase):
             self.assertEqual(history_http.space_reset(lambda: success), success)
         clear.assert_called_once_with()
 
-        with mock.patch.object(
-            history_http.team,
-            "resolve_team_name",
-            side_effect=team.TeamRequestError("invalid team"),
-        ), self.assertRaises(HTTPException) as rejected:
+        with (
+            mock.patch.object(
+                history_http.team,
+                "resolve_team_name",
+                side_effect=team.TeamRequestError("invalid team"),
+            ),
+            self.assertRaises(HTTPException) as rejected,
+        ):
             history_http.page("marketing")
         self.assertEqual(rejected.exception.status_code, 400)
 

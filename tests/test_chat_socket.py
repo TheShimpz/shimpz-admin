@@ -500,9 +500,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json({"type": "chat", "message": "connect", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
-                self.assertIsNotNone(
-                    self.admin_app.chat_history.resumable_turn("team_1")
-                )
+                self.assertIsNotNone(self.admin_app.chat_history.resumable_turn("team_1"))
                 await websocket.disconnect()
                 stop.assert_not_called()
 

@@ -151,11 +151,14 @@ class AssistantRouteTests(unittest.TestCase):
             result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
         self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
 
-        with mock.patch.object(
-            assistant_route.local,
-            "intent_route",
-            return_value=local.PublicResponse(503, {"code": "intent-route-unavailable"}),
-        ), self.assertRaisesRegex(assistant_route.RouteError, "structured Assistant routing failed"):
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                return_value=local.PublicResponse(503, {"code": "intent-route-unavailable"}),
+            ),
+            self.assertRaisesRegex(assistant_route.RouteError, "structured Assistant routing failed"),
+        ):
             assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
 
     def test_resume_rejects_uninstall_before_opening_the_installed_directory(self) -> None:

@@ -36,7 +36,7 @@ async def deliver(
 ) -> None:
     try:
         await history_delivery.challenge(team_id, turn.history_id)
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat challenge history commit failed")
         await operations.send_terminal(
             websocket,

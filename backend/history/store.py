@@ -213,9 +213,8 @@ def _install_assistant(value: object) -> dict[str, object]:
     ):
         raise ValueError("chat history Assistant install item is invalid")
     canonical_providers = [team_contract.canonical_assistant_id(provider) for provider in providers]
-    if (
-        any(provider is None for provider in canonical_providers)
-        or canonical_providers != sorted(set(canonical_providers))
+    if any(provider is None for provider in canonical_providers) or canonical_providers != sorted(
+        set(canonical_providers)
     ):
         raise ValueError("chat history Assistant install providers are invalid")
     return {
@@ -383,7 +382,7 @@ def _position(value: object) -> int | None:
         encoded = value.encode("ascii")
         raw = base64.urlsafe_b64decode(encoded + b"=" * (-len(encoded) % 4))
         position = struct.unpack(">Q", raw)[0]
-    except (UnicodeError, ValueError, struct.error):
+    except UnicodeError, ValueError, struct.error:
         raise ValueError("chat history cursor is invalid") from None
     if _cursor(position) != value or position < 1:
         raise ValueError("chat history cursor is invalid")
@@ -395,7 +394,7 @@ def _decoded(raw: object) -> dict[str, object]:
         raise HistoryUnavailableError("chat history entry is invalid")
     try:
         payload = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeError, RecursionError):
+    except json.JSONDecodeError, UnicodeError, RecursionError:
         raise HistoryUnavailableError("chat history entry is invalid") from None
     if not isinstance(payload, dict) or payload.get("kind") not in {
         "message",
@@ -490,8 +489,7 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     with _database() as database:
         if position is None:
             rows = database.execute(
-                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? "
-                "ORDER BY position DESC LIMIT ?",
+                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? ORDER BY position DESC LIMIT ?",
                 (canonical_team, PAGE_ROWS + 1),
             ).fetchall()
         else:

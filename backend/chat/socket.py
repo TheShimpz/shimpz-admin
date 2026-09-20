@@ -608,7 +608,7 @@ async def _commit_user_history(
 ) -> bool:
     try:
         history_id = await history_delivery.admit(team_id, message)
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat user history commit failed")
         await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
         return False
@@ -715,7 +715,7 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
         if history_id is None:
             try:
                 history_id = await history_delivery.resume(team_id)
-            except (history.HistoryUnavailableError, ValueError):
+            except history.HistoryUnavailableError, ValueError:
                 await _send_event(
                     websocket,
                     _error_terminal(503, "Admin chat history is unavailable"),

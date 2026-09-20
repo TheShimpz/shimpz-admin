@@ -70,9 +70,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
-                        assistant_route.Result("assistant-uninstall")
-                    ),
+                    return_value=_future(assistant_route.Result("assistant-uninstall")),
                 ) as route,
             ):
                 await socket._dispatch_chat(
@@ -139,9 +137,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
-                        assistant_route.Result("assistant-uninstall")
-                    ),
+                    return_value=_future(assistant_route.Result("assistant-uninstall")),
                 ),
             ):
                 await socket._dispatch_chat(
@@ -533,15 +529,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
             empty = team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
-            await sync_delivery.integration(
-                websocket, connection, "team_1", empty, None, socket._SYNC_OPERATIONS
-            )
+            await sync_delivery.integration(websocket, connection, "team_1", empty, None, socket._SYNC_OPERATIONS)
             self.assertIsNone(connection.pending_challenge_id)
 
             connection = socket._Connection()
-            await sync_delivery.integration(
-                websocket, connection, "team_1", object(), None, socket._SYNC_OPERATIONS
-            )
+            await sync_delivery.integration(websocket, connection, "team_1", object(), None, socket._SYNC_OPERATIONS)
             self.assertTrue(connection.sync_terminal_sent)
 
             pending = local.PublicResponse(
@@ -556,9 +548,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 },
             )
             connection = socket._Connection()
-            await sync_delivery.integration(
-                websocket, connection, "team_1", pending, None, socket._SYNC_OPERATIONS
-            )
+            await sync_delivery.integration(websocket, connection, "team_1", pending, None, socket._SYNC_OPERATIONS)
             self.assertTrue(connection.sync_terminal_sent)
 
             connection = socket._Connection()

@@ -83,10 +83,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 original.dispatch_ids,
                 True,
             )
-            installed = tuple(
-                {**item, "status": "installed"}
-                for item in self.assistant_plan.initial_items(plan)
-            )
+            installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -101,9 +98,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 mock.patch.object(
                     self.chat_socket.lifecycle,
                     "submit_plan",
-                    return_value=self._future(
-                        self.assistant_plan.Result("installed", installed)
-                    ),
+                    return_value=self._future(self.assistant_plan.Result("installed", installed)),
                 ),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):

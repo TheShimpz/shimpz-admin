@@ -23,7 +23,7 @@ async def _target_required_event(team_id: str, turn: Turn) -> dict[str, object]:
             turn.history_id,
             "uninstall-target-required",
         )
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat guidance history commit failed")
         return error_terminal(503, "Admin chat history is unavailable")
     return lifecycle.target_required_event(team_id)

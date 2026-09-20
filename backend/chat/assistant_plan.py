@@ -215,7 +215,7 @@ def prepare_capability(
     installed, registry = team_inventory(team_id)
     try:
         available = planning_catalog(catalog, include_local)
-    except (OSError, ValueError, team.TeamRequestError):
+    except OSError, ValueError, team.TeamRequestError:
         return Preparation()
     return _prepare_gap(team_id, payload, available, installed, registry)
 

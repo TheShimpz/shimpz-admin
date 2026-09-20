@@ -40,7 +40,7 @@ async def turn(
             event,
             finish_history=finish_history,
         )
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat reply history commit failed")
         projected = error_terminal(503, "Admin chat history is unavailable")
     else:
@@ -66,7 +66,7 @@ async def resumed(
     if finish_history:
         try:
             await history_delivery.resumed_terminal(connection.pending_history_id, event)
-        except (history.HistoryUnavailableError, ValueError):
+        except history.HistoryUnavailableError, ValueError:
             log.exception("Admin resumed chat reply history commit failed")
             projected = error_terminal(503, "Admin chat history is unavailable")
         else:

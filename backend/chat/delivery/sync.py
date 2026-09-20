@@ -74,7 +74,7 @@ async def _restore_history(
             team_id,
             connection.pending_history_id,
         )
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         await operations.send_terminal(
             websocket,
             connection,
@@ -91,7 +91,7 @@ async def empty(
 ) -> None:
     try:
         await history_delivery.abandon(connection.pending_history_id)
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         await operations.send_terminal(
             websocket,
             connection,

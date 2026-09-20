@@ -32,9 +32,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "connect", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "connect", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 first = self.admin_app.chat_history.resumable_turn("team_1")
                 self.assertIsNotNone(first)
@@ -75,9 +73,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {"type": "chat", "message": "connect", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "connect", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 turn_id = self.admin_app.chat_history.resumable_turn("team_1")
                 self.assertIsNotNone(turn_id)

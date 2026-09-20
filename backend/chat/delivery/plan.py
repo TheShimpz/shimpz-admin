@@ -152,7 +152,7 @@ async def _commit_install(
         )
         if not committed:
             raise history.HistoryUnavailableError("chat history install was not committed")
-    except (history.HistoryUnavailableError, ValueError):
+    except history.HistoryUnavailableError, ValueError:
         return False
     return True
 

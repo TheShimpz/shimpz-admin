@@ -395,9 +395,7 @@ class StoreCatalogTests(unittest.TestCase):
         second = store_catalog.validate_catalog(
             {
                 "version": 1,
-                "assistants": [
-                    _assistant(source_digest="sha256:" + ("c" * 64), icon_digest=VERIFIED_ICON_DIGEST)
-                ],
+                "assistants": [_assistant(source_digest="sha256:" + ("c" * 64), icon_digest=VERIFIED_ICON_DIGEST)],
             }
         )
         catalog = mock.Mock(spec=store_catalog.StoreCatalog)
