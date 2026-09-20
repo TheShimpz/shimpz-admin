@@ -1615,10 +1615,12 @@
                       tabindex={lifecycle.state === 'working' ? -1 : undefined}
                     />
                     {#if lifecycle.state === 'uninstalled' && lifecycle.completionAnnounced}
-                      <Markdown
-                        markdown={lifecycleOutcome(lifecycle, exchange.assistant.author)}
-                        variant="chat"
-                      />
+                      <div class="assistant-lifecycle-outcome">
+                        <Markdown
+                          markdown={lifecycleOutcome(lifecycle, exchange.assistant.author)}
+                          variant="chat"
+                        />
+                      </div>
                     {/if}
                   {/if}
                   <ExecutionReceipt
@@ -1897,6 +1899,7 @@
     margin-top: 0.8rem;
   }
   .assistant-install-plan { display: grid; gap: 0.55rem; margin-top: 0.75rem; }
+  .assistant-lifecycle-outcome { padding-top: 0.9rem; }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;

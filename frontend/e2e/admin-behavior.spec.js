@@ -997,9 +997,16 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
   await page.goto('/chat/');
 
   const outcome = 'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.';
-  await expect(page.getByText(outcome, { exact: true })).toBeVisible();
+  const outcomeText = page.getByText(outcome, { exact: true });
+  await expect(outcomeText).toBeVisible();
+  const [taskBounds, outcomeBounds] = await Promise.all([
+    page.locator('.assistant-lifecycle-task').boundingBox(),
+    outcomeText.boundingBox(),
+  ]);
+  if (!taskBounds || !outcomeBounds) throw new Error('Lifecycle task or outcome has no rendered bounds');
+  expect(outcomeBounds.y - (taskBounds.y + taskBounds.height)).toBeGreaterThanOrEqual(12);
   await page.reload();
-  await expect(page.getByText(outcome, { exact: true })).toBeVisible();
+  await expect(outcomeText).toBeVisible();
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
