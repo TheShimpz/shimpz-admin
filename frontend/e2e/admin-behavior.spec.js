@@ -154,7 +154,7 @@ async function routeReadyChat(page, {
   holdAssistantIcon = false,
   assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
-  targetlessUninstallGuidance = false,
+  assistantGuidanceCode = '',
   holdTargetlessUninstallGuidance = false,
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
@@ -480,12 +480,12 @@ async function routeReadyChat(page, {
           socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
           return;
         }
-        if (targetlessUninstallGuidance && !targetlessGuidanceSent) {
+        if (assistantGuidanceCode && !targetlessGuidanceSent) {
           targetlessGuidanceSent = true;
           const sendTargetlessGuidance = () => socket.send(JSON.stringify({
             type: 'assistant-guidance',
             team_id: 'marketing',
-            code: 'assistant-uninstall-target-required',
+            code: assistantGuidanceCode,
           }));
           if (holdTargetlessUninstallGuidance) targetlessGuidancePending = true;
           else sendTargetlessGuidance();
@@ -690,7 +690,7 @@ async function routeReadyChat(page, {
           socket.send(JSON.stringify({
             type: 'assistant-guidance',
             team_id: 'marketing',
-            code: 'assistant-uninstall-target-required',
+            code: assistantGuidanceCode,
           }));
           return;
         }
@@ -1218,31 +1218,43 @@ test('resumes one prior capability objective after reconnect and installs its As
   expect(persistedBrowserState).not.toContain('Você mesmo consegue habilitar?');
 });
 
-test('asks for an Assistant name when uninstall has no pending target', async ({ page }) => {
-  const chat = await routeReadyChat(page, { targetlessUninstallGuidance: true });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('desinstale');
-  await composer.press('Enter');
-
-  await expect(page.getByText(
+for (const [code, message, question] of [
+  ['assistant-install-target-required', 'install', 'Which Assistant do you want to install?'],
+  [
+    'assistant-uninstall-target-required',
+    'uninstall',
     'Which installed Assistant do you want to uninstall?',
-    { exact: true },
-  )).toBeVisible();
-  await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
-  await expect(composer).toBeEnabled();
-  await expect(composer).toBeFocused();
+  ],
+  [
+    'assistant-lifecycle-ambiguous',
+    'change the Assistant',
+    'Do you want to install or uninstall an Assistant?',
+  ],
+]) {
+  test(`renders the ${code} lifecycle question`, async ({ page }) => {
+    const chat = await routeReadyChat(page, { assistantGuidanceCode: code });
+    await page.goto('/chat/');
 
-  await composer.fill('ok');
-  await composer.press('Enter');
-  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
-  expect(chat.chatFrames().map((frame) => frame.type)).toEqual(['chat', 'chat']);
-});
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await composer.fill(message);
+    await composer.press('Enter');
+
+    await expect(page.getByText(question, { exact: true })).toBeVisible();
+    await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
+    await expect(page.locator('.chat-route > .error')).toHaveCount(0);
+    await expect(composer).toBeEnabled();
+    await expect(composer).toBeFocused();
+
+    await composer.fill('ok');
+    await composer.press('Enter');
+    await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+    expect(chat.chatFrames().map((frame) => frame.type)).toEqual(['chat', 'chat']);
+  });
+}
 
 test('keeps target-required guidance valid when Stop races its response', async ({ page }) => {
   await routeReadyChat(page, {
-    targetlessUninstallGuidance: true,
+    assistantGuidanceCode: 'assistant-uninstall-target-required',
     holdTargetlessUninstallGuidance: true,
   });
   await page.goto('/chat/');
