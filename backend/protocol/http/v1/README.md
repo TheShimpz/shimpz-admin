@@ -61,6 +61,13 @@ The browser visibly attributes the resumed objective, clears it on Team change, 
 page disposal, or consumption, and never writes it to browser storage. The retained Hosted Store backend does not
 accept `resume-task`.
 
+The exact `POST /v1/teams/:team_id/chat/intent-route` body carries `objective`, `expected_intent`, `candidates`,
+and `lifecycle_reference`. Classification requires an empty candidate list and may carry either `null` or one
+bounded `{id,name}` reference captured by Admin from a successful explicit lifecycle on the current socket.
+Selection requires `lifecycle_reference: null` and resolves only against its supplied bounded candidates. A
+reference is untrusted language evidence; it grants no directory membership, installation, removal, or Team
+authority and is never persisted in chat history.
+
 Local Admin may emit an exact terminal `assistant-guidance` event with only the authenticated socket Team id and
 one of the closed `assistant-install-target-required`, `assistant-uninstall-target-required`, or
 `assistant-lifecycle-ambiguous` codes. The browser renders the corresponding localized question; guidance never
