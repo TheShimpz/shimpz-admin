@@ -13,9 +13,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.mfa_helper import configure_supervisor
-
 from tests import chat_socket_fixtures
+from tests.mfa_helper import configure_supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -182,6 +181,102 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     ("assistant-uninstall", None),
                 ],
             )
+
+        asyncio.run(scenario())
+
+    def test_successful_uninstall_supplies_the_follow_up_reinstall_reference(self) -> None:
+        async def scenario() -> None:
+            assistant_plan = self.chat_socket.lifecycle.assistant_plan
+            candidate = self.chat_socket.lifecycle.store_catalog.CatalogAssistant(
+                assistant_id="shimpz-cloudflare",
+                name="Shimpz Cloudflare",
+                summary="Manage Cloudflare zones and DNS records.",
+                source_digest="sha256:" + ("d" * 64),
+                icon_digest="sha256:" + ("e" * 64),
+                integrations=(),
+                actions=("list-zones",),
+            )
+            plan = assistant_plan.Plan(
+                "f" * 32,
+                "team_1",
+                (candidate,),
+                ("shimpz-cloudflare",),
+                True,
+                ("shimpz-cloudflare",),
+            )
+            installed = tuple({**item, "status": "installed"} for item in assistant_plan.initial_items(plan))
+            with (
+                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    side_effect=(
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                                uninstall=self._uninstall_candidate(),
+                            )
+                        ),
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-install",
+                                preparation=assistant_plan.Preparation(plan),
+                            )
+                        ),
+                    ),
+                ) as route,
+                mock.patch.object(
+                    self.chat_socket.lifecycle.assistant_uninstall,
+                    "uninstall",
+                    return_value=self.chat_socket.lifecycle.assistant_uninstall.UninstallResult(200, True),
+                ),
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_plan",
+                    return_value=self._future(assistant_plan.Result("installed", installed)),
+                ),
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "desinstale o cloudflare",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
+                )
+                proposed = await websocket.next_json()
+                self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
+
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "sim",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
+                )
+                self.assertEqual((await websocket.next_json())["state"], "uninstalling")
+                self.assertEqual((await websocket.next_json())["state"], "uninstalled")
+                await asyncio.sleep(0)
+
+                await websocket.send_json(
+                    {
+                        "type": "chat",
+                        "message": "instale ele de novo",
+                        "files": [],
+                        "assistant_ids": [],
+                    }
+                )
+                self.assertEqual((await websocket.next_json())["state"], "planned")
+                completed = await websocket.next_json()
+                self.assertEqual((completed["state"], completed["continuation"]), ("installed", "none"))
+                reference = route.call_args_list[1].args[2]
+                self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
+                self.assertEqual(reference.name, "Shimpz Cloudflare")
+                turn.assert_not_called()
+                await websocket.disconnect()
 
         asyncio.run(scenario())
 
