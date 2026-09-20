@@ -14,7 +14,7 @@ from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import store as history
 
-from chat import assistant_plan, assistant_proposal, lifecycle
+from chat import assistant_plan, lifecycle
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
@@ -119,15 +119,7 @@ async def _deliver_admitted(
     result = await _run_job(websocket, connection, turn, plan, operations.send_event)
     if connection.closed or result is None:
         return
-    continuation = (
-        "none"
-        if result.state == "installed"
-        and assistant_proposal.installation_only_requested(
-            payload["message"],
-            plan.terminal_assistants or plan.assistants,
-        )
-        else "dispatch"
-    )
+    continuation = "none" if result.state == "installed" and plan.terminal else "dispatch"
     terminal = assistant_plan.event(
         plan,
         result.state,
@@ -200,8 +192,17 @@ async def deliver_preparation(
     preparation = await _preparation_result(turn)
     if connection.closed:
         return
-    if preparation is None or (
-        preparation.plan is None
+    if preparation is None:
+        await operations.finish_turn(
+            websocket,
+            connection,
+            turn,
+            operations.error_terminal(503, "Assistant capability preparation is unavailable"),
+        )
+        return
+    if (
+        fallback_payload is not None
+        and preparation.plan is None
         and preparation.already_installed is None
         and preparation.error_status is None
     ):
@@ -210,7 +211,37 @@ async def deliver_preparation(
             connection,
             turn,
             team_id,
-            payload if fallback_payload is None else fallback_payload,
+            fallback_payload,
+        )
+        return
+    await deliver_result(
+        websocket,
+        connection,
+        turn,
+        team_id,
+        payload,
+        preparation,
+        operations,
+    )
+
+
+async def deliver_result(
+    websocket: WebSocket,
+    connection: Connection,
+    turn: Turn,
+    team_id: str,
+    payload: dict[str, object],
+    preparation: assistant_plan.Preparation,
+    operations: Operations,
+) -> None:
+    """Deliver one already-resolved preparation without opening another worker lane."""
+    if preparation.plan is None and preparation.already_installed is None and preparation.error_status is None:
+        await operations.continue_turn(
+            websocket,
+            connection,
+            turn,
+            team_id,
+            payload,
         )
     elif preparation.error_status is not None:
         detail = "Assistant capability planning could not complete; retry the task"

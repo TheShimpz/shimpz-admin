@@ -13,8 +13,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import chat_socket_fixtures
-from mfa_helper import configure_supervisor
+from tests import chat_socket_fixtures
+from tests.mfa_helper import configure_supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -85,6 +85,13 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         )
         pending_human.start()
         self.addCleanup(pending_human.stop)
+        route = mock.patch.object(
+            self.chat_socket.lifecycle,
+            "submit_route",
+            side_effect=lambda *_args: chat_socket_fixtures.ordinary_route(self.chat_socket),
+        )
+        route.start()
+        self.addCleanup(route.stop)
 
     @staticmethod
     def _accepted(message: dict) -> bool:

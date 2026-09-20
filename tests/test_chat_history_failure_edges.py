@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,13 +16,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from chat.delivery import plan as plan_delivery
 
-from chat import local, socket, task_resume
+from chat import assistant_route, local, socket, task_resume
 
 
 def _resume_operations() -> task_resume.Operations:
     return task_resume.Operations(
         send_event=socket._send_event,
-        start_direct=socket._start_direct_turn,
         plan=plan_delivery.Operations(
             send_event=socket._send_event,
             finish_turn=socket._finish_active_turn,
@@ -30,6 +30,12 @@ def _resume_operations() -> task_resume.Operations:
         ),
         error_terminal=socket._error_terminal,
     )
+
+
+def _future(value: object) -> concurrent.futures.Future[object]:
+    future: concurrent.futures.Future[object] = concurrent.futures.Future()
+    future.set_result(value)
+    return future
 
 
 class ChatHistoryFailureEdgeTests(unittest.TestCase):
@@ -56,6 +62,13 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     "guidance",
                     new=mock.AsyncMock(side_effect=socket.history.HistoryUnavailableError("offline")),
                 ),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    return_value=_future(
+                        assistant_route.Result("assistant-uninstall")
+                    ),
+                ),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):
                 await socket._dispatch_chat(
@@ -64,7 +77,10 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     "team_1",
                     {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
                 )
-            self.assertEqual(send.await_args.args[1]["status"], 503)
+                delivery = connection.active.delivery
+                await delivery
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
+            send.assert_not_awaited()
 
             pending = socket._Connection(pending_challenge_id="a" * 32)
             with (
@@ -81,10 +97,10 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_uninstall_discovery_without_future_can_still_be_stopped(self) -> None:
+    def test_assistant_route_without_future_can_still_be_stopped(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            turn = socket._Turn(None, "assistant-uninstall-discovery")
+            turn = socket._Turn(None, "assistant-route", lifecycle_stop=threading.Event())
             connection = socket._Connection(active=turn)
             task = socket._request_stop(websocket, connection, turn, "team_1", emit=True)
             self.assertIsNotNone(task)

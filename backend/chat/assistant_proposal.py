@@ -7,9 +7,9 @@ import secrets
 import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Literal
 
-from chat import store_catalog
+from chat import local_catalog, store_catalog
 from protocol.http.v1 import payload as team_contract
 
 UNINSTALL_PROPOSAL_TTL_SECONDS = 120
@@ -85,17 +85,6 @@ _UNINSTALL_NEGATIVE = frozenset(
         "no",
     }
 )
-_TARGETLESS_UNINSTALL_REQUESTS = frozenset(
-    {
-        "desinstala",
-        "desinstalar",
-        "desinstale",
-        "pode desinstalar",
-        "please uninstall",
-        "uninstall",
-        "uninstall it",
-    }
-)
 _CAPABILITY_CONTINUATIONS = frozenset(
     {
         "activate it",
@@ -116,68 +105,9 @@ _CAPABILITY_CONTINUATIONS = frozenset(
         "voce mesmo consegue habilitar",
     }
 )
-_UNINSTALL_PREFIXES = (
-    "can you ",
-    "could you ",
-    "eu quero ",
-    "gostaria de ",
-    "i want to ",
-    "please ",
-    "pode ",
-    "por favor ",
-    "quero que voce ",
-    "quero ",
-    "",
-)
-_UNINSTALL_VERBS = (
-    "desinstala ",
-    "desinstale ",
-    "desinstalar ",
-    "remove ",
-    "remova ",
-    "remover ",
-    "uninstall ",
-)
-_SHORT_NAME_UNINSTALL_VERBS = frozenset(
-    {
-        "desinstala ",
-        "desinstale ",
-        "desinstalar ",
-        "uninstall ",
-    }
-)
-_GENERIC_ASSISTANT_NAME_TOKENS = frozenset({"assistant", "assistente", "shimpz"})
-_UNINSTALL_SUFFIXES = (
-    " deste time",
-    " do time",
-    " from this team",
-    " from the team",
-    "",
-)
-_INSTALL_PREFIXES = (
-    "can you ",
-    "could you ",
-    "eu quero ",
-    "gostaria de ",
-    "i want to ",
-    "please ",
-    "pode ",
-    "por favor ",
-    "quero que voce ",
-    "quero ",
-    "",
-)
-_INSTALL_VERBS = ("instala ", "instale ", "instalar ", "install ")
-_INSTALL_SUFFIXES = (" neste time", " no time", " on this team", " por favor", " please", "")
-_INSTALL_TARGET_SEPARATOR = re.compile(r"\s+(?:and|e)\s+")
-_LIFECYCLE_SEQUENCE_LEAD_INS = ("and now ", "e agora ", "agora ", "now ")
 
 Decision = Literal["confirm", "cancel", "ambiguous"]
-
-
-class AssistantIdentity(Protocol):
-    assistant_id: str
-    name: str
+DirectoryAssistant = store_catalog.CatalogAssistant | local_catalog.LocalAssistant
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,14 +167,6 @@ def classify_uninstall_confirmation(value: object) -> Decision:
     return _classify_confirmation(value, _UNINSTALL_AFFIRMATIVE, _UNINSTALL_NEGATIVE)
 
 
-def targetless_uninstall_requested(value: object) -> bool:
-    """Recognize only a complete uninstall imperative that names no target."""
-    if not isinstance(value, str) or not value.strip() or len(value) > 160:
-        return False
-    normalized = _strip_lifecycle_sequence_lead_in(_search_text(value))
-    return _classify_confirmation(normalized, _TARGETLESS_UNINSTALL_REQUESTS, frozenset()) == "confirm"
-
-
 def capability_continuation(value: object) -> bool:
     """Accept only one complete request to resume a prior capability objective."""
     return _classify_confirmation(value, _CAPABILITY_CONTINUATIONS, frozenset()) == "confirm"
@@ -252,13 +174,6 @@ def capability_continuation(value: object) -> bool:
 
 def _search_text(value: str) -> str:
     return " ".join(_SEARCH_SEPARATOR.sub(" ", _fold(value)).split())
-
-
-def _strip_lifecycle_sequence_lead_in(value: str) -> str:
-    for lead_in in _LIFECYCLE_SEQUENCE_LEAD_INS:
-        if value.startswith(lead_in):
-            return value[len(lead_in) :]
-    return value
 
 
 def _tokens(*values: str) -> frozenset[str]:
@@ -372,191 +287,88 @@ def capability_shortlist(
     return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
 
 
-def _uninstall_request(message: object) -> tuple[str, bool] | None:
-    if not isinstance(message, str) or not message.strip() or len(message) > 500:
-        return None
-    normalized = _strip_lifecycle_sequence_lead_in(_search_text(message))
-    for prefix in _UNINSTALL_PREFIXES:
-        if not normalized.startswith(prefix):
-            continue
-        remainder = normalized[len(prefix) :]
-        for verb in _UNINSTALL_VERBS:
-            if not remainder.startswith(verb):
-                continue
-            target = remainder[len(verb) :]
-            for suffix in _UNINSTALL_SUFFIXES:
-                if suffix and target.endswith(suffix):
-                    target = target[: -len(suffix)]
-                    break
-            normalized_target = target.strip()
-            return (normalized_target, verb in _SHORT_NAME_UNINSTALL_VERBS) if normalized_target else None
-    return None
-
-
-def _uninstall_target(message: object) -> str | None:
-    request = _uninstall_request(message)
-    return request[0] if request is not None else None
-
-
-def uninstall_requested(message: object) -> bool:
-    """Return whether a closed uninstall structure exists before Team discovery work."""
-    return _uninstall_target(message) is not None
-
-
-def _installation_targets(message: object) -> tuple[str, ...]:
-    if not isinstance(message, str) or not message.strip() or len(message) > 500:
+def _bounded_shortlist[AssistantT](
+    ranked: list[tuple[int, str, AssistantT]],
+    direct: Callable[[AssistantT], bool],
+    *,
+    allow_ambiguous_ties: bool = False,
+) -> tuple[AssistantT, ...]:
+    strong = tuple(item for item in ranked if item[0] >= MINIMUM_MATCH_SCORE)
+    if not strong:
         return ()
-    normalized = _strip_lifecycle_sequence_lead_in(_search_text(message))
-    for prefix in _INSTALL_PREFIXES:
-        if not normalized.startswith(prefix):
-            continue
-        remainder = normalized[len(prefix) :]
-        for verb in _INSTALL_VERBS:
-            if not remainder.startswith(verb):
-                continue
-            target = remainder[len(verb) :]
-            for suffix in _INSTALL_SUFFIXES:
-                if suffix and target.endswith(suffix):
-                    target = target[: -len(suffix)]
-                    break
-            return tuple(part.strip() for part in _INSTALL_TARGET_SEPARATOR.split(target) if part.strip())
-    return ()
+    top_score = strong[0][0]
+    top = tuple(item[2] for item in strong if item[0] == top_score)
+    if not allow_ambiguous_ties and len(top) > 1 and any(not direct(candidate) for candidate in top):
+        return ()
+    if (
+        len(strong) > MAX_CAPABILITY_SHORTLIST
+        and strong[MAX_CAPABILITY_SHORTLIST - 1][0] == strong[MAX_CAPABILITY_SHORTLIST][0]
+    ):
+        return ()
+    return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
 
 
-def _identity_targets(capability: AssistantIdentity) -> frozenset[str]:
-    exact = {_search_text(capability.assistant_id), _search_text(capability.name)}
-    short_tokens = tuple(
-        token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
+def _directory_identity_score(query: str, tokens: frozenset[str], assistant_id: str, name: str) -> int:
+    if _contains_phrase(query, assistant_id) or _contains_phrase(query, name):
+        return 100
+    identity_tokens = _tokens(assistant_id, name)
+    overlap = len(tokens & identity_tokens)
+    return 60 + min(overlap, 4) * 5 if overlap and tokens <= identity_tokens else 0
+
+
+def install_shortlist(
+    query: str,
+    candidates: tuple[DirectoryAssistant, ...],
+) -> tuple[DirectoryAssistant, ...]:
+    """Rank a semantic install target into one bounded local-first directory."""
+    search = _search_text(query)
+    tokens = _tokens(query)
+    if not search or not tokens:
+        return ()
+    ranked = sorted(
+        (
+            (
+                max(
+                    _directory_identity_score(search, tokens, candidate.assistant_id, candidate.name),
+                    _candidate_score(search, tokens, candidate),
+                ),
+                candidate.assistant_id,
+                candidate,
+            )
+            for candidate in candidates
+        ),
+        key=lambda item: (-item[0], item[1]),
     )
-    aliases = exact | ({" ".join(short_tokens), *short_tokens} if short_tokens else set())
-    targets = {target for value in exact if value for target in (value, f"a {value}", f"o {value}", f"the {value}")}
-    for alias in aliases:
-        if not alias:
-            continue
-        targets.update(
-            {
-                f"a assistente {alias}",
-                f"a assistente da {alias}",
-                f"a assistente de {alias}",
-                f"a assistente do {alias}",
-                f"an assistant {alias}",
-                f"an {alias} assistant",
-                f"assistant {alias}",
-                f"a {alias} assistant",
-                f"a {alias} assistente",
-                f"assistente {alias}",
-                f"assistente da {alias}",
-                f"assistente de {alias}",
-                f"assistente do {alias}",
-                f"o assistant {alias}",
-                f"o {alias} assistant",
-                f"o assistant da {alias}",
-                f"o assistant de {alias}",
-                f"o assistant do {alias}",
-                f"o assistente {alias}",
-                f"o {alias} assistente",
-                f"o assistente da {alias}",
-                f"o assistente de {alias}",
-                f"o assistente do {alias}",
-                f"the assistant {alias}",
-                f"the {alias} assistant",
-                f"{alias} assistant",
-                f"{alias} assistente",
-            }
-        )
-    return frozenset(targets)
-
-
-def _installation_identity_targets(assistant: AssistantIdentity) -> frozenset[str]:
-    short_name = _short_name(assistant)
-    if short_name is None:
-        return _identity_targets(assistant)
-    return _identity_targets(assistant) | {
-        short_name,
-        f"a {short_name}",
-        f"o {short_name}",
-        f"the {short_name}",
-    }
-
-
-def installation_selection(
-    message: object,
-    assistants: Iterable[AssistantIdentity],
-) -> tuple[AssistantIdentity, ...]:
-    """Resolve every exact install target to one unique admitted identity."""
-    candidates = tuple(assistants)
-    targets = _installation_targets(message)
-    if not candidates or not targets:
-        return ()
-    selected: dict[str, AssistantIdentity] = {}
-    for target in targets:
-        matches = tuple(
-            assistant for assistant in candidates if target in _installation_identity_targets(assistant)
-        )
-        if len(matches) != 1:
-            return ()
-        selected[matches[0].assistant_id] = matches[0]
-    if len(selected) != len(targets):
-        return ()
-    return tuple(selected[assistant_id] for assistant_id in sorted(selected))
-
-
-def installation_only_requested(message: object, assistants: Iterable[AssistantIdentity]) -> bool:
-    """Recognize only an exact install command bound to every admitted plan identity."""
-    planned = tuple(assistants)
-    selected = installation_selection(message, planned)
-    return bool(planned) and {assistant.assistant_id for assistant in selected} == {
-        assistant.assistant_id for assistant in planned
-    }
-
-
-def _short_name(capability: AssistantIdentity) -> str | None:
-    tokens = tuple(
-        token for token in _search_text(capability.name).split() if token not in _GENERIC_ASSISTANT_NAME_TOKENS
-    )
-    return " ".join(tokens) or None
-
-
-def _short_name_target(target: str, capability: Capability) -> str | None:
-    short_name = _short_name(capability)
-    if short_name is None:
-        return None
-    forms = {short_name, f"a {short_name}", f"o {short_name}", f"the {short_name}"}
-    return short_name if target in forms else None
-
-
-def _short_name_is_unique(
-    short_name: str, selected: UninstallCandidate, candidates: tuple[UninstallCandidate, ...]
-) -> bool:
-    return all(
-        candidate is selected or f" {short_name} " not in f" {_search_text(candidate.assistant.name)} "
-        for candidate in candidates
+    return _bounded_shortlist(
+        ranked,
+        lambda candidate: _direct_candidate_match(search, candidate),
+        allow_ambiguous_ties=True,
     )
 
 
-def select_uninstall_candidate(
-    message: object,
+def uninstall_shortlist(
+    query: str,
     candidates: tuple[UninstallCandidate, ...],
-) -> UninstallCandidate | None:
-    """Select one installed Assistant only from a directly bound destructive request."""
-    request = _uninstall_request(message)
-    if request is None:
-        return None
-    target, allows_short_name = request
-    matches = tuple(candidate for candidate in candidates if target in _identity_targets(candidate.assistant))
-    if len(matches) == 1:
-        return matches[0]
-    if matches or not allows_short_name:
-        return None
-    short_matches = tuple(
-        (candidate, short_name)
-        for candidate in candidates
-        if (short_name := _short_name_target(target, candidate.assistant)) is not None
+) -> tuple[UninstallCandidate, ...]:
+    """Rank a semantic uninstall target using installed id/name data only."""
+    search = _search_text(query)
+    tokens = _tokens(query)
+    if not search or not tokens:
+        return ()
+
+    def score(candidate: UninstallCandidate) -> int:
+        assistant = candidate.assistant
+        return _directory_identity_score(search, tokens, assistant.assistant_id, assistant.name)
+
+    def direct(candidate: UninstallCandidate) -> bool:
+        assistant = candidate.assistant
+        return _contains_phrase(search, assistant.assistant_id) or _contains_phrase(search, assistant.name)
+
+    ranked = sorted(
+        ((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates),
+        key=lambda item: (-item[0], item[1]),
     )
-    if len(short_matches) != 1:
-        return None
-    candidate, short_name = short_matches[0]
-    return candidate if _short_name_is_unique(short_name, candidate, candidates) else None
+    return _bounded_shortlist(ranked, direct, allow_ambiguous_ties=True)
 
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:

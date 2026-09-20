@@ -48,39 +48,22 @@ def _connection(**changes):
 
 
 class ChatLifecycleTests(unittest.TestCase):
-    def test_uninstall_discovery_saturation_is_explicit_while_preparation_is_optional(self) -> None:
+    def test_route_and_reconnect_preparation_saturation_are_explicit(self) -> None:
         with mock.patch.object(
             lifecycle,
             "submit_in_context",
             side_effect=lifecycle.ExecutorSaturatedError,
-        ):
+        ), mock.patch.object(lifecycle.admin_profile, "require", return_value="local"):
             with self.assertRaises(lifecycle.ExecutorSaturatedError):
-                lifecycle.submit_discovery(
+                lifecycle.submit_route(
                     "team_1",
                     {"message": "Desinstale o Cloudflare", "assistant_ids": []},
                 )
-            self.assertIsNone(
+            with self.assertRaises(lifecycle.ExecutorSaturatedError):
                 lifecycle.submit_preparation(
                     "team_1",
                     {"message": "Configure Cloudflare", "assistant_ids": []},
                 )
-            )
-
-    def test_only_explicit_uninstall_intent_enters_destructive_discovery(self) -> None:
-        selected = assistant_proposal.UninstallCandidate(_proposal().assistant, "0.4.4")
-        with mock.patch.object(assistant_uninstall, "discover", return_value=selected) as discover:
-            result = lifecycle._discover(
-                "team_1",
-                {"message": "Desinstale o Shimpz Cloudflare", "assistant_ids": []},
-            )
-            ordinary = lifecycle._discover(
-                "team_1",
-                {"message": "Configure Cloudflare", "assistant_ids": []},
-            )
-
-        self.assertEqual(result, selected)
-        self.assertIsNone(ordinary)
-        discover.assert_called_once_with("team_1", "Desinstale o Shimpz Cloudflare")
 
     def test_uninstall_events_expose_only_bounded_team_identity(self) -> None:
         proposal = _proposal()

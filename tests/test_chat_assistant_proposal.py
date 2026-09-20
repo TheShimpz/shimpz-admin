@@ -27,80 +27,15 @@ def _candidate(
 
 
 class AssistantProposalTests(unittest.TestCase):
-    def test_installation_only_request_binds_the_complete_message_to_the_plan(self) -> None:
+    def test_install_directory_shortlist_is_bounded_and_semantic(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
-        generic = _candidate("generic-assistant", name="Assistant", provider="")
-        cloudflare_audit = _candidate(
-            "cloudflare-audit",
-            name="Cloudflare Audit",
-            provider="cloudflare-audit",
-        )
-        accepted = (
-            ("instala o cloudflare", (cloudflare,)),
-            ("agora instale o cloudflare", (cloudflare,)),
-            ("e agora, por favor, instale o cloudflare", (cloudflare,)),
-            ("now install the Cloudflare Assistant", (cloudflare,)),
-            ("and now install the Cloudflare Assistant", (cloudflare,)),
-            ("Por favor, instale o Shimpz Cloudflare neste Time.", (cloudflare,)),
-            ("install Cloudflare Assistant", (cloudflare,)),
-            ("install the Cloudflare Assistant", (cloudflare,)),
-            ("instale o Cloudflare Assistant", (cloudflare,)),
-            ("instale o cloudflare e o whatsapp", (cloudflare, whatsapp)),
-            ("install Assistant", (generic,)),
-        )
-        rejected = (
-            (None, (cloudflare,)),
-            ("instale", (cloudflare,)),
-            ("instale o cloudflare e liste minhas zonas", (cloudflare,)),
-            ("agora instale o cloudflare e liste minhas zonas", (cloudflare,)),
-            ("agora agora instale o cloudflare", (cloudflare,)),
-            ("talvez agora instale o cloudflare", (cloudflare,)),
-            ("configure o cloudflare", (cloudflare,)),
-            ("instale o cloudflare", (cloudflare, whatsapp)),
-            (
-                "install the Cloudflare Assistant and Cloudflare Audit",
-                (cloudflare, cloudflare_audit),
-            ),
-            ("instale o cloudflare", ()),
-        )
-        for message, assistants in accepted:
-            with self.subTest(message=message):
-                self.assertTrue(assistant_proposal.installation_only_requested(message, assistants))
-        for message, assistants in rejected:
-            with self.subTest(message=message):
-                self.assertFalse(assistant_proposal.installation_only_requested(message, assistants))
-
-    def test_installation_selection_resolves_only_every_unique_named_target(self) -> None:
-        cloudflare = _candidate()
-        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
-
         self.assertEqual(
-            assistant_proposal.installation_selection(
-                "instale o cloudflare",
-                (whatsapp, cloudflare),
-            ),
+            assistant_proposal.install_shortlist("cloudflare", (whatsapp, cloudflare)),
             (cloudflare,),
         )
         self.assertEqual(
-            assistant_proposal.installation_selection(
-                "instale o cloudflare e o whatsapp",
-                (whatsapp, cloudflare),
-            ),
-            (cloudflare, whatsapp),
-        )
-        self.assertEqual(
-            assistant_proposal.installation_selection(
-                "instale o cloudflare e liste as zonas",
-                (whatsapp, cloudflare),
-            ),
-            (),
-        )
-        self.assertEqual(
-            assistant_proposal.installation_selection(
-                "instale o cloudflare e o shimpz cloudflare",
-                (cloudflare,),
-            ),
+            assistant_proposal.install_shortlist("unknown", (whatsapp, cloudflare)),
             (),
         )
 
@@ -261,24 +196,7 @@ class AssistantProposalTests(unittest.TestCase):
             with self.subTest(message=message):
                 self.assertEqual(assistant_proposal.classify_uninstall_confirmation(message), expected)
 
-    def test_targetless_uninstall_guidance_uses_only_literal_uninstall_imperatives(self) -> None:
-        accepted = (
-            "desinstale",
-            "agora desinstale",
-            "now uninstall",
-            "Pode desinstalar!",
-            "uninstall it",
-            "please uninstall",
-        )
-        rejected = ("sim", "ok", "remova", "desinstale o Cloudflare", "uninstall the Assistant", "")
-        for message in accepted:
-            with self.subTest(message=message):
-                self.assertTrue(assistant_proposal.targetless_uninstall_requested(message))
-        for message in rejected:
-            with self.subTest(message=message):
-                self.assertFalse(assistant_proposal.targetless_uninstall_requested(message))
-
-    def test_uninstall_requires_a_directly_bound_unique_assistant_identity(self) -> None:
+    def test_uninstall_directory_shortlist_uses_only_installed_id_and_name(self) -> None:
         cloudflare = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability(
                 "shimpz-cloudflare",
@@ -297,70 +215,12 @@ class AssistantProposalTests(unittest.TestCase):
             ),
             "1.0.0",
         )
-        accepted = (
-            "Desinstale o Shimpz Cloudflare",
-            "agora desinstale o cloudflare",
-            "e agora, por favor, desinstale o Shimpz Cloudflare",
-            "now uninstall the Cloudflare Assistant",
-            "and now uninstall the Cloudflare Assistant",
-            "desinstala o cloudflare",
-            "desinstala o assistente cloudflare",
-            "quero desinstalar o assistant do Cloudflare",
-            "remove the Shimpz Cloudflare from this team",
-            "please uninstall Cloudflare assistant",
-            "Uninstall the Cloudflare Assistant",
+        self.assertEqual(
+            assistant_proposal.uninstall_shortlist("cloudflare", (other, cloudflare)),
+            (other, cloudflare),
         )
-        for message in accepted:
-            with self.subTest(message=message):
-                self.assertEqual(
-                    assistant_proposal.select_uninstall_candidate(message, (cloudflare,)),
-                    cloudflare,
-                )
-        rejected = (
-            "remova o registro DNS da Cloudflare",
-            "agora não desinstale o Shimpz Cloudflare",
-            "agora agora desinstale o Shimpz Cloudflare",
-            "talvez agora desinstale o Shimpz Cloudflare",
-            "remove o cloudflare",
-            "não desinstale o Shimpz Cloudflare",
-            "use o Shimpz Cloudflare",
-            "desinstale o assistant",
-            "desinstale o Cloudflare",
-            "Uninstall the Cloudflare Assistant",
-        )
-        for message in rejected:
-            with self.subTest(message=message):
-                self.assertIsNone(
-                    assistant_proposal.select_uninstall_candidate(message, (cloudflare, other)),
-                )
-        self.assertIsNone(
-            assistant_proposal.select_uninstall_candidate(
-                "desinstale o assistant do Cloudflare",
-                (cloudflare, other),
-            )
-        )
-
-        cloud_storage = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability(
-                "shimpz-cloud-storage",
-                "Shimpz Cloud Storage",
-                "Manage stored objects.",
-                ("list-objects",),
-            ),
-            "1.0.0",
-        )
-        generic_name = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability(
-                "generic-assistant",
-                "Shimpz Assistant",
-                "Provides reviewed operations.",
-                ("inspect",),
-            ),
-            "1.0.0",
-        )
-        self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstala o storage", (cloud_storage,)))
-        self.assertIsNone(assistant_proposal.select_uninstall_candidate("desinstale o assistant", (generic_name,)))
-        self.assertIsNone(assistant_proposal.select_uninstall_candidate("remove o cloudflare", (cloudflare,)))
+        self.assertEqual(assistant_proposal.uninstall_shortlist("DNS records", (cloudflare, other)), ())
+        self.assertEqual(assistant_proposal.uninstall_shortlist("unknown", (cloudflare, other)), ())
 
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(

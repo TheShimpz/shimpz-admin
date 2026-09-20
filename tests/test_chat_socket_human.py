@@ -13,9 +13,9 @@ from functools import partial
 from pathlib import Path
 from unittest import mock
 
-from chat_socket_fixtures import CHALLENGE_ID, human_challenge
-from chat_socket_fixtures import Socket as _Socket
-from mfa_helper import configure_supervisor
+from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge, ordinary_route
+from tests.chat_socket_fixtures import Socket as _Socket
+from tests.mfa_helper import configure_supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -66,6 +66,13 @@ class ChatWebSocketHumanTests(unittest.TestCase):
             200,
             {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed."},
         )
+        route = mock.patch.object(
+            self.chat_socket.lifecycle,
+            "submit_route",
+            side_effect=lambda *_args: ordinary_route(self.chat_socket),
+        )
+        route.start()
+        self.addCleanup(route.stop)
 
     @staticmethod
     def _accepted(message: dict[str, object]) -> bool:

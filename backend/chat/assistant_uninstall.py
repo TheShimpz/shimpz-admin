@@ -16,19 +16,16 @@ class UninstallResult:
     uninstalled: bool | None = None
 
 
-def discover(team_id: str, message: object) -> assistant_proposal.UninstallCandidate | None:
-    """Return one explicitly named installed Assistant from strict Team-owned state."""
-    if not assistant_proposal.uninstall_requested(message):
-        return None
+def candidates(team_id: str) -> tuple[assistant_proposal.UninstallCandidate, ...]:
+    """Return the exact installed Assistant directory from strict Team-owned state."""
     installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
     registry = assistant_inventory.registry(team.list_assistants())
     if any(assistant_id not in registry for assistant_id in installed):
         raise ValueError("installed Assistant scope is not authoritative")
-    candidates = tuple(
+    return tuple(
         assistant_proposal.UninstallCandidate(registry[assistant_id], item.version)
-        for assistant_id, item in installed.items()
+        for assistant_id, item in sorted(installed.items())
     )
-    return assistant_proposal.select_uninstall_candidate(message, candidates)
 
 
 def uninstall(proposal: assistant_proposal.UninstallProposal) -> UninstallResult:

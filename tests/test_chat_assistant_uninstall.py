@@ -1,4 +1,4 @@
-"""Strict contracts for conversational Assistant uninstall discovery and execution."""
+"""Strict contracts for the installed Assistant directory and uninstall execution."""
 
 from __future__ import annotations
 
@@ -67,8 +67,8 @@ def _proposal(version: str = "0.4.4") -> assistant_proposal.UninstallProposal:
     )
 
 
-class AssistantUninstallDiscoveryTests(unittest.TestCase):
-    def test_action_removal_text_cannot_select_the_installed_assistant(self) -> None:
+class AssistantUninstallDirectoryTests(unittest.TestCase):
+    def test_returns_only_installed_team_identities(self) -> None:
         with (
             mock.patch.object(
                 assistant_uninstall.team,
@@ -81,29 +81,10 @@ class AssistantUninstallDiscoveryTests(unittest.TestCase):
                 return_value=_registry("shimpz-cloudflare"),
             ),
         ):
-            self.assertIsNone(
-                assistant_uninstall.discover("team_1", "Remova um registro DNS da Cloudflare"),
-            )
+            candidates = assistant_uninstall.candidates("team_1")
 
-    def test_selects_only_one_installed_team_identity(self) -> None:
-        with (
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_installed_assistants",
-                return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-            ),
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_assistants",
-                return_value=_registry("shimpz-cloudflare"),
-            ),
-        ):
-            candidate = assistant_uninstall.discover(
-                "team_1",
-                "desinstala o cloudflare",
-            )
-
-        self.assertIsNotNone(candidate)
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
         self.assertEqual(candidate.assistant.assistant_id, "shimpz-cloudflare")
         self.assertEqual(candidate.version, "0.4.4")
 
@@ -117,7 +98,7 @@ class AssistantUninstallDiscoveryTests(unittest.TestCase):
             mock.patch.object(assistant_uninstall.team, "list_assistants", return_value=_registry()),
             self.assertRaises(ValueError),
         ):
-            assistant_uninstall.discover("team_1", "Desinstale o Shimpz Cloudflare")
+            assistant_uninstall.candidates("team_1")
 
 
 class AssistantUninstallExecutionTests(unittest.TestCase):

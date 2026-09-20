@@ -24,7 +24,7 @@ class Plan:
     team_id: str
     assistants: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]
     dispatch_ids: tuple[str, ...]
-    terminal_assistants: tuple[assistant_proposal.AssistantIdentity, ...] = ()
+    terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +62,7 @@ def _planner_candidate(
     }
 
 
-def _team_inventory(
+def team_inventory(
     team_id: str,
 ) -> tuple[
     dict[str, assistant_inventory.InstalledAssistant],
@@ -89,40 +89,6 @@ def _enabled_capabilities(
     ):
         return None
     return tuple(registry[assistant_id] for assistant_id in enabled_ids)
-
-
-def _already_installed(
-    team_id: str,
-    message: object,
-    installed: dict[str, assistant_inventory.InstalledAssistant],
-    registry: dict[str, assistant_proposal.Capability],
-) -> AlreadyInstalled | None:
-    selected = assistant_proposal.installation_selection(message, registry.values())
-    if (
-        not selected
-        or len(selected) > MAX_PLAN_ASSISTANTS
-        or any(
-            assistant.assistant_id not in installed
-            or installed[assistant.assistant_id].status != "running"
-            for assistant in selected
-        )
-    ):
-        return None
-    return AlreadyInstalled(
-        plan_id=secrets.token_hex(16),
-        team_id=team_id,
-        assistants=tuple(
-            {
-                "id": assistant.assistant_id,
-                "name": assistant.name,
-                "summary": assistant.summary,
-                "providers": [],
-                "provenance": installed[assistant.assistant_id].provenance,
-                "status": "installed",
-            }
-            for assistant in selected
-        ),
-    )
 
 
 def _selected_ids(response: team.TeamResponse, team_id: str, expected_ids: frozenset[str]) -> tuple[str, ...]:
@@ -167,12 +133,14 @@ def _prepared_plan(
     enabled_ids: tuple[str, ...],
     shortlist: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
     selected: tuple[str, ...],
-    terminal_assistants: tuple[assistant_proposal.AssistantIdentity, ...] = (),
+    *,
+    terminal: bool = False,
+    dispatch_selected: tuple[str, ...] | None = None,
 ) -> Preparation:
     if not selected:
         return Preparation()
     expected = {assistant.assistant_id: assistant for assistant in shortlist}
-    dispatch_ids = tuple(sorted(set(enabled_ids) | set(selected)))
+    dispatch_ids = tuple(sorted(set(enabled_ids) | set(dispatch_selected or selected)))
     if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
         return Preparation(error_status=409)
     return Preparation(
@@ -181,56 +149,20 @@ def _prepared_plan(
             team_id=team_id,
             assistants=tuple(expected[assistant_id] for assistant_id in selected),
             dispatch_ids=dispatch_ids,
-            terminal_assistants=terminal_assistants,
+            terminal=terminal,
         )
     )
 
 
-def _terminal_assistants(
-    message: object,
-    installed: dict[str, assistant_inventory.InstalledAssistant],
-    registry: dict[str, assistant_proposal.Capability],
-    catalog: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
-    selected: tuple[str, ...],
-) -> tuple[assistant_proposal.AssistantIdentity, ...]:
-    identities: dict[str, assistant_proposal.AssistantIdentity] = {
-        assistant.assistant_id: assistant for assistant in catalog
-    }
-    running_ids = {
-        assistant_id for assistant_id, binding in installed.items() if binding.status == "running"
-    }
-    identities.update(
-        {
-            assistant_id: registry[assistant_id]
-            for assistant_id in running_ids
-            if assistant_id in registry
-        }
-    )
-    requested = assistant_proposal.installation_selection(message, identities.values())
-    missing_requested = {
-        assistant.assistant_id for assistant in requested if assistant.assistant_id not in running_ids
-    }
-    return requested if requested and missing_requested == set(selected) else ()
-
-
-def _planning_catalog(
+def planning_catalog(
     catalog: store_catalog.StoreCatalog,
     include_local: bool,
-) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...] | None:
+) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]:
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-catalog") as executor:
         public_future = submit_in_context(executor, catalog.get)
         local_future = submit_in_context(executor, team.list_local_assistants) if include_local else None
-        try:
-            public = public_future.result()
-        except store_catalog.CatalogUnavailableError:
-            public = ()
-        if local_future is None:
-            local_assistants = ()
-        else:
-            try:
-                local_assistants = local_catalog.primary(local_future.result())
-            except TypeError, ValueError, team.TeamRequestError:
-                return None
+        public = public_future.result()
+        local_assistants = () if local_future is None else local_catalog.primary(local_future.result())
     local_ids = {assistant.assistant_id for assistant in local_assistants}
     combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
     return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
@@ -239,8 +171,7 @@ def _planning_catalog(
 def _prepare_gap(
     team_id: str,
     payload: dict[str, object],
-    catalog: store_catalog.StoreCatalog,
-    include_local: bool,
+    available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
     installed: dict[str, assistant_inventory.InstalledAssistant],
     registry: dict[str, assistant_proposal.Capability],
 ) -> Preparation:
@@ -248,14 +179,11 @@ def _prepare_gap(
     enabled = _enabled_capabilities(enabled_ids, installed, registry)
     if enabled is None:
         return Preparation()
-    planning_catalog = _planning_catalog(catalog, include_local)
-    if planning_catalog is None:
-        return Preparation()
     shortlist = assistant_proposal.capability_shortlist(
         payload["message"],
-        planning_catalog,
+        available,
         installed_ids=frozenset(installed),
-        enabled=_enabled_capabilities_with_providers(enabled, planning_catalog),
+        enabled=_enabled_capabilities_with_providers(enabled, available),
     )
     if not shortlist:
         return Preparation()
@@ -275,28 +203,67 @@ def _prepare_gap(
         )
     except TypeError, ValueError:
         return Preparation(error_status=502)
-    terminal_assistants = _terminal_assistants(
-        payload["message"],
-        installed,
-        registry,
-        planning_catalog,
-        selected,
-    )
-    return _prepared_plan(team_id, enabled_ids, shortlist, selected, terminal_assistants)
+    return _prepared_plan(team_id, enabled_ids, shortlist, selected)
 
 
-def prepare(
+def prepare_capability(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
     include_local: bool = False,
 ) -> Preparation:
-    """Resolve exact current state, then apply the deterministic missing-gap gate."""
-    installed, registry = _team_inventory(team_id)
-    already_installed = _already_installed(team_id, payload["message"], installed, registry)
-    if already_installed is not None:
-        return Preparation(already_installed=already_installed)
-    return _prepare_gap(team_id, payload, catalog, include_local, installed, registry)
+    """Resolve exact current state, then apply the deterministic missing-capability gate."""
+    installed, registry = team_inventory(team_id)
+    available = planning_catalog(catalog, include_local)
+    return _prepare_gap(team_id, payload, available, installed, registry)
+
+
+def prepare_install(
+    team_id: str,
+    payload: dict[str, object],
+    selected_ids: tuple[str, ...],
+    installed: dict[str, assistant_inventory.InstalledAssistant],
+    available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+) -> Preparation:
+    """Bind a structured install selection to exact current state and a terminal plan."""
+    if not selected_ids or len(selected_ids) > MAX_PLAN_ASSISTANTS:
+        return Preparation(error_status=422)
+    identities = {assistant.assistant_id: assistant for assistant in available}
+    if any(assistant_id not in identities for assistant_id in selected_ids):
+        return Preparation(error_status=409)
+    missing = tuple(
+        assistant_id
+        for assistant_id in selected_ids
+        if assistant_id not in installed or installed[assistant_id].status != "running"
+    )
+    if not missing:
+        return Preparation(
+            already_installed=AlreadyInstalled(
+                plan_id=secrets.token_hex(16),
+                team_id=team_id,
+                assistants=tuple(
+                    {
+                        "id": assistant_id,
+                        "name": identities[assistant_id].name,
+                        "summary": identities[assistant_id].summary,
+                        "providers": sorted(
+                            {integration.provider for integration in identities[assistant_id].integrations}
+                        ),
+                        "provenance": installed[assistant_id].provenance,
+                        "status": "installed",
+                    }
+                    for assistant_id in selected_ids
+                ),
+            )
+        )
+    return _prepared_plan(
+        team_id,
+        tuple(payload["assistant_ids"]),
+        available,
+        missing,
+        terminal=True,
+        dispatch_selected=selected_ids,
+    )
 
 
 def _items(plan: Plan, states: dict[str, str]) -> tuple[dict[str, object], ...]:

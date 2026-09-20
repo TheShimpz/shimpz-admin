@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
+from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
@@ -18,14 +19,12 @@ from chat import assistant_proposal, lifecycle
 from protocol.http.v1 import payload as team_contract
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
-StartDirect = Callable[[WebSocket, Connection, str, dict[str, object], str | None], Awaitable[None]]
 ErrorTerminal = Callable[[object, str], dict[str, object]]
 
 
 @dataclass(frozen=True, slots=True)
 class Operations:
     send_event: SendEvent
-    start_direct: StartDirect
     plan: plan_delivery.Operations
     error_terminal: ErrorTerminal
 
@@ -59,7 +58,6 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         or payload["assistant_ids"] != objective["assistant_ids"]
         or not assistant_proposal.capability_continuation(payload["message"])
         or assistant_proposal.capability_continuation(objective["message"])
-        or assistant_proposal.uninstall_requested(objective["message"])
     ):
         raise team.TeamRequestError("invalid task resume request")
     return payload, objective
@@ -105,15 +103,10 @@ async def dispatch(
         await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
         return
     connection.admitted_history_id = history_id
-    preparation = lifecycle.submit_preparation(team_id, objective)
-    if preparation is None:
-        await operations.start_direct(
-            websocket,
-            connection,
-            team_id,
-            payload,
-            team_contract.canonical_language_exemplar(payload["message"]),
-        )
+    try:
+        preparation = lifecycle.submit_preparation(team_id, objective)
+    except ExecutorSaturatedError:
+        await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = Turn(
         future=preparation,

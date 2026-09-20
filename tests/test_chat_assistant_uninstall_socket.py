@@ -9,13 +9,13 @@ import json
 import os
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
-import chat_socket_fixtures
-from mfa_helper import configure_supervisor
+from tests.mfa_helper import configure_supervisor
+
+from tests import chat_socket_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -40,6 +40,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
         ):
             cls.admin_app = importlib.import_module("app")
         cls.chat_socket = importlib.import_module("chat.socket")
+        cls.assistant_route = importlib.import_module("chat.assistant_route")
+        cls.uninstall_delivery = importlib.import_module("chat.delivery.uninstall")
         previous_store = cls.admin_app.state.STORE_PATH
         previous_history_store = cls.admin_app.chat_history.STORE_PATH
         previous_origins = cls.chat_socket.STATIC_ORIGINS
@@ -68,6 +70,15 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
         )
 
     @staticmethod
+    def _future(value=None, error: Exception | None = None):
+        future: concurrent.futures.Future[object] = concurrent.futures.Future()
+        if error is None:
+            future.set_result(value)
+        else:
+            future.set_exception(error)
+        return future
+
+    @staticmethod
     def _accepted(message: dict) -> bool:
         return message == {
             "type": "websocket.accept",
@@ -77,19 +88,15 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
 
     def test_explicit_uninstall_uses_one_socket_scoped_proposal_and_team_result(self) -> None:
         async def scenario() -> None:
-            release_discovery = threading.Event()
-
-            def discover(*_args):
-                release_discovery.wait(timeout=2)
-                return self._uninstall_candidate()
+            route: concurrent.futures.Future[object] = concurrent.futures.Future()
 
             result = self.chat_socket.lifecycle.assistant_uninstall.UninstallResult(200, True)
             with (
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
                 mock.patch.object(
-                    self.chat_socket.lifecycle.assistant_uninstall,
-                    "discover",
-                    side_effect=discover,
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    return_value=route,
                 ),
                 mock.patch.object(
                     self.chat_socket.lifecycle.assistant_uninstall,
@@ -109,7 +116,12 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 )
                 await asyncio.sleep(0.3)
                 turn.assert_not_called()
-                release_discovery.set()
+                route.set_result(
+                    self.assistant_route.Result(
+                        "assistant-uninstall",
+                        uninstall=self._uninstall_candidate(),
+                    )
+                )
                 proposed = await websocket.next_json()
                 self.assertEqual(proposed["type"], "assistant-uninstall")
                 self.assertEqual(proposed["state"], "proposed")
@@ -178,9 +190,22 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
                 mock.patch.object(
-                    self.chat_socket.lifecycle.assistant_uninstall,
-                    "discover",
-                    return_value=self._uninstall_candidate(),
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    side_effect=(
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                                uninstall=self._uninstall_candidate(),
+                            )
+                        ),
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                                uninstall=self._uninstall_candidate(),
+                            )
+                        ),
+                    ),
                 ),
                 mock.patch.object(self.chat_socket.lifecycle.assistant_uninstall, "uninstall") as uninstall,
             ):
@@ -214,15 +239,22 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_discovery_failure_and_no_match_never_fall_through_to_brain(self) -> None:
+    def test_route_failure_and_no_match_never_fall_through_to_brain(self) -> None:
         async def scenario(result, expected) -> None:
             with (
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
                 mock.patch.object(
-                    self.chat_socket.lifecycle.assistant_uninstall,
-                    "discover",
-                    side_effect=result if isinstance(result, Exception) else None,
-                    return_value=None if isinstance(result, Exception) else result,
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    return_value=(
+                        self._future(error=result)
+                        if isinstance(result, Exception)
+                        else self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                            )
+                        )
+                    ),
                 ),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
@@ -243,14 +275,19 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
         asyncio.run(scenario(None, ("assistant-uninstall", "target-required", None)))
         asyncio.run(scenario(ValueError("invalid inventory"), ("error", None, 503)))
 
-    def test_discovery_saturation_is_explicit_and_never_calls_brain(self) -> None:
+    def test_route_saturation_is_explicit_and_never_calls_brain(self) -> None:
         async def scenario(failure: Exception, status: int) -> None:
+            route = (
+                {"side_effect": failure}
+                if isinstance(failure, self.chat_socket.ExecutorSaturatedError)
+                else {"return_value": self._future(error=failure)}
+            )
             with (
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_discovery",
-                    side_effect=failure,
+                    "submit_route",
+                    **route,
                 ),
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
@@ -266,40 +303,20 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 event = await websocket.next_json()
                 self.assertEqual((event["type"], event["status"]), ("error", status))
                 turn.assert_not_called()
-                await websocket.send_json({"type": "stop"})
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "desinstale",
-                        "files": [],
-                        "assistant_ids": [],
-                    }
-                )
-                guidance = await websocket.next_json()
-                self.assertEqual(
-                    (guidance["type"], guidance["state"]),
-                    ("assistant-uninstall", "target-required"),
-                )
                 await websocket.disconnect()
 
         asyncio.run(scenario(self.chat_socket.ExecutorSaturatedError(), 429))
         asyncio.run(scenario(ValueError("invalid inventory authority"), 503))
 
-    def test_stop_during_discovery_never_dispatches_a_team_chat_stop(self) -> None:
+    def test_stop_during_route_never_dispatches_a_team_chat_stop(self) -> None:
         async def scenario() -> None:
-            started = threading.Event()
-            release = threading.Event()
-
-            def discover(*_args):
-                started.set()
-                release.wait(timeout=2)
-                return self._uninstall_candidate()
+            route: concurrent.futures.Future[object] = concurrent.futures.Future()
 
             with (
                 mock.patch.object(
-                    self.chat_socket.lifecycle.assistant_uninstall,
-                    "discover",
-                    side_effect=discover,
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    return_value=route,
                 ),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
@@ -314,30 +331,22 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                     }
                 )
-                await asyncio.to_thread(started.wait, 1)
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual(await websocket.next_json(), {"type": "stopped"})
                 stop.assert_not_called()
                 turn.assert_not_called()
-                release.set()
                 await websocket.disconnect()
 
         asyncio.run(scenario())
 
-    def test_discovery_excludes_concurrent_chat_and_sync(self) -> None:
+    def test_route_excludes_concurrent_chat_and_sync(self) -> None:
         async def scenario() -> None:
-            started = threading.Event()
-            release = threading.Event()
-
-            def discover(*_args):
-                started.set()
-                release.wait(timeout=2)
-                return self._uninstall_candidate()
+            route: concurrent.futures.Future[object] = concurrent.futures.Future()
 
             with mock.patch.object(
-                self.chat_socket.lifecycle.assistant_uninstall,
-                "discover",
-                side_effect=discover,
+                self.chat_socket.lifecycle,
+                "submit_route",
+                return_value=route,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -349,7 +358,6 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                     }
                 )
-                self.assertTrue(await asyncio.to_thread(started.wait, 1))
                 await websocket.send_json(
                     {
                         "type": "chat",
@@ -361,27 +369,26 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual((await websocket.next_json())["status"], 409)
                 await websocket.send_json({"type": "sync"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                release.set()
+                route.set_result(
+                    self.assistant_route.Result(
+                        "assistant-uninstall",
+                        uninstall=self._uninstall_candidate(),
+                    )
+                )
                 self.assertEqual((await websocket.next_json())["state"], "proposed")
                 await websocket.disconnect()
 
         asyncio.run(scenario())
 
-    def test_disconnect_during_discovery_never_dispatches_a_team_chat_stop(self) -> None:
+    def test_disconnect_during_route_never_dispatches_a_team_chat_stop(self) -> None:
         async def scenario() -> None:
-            started = threading.Event()
-            release = threading.Event()
-
-            def discover(*_args):
-                started.set()
-                release.wait(timeout=2)
-                return self._uninstall_candidate()
+            route: concurrent.futures.Future[object] = concurrent.futures.Future()
 
             with (
                 mock.patch.object(
-                    self.chat_socket.lifecycle.assistant_uninstall,
-                    "discover",
-                    side_effect=discover,
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    return_value=route,
                 ),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
@@ -396,50 +403,15 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                     }
                 )
-                self.assertTrue(await asyncio.to_thread(started.wait, 1))
-                try:
-                    await websocket.disconnect()
-                finally:
-                    release.set()
+                await websocket.disconnect()
                 stop.assert_not_called()
                 turn.assert_not_called()
 
         asyncio.run(scenario())
 
-    def test_uninstall_delivery_edges_fail_closed_and_detach_the_turn(self) -> None:
+    def test_uninstall_delivery_edges_fail_closed(self) -> None:
         async def scenario() -> None:
-            delivery = self.chat_socket.uninstall_delivery
-            self.assertFalse(delivery._inactive(delivery.Connection(), delivery.Turn(None, "test")))
-            self.assertTrue(delivery._inactive(delivery.Connection(closed=True), delivery.Turn(None, "test")))
-            self.assertTrue(delivery._inactive(delivery.Connection(), delivery.Turn(None, "test", stop_requested=True)))
-            self.assertTrue(delivery._inactive(delivery.Connection(), delivery.Turn(None, "test", terminal_sent=True)))
-
-            missing = await delivery._candidate_event(
-                delivery.Connection(),
-                delivery.Turn(None, "assistant-uninstall-discovery"),
-                "team_1",
-            )
-            self.assertEqual(missing["status"], 503)
-
-            invalid_future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            invalid_future.set_result(object())
-            invalid = await delivery._candidate_event(
-                delivery.Connection(),
-                delivery.Turn(invalid_future, "assistant-uninstall-discovery"),
-                "team_1",
-            )
-            self.assertEqual(invalid["status"], 503)
-
-            inactive_future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            inactive_future.set_result(self._uninstall_candidate())
-            self.assertIsNone(
-                await delivery._candidate_event(
-                    delivery.Connection(closed=True),
-                    delivery.Turn(inactive_future, "assistant-uninstall-discovery"),
-                    "team_1",
-                )
-            )
-
+            delivery = self.uninstall_delivery
             with mock.patch.object(
                 delivery.history_delivery,
                 "guidance",
@@ -447,53 +419,34 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
             ):
                 unavailable = await delivery._target_required_event(
                     "team_1",
-                    delivery.Turn(None, "assistant-uninstall-discovery"),
+                    delivery.Turn(None, "assistant-route"),
                 )
             self.assertEqual(unavailable["status"], 503)
 
             with mock.patch.object(delivery.lifecycle, "create_proposal", side_effect=ValueError):
                 malformed = delivery._matched_event(
                     delivery.Connection(),
-                    delivery.Turn(None, "assistant-uninstall-discovery"),
+                    delivery.Turn(None, "assistant-route"),
                     "team_1",
                     self._uninstall_candidate(),
                 )
             self.assertEqual(malformed["status"], 503)
 
-            cancelled_future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            cancelled_future.cancel()
-            cancelled_turn = delivery.Turn(cancelled_future, "assistant-uninstall-discovery")
-            active = delivery.Connection(active=cancelled_turn)
-            with self.assertRaises(asyncio.CancelledError):
-                await delivery.deliver(mock.AsyncMock(), active, cancelled_turn, "team_1")
-            self.assertIsNone(active.active)
-
-            no_event_turn = delivery.Turn(None, "assistant-uninstall-discovery")
-            no_event = delivery.Connection(active=no_event_turn)
-            with mock.patch.object(delivery, "_candidate_event", new=mock.AsyncMock(return_value=None)):
-                await delivery.deliver(mock.AsyncMock(), no_event, no_event_turn, "team_1")
-            self.assertIsNone(no_event.active)
-
-            stopped_turn = delivery.Turn(None, "assistant-uninstall-discovery", stop_requested=True)
-            stopped = delivery.Connection(active=stopped_turn)
-            with mock.patch.object(
-                delivery,
-                "_candidate_event",
-                new=mock.AsyncMock(return_value={"type": "error", "status": 503}),
-            ):
-                await delivery.deliver(mock.AsyncMock(), stopped, stopped_turn, "team_1")
-            self.assertIsNone(stopped.active)
-
-            detached_turn = delivery.Turn(None, "assistant-uninstall-discovery")
-            detached = delivery.Connection()
+            detached_turn = delivery.Turn(None, "assistant-route")
+            detached = delivery.Connection(active=detached_turn)
             with mock.patch.object(
                 delivery.terminal_delivery,
                 "turn",
                 new=mock.AsyncMock(return_value=True),
             ) as terminal:
-                await delivery.deliver(mock.AsyncMock(), detached, detached_turn, "team_1")
+                await delivery.deliver_candidate(
+                    mock.AsyncMock(),
+                    detached,
+                    detached_turn,
+                    "team_1",
+                    self._uninstall_candidate(),
+                )
             terminal.assert_awaited_once()
-            self.assertIsNone(detached.active)
 
         asyncio.run(scenario())
 

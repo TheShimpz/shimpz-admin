@@ -171,12 +171,16 @@ class AssistantPlanEdges(unittest.TestCase):
         for response, status in zip(responses, expected, strict=True):
             with (
                 self.subTest(response=response),
-                mock.patch.object(assistant_plan, "_team_inventory", return_value=({}, {})),
-                mock.patch.object(assistant_plan, "_enabled_capabilities", return_value=()),
+                mock.patch.object(assistant_plan, "team_inventory", return_value=({}, {})),
+                mock.patch.object(assistant_plan, "planning_catalog", return_value=(candidate,)),
                 mock.patch.object(assistant_proposal, "capability_shortlist", return_value=(candidate,)),
                 mock.patch.object(assistant_plan.local, "capability_plan", return_value=response),
             ):
-                result = assistant_plan.prepare("team_1", {"message": "send", "assistant_ids": []}, catalog)
+                result = assistant_plan.prepare_capability(
+                    "team_1",
+                    {"message": "send", "assistant_ids": []},
+                    catalog,
+                )
             self.assertEqual(result, assistant_plan.Preparation(error_status=status))
 
     def test_install_and_runtime_recheck_exceptions_become_bad_gateway(self) -> None:
@@ -225,15 +229,22 @@ class AssistantProposalEdges(unittest.TestCase):
             ),
             (),
         )
-        assistant_proposal._identity_targets(assistant_proposal.Capability("", "", "", ()))
+        self.assertEqual(
+            assistant_proposal.uninstall_shortlist(
+                "",
+                (
+                    assistant_proposal.UninstallCandidate(
+                        assistant_proposal.Capability("whatsapp", "WhatsApp", "", ()),
+                        "1.0.0",
+                    ),
+                ),
+            ),
+            (),
+        )
 
 
 class AssistantUninstallEdges(unittest.TestCase):
-    def test_discovery_skips_unrelated_messages_and_body_validation_is_closed(self) -> None:
-        with mock.patch.object(assistant_uninstall.team, "list_installed_assistants") as inventory:
-            self.assertIsNone(assistant_uninstall.discover("team_1", "Olá"))
-        inventory.assert_not_called()
-
+    def test_body_validation_is_closed(self) -> None:
         responses = (
             team.TeamResponse(200, []),
             team.TeamResponse(200, {"assistant": "whatsapp", "uninstalled": True, "trace_id": "bad"}),

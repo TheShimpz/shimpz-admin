@@ -29,11 +29,14 @@ class ChatInstallStateTests(ChatWebSocketCase):
                     },
                 ),
             )
-            preparation = self._future(self.assistant_plan.Preparation(already_installed=result))
+            preparation = self._route_future(
+                self.assistant_plan.Preparation(already_installed=result),
+                "assistant-install",
+            )
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
+                    "submit_route",
                     return_value=preparation,
                 ),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan") as submit_plan,
@@ -68,7 +71,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 complete.team_id,
                 (complete.assistants[1],),
                 ("shimpz-cloudflare", "whatsapp"),
-                complete.assistants,
+                True,
             )
             installed = tuple(
                 {**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan)
@@ -76,8 +79,11 @@ class ChatInstallStateTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
-                    return_value=self._future(self.assistant_plan.Preparation(plan)),
+                    "submit_route",
+                    return_value=self._route_future(
+                        self.assistant_plan.Preparation(plan),
+                        "assistant-install",
+                    ),
                 ),
                 mock.patch.object(
                     self.chat_socket.lifecycle,

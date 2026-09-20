@@ -595,14 +595,14 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             plan = self._automatic_plan()
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
-            preparation = self._future(self.assistant_plan.Preparation(plan))
+            preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job = self._future(self.assistant_plan.Result("installed", installed))
             response = self.chat_socket.local.PublicResponse(
                 200,
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Task complete."},
             )
             with (
-                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation", return_value=preparation),
+                mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job) as submit_plan,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
@@ -659,6 +659,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 plan.team_id,
                 (assistant,),
                 ("already-enabled", "shimpz-cloudflare"),
+                True,
             )
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             response = self.chat_socket.local.PublicResponse(
@@ -668,10 +669,10 @@ class ChatWebSocketTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
+                    "submit_route",
                     side_effect=(
-                        self._future(self.assistant_plan.Preparation(plan)),
-                        self._future(self.assistant_plan.Preparation()),
+                        self._route_future(self.assistant_plan.Preparation(plan), "assistant-install"),
+                        self._route_future(self.assistant_plan.Preparation()),
                     ),
                 ),
                 mock.patch.object(
@@ -718,8 +719,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
-                    return_value=self._future(self.assistant_plan.Preparation()),
+                    "submit_route",
+                    return_value=self._route_future(self.assistant_plan.Preparation()),
                 ),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan") as submit_plan,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
@@ -751,8 +752,18 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 {"team_id": "team_1", "team_name": "Marketing", "reply": "Tudo certo."},
             )
             with (
-                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation") as prepare,
-                mock.patch.object(self.chat_socket.lifecycle, "submit_discovery") as discover,
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    side_effect=(
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                            )
+                        ),
+                        self._route_future(self.assistant_plan.Preparation()),
+                    ),
+                ) as route,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
@@ -763,8 +774,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     await websocket.next_json(),
                     {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
                 )
-                prepare.assert_not_called()
-                discover.assert_not_called()
+                self.assertEqual(route.call_count, 1)
                 turn.assert_not_called()
 
                 await websocket.send_json({"type": "stop"})
@@ -783,10 +793,10 @@ class ChatWebSocketTests(ChatWebSocketCase):
             items = list(self.assistant_plan.initial_items(plan))
             items[0] = {**items[0], "status": "installed"}
             items[1] = {**items[1], "status": "failed"}
-            preparation = self._future(self.assistant_plan.Preparation(plan))
+            preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job = self._future(self.assistant_plan.Result("failed", tuple(items), 503))
             with (
-                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation", return_value=preparation),
+                mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
@@ -822,7 +832,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
     def test_stop_during_a_plan_prevents_the_next_item_and_task_dispatch(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()
-            preparation = self._future(self.assistant_plan.Preparation(plan))
+            preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job: concurrent.futures.Future = concurrent.futures.Future()
             worker_finished = threading.Event()
 
@@ -838,7 +848,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 return job
 
             with (
-                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation", return_value=preparation),
+                mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", side_effect=submit),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
@@ -873,8 +883,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
-                    return_value=self._future(self.assistant_plan.Preparation(plan)),
+                    "submit_route",
+                    return_value=self._route_future(self.assistant_plan.Preparation(plan)),
                 ),
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -908,7 +918,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
     def test_disconnect_discards_unstarted_plan_items_and_never_replays_the_task(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()
-            preparation = self._future(self.assistant_plan.Preparation(plan))
+            preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job: concurrent.futures.Future = concurrent.futures.Future()
             stopped_seen = threading.Event()
 
@@ -927,7 +937,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 return job
 
             with (
-                mock.patch.object(self.chat_socket.lifecycle, "submit_preparation", return_value=preparation),
+                mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", side_effect=submit),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
@@ -960,8 +970,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
-                    "submit_preparation",
-                    return_value=self._future(self.assistant_plan.Preparation(plan)),
+                    "submit_route",
+                    return_value=self._route_future(self.assistant_plan.Preparation(plan)),
                 ),
                 mock.patch.object(
                     self.chat_socket.lifecycle,

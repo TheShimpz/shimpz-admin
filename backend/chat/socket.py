@@ -16,9 +16,9 @@ from collections.abc import Awaitable, Callable, Mapping
 
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
+from chat.delivery import route as route_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
-from chat.delivery import uninstall as uninstall_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
@@ -26,7 +26,6 @@ from history import store as history
 from team import bridge as team
 
 from chat import (
-    assistant_proposal,
     connection,
     human,
     lanes,
@@ -422,12 +421,6 @@ def _request_stop(
     if turn.stop_requested:
         return turn.stop_task
     turn.stop_requested = True
-    if turn.operation == "assistant-uninstall-discovery":
-        if turn.future is not None:
-            turn.future.cancel()
-        if emit and not connection.closed:
-            turn.stop_task = asyncio.create_task(_finish_cancelled_turn(websocket, connection, turn))
-        return turn.stop_task
     if turn.lifecycle_stop is not None:
         turn.lifecycle_stop.set()
         if turn.operation == "assistant-plan":
@@ -652,36 +645,6 @@ async def _start_direct_turn(
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
 
-async def _start_uninstall_discovery(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    payload: dict[str, object],
-    language_exemplar: str | None,
-) -> None:
-    history_id = _take_history_id(connection)
-    try:
-        future = lifecycle.submit_discovery(team_id, payload)
-    except ExecutorSaturatedError:
-        connection.ignore_idle_stop_once = True
-        await _send_event(websocket, _error_terminal(429, "Assistant inventory capacity reached"))
-        return
-    except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
-        connection.ignore_idle_stop_once = True
-        await _send_event(websocket, _error_terminal(503, "Assistant inventory is unavailable"))
-        return
-    turn = _Turn(
-        future=future,
-        operation="assistant-uninstall-discovery",
-        language_exemplar=language_exemplar,
-        history_id=history_id,
-    )
-    connection.active = turn
-    turn.delivery = asyncio.create_task(
-        uninstall_delivery.deliver(websocket, connection, turn, team_id)
-    )
-
-
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -694,53 +657,35 @@ async def _dispatch_chat(
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
-    if payload["files"] == [] and assistant_proposal.targetless_uninstall_requested(payload["message"]):
+    try:
+        preparation = lifecycle.submit_route(team_id, payload)
+    except ExecutorSaturatedError:
         connection.ignore_idle_stop_once = True
-        history_id = _take_history_id(connection)
-        try:
-            await history_delivery.guidance(team_id, history_id, "uninstall-target-required")
-        except (history.HistoryUnavailableError, ValueError):
-            log.exception("Admin chat guidance history commit failed")
-            event = _error_terminal(503, "Admin chat history is unavailable")
-        else:
-            event = lifecycle.target_required_event(team_id)
-        await _send_event(
-            websocket,
-            event,
-        )
-        return
-    if payload["files"] == [] and assistant_proposal.uninstall_requested(payload["message"]):
-        await _start_uninstall_discovery(
-            websocket,
-            connection,
-            team_id,
-            payload,
-            language_exemplar,
-        )
-        return
-    preparation = lifecycle.submit_preparation(team_id, payload)
-    if preparation is None:
-        await _start_direct_turn(websocket, connection, team_id, payload, language_exemplar)
+        await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = _Turn(
         future=preparation,
-        operation="capability-plan",
+        operation="assistant-route",
         language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(
-        plan_delivery.deliver_preparation(
+        route_delivery.deliver(
             websocket,
             connection,
             turn,
             team_id,
             payload,
-            plan_delivery.Operations(
-                send_event=_send_event,
+            route_delivery.Operations(
+                plan=plan_delivery.Operations(
+                    send_event=_send_event,
+                    finish_turn=_finish_active_turn,
+                    continue_turn=_continue_team_turn,
+                    error_terminal=_error_terminal,
+                ),
                 finish_turn=_finish_active_turn,
-                continue_turn=_continue_team_turn,
                 error_terminal=_error_terminal,
             ),
         )
@@ -812,7 +757,6 @@ async def _dispatch(
             frame,
             task_resume.Operations(
                 send_event=_send_event,
-                start_direct=_start_direct_turn,
                 plan=plan_delivery.Operations(
                     send_event=_send_event,
                     finish_turn=_finish_active_turn,

@@ -35,6 +35,7 @@ class ChatWebSocketCase(unittest.TestCase):
             cls.admin_app = importlib.import_module("app")
         cls.chat_socket = importlib.import_module("chat.socket")
         cls.assistant_plan = importlib.import_module("chat.assistant_plan")
+        cls.assistant_route = importlib.import_module("chat.assistant_route")
         cls.team = importlib.import_module("team.bridge")
         previous_store = cls.admin_app.state.STORE_PATH
         previous_history_store = cls.admin_app.chat_history.STORE_PATH
@@ -51,6 +52,15 @@ class ChatWebSocketCase(unittest.TestCase):
         self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
         secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
         self.token = self.admin_app.auth.issue_session(secret, "totp")
+        route = mock.patch.object(
+            self.chat_socket.lifecycle,
+            "submit_route",
+            side_effect=lambda _team_id, _payload: self._route_future(
+                self.assistant_plan.Preparation()
+            ),
+        )
+        route.start()
+        self.addCleanup(route.stop)
 
     def _install_candidate(self):
         return self.chat_socket.lifecycle.store_catalog.CatalogAssistant(
@@ -90,6 +100,9 @@ class ChatWebSocketCase(unittest.TestCase):
         future = concurrent.futures.Future()
         future.set_result(value)
         return future
+
+    def _route_future(self, preparation, intent="ordinary-task"):
+        return self._future(self.assistant_route.Result(intent, preparation=preparation))
 
     @staticmethod
     def _accepted(message: dict) -> bool:

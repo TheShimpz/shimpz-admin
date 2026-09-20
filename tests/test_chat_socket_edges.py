@@ -20,13 +20,12 @@ from chat.delivery import sync as sync_delivery
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
-from chat import human, local, socket, task_resume
+from chat import assistant_route, human, local, socket, task_resume
 
 
-def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Operations:
+def _resume_operations() -> task_resume.Operations:
     return task_resume.Operations(
         send_event=socket._send_event,
-        start_direct=start_direct,
         plan=plan_delivery.Operations(
             send_event=socket._send_event,
             finish_turn=socket._finish_active_turn,
@@ -35,6 +34,12 @@ def _resume_operations(start_direct=socket._start_direct_turn) -> task_resume.Op
         ),
         error_terminal=socket._error_terminal,
     )
+
+
+def _future(value: object) -> concurrent.futures.Future[object]:
+    future: concurrent.futures.Future[object] = concurrent.futures.Future()
+    future.set_result(value)
+    return future
 
 
 class ChatSocketEdgeTests(unittest.TestCase):
@@ -62,7 +67,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
             with (
                 mock.patch.object(socket.lifecycle, "resolve", side_effect=retire_proposal),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
-                mock.patch.object(socket.lifecycle, "submit_preparation") as prepare,
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    return_value=_future(
+                        assistant_route.Result("assistant-uninstall")
+                    ),
+                ) as route,
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -71,11 +82,14 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     {"type": "chat", "message": "uninstall", "files": [], "assistant_ids": []},
                 )
 
-            send.assert_awaited_once_with(
-                websocket,
+                delivery = connection.active.delivery
+                await delivery
+
+            websocket.send_json.assert_awaited_once_with(
                 {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
             )
-            prepare.assert_not_called()
+            send.assert_not_awaited()
+            route.assert_called_once()
 
         asyncio.run(scenario())
 
@@ -90,8 +104,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
             with (
                 mock.patch.object(socket.lifecycle, "resolve", side_effect=retire_proposal),
-                mock.patch.object(socket.lifecycle, "submit_preparation") as prepare,
-                mock.patch.object(socket, "_start_uninstall_discovery", new=mock.AsyncMock()) as start,
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    return_value=_future(assistant_route.Result("unresolved", error_status=422)),
+                ) as route,
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -105,8 +122,10 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     },
                 )
 
-            start.assert_awaited_once()
-            prepare.assert_not_called()
+                delivery = connection.active.delivery
+                await delivery
+
+            route.assert_called_once()
 
         asyncio.run(scenario())
 
@@ -117,6 +136,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    return_value=_future(
+                        assistant_route.Result("assistant-uninstall")
+                    ),
+                ),
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -124,6 +150,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     "team_1",
                     {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
                 )
+                delivery = connection.active.delivery
+                await delivery
             self.assertTrue(connection.ignore_idle_stop_once)
 
             with mock.patch.object(socket, "_dispatch_chat", new=mock.AsyncMock()):
@@ -216,7 +244,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_direct_start_saturation_and_missing_preparation_are_bounded(self) -> None:
+    def test_direct_start_and_route_saturation_are_bounded(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
@@ -226,14 +254,17 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
 
             frame = {"type": "chat", "message": "hello", "files": [], "assistant_ids": []}
-            start = mock.AsyncMock()
+            websocket.reset_mock()
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
-                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=None),
-                mock.patch.object(socket, "_start_direct_turn", new=start),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    side_effect=socket.ExecutorSaturatedError,
+                ),
             ):
                 await socket._dispatch_chat(websocket, socket._Connection(), "team_1", frame)
-            start.assert_awaited_once()
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
 
         asyncio.run(scenario())
 
@@ -270,7 +301,6 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 {**valid, "assistant_ids": ["whatsapp"]},
                 {**valid, "message": "como faço para habilitar o modo escuro"},
                 {**valid, "objective": "pode habilitar"},
-                {**valid, "objective": "desinstale o assistant do Cloudflare"},
             )
             for frame in invalid:
                 websocket.reset_mock()
@@ -320,7 +350,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_resume_task_plans_the_prior_objective_and_falls_back_to_the_current_message(self) -> None:
+    def test_resume_task_plans_the_prior_objective_without_semantic_fallback(self) -> None:
         frame = {
             "type": "resume-task",
             "message": "Você mesmo consegue habilitar?",
@@ -332,28 +362,23 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            start = mock.AsyncMock()
             with (
-                mock.patch.object(socket.lifecycle, "submit_preparation", return_value=None) as prepare,
-                mock.patch.object(socket, "_start_direct_turn", new=start),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_preparation",
+                    side_effect=socket.ExecutorSaturatedError,
+                ) as prepare,
             ):
                 await task_resume.dispatch(
                     websocket,
                     socket._Connection(),
                     "team_1",
                     frame,
-                    _resume_operations(start),
+                    _resume_operations(),
                 )
             objective = {"message": frame["objective"], "files": [], "assistant_ids": []}
-            current = {"message": frame["message"], "files": [], "assistant_ids": []}
             prepare.assert_called_once_with("team_1", objective)
-            start.assert_awaited_once_with(
-                websocket,
-                mock.ANY,
-                "team_1",
-                current,
-                "Você mesmo consegue habilitar?",
-            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
 
             preparation: concurrent.futures.Future[object] = concurrent.futures.Future()
             deliver = mock.AsyncMock()
@@ -377,7 +402,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 "team_1",
                 objective,
                 mock.ANY,
-                fallback_payload=current,
+                fallback_payload={"message": frame["message"], "files": [], "assistant_ids": []},
             )
 
         asyncio.run(scenario())

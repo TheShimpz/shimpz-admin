@@ -16,19 +16,13 @@ from typing import Protocol
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket
 from history import store as history
-from team import bridge as team
 
-from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
+from chat import assistant_plan, assistant_proposal, assistant_route, assistant_uninstall, store_catalog
 
 _PLAN_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
     max_outstanding=2,
     thread_name_prefix="shimpz-chat-plan",
-)
-_UNINSTALL_DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
-    max_workers=2,
-    max_outstanding=2,
-    thread_name_prefix="shimpz-chat-uninstall-discovery",
 )
 _LIFECYCLE_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -115,24 +109,17 @@ def _event(
     }
 
 
-def _discover(
-    team_id: str,
-    payload: dict[str, object],
-) -> assistant_proposal.UninstallCandidate | None:
-    message = payload["message"]
-    return assistant_uninstall.discover(team_id, message) if assistant_proposal.uninstall_requested(message) else None
-
-
-def submit_discovery(
+def submit_route(
     team_id: str,
     payload: dict[str, object],
 ) -> concurrent.futures.Future:
-    """Start required Team-owned uninstall discovery on its independent bounded lane."""
+    """Admit one complete structured preparation job for a fresh chat objective."""
     return submit_in_context(
-        _UNINSTALL_DISCOVERY_EXECUTOR,
-        _discover,
+        _PLAN_EXECUTOR,
+        assistant_route.prepare,
         team_id,
         payload,
+        _STORE_CATALOG,
     )
 
 
@@ -308,19 +295,16 @@ async def _commit_uninstall(
 def submit_preparation(
     team_id: str,
     payload: dict[str, object],
-) -> concurrent.futures.Future | None:
-    """Start the deterministic gap gate and stateless planner on its bounded lane."""
-    try:
-        return submit_in_context(
-            _PLAN_EXECUTOR,
-            assistant_plan.prepare,
-            team_id,
-            payload,
-            _STORE_CATALOG,
-            admin_profile.require() == "local",
-        )
-    except ExecutorSaturatedError, OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
-        return None
+) -> concurrent.futures.Future:
+    """Admit reconnect-only capability preparation without semantic fallback."""
+    return submit_in_context(
+        _PLAN_EXECUTOR,
+        assistant_plan.prepare_capability,
+        team_id,
+        payload,
+        _STORE_CATALOG,
+        admin_profile.require() == "local",
+    )
 
 
 def submit_plan(

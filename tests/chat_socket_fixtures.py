@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import hashlib
 import importlib
 import json
@@ -10,6 +11,18 @@ import threading
 
 TURN_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
+
+
+def ordinary_route(chat_socket) -> concurrent.futures.Future[object]:
+    """Return the closed structured route used by tests that exercise later socket stages."""
+    future: concurrent.futures.Future[object] = concurrent.futures.Future()
+    future.set_result(
+        chat_socket.lifecycle.assistant_route.Result(
+            "ordinary-task",
+            preparation=chat_socket.lifecycle.assistant_plan.Preparation(),
+        )
+    )
+    return future
 
 
 class Socket:
