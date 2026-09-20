@@ -13,6 +13,11 @@ from team import bridge as team
 from chat import assistant_inventory, assistant_plan, assistant_proposal, assistant_uninstall, local, store_catalog
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
+Guidance = Literal[
+    "assistant-install-target-required",
+    "assistant-uninstall-target-required",
+    "assistant-lifecycle-ambiguous",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +25,7 @@ class Result:
     intent: Intent
     preparation: assistant_plan.Preparation | None = None
     uninstall: assistant_proposal.UninstallCandidate | None = None
+    guidance: Guidance | None = None
     error_status: int | None = None
 
 
@@ -91,11 +97,11 @@ def _prepare_install(
     include_local: bool,
 ) -> Result:
     if not query:
-        return Result("unresolved", error_status=422)
+        return Result("assistant-install", guidance="assistant-install-target-required")
     installed, available = _catalog_state(team_id, catalog, include_local)
     shortlist = assistant_proposal.install_shortlist(query, available)
     if not shortlist:
-        return Result("unresolved", error_status=422)
+        return Result("assistant-install", guidance="assistant-install-target-required")
     intent, _query, selected = _route(
         team_id,
         payload["message"],
@@ -103,17 +109,17 @@ def _prepare_install(
         [_directory_candidate(assistant) for assistant in shortlist],
     )
     if intent == "unresolved":
-        return Result("unresolved", error_status=422)
+        return Result("assistant-install", guidance="assistant-install-target-required")
     preparation = assistant_plan.prepare_install(team_id, payload, selected, installed, available)
     return Result("assistant-install", preparation=preparation)
 
 
 def _prepare_uninstall(team_id: str, payload: dict[str, object], query: str) -> Result:
     if not query:
-        return Result("assistant-uninstall")
+        return Result("assistant-uninstall", guidance="assistant-uninstall-target-required")
     shortlist = assistant_proposal.uninstall_shortlist(query, assistant_uninstall.candidates(team_id))
     if not shortlist:
-        return Result("assistant-uninstall")
+        return Result("assistant-uninstall", guidance="assistant-uninstall-target-required")
     intent, _query, selected = _route(
         team_id,
         payload["message"],
@@ -121,7 +127,7 @@ def _prepare_uninstall(team_id: str, payload: dict[str, object], query: str) -> 
         [_uninstall_candidate(candidate) for candidate in shortlist],
     )
     if intent == "unresolved":
-        return Result("assistant-uninstall")
+        return Result("assistant-uninstall", guidance="assistant-uninstall-target-required")
     matches = tuple(candidate for candidate in shortlist if candidate.assistant.assistant_id in selected)
     if len(matches) != 1:
         raise RouteError(502)
@@ -146,8 +152,10 @@ def _prepare(
             admin_profile.require() == "local" if include_local is None else include_local,
         )
         return Result(intent, preparation=preparation)
-    if intent == "unresolved" or payload["files"]:
+    if payload["files"]:
         return Result("unresolved", error_status=422)
+    if intent == "unresolved":
+        return Result("unresolved", guidance="assistant-lifecycle-ambiguous")
     local_enabled = admin_profile.require() == "local" if include_local is None else include_local
     if intent == "assistant-install":
         return _prepare_install(team_id, payload, query, catalog, local_enabled)

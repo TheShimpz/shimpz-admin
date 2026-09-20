@@ -51,11 +51,6 @@ class Connection(Protocol):
     admitted_history_id: str | None
 
 
-def target_required_event(team_id: str) -> dict[str, object]:
-    """Return the exact non-destructive guidance event for a targetless uninstall request."""
-    return {"type": "assistant-uninstall", "state": "target-required", "team_id": team_id}
-
-
 def reuses_history(connection: Connection, payload: dict[str, object]) -> bool:
     return (
         connection.lifecycle_proposal is not None

@@ -306,6 +306,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "Which Assistant do you want to install?",
+        "lifecycleAmbiguous": "Do you want to install or uninstall an Assistant?",
         "pending": "Waiting to install",
         "resuming": "Resuming this task",
         "working": "Installing",
@@ -314,7 +316,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.",
+        "targetRequired": "Which installed Assistant do you want to uninstall?",
         "label": "Assistant uninstall",
         "pending": "Confirmation required",
         "working": "Uninstalling",
@@ -701,6 +703,8 @@ export const messages = {
       "requestFailed": "O Time não conseguiu concluir este turno.",
       "install": {
         "label": "Instalação de Assistant",
+        "targetRequired": "Qual Assistant você quer instalar?",
+        "lifecycleAmbiguous": "Você quer instalar ou desinstalar um Assistant?",
         "pending": "Aguardando instalação",
         "resuming": "Retomando esta tarefa",
         "working": "Instalando",
@@ -709,7 +713,7 @@ export const messages = {
         "failed": "Falha na instalação"
       },
       "uninstall": {
-        "targetRequired": "Diga o nome de um Assistant instalado para desinstalá-lo. Se você já informou um, confira o nome exato e tente novamente.",
+        "targetRequired": "Qual Assistant instalado você quer desinstalar?",
         "label": "Desinstalação de Assistant",
         "pending": "Confirmação necessária",
         "working": "Desinstalando",
@@ -1096,6 +1100,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "¿Qué Assistant quieres instalar?",
+        "lifecycleAmbiguous": "¿Quieres instalar o desinstalar un Assistant?",
         "pending": "En espera de instalación",
         "resuming": "Reanudando esta tarea",
         "working": "Installing",
@@ -1104,7 +1110,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Indica el nombre de un Assistant instalado para desinstalarlo. Si ya indicaste uno, comprueba su nombre exacto e inténtalo de nuevo.",
+        "targetRequired": "¿Qué Assistant instalado quieres desinstalar?",
         "label": "Desinstalación de Assistant",
         "pending": "Confirmación necesaria",
         "working": "Desinstalando",
@@ -1491,6 +1497,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "你要安装哪个 Assistant？",
+        "lifecycleAmbiguous": "你要安装还是卸载 Assistant？",
         "pending": "等待安装",
         "resuming": "正在继续此任务",
         "working": "Installing",
@@ -1499,7 +1507,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "请提供要卸载的已安装 Assistant 名称。如果你已经提供了名称，请核对其准确名称后重试。",
+        "targetRequired": "你要卸载哪个已安装的 Assistant？",
         "label": "卸载 Assistant",
         "pending": "需要确认",
         "working": "正在卸载",
@@ -1886,6 +1894,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "Quel Assistant voulez-vous installer ?",
+        "lifecycleAmbiguous": "Voulez-vous installer ou désinstaller un Assistant ?",
         "pending": "En attente d’installation",
         "resuming": "Reprise de cette tâche",
         "working": "Installing",
@@ -1894,7 +1904,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Indiquez le nom d’un Assistant installé à désinstaller. Si vous en avez déjà indiqué un, vérifiez son nom exact et réessayez.",
+        "targetRequired": "Quel Assistant installé voulez-vous désinstaller ?",
         "label": "Désinstallation d’Assistant",
         "pending": "Confirmation requise",
         "working": "Désinstallation",
@@ -2281,6 +2291,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "Welchen Assistant möchtest du installieren?",
+        "lifecycleAmbiguous": "Möchtest du einen Assistant installieren oder deinstallieren?",
         "pending": "Wartet auf Installation",
         "resuming": "Diese Aufgabe wird fortgesetzt",
         "working": "Installing",
@@ -2289,7 +2301,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Nenne den genauen Namen eines installierten Assistant, den du deinstallieren möchtest. Falls du bereits einen genannt hast, prüfe den Namen und versuche es erneut.",
+        "targetRequired": "Welchen installierten Assistant möchtest du deinstallieren?",
         "label": "Assistant deinstallieren",
         "pending": "Bestätigung erforderlich",
         "working": "Wird deinstalliert",
@@ -2676,6 +2688,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "どの Assistant をインストールしますか？",
+        "lifecycleAmbiguous": "Assistant をインストールしますか、それともアンインストールしますか？",
         "pending": "インストール待ち",
         "resuming": "このタスクを再開中",
         "working": "Installing",
@@ -2684,7 +2698,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "アンインストールするインストール済み Assistant の名前を指定してください。すでに指定した場合は、正確な名前を確認してもう一度お試しください。",
+        "targetRequired": "どのインストール済み Assistant をアンインストールしますか？",
         "label": "Assistant のアンインストール",
         "pending": "確認が必要です",
         "working": "アンインストール中",
@@ -3071,6 +3085,8 @@ export const messages = {
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
+        "targetRequired": "ما Assistant الذي تريد تثبيته؟",
+        "lifecycleAmbiguous": "هل تريد تثبيت Assistant أم إلغاء تثبيته؟",
         "pending": "في انتظار التثبيت",
         "resuming": "استئناف هذه المهمة",
         "working": "Installing",
@@ -3079,7 +3095,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "حدّد الاسم الدقيق لـ Assistant مثبّت تريد إلغاء تثبيته. إذا كنت قد حددته بالفعل، فتحقق من اسمه وحاول مرة أخرى.",
+        "targetRequired": "ما Assistant المثبّت الذي تريد إلغاء تثبيته؟",
         "label": "إلغاء تثبيت Assistant",
         "pending": "التأكيد مطلوب",
         "working": "جارٍ إلغاء التثبيت",

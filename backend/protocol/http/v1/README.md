@@ -61,9 +61,12 @@ The browser visibly attributes the resumed objective, clears it on Team change, 
 page disposal, or consumption, and never writes it to browser storage. The retained Hosted Store backend does not
 accept `resume-task`.
 
-Local Admin may also emit the exact `assistant-uninstall` lifecycle. A terminal `target-required` event carries
-only the authenticated socket Team id and instructs the browser to ask for an Assistant name; it never creates a
-proposal or exposes the preceding structured route and bounded installed-directory selection. Its `proposed` event
+Local Admin may emit an exact terminal `assistant-guidance` event with only the authenticated socket Team id and
+one of the closed `assistant-install-target-required`, `assistant-uninstall-target-required`, or
+`assistant-lifecycle-ambiguous` codes. The browser renders the corresponding localized question; guidance never
+creates lifecycle authority or exposes the preceding structured route or bounded directory selection.
+
+Local Admin may also emit the exact `assistant-uninstall` lifecycle. Its `proposed` event
 carries only Team-derived bounded display identity and the installed semantic version; later `uninstalling`, `uninstalled`, `cancelled`,
 `expired`, or `failed` events correlate that proposal. The browser never sends the proposal id, Assistant id,
 version, or a deletion target. Admin requires closed destructive intent, uses a removal-specific confirmation

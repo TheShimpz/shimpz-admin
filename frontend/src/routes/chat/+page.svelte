@@ -238,6 +238,12 @@
     return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
   }
 
+  function guidanceText(code) {
+    if (code === 'assistant-install-target-required') return copy.install.targetRequired;
+    if (code === 'assistant-uninstall-target-required') return copy.uninstall.targetRequired;
+    return copy.install.lifecycleAmbiguous;
+  }
+
   function historyTurn(entry, author) {
     if (entry.kind === 'message') {
       return {
@@ -251,7 +257,7 @@
       return {
         historyId: entry.id,
         role: 'assistant',
-        text: copy.uninstall.targetRequired,
+        text: guidanceText(entry.code),
         author,
       };
     }
@@ -907,24 +913,26 @@
           }
           return;
         }
+        if (incoming.type === 'assistant-guidance') {
+          if (!busy || syncing) throw new Error('unexpected Assistant guidance event');
+          capabilityObjective = null;
+          turns = [...turns, {
+            role: 'assistant',
+            text: guidanceText(incoming.code),
+            author: incoming.team_name,
+            receipt: progressEvents.map((item) => ({ ...item })),
+          }];
+          busy = false;
+          stopping = false;
+          resetProgress();
+          clearError();
+          void revealLatestExchange();
+          return;
+        }
         if (incoming.type === 'assistant-uninstall') {
           if (!busy || syncing) throw new Error('unexpected Assistant lifecycle event');
           capabilityObjective = null;
           const receipt = progressEvents.map((item) => ({ ...item }));
-          if (incoming.state === 'target-required') {
-            turns = [...turns, {
-              role: 'assistant',
-              text: copy.uninstall.targetRequired,
-              author: incoming.team_name,
-              receipt,
-            }];
-            busy = false;
-            stopping = false;
-            resetProgress();
-            clearError();
-            void revealLatestExchange();
-            return;
-          }
           if (stopping) throw new Error('unexpected Assistant lifecycle event');
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;

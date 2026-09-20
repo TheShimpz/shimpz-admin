@@ -161,10 +161,15 @@ function uninstallEntry(value, suffix, status) {
 }
 
 function guidanceEntry(value, suffix, status) {
+  const codes = new Set([
+    'assistant-install-target-required',
+    'assistant-uninstall-target-required',
+    'assistant-lifecycle-ambiguous',
+  ]);
   if (
     suffix !== 'guidance' ||
     !exactKeys(value, ['code', 'id', 'kind']) ||
-    value.code !== 'uninstall-target-required'
+    !codes.has(value.code)
   ) throw invalidHistory(status);
   return { id: value.id, kind: 'guidance', code: value.code };
 }

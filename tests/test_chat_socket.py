@@ -757,6 +757,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         self._future(
                             self.assistant_route.Result(
                                 "assistant-uninstall",
+                                guidance="assistant-uninstall-target-required",
                             )
                         ),
                         self._route_future(self.assistant_plan.Preparation()),
@@ -770,7 +771,11 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
                 self.assertEqual(
                     await websocket.next_json(),
-                    {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
+                    {
+                        "type": "assistant-guidance",
+                        "team_id": "team_1",
+                        "code": "assistant-uninstall-target-required",
+                    },
                 )
                 self.assertEqual(route.call_count, 1)
                 turn.assert_not_called()

@@ -27,6 +27,13 @@ MAX_REPLY_CHARS = 60_000
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_GUIDANCE_CODES = frozenset(
+    {
+        "assistant-install-target-required",
+        "assistant-uninstall-target-required",
+        "assistant-lifecycle-ambiguous",
+    }
+)
 _LOCK = threading.RLock()
 
 
@@ -291,7 +298,7 @@ def append_install(team_id: object, turn_id: object, event: object) -> bool:
 def append_guidance(team_id: object, turn_id: object, code: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
-    if code != "uninstall-target-required":
+    if code not in _GUIDANCE_CODES:
         raise ValueError("chat history guidance is invalid")
     return _append(
         canonical_team,
@@ -425,7 +432,7 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
 
 
 def _validate_stored_guidance(payload: dict[str, object]) -> None:
-    if set(payload) != {"kind", "code"} or payload.get("code") != "uninstall-target-required":
+    if set(payload) != {"kind", "code"} or payload.get("code") not in _GUIDANCE_CODES:
         raise ValueError("invalid stored guidance")
 
 

@@ -45,6 +45,11 @@ test('loads one exact bounded Team chat history page', async () => {
         text: 'Cloudflare is ready.',
         author: 'Marketing',
       },
+      {
+        id: `${TURN_B}:guidance`,
+        kind: 'guidance',
+        code: 'assistant-install-target-required',
+      },
     ],
     before: CURSOR,
   };

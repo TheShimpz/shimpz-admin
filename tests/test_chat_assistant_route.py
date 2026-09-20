@@ -113,6 +113,31 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertIsNone(result.preparation.plan)
         self.assertEqual(result.preparation.already_installed.assistants[0]["status"], "installed")
 
+    def test_install_without_a_resolved_target_returns_guidance(self) -> None:
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                return_value=response("assistant-install"),
+            ),
+            mock.patch.object(assistant_route, "_catalog_state") as catalog_state,
+        ):
+            result = assistant_route.prepare(
+                "team_1",
+                payload("instale um Assistant"),
+                mock.sentinel.catalog,
+                False,
+            )
+
+        self.assertEqual(
+            result,
+            assistant_route.Result(
+                "assistant-install",
+                guidance="assistant-install-target-required",
+            ),
+        )
+        catalog_state.assert_not_called()
+
     def test_uninstall_opens_only_the_installed_name_directory(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability(
@@ -149,7 +174,10 @@ class AssistantRouteTests(unittest.TestCase):
             return_value=response("unresolved"),
         ):
             result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
-        self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
+        self.assertEqual(
+            result,
+            assistant_route.Result("unresolved", guidance="assistant-lifecycle-ambiguous"),
+        )
 
         with (
             mock.patch.object(

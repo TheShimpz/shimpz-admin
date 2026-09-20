@@ -313,14 +313,14 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 await delivery.resumed_terminal("a" * 32, {"type": "error"})
                 finish.assert_called_once_with("a" * 32)
 
-            await delivery.guidance("team_1", None, "uninstall-target-required")
+            await delivery.guidance("team_1", None, "assistant-uninstall-target-required")
             with (
                 mock.patch.object(socket.history, "append_guidance", return_value=False),
                 self.assertRaises(socket.history.HistoryUnavailableError),
             ):
-                await delivery.guidance("team_1", "a" * 32, "uninstall-target-required")
+                await delivery.guidance("team_1", "a" * 32, "assistant-uninstall-target-required")
             with mock.patch.object(socket.history, "append_guidance", return_value=True):
-                await delivery.guidance("team_1", "a" * 32, "uninstall-target-required")
+                await delivery.guidance("team_1", "a" * 32, "assistant-uninstall-target-required")
 
         asyncio.run(scenario())
 

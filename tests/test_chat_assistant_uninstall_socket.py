@@ -252,6 +252,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         else self._future(
                             self.assistant_route.Result(
                                 "assistant-uninstall",
+                                guidance="assistant-uninstall-target-required",
                             )
                         )
                     ),
@@ -272,7 +273,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 turn.assert_not_called()
                 await websocket.disconnect()
 
-        asyncio.run(scenario(None, ("assistant-uninstall", "target-required", None)))
+        asyncio.run(scenario(None, ("assistant-guidance", None, None)))
         asyncio.run(scenario(ValueError("invalid inventory"), ("error", None, 503)))
 
     def test_route_saturation_is_explicit_and_never_calls_brain(self) -> None:
@@ -412,17 +413,6 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
     def test_uninstall_delivery_edges_fail_closed(self) -> None:
         async def scenario() -> None:
             delivery = self.uninstall_delivery
-            with mock.patch.object(
-                delivery.history_delivery,
-                "guidance",
-                new=mock.AsyncMock(side_effect=delivery.history.HistoryUnavailableError),
-            ):
-                unavailable = await delivery._target_required_event(
-                    "team_1",
-                    delivery.Turn(None, "assistant-route"),
-                )
-            self.assertEqual(unavailable["status"], 503)
-
             with mock.patch.object(delivery.lifecycle, "create_proposal", side_effect=ValueError):
                 malformed = delivery._matched_event(
                     delivery.Connection(),

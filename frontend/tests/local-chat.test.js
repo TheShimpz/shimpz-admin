@@ -601,24 +601,22 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
   ]) assert.deepEqual(parseChatEvent(event, 'team_1', 'Marketing'), event);
 });
 
-test('chat admits only the exact target-required uninstall guidance', () => {
-  assert.deepEqual(
-    parseChatEvent(
-      { type: 'assistant-uninstall', state: 'target-required', team_id: 'team_1' },
-      'team_1',
-      'Marketing',
-    ),
-    {
-      type: 'assistant-uninstall',
-      state: 'target-required',
-      team_id: 'team_1',
-      team_name: 'Marketing',
-    },
+test('chat admits only exact closed Assistant guidance', () => {
+  for (const code of [
+    'assistant-install-target-required',
+    'assistant-uninstall-target-required',
+    'assistant-lifecycle-ambiguous',
+  ]) assert.deepEqual(
+    parseChatEvent({ type: 'assistant-guidance', team_id: 'team_1', code }, 'team_1', 'Marketing'),
+    { type: 'assistant-guidance', team_id: 'team_1', team_name: 'Marketing', code },
   );
   for (const invalid of [
-    { type: 'assistant-uninstall', state: 'target-required', team_id: 'other_team' },
-    { type: 'assistant-uninstall', state: 'target-required', team_id: 'team_1', reply: 'unsafe' },
-    { type: 'assistant-uninstall', state: 'target-required' },
+    { type: 'assistant-guidance', team_id: 'other_team', code: 'assistant-install-target-required' },
+    {
+      type: 'assistant-guidance', team_id: 'team_1', code: 'assistant-install-target-required', reply: 'unsafe',
+    },
+    { type: 'assistant-guidance', team_id: 'team_1', code: 'unknown' },
+    { type: 'assistant-guidance', code: 'assistant-install-target-required' },
   ]) {
     assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
   }

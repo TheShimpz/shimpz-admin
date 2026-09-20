@@ -483,9 +483,9 @@ async function routeReadyChat(page, {
         if (targetlessUninstallGuidance && !targetlessGuidanceSent) {
           targetlessGuidanceSent = true;
           const sendTargetlessGuidance = () => socket.send(JSON.stringify({
-            type: 'assistant-uninstall',
-            state: 'target-required',
+            type: 'assistant-guidance',
             team_id: 'marketing',
+            code: 'assistant-uninstall-target-required',
           }));
           if (holdTargetlessUninstallGuidance) targetlessGuidancePending = true;
           else sendTargetlessGuidance();
@@ -688,9 +688,9 @@ async function routeReadyChat(page, {
         if (targetlessGuidancePending) {
           targetlessGuidancePending = false;
           socket.send(JSON.stringify({
-            type: 'assistant-uninstall',
-            state: 'target-required',
+            type: 'assistant-guidance',
             team_id: 'marketing',
+            code: 'assistant-uninstall-target-required',
           }));
           return;
         }
@@ -1227,7 +1227,7 @@ test('asks for an Assistant name when uninstall has no pending target', async ({
   await composer.press('Enter');
 
   await expect(page.getByText(
-    'Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.',
+    'Which installed Assistant do you want to uninstall?',
     { exact: true },
   )).toBeVisible();
   await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
@@ -1253,7 +1253,7 @@ test('keeps target-required guidance valid when Stop races its response', async 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
 
   await expect(page.getByText(
-    'Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.',
+    'Which installed Assistant do you want to uninstall?',
     { exact: true },
   )).toBeVisible();
   await expect(composer).toBeEnabled();

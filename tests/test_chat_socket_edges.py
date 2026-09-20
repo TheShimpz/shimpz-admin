@@ -70,7 +70,12 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(assistant_route.Result("assistant-uninstall")),
+                    return_value=_future(
+                        assistant_route.Result(
+                            "assistant-uninstall",
+                            guidance="assistant-uninstall-target-required",
+                        )
+                    ),
                 ) as route,
             ):
                 await socket._dispatch_chat(
@@ -84,7 +89,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 await delivery
 
             websocket.send_json.assert_awaited_once_with(
-                {"type": "assistant-uninstall", "state": "target-required", "team_id": "team_1"},
+                {
+                    "type": "assistant-guidance",
+                    "team_id": "team_1",
+                    "code": "assistant-uninstall-target-required",
+                },
             )
             send.assert_not_awaited()
             route.assert_called_once()
@@ -137,7 +146,12 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(assistant_route.Result("assistant-uninstall")),
+                    return_value=_future(
+                        assistant_route.Result(
+                            "assistant-uninstall",
+                            guidance="assistant-uninstall-target-required",
+                        )
+                    ),
                 ),
             ):
                 await socket._dispatch_chat(

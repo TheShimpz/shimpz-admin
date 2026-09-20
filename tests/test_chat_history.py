@@ -213,7 +213,13 @@ class ChatHistoryTests(unittest.TestCase):
         }
         guidance = history.new_turn_id()
         removed = history.new_turn_id()
-        self.assertTrue(history.append_guidance("marketing", guidance, "uninstall-target-required"))
+        self.assertTrue(
+            history.append_guidance(
+                "marketing",
+                guidance,
+                "assistant-uninstall-target-required",
+            )
+        )
         self.assertTrue(
             history.append_uninstall(
                 "marketing",
@@ -230,7 +236,7 @@ class ChatHistoryTests(unittest.TestCase):
             )
         )
         page = history.page("marketing")
-        self.assertEqual(page["entries"][0]["code"], "uninstall-target-required")
+        self.assertEqual(page["entries"][0]["code"], "assistant-uninstall-target-required")
         uninstall = page["entries"][1]
         self.assertEqual(uninstall["kind"], "assistant-uninstall")
         self.assertEqual(uninstall["assistant"], assistant)
