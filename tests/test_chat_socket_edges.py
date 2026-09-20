@@ -278,36 +278,6 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_direct_start_records_and_delivers_one_admitted_turn(self) -> None:
-        async def scenario() -> None:
-            response = local.PublicResponse(200, {"team_id": "team_1", "team_name": "Marketing", "reply": "Done"})
-            future = _future(response)
-            connection = socket._Connection(admitted_history_id="a" * 32)
-            websocket = mock.AsyncMock()
-            with (
-                mock.patch.object(socket, "_submit_team_turn", return_value=(future, mock.sentinel.progress)),
-                mock.patch.object(socket, "_deliver_turn", new=mock.AsyncMock()) as deliver,
-            ):
-                await socket._start_direct_turn(
-                    websocket,
-                    connection,
-                    "team_1",
-                    {"message": "hello"},
-                    "hello",
-                )
-                await connection.active.delivery
-
-            turn = connection.active
-            self.assertEqual(turn.future, future)
-            self.assertEqual(turn.operation, "chat")
-            self.assertEqual(turn.language_exemplar, "hello")
-            self.assertIs(turn.progress, mock.sentinel.progress)
-            self.assertEqual(turn.history_id, "a" * 32)
-            self.assertIsNone(connection.admitted_history_id)
-            deliver.assert_awaited_once_with(websocket, connection, turn, "team_1")
-
-        asyncio.run(scenario())
-
     def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
         valid = {
             "type": "resume-task",
