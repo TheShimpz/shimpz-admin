@@ -215,6 +215,20 @@ class AppRouteEdgeTests(unittest.TestCase):
             self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 200)
         cleared.assert_called_once_with("marketing")
 
+    def test_hosted_team_creation_does_not_touch_local_history(self) -> None:
+        created = self.admin_app.team.TeamResponse(
+            201,
+            {"team_id": "marketing", "team_name": "Marketing", "status": "running", "created": True},
+        )
+        with (
+            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
+            mock.patch.object(self.admin_app.team, "create", return_value=created),
+            mock.patch.object(self.admin_app.chat_history_http, "team_created") as history_created,
+        ):
+            response = self.admin_app.teams_create({"team_name": "Marketing"})
+        self.assertEqual(response.status_code, 201)
+        history_created.assert_not_called()
+
     def test_local_team_deletion_validates_confirmation_and_authority_failures(self) -> None:
         request = _json_request({}, cookie="token")
         cases = (({"team_name": "Marketing"}, 400), ({"team_name": 1, "password": "secret"}, 400))

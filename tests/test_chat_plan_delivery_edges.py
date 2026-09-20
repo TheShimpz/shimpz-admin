@@ -34,6 +34,42 @@ def _operations(**changes) -> plan_delivery.Operations:
 
 
 class PlanDeliveryEdges(unittest.TestCase):
+    def test_uncommitted_already_installed_result_fails_closed(self) -> None:
+        async def scenario() -> None:
+            result = assistant_plan.AlreadyInstalled(
+                "c" * 32,
+                "team_1",
+                (
+                    {
+                        "id": "cloudflare",
+                        "name": "Cloudflare",
+                        "summary": "Provides reviewed Cloudflare automation.",
+                        "providers": [],
+                        "provenance": "published",
+                        "status": "installed",
+                    },
+                ),
+            )
+            operations = _operations()
+            with mock.patch.object(plan_delivery.history, "append_install", return_value=False):
+                await plan_delivery._deliver_already_installed(
+                    mock.sentinel.websocket,
+                    Connection(),
+                    Turn(None, "capability-plan", history_id="b" * 32),
+                    "team_1",
+                    result,
+                    operations,
+                )
+            operations.error_terminal.assert_called_once_with(503, "Admin chat history is unavailable")
+            operations.finish_turn.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                mock.ANY,
+                mock.ANY,
+                {"type": "error"},
+            )
+
+        asyncio.run(scenario())
+
     def test_installed_plan_is_committed_before_dispatch_continues(self) -> None:
         async def scenario() -> None:
             plan = assistant_plan.Plan("a" * 32, "team_1", (), ())

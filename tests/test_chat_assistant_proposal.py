@@ -96,6 +96,13 @@ class AssistantProposalTests(unittest.TestCase):
             ),
             (),
         )
+        self.assertEqual(
+            assistant_proposal.installation_selection(
+                "instale o cloudflare e o shimpz cloudflare",
+                (cloudflare,),
+            ),
+            (),
+        )
 
     def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
         accepted = (

@@ -221,6 +221,65 @@ class ChatLifecycleTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_uninstall_history_failures_never_project_success(self) -> None:
+        async def scenario() -> None:
+            proposal = _proposal()
+            connection = _connection()
+            lifecycle.retain_history(connection, "a" * 32, {"type": "done"})
+            self.assertIsNone(connection.admitted_history_id)
+
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_result(assistant_uninstall.UninstallResult(200, True))
+            operation = lifecycle.Operation(proposal, future, history_id="a" * 32)
+            connection.lifecycle = operation
+            operation.delivery = asyncio.current_task()
+            send = mock.AsyncMock(return_value=True)
+            with mock.patch.object(lifecycle, "_commit_uninstall", new=mock.AsyncMock(return_value=False)):
+                await lifecycle._deliver(mock.sentinel.websocket, connection, operation, send)
+            self.assertEqual(send.await_args.args[1], lifecycle._history_error())
+
+            connection = _connection()
+            send = mock.AsyncMock(return_value=True)
+            with (
+                mock.patch.object(
+                    lifecycle,
+                    "submit_in_context",
+                    side_effect=lifecycle.ExecutorSaturatedError,
+                ),
+                mock.patch.object(lifecycle, "_commit_uninstall", new=mock.AsyncMock(return_value=False)),
+            ):
+                await lifecycle._dispatch(
+                    mock.sentinel.websocket,
+                    connection,
+                    proposal,
+                    send,
+                    "a" * 32,
+                )
+            self.assertEqual(send.await_args.args[1], lifecycle._history_error())
+
+            for message, now in (("yes", 10_000.0), ("não", 10.0)):
+                connection = _connection(
+                    lifecycle_proposal=proposal,
+                    admitted_history_id="a" * 32,
+                )
+                send = mock.AsyncMock(return_value=True)
+                with (
+                    mock.patch.object(lifecycle, "monotonic", return_value=now),
+                    mock.patch.object(lifecycle, "_commit_uninstall", new=mock.AsyncMock(return_value=False)),
+                ):
+                    self.assertTrue(
+                        await lifecycle.resolve(
+                            mock.sentinel.websocket,
+                            connection,
+                            "team_1",
+                            {"message": message, "files": []},
+                            send,
+                        )
+                    )
+                self.assertEqual(send.await_args.args[1], lifecycle._history_error())
+
+        asyncio.run(scenario())
+
     def test_expired_cancelled_and_file_confirmation_resolution_is_exact(self) -> None:
         async def scenario() -> None:
             send = mock.AsyncMock(return_value=True)

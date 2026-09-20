@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from fastapi import HTTPException
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import delivery
+from history import http as history_http
 from history import store as history
+from team import bridge as team
 
 
 def _installed_event() -> dict[str, object]:
@@ -34,6 +39,15 @@ def _installed_event() -> dict[str, object]:
             }
         ],
         "continuation": "dispatch",
+    }
+
+
+def _uninstall_assistant() -> dict[str, str]:
+    return {
+        "id": "shimpz-cloudflare",
+        "name": "Shimpz Cloudflare",
+        "summary": "Manage DNS records.",
+        "version": "0.4.5",
     }
 
 
@@ -305,6 +319,445 @@ class ChatHistoryTests(unittest.TestCase):
             database.commit()
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
+
+    def test_rejects_malformed_scalar_and_install_boundaries(self) -> None:
+        invalid_calls = (
+            (history._team_id, ("Marketing",)),
+            (history._turn_id, ("not-a-turn",)),
+            (history._text, (None, 10, "value")),
+            (history._text, ("", 10, "value")),
+            (history._text, (" padded ", 10, "value")),
+            (history._text, ("x" * 11, 10, "value")),
+            (history._text, ("bad\x00value", 20, "value")),
+            (history._encoded, ({"value": "x" * history.MAX_ENTRY_BYTES},)),
+            (history.append_reply, ("marketing", "a" * 32, None)),
+            (
+                history.append_reply,
+                (
+                    "marketing",
+                    "a" * 32,
+                    {"type": "done", "team_id": "sales", "team_name": "Sales", "reply": "No"},
+                ),
+            ),
+            (history._install_assistant, (None,)),
+            (history._install_assistant, ({"id": "missing-fields"},)),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "id": "Invalid"},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "providers": ()},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "providers": ["x"] * 33},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "provenance": "unknown"},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "status": "working"},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "providers": ["bad_provider"]},),
+            ),
+            (
+                history._install_assistant,
+                ({**_installed_event()["assistants"][0], "providers": ["x", "x"]},),
+            ),
+            (history._install_payload, (None, "marketing")),
+            (history._install_payload, ({"type": "other"}, "marketing")),
+            (
+                history._install_payload,
+                ({**_installed_event(), "state": "installing"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "team_id": "sales"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "plan_id": "invalid"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "assistants": []}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "assistants": [_installed_event()["assistants"][0]] * 2}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "continuation": "later"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                (
+                    {
+                        **_installed_event(),
+                        "assistants": [{**_installed_event()["assistants"][0], "status": "pending"}],
+                    },
+                    "marketing",
+                ),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "outcome": "new"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                ({**_installed_event(), "outcome": "already-installed"}, "marketing"),
+            ),
+            (
+                history._install_payload,
+                (
+                    {
+                        **_installed_event(),
+                        "state": "failed",
+                        "status": True,
+                        "assistants": [_installed_event()["assistants"][0]],
+                    },
+                    "marketing",
+                ),
+            ),
+            (history.append_guidance, ("marketing", "a" * 32, "unknown")),
+        )
+        for function, arguments in invalid_calls:
+            with self.subTest(function=function.__name__, arguments=arguments), self.assertRaises(ValueError):
+                function(*arguments)
+
+        for state, fields in (
+            ("failed", {"status": 503}),
+            ("stopped", {}),
+        ):
+            event = {
+                "type": "assistant-install-plan",
+                "state": state,
+                "plan_id": "b" * 32,
+                "team_id": "marketing",
+                "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                **fields,
+            }
+            self.assertTrue(history.append_install("marketing", history.new_turn_id(), event))
+
+        invalid_failed = {
+            "type": "assistant-install-plan",
+            "state": "failed",
+            "plan_id": "b" * 32,
+            "team_id": "marketing",
+            "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+            "status": True,
+        }
+        with self.assertRaises(ValueError):
+            history._install_payload(invalid_failed, "marketing")
+
+    def test_rejects_malformed_uninstall_and_stored_payloads(self) -> None:
+        assistant = _uninstall_assistant()
+        base_event = {
+            "type": "assistant-uninstall",
+            "state": "cancelled",
+            "proposal_id": "c" * 32,
+            "assistant_id": assistant["id"],
+        }
+        invalid_calls = (
+            (history._uninstall_assistant, (None,)),
+            (history._uninstall_assistant, ({"id": "missing"},)),
+            (history._uninstall_assistant, ({**assistant, "id": "Invalid"},)),
+            (history._uninstall_assistant, ({**assistant, "version": 1},)),
+            (history._uninstall_assistant, ({**assistant, "version": "latest"},)),
+            (history._uninstall_payload, (None, "marketing", assistant)),
+            (history._uninstall_payload, ({**base_event, "type": "other"}, "marketing", assistant)),
+            (
+                history._uninstall_payload,
+                ({**base_event, "state": "uninstalling"}, "marketing", assistant),
+            ),
+            (
+                history._uninstall_payload,
+                ({**base_event, "proposal_id": "invalid"}, "marketing", assistant),
+            ),
+            (
+                history._uninstall_payload,
+                ({**base_event, "assistant_id": "other"}, "marketing", assistant),
+            ),
+            (
+                history._uninstall_payload,
+                (
+                    {**base_event, "state": "uninstalled", "team_id": "sales", "uninstalled": True},
+                    "marketing",
+                    assistant,
+                ),
+            ),
+            (
+                history._uninstall_payload,
+                ({**base_event, "state": "failed", "status": True}, "marketing", assistant),
+            ),
+            (history._position, ("",)),
+            (history._position, ("not-base64",)),
+            (history._position, (history._cursor(0),)),
+            (history._decoded, (None,)),
+            (history._decoded, ("{",)),
+            (history._decoded, ("[]",)),
+            (history._decoded, ('{"kind":"unknown"}',)),
+            (history._decoded, ('{"kind":"guidance","code":"bad"}',)),
+            (history._validate_stored_message, ({"kind": "message", "role": "system", "text": "x"},)),
+            (history._validate_stored_guidance, ({"kind": "guidance", "code": "bad"},)),
+            (history._validate_stored_install, ({"kind": "assistant-install", "state": "working"},)),
+            (
+                history._validate_stored_install,
+                ({"kind": "assistant-install", "state": "stopped", "assistants": []},),
+            ),
+            (
+                history._validate_stored_install,
+                (
+                    {
+                        "kind": "assistant-install",
+                        "state": "stopped",
+                        "assistants": [_installed_event()["assistants"][0]] * 2,
+                    },
+                ),
+            ),
+            (
+                history._validate_stored_install,
+                (
+                    {
+                        "kind": "assistant-install",
+                        "state": "installed",
+                        "assistants": [_installed_event()["assistants"][0]],
+                        "outcome": "unexpected",
+                    },
+                ),
+            ),
+            (
+                history._validate_stored_install,
+                (
+                    {
+                        "kind": "assistant-install",
+                        "state": "installed",
+                        "assistants": [{**_installed_event()["assistants"][0], "status": "pending"}],
+                    },
+                ),
+            ),
+            (
+                history._validate_stored_install,
+                (
+                    {
+                        "kind": "assistant-install",
+                        "state": "failed",
+                        "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                        "status": True,
+                    },
+                ),
+            ),
+            (history._validate_stored_uninstall, ({"kind": "assistant-uninstall", "state": "working"},)),
+            (
+                history._validate_stored_uninstall,
+                ({"kind": "assistant-uninstall", "state": "cancelled", "assistant": assistant, "extra": True},),
+            ),
+            (
+                history._validate_stored_uninstall,
+                (
+                    {
+                        "kind": "assistant-uninstall",
+                        "state": "uninstalled",
+                        "assistant": assistant,
+                        "uninstalled": "yes",
+                    },
+                ),
+            ),
+            (
+                history._validate_stored_uninstall,
+                (
+                    {
+                        "kind": "assistant-uninstall",
+                        "state": "failed",
+                        "assistant": assistant,
+                        "status": True,
+                    },
+                ),
+            ),
+        )
+        for function, arguments in invalid_calls:
+            with self.subTest(function=function.__name__, arguments=arguments), self.assertRaises(
+                (ValueError, history.HistoryUnavailableError)
+            ):
+                function(*arguments)
+
+        for state, fields in (
+            ("cancelled", {}),
+            ("expired", {}),
+            ("failed", {"status": 503}),
+            ("uninstalled", {"team_id": "marketing", "uninstalled": False}),
+        ):
+            event = {**base_event, "state": state, **fields}
+            self.assertTrue(
+                history.append_uninstall("marketing", history.new_turn_id(), assistant, event)
+            )
+
+        history._validate_stored_install(
+            {
+                "kind": "assistant-install",
+                "state": "failed",
+                "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                "status": 503,
+            }
+        )
+        history._validate_stored_uninstall(
+            {
+                "kind": "assistant-uninstall",
+                "state": "failed",
+                "assistant": assistant,
+                "status": 503,
+            }
+        )
+
+    def test_store_failures_and_private_file_contract_fail_closed(self) -> None:
+        with (
+            mock.patch.object(history, "_private_file", side_effect=history.HistoryUnavailableError("bad")),
+            self.assertRaises(history.HistoryUnavailableError),
+        ):
+            history.page("marketing")
+        with (
+            mock.patch.object(history, "_private_file", side_effect=OSError("bad")),
+            self.assertRaises(history.HistoryUnavailableError),
+        ):
+            history.page("marketing")
+
+        for failure in (history.HistoryUnavailableError("bad"), sqlite3.OperationalError("bad")):
+            self.path.unlink(missing_ok=True)
+            with (
+                mock.patch.object(history, "_initialize", side_effect=failure),
+                self.assertRaises(history.HistoryUnavailableError),
+            ):
+                history.page("marketing")
+
+        self.path.unlink(missing_ok=True)
+        self.path.mkdir()
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+        self.path.rmdir()
+
+        self.path.touch(mode=0o644)
+        history.page("marketing")
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+
+        self.path.unlink()
+        with contextlib.closing(sqlite3.connect(self.path)) as database:
+            database.execute("CREATE TABLE unexpected (value TEXT)")
+            database.commit()
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
+    def test_paging_and_resumable_corruption_edges_fail_closed(self) -> None:
+        first = history.new_turn_id()
+        second = history.new_turn_id()
+        self.assertFalse(history.bind_resumable_turn("marketing", first))
+        self.assertTrue(history.append_user("marketing", first, "First long history entry"))
+        self.assertTrue(history.append_user("marketing", second, "Second long history entry"))
+        with mock.patch.object(history, "MAX_PAGE_BYTES", 60):
+            page = history.page("marketing")
+        self.assertEqual(len(page["entries"]), 1)
+        self.assertIsNotNone(page["before"])
+
+        with contextlib.closing(sqlite3.connect(self.path)) as database:
+            database.execute(
+                "INSERT OR REPLACE INTO resumable_turn (team_id, turn_id) VALUES (?, ?)",
+                ("marketing", "invalid"),
+            )
+            database.commit()
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.resumable_turn("marketing")
+
+        self.path.unlink()
+        history.finish_resumable_turn(history.new_turn_id())
+        self.assertIsNone(history.resumable_turn("marketing"))
+        with (
+            mock.patch.object(Path, "lstat", side_effect=OSError("offline")),
+            self.assertRaises(history.HistoryUnavailableError),
+        ):
+            history.resumable_turn("marketing")
+
+    def test_history_http_cleanup_and_projection_edges(self) -> None:
+        failed = team.TeamResponse(500, {"detail": "failed"})
+        untouched = mock.Mock()
+        self.assertEqual(history_http.cleanup(failed, untouched), failed)
+        untouched.assert_not_called()
+
+        success = team.TeamResponse(200, {"created": True})
+        self.assertEqual(history_http.cleanup(success, mock.Mock()), success)
+        unavailable = history_http.cleanup(
+            success,
+            mock.Mock(side_effect=history.HistoryUnavailableError("offline")),
+        )
+        self.assertEqual(unavailable.status, 503)
+
+        self.assertEqual(history_http.team_created("marketing", failed), failed)
+        with mock.patch.object(history, "clear_team", return_value=0) as clear:
+            self.assertEqual(history_http.team_created("marketing", success), success)
+        clear.assert_called_once_with("marketing")
+
+        with mock.patch.object(history, "clear_team", return_value=0):
+            absent = history_http.team_delete(
+                "marketing",
+                lambda: team.TeamResponse(404, {"detail": "Team not found"}),
+            )
+        self.assertEqual(absent, team.TeamResponse(200, {"deleted": False}))
+        with mock.patch.object(history, "clear_team", return_value=0) as clear:
+            deleted = history_http.team_delete(
+                "marketing",
+                lambda: team.TeamResponse(200, {"deleted": True}),
+            )
+        self.assertEqual(deleted, team.TeamResponse(200, {"deleted": True}))
+        clear.assert_called_once_with("marketing")
+        with mock.patch.object(history, "clear_all", return_value=0) as clear:
+            self.assertEqual(history_http.space_reset(lambda: success), success)
+        clear.assert_called_once_with()
+
+        with mock.patch.object(
+            history_http.team,
+            "resolve_team_name",
+            side_effect=team.TeamRequestError("invalid team"),
+        ), self.assertRaises(HTTPException) as rejected:
+            history_http.page("marketing")
+        self.assertEqual(rejected.exception.status_code, 400)
+
+        with mock.patch.object(
+            history_http.team,
+            "resolve_team_name",
+            return_value=team.TeamResponse(404, {"detail": "Team not found"}),
+        ):
+            self.assertEqual(history_http.page("marketing").status_code, 404)
+
+        with (
+            mock.patch.object(history_http.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(history, "page", side_effect=ValueError("invalid cursor")),
+            self.assertRaises(HTTPException) as invalid_cursor,
+        ):
+            history_http.page("marketing")
+        self.assertEqual(invalid_cursor.exception.status_code, 400)
+
+        with (
+            mock.patch.object(history_http.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(
+                history,
+                "page",
+                side_effect=history.HistoryUnavailableError("offline"),
+            ),
+            self.assertRaises(HTTPException) as unavailable_history,
+        ):
+            history_http.page("marketing")
+        self.assertEqual(unavailable_history.exception.status_code, 503)
+
+        with (
+            mock.patch.object(history_http.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(history, "page", return_value={"entries": [], "before": None}),
+        ):
+            response = history_http.page("marketing", before=None)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":

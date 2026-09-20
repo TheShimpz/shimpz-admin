@@ -12,7 +12,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from chat.delivery import challenge as challenge_delivery
 from chat.delivery import sync as sync_delivery
+from chat.delivery import terminal as terminal_delivery
 
 from chat import socket
 from tests import chat_socket_fixtures
@@ -207,6 +209,199 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             self.assertEqual(socket.history.resumable_turn("team_1"), turn_id)
             self.assertEqual(connection.pending_challenge_id, "b" * 32)
             self.assertEqual(websocket.send_json.await_args.args[0]["type"], "error")
+
+        asyncio.run(scenario())
+
+    def test_history_delivery_admission_and_terminal_edges_fail_closed(self) -> None:
+        async def scenario() -> None:
+            delivery = socket.history_delivery
+            with self.assertRaises(ValueError):
+                delivery.configure("unknown")
+            delivery.configure("local")
+            with (
+                mock.patch.object(socket.history, "append_user", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.admit("team_1", "Hello")
+
+            await delivery.terminal("team_1", None, {"type": "done"})
+            with (
+                mock.patch.object(socket.history, "append_reply", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.terminal(
+                    "team_1",
+                    "a" * 32,
+                    {"type": "done"},
+                )
+            with mock.patch.object(socket.history, "finish_resumable_turn") as finish:
+                await delivery.terminal("team_1", "a" * 32, {"type": "error"})
+                finish.assert_not_called()
+                await delivery.terminal(
+                    "team_1",
+                    "a" * 32,
+                    {"type": "error"},
+                    finish_history=True,
+                )
+                finish.assert_called_once_with("a" * 32)
+
+            await delivery.challenge("team_1", None)
+            with mock.patch.object(socket.history, "bind_resumable_turn", return_value=True):
+                await delivery.challenge("team_1", "a" * 32)
+            with (
+                mock.patch.object(socket.history, "bind_resumable_turn", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.challenge("team_1", "a" * 32)
+
+        asyncio.run(scenario())
+
+    def test_history_delivery_resume_edges_fail_closed(self) -> None:
+        async def scenario() -> None:
+            delivery = socket.history_delivery
+            delivery.configure("hosted")
+            self.assertIsNone(await delivery.admit("team_1", "Hello"))
+            self.assertIsNone(await delivery.resume("team_1"))
+            self.assertIsNone(await delivery.observe("team_1"))
+            self.assertIsNone(await delivery.resume_exact("team_1", "a" * 32))
+            await delivery.resumed_terminal("a" * 32, {"type": "error"})
+            await delivery.abandon("a" * 32)
+
+            delivery.configure("local")
+
+            with mock.patch.object(socket.history, "resumable_turn", return_value=None):
+                with self.assertRaises(socket.history.HistoryUnavailableError):
+                    await delivery.resume("team_1")
+                self.assertIsNone(await delivery.observe("team_1"))
+                with self.assertRaises(socket.history.HistoryUnavailableError):
+                    await delivery.resume_exact("team_1", None)
+                with self.assertRaises(socket.history.HistoryUnavailableError):
+                    await delivery.resume_exact("team_1", "a" * 32)
+            with mock.patch.object(socket.history, "resumable_turn", return_value="a" * 32):
+                self.assertEqual(await delivery.resume("team_1"), "a" * 32)
+                self.assertEqual(await delivery.observe("team_1"), "a" * 32)
+                self.assertEqual(await delivery.resume_exact("team_1", "a" * 32), "a" * 32)
+
+            with mock.patch.object(socket.history, "finish_resumable_turn") as finish:
+                await delivery.abandon(None)
+                finish.assert_not_called()
+                await delivery.abandon("a" * 32)
+                finish.assert_called_once_with("a" * 32)
+
+        asyncio.run(scenario())
+
+    def test_history_delivery_resumed_terminal_and_guidance_edges_fail_closed(self) -> None:
+        async def scenario() -> None:
+            delivery = socket.history_delivery
+            delivery.configure("local")
+            with self.assertRaises(socket.history.HistoryUnavailableError):
+                await delivery.resumed_terminal(None, {"type": "done"})
+            with (
+                mock.patch.object(socket.history, "append_reply", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.resumed_terminal(
+                    "a" * 32,
+                    {"type": "done", "team_id": "team_1"},
+                )
+            with mock.patch.object(socket.history, "append_reply", return_value=True):
+                await delivery.resumed_terminal(
+                    "a" * 32,
+                    {"type": "done", "team_id": "team_1"},
+                )
+            with mock.patch.object(socket.history, "finish_resumable_turn") as finish:
+                await delivery.resumed_terminal("a" * 32, {"type": "error"})
+                finish.assert_called_once_with("a" * 32)
+
+            await delivery.guidance("team_1", None, "uninstall-target-required")
+            with (
+                mock.patch.object(socket.history, "append_guidance", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.guidance("team_1", "a" * 32, "uninstall-target-required")
+            with mock.patch.object(socket.history, "append_guidance", return_value=True):
+                await delivery.guidance("team_1", "a" * 32, "uninstall-target-required")
+
+        asyncio.run(scenario())
+
+    def test_projection_layers_fail_closed_when_history_is_unavailable(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            error = {"type": "error", "status": 503}
+
+            challenge_operations = challenge_delivery.Operations(
+                send_event=mock.AsyncMock(return_value=True),
+                send_terminal=mock.AsyncMock(return_value=True),
+                error_terminal=mock.Mock(return_value=error),
+            )
+            with mock.patch.object(
+                challenge_delivery.history_delivery,
+                "challenge",
+                new=mock.AsyncMock(side_effect=socket.history.HistoryUnavailableError("offline")),
+            ):
+                await challenge_delivery.deliver(
+                    websocket,
+                    socket._Connection(),
+                    socket._Turn(None, "chat", history_id="a" * 32),
+                    "team_1",
+                    {"type": "human-required"},
+                    "human",
+                    challenge_operations,
+                )
+            challenge_operations.send_terminal.assert_awaited_once()
+            challenge_operations.send_event.assert_not_awaited()
+
+            sync_operations = sync_delivery.Operations(
+                send_event=mock.AsyncMock(return_value=True),
+                send_terminal=mock.AsyncMock(return_value=True),
+                error_terminal=mock.Mock(return_value=error),
+            )
+            connection = socket._Connection(pending_history_id="a" * 32)
+            with mock.patch.object(
+                sync_delivery.history_delivery,
+                "abandon",
+                new=mock.AsyncMock(side_effect=ValueError("invalid")),
+            ):
+                await sync_delivery.empty(websocket, connection, sync_operations)
+            self.assertEqual(connection.pending_history_id, "a" * 32)
+
+            pending = {"type": "integrations-required"}
+            with mock.patch.object(
+                sync_delivery,
+                "_restore_history",
+                new=mock.AsyncMock(return_value=False),
+            ):
+                await sync_delivery.integration_terminal(
+                    websocket,
+                    socket._Connection(),
+                    "team_1",
+                    pending,
+                    object(),
+                    sync_operations,
+                )
+                await sync_delivery.human(
+                    websocket,
+                    socket._Connection(),
+                    "team_1",
+                    chat_socket_fixtures.human_challenge("approval"),
+                    sync_operations,
+                )
+
+            terminal_connection = socket._Connection(pending_history_id="a" * 32)
+            with mock.patch.object(
+                terminal_delivery.history_delivery,
+                "resumed_terminal",
+                new=mock.AsyncMock(side_effect=ValueError("invalid")),
+            ):
+                self.assertTrue(
+                    await terminal_delivery.resumed(
+                        websocket,
+                        terminal_connection,
+                        {"type": "done"},
+                        finish_history=True,
+                    )
+                )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
 
         asyncio.run(scenario())
 
