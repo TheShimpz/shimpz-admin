@@ -17,7 +17,6 @@ class Turn:
     future: concurrent.futures.Future | None
     operation: str
     progress: asyncio.Queue[dict[str, object]] | None = None
-    discovery_future: concurrent.futures.Future | None = None
     delivery: asyncio.Task | None = None
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False

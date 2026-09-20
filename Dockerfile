@@ -59,7 +59,8 @@ COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assis
     backend/chat/socket_boundary.py backend/chat/task_resume.py \
     backend/chat/local_catalog.py backend/chat/store_catalog.py ./chat/
 COPY backend/chat/delivery/challenge.py backend/chat/delivery/plan.py \
-    backend/chat/delivery/sync.py backend/chat/delivery/terminal.py ./chat/delivery/
+    backend/chat/delivery/sync.py backend/chat/delivery/terminal.py \
+    backend/chat/delivery/uninstall.py ./chat/delivery/
 COPY backend/history/delivery.py backend/history/http.py backend/history/store.py \
     ./history/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \

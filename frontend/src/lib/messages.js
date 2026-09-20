@@ -314,7 +314,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Name the Assistant you want to uninstall, for example: “uninstall Cloudflare”.",
+        "targetRequired": "Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.",
         "label": "Assistant uninstall",
         "pending": "Confirmation required",
         "working": "Uninstalling",
@@ -709,7 +709,7 @@ export const messages = {
         "failed": "Falha na instalação"
       },
       "uninstall": {
-        "targetRequired": "Diga qual Assistant você quer desinstalar, por exemplo: “desinstale o Cloudflare”.",
+        "targetRequired": "Diga o nome de um Assistant instalado para desinstalá-lo. Se você já informou um, confira o nome exato e tente novamente.",
         "label": "Desinstalação de Assistant",
         "pending": "Confirmação necessária",
         "working": "Desinstalando",
@@ -1104,7 +1104,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Indica qué Assistant quieres desinstalar; por ejemplo: «desinstala Cloudflare».",
+        "targetRequired": "Indica el nombre de un Assistant instalado para desinstalarlo. Si ya indicaste uno, comprueba su nombre exacto e inténtalo de nuevo.",
         "label": "Desinstalación de Assistant",
         "pending": "Confirmación necesaria",
         "working": "Desinstalando",
@@ -1499,7 +1499,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "请说明要卸载哪个 Assistant，例如：“卸载 Cloudflare”。",
+        "targetRequired": "请提供要卸载的已安装 Assistant 名称。如果你已经提供了名称，请核对其准确名称后重试。",
         "label": "卸载 Assistant",
         "pending": "需要确认",
         "working": "正在卸载",
@@ -1894,7 +1894,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Indiquez l’Assistant à désinstaller, par exemple : « désinstalle Cloudflare ».",
+        "targetRequired": "Indiquez le nom d’un Assistant installé à désinstaller. Si vous en avez déjà indiqué un, vérifiez son nom exact et réessayez.",
         "label": "Désinstallation d’Assistant",
         "pending": "Confirmation requise",
         "working": "Désinstallation",
@@ -2289,7 +2289,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "Nenne den Assistant, den du deinstallieren möchtest, zum Beispiel: „Cloudflare deinstallieren“.",
+        "targetRequired": "Nenne den genauen Namen eines installierten Assistant, den du deinstallieren möchtest. Falls du bereits einen genannt hast, prüfe den Namen und versuche es erneut.",
         "label": "Assistant deinstallieren",
         "pending": "Bestätigung erforderlich",
         "working": "Wird deinstalliert",
@@ -2684,7 +2684,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "アンインストールする Assistant の名前を指定してください。例:「Cloudflare をアンインストール」",
+        "targetRequired": "アンインストールするインストール済み Assistant の名前を指定してください。すでに指定した場合は、正確な名前を確認してもう一度お試しください。",
         "label": "Assistant のアンインストール",
         "pending": "確認が必要です",
         "working": "アンインストール中",
@@ -3079,7 +3079,7 @@ export const messages = {
         "failed": "Installation failed"
       },
       "uninstall": {
-        "targetRequired": "حدّد الـ Assistant الذي تريد إلغاء تثبيته، مثلاً: «ألغِ تثبيت Cloudflare».",
+        "targetRequired": "حدّد الاسم الدقيق لـ Assistant مثبّت تريد إلغاء تثبيته. إذا كنت قد حددته بالفعل، فتحقق من اسمه وحاول مرة أخرى.",
         "label": "إلغاء تثبيت Assistant",
         "pending": "التأكيد مطلوب",
         "working": "جارٍ إلغاء التثبيت",

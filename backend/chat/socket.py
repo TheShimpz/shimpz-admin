@@ -18,6 +18,7 @@ from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
+from chat.delivery import uninstall as uninstall_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
@@ -75,10 +76,6 @@ _remember_challenge = connection.remember_challenge
 _forget_challenge = connection.forget_challenge
 _send_terminal_once = terminal_delivery.turn
 _send_sync_terminal_once = terminal_delivery.resumed
-
-
-def _cancel_discovery(turn: _Turn) -> None:
-    lifecycle.cancel_discovery(turn.discovery_future)
 
 
 async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
@@ -186,7 +183,6 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             return
         challenge, challenge_type = _first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
-            _cancel_discovery(turn)
             connection.lifecycle_proposal = None
             await challenge_delivery.deliver(
                 websocket,
@@ -214,14 +210,6 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
             event = turn_terminal(response, team_id)
         if event.get("type") == "done":
             _forget_challenge(connection)
-        event = await lifecycle.attach_proposal(
-            connection,
-            turn.discovery_future,
-            team_id,
-            event,
-            language_exemplar=turn.language_exemplar,
-        )
-        lifecycle.retain_history(connection, turn.history_id, event)
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -434,7 +422,12 @@ def _request_stop(
     if turn.stop_requested:
         return turn.stop_task
     turn.stop_requested = True
-    _cancel_discovery(turn)
+    if turn.operation == "assistant-uninstall-discovery":
+        if turn.future is not None:
+            turn.future.cancel()
+        if emit and not connection.closed:
+            turn.stop_task = asyncio.create_task(_finish_cancelled_turn(websocket, connection, turn))
+        return turn.stop_task
     if turn.lifecycle_stop is not None:
         turn.lifecycle_stop.set()
         if turn.operation == "assistant-plan":
@@ -642,8 +635,6 @@ async def _start_direct_turn(
     team_id: str,
     payload: dict[str, object],
     language_exemplar: str | None,
-    *,
-    discovery_future: concurrent.futures.Future | None = None,
 ) -> None:
     try:
         future, progress = _submit_team_turn(team_id, payload)
@@ -654,12 +645,41 @@ async def _start_direct_turn(
         future=future,
         operation="chat",
         language_exemplar=language_exemplar,
-        discovery_future=discovery_future,
         progress=progress,
         history_id=_take_history_id(connection),
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
+
+
+async def _start_uninstall_discovery(
+    websocket: WebSocket,
+    connection: _Connection,
+    team_id: str,
+    payload: dict[str, object],
+    language_exemplar: str | None,
+) -> None:
+    history_id = _take_history_id(connection)
+    try:
+        future = lifecycle.submit_discovery(team_id, payload)
+    except ExecutorSaturatedError:
+        connection.ignore_idle_stop_once = True
+        await _send_event(websocket, _error_terminal(429, "Assistant inventory capacity reached"))
+        return
+    except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
+        connection.ignore_idle_stop_once = True
+        await _send_event(websocket, _error_terminal(503, "Assistant inventory is unavailable"))
+        return
+    turn = _Turn(
+        future=future,
+        operation="assistant-uninstall-discovery",
+        language_exemplar=language_exemplar,
+        history_id=history_id,
+    )
+    connection.active = turn
+    turn.delivery = asyncio.create_task(
+        uninstall_delivery.deliver(websocket, connection, turn, team_id)
+    )
 
 
 async def _dispatch_chat(
@@ -671,7 +691,6 @@ async def _dispatch_chat(
     payload = await _admit_chat_payload(websocket, connection, team_id, frame)
     if payload is None:
         return
-    had_lifecycle_proposal = connection.lifecycle_proposal is not None
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
@@ -690,14 +709,13 @@ async def _dispatch_chat(
             event,
         )
         return
-    if assistant_proposal.uninstall_requested(payload["message"]):
-        await _start_direct_turn(
+    if payload["files"] == [] and assistant_proposal.uninstall_requested(payload["message"]):
+        await _start_uninstall_discovery(
             websocket,
             connection,
             team_id,
             payload,
             language_exemplar,
-            discovery_future=None if had_lifecycle_proposal else lifecycle.submit_discovery(team_id, payload),
         )
         return
     preparation = lifecycle.submit_preparation(team_id, payload)

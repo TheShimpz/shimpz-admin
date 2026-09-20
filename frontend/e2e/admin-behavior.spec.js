@@ -1227,7 +1227,7 @@ test('asks for an Assistant name when uninstall has no pending target', async ({
   await composer.press('Enter');
 
   await expect(page.getByText(
-    'Name the Assistant you want to uninstall, for example: “uninstall Cloudflare”.',
+    'Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.',
     { exact: true },
   )).toBeVisible();
   await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
@@ -1253,7 +1253,7 @@ test('keeps target-required guidance valid when Stop races its response', async 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
 
   await expect(page.getByText(
-    'Name the Assistant you want to uninstall, for example: “uninstall Cloudflare”.',
+    'Name an installed Assistant to uninstall. If you already named one, check its exact name and try again.',
     { exact: true },
   )).toBeVisible();
   await expect(composer).toBeEnabled();
@@ -1285,6 +1285,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
     { exact: true },
   )).toHaveCount(0);
+  expect(chat.chatFrames()).toHaveLength(1);
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(

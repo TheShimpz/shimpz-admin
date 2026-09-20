@@ -20,10 +20,15 @@ from team import bridge as team
 
 from chat import assistant_plan, assistant_proposal, assistant_uninstall, store_catalog
 
-_DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
+_PLAN_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
     max_outstanding=2,
-    thread_name_prefix="shimpz-chat-discovery",
+    thread_name_prefix="shimpz-chat-plan",
+)
+_UNINSTALL_DISCOVERY_EXECUTOR = BoundedThreadPoolExecutor(
+    max_workers=2,
+    max_outstanding=2,
+    thread_name_prefix="shimpz-chat-uninstall-discovery",
 )
 _LIFECYCLE_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -31,9 +36,9 @@ _LIFECYCLE_EXECUTOR = BoundedThreadPoolExecutor(
     thread_name_prefix="shimpz-chat-lifecycle",
 )
 _STORE_CATALOG = store_catalog.CATALOG
-DISCOVERY_GRACE_SECONDS = 0.25
 monotonic = time.monotonic
 log = logging.getLogger("shimpz-admin")
+_PROPOSAL_REPLY = "Assistant uninstall requires confirmation."
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 
@@ -84,14 +89,13 @@ def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[
 
 def _proposal_event(
     proposal: assistant_proposal.UninstallProposal,
-    terminal: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         "type": "assistant-uninstall",
         "state": "proposed",
         "proposal_id": proposal.proposal_id,
         "team_id": proposal.team_id,
-        "reply": terminal["reply"],
+        "reply": _PROPOSAL_REPLY,
         "expires_in": assistant_proposal.UNINSTALL_PROPOSAL_TTL_SECONDS,
         "assistant": _assistant_identity(proposal),
     }
@@ -122,79 +126,29 @@ def _discover(
 def submit_discovery(
     team_id: str,
     payload: dict[str, object],
-) -> concurrent.futures.Future | None:
-    """Start optional discovery without letting its failure affect ordinary chat."""
-    try:
-        return submit_in_context(
-            _DISCOVERY_EXECUTOR,
-            _discover,
-            team_id,
-            payload,
-        )
-    except (
-        ExecutorSaturatedError,
-        OSError,
-        RuntimeError,
-        TypeError,
-        ValueError,
-        team.TeamRequestError,
-    ):
-        return None
+) -> concurrent.futures.Future:
+    """Start required Team-owned uninstall discovery on its independent bounded lane."""
+    return submit_in_context(
+        _UNINSTALL_DISCOVERY_EXECUTOR,
+        _discover,
+        team_id,
+        payload,
+    )
 
 
-def cancel_discovery(future: concurrent.futures.Future | None) -> None:
-    """Cancel discovery that has not started; running bounded work may finish harmlessly."""
-    if future is not None and not future.done():
-        future.cancel()
-
-
-async def _await_discovery(
-    future: concurrent.futures.Future | None,
-) -> assistant_proposal.UninstallCandidate | None:
-    if future is None:
-        return None
-    try:
-        candidate = await asyncio.wrap_future(future)
-    except asyncio.CancelledError:
-        raise
-    except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
-        return None
-    return candidate if isinstance(candidate, assistant_proposal.UninstallCandidate) else None
-
-
-async def attach_proposal(
-    connection: Connection,
-    discovery_future: concurrent.futures.Future | None,
+def create_proposal(
     team_id: str,
-    event: dict[str, object],
-    *,
+    candidate: assistant_proposal.UninstallCandidate,
     language_exemplar: object,
-) -> dict[str, object]:
-    """Attach one strong candidate to a successful turn without changing failures."""
-    if event.get("type") != "done":
-        cancel_discovery(discovery_future)
-        return event
-    try:
-        candidate = await asyncio.wait_for(
-            _await_discovery(discovery_future),
-            timeout=DISCOVERY_GRACE_SECONDS,
-        )
-    except TimeoutError:
-        cancel_discovery(discovery_future)
-        return event
-    if candidate is None or connection.lifecycle_proposal is not None:
-        return event
-    try:
-        proposal = assistant_proposal.create_uninstall_proposal(
-            team_id,
-            candidate,
-            language_exemplar=language_exemplar,
-            now=monotonic(),
-        )
-    except ValueError:
-        return event
-    connection.lifecycle_proposal = proposal
-    return _proposal_event(proposal, event)
+) -> tuple[assistant_proposal.UninstallProposal, dict[str, object]]:
+    """Create one socket-bound proposal and its deterministic public event."""
+    proposal = assistant_proposal.create_uninstall_proposal(
+        team_id,
+        candidate,
+        language_exemplar=language_exemplar,
+        now=monotonic(),
+    )
+    return proposal, _proposal_event(proposal)
 
 
 async def _deliver(
@@ -358,7 +312,7 @@ def submit_preparation(
     """Start the deterministic gap gate and stateless planner on its bounded lane."""
     try:
         return submit_in_context(
-            _DISCOVERY_EXECUTOR,
+            _PLAN_EXECUTOR,
             assistant_plan.prepare,
             team_id,
             payload,

@@ -90,9 +90,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
             with (
                 mock.patch.object(socket.lifecycle, "resolve", side_effect=retire_proposal),
-                mock.patch.object(socket.lifecycle, "submit_discovery") as discover,
                 mock.patch.object(socket.lifecycle, "submit_preparation") as prepare,
-                mock.patch.object(socket, "_start_direct_turn", new=mock.AsyncMock()) as start,
+                mock.patch.object(socket, "_start_uninstall_discovery", new=mock.AsyncMock()) as start,
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -107,8 +106,6 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 )
 
             start.assert_awaited_once()
-            self.assertIsNone(start.await_args.kwargs["discovery_future"])
-            discover.assert_not_called()
             prepare.assert_not_called()
 
         asyncio.run(scenario())
@@ -403,10 +400,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             connection = socket._Connection()
             websocket = mock.AsyncMock()
             message = "x" * 2_001
-            with (
-                mock.patch.object(socket, "submit_in_context", return_value=future),
-                mock.patch.object(socket.lifecycle, "submit_discovery", return_value=None),
-            ):
+            with mock.patch.object(socket, "submit_in_context", return_value=future):
                 await socket._dispatch_chat(
                     websocket,
                     connection,

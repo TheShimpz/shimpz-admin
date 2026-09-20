@@ -48,32 +48,17 @@ def _connection(**changes):
 
 
 class ChatLifecycleTests(unittest.TestCase):
-    def test_discovery_cancellation_and_worker_failures_are_bounded(self) -> None:
-        async def scenario() -> None:
-            pending: concurrent.futures.Future[object] = concurrent.futures.Future()
-            lifecycle.cancel_discovery(pending)
-            self.assertTrue(pending.cancelled())
-            with self.assertRaises(asyncio.CancelledError):
-                await lifecycle._await_discovery(pending)
-
-            failed: concurrent.futures.Future[object] = concurrent.futures.Future()
-            failed.set_exception(ValueError("invalid inventory"))
-            self.assertIsNone(await lifecycle._await_discovery(failed))
-
-        asyncio.run(scenario())
-
-    def test_discovery_and_preparation_saturation_are_optional(self) -> None:
+    def test_uninstall_discovery_saturation_is_explicit_while_preparation_is_optional(self) -> None:
         with mock.patch.object(
             lifecycle,
             "submit_in_context",
             side_effect=lifecycle.ExecutorSaturatedError,
         ):
-            self.assertIsNone(
+            with self.assertRaises(lifecycle.ExecutorSaturatedError):
                 lifecycle.submit_discovery(
                     "team_1",
                     {"message": "Desinstale o Cloudflare", "assistant_ids": []},
                 )
-            )
             self.assertIsNone(
                 lifecycle.submit_preparation(
                     "team_1",
@@ -101,13 +86,13 @@ class ChatLifecycleTests(unittest.TestCase):
         proposal = _proposal()
 
         self.assertEqual(
-            lifecycle._proposal_event(proposal, {"reply": "Vou preparar a remoção."}),
+            lifecycle._proposal_event(proposal),
             {
                 "type": "assistant-uninstall",
                 "state": "proposed",
                 "proposal_id": "c" * 32,
                 "team_id": "team_1",
-                "reply": "Vou preparar a remoção.",
+                "reply": "Assistant uninstall requires confirmation.",
                 "expires_in": 120,
                 "assistant": {
                     "id": "shimpz-cloudflare",
@@ -177,45 +162,6 @@ class ChatLifecycleTests(unittest.TestCase):
                 )
             self.assertTrue(handled)
             dispatch.assert_awaited_once()
-
-        asyncio.run(scenario())
-
-    def test_proposal_timeout_and_invalid_candidate_leave_the_turn_unchanged(self) -> None:
-        async def scenario() -> None:
-            event = {"type": "done", "reply": "Done."}
-            pending: concurrent.futures.Future[object] = concurrent.futures.Future()
-            connection = _connection()
-            with mock.patch.object(lifecycle, "_await_discovery", new=mock.AsyncMock(side_effect=TimeoutError)):
-                self.assertIs(
-                    await lifecycle.attach_proposal(
-                        connection,
-                        pending,
-                        "team_1",
-                        event,
-                        language_exemplar="remove",
-                    ),
-                    event,
-                )
-            self.assertTrue(pending.cancelled())
-
-            candidate = assistant_proposal.UninstallCandidate(_proposal().assistant, "0.4.4")
-            completed: concurrent.futures.Future[object] = concurrent.futures.Future()
-            completed.set_result(candidate)
-            with mock.patch.object(
-                lifecycle.assistant_proposal,
-                "create_uninstall_proposal",
-                side_effect=ValueError,
-            ):
-                self.assertIs(
-                    await lifecycle.attach_proposal(
-                        connection,
-                        completed,
-                        "team_1",
-                        event,
-                        language_exemplar="remove",
-                    ),
-                    event,
-                )
 
         asyncio.run(scenario())
 
