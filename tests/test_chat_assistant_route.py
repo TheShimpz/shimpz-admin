@@ -64,6 +64,28 @@ def cloudflare() -> store_catalog.CatalogAssistant:
 
 
 class AssistantRouteTests(unittest.TestCase):
+    def test_guidance_accepts_unicode_spacing_but_rejects_layout_separators(self) -> None:
+        reply = "Quel Assistant voulez-vous désinstaller\u00a0?"
+        with mock.patch.object(
+            assistant_route.local,
+            "intent_route",
+            return_value=response("assistant-uninstall", reply=reply),
+        ):
+            routed = assistant_route._route("team_1", "désinstalle", None, [])
+        self.assertEqual(routed.reply, reply)
+
+        for separator in ("\u2028", "\u2029"):
+            with (
+                self.subTest(separator=separator),
+                mock.patch.object(
+                    assistant_route.local,
+                    "intent_route",
+                    return_value=response("assistant-uninstall", reply=f"Question{separator}suivante"),
+                ),
+                self.assertRaises(assistant_route.RouteError),
+            ):
+                assistant_route._route("team_1", "désinstalle", None, [])
+
     def test_route_rejects_invalid_structured_responses(self) -> None:
         invalid = (
             local.PublicResponse(200, {"team_id": "team_1"}),

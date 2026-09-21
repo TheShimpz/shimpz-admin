@@ -165,6 +165,40 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_guidance_without_a_canonical_exemplar_remains_a_normal_question(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            connection = socket._Connection()
+            guidance = assistant_route.Guidance(
+                "assistant-uninstall-target-required",
+                "Qual Assistant instalado você quer desinstalar?",
+            )
+            with (
+                mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    return_value=_future(assistant_route.Result("assistant-uninstall", guidance=guidance)),
+                ),
+            ):
+                await socket._dispatch_chat(
+                    websocket,
+                    connection,
+                    "team_1",
+                    {
+                        "type": "chat",
+                        "message": "desinstale\ue000",
+                        "files": [],
+                        "assistant_ids": [],
+                    },
+                )
+                await connection.active.delivery
+
+            self.assertIsNone(connection.pending_lifecycle)
+            self.assertEqual(websocket.send_json.await_args.args[-1]["reply"], guidance.reply)
+
+        asyncio.run(scenario())
+
     def test_turn_keeps_only_a_repr_hidden_bounded_language_exemplar(self) -> None:
         turn = socket._Turn(None, "chat", language_exemplar="Liste minhas zonas DNS")
 

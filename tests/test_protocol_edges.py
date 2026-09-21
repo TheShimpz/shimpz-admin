@@ -197,6 +197,10 @@ class WebSocketEdges(unittest.TestCase):
             websocket._reject_json_constant("NaN")
         with self.assertRaises(ValueError):
             websocket.public_text(None, 10)
+        self.assertEqual(websocket.public_text("français\u00a0?", 10), "français\u00a0?")
+        for value in ("line\u2028separator", "paragraph\u2029separator", "hidden\u200dinstruction"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                websocket.public_text(value, 40)
         failures = (
             {"type": "bad"},
             {"type": "websocket.receive", "text": _Unencodable("{}")},

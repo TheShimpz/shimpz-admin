@@ -10,6 +10,53 @@ from tests.chat_socket_fixtures import Socket
 
 
 class ChatTaskResumeTests(ChatWebSocketCase):
+    def test_directional_guidance_preserves_the_resume_objective_language(self) -> None:
+        async def scenario() -> None:
+            guidance = self.assistant_route.Guidance(
+                "assistant-install-target-required",
+                "Qual Assistant você quer instalar?",
+            )
+            follow_up = self.assistant_route.Guidance(
+                "assistant-install-target-required",
+                "Qual deles você quer instalar?",
+            )
+            with (
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_resume",
+                    return_value=self._future(self.assistant_route.Result("assistant-install", guidance=guidance)),
+                ),
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    return_value=self._future(self.assistant_route.Result("assistant-install", guidance=follow_up)),
+                ) as route,
+            ):
+                websocket = Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {
+                        "type": "resume-task",
+                        "message": "Você mesmo consegue habilitar?",
+                        "objective": "Instale um Assistant",
+                        "files": [],
+                        "assistant_ids": [],
+                        "objective_assistant_ids": [],
+                    }
+                )
+
+                self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
+                await websocket.send_json(
+                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
+                context = route.call_args.args[2]
+                self.assertEqual(context.pending_intent, "assistant-install")
+                self.assertEqual(context.language_exemplar, "Instale um Assistant")
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_installs_for_the_prior_objective_and_dispatches_it_once(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()

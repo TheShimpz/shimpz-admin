@@ -109,10 +109,12 @@ async def dispatch(
     except ExecutorSaturatedError:
         await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
         return
+    language_exemplar = team_contract.canonical_language_exemplar(objective["message"])
     turn = Turn(
         future=preparation,
         operation="assistant-route",
-        language_exemplar=team_contract.canonical_language_exemplar(objective["message"]),
+        language_exemplar=language_exemplar,
+        lifecycle_language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
     )

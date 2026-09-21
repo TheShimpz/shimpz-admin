@@ -18,6 +18,7 @@ from chat import (
     local,
     store_catalog,
 )
+from protocol.http.v1 import websocket as chat_ws_common
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
@@ -65,6 +66,15 @@ class RouteError(RuntimeError):
         self.status = status
 
 
+def _valid_guidance_reply(value: str) -> bool:
+    try:
+        return (
+            chat_ws_common.public_text(value, MAX_GUIDANCE_REPLY_CHARS, field="Assistant guidance reply") == value
+        )
+    except ValueError:
+        return False
+
+
 def _safe_status(response: object) -> int:
     return response.status if isinstance(response, team.TeamResponse) and 400 <= response.status <= 599 else 502
 
@@ -93,7 +103,7 @@ def _route(
         or not isinstance(assistant_ids, list)
         or any(not isinstance(value, str) for value in assistant_ids)
         or not isinstance(reply, str)
-        or (reply and (reply.strip() != reply or len(reply) > MAX_GUIDANCE_REPLY_CHARS or not reply.isprintable()))
+        or (reply and not _valid_guidance_reply(reply))
     ):
         raise RouteError(502)
     if expected_intent is None:

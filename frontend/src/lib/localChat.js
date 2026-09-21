@@ -9,7 +9,7 @@ import {
 } from './validate.js';
 
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const SECRET_CONTROL_RE = /\p{C}/u;
+const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;

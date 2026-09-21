@@ -36,14 +36,12 @@ async def _deliver_guidance(
     guidance: assistant_route.Guidance,
     operations: Operations,
 ) -> None:
-    if guidance.code != "assistant-lifecycle-ambiguous" and turn.lifecycle_language_exemplar is None:
-        raise assistant_route.RouteError(503)
     try:
         await history_delivery.guidance(team_id, turn.history_id, guidance.code, guidance.reply)
     except history.HistoryUnavailableError, ValueError:
         event = operations.error_terminal(503, "Admin chat history is unavailable")
     else:
-        if guidance.code == "assistant-lifecycle-ambiguous":
+        if guidance.code == "assistant-lifecycle-ambiguous" or turn.lifecycle_language_exemplar is None:
             connection.pending_lifecycle = None
         else:
             intent = (

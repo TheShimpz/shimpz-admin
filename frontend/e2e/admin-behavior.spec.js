@@ -1222,16 +1222,16 @@ test('resumes one prior capability objective after reconnect and installs its As
 });
 
 for (const [code, message, question] of [
-  ['assistant-install-target-required', 'install', 'Which Assistant do you want to install?'],
+  ['assistant-install-target-required', 'instale', 'Qual Assistant você quer instalar?'],
   [
     'assistant-uninstall-target-required',
-    'uninstall',
-    'Which installed Assistant do you want to uninstall?',
+    'désinstalle',
+    'Quel Assistant installé voulez-vous désinstaller\u00a0?',
   ],
   [
     'assistant-lifecycle-ambiguous',
-    'change the Assistant',
-    'Do you want to install or uninstall an Assistant?',
+    'mude o Assistant',
+    ':error[Você quer instalar ou desinstalar um Assistant?]',
   ],
 ]) {
   test(`renders the ${code} lifecycle question`, async ({ page }) => {
@@ -1242,6 +1242,7 @@ for (const [code, message, question] of [
     await page.goto('/chat/');
 
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await expect(composer).toBeEnabled();
     await composer.fill(message);
     await composer.press('Enter');
 

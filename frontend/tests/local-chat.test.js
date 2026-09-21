@@ -618,9 +618,20 @@ test('chat admits only exact closed Assistant guidance', () => {
     },
     { type: 'assistant-guidance', team_id: 'team_1', code: 'unknown' },
     { type: 'assistant-guidance', code: 'assistant-install-target-required' },
+    {
+      type: 'assistant-guidance', team_id: 'team_1', code: 'assistant-install-target-required',
+      reply: 'Question\u2028suivante',
+    },
   ]) {
     assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
   }
+  const french = 'Quel Assistant voulez-vous désinstaller\u00a0?';
+  assert.equal(
+    parseChatEvent({
+      type: 'assistant-guidance', team_id: 'team_1', code: 'assistant-uninstall-target-required', reply: french,
+    }, 'team_1', 'Marketing').reply,
+    french,
+  );
 });
 
 test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall events', () => {
