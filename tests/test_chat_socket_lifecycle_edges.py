@@ -13,6 +13,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from chat.connection import PendingLifecycle
+
 from chat import assistant_route, local, socket
 
 
@@ -196,6 +198,32 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
 
             self.assertIsNone(connection.pending_lifecycle)
             self.assertEqual(websocket.send_json.await_args.args[-1]["reply"], guidance.reply)
+
+        asyncio.run(scenario())
+
+    def test_route_admission_saturation_restores_the_pending_direction(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            pending = PendingLifecycle("assistant-uninstall", "desinstala ele")
+            connection = socket._Connection(pending_lifecycle=pending)
+            with (
+                mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
+                mock.patch.object(
+                    socket.lifecycle,
+                    "submit_route",
+                    side_effect=socket.ExecutorSaturatedError,
+                ),
+                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
+            ):
+                await socket._dispatch_chat(
+                    websocket,
+                    connection,
+                    "team_1",
+                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []},
+                )
+
+            self.assertIs(connection.pending_lifecycle, pending)
+            self.assertEqual(send.await_args.args[-1]["status"], 429)
 
         asyncio.run(scenario())
 
