@@ -185,7 +185,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_conversation_context_resolves_uninstall_after_an_ordinary_intervening_turn(self) -> None:
+    def test_durable_conversation_resolves_uninstall_after_an_intervening_turn_and_new_socket(self) -> None:
         async def scenario() -> None:
             reply = "Qual Assistant instalado você quer desinstalar?"
             with (
@@ -240,11 +240,14 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 await websocket.send_json({"type": "chat", "message": "quais temos?", "files": [], "assistant_ids": []})
                 inventory = await websocket.next_json()
                 self.assertEqual(inventory["reply"], "Temos apenas Cloudflare/DNS.")
+                await websocket.disconnect()
 
-                await websocket.send_json(
+                resumed = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await resumed.start()))
+                await resumed.send_json(
                     {"type": "chat", "message": "desinstala esse então", "files": [], "assistant_ids": []}
                 )
-                proposed = await websocket.next_json()
+                proposed = await resumed.next_json()
                 self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
 
                 first_context = route.call_args_list[0].args[2]
@@ -261,7 +264,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 )
                 self.assertEqual(third_context.selection_language_exemplar, "quais temos?")
                 turn.assert_called_once()
-                await websocket.disconnect()
+                await resumed.disconnect()
 
         asyncio.run(scenario())
 

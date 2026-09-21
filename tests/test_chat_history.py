@@ -156,6 +156,65 @@ class ChatHistoryTests(unittest.TestCase):
             ],
         )
 
+    def test_conversation_projection_excludes_lifecycle_cards(self) -> None:
+        installed = history.new_turn_id()
+        uninstalled = history.new_turn_id()
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", installed, "Instale o Cloudflare"))
+        self.assertTrue(history.append_install("marketing", installed, _installed_event()))
+        self.assertTrue(history.append_user("marketing", uninstalled, "Desinstale o Cloudflare"))
+        self.assertTrue(
+            history.append_uninstall(
+                "marketing",
+                uninstalled,
+                _uninstall_assistant(),
+                {
+                    "type": "assistant-uninstall",
+                    "state": "uninstalled",
+                    "proposal_id": "b" * 32,
+                    "assistant_id": "shimpz-cloudflare",
+                    "team_id": "marketing",
+                    "uninstalled": True,
+                },
+            )
+        )
+        self.assertTrue(history.append_user("marketing", current, "Instale ele novamente"))
+
+        projected = history.conversation("marketing", current)
+
+        self.assertEqual(
+            [(entry.role, entry.text) for entry in projected],
+            [
+                ("user", "Instale o Cloudflare"),
+                ("user", "Desinstale o Cloudflare"),
+            ],
+        )
+
+    def test_conversation_projection_keeps_only_the_newest_eight_eligible_entries(self) -> None:
+        for index in range(5):
+            turn_id = history.new_turn_id()
+            self.assertTrue(history.append_user("marketing", turn_id, f"Pergunta {index}"))
+            self.assertTrue(
+                history.append_reply(
+                    "marketing",
+                    turn_id,
+                    {
+                        "type": "done",
+                        "team_id": "marketing",
+                        "team_name": "Marketing",
+                        "reply": f"Resposta {index}",
+                    },
+                )
+            )
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", current, "Continue"))
+
+        projected = history.conversation("marketing", current)
+
+        self.assertEqual(len(projected), conversation_context.MAX_ENTRIES)
+        self.assertEqual(projected[0].text, "Pergunta 1")
+        self.assertEqual(projected[-1].text, "Resposta 4")
+
     def test_conversation_projection_truncates_head_and_tail_and_requires_an_exact_anchor(self) -> None:
         prior = history.new_turn_id()
         current = history.new_turn_id()
