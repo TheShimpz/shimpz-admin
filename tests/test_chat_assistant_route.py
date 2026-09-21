@@ -27,7 +27,18 @@ def payload(message: str) -> dict[str, object]:
     return {"message": message, "files": [], "assistant_ids": []}
 
 
-def response(intent: str, query: str = "", assistant_ids: list[str] | None = None) -> local.PublicResponse:
+def response(
+    intent: str,
+    query: str = "",
+    assistant_ids: list[str] | None = None,
+    reply: str | None = None,
+) -> local.PublicResponse:
+    if reply is None:
+        reply = (
+            "Qual Assistant você quer usar?"
+            if intent == "unresolved" or ("assistant-" in intent and not query and not assistant_ids)
+            else ""
+        )
     return local.PublicResponse(
         200,
         {
@@ -35,6 +46,7 @@ def response(intent: str, query: str = "", assistant_ids: list[str] | None = Non
             "intent": intent,
             "query": query,
             "assistant_ids": assistant_ids or [],
+            "reply": reply,
         },
     )
 
@@ -94,7 +106,13 @@ class AssistantRouteTests(unittest.TestCase):
             result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
-        route.assert_called_once_with("team_1", "liste minhas zonas", None, [], None)
+        route.assert_called_once_with(
+            "team_1",
+            "liste minhas zonas",
+            None,
+            [],
+            local.IntentRouteContext(),
+        )
         gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:
@@ -121,7 +139,7 @@ class AssistantRouteTests(unittest.TestCase):
                 payload("instale o cloudflare"),
                 mock.sentinel.catalog,
                 False,
-                reference,
+                assistant_route.Context(reference=reference),
             )
 
         self.assertEqual(result.intent, "assistant-install")
@@ -133,9 +151,9 @@ class AssistantRouteTests(unittest.TestCase):
         )
         self.assertEqual(result.preparation.plan.lifecycle_ids, (assistant.assistant_id,))
         self.assertEqual(route.call_count, 2)
-        self.assertIs(route.call_args_list[0].args[4], reference)
+        self.assertIs(route.call_args_list[0].args[4].reference, reference)
         self.assertEqual(route.call_args_list[1].args[2], "assistant-install")
-        self.assertIsNone(route.call_args_list[1].args[4])
+        self.assertEqual(route.call_args_list[1].args[4], local.IntentRouteContext())
 
     def test_repeated_install_returns_the_current_state_without_install_work(self) -> None:
         assistant = cloudflare()
@@ -183,7 +201,10 @@ class AssistantRouteTests(unittest.TestCase):
             result,
             assistant_route.Result(
                 "assistant-install",
-                guidance="assistant-install-target-required",
+                guidance=assistant_route.Guidance(
+                    "assistant-install-target-required",
+                    "Qual Assistant você quer usar?",
+                ),
             ),
         )
         catalog_state.assert_not_called()
@@ -191,7 +212,7 @@ class AssistantRouteTests(unittest.TestCase):
     def test_install_unknown_or_unresolved_target_returns_guidance(self) -> None:
         assistant = cloudflare()
         cases = (
-            ("unknown", response("assistant-install", "unknown")),
+            ("unknown", response("unresolved")),
             ("cloudflare", response("unresolved")),
         )
         for query, selection in cases:
@@ -210,7 +231,7 @@ class AssistantRouteTests(unittest.TestCase):
                     mock.sentinel.catalog,
                     False,
                 )
-            self.assertEqual(result.guidance, "assistant-install-target-required")
+            self.assertEqual(result.guidance.code, "assistant-install-target-required")
 
     def test_uninstall_opens_only_the_installed_name_directory(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
@@ -241,6 +262,40 @@ class AssistantRouteTests(unittest.TestCase):
             [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
         )
 
+    def test_pending_uninstall_answer_stays_in_the_specialized_route(self) -> None:
+        candidate = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
+            "0.4.5",
+        )
+        context = assistant_route.Context(
+            pending_intent="assistant-uninstall",
+            language_exemplar="desinstala ele",
+        )
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                side_effect=(
+                    response("assistant-uninstall", "cloudflare"),
+                    response("assistant-uninstall", assistant_ids=["shimpz-cloudflare"]),
+                ),
+            ) as route,
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+        ):
+            result = assistant_route.prepare(
+                "team_1",
+                payload("cloudflare"),
+                mock.sentinel.catalog,
+                False,
+                context,
+            )
+
+        self.assertEqual(result.uninstall, candidate)
+        self.assertEqual(route.call_args_list[0].args[4].pending_intent, "assistant-uninstall")
+        self.assertEqual(route.call_args_list[0].args[4].language_exemplar, "desinstala ele")
+        self.assertIsNone(route.call_args_list[1].args[4].pending_intent)
+        self.assertEqual(route.call_args_list[1].args[4].language_exemplar, "desinstala ele")
+
     def test_uninstall_missing_unknown_or_unresolved_target_returns_guidance(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
@@ -248,7 +303,7 @@ class AssistantRouteTests(unittest.TestCase):
         )
         cases = (
             (response("assistant-uninstall"), (candidate,), None),
-            (response("assistant-uninstall", "unknown"), (candidate,), None),
+            (response("assistant-uninstall", "unknown"), (candidate,), response("unresolved")),
             (response("assistant-uninstall", "cloudflare"), (candidate,), response("unresolved")),
         )
         for initial, candidates, selection in cases:
@@ -272,7 +327,7 @@ class AssistantRouteTests(unittest.TestCase):
                     mock.sentinel.catalog,
                     False,
                 )
-            self.assertEqual(result.guidance, "assistant-uninstall-target-required")
+            self.assertEqual(result.guidance.code, "assistant-uninstall-target-required")
 
     def test_uninstall_selection_must_resolve_to_exactly_one_current_candidate(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
@@ -313,7 +368,13 @@ class AssistantRouteTests(unittest.TestCase):
             result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
         self.assertEqual(
             result,
-            assistant_route.Result("unresolved", guidance="assistant-lifecycle-ambiguous"),
+            assistant_route.Result(
+                "unresolved",
+                guidance=assistant_route.Guidance(
+                    "assistant-lifecycle-ambiguous",
+                    "Qual Assistant você quer usar?",
+                ),
+            ),
         )
 
         with (

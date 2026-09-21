@@ -27,6 +27,7 @@ from history import store as history
 from team import bridge as team
 
 from chat import (
+    assistant_route,
     connection,
     human,
     lanes,
@@ -645,6 +646,13 @@ async def _start_direct_turn(
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
 
+def _lifecycle_language_exemplar(message: object) -> str | None:
+    exemplar = team_contract.canonical_language_exemplar(message)
+    if exemplar is not None or not isinstance(message, str):
+        return exemplar
+    return team_contract.canonical_language_exemplar(message[: team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS])
+
+
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -657,8 +665,20 @@ async def _dispatch_chat(
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
+    pending_lifecycle = connection.pending_lifecycle
+    connection.pending_lifecycle = None
+    lifecycle_exemplar = (
+        pending_lifecycle.language_exemplar
+        if pending_lifecycle is not None
+        else _lifecycle_language_exemplar(payload["message"])
+    )
+    route_context = assistant_route.Context(
+        reference=None if pending_lifecycle is not None else connection.assistant_reference,
+        pending_intent=None if pending_lifecycle is None else pending_lifecycle.intent,
+        language_exemplar=lifecycle_exemplar,
+    )
     try:
-        preparation = lifecycle.submit_route(team_id, payload, connection.assistant_reference)
+        preparation = lifecycle.submit_route(team_id, payload, route_context)
     except ExecutorSaturatedError:
         connection.ignore_idle_stop_once = True
         await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
@@ -667,6 +687,7 @@ async def _dispatch_chat(
         future=preparation,
         operation="assistant-route",
         language_exemplar=language_exemplar,
+        lifecycle_language_exemplar=lifecycle_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
     )

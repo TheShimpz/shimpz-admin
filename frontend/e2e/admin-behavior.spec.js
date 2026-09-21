@@ -155,6 +155,7 @@ async function routeReadyChat(page, {
   assistantSummary = 'Safely manage Cloudflare DNS records through OAuth.',
   assistantUninstall = false,
   assistantGuidanceCode = '',
+  assistantGuidanceReply = '',
   holdTargetlessUninstallGuidance = false,
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
@@ -486,6 +487,7 @@ async function routeReadyChat(page, {
             type: 'assistant-guidance',
             team_id: 'marketing',
             code: assistantGuidanceCode,
+            reply: assistantGuidanceReply,
           }));
           if (holdTargetlessUninstallGuidance) targetlessGuidancePending = true;
           else sendTargetlessGuidance();
@@ -691,6 +693,7 @@ async function routeReadyChat(page, {
             type: 'assistant-guidance',
             team_id: 'marketing',
             code: assistantGuidanceCode,
+            reply: assistantGuidanceReply,
           }));
           return;
         }
@@ -1232,7 +1235,10 @@ for (const [code, message, question] of [
   ],
 ]) {
   test(`renders the ${code} lifecycle question`, async ({ page }) => {
-    const chat = await routeReadyChat(page, { assistantGuidanceCode: code });
+    const chat = await routeReadyChat(page, {
+      assistantGuidanceCode: code,
+      assistantGuidanceReply: question,
+    });
     await page.goto('/chat/');
 
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -1255,6 +1261,7 @@ for (const [code, message, question] of [
 test('keeps target-required guidance valid when Stop races its response', async ({ page }) => {
   await routeReadyChat(page, {
     assistantGuidanceCode: 'assistant-uninstall-target-required',
+    assistantGuidanceReply: 'Which installed Assistant do you want to uninstall?',
     holdTargetlessUninstallGuidance: true,
   });
   await page.goto('/chat/');

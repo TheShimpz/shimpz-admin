@@ -342,8 +342,10 @@ def intent_route(
         "expected_intent",
         "candidates",
         "lifecycle_reference",
+        "pending_intent",
+        "language_exemplar",
     }:
-        raise TeamRequestError("intent route requires objective, expected_intent, candidates, and lifecycle_reference")
+        raise TeamRequestError("intent route requires objective, expected_intent, candidates, and lifecycle context")
     return _call(
         "POST",
         f"/v1/teams/{canonical_id}/chat/intent-route",

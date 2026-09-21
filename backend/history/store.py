@@ -19,11 +19,12 @@ from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
 MAX_REPLY_CHARS = 60_000
+MAX_GUIDANCE_REPLY_CHARS = 240
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -113,7 +114,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 3;
+        PRAGMA user_version = 4;
         """
     )
 
@@ -295,15 +296,16 @@ def append_install(team_id: object, turn_id: object, event: object) -> bool:
     )
 
 
-def append_guidance(team_id: object, turn_id: object, code: object) -> bool:
+def append_guidance(team_id: object, turn_id: object, code: object, reply: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     if code not in _GUIDANCE_CODES:
         raise ValueError("chat history guidance is invalid")
+    text = _text(reply, MAX_GUIDANCE_REPLY_CHARS, "guidance reply")
     return _append(
         canonical_team,
         f"{canonical_turn}:guidance",
-        {"kind": "guidance", "code": code},
+        {"kind": "guidance", "code": code, "reply": text},
         finish_turn=canonical_turn,
     )
 
@@ -432,8 +434,9 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
 
 
 def _validate_stored_guidance(payload: dict[str, object]) -> None:
-    if set(payload) != {"kind", "code"} or payload.get("code") not in _GUIDANCE_CODES:
+    if set(payload) != {"kind", "code", "reply"} or payload.get("code") not in _GUIDANCE_CODES:
         raise ValueError("invalid stored guidance")
+    _text(payload.get("reply"), MAX_GUIDANCE_REPLY_CHARS, "stored guidance reply")
 
 
 def _validate_stored_install(payload: dict[str, object]) -> None:

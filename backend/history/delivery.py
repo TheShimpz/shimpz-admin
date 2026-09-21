@@ -97,9 +97,9 @@ async def resumed_terminal(turn_id: str | None, event: Mapping[str, object]) -> 
     await asyncio.to_thread(store.finish_resumable_turn, turn_id)
 
 
-async def guidance(team_id: str, turn_id: str | None, code: str) -> None:
+async def guidance(team_id: str, turn_id: str | None, code: str, reply: str) -> None:
     if turn_id is None:
         return
-    committed = await asyncio.to_thread(store.append_guidance, team_id, turn_id, code)
+    committed = await asyncio.to_thread(store.append_guidance, team_id, turn_id, code, reply)
     if not committed:
         raise store.HistoryUnavailableError("chat history guidance was not committed")

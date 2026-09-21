@@ -74,6 +74,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "expected_intent": "assistant-uninstall",
             "candidates": [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}],
             "lifecycle_reference": None,
+            "pending_intent": None,
+            "language_exemplar": None,
         }
         expected = team.TeamResponse(200, {"intent": "assistant-uninstall"})
         with mock.patch.object(team, "_call", return_value=expected) as call:
@@ -102,6 +104,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
                 "expected_intent": None,
                 "candidates": [],
                 "lifecycle_reference": None,
+                "pending_intent": None,
+                "language_exemplar": None,
                 "extra": True,
             },
             [],

@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat.connection import Connection, Turn
+from chat.connection import Connection, PendingLifecycle, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.delivery import uninstall as uninstall_delivery
@@ -33,15 +33,30 @@ async def _deliver_guidance(
     connection: Connection,
     turn: Turn,
     team_id: str,
-    code: assistant_route.Guidance,
+    guidance: assistant_route.Guidance,
     operations: Operations,
 ) -> None:
+    if guidance.code != "assistant-lifecycle-ambiguous" and turn.lifecycle_language_exemplar is None:
+        raise assistant_route.RouteError(503)
     try:
-        await history_delivery.guidance(team_id, turn.history_id, code)
+        await history_delivery.guidance(team_id, turn.history_id, guidance.code, guidance.reply)
     except history.HistoryUnavailableError, ValueError:
         event = operations.error_terminal(503, "Admin chat history is unavailable")
     else:
-        event = {"type": "assistant-guidance", "team_id": team_id, "code": code}
+        if guidance.code == "assistant-lifecycle-ambiguous":
+            connection.pending_lifecycle = None
+        else:
+            intent = (
+                "assistant-install" if guidance.code == "assistant-install-target-required" else "assistant-uninstall"
+            )
+            connection.pending_lifecycle = PendingLifecycle(intent, turn.lifecycle_language_exemplar)
+        connection.assistant_reference = None
+        event = {
+            "type": "assistant-guidance",
+            "team_id": team_id,
+            "code": guidance.code,
+            "reply": guidance.reply,
+        }
     await terminal_delivery.turn(websocket, connection, turn, event)
 
 

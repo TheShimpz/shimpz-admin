@@ -78,7 +78,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
 
                 await websocket.send_json({"type": "chat", "message": "Olá", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["type"], "done")
-                reference = route.call_args_list[1].args[2]
+                reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
                 self.assertEqual(reference.name, "Shimpz Cloudflare")
                 turn.assert_called_once()
@@ -144,7 +144,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                     {"type": "chat", "message": "liste as zonas", "files": [], "assistant_ids": []}
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
-                reference = route.call_args_list[1].args[2]
+                reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
                 self.assertEqual(reference.name, "Shimpz Cloudflare")
                 await websocket.disconnect()

@@ -113,7 +113,7 @@ def _event(
 def submit_route(
     team_id: str,
     payload: dict[str, object],
-    reference: assistant_proposal.AssistantReference | None,
+    context: assistant_route.Context,
 ) -> concurrent.futures.Future:
     """Admit one complete structured preparation job for a fresh chat objective."""
     return submit_in_context(
@@ -123,7 +123,7 @@ def submit_route(
         payload,
         _STORE_CATALOG,
         None,
-        reference,
+        context,
     )
 
 

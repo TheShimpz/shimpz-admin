@@ -602,18 +602,19 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
 });
 
 test('chat admits only exact closed Assistant guidance', () => {
+  const reply = 'Qual Assistant instalado você quer desinstalar?';
   for (const code of [
     'assistant-install-target-required',
     'assistant-uninstall-target-required',
     'assistant-lifecycle-ambiguous',
   ]) assert.deepEqual(
-    parseChatEvent({ type: 'assistant-guidance', team_id: 'team_1', code }, 'team_1', 'Marketing'),
-    { type: 'assistant-guidance', team_id: 'team_1', team_name: 'Marketing', code },
+    parseChatEvent({ type: 'assistant-guidance', team_id: 'team_1', code, reply }, 'team_1', 'Marketing'),
+    { type: 'assistant-guidance', team_id: 'team_1', team_name: 'Marketing', code, reply },
   );
   for (const invalid of [
     { type: 'assistant-guidance', team_id: 'other_team', code: 'assistant-install-target-required' },
     {
-      type: 'assistant-guidance', team_id: 'team_1', code: 'assistant-install-target-required', reply: 'unsafe',
+      type: 'assistant-guidance', team_id: 'team_1', code: 'assistant-install-target-required', reply: '',
     },
     { type: 'assistant-guidance', team_id: 'team_1', code: 'unknown' },
     { type: 'assistant-guidance', code: 'assistant-install-target-required' },

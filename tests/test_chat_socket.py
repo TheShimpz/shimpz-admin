@@ -685,7 +685,10 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         self._future(
                             self.assistant_route.Result(
                                 "assistant-uninstall",
-                                guidance="assistant-uninstall-target-required",
+                                guidance=self.assistant_route.Guidance(
+                                    "assistant-uninstall-target-required",
+                                    "Qual Assistant instalado você quer desinstalar?",
+                                ),
                             )
                         ),
                         self._route_future(self.assistant_plan.Preparation()),
@@ -703,6 +706,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "type": "assistant-guidance",
                         "team_id": "team_1",
                         "code": "assistant-uninstall-target-required",
+                        "reply": "Qual Assistant instalado você quer desinstalar?",
                     },
                 )
                 self.assertEqual(route.call_count, 1)

@@ -32,7 +32,13 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
         ):
-            local.intent_route("team_1", "instale ele de novo", None, [], reference)
+            local.intent_route(
+                "team_1",
+                "instale ele de novo",
+                None,
+                [],
+                local.IntentRouteContext(reference=reference),
+            )
 
         self.assertEqual(
             route.call_args.args[1]["lifecycle_reference"],
@@ -40,7 +46,13 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         )
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
         with self.assertRaises(team.TeamRequestError):
-            local.intent_route("team_1", "instale o cloudflare", "assistant-install", candidates, reference)
+            local.intent_route(
+                "team_1",
+                "instale o cloudflare",
+                "assistant-install",
+                candidates,
+                local.IntentRouteContext(reference=reference),
+            )
 
     def test_intent_route_rejects_invalid_input_and_inconsistent_team_output(self) -> None:
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
@@ -49,7 +61,6 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             (None, candidates),
             ("assistant-install", "invalid"),
             ("assistant-install", [{"id": "cloudflare", "name": "Cloudflare"}]),
-            ("assistant-install", []),
             ("assistant-install", [*candidates, *candidates]),
             ("assistant-uninstall", [{"id": "cloudflare", "name": "Cloudflare", "summary": "private"}]),
         )
@@ -62,6 +73,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             "intent": "assistant-uninstall",
             "query": "",
             "assistant_ids": ["cloudflare"],
+            "reply": "",
             "trace_id": TRACE_ID,
         }
         invalid_output = (
@@ -95,6 +107,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "intent": "ordinary-task",
                 "query": "unexpected",
                 "assistant_ids": [],
+                "reply": "",
                 "trace_id": TRACE_ID,
             },
             {
@@ -102,6 +115,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "intent": "unresolved",
                 "query": "unexpected",
                 "assistant_ids": [],
+                "reply": "",
                 "trace_id": TRACE_ID,
             },
         )
@@ -121,6 +135,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             "intent": "ordinary-task",
             "query": "",
             "assistant_ids": [],
+            "reply": "",
             "trace_id": TRACE_ID,
         }
         with (
@@ -144,6 +159,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             "intent": "unresolved",
             "query": "unexpected",
             "assistant_ids": [],
+            "reply": "",
             "trace_id": TRACE_ID,
         }
         with (
@@ -155,7 +171,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 team.TeamResponse(502, {"code": "chat-response-invalid"}),
             )
 
-        valid_unresolved = {**invalid_unresolved, "query": ""}
+        valid_unresolved = {**invalid_unresolved, "query": "", "reply": "Qual Assistant você quer instalar?"}
         with (
             mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, valid_unresolved)),

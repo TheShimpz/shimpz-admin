@@ -76,7 +76,7 @@ class ChatLifecycleTests(unittest.TestCase):
                 lifecycle.submit_route(
                     "team_1",
                     {"message": "Desinstale o Cloudflare", "assistant_ids": []},
-                    None,
+                    lifecycle.assistant_route.Context(),
                 )
             with self.assertRaises(lifecycle.ExecutorSaturatedError):
                 lifecycle.submit_resume(
@@ -87,9 +87,10 @@ class ChatLifecycleTests(unittest.TestCase):
     def test_route_submission_captures_one_immutable_reference(self) -> None:
         sentinel = mock.sentinel.future
         reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+        context = lifecycle.assistant_route.Context(reference=reference)
         payload = {"message": "instale ele de novo", "assistant_ids": []}
         with mock.patch.object(lifecycle, "submit_in_context", return_value=sentinel) as submit:
-            self.assertIs(lifecycle.submit_route("team_1", payload, reference), sentinel)
+            self.assertIs(lifecycle.submit_route("team_1", payload, context), sentinel)
 
         submit.assert_called_once_with(
             lifecycle._PLAN_EXECUTOR,
@@ -98,7 +99,7 @@ class ChatLifecycleTests(unittest.TestCase):
             payload,
             lifecycle._STORE_CATALOG,
             None,
-            reference,
+            context,
         )
 
     def test_uninstall_events_expose_only_bounded_team_identity(self) -> None:

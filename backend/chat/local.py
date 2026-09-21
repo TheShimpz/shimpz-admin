@@ -22,6 +22,7 @@ import models
 from team import bridge as team
 
 from chat import assistant_proposal, human
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -85,6 +86,14 @@ MAX_INTENT_ROUTE_CANDIDATES = 8
 MAX_INTENT_ROUTE_QUERY_CHARS = 160
 MAX_INTENT_ROUTE_NAME_CHARS = 80
 MAX_INTENT_ROUTE_SUMMARY_CHARS = 160
+MAX_INTENT_ROUTE_REPLY_CHARS = 240
+
+
+@dataclass(frozen=True, slots=True)
+class IntentRouteContext:
+    reference: assistant_proposal.AssistantReference | None = None
+    pending_intent: str | None = None
+    language_exemplar: str | None = None
 
 
 def _ignore_progress(_event: dict[str, object]) -> None:
@@ -357,8 +366,8 @@ def _intent_route_directory(
     if expected_intent is None:
         if candidates:
             raise team.TeamRequestError("classification cannot include an Assistant directory")
-    elif not candidates or expected_ids != sorted(set(expected_ids)):
-        raise team.TeamRequestError("Assistant directory must be non-empty, unique, and sorted")
+    elif expected_ids != sorted(set(expected_ids)):
+        raise team.TeamRequestError("Assistant directory must be unique and sorted")
     return expected_intent, candidates, expected_ids
 
 
@@ -376,6 +385,31 @@ def _intent_route_reference(
     }
 
 
+def _intent_route_context(
+    expected_intent: str | None,
+    context: IntentRouteContext | None,
+) -> tuple[dict[str, str] | None, str | None, str | None]:
+    if context is None:
+        context = IntentRouteContext()
+    if not isinstance(context, IntentRouteContext):
+        raise team.TeamRequestError("Assistant lifecycle context is invalid")
+    reference = _intent_route_reference(expected_intent, context.reference)
+    pending_intent = context.pending_intent
+    exemplar = context.language_exemplar
+    if exemplar is not None:
+        exemplar = team_contract.canonical_language_exemplar(exemplar)
+        if exemplar is None:
+            raise team.TeamRequestError("Assistant lifecycle language exemplar is invalid")
+    if expected_intent is None:
+        if pending_intent not in {None, "assistant-install", "assistant-uninstall"}:
+            raise team.TeamRequestError("Assistant pending lifecycle intent is invalid")
+        if (pending_intent is None) != (exemplar is None) or (reference is not None and pending_intent is not None):
+            raise team.TeamRequestError("Assistant lifecycle context is invalid")
+    elif reference is not None or pending_intent is not None:
+        raise team.TeamRequestError("Assistant lifecycle context is selection-incompatible")
+    return reference, pending_intent, exemplar
+
+
 def _project_intent_route(
     response: team.TeamResponse,
     canonical_id: str,
@@ -383,11 +417,12 @@ def _project_intent_route(
     expected_ids: list[str],
 ) -> team.TeamResponse:
     body = response.body
-    if set(body) != {"team_id", "intent", "query", "assistant_ids", "trace_id"}:
+    if set(body) != {"team_id", "intent", "query", "assistant_ids", "reply", "trace_id"}:
         raise ValueError("invalid intent route fields")
     intent = body["intent"]
     query = body["query"]
     raw_ids = body["assistant_ids"]
+    reply = body["reply"]
     trace_id = body["trace_id"]
     if (
         body["team_id"] != canonical_id
@@ -397,6 +432,8 @@ def _project_intent_route(
         or len(query) > MAX_INTENT_ROUTE_QUERY_CHARS
         or not isinstance(raw_ids, list)
         or len(raw_ids) > MAX_INTENT_ROUTE_IDS
+        or not isinstance(reply, str)
+        or (reply and chat_ws_common.public_text(reply, MAX_INTENT_ROUTE_REPLY_CHARS) != reply)
         or not isinstance(trace_id, str)
         or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
     ):
@@ -407,14 +444,20 @@ def _project_intent_route(
     if expected_intent is None:
         if assistant_ids or (intent in {"ordinary-task", "unresolved"} and query):
             raise ValueError("invalid intent route classification")
+        requires_reply = intent == "unresolved" or (
+            intent in {"assistant-install", "assistant-uninstall"} and not query
+        )
+        if bool(reply) != requires_reply:
+            raise ValueError("invalid intent route classification reply")
     elif intent == "unresolved":
-        if query or assistant_ids:
+        if query or assistant_ids or not reply:
             raise ValueError("invalid unresolved intent route")
     elif (
         intent != expected_intent
         or query
         or not assistant_ids
         or (expected_intent == "assistant-uninstall" and len(assistant_ids) != 1)
+        or reply
     ):
         raise ValueError("invalid intent route selection")
     return PublicResponse(
@@ -424,6 +467,7 @@ def _project_intent_route(
             "intent": intent,
             "query": query,
             "assistant_ids": assistant_ids,
+            "reply": reply,
         },
     )
 
@@ -433,12 +477,12 @@ def intent_route(
     objective: object,
     expected_intent: object,
     candidates: list[dict[str, object]],
-    reference: assistant_proposal.AssistantReference | None = None,
+    context: IntentRouteContext | None = None,
 ) -> team.TeamResponse:
     """Project one credential-bound structured route without lifecycle authority."""
     canonical_id = team.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
-    projected_reference = _intent_route_reference(expected, reference)
+    projected_reference, pending_intent, language_exemplar = _intent_route_context(expected, context)
     credential = _model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
@@ -450,6 +494,8 @@ def intent_route(
             "expected_intent": expected,
             "candidates": directory,
             "lifecycle_reference": projected_reference,
+            "pending_intent": pending_intent,
+            "language_exemplar": language_exemplar,
         },
         provider=provider,
         api_key=api_key,

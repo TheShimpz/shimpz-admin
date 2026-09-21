@@ -68,7 +68,10 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     return_value=_future(
                         assistant_route.Result(
                             "assistant-uninstall",
-                            guidance="assistant-uninstall-target-required",
+                            guidance=assistant_route.Guidance(
+                                "assistant-uninstall-target-required",
+                                "Qual Assistant instalado você quer desinstalar?",
+                            ),
                         )
                     ),
                 ),

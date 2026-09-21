@@ -49,6 +49,7 @@ test('loads one exact bounded Team chat history page', async () => {
         id: `${TURN_B}:guidance`,
         kind: 'guidance',
         code: 'assistant-install-target-required',
+        reply: 'Which Assistant do you want to install?',
       },
     ],
     before: CURSOR,
@@ -103,7 +104,7 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], name: 'Cloud\u202eFlare' }] },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], summary: 'Line one\nLine two' }] },
     { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'hello', author: 'Marketing' },
-    { id: `${TURN_A}:guidance`, kind: 'guidance', code: 'unknown' },
+    { id: `${TURN_A}:guidance`, kind: 'guidance', code: 'unknown', reply: 'Question?' },
     {
       id: `${TURN_A}:uninstall`,
       kind: 'assistant-uninstall',

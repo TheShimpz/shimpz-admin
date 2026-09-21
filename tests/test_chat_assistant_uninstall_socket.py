@@ -185,6 +185,55 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_model_guidance_keeps_one_uninstall_target_follow_up_in_portuguese(self) -> None:
+        async def scenario() -> None:
+            reply = "Qual Assistant instalado você quer desinstalar?"
+            with (
+                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                mock.patch.object(
+                    self.chat_socket.lifecycle,
+                    "submit_route",
+                    side_effect=(
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                                guidance=self.assistant_route.Guidance(
+                                    "assistant-uninstall-target-required",
+                                    reply,
+                                ),
+                            )
+                        ),
+                        self._future(
+                            self.assistant_route.Result(
+                                "assistant-uninstall",
+                                uninstall=self._uninstall_candidate(),
+                            )
+                        ),
+                    ),
+                ) as route,
+            ):
+                websocket = _Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "desinstala ele", "files": [], "assistant_ids": []}
+                )
+                guidance = await websocket.next_json()
+                self.assertEqual(guidance["reply"], reply)
+
+                await websocket.send_json({"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []})
+                proposed = await websocket.next_json()
+                self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
+
+                first_context = route.call_args_list[0].args[2]
+                second_context = route.call_args_list[1].args[2]
+                self.assertIsNone(first_context.pending_intent)
+                self.assertEqual(second_context.pending_intent, "assistant-uninstall")
+                self.assertEqual(second_context.language_exemplar, "desinstala ele")
+                turn.assert_not_called()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_successful_uninstall_supplies_the_follow_up_reinstall_reference(self) -> None:
         async def scenario() -> None:
             assistant_plan = self.chat_socket.lifecycle.assistant_plan
@@ -273,7 +322,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 completed = await websocket.next_json()
                 self.assertEqual((completed["state"], completed["continuation"]), ("installed", "none"))
-                reference = route.call_args_list[1].args[2]
+                reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
                 self.assertEqual(reference.name, "Shimpz Cloudflare")
                 turn.assert_not_called()
@@ -348,7 +397,10 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         else self._future(
                             self.assistant_route.Result(
                                 "assistant-uninstall",
-                                guidance="assistant-uninstall-target-required",
+                                guidance=self.assistant_route.Guidance(
+                                    "assistant-uninstall-target-required",
+                                    "Qual Assistant instalado você quer desinstalar?",
+                                ),
                             )
                         )
                     ),

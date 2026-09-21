@@ -14,6 +14,7 @@ const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
 const MAX_PAGE_ENTRIES = 64;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_REPLY_CHARS = 60_000;
+const MAX_GUIDANCE_REPLY_CHARS = 240;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_ASSISTANTS = 4;
 const MAX_PROVIDERS = 32;
@@ -168,10 +169,15 @@ function guidanceEntry(value, suffix, status) {
   ]);
   if (
     suffix !== 'guidance' ||
-    !exactKeys(value, ['code', 'id', 'kind']) ||
+    !exactKeys(value, ['code', 'id', 'kind', 'reply']) ||
     !codes.has(value.code)
   ) throw invalidHistory(status);
-  return { id: value.id, kind: 'guidance', code: value.code };
+  return {
+    id: value.id,
+    kind: 'guidance',
+    code: value.code,
+    reply: publicText(value.reply, MAX_GUIDANCE_REPLY_CHARS, status),
+  };
 }
 
 function historyEntry(value, status) {

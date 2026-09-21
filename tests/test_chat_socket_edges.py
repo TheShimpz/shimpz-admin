@@ -73,7 +73,10 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     return_value=_future(
                         assistant_route.Result(
                             "assistant-uninstall",
-                            guidance="assistant-uninstall-target-required",
+                            guidance=assistant_route.Guidance(
+                                "assistant-uninstall-target-required",
+                                "Which installed Assistant do you want to uninstall?",
+                            ),
                         )
                     ),
                 ) as route,
@@ -93,6 +96,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     "type": "assistant-guidance",
                     "team_id": "team_1",
                     "code": "assistant-uninstall-target-required",
+                    "reply": "Which installed Assistant do you want to uninstall?",
                 },
             )
             send.assert_not_awaited()
@@ -149,7 +153,10 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     return_value=_future(
                         assistant_route.Result(
                             "assistant-uninstall",
-                            guidance="assistant-uninstall-target-required",
+                            guidance=assistant_route.Guidance(
+                                "assistant-uninstall-target-required",
+                                "Qual Assistant instalado você quer desinstalar?",
+                            ),
                         )
                     ),
                 ),

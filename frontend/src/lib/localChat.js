@@ -24,6 +24,7 @@ const MAX_HUMAN_REQUESTS_PER_ACTION = 8;
 const MAX_HUMAN_RESPONSE_CHARS = 16_000;
 const MAX_TEAM_NAME_CHARS = 80;
 const MAX_REPLY_CHARS = 60_000;
+const MAX_GUIDANCE_REPLY_CHARS = 240;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
 const CAPABILITY_CONTINUATIONS = new Set([
@@ -1071,7 +1072,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       'assistant-lifecycle-ambiguous',
     ]);
     if (
-      !exactKeys(value, ['type', 'team_id', 'code']) ||
+      !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
       value.team_id !== expectedTeamId ||
       !codes.has(value.code)
     ) throw new LocalApiError('The local chat response is invalid.');
@@ -1080,6 +1081,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       team_id: value.team_id,
       team_name: canonicalTeam(expectedTeamName),
       code: value.code,
+      reply: canonicalPublicText(value.reply, MAX_GUIDANCE_REPLY_CHARS),
     };
   }
   if (value.type === 'assistant-uninstall') {

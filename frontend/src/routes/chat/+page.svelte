@@ -238,12 +238,6 @@
     return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
   }
 
-  function guidanceText(code) {
-    if (code === 'assistant-install-target-required') return copy.install.targetRequired;
-    if (code === 'assistant-uninstall-target-required') return copy.uninstall.targetRequired;
-    return copy.install.lifecycleAmbiguous;
-  }
-
   function historyTurn(entry, author) {
     if (entry.kind === 'message') {
       return {
@@ -257,7 +251,7 @@
       return {
         historyId: entry.id,
         role: 'assistant',
-        text: guidanceText(entry.code),
+        text: escapeMarkdownText(entry.reply),
         author,
       };
     }
@@ -918,7 +912,7 @@
           capabilityObjective = null;
           turns = [...turns, {
             role: 'assistant',
-            text: guidanceText(incoming.code),
+            text: escapeMarkdownText(incoming.reply),
             author: incoming.team_name,
             receipt: progressEvents.map((item) => ({ ...item })),
           }];

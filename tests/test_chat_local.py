@@ -848,6 +848,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "intent": "assistant-uninstall",
                 "query": "",
                 "assistant_ids": ["cloudflare"],
+                "reply": "",
                 "trace_id": TRACE_ID,
             },
         )
@@ -876,6 +877,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "intent": "assistant-uninstall",
                     "query": "",
                     "assistant_ids": ["cloudflare"],
+                    "reply": "",
                 },
             ),
         )
@@ -886,6 +888,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "expected_intent": "assistant-uninstall",
                 "candidates": candidates,
                 "lifecycle_reference": None,
+                "pending_intent": None,
+                "language_exemplar": None,
             },
             provider="openai",
             api_key=api_key,

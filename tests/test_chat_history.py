@@ -218,6 +218,7 @@ class ChatHistoryTests(unittest.TestCase):
                 "marketing",
                 guidance,
                 "assistant-uninstall-target-required",
+                "Qual Assistant instalado você quer desinstalar?",
             )
         )
         self.assertTrue(
@@ -237,6 +238,10 @@ class ChatHistoryTests(unittest.TestCase):
         )
         page = history.page("marketing")
         self.assertEqual(page["entries"][0]["code"], "assistant-uninstall-target-required")
+        self.assertEqual(
+            page["entries"][0]["reply"],
+            "Qual Assistant instalado você quer desinstalar?",
+        )
         uninstall = page["entries"][1]
         self.assertEqual(uninstall["kind"], "assistant-uninstall")
         self.assertEqual(uninstall["assistant"], assistant)
@@ -431,7 +436,7 @@ class ChatHistoryTests(unittest.TestCase):
                     "marketing",
                 ),
             ),
-            (history.append_guidance, ("marketing", "a" * 32, "unknown")),
+            (history.append_guidance, ("marketing", "a" * 32, "unknown", "Question?")),
         )
         for function, arguments in invalid_calls:
             with self.subTest(function=function.__name__, arguments=arguments), self.assertRaises(ValueError):
