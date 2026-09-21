@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from chat.executor import submit_in_context
+from history import context as conversation_context
 from team import bridge as team
 
 from chat import (
@@ -33,8 +34,8 @@ GuidanceCode = Literal[
 @dataclass(frozen=True, slots=True)
 class Context:
     reference: assistant_proposal.AssistantReference | None = None
-    pending_intent: LifecycleIntent | None = None
-    language_exemplar: str | None = None
+    conversation: tuple[conversation_context.Entry, ...] = ()
+    selection_language_exemplar: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,12 +251,7 @@ def _lifecycle_result(
     if payload["files"]:
         return Result("unresolved", error_status=422)
     if classification.intent == "unresolved":
-        guidance = (
-            _guidance(route_context.pending_intent, classification.reply)
-            if route_context.pending_intent is not None
-            else Guidance("assistant-lifecycle-ambiguous", classification.reply)
-        )
-        return Result("unresolved", guidance=guidance)
+        return Result("unresolved", guidance=Guidance("assistant-lifecycle-ambiguous", classification.reply))
     if classification.intent == "assistant-install":
         return _classified_install(
             team_id,
@@ -263,13 +259,13 @@ def _lifecycle_result(
             classification,
             catalog,
             include_local,
-            route_context.language_exemplar,
+            route_context.selection_language_exemplar,
         )
     return _classified_uninstall(
         team_id,
         payload,
         classification,
-        route_context.language_exemplar,
+        route_context.selection_language_exemplar,
         allow_uninstall=allow_uninstall,
     )
 
@@ -292,8 +288,7 @@ def _prepare(
         [],
         local.IntentRouteContext(
             reference=route_context.reference,
-            pending_intent=route_context.pending_intent,
-            language_exemplar=(route_context.language_exemplar if route_context.pending_intent is not None else None),
+            conversation=route_context.conversation,
         ),
     )
     if classification.intent == "ordinary-task":

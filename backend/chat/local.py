@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 
 import models
+from history import context as conversation_context
 from team import bridge as team
 
 from chat import assistant_proposal, human
@@ -92,7 +93,7 @@ MAX_INTENT_ROUTE_REPLY_CHARS = 240
 @dataclass(frozen=True, slots=True)
 class IntentRouteContext:
     reference: assistant_proposal.AssistantReference | None = None
-    pending_intent: str | None = None
+    conversation: tuple[conversation_context.Entry, ...] = ()
     language_exemplar: str | None = None
 
 
@@ -388,26 +389,30 @@ def _intent_route_reference(
 def _intent_route_context(
     expected_intent: str | None,
     context: IntentRouteContext | None,
-) -> tuple[dict[str, str] | None, str | None, str | None]:
+) -> tuple[dict[str, str] | None, list[dict[str, object]], str | None]:
     if context is None:
         context = IntentRouteContext()
     if not isinstance(context, IntentRouteContext):
         raise team.TeamRequestError("Assistant lifecycle context is invalid")
     reference = _intent_route_reference(expected_intent, context.reference)
-    pending_intent = context.pending_intent
+    try:
+        admitted_conversation = conversation_context.admit(context.conversation)
+    except ValueError as exc:
+        raise team.TeamRequestError("Assistant conversation context is invalid") from exc
     exemplar = context.language_exemplar
     if exemplar is not None:
         exemplar = team_contract.canonical_language_exemplar(exemplar)
         if exemplar is None:
             raise team.TeamRequestError("Assistant lifecycle language exemplar is invalid")
     if expected_intent is None:
-        if pending_intent not in {None, "assistant-install", "assistant-uninstall"}:
-            raise team.TeamRequestError("Assistant pending lifecycle intent is invalid")
-        if (pending_intent is None) != (exemplar is None) or (reference is not None and pending_intent is not None):
+        if exemplar is not None:
             raise team.TeamRequestError("Assistant lifecycle context is invalid")
-    elif reference is not None or pending_intent is not None:
+    elif reference is not None or admitted_conversation:
         raise team.TeamRequestError("Assistant lifecycle context is selection-incompatible")
-    return reference, pending_intent, exemplar
+    projected = [
+        {"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in admitted_conversation
+    ]
+    return reference, projected, exemplar
 
 
 def _project_intent_route(
@@ -482,7 +487,7 @@ def intent_route(
     """Project one credential-bound structured route without lifecycle authority."""
     canonical_id = team.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
-    projected_reference, pending_intent, language_exemplar = _intent_route_context(expected, context)
+    projected_reference, conversation, language_exemplar = _intent_route_context(expected, context)
     credential = _model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
@@ -494,7 +499,7 @@ def intent_route(
             "expected_intent": expected,
             "candidates": directory,
             "lifecycle_reference": projected_reference,
-            "pending_intent": pending_intent,
+            "conversation": conversation,
             "language_exemplar": language_exemplar,
         },
         provider=provider,

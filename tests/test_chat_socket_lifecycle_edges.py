@@ -13,9 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat.connection import PendingLifecycle
-
-from chat import assistant_route, local, socket
+from chat import assistant_proposal, assistant_route, local, socket
 
 
 def _future(value: object) -> concurrent.futures.Future[object]:
@@ -196,16 +194,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                 )
                 await connection.active.delivery
 
-            self.assertIsNone(connection.pending_lifecycle)
             self.assertEqual(websocket.send_json.await_args.args[-1]["reply"], guidance.reply)
 
         asyncio.run(scenario())
 
-    def test_route_admission_saturation_restores_the_pending_direction(self) -> None:
+    def test_route_admission_saturation_preserves_the_lifecycle_reference(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            pending = PendingLifecycle("assistant-uninstall", "desinstala ele")
-            connection = socket._Connection(pending_lifecycle=pending)
+            reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
+            connection = socket._Connection(assistant_reference=reference)
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -222,7 +219,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []},
                 )
 
-            self.assertIs(connection.pending_lifecycle, pending)
+            self.assertIs(connection.assistant_reference, reference)
             self.assertEqual(send.await_args.args[-1]["status"], 429)
 
         asyncio.run(scenario())

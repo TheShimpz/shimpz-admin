@@ -185,11 +185,22 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_model_guidance_keeps_one_uninstall_target_follow_up_in_portuguese(self) -> None:
+    def test_conversation_context_resolves_uninstall_after_an_ordinary_intervening_turn(self) -> None:
         async def scenario() -> None:
             reply = "Qual Assistant instalado você quer desinstalar?"
             with (
-                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                mock.patch.object(
+                    self.chat_socket.local,
+                    "turn",
+                    return_value=self.chat_socket.local.PublicResponse(
+                        200,
+                        {
+                            "team_id": "team_1",
+                            "team_name": "Marketing",
+                            "reply": "Temos apenas Cloudflare/DNS.",
+                        },
+                    ),
+                ) as turn,
                 mock.patch.object(
                     self.chat_socket.lifecycle,
                     "submit_route",
@@ -201,6 +212,12 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                                     "assistant-uninstall-target-required",
                                     reply,
                                 ),
+                            )
+                        ),
+                        self._future(
+                            self.assistant_route.Result(
+                                "ordinary-task",
+                                preparation=self.chat_socket.lifecycle.assistant_plan.Preparation(),
                             )
                         ),
                         self._future(
@@ -220,16 +237,30 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 guidance = await websocket.next_json()
                 self.assertEqual(guidance["reply"], reply)
 
-                await websocket.send_json({"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []})
+                await websocket.send_json({"type": "chat", "message": "quais temos?", "files": [], "assistant_ids": []})
+                inventory = await websocket.next_json()
+                self.assertEqual(inventory["reply"], "Temos apenas Cloudflare/DNS.")
+
+                await websocket.send_json(
+                    {"type": "chat", "message": "desinstala esse então", "files": [], "assistant_ids": []}
+                )
                 proposed = await websocket.next_json()
                 self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
 
                 first_context = route.call_args_list[0].args[2]
-                second_context = route.call_args_list[1].args[2]
-                self.assertIsNone(first_context.pending_intent)
-                self.assertEqual(second_context.pending_intent, "assistant-uninstall")
-                self.assertEqual(second_context.language_exemplar, "desinstala ele")
-                turn.assert_not_called()
+                third_context = route.call_args_list[2].args[2]
+                self.assertEqual(first_context.conversation, ())
+                self.assertEqual(
+                    [(entry.role, entry.text) for entry in third_context.conversation],
+                    [
+                        ("user", "desinstala ele"),
+                        ("assistant", reply),
+                        ("user", "quais temos?"),
+                        ("assistant", "Temos apenas Cloudflare/DNS."),
+                    ],
+                )
+                self.assertEqual(third_context.selection_language_exemplar, "quais temos?")
+                turn.assert_called_once()
                 await websocket.disconnect()
 
         asyncio.run(scenario())

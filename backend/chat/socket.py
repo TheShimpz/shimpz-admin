@@ -22,6 +22,7 @@ from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
+from history import context as history_context
 from history import delivery as history_delivery
 from history import store as history
 from team import bridge as team
@@ -646,11 +647,18 @@ async def _start_direct_turn(
     turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
 
 
-def _lifecycle_language_exemplar(message: object) -> str | None:
+def _bounded_language_exemplar(message: object) -> str | None:
     exemplar = team_contract.canonical_language_exemplar(message)
     if exemplar is not None or not isinstance(message, str):
         return exemplar
     return team_contract.canonical_language_exemplar(message[: team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS])
+
+
+def _selection_language_exemplar(conversation: tuple[history_context.Entry, ...], message: object) -> str | None:
+    for entry in reversed(conversation):
+        if entry.role == "user":
+            return _bounded_language_exemplar(entry.text)
+    return _bounded_language_exemplar(message)
 
 
 async def _dispatch_chat(
@@ -665,22 +673,20 @@ async def _dispatch_chat(
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
-    pending_lifecycle = connection.pending_lifecycle
-    connection.pending_lifecycle = None
-    lifecycle_exemplar = (
-        pending_lifecycle.language_exemplar
-        if pending_lifecycle is not None
-        else _lifecycle_language_exemplar(payload["message"])
-    )
+    try:
+        conversation = await history_delivery.conversation(team_id, connection.admitted_history_id)
+    except history.HistoryUnavailableError, ValueError:
+        log.exception("Admin chat conversation context projection failed")
+        await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
+        return
     route_context = assistant_route.Context(
-        reference=None if pending_lifecycle is not None else connection.assistant_reference,
-        pending_intent=None if pending_lifecycle is None else pending_lifecycle.intent,
-        language_exemplar=lifecycle_exemplar,
+        reference=connection.assistant_reference,
+        conversation=conversation,
+        selection_language_exemplar=_selection_language_exemplar(conversation, payload["message"]),
     )
     try:
         preparation = lifecycle.submit_route(team_id, payload, route_context)
     except ExecutorSaturatedError:
-        connection.pending_lifecycle = pending_lifecycle
         connection.ignore_idle_stop_once = True
         await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
         return
@@ -688,7 +694,6 @@ async def _dispatch_chat(
         future=preparation,
         operation="assistant-route",
         language_exemplar=language_exemplar,
-        lifecycle_language_exemplar=lifecycle_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
     )

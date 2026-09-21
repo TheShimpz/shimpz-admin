@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import Mapping
 
-from history import store
+from history import context, store
 
 log = logging.getLogger("shimpz-admin")
 _enabled = False
@@ -27,6 +27,14 @@ async def admit(team_id: str, message: object) -> str | None:
     if not committed:
         raise store.HistoryUnavailableError("chat history user entry was not committed")
     return turn_id
+
+
+async def conversation(team_id: str, turn_id: str | None) -> tuple[context.Entry, ...]:
+    if not _enabled:
+        return ()
+    if turn_id is None:
+        raise store.HistoryUnavailableError("chat history conversation anchor is unavailable")
+    return await asyncio.to_thread(store.conversation, team_id, turn_id)
 
 
 async def terminal(

@@ -16,6 +16,7 @@ from fastapi import HTTPException
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from history import context as conversation_context
 from history import delivery
 from history import http as history_http
 from history import store as history
@@ -97,6 +98,94 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertEqual(install["state"], "installed")
         self.assertNotIn("plan_id", install)
         self.assertNotIn("continuation", install)
+
+    def test_projects_bounded_same_team_conversation_before_the_current_turn(self) -> None:
+        listed = history.new_turn_id()
+        uninstall = history.new_turn_id()
+        inventory = history.new_turn_id()
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", listed, "Quais Assistants estão instalados?"))
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                listed,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": "Temos apenas Cloudflare/DNS.",
+                },
+            )
+        )
+        self.assertTrue(history.append_user("other_team", history.new_turn_id(), "Must not cross Teams"))
+        self.assertTrue(history.append_user("marketing", uninstall, "Quero desinstalar ele."))
+        self.assertTrue(
+            history.append_guidance(
+                "marketing",
+                uninstall,
+                "assistant-uninstall-target-required",
+                "Qual Assistant você quer desinstalar?",
+            )
+        )
+        self.assertTrue(history.append_user("marketing", inventory, "Quais temos?"))
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                inventory,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": "Temos apenas Cloudflare/DNS.",
+                },
+            )
+        )
+        self.assertTrue(history.append_user("marketing", current, "Desinstala esse então."))
+
+        projected = history.conversation("marketing", current)
+
+        self.assertEqual(
+            [(entry.role, entry.text, entry.truncated) for entry in projected],
+            [
+                ("user", "Quais Assistants estão instalados?", False),
+                ("assistant", "Temos apenas Cloudflare/DNS.", False),
+                ("user", "Quero desinstalar ele.", False),
+                ("assistant", "Qual Assistant você quer desinstalar?", False),
+                ("user", "Quais temos?", False),
+                ("assistant", "Temos apenas Cloudflare/DNS.", False),
+            ],
+        )
+
+    def test_conversation_projection_truncates_head_and_tail_and_requires_an_exact_anchor(self) -> None:
+        prior = history.new_turn_id()
+        current = history.new_turn_id()
+        reply = f"{'a' * 400} middle {'z' * 400}"
+        self.assertTrue(history.append_user("marketing", prior, "Long reply"))
+        self.assertTrue(
+            history.append_reply(
+                "marketing",
+                prior,
+                {
+                    "type": "done",
+                    "team_id": "marketing",
+                    "team_name": "Marketing",
+                    "reply": reply,
+                },
+            )
+        )
+        self.assertTrue(history.append_user("marketing", current, "Continue"))
+
+        projected = history.conversation("marketing", current)
+
+        self.assertEqual(len(projected[-1].text), conversation_context.MAX_TEXT_CHARS)
+        self.assertTrue(projected[-1].truncated)
+        self.assertTrue(projected[-1].text.startswith("a" * 200))
+        self.assertTrue(projected[-1].text.endswith("z" * 200))
+        self.assertIn(conversation_context.TRUNCATION_MARKER, projected[-1].text)
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.conversation("marketing", history.new_turn_id())
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.conversation("other_team", current)
 
     def test_correlates_concurrent_resumable_turns_by_challenge(self) -> None:
         first = history.new_turn_id()

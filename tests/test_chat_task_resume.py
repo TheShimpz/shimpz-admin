@@ -49,8 +49,14 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 await websocket.send_json({"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
                 context = route.call_args.args[2]
-                self.assertEqual(context.pending_intent, "assistant-install")
-                self.assertEqual(context.language_exemplar, "Instale um Assistant")
+                self.assertEqual(
+                    [(entry.role, entry.text) for entry in context.conversation],
+                    [
+                        ("user", "Você mesmo consegue habilitar?"),
+                        ("assistant", "Qual Assistant você quer instalar?"),
+                    ],
+                )
+                self.assertEqual(context.selection_language_exemplar, "Você mesmo consegue habilitar?")
                 await websocket.disconnect()
 
         asyncio.run(scenario())

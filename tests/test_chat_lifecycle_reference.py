@@ -12,6 +12,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from history import context as conversation_context
 from team import bridge as team
 
 from chat import assistant_proposal, local, socket
@@ -37,12 +38,19 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "instale ele de novo",
                 None,
                 [],
-                local.IntentRouteContext(reference=reference),
+                local.IntentRouteContext(
+                    reference=reference,
+                    conversation=(conversation_context.Entry("assistant", "Cloudflare foi desinstalado.", False),),
+                ),
             )
 
         self.assertEqual(
             route.call_args.args[1]["lifecycle_reference"],
             {"id": "cloudflare", "name": "Cloudflare"},
+        )
+        self.assertEqual(
+            route.call_args.args[1]["conversation"],
+            [{"role": "assistant", "text": "Cloudflare foi desinstalado.", "truncated": False}],
         )
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
         with self.assertRaises(team.TeamRequestError):
@@ -74,25 +82,22 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 None,
                 [],
                 local.IntentRouteContext(
-                    pending_intent="assistant-uninstall",
-                    language_exemplar="invalid\0exemplar",
+                    conversation=[],
                 ),
             ),
             (
                 None,
                 [],
                 local.IntentRouteContext(
-                    pending_intent="unsupported",
-                    language_exemplar="remove it",
+                    conversation=(conversation_context.Entry("system", "remove it", False),),
                 ),
             ),
-            (None, [], local.IntentRouteContext(pending_intent="assistant-uninstall")),
+            (None, [], local.IntentRouteContext(language_exemplar="remove it")),
             (
                 "assistant-install",
                 candidates,
                 local.IntentRouteContext(
-                    pending_intent="assistant-install",
-                    language_exemplar="install it",
+                    conversation=(conversation_context.Entry("user", "install it", False),),
                 ),
             ),
         )

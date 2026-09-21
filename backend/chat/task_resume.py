@@ -114,7 +114,6 @@ async def dispatch(
         future=preparation,
         operation="assistant-route",
         language_exemplar=language_exemplar,
-        lifecycle_language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
     )

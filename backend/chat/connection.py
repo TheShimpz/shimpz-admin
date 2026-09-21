@@ -6,19 +6,10 @@ import asyncio
 import concurrent.futures
 import threading
 from dataclasses import dataclass, field
-from typing import Literal
 
 from chat.assistant_proposal import AssistantReference, UninstallProposal
 
 from chat import lifecycle
-
-LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
-
-
-@dataclass(frozen=True, slots=True)
-class PendingLifecycle:
-    intent: LifecycleIntent
-    language_exemplar: str
 
 
 @dataclass(slots=True)
@@ -31,7 +22,6 @@ class Turn:
     stop_requested: bool = False
     terminal_sent: bool = False
     language_exemplar: str | None = field(default=None, repr=False)
-    lifecycle_language_exemplar: str | None = field(default=None, repr=False)
     lifecycle_stop: threading.Event | None = field(default=None, repr=False)
     history_id: str | None = field(default=None, repr=False)
 
@@ -47,7 +37,6 @@ class Connection:
     lifecycle_proposal: UninstallProposal | None = None
     lifecycle: lifecycle.Operation | None = None
     assistant_reference: AssistantReference | None = None
-    pending_lifecycle: PendingLifecycle | None = None
     ignore_idle_stop_once: bool = False
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)

@@ -342,7 +342,7 @@ def intent_route(
         "expected_intent",
         "candidates",
         "lifecycle_reference",
-        "pending_intent",
+        "conversation",
         "language_exemplar",
     }:
         raise TeamRequestError("intent route requires objective, expected_intent, candidates, and lifecycle context")

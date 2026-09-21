@@ -74,7 +74,7 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "expected_intent": "assistant-uninstall",
             "candidates": [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}],
             "lifecycle_reference": None,
-            "pending_intent": None,
+            "conversation": [],
             "language_exemplar": None,
         }
         expected = team.TeamResponse(200, {"intent": "assistant-uninstall"})
@@ -104,9 +104,18 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
                 "expected_intent": None,
                 "candidates": [],
                 "lifecycle_reference": None,
-                "pending_intent": None,
+                "conversation": [],
                 "language_exemplar": None,
                 "extra": True,
+            },
+            {
+                "objective": "hello",
+                "expected_intent": None,
+                "candidates": [],
+                "lifecycle_reference": None,
+                "conversation": [],
+                "language_exemplar": None,
+                "pending_intent": "assistant-uninstall",
             },
             [],
         )

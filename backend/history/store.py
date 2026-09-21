@@ -1,4 +1,4 @@
-"""Durable, presentation-only Local Admin chat history storage."""
+"""Durable Local Admin chat history and its bounded conversation projection."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ import struct
 import threading
 from collections.abc import Iterator, Mapping
 from pathlib import Path
+
+from history import context as conversation_context
 
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -523,6 +525,55 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     has_older = len(selected) < len(rows)
     entries = [{"id": event_key, **payload} for _, event_key, payload in reversed(selected)]
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
+
+
+def _conversation_entry(event_key: object, payload: dict[str, object]) -> conversation_context.Entry:
+    if not isinstance(event_key, str):
+        raise HistoryUnavailableError("chat history conversation entry is invalid")
+    turn_id, separator, suffix = event_key.rpartition(":")
+    try:
+        _turn_id(turn_id)
+    except ValueError:
+        raise HistoryUnavailableError("chat history conversation entry is invalid") from None
+    if not separator:
+        raise HistoryUnavailableError("chat history conversation entry is invalid")
+    if suffix == "user" and payload.get("kind") == "message" and payload.get("role") == "user":
+        role, text = "user", payload.get("text")
+    elif suffix == "reply" and payload.get("kind") == "message" and payload.get("role") == "assistant":
+        role, text = "assistant", payload.get("text")
+    elif suffix == "guidance" and payload.get("kind") == "guidance":
+        role, text = "assistant", payload.get("reply")
+    else:
+        raise HistoryUnavailableError("chat history conversation entry is invalid")
+    try:
+        return conversation_context.bounded(role, text)
+    except ValueError:
+        raise HistoryUnavailableError("chat history conversation entry is invalid") from None
+
+
+def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_context.Entry, ...]:
+    """Return the latest eligible same-Team entries before one exact admitted user turn."""
+    canonical_team = _team_id(team_id)
+    canonical_turn = _turn_id(before_turn_id)
+    with _database() as database:
+        anchor = database.execute(
+            "SELECT position, payload FROM transcript WHERE team_id = ? AND event_key = ?",
+            (canonical_team, f"{canonical_turn}:user"),
+        ).fetchone()
+        if anchor is None:
+            raise HistoryUnavailableError("chat history conversation anchor is unavailable")
+        anchor_payload = _decoded(anchor[1])
+        if anchor_payload.get("kind") != "message" or anchor_payload.get("role") != "user":
+            raise HistoryUnavailableError("chat history conversation anchor is invalid")
+        rows = database.execute(
+            "SELECT event_key, payload FROM transcript "
+            "WHERE team_id = ? AND position < ? AND "
+            "(substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply' "
+            "OR substr(event_key, -9) = ':guidance') "
+            "ORDER BY position DESC LIMIT ?",
+            (canonical_team, anchor[0], conversation_context.MAX_ENTRIES),
+        ).fetchall()
+    return tuple(_conversation_entry(event_key, _decoded(raw)) for event_key, raw in reversed(rows))
 
 
 def _absent() -> bool:

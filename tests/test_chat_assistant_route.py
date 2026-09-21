@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 
+from history import context as conversation_context
+
 from chat import (
     assistant_inventory,
     assistant_plan,
@@ -296,14 +298,17 @@ class AssistantRouteTests(unittest.TestCase):
             [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
         )
 
-    def test_pending_uninstall_answer_stays_in_the_specialized_route(self) -> None:
+    def test_conversation_reference_stays_in_the_specialized_route(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
             "0.4.5",
         )
         context = assistant_route.Context(
-            pending_intent="assistant-uninstall",
-            language_exemplar="desinstala ele",
+            conversation=(
+                conversation_context.Entry("user", "quais temos?", False),
+                conversation_context.Entry("assistant", "Temos apenas Cloudflare/DNS.", False),
+            ),
+            selection_language_exemplar="quais temos?",
         )
         with (
             mock.patch.object(
@@ -318,17 +323,17 @@ class AssistantRouteTests(unittest.TestCase):
         ):
             result = assistant_route.prepare(
                 "team_1",
-                payload("cloudflare"),
+                payload("desinstala esse então"),
                 mock.sentinel.catalog,
                 False,
                 context,
             )
 
         self.assertEqual(result.uninstall, candidate)
-        self.assertEqual(route.call_args_list[0].args[4].pending_intent, "assistant-uninstall")
-        self.assertEqual(route.call_args_list[0].args[4].language_exemplar, "desinstala ele")
-        self.assertIsNone(route.call_args_list[1].args[4].pending_intent)
-        self.assertEqual(route.call_args_list[1].args[4].language_exemplar, "desinstala ele")
+        self.assertEqual(route.call_args_list[0].args[4].conversation, context.conversation)
+        self.assertIsNone(route.call_args_list[0].args[4].language_exemplar)
+        self.assertEqual(route.call_args_list[1].args[4].conversation, ())
+        self.assertEqual(route.call_args_list[1].args[4].language_exemplar, "quais temos?")
 
     def test_uninstall_missing_unknown_or_unresolved_target_returns_guidance(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(

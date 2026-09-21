@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat.connection import Connection, PendingLifecycle, Turn
+from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.delivery import uninstall as uninstall_delivery
@@ -41,13 +41,6 @@ async def _deliver_guidance(
     except history.HistoryUnavailableError, ValueError:
         event = operations.error_terminal(503, "Admin chat history is unavailable")
     else:
-        if guidance.code == "assistant-lifecycle-ambiguous" or turn.lifecycle_language_exemplar is None:
-            connection.pending_lifecycle = None
-        else:
-            intent = (
-                "assistant-install" if guidance.code == "assistant-install-target-required" else "assistant-uninstall"
-            )
-            connection.pending_lifecycle = PendingLifecycle(intent, turn.lifecycle_language_exemplar)
         connection.assistant_reference = None
         event = {
             "type": "assistant-guidance",

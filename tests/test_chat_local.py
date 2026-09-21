@@ -888,7 +888,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "expected_intent": "assistant-uninstall",
                 "candidates": candidates,
                 "lifecycle_reference": None,
-                "pending_intent": None,
+                "conversation": [],
                 "language_exemplar": None,
             },
             provider="openai",
