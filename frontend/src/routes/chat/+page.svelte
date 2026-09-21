@@ -850,6 +850,7 @@
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
+          if (syncing) busy = true;
           progressSequence = incoming.seq;
           progressEvents = [...progressEvents, incoming];
           const completedHumanTransition = humanWorking;
