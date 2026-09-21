@@ -24,10 +24,7 @@ def canonical_text(value: object) -> str:
     if not isinstance(value, str):
         raise ValueError("conversation text is invalid")
     canonical = unicodedata.normalize("NFC", value)
-    if (
-        not canonical
-        or canonical.strip() != canonical
-    ):
+    if not canonical or canonical.strip() != canonical:
         raise ValueError("conversation text is invalid")
     if any(
         unicodedata.category(character).startswith("C")
