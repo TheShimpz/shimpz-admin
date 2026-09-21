@@ -246,6 +246,62 @@ class ChatHistoryTests(unittest.TestCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.conversation("other_team", current)
 
+    def test_conversation_projection_rejects_every_malformed_boundary(self) -> None:
+        turn_id = history.new_turn_id()
+        user = {"kind": "message", "role": "user", "text": "Hello"}
+        for role, text in (("user", " padded"), ("user", "bad\x00text"), ("system", "Hello")):
+            with self.subTest(role=role, text=text), self.assertRaises(ValueError):
+                conversation_context.bounded(role, text)
+        with self.assertRaises(ValueError):
+            conversation_context.admit(
+                (conversation_context.Entry("user", "x" * 513, False),)
+            )
+        for malformed in ([], (object(),)):
+            with self.subTest(malformed=malformed), self.assertRaises(ValueError):
+                conversation_context.admit(malformed)
+        self.assertEqual(
+            conversation_context.admit((conversation_context.Entry("user", "Hello", False),)),
+            (conversation_context.Entry("user", "Hello", False),),
+        )
+        with (
+            mock.patch.object(conversation_context, "MAX_TOTAL_CHARS", 1),
+            self.assertRaises(ValueError),
+        ):
+            conversation_context.admit((conversation_context.Entry("user", "Hello", False),))
+
+        invalid_entries = (
+            (None, user, None),
+            ("invalid:user", user, None),
+            (turn_id, user, history._turn_id),
+            (f"{turn_id}:install", user, None),
+            (f"{turn_id}:user", {**user, "text": "bad\x00text"}, None),
+        )
+        for event_key, payload, patched_turn_id in invalid_entries:
+            with self.subTest(event_key=event_key), self.assertRaises(history.HistoryUnavailableError):
+                if patched_turn_id is None:
+                    history._conversation_entry(event_key, payload)
+                else:
+                    with mock.patch.object(history, "_turn_id", return_value=turn_id):
+                        history._conversation_entry(event_key, payload)
+
+        self.assertTrue(history.append_user("marketing", turn_id, "Current"))
+        with (
+            mock.patch.object(
+                history,
+                "_decoded",
+                return_value={"kind": "message", "role": "assistant", "text": "Forged"},
+            ),
+            self.assertRaises(history.HistoryUnavailableError),
+        ):
+            history.conversation("marketing", turn_id)
+
+        delivery.configure("hosted")
+        self.addCleanup(delivery.configure, "local")
+        self.assertEqual(asyncio.run(delivery.conversation("marketing", None)), ())
+        delivery.configure("local")
+        with self.assertRaises(history.HistoryUnavailableError):
+            asyncio.run(delivery.conversation("marketing", None))
+
     def test_correlates_concurrent_resumable_turns_by_challenge(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
