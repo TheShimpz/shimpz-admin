@@ -7,6 +7,7 @@ import contextlib
 import sqlite3
 import sys
 import tempfile
+import unicodedata
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -249,7 +250,13 @@ class ChatHistoryTests(unittest.TestCase):
     def test_conversation_projection_rejects_every_malformed_boundary(self) -> None:
         turn_id = history.new_turn_id()
         user = {"kind": "message", "role": "user", "text": "Hello"}
-        for role, text in (("user", " padded"), ("user", "bad\x00text"), ("system", "Hello")):
+        for role, text in (
+            ("user", None),
+            ("user", " padded"),
+            ("user", "bad\x00text"),
+            ("user", "bad\u0085text"),
+            ("system", "Hello"),
+        ):
             with self.subTest(role=role, text=text), self.assertRaises(ValueError):
                 conversation_context.bounded(role, text)
         with self.assertRaises(ValueError):
@@ -274,7 +281,6 @@ class ChatHistoryTests(unittest.TestCase):
             ("invalid:user", user, None),
             (turn_id, user, history._turn_id),
             (f"{turn_id}:install", user, None),
-            (f"{turn_id}:user", {**user, "text": "bad\x00text"}, None),
         )
         for event_key, payload, patched_turn_id in invalid_entries:
             with self.subTest(event_key=event_key), self.assertRaises(history.HistoryUnavailableError):
@@ -283,6 +289,13 @@ class ChatHistoryTests(unittest.TestCase):
                 else:
                     with mock.patch.object(history, "_turn_id", return_value=turn_id):
                         history._conversation_entry(event_key, payload)
+
+        self.assertIsNone(
+            history._conversation_entry(
+                f"{turn_id}:user",
+                {**user, "text": "bad\x00text"},
+            )
+        )
 
         self.assertTrue(history.append_user("marketing", turn_id, "Current"))
         with (
@@ -301,6 +314,18 @@ class ChatHistoryTests(unittest.TestCase):
         delivery.configure("local")
         with self.assertRaises(history.HistoryUnavailableError):
             asyncio.run(delivery.conversation("marketing", None))
+
+        unsuitable = history.new_turn_id()
+        prior = history.new_turn_id()
+        current = history.new_turn_id()
+        decomposed = unicodedata.normalize("NFD", "informação café")
+        canonical = unicodedata.normalize("NFC", decomposed)
+        self.assertNotEqual(decomposed, canonical)
+        self.assertTrue(history.append_user("marketing", unsuitable, "desinstale\ue000"))
+        self.assertTrue(history.append_user("marketing", prior, decomposed))
+        self.assertTrue(history.append_user("marketing", current, "Continue"))
+        self.assertEqual(history.conversation("marketing", current)[-1].text, canonical)
+        self.assertEqual(history.page("marketing")["entries"][-2]["text"], decomposed)
 
     def test_correlates_concurrent_resumable_turns_by_challenge(self) -> None:
         first = history.new_turn_id()

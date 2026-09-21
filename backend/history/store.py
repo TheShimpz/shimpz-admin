@@ -527,7 +527,7 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
 
 
-def _conversation_entry(event_key: object, payload: dict[str, object]) -> conversation_context.Entry:
+def _conversation_entry(event_key: object, payload: dict[str, object]) -> conversation_context.Entry | None:
     if not isinstance(event_key, str):
         raise HistoryUnavailableError("chat history conversation entry is invalid")
     turn_id, separator, suffix = event_key.rpartition(":")
@@ -548,7 +548,7 @@ def _conversation_entry(event_key: object, payload: dict[str, object]) -> conver
     try:
         return conversation_context.bounded(role, text)
     except ValueError:
-        raise HistoryUnavailableError("chat history conversation entry is invalid") from None
+        return None
 
 
 def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_context.Entry, ...]:
@@ -573,7 +573,8 @@ def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_
             "ORDER BY position DESC LIMIT ?",
             (canonical_team, anchor[0], conversation_context.MAX_ENTRIES),
         ).fetchall()
-    return tuple(_conversation_entry(event_key, _decoded(raw)) for event_key, raw in reversed(rows))
+    projected = (_conversation_entry(event_key, _decoded(raw)) for event_key, raw in reversed(rows))
+    return tuple(entry for entry in projected if entry is not None)
 
 
 def _absent() -> bool:
