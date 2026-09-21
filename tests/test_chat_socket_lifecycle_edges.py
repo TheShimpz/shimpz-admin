@@ -198,6 +198,32 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_unavailable_conversation_projection_fails_before_routing(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            connection = socket._Connection()
+            with (
+                mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
+                mock.patch.object(
+                    socket.history_delivery,
+                    "conversation",
+                    new=mock.AsyncMock(side_effect=socket.history.HistoryUnavailableError("offline")),
+                ),
+                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
+                mock.patch.object(socket.lifecycle, "submit_route") as route,
+            ):
+                await socket._dispatch_chat(
+                    websocket,
+                    connection,
+                    "team_1",
+                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
+                )
+
+            self.assertEqual(send.await_args.args[-1]["status"], 503)
+            route.assert_not_called()
+
+        asyncio.run(scenario())
+
     def test_route_admission_saturation_preserves_the_lifecycle_reference(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()

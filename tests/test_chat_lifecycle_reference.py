@@ -94,6 +94,11 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             ),
             (None, [], local.IntentRouteContext(language_exemplar="remove it")),
             (
+                "assistant-uninstall",
+                candidates,
+                local.IntentRouteContext(language_exemplar="remove\ue000it"),
+            ),
+            (
                 "assistant-install",
                 candidates,
                 local.IntentRouteContext(
