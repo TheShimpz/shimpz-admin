@@ -68,9 +68,7 @@ class RouteError(RuntimeError):
 
 def _valid_guidance_reply(value: str) -> bool:
     try:
-        return (
-            chat_ws_common.public_text(value, MAX_GUIDANCE_REPLY_CHARS, field="Assistant guidance reply") == value
-        )
+        return chat_ws_common.public_text(value, MAX_GUIDANCE_REPLY_CHARS, field="Assistant guidance reply") == value
     except ValueError:
         return False
 

@@ -46,9 +46,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 )
 
                 self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
-                await websocket.send_json(
-                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []}
-                )
+                await websocket.send_json({"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []})
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
                 context = route.call_args.args[2]
                 self.assertEqual(context.pending_intent, "assistant-install")
