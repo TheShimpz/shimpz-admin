@@ -68,6 +68,40 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             with self.subTest(expected=expected, directory=directory), self.assertRaises(team.TeamRequestError):
                 local.intent_route("team_1", "objective", expected, directory)
 
+        invalid_context = (
+            (None, [], object()),
+            (
+                None,
+                [],
+                local.IntentRouteContext(
+                    pending_intent="assistant-uninstall",
+                    language_exemplar="invalid\0exemplar",
+                ),
+            ),
+            (
+                None,
+                [],
+                local.IntentRouteContext(
+                    pending_intent="unsupported",
+                    language_exemplar="remove it",
+                ),
+            ),
+            (None, [], local.IntentRouteContext(pending_intent="assistant-uninstall")),
+            (
+                "assistant-install",
+                candidates,
+                local.IntentRouteContext(
+                    pending_intent="assistant-install",
+                    language_exemplar="install it",
+                ),
+            ),
+        )
+        with mock.patch.object(team, "intent_route") as route:
+            for expected, directory, context in invalid_context:
+                with self.subTest(context=context), self.assertRaises(team.TeamRequestError):
+                    local.intent_route("team_1", "objective", expected, directory, context)
+        route.assert_not_called()
+
         base = {
             "team_id": "team_1",
             "intent": "assistant-uninstall",
@@ -116,6 +150,14 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "query": "unexpected",
                 "assistant_ids": [],
                 "reply": "",
+                "trace_id": TRACE_ID,
+            },
+            {
+                "team_id": "team_1",
+                "intent": "ordinary-task",
+                "query": "",
+                "assistant_ids": [],
+                "reply": "Unexpected guidance",
                 "trace_id": TRACE_ID,
             },
         )

@@ -107,6 +107,18 @@ class AssistantRouteTests(unittest.TestCase):
             ):
                 assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
 
+        invalid_reply_rules = (
+            (None, response("ordinary-task", reply="Unexpected guidance")),
+            ("assistant-uninstall", response("unresolved", reply="")),
+        )
+        for expected_intent, routed in invalid_reply_rules:
+            with (
+                self.subTest(expected_intent=expected_intent),
+                mock.patch.object(assistant_route.local, "intent_route", return_value=routed),
+                self.assertRaises(assistant_route.RouteError),
+            ):
+                assistant_route._route("team_1", "hello", expected_intent, [])
+
     def test_catalog_state_reads_inventory_and_directory_concurrently(self) -> None:
         installed = {"cloudflare": mock.sentinel.installed}
         available = (cloudflare(),)
