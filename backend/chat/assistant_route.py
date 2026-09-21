@@ -19,6 +19,7 @@ from chat import (
     local,
     store_catalog,
 )
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
@@ -76,6 +77,13 @@ def _valid_guidance_reply(value: str) -> bool:
 
 def _safe_status(response: object) -> int:
     return response.status if isinstance(response, team.TeamResponse) and 400 <= response.status <= 599 else 502
+
+
+def _bounded_language_exemplar(message: object) -> str | None:
+    exemplar = team_contract.canonical_language_exemplar(message)
+    if exemplar is not None or not isinstance(message, str):
+        return exemplar
+    return team_contract.canonical_language_exemplar(message[: team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS])
 
 
 def _route(
@@ -159,7 +167,7 @@ def _prepare_install(
     shortlist = assistant_proposal.install_shortlist(query, available)
     selection = _route(
         team_id,
-        payload["message"],
+        query,
         "assistant-install",
         [_directory_candidate(assistant) for assistant in shortlist],
         local.IntentRouteContext(language_exemplar=language_exemplar),
@@ -179,7 +187,7 @@ def _prepare_uninstall(
     shortlist = assistant_proposal.uninstall_shortlist(query, assistant_uninstall.candidates(team_id))
     selection = _route(
         team_id,
-        payload["message"],
+        query,
         "assistant-uninstall",
         [_uninstall_candidate(candidate) for candidate in shortlist],
         local.IntentRouteContext(language_exemplar=language_exemplar),
@@ -250,6 +258,7 @@ def _lifecycle_result(
 ) -> Result:
     if payload["files"]:
         return Result("unresolved", error_status=422)
+    language_exemplar = route_context.selection_language_exemplar or _bounded_language_exemplar(payload["message"])
     if classification.intent == "unresolved":
         return Result("unresolved", guidance=Guidance("assistant-lifecycle-ambiguous", classification.reply))
     if classification.intent == "assistant-install":
@@ -259,13 +268,13 @@ def _lifecycle_result(
             classification,
             catalog,
             include_local,
-            route_context.selection_language_exemplar,
+            language_exemplar,
         )
     return _classified_uninstall(
         team_id,
         payload,
         classification,
-        route_context.selection_language_exemplar,
+        language_exemplar,
         allow_uninstall=allow_uninstall,
     )
 

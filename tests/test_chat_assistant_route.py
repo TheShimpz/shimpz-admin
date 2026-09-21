@@ -188,8 +188,12 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertEqual(result.preparation.plan.lifecycle_ids, (assistant.assistant_id,))
         self.assertEqual(route.call_count, 2)
         self.assertIs(route.call_args_list[0].args[4].reference, reference)
+        self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
         self.assertEqual(route.call_args_list[1].args[2], "assistant-install")
-        self.assertEqual(route.call_args_list[1].args[4], local.IntentRouteContext())
+        self.assertEqual(
+            route.call_args_list[1].args[4],
+            local.IntentRouteContext(language_exemplar="instale o cloudflare"),
+        )
 
     def test_repeated_install_returns_the_current_state_without_install_work(self) -> None:
         assistant = cloudflare()
@@ -293,6 +297,7 @@ class AssistantRouteTests(unittest.TestCase):
             result = assistant_route.prepare("team_1", payload("retire o cloudflare"), mock.sentinel.catalog, False)
 
         self.assertEqual(result.uninstall, candidate)
+        self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
         self.assertEqual(
             route.call_args_list[1].args[3],
             [{"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "summary": ""}],
@@ -330,8 +335,11 @@ class AssistantRouteTests(unittest.TestCase):
             )
 
         self.assertEqual(result.uninstall, candidate)
+        self.assertEqual(route.call_args_list[0].args[1], "desinstala esse então")
         self.assertEqual(route.call_args_list[0].args[4].conversation, context.conversation)
         self.assertIsNone(route.call_args_list[0].args[4].language_exemplar)
+        self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
+        self.assertNotEqual(route.call_args_list[1].args[1], "desinstala esse então")
         self.assertEqual(route.call_args_list[1].args[4].conversation, ())
         self.assertEqual(route.call_args_list[1].args[4].language_exemplar, "quais temos?")
 
@@ -426,7 +434,7 @@ class AssistantRouteTests(unittest.TestCase):
         ):
             assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
 
-    def test_resume_rejects_uninstall_before_opening_the_installed_directory(self) -> None:
+    def test_resume_rejects_uninstall_and_preserves_install_language(self) -> None:
         with (
             mock.patch.object(
                 assistant_route.local,
@@ -444,6 +452,36 @@ class AssistantRouteTests(unittest.TestCase):
 
         self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
         directory.assert_not_called()
+
+        long_install_message = "Instale o Cloudflare " + ("agora " * 400)
+        with (
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                side_effect=(
+                    response("assistant-install", "cloudflare"),
+                    response("unresolved"),
+                ),
+            ) as route,
+            mock.patch.object(assistant_route, "_catalog_state", return_value=({}, (cloudflare(),))),
+        ):
+            result = assistant_route.prepare_resume(
+                "team_1",
+                payload(long_install_message),
+                mock.sentinel.catalog,
+                False,
+            )
+
+        self.assertEqual(result.guidance.code, "assistant-install-target-required")
+        self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
+        self.assertEqual(
+            route.call_args_list[1].args[4],
+            local.IntentRouteContext(
+                language_exemplar=assistant_route.team_contract.canonical_language_exemplar(
+                    long_install_message[: assistant_route.team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS]
+                )
+            ),
+        )
 
 
 if __name__ == "__main__":
