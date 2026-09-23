@@ -170,7 +170,7 @@ class AssistantPlanEdges(unittest.TestCase):
         for response in responses:
             with (
                 self.subTest(response=response),
-                mock.patch.object(assistant_plan, "team_inventory", return_value=({}, {})),
+                mock.patch.object(assistant_plan, "installed_inventory", return_value={}),
                 mock.patch.object(assistant_plan, "planning_catalog", return_value=(candidate,)),
                 mock.patch.object(assistant_proposal, "capability_shortlist", return_value=(candidate,)),
                 mock.patch.object(assistant_plan.local, "capability_plan", return_value=response),

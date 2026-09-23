@@ -201,6 +201,55 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in request[2]], ["cloudflare", "whatsapp"])
         self.assertNotIn("source_digest", repr(request[2]))
 
+    def test_empty_scope_plans_without_global_registry_but_reads_local_snapshots(self) -> None:
+        store = mock.Mock()
+        store.get.return_value = (CLOUDFLARE,)
+        with (
+            mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()) as installed,
+            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()) as registry,
+            mock.patch.object(
+                assistant_plan.team,
+                "list_local_assistants",
+                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+            ) as local_snapshots,
+            mock.patch.object(
+                assistant_plan.local,
+                "capability_plan",
+                return_value=assistant_plan.team.TeamResponse(
+                    200,
+                    {"team_id": "team_1", "status": "install-required", "assistant_ids": ["cloudflare"]},
+                ),
+            ),
+        ):
+            result = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
+
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        self.assertEqual(result.plan.dispatch_ids, ("cloudflare",))
+        installed.assert_called_once_with("team_1")
+        registry.assert_not_called()
+        local_snapshots.assert_called_once_with()
+        store.get.assert_called_once_with()
+
+    def test_empty_scope_rejects_invalid_installed_inventory_before_catalog(self) -> None:
+        store = mock.Mock()
+        with (
+            mock.patch.object(
+                assistant_plan.team,
+                "list_installed_assistants",
+                return_value=assistant_plan.team.TeamResponse(503, {}),
+            ) as installed,
+            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()) as registry,
+            mock.patch.object(assistant_plan.team, "list_local_assistants") as local_snapshots,
+            self.assertRaises(ValueError),
+        ):
+            assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
+
+        installed.assert_called_once_with("team_1")
+        registry.assert_not_called()
+        local_snapshots.assert_not_called()
+        store.get.assert_not_called()
+
     def test_local_snapshot_shadows_same_id_publication_for_chat_install(self) -> None:
         result, planner = self._prepare(
             "Configure Cloudflare",

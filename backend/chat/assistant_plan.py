@@ -218,8 +218,13 @@ def prepare_capability(
     include_local: bool = False,
 ) -> Preparation:
     """Resolve exact current state, then apply the deterministic missing-capability gate."""
-    installed, registry = team_inventory(team_id)
-    enabled = _enabled_capabilities(tuple(payload["assistant_ids"]), installed, registry)
+    enabled_ids = tuple(payload["assistant_ids"])
+    if enabled_ids:
+        installed, registry = team_inventory(team_id)
+        enabled = _enabled_capabilities(enabled_ids, installed, registry)
+    else:
+        installed = installed_inventory(team_id)
+        enabled = ()
     if enabled is None:
         return Preparation()
     try:
