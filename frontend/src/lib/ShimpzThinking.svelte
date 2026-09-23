@@ -237,8 +237,8 @@
   }
 
   @keyframes signal {
-    0%, 100% { height: 0.3rem; opacity: 0.35; }
-    50% { height: 1rem; opacity: 1; }
+    0%, 100% { transform: scaleY(1); opacity: 0.35; }
+    50% { transform: scaleY(calc(10 / 3)); opacity: 1; }
   }
 
   @keyframes travel {

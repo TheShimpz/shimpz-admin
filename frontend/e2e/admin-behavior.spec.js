@@ -2283,7 +2283,7 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
   expect(contract.humanResponses()).toHaveLength(1);
 });
 
-test('shows an accessible processing shimmer and honors display preferences', async ({ page }) => {
+test('shows accessible processing motion and honors display preferences @browser-sensitive', async ({ page }) => {
   const contract = await routeReadyChat(page, { holdReply: true });
   await page.goto('/chat/');
   await page.getByRole('button', { name: 'Language: English' }).click();
@@ -2293,8 +2293,21 @@ test('shows an accessible processing shimmer and honors display preferences', as
 
   const processing = page.getByRole('group', { name: 'Estou processando...' });
   const label = processing.locator('strong');
+  const signal = processing.locator('.signal i');
   await expect(processing).toBeVisible();
   await expect(label).toHaveText('Estou processando...');
+  await expect(signal).toHaveCount(4);
+  await expect.poll(() => signal.first().evaluate((element) => getComputedStyle(element).animationName))
+    .toMatch(/signal$/);
+  const barHeights = await signal.first().evaluate((element) => {
+    const animation = element.getAnimations()[0];
+    animation.pause();
+    animation.currentTime = 0;
+    const resting = element.getBoundingClientRect().height;
+    animation.currentTime = 550;
+    return { resting, peak: element.getBoundingClientRect().height };
+  });
+  expect(barHeights.peak / barHeights.resting).toBeCloseTo(10 / 3, 1);
   await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
     .toMatch(/text-shimmer$/);
 
@@ -2302,6 +2315,8 @@ test('shows an accessible processing shimmer and honors display preferences', as
   expect(results.violations).toEqual([]);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => signal.first().evaluate((element) => getComputedStyle(element).animationName))
+    .toBe('none');
   await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
     .toBe('none');
   await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
