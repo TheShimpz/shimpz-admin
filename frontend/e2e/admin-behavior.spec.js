@@ -175,6 +175,7 @@ async function routeReadyChat(page, {
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   holdReply = false,
+  holdProgressFinish = false,
   terminalError = false,
   whatsappInstalled = false,
   storedInputStatus = '',
@@ -205,6 +206,7 @@ async function routeReadyChat(page, {
   let releaseAssistantPlan = () => {};
   let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
+  let releaseProgressFinish = () => {};
   let releaseInferenceWrite;
   const inferenceWriteHold = new Promise((resolve) => {
     releaseInferenceWrite = resolve;
@@ -654,14 +656,15 @@ async function routeReadyChat(page, {
           sendHumanChallenge();
           return;
         }
-        socket.send(JSON.stringify({
-          type: 'progress',
-          seq: 1,
-          origin: 'admin',
-          phase: 'admin-preparation',
-          state: 'finished',
-          elapsed_ms: 19,
-        }));
+        const progress = { type: 'progress', seq: 1, origin: 'admin', phase: 'admin-preparation' };
+        if (holdProgressFinish) {
+          socket.send(JSON.stringify({ ...progress, state: 'started' }));
+          releaseProgressFinish = () => socket.send(JSON.stringify({
+            ...progress, seq: 2, state: 'finished', elapsed_ms: 19,
+          }));
+        } else {
+          socket.send(JSON.stringify({ ...progress, state: 'finished', elapsed_ms: 19 }));
+        }
         const completeReply = () => socket.send(JSON.stringify(terminalError
           ? { type: 'error', status: 503, detail: 'synthetic runtime failure' }
           : {
@@ -718,6 +721,7 @@ async function routeReadyChat(page, {
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseHistory: () => releaseHistory(),
     releaseReply: () => releaseReply(),
+    releaseProgressFinish: () => releaseProgressFinish(),
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
   };
@@ -792,6 +796,27 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(notices.nth(0)).toHaveCSS('border-left-color', 'rgb(0, 0, 0)');
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+});
+
+test('finishing a measured span updates the visible live duration', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Check progress');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  await thinking.locator('[data-slot="disclosure-trigger"]').click();
+  const step = thinking.locator('.ledger li');
+  await expect(step).toBeVisible();
+  await expect(step).toHaveClass(/active/);
+  chat.releaseProgressFinish();
+  await expect(step).toHaveClass(/complete/);
+  await expect(step.locator('time')).toHaveText('19 ms');
+
+  chat.releaseReply();
+  await expect(page.getByText('1 execution stages completed')).toBeVisible();
 });
 
 test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  createExecutionProjection,
   executionSteps,
   executionStepCount,
+  extendExecutionProjection,
   formatExecutionDuration,
   localizedEventLabel,
   localizedStepLabel,
@@ -30,6 +32,35 @@ test('pairs repeated measured operations without inventing workflow stages', () 
   assert.equal(steps.length, 3);
   assert.deepEqual(steps.map((step) => step.elapsed_ms), [1200, 25, null]);
   assert.equal(technicalStepLabel(steps[1]), 'team · action 1/2');
+});
+
+test('incremental projection preserves nested pairing, orphan finishes, and narrative order', () => {
+  const events = [
+    { seq: 1, origin: 'team', phase: 'model', state: 'started' },
+    { seq: 2, origin: 'team', phase: 'model', state: 'started' },
+    { seq: 3, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 2 },
+    { seq: 4, origin: 'team', phase: 'action', state: 'started',
+      assistant_id: 'helper', action: 'lookup', index: 1, total: 1 },
+    { seq: 5, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 4 },
+    { seq: 6, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 6,
+      assistant_id: 'helper', action: 'lookup', index: 1, total: 1 },
+    { seq: 7, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 7,
+      assistant_id: 'helper', action: 'lookup', index: 1, total: 1 },
+  ];
+  const projection = createExecutionProjection();
+  for (const [index, event] of events.entries()) {
+    extendExecutionProjection(projection, event);
+    assert.deepEqual(projection.steps, executionSteps(events.slice(0, index + 1)));
+    assert.equal(executionStepCount(events.slice(0, index + 1)), projection.steps.length);
+  }
+  assert.deepEqual(projection.steps.map((step) => step.elapsed_ms), [4, 2, 6, 7]);
+  assert.deepEqual(projection.steps.map((step) => step.observedModelsBefore), [0, 1, 2, 2]);
+  assert.deepEqual(projection.steps.map((step) => step.actionOccurrence),
+    [undefined, undefined, 1, 2]);
+  const restarted = createExecutionProjection();
+  extendExecutionProjection(restarted, events[0]);
+  assert.equal(restarted.steps.length, 1);
+  assert.equal(restarted.steps[0].observedModelsBefore, 0);
 });
 
 test('formats only bounded measured durations', () => {

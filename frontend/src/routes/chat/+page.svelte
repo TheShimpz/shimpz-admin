@@ -7,7 +7,11 @@
   import { listChatHistory } from '$lib/chatHistory.js';
   import ChatContextControls from '$lib/ChatContextControls.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
-  import { localizedEventLabel } from '$lib/executionProgress.js';
+  import {
+    createExecutionProjection,
+    extendExecutionProjection,
+    localizedEventLabel,
+  } from '$lib/executionProgress.js';
   import Markdown from '$lib/Markdown.svelte';
   import { escapeMarkdownText } from '$lib/markdown.js';
   import { t } from '$lib/i18n.js';
@@ -45,6 +49,7 @@
   let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
   let progressEvents = $state([]);
+  let progressProjection = $state(createExecutionProjection());
   let progressSequence = $state(0);
   let stopping = $state(false);
   let lifecycleDecisionPending = $state(false);
@@ -160,6 +165,7 @@
 
   function resetProgress() {
     progressEvents = [];
+    progressProjection = createExecutionProjection();
     progressSequence = 0;
   }
 
@@ -853,6 +859,7 @@
           if (syncing) busy = true;
           progressSequence = incoming.seq;
           progressEvents = [...progressEvents, incoming];
+          extendExecutionProjection(progressProjection, incoming);
           const completedHumanTransition = humanWorking;
           if (completedHumanTransition) {
             humanChallenge = undefined;
@@ -1659,7 +1666,7 @@
               {:else if index === exchanges.length - 1 && busy && !lifecycleWorking && !integrationChallenge && !humanChallenge}
                 <ShimpzThinking
                   label={thinking}
-                  events={progressEvents}
+                  steps={progressProjection.steps}
                   elapsedText={copy.elapsed}
                   stagesText={copy.progressStages}
                   progressLabels={copy.progress}

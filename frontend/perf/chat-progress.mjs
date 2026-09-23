@@ -168,6 +168,18 @@ async function measure(browser, baseURL, count, control) {
         })) };
     }, { input, gap, control });
     const progressTaskMs = await taskDuration(cdp) - before;
+    const liveRows = await page.locator('.thinking .ledger li').count();
+    if (liveRows !== (control ? 0 : Math.min(count / 2, 32))) {
+      throw new Error(`Expected live ledger rows for ${count} events; saw ${liveRows}.`);
+    }
+    if (!control) {
+      const lastLive = await page.locator('.thinking .ledger li').last().textContent();
+      if (!lastLive.includes('Admin checks the final response from')
+        || !lastLive.includes('before displaying it')
+        || !lastLive.includes('2 ms')) {
+        throw new Error('Live ledger lost the final progress phase.');
+      }
+    }
     const beforeTerminal = await taskDuration(cdp);
     await page.evaluate((value) => window.benchEmit({
       type: 'done', team_id: value.team_id, team_name: value.team_name, reply: 'Benchmark reply.',

@@ -11,68 +11,61 @@ function identity(event) {
   ].join('\u0000');
 }
 
-function annotateNarrative(steps) {
-  const actionOccurrences = new Map();
-  let observedActions = 0;
-  let observedModels = 0;
-  for (const step of steps) {
-    step.observedActionsBefore = observedActions;
-    step.observedModelsBefore = observedModels;
-    if (step.phase === 'model') observedModels += 1;
-    if (step.phase !== 'action') continue;
-    const key = `${step.assistant_id}\u0000${step.action}`;
-    const occurrence = (actionOccurrences.get(key) ?? 0) + 1;
-    actionOccurrences.set(key, occurrence);
-    step.actionOccurrence = occurrence;
-    observedActions += 1;
+export function createExecutionProjection() {
+  return {
+    steps: [], active: new Map(), actionOccurrences: new Map(),
+    observedActions: 0, observedModels: 0,
+  };
+}
+
+function appendStep(projection, event, key, elapsedMs) {
+  const step = {
+    key: `${event.seq}:${key}`,
+    identity: key,
+    seq: event.seq,
+    origin: event.origin,
+    phase: event.phase,
+    assistant_id: event.assistant_id,
+    action: event.action,
+    index: event.index,
+    total: event.total,
+    elapsed_ms: elapsedMs,
+    observedActionsBefore: projection.observedActions,
+    observedModelsBefore: projection.observedModels,
+  };
+  if (step.phase === 'model') projection.observedModels += 1;
+  if (step.phase === 'action') {
+    const actionKey = `${step.assistant_id}\u0000${step.action}`;
+    step.actionOccurrence = (projection.actionOccurrences.get(actionKey) ?? 0) + 1;
+    projection.actionOccurrences.set(actionKey, step.actionOccurrence);
+    projection.observedActions += 1;
   }
-  return steps;
+  projection.steps.push(step);
+}
+
+export function extendExecutionProjection(projection, event) {
+  const key = identity(event);
+  if (event.state === 'started') {
+    const positions = projection.active.get(key) ?? [];
+    positions.push(projection.steps.length);
+    projection.active.set(key, positions);
+    appendStep(projection, event, key, null);
+    return;
+  }
+  const positions = projection.active.get(key);
+  const matchingIndex = positions?.pop();
+  if (matchingIndex !== undefined) {
+    projection.steps[matchingIndex].elapsed_ms = event.elapsed_ms;
+    if (positions.length === 0) projection.active.delete(key);
+    return;
+  }
+  appendStep(projection, event, key, event.elapsed_ms);
 }
 
 export function executionSteps(events) {
-  const steps = [];
-  const active = new Map();
-  for (const event of events) {
-    const key = identity(event);
-    if (event.state === 'started') {
-      const positions = active.get(key) ?? [];
-      positions.push(steps.length);
-      active.set(key, positions);
-      steps.push({
-        key: `${event.seq}:${key}`,
-        identity: key,
-        seq: event.seq,
-        origin: event.origin,
-        phase: event.phase,
-        assistant_id: event.assistant_id,
-        action: event.action,
-        index: event.index,
-        total: event.total,
-        elapsed_ms: null,
-      });
-      continue;
-    }
-    const positions = active.get(key);
-    const matchingIndex = positions?.pop();
-    if (matchingIndex !== undefined) {
-      steps[matchingIndex].elapsed_ms = event.elapsed_ms;
-      if (positions.length === 0) active.delete(key);
-      continue;
-    }
-    steps.push({
-      key: `${event.seq}:${key}`,
-      identity: key,
-      seq: event.seq,
-      origin: event.origin,
-      phase: event.phase,
-      assistant_id: event.assistant_id,
-      action: event.action,
-      index: event.index,
-      total: event.total,
-      elapsed_ms: event.elapsed_ms,
-    });
-  }
-  return annotateNarrative(steps);
+  const projection = createExecutionProjection();
+  for (const event of events) extendExecutionProjection(projection, event);
+  return projection.steps;
 }
 
 export function executionStepCount(events) {

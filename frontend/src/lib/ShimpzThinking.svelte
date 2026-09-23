@@ -2,14 +2,13 @@
   import { Disclosure } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import {
-    executionSteps,
     formatExecutionDuration,
     localizedStepLabel,
   } from './executionProgress.js';
 
   let {
     label = 'I’m processing…',
-    events = [],
+    steps = [],
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
     progressLabels = {},
@@ -18,7 +17,6 @@
   } = $props();
   let elapsed = $state(0);
 
-  let steps = $derived(executionSteps(events));
   let visibleSteps = $derived(steps.slice(-32));
   let current = $derived(steps.findLast((step) => step.elapsed_ms === null));
   let formattedElapsed = $derived(elapsedLabel(elapsed));
