@@ -129,20 +129,38 @@ class AssistantRouteTests(unittest.TestCase):
 
         def inventory(_team_id):
             both_started.wait(timeout=5)
-            return installed, {}
+            return installed
 
         def directory(_catalog, _include_local):
             both_started.wait(timeout=5)
             return available
 
         with (
-            mock.patch.object(assistant_route.assistant_plan, "team_inventory", side_effect=inventory),
+            mock.patch.object(assistant_route.assistant_plan, "installed_inventory", side_effect=inventory),
             mock.patch.object(assistant_route.assistant_plan, "planning_catalog", side_effect=directory),
         ):
             self.assertEqual(
                 assistant_route._catalog_state("team_1", mock.sentinel.catalog, True),
                 (installed, available),
             )
+
+    def test_install_directory_does_not_read_the_unused_global_registry(self) -> None:
+        assistant = cloudflare()
+        catalog = mock.Mock()
+        catalog.get.return_value = (assistant,)
+        with (
+            mock.patch.object(
+                assistant_plan.team,
+                "list_installed_assistants",
+                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+            ) as installed,
+            mock.patch.object(assistant_plan.team, "list_assistants") as registry,
+        ):
+            result = assistant_route._catalog_state("team_1", catalog, False)
+
+        self.assertEqual(result, ({}, (assistant,)))
+        installed.assert_called_once_with("team_1")
+        registry.assert_not_called()
 
     def test_ordinary_task_runs_the_existing_capability_gate(self) -> None:
         prepared = assistant_plan.Preparation()

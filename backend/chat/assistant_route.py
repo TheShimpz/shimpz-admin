@@ -148,9 +148,9 @@ def _catalog_state(
     tuple[assistant_proposal.DirectoryAssistant, ...],
 ]:
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-route-directory") as executor:
-        inventory_future = submit_in_context(executor, assistant_plan.team_inventory, team_id)
+        inventory_future = submit_in_context(executor, assistant_plan.installed_inventory, team_id)
         catalog_future = submit_in_context(executor, assistant_plan.planning_catalog, catalog, include_local)
-        installed, _registry = inventory_future.result()
+        installed = inventory_future.result()
         available = catalog_future.result()
     return installed, available
 

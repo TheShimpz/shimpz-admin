@@ -63,6 +63,10 @@ def _planner_candidate(
     }
 
 
+def installed_inventory(team_id: str) -> dict[str, assistant_inventory.InstalledAssistant]:
+    return assistant_inventory.installed(team.list_installed_assistants(team_id))
+
+
 def team_inventory(
     team_id: str,
 ) -> tuple[
