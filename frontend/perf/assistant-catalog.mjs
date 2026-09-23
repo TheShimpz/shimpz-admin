@@ -6,6 +6,7 @@ import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 
 const samples = positiveInteger(process.env.SHIMPZ_PERF_SAMPLES, 20);
 const apiDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_API_DELAY_MS, 40);
+const snapshotDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_SNAPSHOT_DELAY_MS, apiDelayMs);
 const iconDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_ICON_DELAY_MS, 80);
 const composition = process.env.SHIMPZ_PERF_COMPOSITION ?? 'balanced';
 if (!['balanced', 'published'].includes(composition)) throw new Error('Invalid Assistant composition.');
@@ -108,7 +109,10 @@ async function mockApi(page, data) {
     const path = new URL(route.request().url()).pathname;
     const icon = path.startsWith('/api/local-assistants/') && path.endsWith('/icon')
       || path.startsWith('/api/assistants/') && path.endsWith('/catalog-icon');
-    await new Promise((resolve) => setTimeout(resolve, icon ? iconDelayMs : apiDelayMs));
+    let delayMs = apiDelayMs;
+    if (icon) delayMs = iconDelayMs;
+    if (path === '/api/local-assistants') delayMs = snapshotDelayMs;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (icon) {
       await route.fulfill({ contentType: 'image/png', body: iconPng });
       return;
@@ -159,7 +163,8 @@ function phase(path) {
   if (path === '/api/session') return 'session';
   if (path === '/api/teams' || path === '/api/assistants') return 'team-start';
   if (path === `/api/teams/${teamId}/assistants`) return 'team-inventory';
-  if (path === '/api/assistant-catalog' || path === '/api/local-assistants') return 'catalog';
+  if (path === '/api/assistant-catalog') return 'catalog';
+  if (path === '/api/local-assistants') return 'snapshots';
   if (path.endsWith('/icon') || path.endsWith('/catalog-icon')) return 'icons';
   return 'other';
 }
@@ -246,7 +251,7 @@ function summarize(results, count, mode) {
     metrics[name] = { p50Ms: percentile(values, 0.5), p95Ms: percentile(values, 0.95) };
   }
   const phases = {};
-  for (const name of ['session', 'team-start', 'team-inventory', 'catalog', 'icons']) {
+  for (const name of ['session', 'team-start', 'team-inventory', 'catalog', 'snapshots', 'icons']) {
     const spans = selected.map((result) => result.timeline[name]).filter(Boolean);
     if (spans.length !== selected.length) throw new Error(`Missing ${name} timing span.`);
     const requestCounts = spans.map((span) => span.count);
@@ -262,6 +267,7 @@ function summarize(results, count, mode) {
   const cpu = selected.map((result) => result.taskMs);
   return {
     count, composition, mode, samples: selected.length,
+    delaysMs: { api: apiDelayMs, snapshots: snapshotDelayMs, icon: iconDelayMs },
     errors: selected.reduce((total, result) => total + result.errors, 0),
     taskMs: { p50: percentile(cpu, 0.5), p95: percentile(cpu, 0.95) },
     cardsToBootMs: { p50: percentile(cardsToBoot, 0.5), p95: percentile(cardsToBoot, 0.95) },
