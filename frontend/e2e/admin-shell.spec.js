@@ -903,6 +903,65 @@ test('renders Assistant identities immediately during in-app icon hydration', as
   await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
 });
 
+test('shows the first Assistants view before a public icon finishes loading', async ({ page }) => {
+  const icon = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  let releaseIcon;
+  let markIconRequested;
+  const iconGate = new Promise((resolve) => { releaseIcon = resolve; });
+  const iconRequested = new Promise((resolve) => { markIconRequested = resolve; });
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/assistants/hello-pulse/catalog-icon') {
+      markIconRequested();
+      await iconGate;
+      await route.fulfill({ contentType: 'image/png', body: icon });
+      return;
+    }
+    const body = {
+      '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
+      '/api/assistants': { assistants: [] },
+      '/api/teams/marketing/assistants': { assistants: [] },
+      '/api/assistant-catalog': { version: 1, assistants: [{
+        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
+        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
+        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+      }] },
+      '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
+    }[path];
+    await route.fulfill({
+      status: body ? 200 : 503,
+      contentType: 'application/json',
+      body: JSON.stringify(body ?? {}),
+    });
+  });
+
+  await page.goto('/assistants/');
+  await iconRequested;
+  const card = page.getByRole('article', { name: 'hello-pulse' });
+  const iconBox = card.locator('.shimpz-assistant-icon');
+  try {
+    // Stay below ICON_PRESENTATION_BUDGET_MS (1500 ms); otherwise the old boot gate could disappear too.
+    await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0, { timeout: 1000 });
+    await expect(card).toBeVisible();
+    await expect(iconBox.locator('img')).toHaveCount(0);
+    const before = await iconBox.boundingBox();
+    expect(before).not.toBeNull();
+    releaseIcon();
+    await expect(iconBox.locator('img')).toHaveAttribute('src', /^blob:/);
+    const after = await iconBox.boundingBox();
+    expect(after).not.toBeNull();
+    expect({ width: after.width, height: after.height }).toEqual({
+      width: before.width, height: before.height,
+    });
+  } finally {
+    releaseIcon();
+  }
+});
+
 test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {
   let localInventoryRequests = 0;
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));

@@ -529,6 +529,7 @@
       await nextPaint();
       releaseObsoleteIconUrls(previousUrls, nextUrls);
       if (request !== catalogPresentationRequest) return;
+      initialViewReadiness?.settleAssistants?.();
 
       const iconTimeout = globalThis.setTimeout(
         () => iconController.abort(),
@@ -550,10 +551,6 @@
       }));
       globalThis.clearTimeout(iconTimeout);
       controller.signal.removeEventListener('abort', abortIcons);
-      if (request !== catalogPresentationRequest) return;
-      await tick();
-      await nextPaint();
-      if (request === catalogPresentationRequest) initialViewReadiness?.settleAssistants?.();
     } finally {
       if (request === catalogPresentationRequest) catalogRefreshing = false;
     }
