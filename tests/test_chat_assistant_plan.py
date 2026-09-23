@@ -229,9 +229,15 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         store = mock.Mock()
         store.get.side_effect = store_catalog.CatalogUnavailableError("offline")
         with (
-            mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()),
-            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()),
-            mock.patch.object(assistant_plan.team, "list_local_assistants", return_value=_local_inventory()),
+            mock.patch.object(
+                assistant_plan.team, "list_installed_assistants", return_value=_installed(("enabled", "running"))
+            ),
+            mock.patch.object(
+                assistant_plan.team, "list_assistants", return_value=_registry(("enabled", ("inspect-resource",)))
+            ),
+            mock.patch.object(
+                assistant_plan.team, "list_local_assistants", return_value=_local_inventory()
+            ) as local_call,
             mock.patch.object(
                 assistant_plan.local,
                 "capability_plan",
@@ -247,12 +253,14 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         ):
             result = assistant_plan.prepare_capability(
                 "team_1",
-                _payload("Configure Cloudflare"),
+                _payload("Configure Cloudflare", ("enabled",)),
                 store,
                 True,
             )
 
         self.assertEqual(result, assistant_plan.Preparation())
+        store.get.assert_called_once_with()
+        local_call.assert_called_once_with()
 
     def test_invalid_local_inventory_never_falls_back_to_publication(self) -> None:
         result, planner = self._prepare(
@@ -277,6 +285,76 @@ class AssistantPlanPreparationTests(unittest.TestCase):
 
         self.assertEqual(result, assistant_plan.Preparation())
         planner.assert_not_called()
+
+    def test_invalid_enabled_scope_skips_catalog_and_local_snapshot(self) -> None:
+        for installed, registry, assistant_id in (
+            (_installed(), _registry(), "missing"),
+            (_installed(), _registry(("enabled", ("inspect-resource",))), "enabled"),
+            (_installed(("enabled", "stopped")), _registry(("enabled", ("inspect-resource",))), "enabled"),
+        ):
+            with self.subTest(assistant_id=assistant_id, installed=bool(installed.body["assistants"])):
+                store = mock.Mock()
+                store.get.return_value = (CLOUDFLARE,)
+                with (
+                    mock.patch.object(
+                        assistant_plan.team, "list_installed_assistants", return_value=installed
+                    ) as installed_call,
+                    mock.patch.object(assistant_plan.team, "list_assistants", return_value=registry) as registry_call,
+                    mock.patch.object(
+                        assistant_plan.team, "list_local_assistants", return_value=_local_inventory()
+                    ) as local_call,
+                    mock.patch.object(assistant_plan.local, "capability_plan") as planner,
+                ):
+                    result = assistant_plan.prepare_capability(
+                        "team_1",
+                        _payload("Configure Cloudflare", (assistant_id,)),
+                        store,
+                        True,
+                    )
+                self.assertEqual(result, assistant_plan.Preparation())
+                installed_call.assert_called_once_with("team_1")
+                registry_call.assert_called_once_with()
+                store.get.assert_not_called()
+                local_call.assert_not_called()
+                planner.assert_not_called()
+
+    def test_valid_enabled_scope_keeps_catalog_and_dispatch_union(self) -> None:
+        enabled = _candidate("enabled", "Installed Helper", "cloudflare", "inspect-resource")
+        store = mock.Mock()
+        store.get.return_value = (enabled, WHATSAPP)
+        with (
+            mock.patch.object(
+                assistant_plan.team, "list_installed_assistants", return_value=_installed(("enabled", "running"))
+            ),
+            mock.patch.object(
+                assistant_plan.team, "list_assistants", return_value=_registry(("enabled", ("inspect-resource",)))
+            ),
+            mock.patch.object(
+                assistant_plan.team,
+                "list_local_assistants",
+                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+            ) as local_call,
+            mock.patch.object(
+                assistant_plan.local,
+                "capability_plan",
+                return_value=assistant_plan.team.TeamResponse(
+                    200,
+                    {"team_id": "team_1", "status": "install-required", "assistant_ids": ["whatsapp"]},
+                ),
+            ) as planner,
+        ):
+            result = assistant_plan.prepare_capability(
+                "team_1",
+                _payload("Envie uma mensagem no WhatsApp", ("enabled",)),
+                store,
+                True,
+            )
+        self.assertIsNotNone(result.plan)
+        assert result.plan is not None
+        self.assertEqual(result.plan.dispatch_ids, ("enabled", "whatsapp"))
+        store.get.assert_called_once_with()
+        local_call.assert_called_once_with()
+        planner.assert_called_once()
 
     def test_unknown_duplicate_or_inconsistent_planner_selection_installs_nothing(self) -> None:
         bodies = (

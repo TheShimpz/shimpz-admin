@@ -173,17 +173,13 @@ def planning_catalog(
 
 def _prepare_gap(
     team_id: str,
-    payload: dict[str, object],
+    message: str,
     available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
     installed: dict[str, assistant_inventory.InstalledAssistant],
-    registry: dict[str, assistant_proposal.Capability],
+    enabled: tuple[assistant_proposal.Capability, ...],
 ) -> Preparation:
-    enabled_ids = tuple(payload["assistant_ids"])
-    enabled = _enabled_capabilities(enabled_ids, installed, registry)
-    if enabled is None:
-        return Preparation()
     shortlist = assistant_proposal.capability_shortlist(
-        payload["message"],
+        message,
         available,
         installed_ids=frozenset(installed),
         enabled=_enabled_capabilities_with_providers(enabled, available),
@@ -192,7 +188,7 @@ def _prepare_gap(
         return Preparation()
     response = local.capability_plan(
         team_id,
-        payload["message"],
+        message,
         [_planner_candidate(assistant) for assistant in shortlist],
     )
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
@@ -205,7 +201,7 @@ def _prepare_gap(
         )
     except TypeError, ValueError:
         return Preparation()
-    return _prepared_plan(team_id, enabled_ids, shortlist, selected)
+    return _prepared_plan(team_id, tuple(capability.assistant_id for capability in enabled), shortlist, selected)
 
 
 def prepare_capability(
@@ -216,11 +212,14 @@ def prepare_capability(
 ) -> Preparation:
     """Resolve exact current state, then apply the deterministic missing-capability gate."""
     installed, registry = team_inventory(team_id)
+    enabled = _enabled_capabilities(tuple(payload["assistant_ids"]), installed, registry)
+    if enabled is None:
+        return Preparation()
     try:
         available = planning_catalog(catalog, include_local)
     except OSError, ValueError, team.TeamRequestError:
         return Preparation()
-    return _prepare_gap(team_id, payload, available, installed, registry)
+    return _prepare_gap(team_id, payload["message"], available, installed, enabled)
 
 
 def prepare_install(
