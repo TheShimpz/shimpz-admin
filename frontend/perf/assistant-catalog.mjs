@@ -1,15 +1,32 @@
 // Measure the built Local Assistants page with bounded, deterministic API delays.
+// For a real Supervisor session, run in a Playwright container sharing the network
+// namespace of a disposable Admin image with --network none, a fresh /data volume,
+// and uvicorn bound to port 7777 inside that namespace. No host port is published.
+// SHIMPZ_PERF_ISOLATED_AUTH=1 requires a loopback-only network and a fresh Admin.
 import { chromium } from '@playwright/test';
+import { createHmac, randomBytes } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { preview } from 'vite';
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 
+if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('This benchmark requires Node.js 24.');
 const samples = positiveInteger(process.env.SHIMPZ_PERF_SAMPLES, 20);
 const apiDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_API_DELAY_MS, 40);
 const snapshotDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_SNAPSHOT_DELAY_MS, apiDelayMs);
 const iconDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_ICON_DELAY_MS, 80);
 const composition = process.env.SHIMPZ_PERF_COMPOSITION ?? 'balanced';
 if (!['balanced', 'published'].includes(composition)) throw new Error('Invalid Assistant composition.');
+const isolatedAuth = process.env.SHIMPZ_PERF_ISOLATED_AUTH === '1';
+if (process.env.SHIMPZ_PERF_ISOLATED_AUTH !== undefined && !isolatedAuth) {
+  throw new Error('Isolated authentication mode must be exactly 1.');
+}
+const counts = (process.env.SHIMPZ_PERF_COUNTS ?? '1,8,24').split(',').map(Number);
+if (counts.length < 1 || counts.length > 3 ||
+    counts.some((count) => !Number.isSafeInteger(count) || count < 1 || count > 50) ||
+    new Set(counts).size !== counts.length) {
+  throw new Error('Assistant counts must be one to three distinct integers from 1 to 50.');
+}
 const iconPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -107,6 +124,10 @@ function apiBody(path, data) {
 async function mockApi(page, data) {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (isolatedAuth && path === '/api/session') {
+      await route.continue();
+      return;
+    }
     const icon = path.startsWith('/api/local-assistants/') && path.endsWith('/icon')
       || path.startsWith('/api/assistants/') && path.endsWith('/catalog-icon');
     let delayMs = apiDelayMs;
@@ -207,8 +228,19 @@ async function sample(page, cdp, mode, count, index) {
   page.on('requestfailed', onFailed);
   const started = performance.now();
   try {
+    const sessionResponse = isolatedAuth
+      ? page.waitForResponse((response) => new URL(response.url()).pathname === '/api/session'
+        && response.request().method() === 'POST')
+      : null;
     if (mode === 'cold') await page.goto('/assistants/', { waitUntil: 'domcontentloaded' });
     else await page.reload({ waitUntil: 'domcontentloaded' });
+    if (sessionResponse) {
+      const session = await (await sessionResponse).json();
+      if (session.authenticated !== true || session.authentication_method !== 'totp'
+          || session.origin_admitted !== true) {
+        throw new Error('The real Supervisor session changed during measurement.');
+      }
+    }
     await page.waitForFunction(() => {
       const state = window.__assistantPerf;
       return state && state.cardsInDom !== null && state.bootHidden !== null && state.cardsVisibleFrame !== null
@@ -275,30 +307,132 @@ function summarize(results, count, mode) {
   };
 }
 
-const server = await preview({ preview: { host: '127.0.0.1', port: 4173, strictPort: true } });
+const isolatedOrigin = 'http://127.0.0.1:7777';
+
+function requireIsolatedLoopback() {
+  const interfaces = networkInterfaces();
+  const names = Object.keys(interfaces);
+  const loopback = interfaces.lo ?? [];
+  if (names.length !== 1 || names[0] !== 'lo' || loopback.length === 0 ||
+      loopback.some((address) => !address.internal ||
+        !['127.0.0.1', '::1'].includes(address.address))) {
+    throw new Error('Real Supervisor measurement requires an isolated loopback-only network.');
+  }
+}
+
+async function waitForFreshAdmin() {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(`${isolatedOrigin}/api/session`, {
+        method: 'POST', signal: AbortSignal.timeout(1000),
+      });
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
+    if (!response.ok) throw new Error('The isolated Admin session endpoint failed.');
+    const session = await response.json();
+    if (session.profile !== 'local' || session.authenticated !== false ||
+        session.initialized !== false || session.authentication_state !== 'uninitialized') {
+      throw new Error('Real Supervisor measurement requires a fresh, uninitialized Admin.');
+    }
+    return;
+  }
+  throw new Error('The isolated Admin did not become ready.');
+}
+
+function decodeBase32(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const character of value.replaceAll(' ', '').toUpperCase()) {
+    const index = alphabet.indexOf(character);
+    if (index < 0) throw new Error('Invalid disposable TOTP key.');
+    bits += index.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let offset = 0; offset + 8 <= bits.length; offset += 8) {
+    bytes.push(Number.parseInt(bits.slice(offset, offset + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function totp(secret) {
+  const counter = BigInt(Math.floor(Date.now() / 30_000));
+  const message = Buffer.alloc(8);
+  message.writeBigUInt64BE(counter);
+  const digest = createHmac('sha1', decodeBase32(secret)).update(message).digest();
+  const offset = digest.at(-1) & 0x0f;
+  return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000)
+    .toString().padStart(6, '0');
+}
+
+async function realSupervisorState(browser) {
+  const context = await browser.newContext({ baseURL: isolatedOrigin });
+  try {
+    const page = await context.newPage();
+    await page.goto('/assistants/');
+    await page.getByRole('heading', { name: 'Create your admin password' }).waitFor();
+    const password = randomBytes(28).toString('base64url');
+    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByLabel('Confirm password').fill(password);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('heading', { name: 'Add an authenticator' }).waitFor();
+    const secret = (await page.locator('.totp-enrollment code').textContent())?.trim();
+    if (!secret || !/^[A-Z2-7]+$/.test(secret)) throw new Error('TOTP enrollment did not render.');
+    await page.getByLabel('Six-digit code').fill(totp(secret));
+    const enrolled = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/api/admin/setup/totp');
+    await page.getByRole('button', { name: 'Verify and continue' }).click();
+    if ((await enrolled).status() !== 200) throw new Error('Real Supervisor enrollment failed.');
+    const session = await page.evaluate(async () => {
+      const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
+      return response.json();
+    });
+    if (session.authenticated !== true || session.authentication_method !== 'totp'
+        || session.origin_admitted !== true) {
+      throw new Error('Real Supervisor session was not admitted.');
+    }
+    return await context.storageState();
+  } finally {
+    await context.close();
+  }
+}
+
+if (isolatedAuth) {
+  requireIsolatedLoopback();
+  await waitForFreshAdmin();
+}
+const server = isolatedAuth ? null
+  : await preview({ preview: { host: '127.0.0.1', port: 4173, strictPort: true } });
 let browser;
 const results = [];
 try {
   browser = await chromium.launch();
-  const origin = server.resolvedUrls.local[0];
-  const warmContext = await browser.newContext({ baseURL: origin });
+  const origin = isolatedAuth ? isolatedOrigin : server.resolvedUrls.local[0];
+  const storageState = isolatedAuth ? await realSupervisorState(browser) : null;
+  const contextOptions = storageState ? { baseURL: origin, storageState } : { baseURL: origin };
+  const warmContext = await browser.newContext(contextOptions);
   try {
     const warmPage = await warmContext.newPage();
+    const warmErrors = [];
+    warmPage.on('pageerror', (error) => warmErrors.push(error.name));
     const warmCdp = await warmContext.newCDPSession(warmPage);
     await warmCdp.send('Performance.enable');
     await warmPage.addInitScript(observePresentation, 1);
     await mockApi(warmPage, fixture(1));
     const warmup = await sample(warmPage, warmCdp, 'cold', 1, 0);
-    if (warmup.errors) throw new Error('The benchmark warmup had an API error.');
+    if (warmup.errors || warmErrors.length) throw new Error('The benchmark warmup had an API or browser error.');
   } finally {
     await warmContext.close();
   }
-  const counts = [1, 8, 24];
   for (let index = 1; index <= samples; index += 1) {
     for (let offset = 0; offset < counts.length; offset += 1) {
       const count = counts[(index + offset - 1) % counts.length];
-      const context = await browser.newContext({ baseURL: origin });
+      const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
+      const pageErrors = [];
+      page.on('pageerror', (error) => pageErrors.push(error.name));
       const cdp = await context.newCDPSession(page);
       await cdp.send('Performance.enable');
       await page.addInitScript(observePresentation, count);
@@ -306,8 +440,15 @@ try {
       try {
         for (const mode of ['cold', 'warm']) {
           const result = await sample(page, cdp, mode, count, index);
+          if (pageErrors.length) throw new Error('The benchmark page raised a browser error.');
+          if (isolatedAuth && (result.requests.session !== 1 || result.requests['team-start'] !== 2
+              || result.requests.catalog !== 1 || result.requests.snapshots !== 1
+              || result.requests['team-inventory'] !== 1 || result.requests.icons !== count)) {
+            throw new Error('The real Supervisor sample changed its API request shape.');
+          }
           results.push(result);
-          console.log(JSON.stringify({ type: 'sample', ...result }));
+          console.log(JSON.stringify({ type: 'sample', ...result,
+            ...(isolatedAuth ? { realSupervisor: true, mockedTeamAndCatalog: true } : {}) }));
         }
       } finally {
         await context.close();
@@ -316,11 +457,14 @@ try {
   }
   for (const count of counts) {
     for (const mode of ['cold', 'warm']) {
-      console.log(JSON.stringify({ type: 'summary', ...summarize(results, count, mode) }));
+      console.log(JSON.stringify({ type: 'summary', ...summarize(results, count, mode),
+        ...(isolatedAuth ? { realSupervisor: true, mockedTeamAndCatalog: true } : {}) }));
     }
   }
   if (results.some((result) => result.errors > 0)) process.exitCode = 1;
 } finally {
   await browser?.close();
-  await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  if (server) {
+    await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  }
 }
