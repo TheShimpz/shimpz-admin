@@ -200,7 +200,12 @@ async function measure(browser, baseURL, count, control) {
       await receipt.click();
       await page.waitForFunction((expected) => document.querySelectorAll('.receipt ol li').length === expected,
         count / 2);
-      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      await page.evaluate(async () => {
+        for (let frame = 0; frame < 3; frame += 1) {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
       receiptTaskMs = await taskDuration(cdp) - beforeReceipt;
       receiptLongTaskMs = await page.evaluate(() => Math.max(
         0, ...window.benchLongTasks.map((task) => task.duration),
