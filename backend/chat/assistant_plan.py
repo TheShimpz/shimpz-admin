@@ -161,11 +161,14 @@ def planning_catalog(
     catalog: store_catalog.StoreCatalog,
     include_local: bool,
 ) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]:
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-catalog") as executor:
-        public_future = submit_in_context(executor, catalog.get)
-        local_future = submit_in_context(executor, team.list_local_assistants) if include_local else None
-        public = public_future.result()
-        local_assistants = () if local_future is None else local_catalog.primary(local_future.result())
+    if include_local:
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-catalog") as executor:
+            local_future = submit_in_context(executor, team.list_local_assistants)
+            public = catalog.get()
+            local_assistants = local_catalog.primary(local_future.result())
+    else:
+        public = catalog.get()
+        local_assistants = ()
     local_ids = {assistant.assistant_id for assistant in local_assistants}
     combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
     return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
