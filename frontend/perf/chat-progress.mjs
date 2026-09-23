@@ -179,6 +179,11 @@ async function measure(browser, baseURL, count, control) {
         || !lastLive.includes('2 ms')) {
         throw new Error('Live ledger lost the final progress phase.');
       }
+      const announcement = await page.locator('.conversation .live-status').textContent();
+      if (!announcement.includes('Admin checks the final response from')
+        || !announcement.trimEnd().endsWith('Complete')) {
+        throw new Error('Live announcement lost the final progress event.');
+      }
     }
     const beforeTerminal = await taskDuration(cdp);
     await page.evaluate((value) => window.benchEmit({

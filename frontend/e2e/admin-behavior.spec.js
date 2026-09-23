@@ -798,7 +798,7 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
 });
 
-test('finishing a measured span updates the visible live duration', async ({ page }) => {
+test('finishing a measured span updates its duration and announcements across turns', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -807,6 +807,9 @@ test('finishing a measured span updates the visible live duration', async ({ pag
   await page.getByRole('button', { name: 'Send' }).click();
 
   const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  const liveStatus = page.locator('.conversation .live-status');
+  await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
+  await expect(liveStatus).toHaveText(/In progress$/);
   await thinking.locator('[data-slot="disclosure-trigger"]').click();
   const step = thinking.locator('.ledger li');
   await expect(step).toBeVisible();
@@ -814,9 +817,17 @@ test('finishing a measured span updates the visible live duration', async ({ pag
   chat.releaseProgressFinish();
   await expect(step).toHaveClass(/complete/);
   await expect(step.locator('time')).toHaveText('19 ms');
+  await expect(liveStatus).toHaveText(/Complete$/);
 
   chat.releaseReply();
   await expect(page.getByText('1 execution stages completed')).toBeVisible();
+  await composer.fill('Check progress again');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(liveStatus).toHaveText(/In progress$/);
+  chat.releaseProgressFinish();
+  await expect(liveStatus).toHaveText(/Complete$/);
+  chat.releaseReply();
+  await expect(page.getByText('1 execution stages completed')).toHaveCount(2);
 });
 
 test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {

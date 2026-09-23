@@ -858,7 +858,7 @@
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
           if (syncing) busy = true;
           progressSequence = incoming.seq;
-          progressEvents = [...progressEvents, incoming];
+          progressEvents.push(incoming);
           extendExecutionProjection(progressProjection, incoming);
           const completedHumanTransition = humanWorking;
           if (completedHumanTransition) {
