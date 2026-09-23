@@ -45,6 +45,7 @@
   let draft = $state('');
   let draftTeamId = '';
   let turns = $state([]);
+  let nextRenderKey = 0;
   let busy = $state(false);
   let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
@@ -153,11 +154,11 @@
     const grouped = [];
     for (const turn of values) {
       if (turn.role === 'user') {
-        grouped.push({ user: turn, assistant: null });
+        grouped.push({ key: turn.renderKey, user: turn, assistant: null });
       } else if (grouped.length > 0 && grouped.at(-1).assistant === null) {
         grouped.at(-1).assistant = turn;
       } else {
-        grouped.push({ user: null, assistant: turn });
+        grouped.push({ key: turn.renderKey, user: null, assistant: turn });
       }
     }
     return grouped;
@@ -245,8 +246,10 @@
   }
 
   function historyTurn(entry, author) {
+    const renderKey = nextRenderKey++;
     if (entry.kind === 'message') {
       return {
+        renderKey,
         historyId: entry.id,
         role: entry.role,
         text: entry.text,
@@ -255,6 +258,7 @@
     }
     if (entry.kind === 'guidance') {
       return {
+        renderKey,
         historyId: entry.id,
         role: 'assistant',
         text: escapeMarkdownText(entry.reply),
@@ -263,6 +267,7 @@
     }
     if (entry.kind === 'assistant-install') {
       return {
+        renderKey,
         historyId: entry.id,
         role: 'assistant',
         text: entry.state === 'installed'
@@ -281,6 +286,7 @@
       };
     }
     return {
+      renderKey,
       historyId: entry.id,
       role: 'assistant',
       text: '',
@@ -360,6 +366,7 @@
     if (incoming.outcome === 'already-installed') {
       if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install result');
       turns = [...turns, {
+        renderKey: nextRenderKey++,
         role: 'assistant',
         text: copy.install.already,
         author: incoming.team_name,
@@ -376,6 +383,7 @@
     if (incoming.state === 'planned') {
       if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install plan');
       turns = [...turns, {
+        renderKey: nextRenderKey++,
         role: 'assistant',
         text: copy.install.working,
         author: incoming.team_name,
@@ -537,6 +545,7 @@
     if (incoming.state === 'proposed') {
       if (lifecycleTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate lifecycle proposal');
       turns = [...turns, {
+        renderKey: nextRenderKey++,
         role: 'assistant',
         text: lifecycleProposalReply(incoming.assistant),
         author: incoming.team_name,
@@ -919,6 +928,7 @@
           if (!busy || syncing) throw new Error('unexpected Assistant guidance event');
           capabilityObjective = null;
           turns = [...turns, {
+            renderKey: nextRenderKey++,
             role: 'assistant',
             text: escapeMarkdownText(incoming.reply),
             author: incoming.team_name,
@@ -990,6 +1000,7 @@
       resetChallengeState();
       if (incoming.type === 'done') {
         turns = [...turns, {
+          renderKey: nextRenderKey++,
           role: 'assistant',
           text: incoming.reply,
           author: incoming.team_name,
@@ -1276,6 +1287,7 @@
     clearError();
     if (projectUserTurn) {
       turns = [...turns, {
+        renderKey: nextRenderKey++,
         role: 'user',
         text: normalized,
         ...(resumedObjective ? { resumedObjective } : {}),
@@ -1522,7 +1534,7 @@
               </Button>
             </div>
           {/if}
-          {#each exchanges as exchange, index}
+          {#each exchanges as exchange, index (exchange.key)}
             <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
               {#if exchange.user}
                 <Message variant="user" author={copy.you}>

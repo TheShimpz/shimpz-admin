@@ -940,6 +940,49 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
   await expect(composer).toHaveValue('Install Cloudflare');
 });
 
+test('keeps focus on a message link when older history arrives @browser-sensitive', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const recent = 'c'.repeat(32);
+  const earlier = 'd'.repeat(32);
+  const chat = await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${recent}:user`, kind: 'message', role: 'user', text: 'Show the current status' },
+        { id: `${recent}:reply`, kind: 'message', role: 'assistant',
+          text: 'Read the [current status](https://example.com/current).', author: 'Marketing' },
+      ],
+      before: cursor,
+    },
+    olderHistory: {
+      entries: [
+        { id: `${earlier}:user`, kind: 'message', role: 'user', text: 'Show the earlier status' },
+        { id: `${earlier}:reply`, kind: 'message', role: 'assistant',
+          text: 'Earlier status is ready.', author: 'Marketing' },
+      ],
+      before: null,
+    },
+  });
+  let releaseOlder;
+  const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
+  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
+    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
+    return route.fallback();
+  });
+
+  await page.goto('/chat/');
+  const link = page.getByRole('link', { name: 'current status' });
+  await expect(link).toBeVisible();
+  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
+  await page.getByRole('button', { name: 'Load older messages' }).click();
+  await olderRequest;
+  await link.focus();
+  await expect(link).toBeFocused();
+  releaseOlder();
+  await expect(page.getByText('Earlier status is ready.')).toBeVisible();
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
+  await expect(link).toBeFocused();
+});
+
 test('restores the installed Assistant card after a successful OAuth return @browser-sensitive', async ({ page, baseURL }) => {
   const turnId = 'c'.repeat(32);
   const callbackPath = `/api/oauth/cloudflare/callback?state=${'s'.repeat(43)}&claim=${'c'.repeat(64)}`;
