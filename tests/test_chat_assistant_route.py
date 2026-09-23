@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -124,9 +125,19 @@ class AssistantRouteTests(unittest.TestCase):
     def test_catalog_state_reads_inventory_and_directory_concurrently(self) -> None:
         installed = {"cloudflare": mock.sentinel.installed}
         available = (cloudflare(),)
+        both_started = threading.Barrier(2)
+
+        def inventory(_team_id):
+            both_started.wait(timeout=5)
+            return installed, {}
+
+        def directory(_catalog, _include_local):
+            both_started.wait(timeout=5)
+            return available
+
         with (
-            mock.patch.object(assistant_route.assistant_plan, "team_inventory", return_value=(installed, {})),
-            mock.patch.object(assistant_route.assistant_plan, "planning_catalog", return_value=available),
+            mock.patch.object(assistant_route.assistant_plan, "team_inventory", side_effect=inventory),
+            mock.patch.object(assistant_route.assistant_plan, "planning_catalog", side_effect=directory),
         ):
             self.assertEqual(
                 assistant_route._catalog_state("team_1", mock.sentinel.catalog, True),
