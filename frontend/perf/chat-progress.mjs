@@ -1,7 +1,8 @@
 // Synthetic WebSocket workload against the built Local chat; no Team or provider timing is included.
-// Build first. Set SHIMPZ_PROGRESS_CASES, SHIMPZ_PERF_SAMPLES, and SHIMPZ_PROGRESS_GAP_MS.
+// Build first. Set SHIMPZ_PROGRESS_CASES, SHIMPZ_PERF_SAMPLES, SHIMPZ_PROGRESS_GAP_MS,
+// and SHIMPZ_PERF_MOTION as needed.
 // Gap 0 incurs Chromium's ~4 ms timer clamp. Each trial uses a fresh context and a warm preview server.
-// Reduced motion isolates progress work from CSS animations. Any failed trial aborts the run.
+// Motion defaults to reduce to isolate progress work from CSS animations. Any failed trial aborts the run.
 // With five samples p95 is the maximum.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
@@ -16,6 +17,7 @@ const models = catalog.providers.map((item) => ({
 const counts = (process.env.SHIMPZ_PROGRESS_CASES ?? '36').split(',').map(Number);
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
 const gap = Number(process.env.SHIMPZ_PROGRESS_GAP_MS ?? '0');
+const motion = process.env.SHIMPZ_PERF_MOTION ?? 'reduce';
 if (counts.some((count) => ![36, 128, 948].includes(count))) {
   throw new Error('Cases must be 36, 128, or 948 progress events.');
 }
@@ -24,6 +26,9 @@ if (!Number.isSafeInteger(samples) || samples < 1 || samples > 100) {
 }
 if (!Number.isSafeInteger(gap) || gap < 0 || gap > 1000) {
   throw new Error('Event gap must be an integer between 0 and 1000 ms.');
+}
+if (!['reduce', 'no-preference'].includes(motion)) {
+  throw new Error('Motion must be reduce or no-preference.');
 }
 
 function fixture(path) {
@@ -127,7 +132,7 @@ function percentile(values, proportion) {
 }
 
 async function measure(browser, baseURL, count, control) {
-  const context = await browser.newContext({ baseURL, locale: 'en-US', reducedMotion: 'reduce' });
+  const context = await browser.newContext({ baseURL, locale: 'en-US', reducedMotion: motion });
   try {
     const page = await context.newPage();
     const badPaths = [];
@@ -249,7 +254,7 @@ try {
         value.maxLongTaskMs > best.maxLongTaskMs ? value : best
       ), { maxLongTaskMs: 0, maxLongTaskEvent: 0 });
       const controlCpu = percentile(results.control.map((value) => value.progressTaskMs), 0.5);
-      console.log(JSON.stringify({ count, arm, gap, samples,
+      console.log(JSON.stringify({ count, arm, gap, motion, samples,
         progressCpuP50Ms: metric('progressTaskMs', 0.5),
         progressCpuP95Ms: metric('progressTaskMs', 0.95),
         marginalCpuPerEventMs: arm === 'progress'
