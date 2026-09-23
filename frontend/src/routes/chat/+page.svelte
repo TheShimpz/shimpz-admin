@@ -1864,11 +1864,9 @@
 
   :global(.turns) {
     position: relative;
-    display: flex;
+    display: block;
     min-width: 0;
     min-height: 0;
-    flex-direction: column;
-    gap: 1.1rem;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-block: 1rem;
@@ -1905,6 +1903,11 @@
     min-width: 0;
     align-content: start;
     gap: 0.65rem;
+    margin-block-start: 1.1rem;
+  }
+
+  .exchange:first-child {
+    margin-block-start: 0;
   }
 
   .exchange:last-child {
