@@ -66,7 +66,7 @@
     ) return;
     const timeout = globalThis.setTimeout(() => {
       assistantsViewDeadlineReached = true;
-    }, 2200);
+    }, profile === 'local' ? 1000 : 2200);
     return () => globalThis.clearTimeout(timeout);
   });
 
