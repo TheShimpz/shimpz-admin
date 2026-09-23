@@ -1535,7 +1535,7 @@
             </div>
           {/if}
           {#each exchanges as exchange, index (exchange.key)}
-            <section class="exchange" class:active={index === exchanges.length - 1 && busy}>
+            <section class="exchange">
               {#if exchange.user}
                 <Message variant="user" author={copy.you}>
                   {#if exchange.user.resumedObjective}
