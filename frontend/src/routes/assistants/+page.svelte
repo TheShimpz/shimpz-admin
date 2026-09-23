@@ -536,15 +536,14 @@
         ICON_PRESENTATION_BUDGET_MS,
       );
       await Promise.allSettled(entries.map(async (entry) => {
-        if (nextUrls[entry.key]) return;
+        if (catalogIconUrls[entry.key]) return;
         try {
           const url = await decodedIconUrl(await entry.load(), iconController.signal);
           if (request !== catalogPresentationRequest) {
             URL.revokeObjectURL(url);
             return;
           }
-          nextUrls[entry.key] = url;
-          catalogIconUrls = { ...nextUrls };
+          catalogIconUrls[entry.key] = url;
         } catch {
           // The shared card retains its bounded fallback icon when preview is unavailable.
         }
