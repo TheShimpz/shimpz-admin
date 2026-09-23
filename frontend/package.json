@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
+    "measure:assistants": "npm run build && node perf/assistant-catalog.mjs",
     "check": "svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
     "test": "node tests/run-tests.mjs",
     "test:e2e": "playwright test"
