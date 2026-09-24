@@ -6,9 +6,12 @@ This exercises authenticated sockets and temporary durable history, but does not
 measure browser, Team, Brain, provider, network, or cache latency. No message,
 credential, response body, or transcript is printed.
 
-Set ``SHIMPZ_PERF_SNAPSHOT_DELAY_MS=0`` or ``2400`` to time twelve ordinary
-turns and their boundary/frame order with a synthetic Local snapshot delay.
-The delay is an intervention, not a measurement of the real Team inventory.
+Set ``SHIMPZ_PERF_SNAPSHOT_DELAY_MS`` or ``SHIMPZ_PERF_CATALOG_DELAY_MS`` to
+an integer from 0 to 5000 to time twelve ordinary turns. These delays are
+synthetic interventions, not measurements of Team or Store latency. The
+catalog method is replaced by the fixture, so every turn bypasses its 60-second
+cache; catalog-delay results describe a per-miss sensitivity probe, not a
+session with one miss followed by warm hits.
 """
 
 from __future__ import annotations
@@ -52,13 +55,17 @@ class MeasurementError(RuntimeError):
 class Boundary:
     """Closed Team HTTP responses and lock-protected operation counts."""
 
-    def __init__(self, team, max_context_entries: int, snapshot_delay_ms: int | None) -> None:
+    def __init__(
+        self, team, max_context_entries: int, snapshot_delay_ms: int | None, catalog_delay_ms: int | None
+    ) -> None:
         self.team = team
         self.max_context_entries = max_context_entries
         self.lock = threading.Lock()
         self.calls: Counter[str] = Counter()
         self.context_lengths: list[int] = []
         self.snapshot_delay_ms = snapshot_delay_ms
+        self.catalog_delay_ms = catalog_delay_ms
+        self.timing_enabled = snapshot_delay_ms is not None or catalog_delay_ms is not None
         self.spans: list[tuple[str, int, int]] = []
 
     def _count(self, name: str) -> None:
@@ -78,13 +85,15 @@ class Boundary:
             return list(self.spans)
 
     def _record(self, name: str, start: int) -> None:
-        if self.snapshot_delay_ms is not None:
+        if self.timing_enabled:
             with self.lock:
                 self.spans.append((name, start, time.perf_counter_ns()))
 
     def catalog(self):
         start = time.perf_counter_ns()
         self._count("Store catalog get")
+        if self.catalog_delay_ms is not None:
+            time.sleep(self.catalog_delay_ms / 1000)
         self._record("Store catalog get", start)
         return ()
 
@@ -193,12 +202,12 @@ def _delta(after: Counter[str], before: Counter[str]) -> dict[str, int]:
     return dict(sorted((after - before).items()))
 
 
-def _snapshot_delay() -> int | None:
-    raw = os.environ.get("SHIMPZ_PERF_SNAPSHOT_DELAY_MS")
+def _delay_env(name: str) -> int | None:
+    raw = os.environ.get(name)
     if raw is None:
         return None
     if not raw.isdecimal() or not 0 <= int(raw) <= 5000:
-        raise ValueError("snapshot delay must be an integer from 0 to 5000 ms")
+        raise ValueError(f"{name} must be an integer from 0 to 5000 ms")
     return int(raw)
 
 
@@ -215,11 +224,22 @@ def _timing(
         (ended for name, _began, ended in spans if name == "GET /v1/local-assistants"),
         default=None,
     )
+    catalog_end = max(
+        (ended for name, _began, ended in spans if name == "Store catalog get"),
+        default=None,
+    )
     return {
         "first_frame_ms": ms(frames[0][1]),
         "first_progress_ms": ms(progress) if progress is not None else None,
         "terminal_ms": ms(frames[-1][1]),
         "snapshot_end_ms": ms(snapshot_end) if snapshot_end is not None else None,
+        "catalog_end_ms": ms(catalog_end) if catalog_end is not None else None,
+        "catalog_to_first_progress_ms": (
+            round((progress - catalog_end) / 1_000_000, 2) if progress is not None and catalog_end is not None else None
+        ),
+        "first_progress_after_catalog": (
+            progress >= catalog_end if progress is not None and catalog_end is not None else None
+        ),
         "snapshot_to_first_progress_ms": (
             round((progress - snapshot_end) / 1_000_000, 2)
             if progress is not None and snapshot_end is not None
@@ -248,13 +268,23 @@ def _percentiles(values: list[float | None]) -> dict[str, float | int | None]:
 
 def _timing_summary(results: list[dict[str, object]]) -> dict[str, object]:
     turns = [result["timing"] for result in results if result["case"].startswith("ordinary")]
-    metrics = ("first_progress_ms", "terminal_ms", "snapshot_end_ms", "snapshot_to_first_progress_ms")
+    metrics = (
+        "first_progress_ms",
+        "terminal_ms",
+        "snapshot_end_ms",
+        "snapshot_to_first_progress_ms",
+        "catalog_end_ms",
+        "catalog_to_first_progress_ms",
+    )
     return {
         "method": "nearest-rank",
         "ordinary_turns": len(turns),
         "first_progress_after_snapshot_count": sum(turn["first_progress_after_snapshot"] is True for turn in turns),
         "first_progress_before_snapshot_count": sum(turn["first_progress_after_snapshot"] is False for turn in turns),
         "comparison_unavailable_count": sum(turn["first_progress_after_snapshot"] is None for turn in turns),
+        "first_progress_after_catalog_count": sum(turn["first_progress_after_catalog"] is True for turn in turns),
+        "first_progress_before_catalog_count": sum(turn["first_progress_after_catalog"] is False for turn in turns),
+        "catalog_comparison_unavailable_count": sum(turn["first_progress_after_catalog"] is None for turn in turns),
         **{metric: _percentiles([turn[metric] for turn in turns]) for metric in metrics},
     }
 
@@ -325,7 +355,7 @@ async def _turn(
         "history_operations": dict(sorted(history.items())),
         "frames": frames,
     }
-    if boundary.snapshot_delay_ms is not None:
+    if boundary.timing_enabled:
         result["timing"] = _timing(start, frame_times, boundary.span_snapshot()[before_spans:])
     return result
 
@@ -337,7 +367,7 @@ async def _measure(application, token: str, boundary: Boundary, history_mocks):
         mock.patch.object(socket.socket, "connect_ex", side_effect=_forbid_network) as connect_ex,
         mock.patch.object(socket, "getaddrinfo", side_effect=_forbid_network) as getaddrinfo,
     ):
-        ordinary_turns = 12 if boundary.snapshot_delay_ms is not None else boundary.max_context_entries // 2 + 2
+        ordinary_turns = 12 if boundary.timing_enabled else boundary.max_context_entries // 2 + 2
         stored_prior = 0
         for _index in range(ordinary_turns):
             result = await _turn(
@@ -372,7 +402,8 @@ def main() -> int:
     sys.path.insert(0, str(ADMIN))
     sys.path.insert(0, str(ADMIN / "backend"))
     try:
-        snapshot_delay_ms = _snapshot_delay()
+        snapshot_delay_ms = _delay_env("SHIMPZ_PERF_SNAPSHOT_DELAY_MS")
+        catalog_delay_ms = _delay_env("SHIMPZ_PERF_CATALOG_DELAY_MS")
         with tempfile.TemporaryDirectory(prefix="shimpz-chat-operations-") as temporary:
             root = Path(temporary)
             with mock.patch.dict(
@@ -394,7 +425,7 @@ def main() -> int:
                 secret = configure_supervisor(app.state, "violet otter lantern quartz 92")
                 token = app.auth.issue_session(secret, "totp")
                 app.state.set_model_api_key("openai", MODEL_KEY)
-                boundary = Boundary(app.team, history_context.MAX_ENTRIES, snapshot_delay_ms)
+                boundary = Boundary(app.team, history_context.MAX_ENTRIES, snapshot_delay_ms, catalog_delay_ms)
                 with ExitStack() as stack:
                     stack.enter_context(mock.patch.object(app.team, "_call", side_effect=boundary.call))
                     stack.enter_context(mock.patch.object(app.team, "_call_stream", side_effect=boundary.stream))
@@ -410,11 +441,12 @@ def main() -> int:
                     results = asyncio.run(_measure(app.app, token, boundary, history_mocks))
         report = {
             "status": "complete",
-            "scope": "Admin in-process WebSocket operation counts and optional synthetic snapshot timing",
+            "scope": "Admin in-process WebSocket operation counts and optional synthetic snapshot/catalog timing",
             "snapshot_delay_ms": snapshot_delay_ms,
+            "catalog_delay_ms": catalog_delay_ms,
             "results": results,
         }
-        if snapshot_delay_ms is not None:
+        if boundary.timing_enabled:
             report["timing_summary"] = _timing_summary(results)
         print(json.dumps(report, sort_keys=True))
     except (
