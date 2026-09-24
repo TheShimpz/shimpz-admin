@@ -1371,6 +1371,8 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect.poll(() => chat.syncFrames()).toBeGreaterThan(0);
+  await expect(composer).toBeEnabled();
   await composer.fill('Uninstall the Cloudflare Assistant');
   await page.getByRole('button', { name: 'Send' }).click();
 
