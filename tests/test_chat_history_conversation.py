@@ -56,6 +56,31 @@ class ChatHistoryConversationTests(unittest.TestCase):
         self.path_patch.start()
         self.addCleanup(self.path_patch.stop)
 
+    def test_conversation_text_keeps_exact_control_and_format_boundaries(self) -> None:
+        allowed_ascii = {9, 10, 13, *range(32, 127)}
+        for codepoint in range(128):
+            value = f"a{chr(codepoint)}b"
+            with self.subTest(codepoint=codepoint):
+                if codepoint in allowed_ascii:
+                    self.assertEqual(conversation_context.canonical_text(value), value)
+                else:
+                    with self.assertRaises(ValueError):
+                        conversation_context.canonical_text(value)
+        for value in (
+            "a\u200bb",
+            "a\u00adb",
+            "a\ufeffb",
+            "a\u2028b",
+            "a\u00a0b",
+            "a\nb\u200dc",
+            "a👩\u200d💻b",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(conversation_context.canonical_text(value), value)
+        for value in ("a\u0085b", "a\ue000b", "a\ud800b", "a\u0378b", "a" * 60_000 + "\x00"):
+            with self.subTest(value=value[:10]), self.assertRaises(ValueError):
+                conversation_context.canonical_text(value)
+
     def test_projects_bounded_same_team_conversation_before_the_current_turn(self) -> None:
         listed = history.new_turn_id()
         uninstall = history.new_turn_id()

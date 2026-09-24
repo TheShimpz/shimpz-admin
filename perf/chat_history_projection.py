@@ -23,12 +23,14 @@ TEAM = "marketing"
 OTHER_TEAM = "other_team"
 SAMPLES = 100
 LONG_TEXT = "e\u0301🙂" * 1_600
+LONG_ASCII_TEXT = "A" * len(LONG_TEXT)
 CASES = (
-    ("empty", 0, 0, False),
-    ("eight_short", 8, 0, False),
-    ("large_history", 10_000, 0, False),
-    ("ineligible_tail_stress", 8, 10_000, False),
-    ("long_text", 8, 0, True),
+    ("empty", 0, 0, None),
+    ("eight_short", 8, 0, None),
+    ("large_history", 10_000, 0, None),
+    ("ineligible_tail_stress", 8, 10_000, None),
+    ("long_text", 8, 0, LONG_TEXT),
+    ("long_ascii", 8, 0, LONG_ASCII_TEXT),
 )
 
 
@@ -83,10 +85,10 @@ def _public_encoding_matches(path: Path) -> None:
         raise ConfoundedMeasurementError("direct fixture differs from public append")
 
 
-def _rows(eligible: int, ineligible: int, long_text: bool, anchor: str) -> Iterator[tuple[str, str, str]]:
+def _rows(eligible: int, ineligible: int, long_text: str | None, anchor: str) -> Iterator[tuple[str, str, str]]:
     yield OTHER_TEAM, f"{_turn(100_000)}:user", _user_payload("Other Team only")
     for index in range(eligible):
-        text = LONG_TEXT if long_text else f"Question {index}"
+        text = long_text if long_text is not None else f"Question {index}"
         yield TEAM, f"{_turn(index)}:user", _user_payload(text)
     card = _card_payload()
     for index in range(eligible, eligible + ineligible):
@@ -95,9 +97,9 @@ def _rows(eligible: int, ineligible: int, long_text: bool, anchor: str) -> Itera
     yield TEAM, f"{anchor}:user", _user_payload("Current")
 
 
-def _expected(eligible: int, long_text: bool) -> tuple[context.Entry, ...]:
+def _expected(eligible: int, long_text: str | None) -> tuple[context.Entry, ...]:
     return tuple(
-        context.bounded("user", LONG_TEXT if long_text else f"Question {index}")
+        context.bounded("user", long_text if long_text is not None else f"Question {index}")
         for index in range(max(0, eligible - context.MAX_ENTRIES), eligible)
     )
 
@@ -127,7 +129,7 @@ def _percentiles(values: list[float]) -> dict[str, float | int]:
     }
 
 
-def _case(path: Path, name: str, eligible: int, ineligible: int, long_text: bool) -> dict[str, object]:
+def _case(path: Path, name: str, eligible: int, ineligible: int, long_text: str | None) -> dict[str, object]:
     store.STORE_PATH = path
     anchor = _turn(eligible + ineligible)
     with store._database() as database:

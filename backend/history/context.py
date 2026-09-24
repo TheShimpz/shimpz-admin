@@ -26,6 +26,9 @@ def canonical_text(value: object) -> str:
     canonical = unicodedata.normalize("NFC", value)
     if not canonical or canonical.strip() != canonical:
         raise ValueError("conversation text is invalid")
+    # The first check skips replacement scans for ordinary printable text.
+    if canonical.isprintable() or canonical.replace("\n", "").replace("\r", "").replace("\t", "").isprintable():
+        return canonical
     if any(
         unicodedata.category(character).startswith("C")
         and unicodedata.category(character) != "Cf"
