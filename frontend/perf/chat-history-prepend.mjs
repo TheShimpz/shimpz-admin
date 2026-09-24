@@ -3,6 +3,8 @@
 // Build first, then run with Node.js 24 and the pinned Playwright browser image.
 // Chromium TaskDuration is page-wide; nearest-rank p95 depends on the sample count.
 // Script, layout, and style counters help attribution but do not account for all task time or paint.
+// ThreadTime is sampled separately and can differ from TaskDuration in either direction.
+// TaskOtherDuration includes other work; heap deltas alone cannot identify garbage collection.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
@@ -98,13 +100,14 @@ async function performanceMetrics(cdp) {
   const { metrics } = await cdp.send('Performance.getMetrics');
   const values = new Map(metrics.map((item) => [item.name, item.value]));
   return Object.fromEntries([
-    'TaskDuration', 'ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration',
-    'LayoutCount', 'RecalcStyleCount',
+    'TaskDuration', 'TaskOtherDuration', 'ThreadTime', 'ScriptDuration',
+    'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount',
+    'JSHeapUsedSize',
   ]
     .map((name) => {
       const value = values.get(name);
       if (typeof value !== 'number') throw new Error(`Chromium omitted ${name}.`);
-      return [name, name.endsWith('Duration') ? value * 1000 : value];
+      return [name, name.endsWith('Duration') || name === 'ThreadTime' ? value * 1000 : value];
     }));
 }
 
@@ -171,7 +174,8 @@ async function measure(browser, baseURL, existingPages) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       window.benchLongTasks = [];
     });
-    const idleCpuMs = (await performanceMetrics(cdp)).TaskDuration - idleStart.TaskDuration;
+    const idleEnd = await performanceMetrics(cdp);
+    const idleCpuMs = idleEnd.TaskDuration - idleStart.TaskDuration;
     const beforeMetrics = await performanceMetrics(cdp);
     const windowStart = performance.now();
     await older.click();
@@ -194,6 +198,9 @@ async function measure(browser, baseURL, existingPages) {
     }, { oldFirstText, oldFirstY });
     const afterMetrics = await performanceMetrics(cdp);
     result.cpuMs = afterMetrics.TaskDuration - beforeMetrics.TaskDuration;
+    result.threadMs = afterMetrics.ThreadTime - beforeMetrics.ThreadTime;
+    result.otherMs = afterMetrics.TaskOtherDuration - beforeMetrics.TaskOtherDuration;
+    result.heapDeltaBytes = afterMetrics.JSHeapUsedSize - beforeMetrics.JSHeapUsedSize;
     result.scriptMs = afterMetrics.ScriptDuration - beforeMetrics.ScriptDuration;
     result.layoutMs = afterMetrics.LayoutDuration - beforeMetrics.LayoutDuration;
     result.styleMs = afterMetrics.RecalcStyleDuration - beforeMetrics.RecalcStyleDuration;
@@ -201,6 +208,9 @@ async function measure(browser, baseURL, existingPages) {
     result.stylePasses = afterMetrics.RecalcStyleCount - beforeMetrics.RecalcStyleCount;
     result.windowWallMs = performance.now() - windowStart;
     result.idleCpuMs = idleCpuMs;
+    result.idleThreadMs = idleEnd.ThreadTime - idleStart.ThreadTime;
+    result.idleOtherMs = idleEnd.TaskOtherDuration - idleStart.TaskOtherDuration;
+    result.idleHeapDeltaBytes = idleEnd.JSHeapUsedSize - idleStart.JSHeapUsedSize;
     if (!result.complete ||
         await page.locator('.exchange').count() !== (existingPages + 1) * 32 ||
         result.created !== 32 || Math.abs(result.scrollShiftPx) > 2 ||
@@ -226,22 +236,31 @@ try {
     const metric = (name, proportion) => percentile(values.map((value) => value[name]), proportion);
     console.log(JSON.stringify({ existingPages, insertedEntries: 64, samples,
       cpuP50Ms: metric('cpuMs', 0.5), cpuP95Ms: metric('cpuMs', 0.95),
+      threadP50Ms: metric('threadMs', 0.5), otherP50Ms: metric('otherMs', 0.5),
       scriptP50Ms: metric('scriptMs', 0.5), layoutP50Ms: metric('layoutMs', 0.5),
       styleP50Ms: metric('styleMs', 0.5),
       layoutPassesP50: metric('layoutPasses', 0.5), stylePassesP50: metric('stylePasses', 0.5),
       wallP50Ms: metric('wallMs', 0.5), wallP95Ms: metric('wallMs', 0.95),
       windowWallP50Ms: metric('windowWallMs', 0.5), idleCpuP50Ms: metric('idleCpuMs', 0.5),
+      idleThreadP50Ms: metric('idleThreadMs', 0.5),
+      idleOtherP50Ms: metric('idleOtherMs', 0.5),
       maxLongTaskMs: Math.max(...values.map((value) => value.maxLongTaskMs)),
       maxScrollShiftPx: Math.max(...values.map((value) => Math.abs(value.scrollShiftPx))),
       created: values.map((value) => value.created), moved: values.map((value) => value.moved),
       cpuSamplesMs: values.map((value) => Math.round(value.cpuMs * 10) / 10),
+      threadSamplesMs: values.map((value) => Math.round(value.threadMs * 10) / 10),
+      otherSamplesMs: values.map((value) => Math.round(value.otherMs * 10) / 10),
+      heapDeltaSamplesBytes: values.map((value) => value.heapDeltaBytes),
       scriptSamplesMs: values.map((value) => Math.round(value.scriptMs * 10) / 10),
       layoutSamplesMs: values.map((value) => Math.round(value.layoutMs * 10) / 10),
       styleSamplesMs: values.map((value) => Math.round(value.styleMs * 10) / 10),
       layoutPassSamples: values.map((value) => value.layoutPasses),
       stylePassSamples: values.map((value) => value.stylePasses),
       wallSamplesMs: values.map((value) => Math.round(value.wallMs * 10) / 10),
-      idleCpuSamplesMs: values.map((value) => Math.round(value.idleCpuMs * 10) / 10) }));
+      idleCpuSamplesMs: values.map((value) => Math.round(value.idleCpuMs * 10) / 10),
+      idleThreadSamplesMs: values.map((value) => Math.round(value.idleThreadMs * 10) / 10),
+      idleOtherSamplesMs: values.map((value) => Math.round(value.idleOtherMs * 10) / 10),
+      idleHeapDeltaSamplesBytes: values.map((value) => value.idleHeapDeltaBytes) }));
   }
 } finally {
   await browser.close();
