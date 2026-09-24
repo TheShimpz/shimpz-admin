@@ -2406,7 +2406,15 @@ test('shows accessible processing motion and honors display preferences @browser
   });
   expect(barHeights.peak / barHeights.resting).toBeCloseTo(10 / 3, 1);
   await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
-    .toMatch(/text-shimmer$/);
+    .toBe('none');
+  await expect.poll(() => label.evaluate((element) => element.getAnimations().length))
+    .toBe(0);
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
+    .toMatch(/^(rgba\(0, 0, 0, 0\)|transparent)$/);
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).backgroundImage))
+    .toContain('linear-gradient');
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).backgroundPosition))
+    .toBe('0% 0%');
 
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);

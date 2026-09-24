@@ -137,7 +137,6 @@
       color: transparent;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      animation: text-shimmer 1.8s linear infinite;
     }
   }
 
@@ -246,11 +245,6 @@
     to { transform: translateX(365%); }
   }
 
-  @keyframes text-shimmer {
-    from { background-position: 150% 0; }
-    to { background-position: -150% 0; }
-  }
-
   @media (max-width: 520px) {
     .summary { grid-template-columns: 2.5rem minmax(0, 1fr); }
     .elapsed { grid-column: 2; }
@@ -259,8 +253,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .signal i,
-    .activity::after,
-    .copy strong {
+    .activity::after {
       animation: none;
     }
 
@@ -278,7 +271,6 @@
       background: none;
       color: CanvasText;
       -webkit-text-fill-color: currentColor;
-      animation: none;
     }
   }
 </style>
