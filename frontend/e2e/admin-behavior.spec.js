@@ -2412,9 +2412,11 @@ test('keeps an unexpected terminal error visible after silent Stop handling', as
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {
   const longReply = Array.from({ length: 60 }, (_, index) => `Result ${index + 1}: validated DNS record.`).join('\n\n');
-  await routeReadyChat(page, { reply: longReply });
+  const chat = await routeReadyChat(page, { reply: longReply });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect.poll(() => chat.syncFrames()).toBeGreaterThan(0);
+  await expect(composer).toBeEnabled();
   await composer.fill('Return the complete DNS inventory');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Result 60: validated DNS record.')).toBeVisible();
