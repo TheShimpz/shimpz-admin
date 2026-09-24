@@ -5,17 +5,23 @@ Run from the Admin checkout with
 This exercises authenticated sockets and temporary durable history, but does not
 measure browser, Team, Brain, provider, network, or cache latency. No message,
 credential, response body, or transcript is printed.
+
+Set ``SHIMPZ_PERF_SNAPSHOT_DELAY_MS=0`` or ``2400`` to time twelve ordinary
+turns and their boundary/frame order with a synthetic Local snapshot delay.
+The delay is an intervention, not a measurement of the real Team inventory.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import socket
 import sys
 import tempfile
 import threading
+import time
 from collections import Counter
 from contextlib import ExitStack
 from pathlib import Path
@@ -46,12 +52,14 @@ class MeasurementError(RuntimeError):
 class Boundary:
     """Closed Team HTTP responses and lock-protected operation counts."""
 
-    def __init__(self, team, max_context_entries: int) -> None:
+    def __init__(self, team, max_context_entries: int, snapshot_delay_ms: int | None) -> None:
         self.team = team
         self.max_context_entries = max_context_entries
         self.lock = threading.Lock()
         self.calls: Counter[str] = Counter()
         self.context_lengths: list[int] = []
+        self.snapshot_delay_ms = snapshot_delay_ms
+        self.spans: list[tuple[str, int, int]] = []
 
     def _count(self, name: str) -> None:
         with self.lock:
@@ -65,12 +73,33 @@ class Boundary:
         with self.lock:
             return list(self.context_lengths)
 
+    def span_snapshot(self) -> list[tuple[str, int, int]]:
+        with self.lock:
+            return list(self.spans)
+
+    def _record(self, name: str, start: int) -> None:
+        if self.snapshot_delay_ms is not None:
+            with self.lock:
+                self.spans.append((name, start, time.perf_counter_ns()))
+
     def catalog(self):
+        start = time.perf_counter_ns()
         self._count("Store catalog get")
+        self._record("Store catalog get", start)
         return ()
 
     def call(self, method: str, path: str, payload=None, **kwargs):
+        name = f"{method} {path}"
+        start = time.perf_counter_ns()
+        try:
+            return self._call_response(method, path, payload, **kwargs)
+        finally:
+            self._record(name, start)
+
+    def _call_response(self, method: str, path: str, payload, **kwargs):
         self._count(f"{method} {path}")
+        if method == "GET" and path == "/v1/local-assistants" and self.snapshot_delay_ms is not None:
+            time.sleep(self.snapshot_delay_ms / 1000)
         if method == "GET" and path == f"/v1/teams/{TEAM_ID}/inference":
             return self.team.TeamResponse(
                 200,
@@ -131,6 +160,13 @@ class Boundary:
         )
 
     def stream(self, method: str, path: str, payload, **kwargs):
+        start = time.perf_counter_ns()
+        try:
+            return self._stream_response(method, path, payload, **kwargs)
+        finally:
+            self._record(f"{method} {path}", start)
+
+    def _stream_response(self, method: str, path: str, payload, **kwargs):
         self._count(f"{method} {path}")
         bindings = kwargs.get("bindings")
         if (
@@ -157,6 +193,72 @@ def _delta(after: Counter[str], before: Counter[str]) -> dict[str, int]:
     return dict(sorted((after - before).items()))
 
 
+def _snapshot_delay() -> int | None:
+    raw = os.environ.get("SHIMPZ_PERF_SNAPSHOT_DELAY_MS")
+    if raw is None:
+        return None
+    if not raw.isdecimal() or not 0 <= int(raw) <= 5000:
+        raise ValueError("snapshot delay must be an integer from 0 to 5000 ms")
+    return int(raw)
+
+
+def _timing(
+    start: int,
+    frames: list[tuple[str, int]],
+    spans: list[tuple[str, int, int]],
+) -> dict[str, object]:
+    def ms(value: int) -> float:
+        return round((value - start) / 1_000_000, 2)
+
+    progress = next((at for kind, at in frames if kind == "progress"), None)
+    snapshot_end = max(
+        (ended for name, _began, ended in spans if name == "GET /v1/local-assistants"),
+        default=None,
+    )
+    return {
+        "first_frame_ms": ms(frames[0][1]),
+        "first_progress_ms": ms(progress) if progress is not None else None,
+        "terminal_ms": ms(frames[-1][1]),
+        "snapshot_end_ms": ms(snapshot_end) if snapshot_end is not None else None,
+        "snapshot_to_first_progress_ms": (
+            round((progress - snapshot_end) / 1_000_000, 2)
+            if progress is not None and snapshot_end is not None
+            else None
+        ),
+        "first_progress_after_snapshot": (
+            progress >= snapshot_end if progress is not None and snapshot_end is not None else None
+        ),
+        "boundary_spans": [
+            {"operation": name, "start_ms": ms(began), "end_ms": ms(ended)}
+            for name, began, ended in sorted(spans, key=lambda span: span[1])
+        ],
+    }
+
+
+def _percentiles(values: list[float | None]) -> dict[str, float | int | None]:
+    ordered = sorted(value for value in values if value is not None)
+    if not ordered:
+        return {"n": 0, "p50_ms": None, "p95_ms": None}
+    return {
+        "n": len(ordered),
+        "p50_ms": ordered[math.ceil(len(ordered) * 0.50) - 1],
+        "p95_ms": ordered[math.ceil(len(ordered) * 0.95) - 1],
+    }
+
+
+def _timing_summary(results: list[dict[str, object]]) -> dict[str, object]:
+    turns = [result["timing"] for result in results if result["case"].startswith("ordinary")]
+    metrics = ("first_progress_ms", "terminal_ms", "snapshot_end_ms", "snapshot_to_first_progress_ms")
+    return {
+        "method": "nearest-rank",
+        "ordinary_turns": len(turns),
+        "first_progress_after_snapshot_count": sum(turn["first_progress_after_snapshot"] is True for turn in turns),
+        "first_progress_before_snapshot_count": sum(turn["first_progress_after_snapshot"] is False for turn in turns),
+        "comparison_unavailable_count": sum(turn["first_progress_after_snapshot"] is None for turn in turns),
+        **{metric: _percentiles([turn[metric] for turn in turns]) for metric in metrics},
+    }
+
+
 async def _turn(
     application,
     token: str,
@@ -177,12 +279,16 @@ async def _turn(
         raise MeasurementError("fresh socket did not complete history sync")
     before_calls = boundary.snapshot()
     before_contexts = boundary.context_snapshot()
+    before_spans = len(boundary.span_snapshot())
     before_history = {name: wrapped.call_count for name, wrapped in history_mocks.items()}
+    start = time.perf_counter_ns()
     await websocket.send_json({"type": "chat", "message": objective, "files": [], "assistant_ids": []})
     frames = []
+    frame_times: list[tuple[str, int]] = []
     while True:
         frame = await websocket.next_json(10)
         frames.append(frame["type"])
+        frame_times.append((frame["type"], time.perf_counter_ns()))
         if frame["type"] in {"done", "assistant-guidance", "error", "stopped"}:
             break
     await websocket.disconnect()
@@ -211,7 +317,7 @@ async def _turn(
         for name, wrapped in history_mocks.items()
         if wrapped.call_count != before_history[name]
     }
-    return {
+    result = {
         "case": f"ordinary_after_{stored_prior}_entries" if objective == "Hello" else "targetless_uninstall",
         "stored_prior_entries": stored_prior,
         "projected_context_entries": projected_prior,
@@ -219,6 +325,9 @@ async def _turn(
         "history_operations": dict(sorted(history.items())),
         "frames": frames,
     }
+    if boundary.snapshot_delay_ms is not None:
+        result["timing"] = _timing(start, frame_times, boundary.span_snapshot()[before_spans:])
+    return result
 
 
 async def _measure(application, token: str, boundary: Boundary, history_mocks):
@@ -228,7 +337,7 @@ async def _measure(application, token: str, boundary: Boundary, history_mocks):
         mock.patch.object(socket.socket, "connect_ex", side_effect=_forbid_network) as connect_ex,
         mock.patch.object(socket, "getaddrinfo", side_effect=_forbid_network) as getaddrinfo,
     ):
-        ordinary_turns = boundary.max_context_entries // 2 + 2
+        ordinary_turns = 12 if boundary.snapshot_delay_ms is not None else boundary.max_context_entries // 2 + 2
         stored_prior = 0
         for _index in range(ordinary_turns):
             result = await _turn(
@@ -263,6 +372,7 @@ def main() -> int:
     sys.path.insert(0, str(ADMIN))
     sys.path.insert(0, str(ADMIN / "backend"))
     try:
+        snapshot_delay_ms = _snapshot_delay()
         with tempfile.TemporaryDirectory(prefix="shimpz-chat-operations-") as temporary:
             root = Path(temporary)
             with mock.patch.dict(
@@ -284,7 +394,7 @@ def main() -> int:
                 secret = configure_supervisor(app.state, "violet otter lantern quartz 92")
                 token = app.auth.issue_session(secret, "totp")
                 app.state.set_model_api_key("openai", MODEL_KEY)
-                boundary = Boundary(app.team, history_context.MAX_ENTRIES)
+                boundary = Boundary(app.team, history_context.MAX_ENTRIES, snapshot_delay_ms)
                 with ExitStack() as stack:
                     stack.enter_context(mock.patch.object(app.team, "_call", side_effect=boundary.call))
                     stack.enter_context(mock.patch.object(app.team, "_call_stream", side_effect=boundary.stream))
@@ -298,13 +408,25 @@ def main() -> int:
                         for name in HISTORY_OPERATIONS
                     }
                     results = asyncio.run(_measure(app.app, token, boundary, history_mocks))
-        print(
-            json.dumps(
-                {"status": "complete", "scope": "Admin in-process WebSocket operation counts", "results": results},
-                sort_keys=True,
-            )
-        )
-    except (AssertionError, MeasurementError, OSError, RuntimeError, ValueError, TimeoutError) as exc:
+        report = {
+            "status": "complete",
+            "scope": "Admin in-process WebSocket operation counts and optional synthetic snapshot timing",
+            "snapshot_delay_ms": snapshot_delay_ms,
+            "results": results,
+        }
+        if snapshot_delay_ms is not None:
+            report["timing_summary"] = _timing_summary(results)
+        print(json.dumps(report, sort_keys=True))
+    except (
+        AssertionError,
+        IndexError,
+        MeasurementError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        TimeoutError,
+    ) as exc:
         error = {"status": "error", "error_type": type(exc).__name__}
         if isinstance(exc, MeasurementError):
             error["detail"] = str(exc)
