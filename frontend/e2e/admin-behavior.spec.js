@@ -175,7 +175,9 @@ async function routeReadyChat(page, {
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   holdReply = false,
+  holdProgressStart = false,
   holdProgressFinish = false,
+  invalidProgressSequence = false,
   terminalError = false,
   whatsappInstalled = false,
   storedInputStatus = '',
@@ -206,6 +208,7 @@ async function routeReadyChat(page, {
   let releaseAssistantPlan = () => {};
   let releaseAssistantUninstall = () => {};
   let releaseReply = () => {};
+  let releaseProgressStart = () => {};
   let releaseProgressFinish = () => {};
   let releaseInferenceWrite;
   const inferenceWriteHold = new Promise((resolve) => {
@@ -656,15 +659,22 @@ async function routeReadyChat(page, {
           sendHumanChallenge();
           return;
         }
-        const progress = { type: 'progress', seq: 1, origin: 'admin', phase: 'admin-preparation' };
-        if (holdProgressFinish) {
-          socket.send(JSON.stringify({ ...progress, state: 'started' }));
-          releaseProgressFinish = () => socket.send(JSON.stringify({
-            ...progress, seq: 2, state: 'finished', elapsed_ms: 19,
-          }));
-        } else {
-          socket.send(JSON.stringify({ ...progress, state: 'finished', elapsed_ms: 19 }));
-        }
+        const sendProgress = () => {
+          const progress = {
+            type: 'progress', seq: invalidProgressSequence ? 2 : 1,
+            origin: 'admin', phase: 'admin-preparation',
+          };
+          if (holdProgressFinish) {
+            socket.send(JSON.stringify({ ...progress, state: 'started' }));
+            releaseProgressFinish = () => socket.send(JSON.stringify({
+              ...progress, seq: 2, state: 'finished', elapsed_ms: 19,
+            }));
+          } else {
+            socket.send(JSON.stringify({ ...progress, state: 'finished', elapsed_ms: 19 }));
+          }
+        };
+        if (holdProgressStart) releaseProgressStart = sendProgress;
+        else sendProgress();
         const completeReply = () => socket.send(JSON.stringify(terminalError
           ? { type: 'error', status: 503, detail: 'synthetic runtime failure' }
           : {
@@ -721,6 +731,7 @@ async function routeReadyChat(page, {
     releaseHumanResponse: () => releaseHumanResponse(),
     releaseHistory: () => releaseHistory(),
     releaseReply: () => releaseReply(),
+    releaseProgressStart: () => releaseProgressStart(),
     releaseProgressFinish: () => releaseProgressFinish(),
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
@@ -828,6 +839,47 @@ test('finishing a measured span updates its duration and announcements across tu
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
   await expect(page.getByText('1 execution stages completed')).toHaveCount(2);
+});
+
+test('shows a pending chat state before any server progress frame', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdProgressStart: true, holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Check progress');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  await expect(thinking).toBeVisible();
+  const liveStatus = page.locator('.conversation .live-status');
+  await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
+  await expect(liveStatus).toHaveText('I’m processing…');
+  await expect(thinking.locator('.ledger li')).toHaveCount(0);
+  await expect(composer).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+
+  chat.releaseProgressStart();
+  await expect(liveStatus).toHaveText(/Complete$/);
+  chat.releaseReply();
+  await expect(page.getByText('1 execution stages completed')).toBeVisible();
+  await expect(composer).toBeEnabled();
+  expect(chat.chatFrames()).toHaveLength(1);
+});
+
+test('rejects an out-of-order first chat progress frame', async ({ page }) => {
+  const chat = await routeReadyChat(page, { invalidProgressSequence: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Check progress');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  await expect(page.getByText('The secure chat response was invalid.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
+  await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
+  expect(chat.chatFrames()).toHaveLength(1);
 });
 
 test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {
