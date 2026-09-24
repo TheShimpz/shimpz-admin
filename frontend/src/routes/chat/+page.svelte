@@ -1535,32 +1535,34 @@
             </div>
           {/if}
           {#each exchanges as exchange, index (exchange.key)}
+            {@const userTurn = exchange.user}
+            {@const assistantTurn = exchange.assistant}
             <section class="exchange">
-              {#if exchange.user}
+              {#if userTurn}
                 <Message variant="user" author={copy.you}>
-                  {#if exchange.user.resumedObjective}
+                  {#if userTurn.resumedObjective}
                     <div class="resumed-task">
                       <strong>{copy.install.resuming}</strong>
-                      <span>{exchange.user.resumedObjective}</span>
+                      <span>{userTurn.resumedObjective}</span>
                     </div>
                   {/if}
-                  <p>{exchange.user.text}</p>
+                  <p>{userTurn.text}</p>
                 </Message>
               {/if}
-              {#if exchange.assistant}
-                <Message variant="assistant" author={exchange.assistant.author}>
-                  {#if !exchange.assistant.installPlan && (
-                    !exchange.assistant.lifecycle || exchange.assistant.lifecycle.state === 'proposed'
+              {#if assistantTurn}
+                <Message variant="assistant" author={assistantTurn.author}>
+                  {#if !assistantTurn.installPlan && (
+                    !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
-                    <Markdown markdown={exchange.assistant.text} variant="chat" />
+                    <Markdown markdown={assistantTurn.text} variant="chat" />
                   {/if}
-                  {#if exchange.assistant.installPlan}
+                  {#if assistantTurn.installPlan}
                     <div
                       class="assistant-install-plan"
                       role="group"
                       aria-label={copy.install.label}
                     >
-                      {#each exchange.assistant.installPlan.assistants as assistant (assistant.id)}
+                      {#each assistantTurn.installPlan.assistants as assistant (assistant.id)}
                         {#snippet planMedia()}
                           <AssistantIcon
                             assistant={assistant.id}
@@ -1572,9 +1574,9 @@
                           {#if assistant.provenance === 'local'}
                             <span class="assistant-lifecycle-provenance">{storeCopy.localBadge}</span>
                           {/if}
-                          {#if assistant.status === 'failed' && exchange.assistant.installPlan.status}
+                          {#if assistant.status === 'failed' && assistantTurn.installPlan.status}
                             <span class="assistant-lifecycle-detail-copy">
-                              HTTP {exchange.assistant.installPlan.status}
+                              HTTP {assistantTurn.installPlan.status}
                             </span>
                           {/if}
                         {/snippet}
@@ -1586,7 +1588,7 @@
                           state={installPlanVisualState(assistant.status)}
                           status={installPlanStatus(
                             assistant.status,
-                            exchange.assistant.installPlan.outcome,
+                            assistantTurn.installPlan.outcome,
                           )}
                           media={planMedia}
                           details={assistant.provenance === 'local' || assistant.status === 'failed'
@@ -1596,8 +1598,8 @@
                       {/each}
                     </div>
                   {/if}
-                  {#if exchange.assistant.lifecycle}
-                    {@const lifecycle = exchange.assistant.lifecycle}
+                  {#if assistantTurn.lifecycle}
+                    {@const lifecycle = assistantTurn.lifecycle}
                     {@const lifecycleMessages = copy.uninstall}
                     {#snippet lifecycleMedia()}
                       <AssistantIcon
@@ -1661,17 +1663,17 @@
                     {#if lifecycle.state === 'uninstalled' && lifecycle.completionAnnounced}
                       <div class="assistant-lifecycle-outcome">
                         <Markdown
-                          markdown={lifecycleOutcome(lifecycle, exchange.assistant.author)}
+                          markdown={lifecycleOutcome(lifecycle, assistantTurn.author)}
                           variant="chat"
                         />
                       </div>
                     {/if}
                   {/if}
                   <ExecutionReceipt
-                    events={exchange.assistant.receipt ?? []}
+                    events={assistantTurn.receipt ?? []}
                     label={copy.progressStagesExecuted}
                     progressLabels={copy.progress}
-                    teamName={exchange.assistant.author}
+                    teamName={assistantTurn.author}
                     {assistantNames}
                   />
                 </Message>
