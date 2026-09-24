@@ -1,4 +1,42 @@
-# Local Assistants page measurement
+# Local chat progress measurement
+
+Build `frontend/` with Node.js 24, then run the built Local chat benchmark from
+that directory. It alternates fresh Chromium contexts with and without 128
+synthetic WebSocket progress frames, separated by 25 ms, and checks the live
+ledger's final row, final announcement, terminal reply, and completed receipt.
+The measured runs used Playwright 1.62.0 at the digest below, 2 CPUs, 2 GiB,
+512 MiB shared memory, and no container network. Install dependencies first
+with network access, then build and measure offline. From `admin/frontend/`,
+reproduce that environment with:
+
+```sh
+export CHAT_PERF_USER="$(id -u):$(id -g)" CHAT_PERF_DIR="$PWD"
+export CHAT_PERF_IMAGE='mcr.microsoft.com/playwright@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07'
+sg docker -c 'docker run --rm --cpus 2 --memory 2g --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e npm_config_cache=/tmp/npm-cache "$CHAT_PERF_IMAGE" npm ci'
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e npm_config_cache=/tmp/npm-cache "$CHAT_PERF_IMAGE" npm run build'
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=reduce "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=no-preference "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
+```
+
+The JSON output reports p50 and nearest-rank p95 for Chromium main-thread
+task, script, style, layout, other-task, compile, and DevTools-command time,
+plus raw per-trial values and layout/style counts. Each arm's raw trials are
+in trial order; matching array indices form one alternating control and
+progress pair. With fewer than 20 samples, p95 is the maximum observation.
+Chromium's `third_party/blink/renderer/core/inspector/inspector_performance_agent.cc`
+defines `TaskOtherDuration` as the residual:
+`TaskDuration = ScriptDuration + V8CompileDuration + RecalcStyleDuration +
+LayoutDuration + DevToolsCommandDuration + TaskOtherDuration`. The benchmark
+checks this identity within 0.05 ms per trial and fails on missing or
+inconsistent metrics.
+`DevToolsCommandDuration` is harness overhead, not application work.
+`ProcessTime` is CPU use by the whole renderer process, including other
+threads, and is coarser than main-thread task time. It is useful for
+direction, not per-event attribution. `TaskOtherDuration` does not identify
+paint work specifically. The fixture excludes real Team, provider, and
+network timing, so its result does not measure complete chat latency.
+
+## Local Assistants page measurement
 
 From the Admin repository, install `frontend/` dependencies with Node.js 24 (`(cd frontend && npm ci)`), then build the
 current image and run the isolated entrypoint:

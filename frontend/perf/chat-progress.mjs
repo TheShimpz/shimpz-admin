@@ -3,7 +3,7 @@
 // and SHIMPZ_PERF_MOTION as needed.
 // Gap 0 incurs Chromium's ~4 ms timer clamp. Each trial uses a fresh context and a warm preview server.
 // Motion defaults to reduce to isolate progress work from CSS animations. Any failed trial aborts the run.
-// With five samples p95 is the maximum.
+// With fewer than twenty samples, nearest-rank p95 is the maximum.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
@@ -123,7 +123,23 @@ function installSocket() {
 
 async function taskDuration(cdp) {
   const { metrics } = await cdp.send('Performance.getMetrics');
-  return (metrics.find((item) => item.name === 'TaskDuration')?.value ?? 0) * 1000;
+  const value = metrics.find((item) => item.name === 'TaskDuration')?.value;
+  if (!Number.isFinite(value)) throw new Error('Missing Chromium metric: TaskDuration');
+  return value * 1000;
+}
+
+async function metricSnapshot(cdp) {
+  const { metrics } = await cdp.send('Performance.getMetrics');
+  return Object.fromEntries(metrics.map(({ name, value }) => [name, value]));
+}
+
+function metricDelta(before, after, name) {
+  if (!Number.isFinite(before[name]) || !Number.isFinite(after[name])) {
+    throw new Error(`Missing Chromium metric: ${name}`);
+  }
+  const delta = after[name] - before[name];
+  if (delta < 0) throw new Error(`Chromium metric decreased: ${name}`);
+  return name.endsWith('Count') ? delta : delta * 1000;
 }
 
 function percentile(values, proportion) {
@@ -155,7 +171,7 @@ async function measure(browser, baseURL, count, control) {
     await page.getByRole('group', { name: 'I’m processing…' }).waitFor();
     const cdp = await context.newCDPSession(page);
     await cdp.send('Performance.enable');
-    const before = await taskDuration(cdp);
+    const before = await metricSnapshot(cdp);
     const input = frames(count);
     const marks = await page.evaluate(async ({ input, gap, control }) => {
       window.benchLongTasks = [];
@@ -172,7 +188,20 @@ async function measure(browser, baseURL, count, control) {
           eventIndex: window.benchEventMarks.findLastIndex((mark) => mark <= task.startTime) + 1,
         })) };
     }, { input, gap, control });
-    const progressTaskMs = await taskDuration(cdp) - before;
+    const after = await metricSnapshot(cdp);
+    const progressTaskMs = metricDelta(before, after, 'TaskDuration');
+    const progressWork = Object.fromEntries([
+      'ScriptDuration', 'RecalcStyleDuration', 'LayoutDuration', 'TaskOtherDuration',
+      'V8CompileDuration', 'DevToolsCommandDuration',
+      'RecalcStyleCount', 'LayoutCount', 'ProcessTime',
+    ].map((name) => [name, metricDelta(before, after, name)]));
+    const accountedTaskMs = [
+      'ScriptDuration', 'RecalcStyleDuration', 'LayoutDuration', 'TaskOtherDuration',
+      'V8CompileDuration', 'DevToolsCommandDuration',
+    ].reduce((sum, name) => sum + progressWork[name], 0);
+    if (Math.abs(progressTaskMs - accountedTaskMs) > 0.05) {
+      throw new Error('Chromium task metrics did not reconcile.');
+    }
     const liveRows = await page.locator('.thinking .ledger li').count();
     if (liveRows !== (control ? 0 : Math.min(count / 2, 32))) {
       throw new Error(`Expected live ledger rows for ${count} events; saw ${liveRows}.`);
@@ -224,7 +253,7 @@ async function measure(browser, baseURL, count, control) {
     const longestTask = marks.longTasks.reduce((best, task) => (
       task.duration > best.duration ? task : best
     ), { duration: 0, eventIndex: 0 });
-    const result = { count, control, gap, progressTaskMs, terminalTaskMs,
+    const result = { count, control, gap, progressTaskMs, progressWork, terminalTaskMs,
       receiptTaskMs, receiptLongTaskMs,
       wallMs: marks.wallMs, nextFrameMs: marks.nextFrameMs,
       maxLongTaskMs: longestTask.duration, maxLongTaskEvent: longestTask.eventIndex,
@@ -250,6 +279,7 @@ try {
     }
     for (const [arm, values] of Object.entries(results)) {
       const metric = (key, p) => percentile(values.map((value) => value[key]), p);
+      const workMetric = (key, p) => percentile(values.map((value) => value.progressWork[key]), p);
       const longestTask = values.reduce((best, value) => (
         value.maxLongTaskMs > best.maxLongTaskMs ? value : best
       ), { maxLongTaskMs: 0, maxLongTaskEvent: 0 });
@@ -257,6 +287,25 @@ try {
       console.log(JSON.stringify({ count, arm, gap, motion, samples,
         progressCpuP50Ms: metric('progressTaskMs', 0.5),
         progressCpuP95Ms: metric('progressTaskMs', 0.95),
+        scriptCpuP50Ms: workMetric('ScriptDuration', 0.5),
+        scriptCpuP95Ms: workMetric('ScriptDuration', 0.95),
+        styleCpuP50Ms: workMetric('RecalcStyleDuration', 0.5),
+        styleCpuP95Ms: workMetric('RecalcStyleDuration', 0.95),
+        layoutCpuP50Ms: workMetric('LayoutDuration', 0.5),
+        layoutCpuP95Ms: workMetric('LayoutDuration', 0.95),
+        otherCpuP50Ms: workMetric('TaskOtherDuration', 0.5),
+        otherCpuP95Ms: workMetric('TaskOtherDuration', 0.95),
+        compileCpuP50Ms: workMetric('V8CompileDuration', 0.5),
+        compileCpuP95Ms: workMetric('V8CompileDuration', 0.95),
+        devtoolsCpuP50Ms: workMetric('DevToolsCommandDuration', 0.5),
+        devtoolsCpuP95Ms: workMetric('DevToolsCommandDuration', 0.95),
+        styleRecalculationsP50: workMetric('RecalcStyleCount', 0.5),
+        layoutsP50: workMetric('LayoutCount', 0.5),
+        processCpuP50Ms: workMetric('ProcessTime', 0.5),
+        processCpuP95Ms: workMetric('ProcessTime', 0.95),
+        trials: values.map(({ progressTaskMs, progressWork }) => ({
+          TaskDuration: progressTaskMs, ...progressWork,
+        })),
         marginalCpuPerEventMs: arm === 'progress'
           ? Math.round((metric('progressTaskMs', 0.5) - controlCpu) / count * 1000) / 1000 : null,
         progressWallP50Ms: metric('wallMs', 0.5),
