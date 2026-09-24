@@ -5,6 +5,10 @@
 // Script, layout, and style counters help attribution but do not account for all task time or paint.
 // ThreadTime is sampled separately and can differ from TaskDuration in either direction.
 // TaskOtherDuration includes other work; heap deltas alone cannot identify garbage collection.
+// Journey metrics span every older-page load after the initial hydrated page.
+// A forced collection after the visible window bounds deferred heap work separately.
+// Journey totals contain the idle and click windows; adding them would count work twice.
+// Collection totals also include assertions; journeyWallMs is measured by the driver.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
@@ -138,6 +142,10 @@ async function measure(browser, baseURL, existingPages) {
     });
     await page.goto('/chat/?team=perf_team');
     await page.waitForFunction(() => window.benchReady === true);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Performance.enable');
+    const journeyStart = await performanceMetrics(cdp);
+    const journeyStartWall = performance.now();
     const older = page.getByRole('button', { name: 'Load older messages' });
     for (let index = 1; index < existingPages; index += 1) {
       await older.click();
@@ -148,8 +156,6 @@ async function measure(browser, baseURL, existingPages) {
     const oldFirst = page.locator('.exchange').first();
     const oldFirstText = await oldFirst.textContent();
     const oldFirstY = (await oldFirst.boundingBox()).y;
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('Performance.enable');
     await page.evaluate(() => {
       const root = document.querySelector('.turns');
       window.benchExisting = new Set(root.querySelectorAll('.exchange'));
@@ -197,6 +203,12 @@ async function measure(browser, baseURL, existingPages) {
       };
     }, { oldFirstText, oldFirstY });
     const afterMetrics = await performanceMetrics(cdp);
+    result.journeyTaskMs = afterMetrics.TaskDuration - journeyStart.TaskDuration;
+    result.journeyThreadMs = afterMetrics.ThreadTime - journeyStart.ThreadTime;
+    result.journeyScriptMs = afterMetrics.ScriptDuration - journeyStart.ScriptDuration;
+    result.journeyOtherMs = afterMetrics.TaskOtherDuration - journeyStart.TaskOtherDuration;
+    result.journeyHeapDeltaBytes = afterMetrics.JSHeapUsedSize - journeyStart.JSHeapUsedSize;
+    result.journeyWallMs = performance.now() - journeyStartWall;
     result.cpuMs = afterMetrics.TaskDuration - beforeMetrics.TaskDuration;
     result.threadMs = afterMetrics.ThreadTime - beforeMetrics.ThreadTime;
     result.otherMs = afterMetrics.TaskOtherDuration - beforeMetrics.TaskOtherDuration;
@@ -217,6 +229,14 @@ async function measure(browser, baseURL, existingPages) {
         historyRequests !== existingPages + 1 || unexpected.length || errors.length) {
       throw new Error('History prepend changed content, request count, or browser health.');
     }
+    const beforeCollection = await performanceMetrics(cdp);
+    await cdp.send('HeapProfiler.collectGarbage');
+    const afterCollection = await performanceMetrics(cdp);
+    result.forcedCollectionTaskMs = afterCollection.TaskDuration - beforeCollection.TaskDuration;
+    result.forcedCollectionThreadMs = afterCollection.ThreadTime - beforeCollection.ThreadTime;
+    result.journeyWithCollectionTaskMs = afterCollection.TaskDuration - journeyStart.TaskDuration;
+    result.journeyWithCollectionThreadMs = afterCollection.ThreadTime - journeyStart.ThreadTime;
+    result.retainedHeapBytes = afterCollection.JSHeapUsedSize - journeyStart.JSHeapUsedSize;
     return result;
   } finally {
     await context.close();
@@ -236,6 +256,16 @@ try {
     const metric = (name, proportion) => percentile(values.map((value) => value[name]), proportion);
     console.log(JSON.stringify({ existingPages, insertedEntries: 64, samples,
       cpuP50Ms: metric('cpuMs', 0.5), cpuP95Ms: metric('cpuMs', 0.95),
+      journeyTaskP50Ms: metric('journeyTaskMs', 0.5), journeyTaskP95Ms: metric('journeyTaskMs', 0.95),
+      journeyWithCollectionTaskP50Ms: metric('journeyWithCollectionTaskMs', 0.5),
+      journeyWithCollectionTaskP95Ms: metric('journeyWithCollectionTaskMs', 0.95),
+      journeyWithCollectionThreadP50Ms: metric('journeyWithCollectionThreadMs', 0.5),
+      forcedCollectionTaskP50Ms: metric('forcedCollectionTaskMs', 0.5),
+      forcedCollectionThreadP50Ms: metric('forcedCollectionThreadMs', 0.5),
+      journeyThreadP50Ms: metric('journeyThreadMs', 0.5),
+      journeyScriptP50Ms: metric('journeyScriptMs', 0.5),
+      journeyOtherP50Ms: metric('journeyOtherMs', 0.5),
+      journeyWallP50Ms: metric('journeyWallMs', 0.5), journeyWallP95Ms: metric('journeyWallMs', 0.95),
       threadP50Ms: metric('threadMs', 0.5), otherP50Ms: metric('otherMs', 0.5),
       scriptP50Ms: metric('scriptMs', 0.5), layoutP50Ms: metric('layoutMs', 0.5),
       styleP50Ms: metric('styleMs', 0.5),
@@ -248,6 +278,17 @@ try {
       maxScrollShiftPx: Math.max(...values.map((value) => Math.abs(value.scrollShiftPx))),
       created: values.map((value) => value.created), moved: values.map((value) => value.moved),
       cpuSamplesMs: values.map((value) => Math.round(value.cpuMs * 10) / 10),
+      journeyTaskSamplesMs: values.map((value) => Math.round(value.journeyTaskMs * 10) / 10),
+      journeyWithCollectionTaskSamplesMs: values.map((value) => Math.round(value.journeyWithCollectionTaskMs * 10) / 10),
+      journeyWithCollectionThreadSamplesMs: values.map((value) => Math.round(value.journeyWithCollectionThreadMs * 10) / 10),
+      forcedCollectionTaskSamplesMs: values.map((value) => Math.round(value.forcedCollectionTaskMs * 10) / 10),
+      forcedCollectionThreadSamplesMs: values.map((value) => Math.round(value.forcedCollectionThreadMs * 10) / 10),
+      retainedHeapSamplesBytes: values.map((value) => value.retainedHeapBytes),
+      journeyThreadSamplesMs: values.map((value) => Math.round(value.journeyThreadMs * 10) / 10),
+      journeyScriptSamplesMs: values.map((value) => Math.round(value.journeyScriptMs * 10) / 10),
+      journeyOtherSamplesMs: values.map((value) => Math.round(value.journeyOtherMs * 10) / 10),
+      journeyHeapDeltaSamplesBytes: values.map((value) => value.journeyHeapDeltaBytes),
+      journeyWallSamplesMs: values.map((value) => Math.round(value.journeyWallMs * 10) / 10),
       threadSamplesMs: values.map((value) => Math.round(value.threadMs * 10) / 10),
       otherSamplesMs: values.map((value) => Math.round(value.otherMs * 10) / 10),
       heapDeltaSamplesBytes: values.map((value) => value.heapDeltaBytes),
