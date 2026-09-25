@@ -48,6 +48,7 @@ function observeSocket(page, state) {
       try { frame = JSON.parse(payload.toString()); } catch { state.frameErrors += 1; return; }
       if (frame.type === 'chat' && state.current) {
         state.current.sendAt = performance.now();
+        state.current.sendEpochMs = performance.timeOrigin + state.current.sendAt;
       }
     });
     socket.on('framereceived', ({ payload }) => {
@@ -56,7 +57,10 @@ function observeSocket(page, state) {
       const sample = state.current;
       if (!sample?.sendAt) return;
       if (frame.type === 'progress') {
-        if (sample.firstProgressAt === null) sample.firstProgressAt = performance.now();
+        if (sample.firstProgressAt === null) {
+          sample.firstProgressAt = performance.now();
+          sample.firstProgressEpochMs = performance.timeOrigin + sample.firstProgressAt;
+        }
         sample.phases.push({ seq: frame.seq, phase: frame.phase, state: frame.state });
       } else if (frame.type === 'done') {
         sample.terminalAt = performance.now();
@@ -72,6 +76,7 @@ function observeSocket(page, state) {
 
 function checkSample(sample) {
   if (!Number.isFinite(sample.sendAt) || !Number.isFinite(sample.firstProgressAt)
+      || !Number.isFinite(sample.sendEpochMs) || !Number.isFinite(sample.firstProgressEpochMs)
       || !Number.isFinite(sample.terminalAt) || !Number.isFinite(sample.pendingAt)
       || !Number.isFinite(sample.renderedAt) || sample.terminals !== 1 || !sample.replyPresent
       || sample.unexpectedFrames !== 0 || sample.phases.length === 0
@@ -82,6 +87,8 @@ function checkSample(sample) {
     throw new Error('Chat sample failed its ordered frame and render contract');
   }
   return {
+    send_epoch_ms: sample.sendEpochMs,
+    first_progress_epoch_ms: sample.firstProgressEpochMs,
     pending_ms: sample.pendingAt - sample.sendAt,
     first_progress_ms: sample.firstProgressAt - sample.sendAt,
     terminal_ms: sample.terminalAt - sample.sendAt,
@@ -95,6 +102,7 @@ async function measure(page, state, composer, send, index) {
   const before = await page.locator('.conversation .shimpz-message--assistant').count();
   state.current = {
     sendAt: null, pendingAt: null, firstProgressAt: null, terminalAt: null,
+    sendEpochMs: null, firstProgressEpochMs: null,
     renderedAt: null, terminals: 0, unexpectedFrames: 0, replyPresent: false, phases: [],
   };
   await composer.fill(MESSAGE);
