@@ -316,7 +316,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     { assistant: 'hello-pulse' },
     { provider: 'openai' },
     { api_key: 'must-not-cross' },
-    { model: 'gpt-5.5' },
+    { model: 'gpt-6-luna' },
   ]) {
     assert.throws(
       () => createChatFrame('team_1', {

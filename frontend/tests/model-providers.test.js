@@ -15,12 +15,10 @@ const providers = [
   {
     id: 'openai',
     title: 'OpenAI',
-    default_model: 'gpt-5.6-terra',
+    default_model: 'gpt-6-sol',
     models: [
-      { id: 'gpt-5.6-sol', title: 'GPT-5.6 Sol', input_usd_per_million_cents: 500, output_usd_per_million_cents: 3000 },
-      { id: 'gpt-5.6-terra', title: 'GPT-5.6 Terra', input_usd_per_million_cents: 250, output_usd_per_million_cents: 1500 },
-      { id: 'gpt-5.6-luna', title: 'GPT-5.6 Luna', input_usd_per_million_cents: 100, output_usd_per_million_cents: 600 },
-      { id: 'gpt-5.5', title: 'GPT-5.5', input_usd_per_million_cents: 500, output_usd_per_million_cents: 3000 },
+      { id: 'gpt-6-sol', title: 'GPT-6 Sol', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
+      { id: 'gpt-6-luna', title: 'GPT-6 Luna', input_usd_per_million_cents: 10, output_usd_per_million_cents: 50 },
     ],
     configured: false,
     masked: null,
@@ -30,10 +28,8 @@ const providers = [
     title: 'Anthropic',
     default_model: 'claude-sonnet-5',
     models: [
-      { id: 'claude-fable-5', title: 'Claude Fable 5', input_usd_per_million_cents: 1000, output_usd_per_million_cents: 5000 },
-      { id: 'claude-opus-4-8', title: 'Claude Opus 4.8', input_usd_per_million_cents: 500, output_usd_per_million_cents: 2500 },
-      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 300, output_usd_per_million_cents: 1500 },
-      { id: 'claude-haiku-4-5-20251001', title: 'Claude Haiku 4.5', input_usd_per_million_cents: 100, output_usd_per_million_cents: 500 },
+      { id: 'claude-opus-5-5', title: 'Claude Opus 5.5', input_usd_per_million_cents: 400, output_usd_per_million_cents: 2000 },
+      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
     ],
     configured: true,
     masked: '••••test',
@@ -67,18 +63,18 @@ test('saves the key only to Admin and provider/model only to inference', async (
     calls.push({ url, options });
     return calls.length === 1
       ? response(200, { ...providers[0], configured: true, masked: '••••test' })
-      : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-5.5' });
+      : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-6-luna' });
   };
 
   await saveModelSetup(
     fetcher,
     'team_1',
-    { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-test-0123456789' },
+    { provider: 'openai', model: 'gpt-6-luna', apiKey: 'sk-test-0123456789' },
     providers,
   );
 
   assert.deepEqual(JSON.parse(calls[0].options.body), { api_key: 'sk-test-0123456789' });
-  assert.deepEqual(JSON.parse(calls[1].options.body), { provider: 'openai', model: 'gpt-5.5' });
+  assert.deepEqual(JSON.parse(calls[1].options.body), { provider: 'openai', model: 'gpt-6-luna' });
   assert.doesNotMatch(calls[1].options.body, /api_key|sk-test/);
 });
 

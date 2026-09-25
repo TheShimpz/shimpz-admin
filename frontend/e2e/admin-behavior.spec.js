@@ -369,7 +369,7 @@ async function routeReadyChat(page, {
     }
     return route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-5.6-terra' }),
+      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6-sol' }),
     });
   });
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
@@ -1563,7 +1563,7 @@ test('never falls back to the Store icon when model context leaves an uninstall 
 
   await page.getByRole('button', { name: /Brain GPT-5\.6 Terra/i }).click();
   const brainDialog = page.getByRole('dialog', { name: 'Choose a Brain' });
-  await brainDialog.getByText('GPT-5.6 Sol', { exact: true }).click();
+  await brainDialog.getByText('GPT-6 Sol', { exact: true }).click();
   await expect.poll(chat.inferenceWrites).toBe(1);
   await expect.poll(
     () => chat.assistantIconRequests().some((url) => url.includes('/catalog-icon')),
@@ -2882,7 +2882,7 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   const brainDialog = page.getByRole('dialog', { name: 'Choose a Brain' });
   await expect(brainDialog).toBeVisible();
   await expect(brainDialog.getByText('Current', { exact: true })).toHaveCount(0);
-  const selectedModel = brainDialog.getByText('GPT-5.6 Terra', { exact: true });
+  const selectedModel = brainDialog.getByText('GPT-6 Sol', { exact: true });
   const selectedProvider = brainDialog.getByText('OpenAI', { exact: true }).nth(1);
   const [modelBox, providerBox] = await Promise.all([
     selectedModel.boundingBox(),

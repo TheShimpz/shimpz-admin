@@ -46,31 +46,19 @@ class ModelProviderTests(unittest.TestCase):
                     {
                         "id": "openai",
                         "title": "OpenAI",
-                        "default_model": "gpt-5.6-terra",
+                        "default_model": "gpt-6-sol",
                         "models": [
                             {
-                                "id": "gpt-5.6-sol",
-                                "title": "GPT-5.6 Sol",
-                                "input_usd_per_million_cents": 500,
-                                "output_usd_per_million_cents": 3_000,
+                                "id": "gpt-6-sol",
+                                "title": "GPT-6 Sol",
+                                "input_usd_per_million_cents": 200,
+                                "output_usd_per_million_cents": 1_000,
                             },
                             {
-                                "id": "gpt-5.6-terra",
-                                "title": "GPT-5.6 Terra",
-                                "input_usd_per_million_cents": 250,
-                                "output_usd_per_million_cents": 1_500,
-                            },
-                            {
-                                "id": "gpt-5.6-luna",
-                                "title": "GPT-5.6 Luna",
-                                "input_usd_per_million_cents": 100,
-                                "output_usd_per_million_cents": 600,
-                            },
-                            {
-                                "id": "gpt-5.5",
-                                "title": "GPT-5.5",
-                                "input_usd_per_million_cents": 500,
-                                "output_usd_per_million_cents": 3_000,
+                                "id": "gpt-6-luna",
+                                "title": "GPT-6 Luna",
+                                "input_usd_per_million_cents": 10,
+                                "output_usd_per_million_cents": 50,
                             },
                         ],
                         "configured": False,
@@ -82,28 +70,16 @@ class ModelProviderTests(unittest.TestCase):
                         "default_model": "claude-sonnet-5",
                         "models": [
                             {
-                                "id": "claude-fable-5",
-                                "title": "Claude Fable 5",
-                                "input_usd_per_million_cents": 1_000,
-                                "output_usd_per_million_cents": 5_000,
-                            },
-                            {
-                                "id": "claude-opus-4-8",
-                                "title": "Claude Opus 4.8",
-                                "input_usd_per_million_cents": 500,
-                                "output_usd_per_million_cents": 2_500,
+                                "id": "claude-opus-5-5",
+                                "title": "Claude Opus 5.5",
+                                "input_usd_per_million_cents": 400,
+                                "output_usd_per_million_cents": 2_000,
                             },
                             {
                                 "id": "claude-sonnet-5",
                                 "title": "Claude Sonnet 5",
-                                "input_usd_per_million_cents": 300,
-                                "output_usd_per_million_cents": 1_500,
-                            },
-                            {
-                                "id": "claude-haiku-4-5-20251001",
-                                "title": "Claude Haiku 4.5",
-                                "input_usd_per_million_cents": 100,
-                                "output_usd_per_million_cents": 500,
+                                "input_usd_per_million_cents": 200,
+                                "output_usd_per_million_cents": 1_000,
                             },
                         ],
                         "configured": False,
@@ -113,7 +89,7 @@ class ModelProviderTests(unittest.TestCase):
             },
         )
         status["providers"][0]["models"][0]["id"] = "mutated"
-        self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-5.6-sol")
+        self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-6-sol")
 
     def test_provider_removal_preserves_other_keys(self) -> None:
         with mock.patch.object(models, "_validate_api_key"):
@@ -254,7 +230,7 @@ class ModelProviderTests(unittest.TestCase):
     def test_model_must_belong_to_its_provider(self) -> None:
         for provider, model in (
             ("openai", "claude-sonnet-5"),
-            ("anthropic", "gpt-5.6-terra"),
+            ("anthropic", "gpt-6-sol"),
             ("openai", "gpt-5.7"),
         ):
             with self.subTest(provider=provider, model=model), self.assertRaises(models.ModelProviderError):

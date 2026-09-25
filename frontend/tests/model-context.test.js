@@ -18,28 +18,24 @@ function response(status, body) {
 
 const providers = [
   {
-    id: 'openai', title: 'OpenAI', default_model: 'gpt-5.6-terra', configured: true, masked: '••••test',
+    id: 'openai', title: 'OpenAI', default_model: 'gpt-6-sol', configured: true, masked: '••••test',
     models: [
-      { id: 'gpt-5.6-sol', title: 'GPT-5.6 Sol', input_usd_per_million_cents: 500, output_usd_per_million_cents: 3000 },
-      { id: 'gpt-5.6-terra', title: 'GPT-5.6 Terra', input_usd_per_million_cents: 250, output_usd_per_million_cents: 1500 },
-      { id: 'gpt-5.6-luna', title: 'GPT-5.6 Luna', input_usd_per_million_cents: 100, output_usd_per_million_cents: 600 },
-      { id: 'gpt-5.5', title: 'GPT-5.5', input_usd_per_million_cents: 500, output_usd_per_million_cents: 3000 },
+      { id: 'gpt-6-sol', title: 'GPT-6 Sol', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
+      { id: 'gpt-6-luna', title: 'GPT-6 Luna', input_usd_per_million_cents: 10, output_usd_per_million_cents: 50 },
     ],
   },
   {
     id: 'anthropic', title: 'Anthropic', default_model: 'claude-sonnet-5', configured: false, masked: null,
     models: [
-      { id: 'claude-fable-5', title: 'Claude Fable 5', input_usd_per_million_cents: 1000, output_usd_per_million_cents: 5000 },
-      { id: 'claude-opus-4-8', title: 'Claude Opus 4.8', input_usd_per_million_cents: 500, output_usd_per_million_cents: 2500 },
-      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 300, output_usd_per_million_cents: 1500 },
-      { id: 'claude-haiku-4-5-20251001', title: 'Claude Haiku 4.5', input_usd_per_million_cents: 100, output_usd_per_million_cents: 500 },
+      { id: 'claude-opus-5-5', title: 'Claude Opus 5.5', input_usd_per_million_cents: 400, output_usd_per_million_cents: 2000 },
+      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
     ],
   },
 ];
 
 function fixtureFetcher(
   teamId = 'marketing',
-  inference = { provider: 'openai', model: 'gpt-5.6-terra' },
+  inference = { provider: 'openai', model: 'gpt-6-sol' },
   providerCatalog = providers,
 ) {
   return async (url, options = {}) => {
@@ -62,7 +58,7 @@ test('loads one verified provider/model authority for the selected Team', async 
   await loadModelContext(fixtureFetcher(), 'marketing');
   assert.deepEqual(get(modelContext), {
     phase: 'ready', teamId: 'marketing', providers,
-    provider: 'openai', model: 'gpt-5.6-terra', ready: true, error: '',
+    provider: 'openai', model: 'gpt-6-sol', ready: true, error: '',
   });
 });
 
@@ -79,7 +75,7 @@ test('provider preload is shared with model hydration and cached across Team swi
     if (url === '/api/teams/marketing/inference' || url === '/api/teams/support/inference') {
       inferenceRequests += 1;
       const teamId = url.split('/')[3];
-      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-5.6-terra' });
+      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-6-sol' });
     }
     throw new Error(`Unexpected request: GET ${url}`);
   };
@@ -114,10 +110,10 @@ test('opens Chat by persisting the default Brain when its provider key already e
   ]);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
     provider: 'openai',
-    model: 'gpt-5.6-terra',
+    model: 'gpt-6-sol',
   });
   assert.equal(get(modelContext).provider, 'openai');
-  assert.equal(get(modelContext).model, 'gpt-5.6-terra');
+  assert.equal(get(modelContext).model, 'gpt-6-sol');
   assert.equal(get(modelContext).ready, true);
 });
 
@@ -136,12 +132,12 @@ test('persists one atomic Brain change when its provider key is verified', async
   };
   await loadModelContext(fetcher, 'marketing');
   calls.length = 0;
-  await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-5.5');
+  await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-6-luna');
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/teams/marketing/inference');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-5.5' });
-  assert.equal(get(modelContext).model, 'gpt-5.5');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-luna' });
+  assert.equal(get(modelContext).model, 'gpt-6-luna');
   assert.equal(get(modelContext).ready, true);
 });
 
@@ -153,7 +149,7 @@ test('selecting the current Brain is a true no-op that preserves ready authority
   calls = 0;
   const before = get(modelContext);
 
-  const result = await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-5.6-terra');
+  const result = await selectTeamBrain(fetcher, 'marketing', 'openai', 'gpt-6-sol');
 
   assert.equal(calls, 0);
   assert.strictEqual(result, before);
@@ -167,11 +163,11 @@ test('selecting an unverified Brain preserves its exact model without writing in
   const fetcher = async (...args) => { calls += 1; return base(...args); };
   await loadModelContext(fetcher, 'marketing');
   calls = 0;
-  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-4-8');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
 
   assert.equal(calls, 0);
   assert.equal(get(modelContext).provider, 'anthropic');
-  assert.equal(get(modelContext).model, 'claude-opus-4-8');
+  assert.equal(get(modelContext).model, 'claude-opus-5-5');
   assert.equal(get(modelContext).ready, false);
 });
 
@@ -186,7 +182,7 @@ test('validated credential is saved before inference and unlocks the Team', asyn
     return base(url, options);
   };
   await loadModelContext(fetcher, 'marketing');
-  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-4-8');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
   calls.length = 0;
   await configureModelContext(fetcher, 'marketing', 'sk-ant-test-0123456789');
 
@@ -196,7 +192,7 @@ test('validated credential is saved before inference and unlocks the Team', asyn
   ]);
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     provider: 'anthropic',
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   });
   assert.equal(get(modelContext).ready, true);
   assert.equal(get(modelContext).providers[1].configured, true);
@@ -211,7 +207,7 @@ test('rejected credential never reaches the Team inference endpoint', async () =
     return base(url, options);
   };
   await loadModelContext(fetcher, 'marketing');
-  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-haiku-4-5-20251001');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-sonnet-5');
   await assert.rejects(configureModelContext(fetcher, 'marketing', 'sk-ant-invalid-0123456789'), /rejected/i);
   assert.equal(inferenceWrites, 0);
   assert.equal(get(modelContext).ready, false);
@@ -225,7 +221,7 @@ test('switching to another verified provider writes only the selected Brain once
   const calls = [];
   const base = fixtureFetcher(
     'marketing',
-    { provider: 'openai', model: 'gpt-5.6-terra' },
+    { provider: 'openai', model: 'gpt-6-sol' },
     configuredProviders,
   );
   const fetcher = async (url, options = {}) => {
@@ -235,13 +231,13 @@ test('switching to another verified provider writes only the selected Brain once
   await loadModelContext(fetcher, 'marketing');
   calls.length = 0;
 
-  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-fable-5');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/teams/marketing/inference');
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     provider: 'anthropic',
-    model: 'claude-fable-5',
+    model: 'claude-opus-5-5',
   });
   assert.equal(get(modelContext).ready, true);
 });
@@ -259,7 +255,7 @@ test('rejects an invalid Brain pair before making a network request', async () =
   );
   assert.equal(calls, 0);
   assert.equal(get(modelContext).provider, 'openai');
-  assert.equal(get(modelContext).model, 'gpt-5.6-terra');
+  assert.equal(get(modelContext).model, 'gpt-6-sol');
 });
 
 test('late model responses from the previous Team cannot replace current authority', async () => {
@@ -274,7 +270,7 @@ test('late model responses from the previous Team cannot replace current authori
   releaseOld(response(200, {
     team_id: 'marketing',
     provider: 'openai',
-    model: 'gpt-5.6-terra',
+    model: 'gpt-6-sol',
   }));
   await oldLoad;
   assert.equal(get(modelContext).teamId, 'support');

@@ -23,7 +23,7 @@ def _inference() -> bridge.TeamResponse:
         {
             "team_id": "team_1",
             "provider": "openai",
-            "model": "gpt-5.6-terra",
+            "model": "gpt-6-sol",
             "trace_id": "a" * 32,
         },
     )
@@ -159,7 +159,7 @@ class TeamBridgeEdgeTests(unittest.TestCase):
         projected = bridge._project_inference_response(
             _inference(),
             "team_1",
-            expected=("openai", "gpt-5.6-sol"),
+            expected=("openai", "gpt-6-luna"),
         )
         self.assertEqual(projected.status, 502)
 

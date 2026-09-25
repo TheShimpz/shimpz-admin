@@ -24,7 +24,7 @@ class TeamInferenceTests(unittest.TestCase):
                 {
                     "team_id": "team_1",
                     "provider": "openai",
-                    "model": "gpt-5.5",
+                    "model": "gpt-6-luna",
                     "trace_id": TRACE_GET,
                 },
             ),
@@ -43,7 +43,7 @@ class TeamInferenceTests(unittest.TestCase):
                 team.get_inference("team_1"),
                 team.TeamResponse(
                     200,
-                    {"team_id": "team_1", "provider": "openai", "model": "gpt-5.5"},
+                    {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna"},
                 ),
             )
             self.assertEqual(
@@ -78,19 +78,19 @@ class TeamInferenceTests(unittest.TestCase):
             {
                 "team_id": "team_2",
                 "provider": "openai",
-                "model": "gpt-5.5",
+                "model": "gpt-6-luna",
                 "trace_id": TRACE_GET,
             },
             {
                 "team_id": "team_1",
                 "provider": "openai",
-                "model": "gpt-5.5",
+                "model": "gpt-6-luna",
                 "trace_id": "not-a-trace",
             },
             {
                 "team_id": "team_1",
                 "provider": "openai",
-                "model": "gpt-5.5",
+                "model": "gpt-6-luna",
                 "trace_id": TRACE_GET.upper(),
             },
         )
@@ -110,14 +110,14 @@ class TeamInferenceTests(unittest.TestCase):
             {
                 "team_id": "team_1",
                 "provider": "openai",
-                "model": "gpt-5.5",
+                "model": "gpt-6-luna",
                 "trace_id": TRACE_GET,
                 "api_key": secret,
             },
             {
                 "team_id": "team_1",
                 "provider": "openai",
-                "model": "gpt-5.5",
+                "model": "gpt-6-luna",
                 "trace_id": TRACE_GET,
                 "internal": "controller detail",
             },
@@ -145,14 +145,14 @@ class TeamInferenceTests(unittest.TestCase):
 
     def test_rejects_secrets_and_retired_cli_providers_before_network_io(self) -> None:
         payloads = (
-            {"provider": "openai", "model": "gpt-5.5", "api_key": "must-not-cross"},
-            {"provider": "codex", "model": "gpt-5.5"},
+            {"provider": "openai", "model": "gpt-6-luna", "api_key": "must-not-cross"},
+            {"provider": "codex", "model": "gpt-6-luna"},
             {"provider": "claude-code", "model": "claude-sonnet-5"},
             {"provider": "anthropic", "model": "bad model"},
-            {"provider": "anthropic", "model": "gpt-5.6-terra"},
+            {"provider": "anthropic", "model": "gpt-6-sol"},
             {"provider": "openai", "model": "claude-sonnet-5"},
             {"provider": "openai", "model": "gpt-5.7"},
-            {"provider": "OpenAI", "model": "gpt-5.6-terra"},
+            {"provider": "OpenAI", "model": "gpt-6-sol"},
         )
         with mock.patch.object(team, "_call") as call:
             for payload in payloads:

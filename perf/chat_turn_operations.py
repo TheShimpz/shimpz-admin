@@ -112,7 +112,7 @@ class Boundary:
         if method == "GET" and path == f"/v1/teams/{TEAM_ID}/inference":
             return self.team.TeamResponse(
                 200,
-                {"team_id": TEAM_ID, "provider": "openai", "model": "gpt-5.6-terra", "trace_id": TRACE_ID},
+                {"team_id": TEAM_ID, "provider": "openai", "model": "gpt-6-sol", "trace_id": TRACE_ID},
             )
         if method == "POST" and path == f"/v1/teams/{TEAM_ID}/chat/intent-route":
             return self._route(payload, kwargs)
