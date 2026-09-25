@@ -110,6 +110,40 @@ function installSocket() {
     close() { this.readyState = 3; }
   }
   window.WebSocket = FakeWebSocket;
+  window.benchAckFrameMs = null;
+  const onSendClick = (event) => {
+    if (!(event.target instanceof Element)
+      || !event.target.closest('form.composer button[type="submit"]')) return;
+    document.removeEventListener('click', onSendClick, true);
+    const started = event.timeStamp;
+    const observe = () => {
+      const elapsed = performance.now() - started;
+      if (elapsed > 250) {
+        window.benchAckFrameMs = elapsed;
+        return;
+      }
+      if (document.querySelector('.conversation .thinking')?.getClientRects().length) {
+        window.benchAckFrameMs = elapsed;
+      } else {
+        requestAnimationFrame(observe);
+      }
+    };
+    requestAnimationFrame(observe);
+  };
+  document.addEventListener('click', onSendClick, true);
+  window.benchFirstEventProbe = () => {
+    const step = document.querySelector('.thinking .summary .step-copy');
+    if (!step) throw new Error('Missing processing step');
+    const initial = step.textContent;
+    const probe = { frameAt: null };
+    const observer = new MutationObserver(() => {
+      if (step.textContent === initial) return;
+      observer.disconnect();
+      requestAnimationFrame(() => { probe.frameAt = performance.now(); });
+    });
+    observer.observe(step, { childList: true, subtree: true, characterData: true });
+    return probe;
+  };
   window.benchEventMarks = [];
   window.benchEmit = (event) => {
     if (event.type === 'progress') window.benchEventMarks.push(performance.now());
@@ -169,6 +203,11 @@ async function measure(browser, baseURL, count, control) {
     await page.getByPlaceholder('Message Performance Team…').fill('Summarize the status');
     await page.getByRole('button', { name: 'Send' }).click();
     await page.getByRole('group', { name: 'I’m processing…' }).waitFor();
+    await page.waitForFunction(() => Number.isFinite(window.benchAckFrameMs), null, { timeout: 1000 });
+    const acknowledgeFrameMs = await page.evaluate(() => window.benchAckFrameMs);
+    if (acknowledgeFrameMs < 0 || acknowledgeFrameMs > 250) {
+      throw new Error('Processing acknowledgment exceeded its frame budget');
+    }
     const cdp = await context.newCDPSession(page);
     await cdp.send('Performance.enable');
     const before = await metricSnapshot(cdp);
@@ -176,6 +215,7 @@ async function measure(browser, baseURL, count, control) {
     const marks = await page.evaluate(async ({ input, gap, control }) => {
       window.benchLongTasks = [];
       window.benchEventMarks = [];
+      const firstProbe = !control && gap >= 16 ? window.benchFirstEventProbe() : null;
       const start = performance.now();
       for (const item of input) {
         if (!control) window.benchEmit(item);
@@ -183,7 +223,17 @@ async function measure(browser, baseURL, count, control) {
       }
       const last = performance.now();
       await new Promise((resolve) => requestAnimationFrame(resolve));
+      const firstFrameAt = firstProbe?.frameAt;
+      const validFirstFrame = Number.isFinite(firstFrameAt)
+        && firstFrameAt < window.benchEventMarks[1];
+      const firstEventFrameMs = validFirstFrame ? firstFrameAt - window.benchEventMarks[0] : null;
+      if (firstEventFrameMs !== null && firstEventFrameMs < 0) {
+        throw new Error('First progress frame preceded its dispatch');
+      }
       return { wallMs: performance.now() - start, nextFrameMs: performance.now() - last,
+        firstEventAttempted: Boolean(firstProbe),
+        firstEventSkipped: Boolean(firstProbe && !validFirstFrame),
+        firstEventFrameMs,
         longTasks: window.benchLongTasks.map((task) => ({ ...task,
           eventIndex: window.benchEventMarks.findLastIndex((mark) => mark <= task.startTime) + 1,
         })) };
@@ -253,8 +303,11 @@ async function measure(browser, baseURL, count, control) {
     const longestTask = marks.longTasks.reduce((best, task) => (
       task.duration > best.duration ? task : best
     ), { duration: 0, eventIndex: 0 });
-    const result = { count, control, gap, progressTaskMs, progressWork, terminalTaskMs,
+    const result = { count, control, gap, acknowledgeFrameMs, progressTaskMs, progressWork, terminalTaskMs,
       receiptTaskMs, receiptLongTaskMs,
+      firstEventAttempted: marks.firstEventAttempted,
+      firstEventSkipped: marks.firstEventSkipped,
+      firstEventFrameMs: marks.firstEventFrameMs,
       wallMs: marks.wallMs, nextFrameMs: marks.nextFrameMs,
       maxLongTaskMs: longestTask.duration, maxLongTaskEvent: longestTask.eventIndex,
       badPaths, pageErrors };
@@ -279,12 +332,21 @@ try {
     }
     for (const [arm, values] of Object.entries(results)) {
       const metric = (key, p) => percentile(values.map((value) => value[key]), p);
+      const firstEventValues = values.map((value) => value.firstEventFrameMs).filter(Number.isFinite);
       const workMetric = (key, p) => percentile(values.map((value) => value.progressWork[key]), p);
       const longestTask = values.reduce((best, value) => (
         value.maxLongTaskMs > best.maxLongTaskMs ? value : best
       ), { maxLongTaskMs: 0, maxLongTaskEvent: 0 });
       const controlCpu = percentile(results.control.map((value) => value.progressTaskMs), 0.5);
       console.log(JSON.stringify({ count, arm, gap, motion, samples,
+        acknowledgeFrameP50Ms: metric('acknowledgeFrameMs', 0.5),
+        acknowledgeFrameP95Ms: metric('acknowledgeFrameMs', 0.95),
+        firstEventAttempts: values.filter((value) => value.firstEventAttempted).length,
+        firstEventSamples: firstEventValues.length,
+        firstEventSkipped: values.filter((value) => value.firstEventSkipped).length,
+        firstEventFrameP50Ms: firstEventValues.length ? percentile(firstEventValues, 0.5) : null,
+        firstEventFrameP95Ms: firstEventValues.length ? percentile(firstEventValues, 0.95) : null,
+        firstEventTrialsMs: values.map((value) => value.firstEventFrameMs),
         progressCpuP50Ms: metric('progressTaskMs', 0.5),
         progressCpuP95Ms: metric('progressTaskMs', 0.95),
         scriptCpuP50Ms: workMetric('ScriptDuration', 0.5),

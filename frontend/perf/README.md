@@ -36,6 +36,27 @@ direction, not per-event attribution. `TaskOtherDuration` does not identify
 paint work specifically. The fixture excludes real Team, provider, and
 network timing, so its result does not measure complete chat latency.
 
+`acknowledgeFrameP50Ms` and `acknowledgeFrameP95Ms` time a Send click to the
+first animation-frame callback that sees the processing group in the DOM.
+The benchmark fails if one trial exceeds 250 ms. This is the browser's local
+optimistic state, not a server acknowledgment or a completed paint. The
+interval includes composer checks, frame construction, Svelte updates, and
+the fixture WebSocket's synchronous JSON parse; it excludes a real socket
+write and all remote response time. `firstEventFrameP50Ms` and
+`firstEventFrameP95Ms` time the first synthetic progress dispatch to the
+first animation-frame callback after the processing step text changes.
+The observer watches only that processing step. Both frame marks precede
+paint and are lower bounds on when the updates could become visible.
+The first-event metric is attempted only with a gap of at least 16 ms and
+is accepted only if its frame occurs before the second event dispatch.
+`firstEventSamples` and `firstEventSkipped` expose that selection; a skipped
+sample can indicate a delayed frame and must not be interpreted as a fast
+sample. A retained frame time above the configured gap means the second
+dispatch also occurred later than requested; this probe cannot identify why.
+At smaller gaps and in the no-progress control arm, the first-event
+metric is `null`. These browser-only intervals overlap backend work and
+must not be added to Admin or Team timing figures.
+
 ## Local Assistants page measurement
 
 From the Admin repository, install `frontend/` dependencies with Node.js 24 (`(cd frontend && npm ci)`), then build the
