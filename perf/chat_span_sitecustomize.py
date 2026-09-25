@@ -13,7 +13,7 @@ if sys.argv and sys.argv[0].rsplit("/", 1)[-1] == "uvicorn" and os.environ.get("
     sys.path.insert(0, str(Path.cwd()))
     from team import bridge as team
 
-    from chat import local, store_catalog
+    from chat import assistant_route, local, store_catalog
 
     def _timed(stage, operation):
         @functools.wraps(operation)
@@ -47,6 +47,7 @@ if sys.argv and sys.argv[0].rsplit("/", 1)[-1] == "uvicorn" and os.environ.get("
     store_catalog.StoreCatalog.get = _timed("store-get", store_catalog.StoreCatalog.get)
     local.intent_route = _timed("classification", local.intent_route)
     local.capability_plan = _timed("capability-plan", local.capability_plan)
+    assistant_route._prepare_uninstall = _timed("uninstall-preparation", assistant_route._prepare_uninstall)
     team.list_installed_assistants = _timed("installed-inventory", team.list_installed_assistants)
     team.list_local_assistants = _timed("local-catalog", team.list_local_assistants)
     print("SHIMPZ-PERF-ADMIN-INSTALLED", file=sys.stderr, flush=True)
