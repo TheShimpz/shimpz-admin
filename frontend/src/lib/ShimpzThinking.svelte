@@ -9,6 +9,7 @@
   let {
     label = 'I’m processing…',
     steps = [],
+    currentIndex = -1,
     elapsedText = 'Elapsed time',
     stagesText = 'Execution stages',
     progressLabels = {},
@@ -18,7 +19,7 @@
   let elapsed = $state(0);
 
   let visibleSteps = $derived(steps.slice(-32));
-  let current = $derived(steps.findLast((step) => step.elapsed_ms === null));
+  let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
   let formattedElapsed = $derived(elapsedLabel(elapsed));
 
   function elapsedLabel(value) {

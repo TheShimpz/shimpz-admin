@@ -210,6 +210,7 @@ async function routeReadyChat(page, {
   let releaseReply = () => {};
   let releaseProgressStart = () => {};
   let releaseProgressFinish = () => {};
+  let sendProgressEvent = () => {};
   let releaseInferenceWrite;
   const inferenceWriteHold = new Promise((resolve) => {
     releaseInferenceWrite = resolve;
@@ -428,6 +429,7 @@ async function routeReadyChat(page, {
     },
   );
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    sendProgressEvent = (event) => socket.send(JSON.stringify(event));
     const connection = chatConnections;
     chatConnections += 1;
 
@@ -733,6 +735,7 @@ async function routeReadyChat(page, {
     releaseReply: () => releaseReply(),
     releaseProgressStart: () => releaseProgressStart(),
     releaseProgressFinish: () => releaseProgressFinish(),
+    sendProgressEvent: (event) => sendProgressEvent(event),
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
   };
@@ -839,6 +842,41 @@ test('finishing a measured span updates its duration and announcements across tu
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
   await expect(page.getByText('1 execution stages completed')).toHaveCount(2);
+});
+
+test('overlapping progress returns the visible summary to the earlier active phase @browser-sensitive', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill('Check progress');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  const current = thinking.locator('.summary .step-copy');
+  await expect(current).toContainText(/Admin prepares a secure request for.*Marketing/);
+  chat.sendProgressEvent({
+    type: 'progress', seq: 2, origin: 'team', phase: 'team-context', state: 'started',
+  });
+  await expect(current).toContainText(/Marketing.*assembles the context needed for this turn/);
+  chat.sendProgressEvent({
+    type: 'progress', seq: 3, origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 9,
+  });
+  await expect(current).toContainText(/Admin prepares a secure request for.*Marketing/);
+  await thinking.locator('[data-slot="disclosure-trigger"]').click();
+  const rows = thinking.locator('.ledger li');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toHaveClass(/active/);
+  await expect(rows.last()).toHaveClass(/complete/);
+  await expect(rows.last().locator('time')).toHaveText('9 ms');
+
+  chat.sendProgressEvent({
+    type: 'progress', seq: 4, origin: 'admin', phase: 'admin-preparation',
+    state: 'finished', elapsed_ms: 20,
+  });
+  await expect(current).toHaveText('Waiting for execution');
+  chat.releaseReply();
+  await expect(page.getByText('2 execution stages completed')).toBeVisible();
 });
 
 test('shows a pending chat state before any server progress frame', async ({ page }) => {

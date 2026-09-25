@@ -52,6 +52,8 @@ test('incremental projection preserves nested pairing, orphan finishes, and narr
     extendExecutionProjection(projection, event);
     assert.deepEqual(projection.steps, executionSteps(events.slice(0, index + 1)));
     assert.equal(executionStepCount(events.slice(0, index + 1)), projection.steps.length);
+    assert.equal(projection.currentIndex,
+      projection.steps.findLastIndex((step) => step.elapsed_ms === null));
   }
   assert.deepEqual(projection.steps.map((step) => step.elapsed_ms), [4, 2, 6, 7]);
   assert.deepEqual(projection.steps.map((step) => step.observedModelsBefore), [0, 1, 2, 2]);
@@ -61,6 +63,24 @@ test('incremental projection preserves nested pairing, orphan finishes, and narr
   extendExecutionProjection(restarted, events[0]);
   assert.equal(restarted.steps.length, 1);
   assert.equal(restarted.steps[0].observedModelsBefore, 0);
+});
+
+test('current step follows the newest surviving phase across overlapping identities', () => {
+  const projection = createExecutionProjection();
+  const events = [
+    { seq: 1, origin: 'team', phase: 'model', state: 'started' },
+    { seq: 2, origin: 'team', phase: 'team-context', state: 'started' },
+    { seq: 3, origin: 'team', phase: 'model', state: 'started' },
+    { seq: 4, origin: 'team', phase: 'action-preparation', state: 'started' },
+    { seq: 5, origin: 'team', phase: 'action-preparation', state: 'finished', elapsed_ms: 2 },
+    { seq: 6, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 4 },
+    { seq: 7, origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 6 },
+    { seq: 8, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 8 },
+  ];
+  for (const [index, event] of events.entries()) {
+    extendExecutionProjection(projection, event);
+    assert.equal(projection.currentIndex, [0, 1, 2, 3, 2, 1, 0, -1][index]);
+  }
 });
 
 test('formats only bounded measured durations', () => {

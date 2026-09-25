@@ -13,7 +13,7 @@ function identity(event) {
 
 export function createExecutionProjection() {
   return {
-    steps: [], active: new Map(), actionOccurrences: new Map(),
+    steps: [], active: new Map(), currentIndex: -1, actionOccurrences: new Map(),
     observedActions: 0, observedModels: 0,
   };
 }
@@ -50,6 +50,7 @@ export function extendExecutionProjection(projection, event) {
     positions.push(projection.steps.length);
     projection.active.set(key, positions);
     appendStep(projection, event, key, null);
+    projection.currentIndex = projection.steps.length - 1;
     return;
   }
   const positions = projection.active.get(key);
@@ -57,6 +58,12 @@ export function extendExecutionProjection(projection, event) {
   if (matchingIndex !== undefined) {
     projection.steps[matchingIndex].elapsed_ms = event.elapsed_ms;
     if (positions.length === 0) projection.active.delete(key);
+    if (matchingIndex === projection.currentIndex) {
+      projection.currentIndex = -1;
+      for (const remaining of projection.active.values()) {
+        projection.currentIndex = Math.max(projection.currentIndex, remaining.at(-1));
+      }
+    }
     return;
   }
   appendStep(projection, event, key, event.elapsed_ms);
