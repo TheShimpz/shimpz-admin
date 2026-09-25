@@ -18,8 +18,14 @@ const counts = (process.env.SHIMPZ_PROGRESS_CASES ?? '36').split(',').map(Number
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
 const gap = Number(process.env.SHIMPZ_PROGRESS_GAP_MS ?? '0');
 const motion = process.env.SHIMPZ_PERF_MOTION ?? 'reduce';
-if (counts.some((count) => ![36, 128, 948].includes(count))) {
-  throw new Error('Cases must be 36, 128, or 948 progress events.');
+const framePlans = new Map([
+  [10, [0, 0]],
+  [36, [1, 10]],
+  [128, [1, 56]],
+  [948, [7, 64]],
+]);
+if (counts.some((count) => !framePlans.has(count))) {
+  throw new Error('Cases must be 10, 36, 128, or 948 progress events.');
 }
 if (!Number.isSafeInteger(samples) || samples < 1 || samples > 100) {
   throw new Error('Sample count must be between 1 and 100.');
@@ -68,8 +74,7 @@ function frames(count) {
     result.push({ type: 'progress', seq: result.length + 1, origin, phase, state: 'started', ...fields });
     result.push({ type: 'progress', seq: result.length + 1, origin, phase, state: 'finished', elapsed_ms: 2, ...fields });
   };
-  const rounds = count === 948 ? 7 : 1;
-  const actions = count === 36 ? 10 : count === 128 ? 56 : 64;
+  const [rounds, actions] = framePlans.get(count);
   pair('admin', 'admin-preparation');
   pair('team', 'team-context');
   pair('team', 'model');
