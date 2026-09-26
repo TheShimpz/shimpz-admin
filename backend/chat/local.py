@@ -50,6 +50,8 @@ _CHAT_ERROR_DETAILS = {
     "assistant-integration-contract-invalid": "the Assistant integration contract changed; retry the message",
     "assistant-integration-state-unavailable": "Assistant integration state is unavailable",
     "assistant-registry-drift": "an installed Assistant is no longer available",
+    "assistant-stored-input-rejected": "the Assistant rejected its saved input; retry the task to provide a new value",
+    "assistant-stored-input-state-unavailable": "the Team could not save or read an Assistant's saved input",
     "assistant-unavailable": "the Brain requested an unavailable Assistant",
     "brain-runtime-failed": "the Brain runtime could not complete the Team turn",
     "chat-active": "this Team already has an active chat turn",
