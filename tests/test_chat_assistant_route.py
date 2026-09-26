@@ -236,6 +236,34 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
         gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
+    def test_saturated_planning_is_skipped_for_lifecycle_or_failed_routes(self) -> None:
+        saturated = mock.patch.object(
+            assistant_route._CAPABILITY_PLANNING,
+            "submit",
+            side_effect=assistant_route.ExecutorSaturatedError("full"),
+        )
+        with (
+            saturated,
+            mock.patch.object(assistant_route.local, "intent_route", return_value=response("unresolved")),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability") as gate,
+        ):
+            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
+        self.assertEqual(result.intent, "unresolved")
+        gate.assert_not_called()
+
+        with (
+            saturated,
+            mock.patch.object(
+                assistant_route.local,
+                "intent_route",
+                return_value=local.PublicResponse(503, {"code": "intent-route-unavailable"}),
+            ),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability") as gate,
+            self.assertRaises(assistant_route.RouteError),
+        ):
+            assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
+        gate.assert_not_called()
+
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:
         assistant = cloudflare()
         installed: dict[str, assistant_inventory.InstalledAssistant] = {}

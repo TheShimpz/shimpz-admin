@@ -540,6 +540,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
 
+    def test_intent_route_without_a_model_credential_never_calls_team(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value=None),
+            mock.patch.object(team, "intent_route") as route,
+        ):
+            response = local.intent_route("team_1", "Pesquise notícias", None, [])
+
+        self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
+        route.assert_not_called()
+
     def test_controller_cannot_echo_the_private_key_to_browser(self) -> None:
         api_key = "sk-test-0123456789"
         inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
