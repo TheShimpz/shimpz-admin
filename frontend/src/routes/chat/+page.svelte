@@ -48,8 +48,17 @@
   let nextRenderKey = 0;
   let busy = $state(false);
   // Assistants the current turn's continuing install plan proved running; a just-in-time request may reach the
-  // browser before the asynchronous Team inventory refresh reflects them. Cleared at every turn and Team boundary.
-  let turnInstalledIds = new Set();
+  // browser, or be redelivered after a same-Team reconnect, before the asynchronous Team inventory refresh reflects
+  // them. Cleared at every terminal result, empty sync, protocol error, new message, and Team change.
+  let turnInstalled = { teamId: '', ids: new Set() };
+
+  function clearTurnInstalled() {
+    turnInstalled = { teamId: '', ids: new Set() };
+  }
+
+  function installedThisTurn(assistantId) {
+    return turnInstalled.teamId === chatTeamId && turnInstalled.ids.has(assistantId);
+  }
   let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
   let progressEvents = $state([]);
@@ -710,7 +719,6 @@
   }
 
   function resetChallengeState({ includeInventory = false } = {}) {
-    turnInstalledIds = new Set();
     integrationChallenge = undefined;
     humanChallenge = undefined;
     humanRejection = undefined;
@@ -744,7 +752,7 @@
   function acceptIntegrationChallenge(incoming) {
     const selected = new Set($teamContext.selectedAssistantIds);
     if (incoming.requirements.some((requirement) => (
-      !selected.has(requirement.assistant_id) && !turnInstalledIds.has(requirement.assistant_id)
+      !selected.has(requirement.assistant_id) && !installedThisTurn(requirement.assistant_id)
     ))) {
       throw new Error('unexpected Assistant integration requirement');
     }
@@ -765,7 +773,7 @@
 
   function acceptHumanChallenge(incoming) {
     const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-    if (!installed.has(incoming.assistant.id) && !turnInstalledIds.has(incoming.assistant.id)) {
+    if (!installed.has(incoming.assistant.id) && !installedThisTurn(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
     expireSocketLifecycles();
@@ -888,6 +896,7 @@
         if (incoming.type === 'sync-empty') {
           syncing = false;
           resetProgress();
+          clearTurnInstalled();
           if (humanExpiredId) {
             busy = false;
             stopping = false;
@@ -915,7 +924,9 @@
           }
           if (incoming.state === 'installed') {
             if (incoming.continuation === 'dispatch') {
-              for (const assistant of incoming.assistants) turnInstalledIds.add(assistant.id);
+              const ids = turnInstalled.teamId === chatTeamId ? turnInstalled.ids : new Set();
+              for (const assistant of incoming.assistants) ids.add(assistant.id);
+              turnInstalled = { teamId: chatTeamId, ids };
             }
             void refreshTeamInventory(fetch).catch(() => undefined);
             if (incoming.continuation === 'none') {
@@ -996,6 +1007,7 @@
         stopping = false;
         resetProgress();
         resetChallengeState();
+        clearTurnInstalled();
         setError(copy.protocolError);
         active.close(1002, 'Invalid chat event');
         return;
@@ -1007,6 +1019,7 @@
       syncing = false;
       stopping = false;
       resetChallengeState();
+      clearTurnInstalled();
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1041,6 +1054,7 @@
 
   function activateTeam(nextTeamId) {
     closeSocket();
+    clearTurnInstalled();
     clearLifecycleIconCaptures();
     capabilityObjective = null;
     socketTeamId = nextTeamId;
@@ -1264,7 +1278,7 @@
     ) return false;
     let frame;
     let resumedObjective = '';
-    turnInstalledIds = new Set();
+    clearTurnInstalled();
     const assistantIds = [...$teamContext.selectedAssistantIds];
     const continuation = useCapabilityObjective && capabilityContinuation(normalized);
     const sameAssistantIds = continuation && capabilityObjective

@@ -585,7 +585,7 @@ async function routeReadyChat(page, {
                 type: 'human-required',
                 challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                 expires_in: humanExpiresIn,
-                assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+                assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
                 action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
                 request: { ...humanRequest('input:password'), stored_input: 'cloudflare-token' },
               }));
@@ -1424,6 +1424,31 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
   expect(chat.humanResponses()).toHaveLength(1);
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain('saved-third-party-secret');
+});
+
+test('recovers a just-in-time request from a just-installed Assistant after a same-Team reconnect', async ({ page }) => {
+  const contract = await routeReadyChat(page, {
+    assistantPlan: true,
+    storedInputAfterPlan: true,
+    humanKind: 'input:password',
+    humanAssistantId: 'whatsapp',
+    omitPlannedWhatsappFromInventory: true,
+    disconnectHumanResponse: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('install Cloudflare and WhatsApp and send the summary');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await composer.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send response' }).click();
+  await expect.poll(() => contract.humanResponses().length).toBe(1);
+
+  contract.disconnectHumanSocket();
+  await expect(page.getByRole('dialog', { name: 'Provide the missing Action context' })).toBeVisible();
+  await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
 });
 
 test('does not trust an install-only plan for a later request from an Assistant missing in the inventory', async ({ page }) => {
