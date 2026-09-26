@@ -13,7 +13,6 @@ from chat import local_catalog, store_catalog
 from protocol.http.v1 import payload as team_contract
 
 UNINSTALL_PROPOSAL_TTL_SECONDS = 120
-MINIMUM_MATCH_SCORE = 40
 MAX_CAPABILITY_SHORTLIST = 8
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
 _SEARCH_SEPARATOR = re.compile(r"[^a-z0-9]+")
@@ -257,65 +256,61 @@ def _capability_score(message: str, tokens: frozenset[str], capability: Capabili
     )
 
 
-def _direct_candidate_match(message: str, candidate: store_catalog.CatalogAssistant) -> bool:
-    return (
-        _contains_phrase(message, candidate.assistant_id)
-        or _contains_phrase(message, candidate.name)
-        or any(_contains_phrase(message, integration.provider) for integration in candidate.integrations)
-        or any(_contains_phrase(message, action) for action in candidate.actions)
-    )
+def _bounded_pool[AssistantT](
+    ranked: list[tuple[int, str, AssistantT]],
+) -> tuple[AssistantT, ...]:
+    """Keep the model-facing selection pool within the planner bound, preferring stronger lexical signals.
+
+    A tie across the bound would silently displace an equally ranked candidate, so it yields no pool.
+    """
+    if len(ranked) > MAX_CAPABILITY_SHORTLIST and (
+        ranked[MAX_CAPABILITY_SHORTLIST - 1][0] == ranked[MAX_CAPABILITY_SHORTLIST][0]
+    ):
+        return ()
+    return tuple(item[2] for item in ranked[:MAX_CAPABILITY_SHORTLIST])
 
 
-def capability_shortlist(
+def capability_candidates(
     message: str,
-    catalog: tuple[store_catalog.CatalogAssistant, ...],
+    catalog: tuple[DirectoryAssistant, ...],
     *,
     installed_ids: frozenset[str],
     enabled: tuple[Capability, ...],
-) -> tuple[store_catalog.CatalogAssistant, ...]:
-    """Return a deterministic strong gap shortlist or no planning signal."""
+) -> tuple[tuple[Capability, ...], tuple[DirectoryAssistant, ...]]:
+    """Return the bounded enabled and installable candidates for semantic intent planning.
+
+    The planner, not keyword overlap, decides whether an Assistant serves the objective. Installable candidates take
+    the bounded slots first, ordered lexically only when they exceed the bound; a tie across that bound, or no
+    installable candidate, means no planning signal. Enabled capabilities fill the remaining slots as context so the
+    planner can prefer what is already installed.
+    """
     search = _search_text(message)
-    message_tokens = _tokens(message)
-    if not search or not message_tokens:
-        return ()
-    ranked = sorted(
+    if not search:
+        return (), ()
+    tokens = _tokens(message)
+    installable = sorted(
         (
-            (_candidate_score(search, message_tokens, candidate), candidate.assistant_id, candidate)
+            (_candidate_score(search, tokens, candidate), candidate.assistant_id, candidate)
             for candidate in catalog
             if candidate.assistant_id not in installed_ids
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    strong = tuple(item for item in ranked if item[0] >= MINIMUM_MATCH_SCORE)
-    if not strong:
-        return ()
-    enabled_score = max((_capability_score(search, message_tokens, item) for item in enabled), default=0)
-    if enabled_score >= strong[0][0]:
-        return ()
-    top_score = strong[0][0]
-    top = tuple(item[2] for item in strong if item[0] == top_score)
-    if len(top) > 1 and any(not _direct_candidate_match(search, candidate) for candidate in top):
-        return ()
-    if (
-        len(strong) > MAX_CAPABILITY_SHORTLIST
-        and strong[MAX_CAPABILITY_SHORTLIST - 1][0] == strong[MAX_CAPABILITY_SHORTLIST][0]
-    ):
-        return ()
-    return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
-
-
-def _bounded_shortlist[AssistantT](
-    ranked: list[tuple[int, str, AssistantT]],
-) -> tuple[AssistantT, ...]:
-    strong = tuple(item for item in ranked if item[0] >= MINIMUM_MATCH_SCORE)
-    if not strong:
-        return ()
-    if (
-        len(strong) > MAX_CAPABILITY_SHORTLIST
-        and strong[MAX_CAPABILITY_SHORTLIST - 1][0] == strong[MAX_CAPABILITY_SHORTLIST][0]
-    ):
-        return ()
-    return tuple(item[2] for item in strong[:MAX_CAPABILITY_SHORTLIST])
+    kept_installable = _bounded_pool(installable)
+    if not kept_installable:
+        return (), ()
+    context = sorted(
+        (
+            (_capability_score(search, tokens, capability), capability.assistant_id, capability)
+            for capability in enabled
+        ),
+        key=lambda item: (-item[0], item[1]),
+    )
+    kept_enabled = tuple(item[2] for item in context[: MAX_CAPABILITY_SHORTLIST - len(kept_installable)])
+    return (
+        tuple(sorted(kept_enabled, key=lambda item: item.assistant_id)),
+        tuple(sorted(kept_installable, key=lambda item: item.assistant_id)),
+    )
 
 
 def _directory_identity_score(query: str, tokens: frozenset[str], assistant_id: str, name: str) -> int:
@@ -330,10 +325,10 @@ def install_shortlist(
     query: str,
     candidates: tuple[DirectoryAssistant, ...],
 ) -> tuple[DirectoryAssistant, ...]:
-    """Rank a semantic install target into one bounded local-first directory."""
+    """Order a bounded install directory; the structured selection decides by intent."""
     search = _search_text(query)
     tokens = _tokens(query)
-    if not search or not tokens:
+    if not search:
         return ()
     ranked = sorted(
         (
@@ -349,17 +344,17 @@ def install_shortlist(
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_shortlist(ranked)
+    return _bounded_pool(ranked)
 
 
 def uninstall_shortlist(
     query: str,
     candidates: tuple[UninstallCandidate, ...],
 ) -> tuple[UninstallCandidate, ...]:
-    """Rank a semantic uninstall target using installed id/name data only."""
+    """Order a bounded uninstall directory from installed id/name data; selection decides by intent."""
     search = _search_text(query)
     tokens = _tokens(query)
-    if not search or not tokens:
+    if not search:
         return ()
 
     def score(candidate: UninstallCandidate) -> int:
@@ -370,7 +365,7 @@ def uninstall_shortlist(
         ((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_shortlist(ranked)
+    return _bounded_pool(ranked)
 
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:

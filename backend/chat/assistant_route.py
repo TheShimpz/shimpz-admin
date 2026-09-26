@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
-from chat.executor import submit_in_context
+from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from history import context as conversation_context
 from team import bridge as team
 
@@ -25,6 +25,12 @@ from protocol.http.v1 import websocket as chat_ws_common
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
 MAX_GUIDANCE_REPLY_CHARS = 240
+# Capability planning runs beside classification so an ordinary turn waits for the slower call, not both.
+_CAPABILITY_PLANNING = BoundedThreadPoolExecutor(
+    max_workers=4,
+    max_outstanding=8,
+    thread_name_prefix="assistant-capability-plan",
+)
 GuidanceCode = Literal[
     "assistant-install-target-required",
     "assistant-uninstall-target-required",
@@ -288,27 +294,44 @@ def _prepare(
     *,
     allow_uninstall: bool,
 ) -> Result:
-    """Classify once, then lazily open only the required bounded directory."""
+    """Classify once while speculatively planning capabilities, then keep only the result the route needs."""
     route_context = context or Context()
-    classification = _route(
-        team_id,
-        payload["message"],
-        None,
-        [],
-        local.IntentRouteContext(
-            reference=route_context.reference,
-            conversation=route_context.conversation,
-        ),
-    )
-    if classification.intent == "ordinary-task":
-        preparation = assistant_plan.prepare_capability(
+    local_enabled = admin_profile.require() == "local" if include_local is None else include_local
+    try:
+        capability = submit_in_context(
+            _CAPABILITY_PLANNING,
+            assistant_plan.prepare_capability,
             team_id,
             payload,
             catalog,
-            admin_profile.require() == "local" if include_local is None else include_local,
+            local_enabled,
+        )
+    except ExecutorSaturatedError:
+        capability = None
+    try:
+        classification = _route(
+            team_id,
+            payload["message"],
+            None,
+            [],
+            local.IntentRouteContext(
+                reference=route_context.reference,
+                conversation=route_context.conversation,
+            ),
+        )
+    except BaseException:
+        if capability is not None:
+            capability.cancel()
+        raise
+    if classification.intent == "ordinary-task":
+        preparation = (
+            capability.result()
+            if capability is not None
+            else assistant_plan.prepare_capability(team_id, payload, catalog, local_enabled)
         )
         return Result(classification.intent, preparation=preparation)
-    local_enabled = admin_profile.require() == "local" if include_local is None else include_local
+    if capability is not None:
+        capability.cancel()
     return _lifecycle_result(
         team_id,
         payload,

@@ -149,25 +149,86 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             )
         return result, plan
 
-    def test_weak_signal_runs_directly_without_calling_the_planner(self) -> None:
+    def test_intent_without_shared_keywords_reaches_the_planner_and_installs(self) -> None:
+        exa = store_catalog.CatalogAssistant(
+            assistant_id="shimpz-exa",
+            name="Exa",
+            summary="Official Shimpz integration for Exa: search the web and read pages.",
+            source_digest="sha256:" + ("e" * 64),
+            icon_digest="sha256:" + ("f" * 64),
+            integrations=(),
+            actions=("read-pages", "search-web"),
+        )
+        objective = "quero fazer websearch, pesquisa pra mim as noticias de IA mais hypadas da semana"
+        result, planner = self._prepare(
+            objective,
+            (CLOUDFLARE, exa),
+            assistant_plan.team.TeamResponse(
+                200,
+                {"team_id": "team_1", "status": "install-required", "assistant_ids": ["shimpz-exa"]},
+            ),
+        )
+
+        self.assertEqual([item["id"] for item in planner.call_args.args[2]], ["cloudflare", "shimpz-exa"])
+        assert result.plan is not None
+        self.assertEqual(tuple(item.assistant_id for item in result.plan.assistants), ("shimpz-exa",))
+        self.assertEqual(result.plan.dispatch_ids, ("shimpz-exa",))
+
+    def test_sufficient_plan_runs_directly_without_installation(self) -> None:
         result, planner = self._prepare(
             "Olá, tudo bem?",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(500, {}),
+            assistant_plan.team.TeamResponse(200, {"team_id": "team_1", "status": "sufficient", "assistant_ids": []}),
         )
 
         self.assertEqual(result, assistant_plan.Preparation())
-        planner.assert_not_called()
+        planner.assert_called_once()
 
-    def test_public_enabled_provider_suppresses_redundant_installation(self) -> None:
+    def test_enabled_capability_is_planner_context_and_never_reinstalled(self) -> None:
         enabled = _candidate("enabled", "Installed Helper", "cloudflare", "inspect-resource")
         result, planner = self._prepare(
             "Use Cloudflare",
             (DOMAIN_HELPER, enabled),
-            assistant_plan.team.TeamResponse(500, {}),
+            assistant_plan.team.TeamResponse(
+                200,
+                {"team_id": "team_1", "status": "install-required", "assistant_ids": ["enabled"]},
+            ),
             installed=_installed(("enabled", "running")),
             registry=_registry(("enabled", ("inspect-resource",))),
             assistant_ids=("enabled",),
+        )
+
+        self.assertEqual(result, assistant_plan.Preparation())
+        candidates = planner.call_args.args[2]
+        self.assertEqual([item["id"] for item in candidates], ["domain-helper", "enabled"])
+        self.assertEqual(candidates[1]["integrations"], [{"id": "cloudflare", "provider": "cloudflare"}])
+
+    def test_enabled_candidate_uses_the_planner_canonical_shape(self) -> None:
+        candidate = assistant_plan._enabled_candidate(
+            assistant_plan.assistant_proposal.Capability(
+                "enabled",
+                "Installed Helper",
+                "",
+                ("zeta", "alpha", "zeta"),
+                ("whatsapp", "cloudflare", "whatsapp"),
+            )
+        )
+
+        self.assertEqual(candidate["summary"], "Installed Helper")
+        self.assertEqual(candidate["actions"], ["alpha", "zeta"])
+        self.assertEqual(
+            candidate["integrations"],
+            [{"id": "cloudflare", "provider": "cloudflare"}, {"id": "whatsapp", "provider": "whatsapp"}],
+        )
+
+    def test_fully_installed_catalog_never_calls_the_planner(self) -> None:
+        result, planner = self._prepare(
+            "Use Cloudflare",
+            (CLOUDFLARE,),
+            assistant_plan.team.TeamResponse(500, {}),
+            installed=_installed(("cloudflare", "running")),
+            registry=_registry(("cloudflare", ("configure-domain",))),
+            assistant_ids=("cloudflare",),
         )
 
         self.assertEqual(result, assistant_plan.Preparation())

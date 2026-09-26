@@ -35,34 +35,37 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.AssistantReference("cloudflare", "Cloudflare"),
         )
 
-    def test_install_directory_shortlist_is_bounded_and_semantic(self) -> None:
+    def test_install_directory_orders_every_candidate_for_intent_selection(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
         self.assertEqual(
             assistant_proposal.install_shortlist("cloudflare", (whatsapp, cloudflare)),
-            (cloudflare,),
+            (cloudflare, whatsapp),
         )
         self.assertEqual(
-            assistant_proposal.install_shortlist("unknown", (whatsapp, cloudflare)),
-            (),
+            assistant_proposal.install_shortlist("algo pra mandar mensagens", (whatsapp, cloudflare)),
+            (cloudflare, whatsapp),
         )
         self.assertEqual(assistant_proposal.install_shortlist("...", (cloudflare,)), ())
         self.assertEqual(
             assistant_proposal.install_shortlist("Shimpz Cloudflare", (whatsapp, cloudflare)),
-            (cloudflare,),
+            (cloudflare, whatsapp),
         )
 
-    def test_install_directory_rejects_a_tie_across_the_shortlist_boundary(self) -> None:
-        candidates = tuple(
+    def test_install_directory_is_bounded_and_never_displaces_a_cutoff_tie(self) -> None:
+        cloudflares = tuple(
             _candidate(
                 f"cloudflare-{index}",
                 name=f"Cloudflare {index}",
                 summary="Provides reviewed Cloudflare automation.",
             )
-            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST)
         )
+        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
 
-        self.assertEqual(assistant_proposal.install_shortlist("cloudflare", candidates), ())
+        self.assertEqual(assistant_proposal.install_shortlist("cloudflare", (whatsapp, *cloudflares)), cloudflares)
+        tied = (*cloudflares, _candidate("cloudflare-x", name="Cloudflare X"))
+        self.assertEqual(assistant_proposal.install_shortlist("cloudflare", tied), ())
 
     def test_capability_continuation_is_a_closed_whole_message_classifier(self) -> None:
         accepted = (
@@ -89,7 +92,27 @@ class AssistantProposalTests(unittest.TestCase):
         )
         self.assertFalse(assistant_proposal.capability_continuation("agora pode instalar"))
 
-    def test_shortlists_explicit_and_composed_intent_without_a_baked_mapping(self) -> None:
+    def test_intent_candidates_do_not_require_shared_keywords(self) -> None:
+        exa = _candidate(
+            "shimpz-exa",
+            name="Exa",
+            summary="Official Shimpz integration for Exa: search the web and read pages.",
+            provider="",
+            actions=("read-pages", "search-web"),
+        )
+        cloudflare = _candidate()
+
+        self.assertEqual(
+            assistant_proposal.capability_candidates(
+                "quero fazer websearch, pesquisa pra mim as noticias de IA mais hypadas da semana",
+                (exa, cloudflare),
+                installed_ids=frozenset(),
+                enabled=(),
+            ),
+            ((), (cloudflare, exa)),
+        )
+
+    def test_enabled_capabilities_accompany_installable_candidates(self) -> None:
         cloudflare = _candidate()
         whatsapp = _candidate(
             "whatsapp",
@@ -98,109 +121,94 @@ class AssistantProposalTests(unittest.TestCase):
             provider="whatsapp",
             actions=("send-message",),
         )
+        enabled = assistant_proposal.Capability(
+            cloudflare.assistant_id, cloudflare.name, cloudflare.summary, cloudflare.actions, ("cloudflare",)
+        )
 
         self.assertEqual(
-            assistant_proposal.capability_shortlist(
+            assistant_proposal.capability_candidates(
                 "Configure Cloudflare e envie uma mensagem no WhatsApp",
                 (cloudflare, whatsapp),
-                installed_ids=frozenset(),
-                enabled=(),
-            ),
-            (whatsapp, cloudflare),
-        )
-
-    def test_rejects_weak_ambiguous_installed_or_already_enabled_matches(self) -> None:
-        cloudflare = _candidate()
-        cases = (
-            ("Olá", (cloudflare,), frozenset(), (), ()),
-            ("Cloudflare zones", (cloudflare,), frozenset({cloudflare.assistant_id}), (), ()),
-            (
-                "Cloudflare zones",
-                (cloudflare,),
-                frozenset(),
-                (
-                    assistant_proposal.Capability(
-                        "enabled-cloudflare",
-                        "Cloudflare",
-                        cloudflare.summary,
-                        cloudflare.actions,
-                    ),
-                ),
-                (),
-            ),
-        )
-        for message, catalog, installed, enabled, expected in cases:
-            with self.subTest(message=message, installed=installed, enabled=enabled):
-                self.assertEqual(
-                    assistant_proposal.capability_shortlist(
-                        message,
-                        catalog,
-                        installed_ids=installed,
-                        enabled=enabled,
-                    ),
-                    expected,
-                )
-
-        ambiguous_a = _candidate(
-            "domain-a",
-            name="Domain Alpha",
-            summary="Reviewed domain automation helper.",
-            provider="alpha",
-            actions=("alpha-action",),
-        )
-        ambiguous_b = _candidate(
-            "domain-b",
-            name="Domain Beta",
-            summary="Reviewed domain automation helper.",
-            provider="beta",
-            actions=("beta-action",),
-        )
-        self.assertEqual(
-            assistant_proposal.capability_shortlist(
-                "Preciso de domain automation",
-                (ambiguous_a, ambiguous_b),
-                installed_ids=frozenset(),
-                enabled=(),
-            ),
-            (),
-        )
-
-    def test_empty_search_cannot_create_a_shortlist(self) -> None:
-        self.assertEqual(
-            assistant_proposal.capability_shortlist(
-                "...",
-                (_candidate(),),
-                installed_ids=frozenset(),
-                enabled=(),
-            ),
-            (),
-        )
-
-    def test_public_enabled_provider_suppresses_an_equally_strong_candidate(self) -> None:
-        candidate = _candidate(
-            "domain-helper",
-            name="Domain Helper",
-            summary="Provides reviewed domain operations.",
-            provider="cloudflare",
-            actions=("inspect-domain",),
-        )
-        enabled = assistant_proposal.Capability(
-            "installed-helper",
-            "Installed Helper",
-            "Provides reviewed operations.",
-            ("inspect-resource",),
-            ("cloudflare",),
-        )
-
-        self.assertEqual(
-            assistant_proposal.capability_shortlist(
-                "Use Cloudflare",
-                (candidate,),
-                installed_ids=frozenset({enabled.assistant_id}),
+                installed_ids=frozenset({cloudflare.assistant_id}),
                 enabled=(enabled,),
             ),
-            (),
+            ((enabled,), (whatsapp,)),
         )
+
+    def test_no_installable_candidate_or_search_text_means_no_planning(self) -> None:
+        cloudflare = _candidate()
+        enabled = assistant_proposal.Capability(cloudflare.assistant_id, cloudflare.name, cloudflare.summary, ())
+        cases = (
+            ("Cloudflare zones", frozenset({cloudflare.assistant_id}), (enabled,)),
+            ("...", frozenset(), ()),
+            ("", frozenset(), ()),
+        )
+        for message, installed, current in cases:
+            with self.subTest(message=message):
+                self.assertEqual(
+                    assistant_proposal.capability_candidates(
+                        message,
+                        (cloudflare,),
+                        installed_ids=installed,
+                        enabled=current,
+                    ),
+                    ((), ()),
+                )
+
+    def test_overflowing_pool_keeps_the_strongest_signals_within_the_bound(self) -> None:
+        senders = tuple(
+            _candidate(
+                f"sender-{index}",
+                name=f"Sender {index}",
+                summary="Send WhatsApp messages.",
+                provider="",
+                actions=("send-message",),
+            )
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST - 1)
+        )
+        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp", actions=("send-message",))
+        unrelated = _candidate("helper", name="Helper", summary="Reviewed helper.", provider="", actions=("run",))
+        enabled = assistant_proposal.Capability("enabled", "Enabled", "Unrelated operations.", ("inspect",))
+
+        kept_enabled, kept = assistant_proposal.capability_candidates(
+            "send a WhatsApp message",
+            (*senders, whatsapp, unrelated),
+            installed_ids=frozenset({enabled.assistant_id}),
+            enabled=(enabled,),
+        )
+
+        self.assertEqual(kept_enabled, ())
+        self.assertEqual(kept, (*senders, whatsapp))
+
+    def test_installable_cutoff_tie_means_no_planning_and_enabled_fills_the_rest(self) -> None:
+        helpers = tuple(
+            _candidate(f"helper-{index}", name=f"Helper {index}", summary="Reviewed helper.", provider="")
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
+        )
+        self.assertEqual(
+            assistant_proposal.capability_candidates(
+                "anything at all",
+                helpers,
+                installed_ids=frozenset(),
+                enabled=(),
+            ),
+            ((), ()),
+        )
+
+        senders = tuple(
+            assistant_proposal.Capability(
+                f"send-{index}", "WhatsApp sender", "Send WhatsApp messages.", ("send-message",)
+            )
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST)
+        )
+        kept_enabled, kept = assistant_proposal.capability_candidates(
+            "send a WhatsApp message",
+            (helpers[0],),
+            installed_ids=frozenset(item.assistant_id for item in senders),
+            enabled=senders,
+        )
+        self.assertEqual(kept, (helpers[0],))
+        self.assertEqual(kept_enabled, senders[: assistant_proposal.MAX_CAPABILITY_SHORTLIST - 1])
 
     def test_uninstall_confirmation_never_accepts_install_language(self) -> None:
         cases = {
@@ -241,11 +249,14 @@ class AssistantProposalTests(unittest.TestCase):
             "1.0.0",
         )
         self.assertEqual(
-            assistant_proposal.uninstall_shortlist("cloudflare", (other, cloudflare)),
+            assistant_proposal.uninstall_shortlist("shimpz cloudflare", (other, cloudflare)),
+            (cloudflare, other),
+        )
+        self.assertEqual(
+            assistant_proposal.uninstall_shortlist("o de DNS", (cloudflare, other)),
             (other, cloudflare),
         )
-        self.assertEqual(assistant_proposal.uninstall_shortlist("DNS records", (cloudflare, other)), ())
-        self.assertEqual(assistant_proposal.uninstall_shortlist("unknown", (cloudflare, other)), ())
+        self.assertEqual(assistant_proposal.uninstall_shortlist("...", (cloudflare, other)), ())
 
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(

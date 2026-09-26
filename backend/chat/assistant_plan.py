@@ -178,6 +178,17 @@ def planning_catalog(
     return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
 
 
+def _enabled_candidate(capability: assistant_proposal.Capability) -> dict[str, object]:
+    """Project installed context in the planner's canonical sorted, non-empty shape."""
+    return {
+        "id": capability.assistant_id,
+        "name": capability.name,
+        "summary": capability.summary or capability.name,
+        "actions": sorted(set(capability.actions)),
+        "integrations": [{"id": provider, "provider": provider} for provider in sorted(set(capability.integrations))],
+    }
+
+
 def _prepare_gap(
     team_id: str,
     message: str,
@@ -185,7 +196,7 @@ def _prepare_gap(
     installed: dict[str, assistant_inventory.InstalledAssistant],
     enabled: tuple[assistant_proposal.Capability, ...],
 ) -> Preparation:
-    shortlist = assistant_proposal.capability_shortlist(
+    kept_enabled, shortlist = assistant_proposal.capability_candidates(
         message,
         available,
         installed_ids=frozenset(installed),
@@ -193,22 +204,24 @@ def _prepare_gap(
     )
     if not shortlist:
         return Preparation()
-    response = local.capability_plan(
-        team_id,
-        message,
-        [_planner_candidate(assistant) for assistant in shortlist],
+    candidates = sorted(
+        [*(_enabled_candidate(item) for item in kept_enabled), *(_planner_candidate(item) for item in shortlist)],
+        key=lambda candidate: str(candidate["id"]),
     )
+    response = local.capability_plan(team_id, message, candidates)
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
         return Preparation()
     try:
         selected = _selected_ids(
             response,
             team_id,
-            frozenset(assistant.assistant_id for assistant in shortlist),
+            frozenset(str(candidate["id"]) for candidate in candidates),
         )
     except TypeError, ValueError:
         return Preparation()
-    return _prepared_plan(team_id, tuple(capability.assistant_id for capability in enabled), shortlist, selected)
+    installable_ids = frozenset(assistant.assistant_id for assistant in shortlist)
+    missing = tuple(assistant_id for assistant_id in selected if assistant_id in installable_ids)
+    return _prepared_plan(team_id, tuple(capability.assistant_id for capability in enabled), shortlist, missing)
 
 
 def prepare_capability(

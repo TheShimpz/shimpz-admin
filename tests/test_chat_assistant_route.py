@@ -67,6 +67,15 @@ def cloudflare() -> store_catalog.CatalogAssistant:
 
 
 class AssistantRouteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        speculative = mock.patch.object(
+            assistant_route.assistant_plan,
+            "prepare_capability",
+            return_value=assistant_plan.Preparation(),
+        )
+        speculative.start()
+        self.addCleanup(speculative.stop)
+
     def test_guidance_accepts_unicode_spacing_but_rejects_layout_separators(self) -> None:
         reply = "Quel Assistant voulez-vous désinstaller\u00a0?"
         with mock.patch.object(
@@ -162,7 +171,7 @@ class AssistantRouteTests(unittest.TestCase):
         installed.assert_called_once_with("team_1")
         registry.assert_not_called()
 
-    def test_ordinary_task_runs_the_existing_capability_gate(self) -> None:
+    def test_ordinary_task_uses_the_capability_plan(self) -> None:
         prepared = assistant_plan.Preparation()
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")) as route,
@@ -178,6 +187,53 @@ class AssistantRouteTests(unittest.TestCase):
             [],
             local.IntentRouteContext(),
         )
+        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+
+    def test_capability_planning_overlaps_classification(self) -> None:
+        planning_started = threading.Event()
+        prepared = assistant_plan.Preparation(error_status=409)
+
+        def plan(*_args):
+            planning_started.set()
+            return prepared
+
+        def classify(*_args):
+            self.assertTrue(planning_started.wait(2), "capability planning did not start beside classification")
+            return response("ordinary-task")
+
+        with (
+            mock.patch.object(assistant_route.local, "intent_route", side_effect=classify),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", side_effect=plan),
+        ):
+            result = assistant_route.prepare("team_1", payload("pesquise na web"), mock.sentinel.catalog, True)
+
+        self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
+
+    def test_lifecycle_route_discards_the_speculative_capability_plan(self) -> None:
+        speculative = assistant_plan.Preparation(error_status=409)
+        with (
+            mock.patch.object(assistant_route.local, "intent_route", return_value=response("unresolved")),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=speculative),
+        ):
+            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
+
+        self.assertEqual(result.intent, "unresolved")
+        self.assertIsNone(result.preparation)
+
+    def test_saturated_capability_planning_falls_back_to_serial(self) -> None:
+        prepared = assistant_plan.Preparation()
+        with (
+            mock.patch.object(
+                assistant_route._CAPABILITY_PLANNING,
+                "submit",
+                side_effect=assistant_route.ExecutorSaturatedError("full"),
+            ),
+            mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=prepared) as gate,
+        ):
+            result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+
+        self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
         gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:

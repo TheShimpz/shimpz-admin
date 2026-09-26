@@ -172,7 +172,7 @@ class AssistantPlanEdges(unittest.TestCase):
                 self.subTest(response=response),
                 mock.patch.object(assistant_plan, "installed_inventory", return_value={}),
                 mock.patch.object(assistant_plan, "planning_catalog", return_value=(candidate,)),
-                mock.patch.object(assistant_proposal, "capability_shortlist", return_value=(candidate,)),
+                mock.patch.object(assistant_proposal, "capability_candidates", return_value=((), (candidate,))),
                 mock.patch.object(assistant_plan.local, "capability_plan", return_value=response),
             ):
                 result = assistant_plan.prepare_capability(
@@ -220,13 +220,13 @@ class AssistantProposalEdges(unittest.TestCase):
             for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
         )
         self.assertEqual(
-            assistant_proposal.capability_shortlist(
+            assistant_proposal.capability_candidates(
                 "shared",
                 catalog,
                 installed_ids=frozenset(),
                 enabled=(),
             ),
-            (),
+            ((), ()),
         )
         self.assertEqual(
             assistant_proposal.uninstall_shortlist(
