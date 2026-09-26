@@ -145,6 +145,13 @@ function humanRequest(kind) {
   return base;
 }
 
+async function fillWhenReady(page, composer, message) {
+  await expect(async () => {
+    await composer.fill(message);
+    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
+}
+
 async function routeReadyChat(page, {
   assistantPlan = false,
   alreadyInstalledResult = false,
@@ -1387,8 +1394,7 @@ test('continues the requested task after confirming an explicitly named Assistan
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('instala o cloudflare e lista minhas zonas');
-  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 15_000 });
+  await fillWhenReady(page, composer, 'instala o cloudflare e lista minhas zonas');
   await composer.press('Enter');
 
   const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -1407,8 +1413,7 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('install Cloudflare and WhatsApp and list my zones');
-  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 15_000 });
+  await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and list my zones');
   await composer.press('Enter');
 
   const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -1440,8 +1445,7 @@ test('recovers a just-in-time request from a just-installed Assistant after a sa
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('install Cloudflare and WhatsApp and send the summary');
-  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 15_000 });
+  await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and send the summary');
   await composer.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
   await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
@@ -1456,6 +1460,28 @@ test('recovers a just-in-time request from a just-installed Assistant after a sa
   await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
 });
 
+test('admits a just-in-time request from an Assistant the refreshed Team inventory proves installed', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    storedInputAfterPlan: true,
+    multipleIntegrations: true,
+    humanAssistantId: 'shimpz-slack',
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and post the summary in Slack');
+  await composer.press('Enter');
+
+  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
+  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send response' }).click();
+  await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+  expect(chat.humanResponses()).toHaveLength(1);
+});
+
 test('does not trust an install-only plan for a later request from an Assistant missing in the inventory', async ({ page }) => {
   await routeReadyChat(page, {
     assistantPlan: true,
@@ -1467,8 +1493,7 @@ test('does not trust an install-only plan for a later request from an Assistant 
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('Install Cloudflare and WhatsApp');
-  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 15_000 });
+  await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
   await composer.press('Enter');
   await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
     'data-state',
@@ -2512,7 +2537,7 @@ test('blocks Supervisor password retry behind the server countdown', async ({ pa
 test('keeps authorization modal until Team progress proves password continuation', async ({ page }) => {
   const contract = await routeReadyChat(page, { humanKind: 'auth:password', holdHumanResponse: true });
   await page.goto('/chat/');
-  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Create the reviewed DNS record');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
   await dialog.getByLabel('Supervisor password').fill('supervisor-password');
@@ -2534,7 +2559,7 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
     humanKind: 'auth:password',
   });
   await page.goto('/chat/');
-  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Create the reviewed DNS record');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Create the reviewed DNS record');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
   await dialog.getByLabel('Supervisor password').fill('supervisor-password');

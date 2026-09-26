@@ -56,6 +56,19 @@
     turnInstalled = { teamId: '', ids: new Set() };
   }
 
+  function failProtocol(active) {
+    socket = null;
+    socketReady = false;
+    busy = false;
+    syncing = false;
+    stopping = false;
+    resetProgress();
+    resetChallengeState();
+    clearTurnInstalled();
+    setError(copy.protocolError);
+    active.close(1002, 'Invalid chat event');
+  }
+
   function installedThisTurn(assistantId) {
     return turnInstalled.teamId === chatTeamId && turnInstalled.ids.has(assistantId);
   }
@@ -749,13 +762,36 @@
     current?.close(1000, 'Team changed');
   }
 
-  function acceptIntegrationChallenge(incoming) {
+  function integrationAssistantIds(incoming) {
+    return incoming.requirements.map((requirement) => requirement.assistant_id);
+  }
+
+  function knownIntegrationAssistants(incoming) {
     const selected = new Set($teamContext.selectedAssistantIds);
-    if (incoming.requirements.some((requirement) => (
-      !selected.has(requirement.assistant_id) && !installedThisTurn(requirement.assistant_id)
-    ))) {
-      throw new Error('unexpected Assistant integration requirement');
+    return integrationAssistantIds(incoming).every((id) => selected.has(id) || installedThisTurn(id));
+  }
+
+  function knownHumanAssistant(incoming) {
+    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
+    return installed.has(incoming.assistant.id) || installedThisTurn(incoming.assistant.id);
+  }
+
+  // The cached Team inventory is empty while it refreshes after an install, so an Assistant the cache does not know
+  // is checked against the fresh authenticated Team inventory before the request is refused as a protocol error.
+  async function admitWithFreshInventory(active, expectedTeamId, assistantIds, accept) {
+    let installed = new Set();
+    try {
+      const { installedAssistants } = await refreshTeamInventory(fetch);
+      installed = new Set(installedAssistants.map((assistant) => assistant.assistant));
+    } catch {
+      installed = new Set();
     }
+    if (socket !== active || chatTeamId !== expectedTeamId) return;
+    if (assistantIds.every((id) => installed.has(id) || installedThisTurn(id))) accept();
+    else failProtocol(active);
+  }
+
+  function acceptIntegrationChallenge(incoming) {
     expireSocketLifecycles();
     integrationChallenge = incoming;
     humanChallenge = undefined;
@@ -772,10 +808,6 @@
   }
 
   function acceptHumanChallenge(incoming) {
-    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-    if (!installed.has(incoming.assistant.id) && !installedThisTurn(incoming.assistant.id)) {
-      throw new Error('unexpected Assistant human request');
-    }
     expireSocketLifecycles();
     const reconciledExpiry = humanExpiredId === incoming.challenge_id;
     humanExpiredId = '';
@@ -855,11 +887,23 @@
           expectedTeam.name,
         );
         if (incoming.type === 'integrations-required') {
-          acceptIntegrationChallenge(incoming);
+          const challenge = incoming;
+          if (knownIntegrationAssistants(challenge)) acceptIntegrationChallenge(challenge);
+          else {
+            void admitWithFreshInventory(active, expectedTeamId, integrationAssistantIds(challenge), () => (
+              acceptIntegrationChallenge(challenge)
+            ));
+          }
           return;
         }
         if (incoming.type === 'human-required') {
-          acceptHumanChallenge(incoming);
+          const challenge = incoming;
+          if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
+          else {
+            void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
+              acceptHumanChallenge(challenge)
+            ));
+          }
           return;
         }
         if (incoming.type === 'human-response-rejected') {
@@ -1000,16 +1044,7 @@
         }
         if (!busy && !stopping && !syncing) throw new Error('unexpected terminal frame');
       } catch {
-        socket = null;
-        socketReady = false;
-        busy = false;
-        syncing = false;
-        stopping = false;
-        resetProgress();
-        resetChallengeState();
-        clearTurnInstalled();
-        setError(copy.protocolError);
-        active.close(1002, 'Invalid chat event');
+        failProtocol(active);
         return;
       }
 
