@@ -1740,6 +1740,19 @@
                     {assistantNames}
                   />
                 </Message>
+                {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
+                  <!-- An install that continues the requested task keeps showing that task's execution stages. -->
+                  <ShimpzThinking
+                    label={thinking}
+                    steps={progressProjection.steps}
+                    currentIndex={progressProjection.currentIndex}
+                    elapsedText={copy.elapsed}
+                    stagesText={copy.progressStages}
+                    progressLabels={copy.progress}
+                    {teamName}
+                    {assistantNames}
+                  />
+                {/if}
               {:else if index === exchanges.length - 1 && busy && !lifecycleWorking && !integrationChallenge && !humanChallenge}
                 <ShimpzThinking
                   label={thinking}

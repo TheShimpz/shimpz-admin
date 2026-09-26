@@ -157,6 +157,7 @@ async function routeReadyChat(page, {
   alreadyInstalledResult = false,
   alreadyInstalledContinuation = 'none',
   storedInputAfterPlan = false,
+  progressAfterPlan = false,
   assistantPlanContinuation = 'dispatch',
   holdAssistantPlan = false,
   holdStop = false,
@@ -590,6 +591,18 @@ async function routeReadyChat(page, {
             if (planReleased) return;
             planReleased = true;
             if (assistantPlanContinuation === 'none') return;
+            if (progressAfterPlan) {
+              socket.send(JSON.stringify({
+                type: 'progress', seq: 1, origin: 'team', phase: 'model', state: 'started',
+              }));
+              releaseReply = () => socket.send(JSON.stringify({
+                type: 'done',
+                team_id: 'marketing',
+                team_name: 'Marketing',
+                reply: 'Continued task complete.',
+              }));
+              return;
+            }
             if (storedInputAfterPlan) {
               humanPending = true;
               socket.send(JSON.stringify({
@@ -1350,7 +1363,7 @@ test('ends an explicit Assistant installation at the installed plan', async ({ p
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('Install Cloudflare and WhatsApp');
+  await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
   await composer.press('Enter');
 
   const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -1509,6 +1522,26 @@ test('discards an inventory-pending just-in-time request after the turn stops', 
   await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
   await expect(composer).toBeEnabled();
   expect(chat.humanResponses()).toHaveLength(0);
+});
+
+test('shows the continued task execution stages after an explicit install', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantPlan: true, progressAfterPlan: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and list my zones');
+  await composer.press('Enter');
+
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
+    'data-state',
+    'complete',
+  );
+  const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  await expect(thinking).toBeVisible();
+  await expect(thinking).toContainText('decides how to handle your request');
+  chat.releaseReply();
+  await expect(page.getByText('Continued task complete.')).toBeVisible();
+  await expect(thinking).toHaveCount(0);
 });
 
 test('does not trust an install-only plan for a later request from an Assistant missing in the inventory', async ({ page }) => {
