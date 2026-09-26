@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_proposal, store_catalog
+from chat import assistant_proposal, local, store_catalog
 
 DIGEST = "sha256:" + ("a" * 64)
 
@@ -50,6 +50,31 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertEqual(
             assistant_proposal.install_shortlist("Shimpz Cloudflare", (whatsapp, cloudflare)),
             (cloudflare, whatsapp),
+        )
+
+    def test_lexically_ranked_directories_satisfy_the_team_selection_contract(self) -> None:
+        exa = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-exa", "Exa", "Search the web.", ("search-web",)), "0.1.1"
+        )
+        cloudflare = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "Manage DNS.", ("list-zones",)),
+            "0.4.1",
+        )
+        uninstall = assistant_proposal.uninstall_shortlist("desinstala o exa", (exa, cloudflare))
+        directory = [
+            {"id": item.assistant.assistant_id, "name": item.assistant.name, "summary": ""} for item in uninstall
+        ]
+        self.assertEqual(
+            local._intent_route_directory("assistant-uninstall", directory)[2],
+            ["shimpz-cloudflare", "shimpz-exa"],
+        )
+        install = assistant_proposal.install_shortlist(
+            "instala o whatsapp", (_candidate(), _candidate("whatsapp", name="WhatsApp", provider="whatsapp"))
+        )
+        directory = [{"id": item.assistant_id, "name": item.name, "summary": item.summary} for item in install]
+        self.assertEqual(
+            local._intent_route_directory("assistant-install", directory)[2],
+            sorted(item.assistant_id for item in install),
         )
 
     def test_install_directory_is_bounded_and_never_displaces_a_cutoff_tie(self) -> None:
@@ -250,7 +275,7 @@ class AssistantProposalTests(unittest.TestCase):
         )
         self.assertEqual(
             assistant_proposal.uninstall_shortlist("shimpz cloudflare", (other, cloudflare)),
-            (cloudflare, other),
+            (other, cloudflare),
         )
         self.assertEqual(
             assistant_proposal.uninstall_shortlist("o de DNS", (cloudflare, other)),

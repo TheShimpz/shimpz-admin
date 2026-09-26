@@ -261,13 +261,15 @@ def _bounded_pool[AssistantT](
 ) -> tuple[AssistantT, ...]:
     """Keep the model-facing selection pool within the planner bound, preferring stronger lexical signals.
 
-    A tie across the bound would silently displace an equally ranked candidate, so it yields no pool.
+    A tie across the bound would silently displace an equally ranked candidate, so it yields no pool. The kept pool
+    is returned in the Assistant id order that the Team selection directory contract requires; scores only decide
+    which candidates fit the bound.
     """
     if len(ranked) > MAX_CAPABILITY_SHORTLIST and (
         ranked[MAX_CAPABILITY_SHORTLIST - 1][0] == ranked[MAX_CAPABILITY_SHORTLIST][0]
     ):
         return ()
-    return tuple(item[2] for item in ranked[:MAX_CAPABILITY_SHORTLIST])
+    return tuple(item[2] for item in sorted(ranked[:MAX_CAPABILITY_SHORTLIST], key=lambda item: item[1]))
 
 
 def capability_candidates(
