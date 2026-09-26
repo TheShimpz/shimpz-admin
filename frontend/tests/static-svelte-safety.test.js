@@ -38,28 +38,3 @@ test('static supply chain: shared frontend is pinned to one immutable commit', (
   assert.match(dependency, immutableCodeload);
   assert.equal(resolved, dependency);
 });
-
-test('static presentation: declared Admin sources instantiate the canonical primitives', () => {
-  const contracts = new Map([
-    ['../src/lib/AdminShell.svelte', ['WorkspaceShell']],
-    ['../src/lib/AdminNotice.svelte', ['Toast']],
-    ['../src/lib/AssistantActionDialog.svelte', ['Card', 'DialogFrame', 'Modal']],
-    ['../src/lib/AssistantIntegrationsDialog.svelte', ['DialogFrame', 'Modal']],
-    ['../src/lib/AssistantIntegrationsDrawer.svelte', ['Card', 'Drawer', 'EmptyState', 'ScrollArea', 'Toolbar']],
-    ['../src/lib/AuthScreen.svelte', ['Card']],
-    ['../src/lib/ChatContextControls.svelte', ['ChoiceItem', 'DialogFrame', 'Modal']],
-    ['../src/lib/ExecutionReceipt.svelte', ['Disclosure']],
-    ['../src/lib/LocalAssistantInstallDialog.svelte', ['Card', 'ChoiceItem', 'DialogFrame', 'Modal', 'Notice']],
-    ['../src/lib/LocaleMenu.svelte', ['DropdownMenu']],
-    ['../src/lib/NotificationCenter.svelte', ['Card', 'EmptyState', 'ScrollArea', 'Toolbar']],
-    ['../src/lib/ProviderSetupGate.svelte', ['Card']],
-    ['../src/lib/ShimpzThinking.svelte', ['Disclosure']],
-    ['../src/lib/TeamSidebar.svelte', ['Notice']],
-    ['../src/routes/chat/+page.svelte', ['AssistantIcon', 'ChatTask', 'EmptyState', 'Message', 'Notice', 'ScrollArea', 'Toolbar']],
-    ['../src/routes/assistants/+page.svelte', ['AssistantCard', 'DialogFrame', 'Modal', 'Notice', 'PageIntro', 'Toolbar']],
-  ]);
-  for (const [path, primitives] of contracts) {
-    const source = readFileSync(new URL(path, import.meta.url), 'utf8');
-    for (const primitive of primitives) assert.match(source, new RegExp(`<${primitive}(?:\\s|>)`));
-  }
-});

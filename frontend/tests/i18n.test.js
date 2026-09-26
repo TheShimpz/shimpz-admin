@@ -54,6 +54,24 @@ test('every Admin locale implements the complete English message contract', () =
   }
 });
 
+function leafValue(value, path) {
+  return path.split('.').reduce((node, key) => node[key], value);
+}
+
+test('every Admin message is non-empty and keeps the English placeholders in every locale', () => {
+  const placeholders = (text) => [...text.matchAll(/\{[a-zA-Z]+\}/g)].map((match) => match[0]).sort();
+  for (const path of leafPaths(messages.en)) {
+    const english = leafValue(messages.en, path);
+    if (typeof english !== 'string') continue;
+    for (const locale of expectedLocales) {
+      const localized = leafValue(messages[locale], path);
+      assert.equal(typeof localized, 'string', `${locale}.${path}`);
+      assert.notEqual(localized.trim(), '', `${locale}.${path}`);
+      assert.deepEqual(placeholders(localized), placeholders(english), `${locale}.${path}`);
+    }
+  }
+});
+
 test('Admin copy names installable Team workloads as Assistants', () => {
   for (const locale of expectedLocales) {
     for (const message of workloadMessages(locale)) {
