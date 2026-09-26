@@ -166,6 +166,7 @@ async function routeReadyChat(page, {
   disconnectFirstChat = false,
   holdHumanResponse = false,
   humanKind = '',
+  humanAssistantId = 'shimpz-cloudflare',
   humanExpiresIn = 300,
   redeliverExpiredHuman = false,
   humanRejections = [],
@@ -182,6 +183,7 @@ async function routeReadyChat(page, {
   invalidProgressSequence = false,
   terminalError = false,
   whatsappInstalled = false,
+  omitPlannedWhatsappFromInventory = false,
   storedInputStatus = '',
   historyStatus = 200,
   holdHistory = false,
@@ -279,7 +281,7 @@ async function routeReadyChat(page, {
             status: 'running',
             provenance: 'published',
           },
-          ...(assistantPlan || whatsappInstalled ? [{
+          ...((assistantPlan && !omitPlannedWhatsappFromInventory) || whatsappInstalled ? [{
             assistant: 'whatsapp',
             assistant_version: '0.1.0',
             status: 'running',
@@ -439,7 +441,7 @@ async function routeReadyChat(page, {
       type: 'human-required',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       expires_in: expiresIn,
-      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+      assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
       action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
       request: humanRequest(humanKind),
     }));
@@ -1384,6 +1386,7 @@ test('continues the requested task after confirming an explicitly named Assistan
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('instala o cloudflare e lista minhas zonas');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
   await composer.press('Enter');
 
   const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -1403,6 +1406,7 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('install Cloudflare and WhatsApp and list my zones');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
   await composer.press('Enter');
 
   const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -1420,6 +1424,32 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
   expect(chat.humanResponses()).toHaveLength(1);
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain('saved-third-party-secret');
+});
+
+test('does not trust an install-only plan for a later request from an Assistant missing in the inventory', async ({ page }) => {
+  await routeReadyChat(page, {
+    assistantPlan: true,
+    assistantPlanContinuation: 'none',
+    humanKind: 'approval',
+    humanAssistantId: 'whatsapp',
+    omitPlannedWhatsappFromInventory: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Install Cloudflare and WhatsApp');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await composer.press('Enter');
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
+    'data-state',
+    'complete',
+  );
+  await expect(composer).toBeEnabled();
+  await composer.fill('Send the WhatsApp summary');
+  await composer.press('Enter');
+
+  await expect(page.getByText('The secure chat response was invalid.')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {

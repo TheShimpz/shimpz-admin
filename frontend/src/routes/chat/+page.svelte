@@ -47,8 +47,8 @@
   let turns = $state([]);
   let nextRenderKey = 0;
   let busy = $state(false);
-  // Assistants the current turn's install plan proved running; a just-in-time request may reach the browser before
-  // the asynchronous Team inventory refresh reflects them.
+  // Assistants the current turn's continuing install plan proved running; a just-in-time request may reach the
+  // browser before the asynchronous Team inventory refresh reflects them. Cleared at every turn and Team boundary.
   let turnInstalledIds = new Set();
   let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
@@ -710,6 +710,7 @@
   }
 
   function resetChallengeState({ includeInventory = false } = {}) {
+    turnInstalledIds = new Set();
     integrationChallenge = undefined;
     humanChallenge = undefined;
     humanRejection = undefined;
@@ -913,7 +914,9 @@
             return;
           }
           if (incoming.state === 'installed') {
-            for (const assistant of incoming.assistants) turnInstalledIds.add(assistant.id);
+            if (incoming.continuation === 'dispatch') {
+              for (const assistant of incoming.assistants) turnInstalledIds.add(assistant.id);
+            }
             void refreshTeamInventory(fetch).catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
