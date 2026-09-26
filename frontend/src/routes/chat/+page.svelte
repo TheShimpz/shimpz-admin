@@ -51,9 +51,12 @@
   // browser, or be redelivered after a same-Team reconnect, before the asynchronous Team inventory refresh reflects
   // them. Cleared at every terminal result, empty sync, protocol error, new message, and Team change.
   let turnInstalled = { teamId: '', ids: new Set() };
+  // Advances at every turn boundary so an inventory-dependent admission started in an older turn is discarded.
+  let turnEpoch = 0;
 
   function clearTurnInstalled() {
     turnInstalled = { teamId: '', ids: new Set() };
+    turnEpoch += 1;
   }
 
   function failProtocol(active) {
@@ -779,6 +782,7 @@
   // The cached Team inventory is empty while it refreshes after an install, so an Assistant the cache does not know
   // is checked against the fresh authenticated Team inventory before the request is refused as a protocol error.
   async function admitWithFreshInventory(active, expectedTeamId, assistantIds, accept) {
+    const epoch = turnEpoch;
     let installed = new Set();
     try {
       const { installedAssistants } = await refreshTeamInventory(fetch);
@@ -786,7 +790,7 @@
     } catch {
       installed = new Set();
     }
-    if (socket !== active || chatTeamId !== expectedTeamId) return;
+    if (socket !== active || chatTeamId !== expectedTeamId || epoch !== turnEpoch) return;
     if (assistantIds.every((id) => installed.has(id) || installedThisTurn(id))) accept();
     else failProtocol(active);
   }

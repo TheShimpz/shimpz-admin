@@ -169,6 +169,7 @@ async function routeReadyChat(page, {
   assistantUninstallWasRemoved = true,
   holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
+  holdPostInstallInventory = false,
   disconnectHumanResponse = false,
   disconnectFirstChat = false,
   holdHumanResponse = false,
@@ -278,6 +279,7 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/teams/marketing/assistants', async (route) => {
     if (holdAssistantInventoryRefresh && !assistantInstalled) await assistantInventoryHold;
+    if (holdPostInstallInventory && assistantInstalled) await assistantInventoryHold;
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -1480,6 +1482,33 @@ test('admits a just-in-time request from an Assistant the refreshed Team invento
   await dialog.getByRole('button', { name: 'Send response' }).click();
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
   expect(chat.humanResponses()).toHaveLength(1);
+});
+
+test('discards an inventory-pending just-in-time request after the turn stops', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    storedInputAfterPlan: true,
+    multipleIntegrations: true,
+    humanAssistantId: 'shimpz-slack',
+    holdPostInstallInventory: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and post the summary in Slack');
+  await composer.press('Enter');
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
+    'data-state',
+    'complete',
+  );
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(composer).toBeEnabled();
+  chat.releaseAssistantInventory();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  expect(chat.humanResponses()).toHaveLength(0);
 });
 
 test('does not trust an install-only plan for a later request from an Assistant missing in the inventory', async ({ page }) => {
