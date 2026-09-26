@@ -148,6 +148,8 @@ function humanRequest(kind) {
 async function routeReadyChat(page, {
   assistantPlan = false,
   alreadyInstalledResult = false,
+  alreadyInstalledContinuation = 'none',
+  storedInputAfterPlan = false,
   assistantPlanContinuation = 'dispatch',
   holdAssistantPlan = false,
   holdStop = false,
@@ -514,9 +516,17 @@ async function routeReadyChat(page, {
               provenance: 'local',
               status: 'installed',
             }],
-            continuation: 'none',
+            continuation: alreadyInstalledContinuation,
             outcome: 'already-installed',
           }));
+          if (alreadyInstalledContinuation === 'dispatch') {
+            socket.send(JSON.stringify({
+              type: 'done',
+              team_id: 'marketing',
+              team_name: 'Marketing',
+              reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
+            }));
+          }
           return;
         }
         if (assistantPlan && !assistantInstalled) {
@@ -567,6 +577,18 @@ async function routeReadyChat(page, {
             if (planReleased) return;
             planReleased = true;
             if (assistantPlanContinuation === 'none') return;
+            if (storedInputAfterPlan) {
+              humanPending = true;
+              socket.send(JSON.stringify({
+                type: 'human-required',
+                challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                expires_in: humanExpiresIn,
+                assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+                action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
+                request: { ...humanRequest('input:password'), stored_input: 'cloudflare-token' },
+              }));
+              return;
+            }
             socket.send(JSON.stringify({
               type: 'done',
               team_id: 'marketing',
@@ -1350,6 +1372,54 @@ test('reports a repeated exact Assistant install from authoritative current stat
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
   await expect(composer).toBeEnabled();
   expect(chat.chatFrames()).toHaveLength(1);
+});
+
+test('continues the requested task after confirming an explicitly named Assistant is running', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    alreadyInstalledResult: true,
+    alreadyInstalledContinuation: 'dispatch',
+    reply: 'Here are today\'s zones.',
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('instala o cloudflare e lista minhas zonas');
+  await composer.press('Enter');
+
+  const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(task).toHaveCount(1);
+  await expect(task).toContainText('Already installed');
+  await expect(page.getByText('Here are today\'s zones.', { exact: true })).toBeVisible();
+  await expect(composer).toBeEnabled();
+  expect(chat.chatFrames()).toHaveLength(1);
+});
+
+test('installs a named Assistant, asks for its saved key just in time, and completes the task', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    storedInputAfterPlan: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('install Cloudflare and WhatsApp and list my zones');
+  await composer.press('Enter');
+
+  const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
+  await expect(tasks).toHaveCount(2);
+  await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
+  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  await expect(dialog).toBeVisible();
+  await expect(composer).toBeDisabled();
+  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send response' }).click();
+
+  await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+  await expect(composer).toBeEnabled();
+  expect(chat.chatFrames()).toHaveLength(1);
+  expect(chat.humanResponses()).toHaveLength(1);
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  expect(stored).not.toContain('saved-third-party-secret');
 });
 
 test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {

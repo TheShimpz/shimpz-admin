@@ -47,6 +47,9 @@
   let turns = $state([]);
   let nextRenderKey = 0;
   let busy = $state(false);
+  // Assistants the current turn's install plan proved running; a just-in-time request may reach the browser before
+  // the asynchronous Team inventory refresh reflects them.
+  let turnInstalledIds = new Set();
   let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
   let progressEvents = $state([]);
@@ -739,7 +742,9 @@
 
   function acceptIntegrationChallenge(incoming) {
     const selected = new Set($teamContext.selectedAssistantIds);
-    if (incoming.requirements.some((requirement) => !selected.has(requirement.assistant_id))) {
+    if (incoming.requirements.some((requirement) => (
+      !selected.has(requirement.assistant_id) && !turnInstalledIds.has(requirement.assistant_id)
+    ))) {
       throw new Error('unexpected Assistant integration requirement');
     }
     expireSocketLifecycles();
@@ -759,7 +764,7 @@
 
   function acceptHumanChallenge(incoming) {
     const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-    if (!installed.has(incoming.assistant.id)) {
+    if (!installed.has(incoming.assistant.id) && !turnInstalledIds.has(incoming.assistant.id)) {
       throw new Error('unexpected Assistant human request');
     }
     expireSocketLifecycles();
@@ -908,6 +913,7 @@
             return;
           }
           if (incoming.state === 'installed') {
+            for (const assistant of incoming.assistants) turnInstalledIds.add(assistant.id);
             void refreshTeamInventory(fetch).catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
@@ -1255,6 +1261,7 @@
     ) return false;
     let frame;
     let resumedObjective = '';
+    turnInstalledIds = new Set();
     const assistantIds = [...$teamContext.selectedAssistantIds];
     const continuation = useCapabilityObjective && capabilityContinuation(normalized);
     const sameAssistantIds = continuation && capabilityObjective
