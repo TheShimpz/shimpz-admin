@@ -186,16 +186,28 @@ async def _deliver_already_installed(
     connection: Connection,
     turn: Turn,
     team_id: str,
+    payload: dict[str, object],
     result: assistant_plan.AlreadyInstalled,
     operations: Operations,
 ) -> None:
     terminal = assistant_plan.already_installed_event(result)
     if not await _commit_install(team_id, turn, terminal):
         connection.assistant_reference = None
-        terminal = operations.error_terminal(503, "Admin chat history is unavailable")
-    else:
+        await operations.finish_turn(
+            websocket, connection, turn, operations.error_terminal(503, "Admin chat history is unavailable")
+        )
+        return
+    if not result.dispatch_ids:
         _remember_single_install(connection, result.assistants)
-    await operations.finish_turn(websocket, connection, turn, terminal)
+        await operations.finish_turn(websocket, connection, turn, terminal)
+        return
+    connection.assistant_reference = None
+    if not await operations.send_event(websocket, terminal):
+        connection.closed = True
+        return
+    await operations.continue_turn(
+        websocket, connection, turn, team_id, {**payload, "assistant_ids": list(result.dispatch_ids)}
+    )
 
 
 async def deliver_result(
@@ -234,6 +246,7 @@ async def deliver_result(
             connection,
             turn,
             team_id,
+            payload,
             preparation.already_installed,
             operations,
         )

@@ -267,7 +267,6 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
         event.get("continuation") not in {"dispatch", "none"}
         or any(item["status"] != "installed" for item in canonical)
         or ("outcome" in event and event.get("outcome") != "already-installed")
-        or ("outcome" in event and event.get("continuation") != "none")
     ):
         raise ValueError("chat history installed result is invalid")
     if state == "failed" and (

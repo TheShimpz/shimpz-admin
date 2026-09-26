@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_install, assistant_plan, local_catalog, store_catalog
+from chat import assistant_install, assistant_inventory, assistant_plan, local_catalog, store_catalog
 
 
 def _candidate(
@@ -504,6 +504,32 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         )
 
         self.assertEqual(result, assistant_plan.Preparation(error_status=409))
+
+    def test_explicit_install_continues_a_requested_task_after_install_or_confirmation(self) -> None:
+        payload = _payload("Instale o Cloudflare e configure meu domínio", ("whatsapp",))
+        fresh = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,), task_follows=True)
+        self.assertFalse(fresh.plan.terminal)
+        self.assertEqual(fresh.plan.dispatch_ids, ("cloudflare", "whatsapp"))
+        self.assertTrue(
+            assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,)).plan.terminal
+        )
+        running = assistant_inventory.installed(_installed(("cloudflare", "running")))
+        confirmed = assistant_plan.prepare_install(
+            "team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), task_follows=True
+        )
+        self.assertEqual(confirmed.already_installed.dispatch_ids, ("cloudflare", "whatsapp"))
+        self.assertEqual(
+            assistant_plan.already_installed_event(confirmed.already_installed)["continuation"], "dispatch"
+        )
+        only = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), running, (CLOUDFLARE,))
+        self.assertEqual(only.already_installed.dispatch_ids, ())
+        crowded = _payload("x", tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_CHAT_ASSISTANTS)))
+        self.assertEqual(
+            assistant_plan.prepare_install(
+                "team_1", crowded, ("cloudflare",), running, (CLOUDFLARE,), task_follows=True
+            ),
+            assistant_plan.Preparation(error_status=409),
+        )
 
     def test_explicit_install_rejects_invalid_structured_selections(self) -> None:
         payload = _payload("Instale o Cloudflare")

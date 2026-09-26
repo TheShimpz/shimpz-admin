@@ -33,6 +33,7 @@ class AlreadyInstalled:
     plan_id: str
     team_id: str
     assistants: tuple[dict[str, object], ...]
+    dispatch_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,8 +254,14 @@ def prepare_install(
     selected_ids: tuple[str, ...],
     installed: dict[str, assistant_inventory.InstalledAssistant],
     available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+    *,
+    task_follows: bool = False,
 ) -> Preparation:
-    """Bind a structured install selection to exact current state and a terminal plan."""
+    """Bind a structured install selection to exact current state.
+
+    The plan is terminal for an install-only request; when the objective also asks for work, the original objective
+    is dispatched once after installation or after confirming the selection is already running.
+    """
     if not selected_ids or len(selected_ids) > MAX_PLAN_ASSISTANTS:
         return Preparation(error_status=422)
     identities = {assistant.assistant_id: assistant for assistant in available}
@@ -266,6 +273,9 @@ def prepare_install(
         if assistant_id not in installed or installed[assistant_id].status != "running"
     )
     if not missing:
+        dispatch_ids = tuple(sorted(set(payload["assistant_ids"]) | set(selected_ids))) if task_follows else ()
+        if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
+            return Preparation(error_status=409)
         return Preparation(
             already_installed=AlreadyInstalled(
                 plan_id=secrets.token_hex(16),
@@ -283,6 +293,7 @@ def prepare_install(
                     }
                     for assistant_id in selected_ids
                 ),
+                dispatch_ids=dispatch_ids,
             )
         )
     return _prepared_plan(
@@ -290,7 +301,7 @@ def prepare_install(
         tuple(payload["assistant_ids"]),
         available,
         missing,
-        terminal=True,
+        terminal=not task_follows,
         dispatch_selected=selected_ids,
         lifecycle_ids=selected_ids,
     )
@@ -342,14 +353,14 @@ def event(
 
 
 def already_installed_event(result: AlreadyInstalled) -> dict[str, object]:
-    """Project one terminal, idempotent response without claiming a fresh install."""
+    """Project one idempotent response without claiming a fresh install; a requested task continues after it."""
     return {
         "type": "assistant-install-plan",
         "state": "installed",
         "plan_id": result.plan_id,
         "team_id": result.team_id,
         "assistants": list(result.assistants),
-        "continuation": "none",
+        "continuation": "dispatch" if result.dispatch_ids else "none",
         "outcome": "already-installed",
     }
 

@@ -72,6 +72,52 @@ class PlanDeliveryEdges(unittest.TestCase):
 
         self.assertIsNone(connection.assistant_reference)
 
+    def test_an_already_installed_target_continues_the_requested_task_once(self) -> None:
+        async def scenario() -> None:
+            result = assistant_plan.AlreadyInstalled(
+                "c" * 32,
+                "team_1",
+                (
+                    {
+                        "id": "shimpz-exa",
+                        "name": "Exa",
+                        "summary": "Search the web.",
+                        "providers": [],
+                        "provenance": "local",
+                        "status": "installed",
+                    },
+                ),
+                dispatch_ids=("shimpz-cloudflare", "shimpz-exa"),
+            )
+            payload = {"message": "Install Exa and search today's AI news", "files": [], "assistant_ids": []}
+            operations = _operations()
+            connection = Connection()
+            turn = Turn(None, "capability-plan", history_id="b" * 32)
+            with mock.patch.object(plan_delivery.history, "append_install", return_value=True):
+                await plan_delivery._deliver_already_installed(
+                    mock.sentinel.websocket, connection, turn, "team_1", payload, result, operations
+                )
+            event = operations.send_event.await_args.args[1]
+            self.assertEqual((event["outcome"], event["continuation"]), ("already-installed", "dispatch"))
+            operations.finish_turn.assert_not_awaited()
+            closed = Connection()
+            unsent = _operations(send_event=mock.AsyncMock(return_value=False))
+            with mock.patch.object(plan_delivery.history, "append_install", return_value=True):
+                await plan_delivery._deliver_already_installed(
+                    mock.sentinel.websocket, closed, turn, "team_1", payload, result, unsent
+                )
+            self.assertTrue(closed.closed)
+            unsent.continue_turn.assert_not_awaited()
+            operations.continue_turn.assert_awaited_once_with(
+                mock.sentinel.websocket,
+                connection,
+                turn,
+                "team_1",
+                {**payload, "assistant_ids": ["shimpz-cloudflare", "shimpz-exa"]},
+            )
+
+        asyncio.run(scenario())
+
     def test_uncommitted_already_installed_result_fails_closed(self) -> None:
         async def scenario() -> None:
             result = assistant_plan.AlreadyInstalled(
@@ -95,6 +141,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     Connection(),
                     Turn(None, "capability-plan", history_id="b" * 32),
                     "team_1",
+                    {"message": "Install Cloudflare", "files": [], "assistant_ids": []},
                     result,
                     operations,
                 )

@@ -159,6 +159,13 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertNotIn("continuation", installed)
         self.assertNotIn("plan_id", installed)
 
+        continued = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", continued, "Install Cloudflare and list my zones"))
+        self.assertTrue(
+            history.append_install("marketing", continued, {**event, "plan_id": "d" * 32, "continuation": "dispatch"})
+        )
+        self.assertEqual(history.page("marketing")["entries"][3]["outcome"], "already-installed")
+
     def test_finishing_one_resumable_turn_never_releases_its_successor(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
@@ -419,10 +426,6 @@ class ChatHistoryTests(unittest.TestCase):
             (
                 history._install_payload,
                 ({**_installed_event(), "outcome": "new"}, "marketing"),
-            ),
-            (
-                history._install_payload,
-                ({**_installed_event(), "outcome": "already-installed"}, "marketing"),
             ),
             (
                 history._install_payload,

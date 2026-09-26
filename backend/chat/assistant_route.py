@@ -51,6 +51,7 @@ class Route:
     query: str = ""
     assistant_ids: tuple[str, ...] = ()
     reply: str = ""
+    task_follows: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +104,19 @@ def _route(
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
         raise RouteError(_safe_status(response))
     body = response.body
-    if not isinstance(body, dict) or set(body) != {"team_id", "intent", "query", "assistant_ids", "reply"}:
+    if not isinstance(body, dict) or set(body) != {
+        "team_id",
+        "intent",
+        "query",
+        "assistant_ids",
+        "reply",
+        "task_follows",
+    }:
+        raise RouteError(502)
+    task_follows = body["task_follows"]
+    if type(task_follows) is not bool or (
+        task_follows and (expected_intent is not None or body["intent"] != "assistant-install")
+    ):
         raise RouteError(502)
     intent = body["intent"]
     query = body["query"]
@@ -127,7 +140,7 @@ def _route(
             raise RouteError(502)
     elif (intent == "unresolved") != bool(reply):
         raise RouteError(502)
-    return Route(intent, query, tuple(assistant_ids), reply)
+    return Route(intent, query, tuple(assistant_ids), reply, task_follows)
 
 
 def _guidance(intent: LifecycleIntent, reply: str) -> Guidance:
@@ -168,6 +181,7 @@ def _prepare_install(
     catalog: store_catalog.StoreCatalog,
     include_local: bool,
     language_exemplar: str | None,
+    task_follows: bool = False,
 ) -> Result:
     installed, available = _catalog_state(team_id, catalog, include_local)
     shortlist = assistant_proposal.install_shortlist(query, available)
@@ -180,7 +194,14 @@ def _prepare_install(
     )
     if selection.intent == "unresolved":
         return Result("assistant-install", guidance=_guidance("assistant-install", selection.reply))
-    preparation = assistant_plan.prepare_install(team_id, payload, selection.assistant_ids, installed, available)
+    preparation = assistant_plan.prepare_install(
+        team_id,
+        payload,
+        selection.assistant_ids,
+        installed,
+        available,
+        task_follows=task_follows,
+    )
     return Result("assistant-install", preparation=preparation)
 
 
@@ -226,6 +247,7 @@ def _classified_install(
         catalog,
         include_local,
         language_exemplar,
+        classification.task_follows,
     )
 
 

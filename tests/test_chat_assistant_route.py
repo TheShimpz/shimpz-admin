@@ -45,6 +45,7 @@ def response(
     return local.PublicResponse(
         200,
         {
+            "task_follows": False,
             "team_id": "team_1",
             "intent": intent,
             "query": query,
@@ -119,9 +120,19 @@ class AssistantRouteTests(unittest.TestCase):
             ):
                 assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
 
+        def with_continuation(routed: local.PublicResponse, value: object) -> local.PublicResponse:
+            return local.PublicResponse(routed.status, {**routed.body, "task_follows": value})
+
+        continuing = with_continuation(response("assistant-install", "exa"), True)
+        with mock.patch.object(assistant_route.local, "intent_route", return_value=continuing):
+            self.assertTrue(assistant_route._route("team_1", "instala o exa e pesquisa", None, []).task_follows)
+        selected = with_continuation(response("assistant-install", assistant_ids=["shimpz-exa"]), True)
+        non_boolean = with_continuation(response("assistant-install", "exa"), 1)
         invalid_reply_rules = (
             (None, response("ordinary-task", reply="Unexpected guidance")),
             ("assistant-uninstall", response("unresolved", reply="")),
+            ("assistant-install", selected),
+            (None, non_boolean),
         )
         for expected_intent, routed in invalid_reply_rules:
             with (

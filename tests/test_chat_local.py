@@ -856,6 +856,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         upstream = team.TeamResponse(
             200,
             {
+                "task_follows": False,
                 "team_id": "team_1",
                 "intent": "assistant-uninstall",
                 "query": "",
@@ -885,6 +886,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             team.TeamResponse(
                 200,
                 {
+                    "task_follows": False,
                     "team_id": "team_1",
                     "intent": "assistant-uninstall",
                     "query": "",
@@ -908,6 +910,27 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         self.assertNotIn(api_key, repr(response))
         self.assertNotIn("trace_id", response.body)
+
+    def test_intent_route_task_continuation_is_only_a_targeted_install_classification(self) -> None:
+        body = {
+            "task_follows": True,
+            "team_id": "team_1",
+            "intent": "assistant-install",
+            "query": "exa",
+            "assistant_ids": [],
+            "reply": "",
+            "trace_id": TRACE_ID,
+        }
+        projected = local._project_intent_route(team.TeamResponse(200, body), "team_1", None, [])
+        self.assertTrue(projected.body["task_follows"])
+        for invalid, expected in (
+            ({**body, "task_follows": "yes"}, None),
+            ({**body, "intent": "ordinary-task", "query": ""}, None),
+            ({**body, "query": "", "reply": "Qual?"}, None),
+            ({**body, "query": "", "assistant_ids": ["exa"]}, "assistant-install"),
+        ):
+            with self.subTest(body=invalid), self.assertRaises(ValueError):
+                local._project_intent_route(team.TeamResponse(200, invalid), "team_1", expected, ["exa"])
 
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()

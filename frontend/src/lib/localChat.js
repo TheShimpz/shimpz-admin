@@ -914,9 +914,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
     )) ||
     (value.state === 'installed' && (
       !['dispatch', 'none'].includes(value.continuation) ||
-      ('outcome' in value && (
-        value.outcome !== 'already-installed' || value.continuation !== 'none'
-      ))
+      ('outcome' in value && value.outcome !== 'already-installed')
     ))
   ) throw new LocalApiError('The local chat response is invalid.');
   const assistants = value.assistants.map(canonicalInstallPlanAssistant);

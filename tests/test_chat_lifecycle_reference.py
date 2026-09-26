@@ -113,6 +113,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         route.assert_not_called()
 
         base = {
+            "task_follows": False,
             "team_id": "team_1",
             "intent": "assistant-uninstall",
             "query": "",
@@ -147,6 +148,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
 
         classification_invalid = (
             {
+                "task_follows": False,
                 "team_id": "team_1",
                 "intent": "ordinary-task",
                 "query": "unexpected",
@@ -155,6 +157,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "trace_id": TRACE_ID,
             },
             {
+                "task_follows": False,
                 "team_id": "team_1",
                 "intent": "unresolved",
                 "query": "unexpected",
@@ -163,6 +166,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "trace_id": TRACE_ID,
             },
             {
+                "task_follows": False,
                 "team_id": "team_1",
                 "intent": "ordinary-task",
                 "query": "",
@@ -183,6 +187,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 )
 
         valid_classification = {
+            "task_follows": False,
             "team_id": "team_1",
             "intent": "ordinary-task",
             "query": "",
@@ -207,6 +212,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             )
 
         invalid_unresolved = {
+            "task_follows": False,
             "team_id": "team_1",
             "intent": "unresolved",
             "query": "unexpected",

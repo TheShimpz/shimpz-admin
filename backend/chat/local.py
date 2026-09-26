@@ -426,8 +426,12 @@ def _project_intent_route(
     expected_ids: list[str],
 ) -> team.TeamResponse:
     body = response.body
-    if set(body) != {"team_id", "intent", "query", "assistant_ids", "reply", "trace_id"}:
+    if set(body) != {"team_id", "intent", "query", "assistant_ids", "reply", "task_follows", "trace_id"}:
         raise ValueError("invalid intent route fields")
+    task_follows = body["task_follows"]
+    continues_install = expected_intent is None and body["intent"] == "assistant-install" and bool(body["query"])
+    if type(task_follows) is not bool or (task_follows and not continues_install):
+        raise ValueError("invalid intent route continuation")
     intent = body["intent"]
     query = body["query"]
     raw_ids = body["assistant_ids"]
@@ -477,6 +481,7 @@ def _project_intent_route(
             "query": query,
             "assistant_ids": assistant_ids,
             "reply": reply,
+            "task_follows": task_follows,
         },
     )
 
