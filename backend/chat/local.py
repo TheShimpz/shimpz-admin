@@ -69,6 +69,8 @@ _CHAT_ERROR_DETAILS = {
     "action-state-unavailable": "Team Action execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
     "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
+    "human-challenge-response-invalid": "the Assistant request for your input was invalid",
+    "chat-challenge-response-invalid": "the Assistant challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
 }

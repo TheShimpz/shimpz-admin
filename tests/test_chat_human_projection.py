@@ -164,6 +164,32 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     "human-required",
                 )
 
+    def test_a_stored_input_password_request_projects_its_identifier(self) -> None:
+        request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
+        stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
+        projected = local._project_pending_challenge(team.TeamResponse(428, _response(stored)), "team_1")
+        self.assertEqual(projected.status, 428)
+        self.assertEqual(projected.body["request"]["stored_input"], "exa-api-key")
+        self.assertEqual(projected.websocket_event("team_1")["type"], "human-required")
+        rejected = local._project_pending_challenge(
+            team.TeamResponse(428, _response({**stored, "stored_input": "Exa_Key"})), "team_1"
+        )
+        self.assertEqual(
+            rejected.websocket_event("team_1")["detail"],
+            "human-challenge-response-invalid: the Assistant request for your input was invalid",
+        )
+        text = {key: value for key, value in _request("input:text").items() if key != "fingerprint"}
+        for invalid in (
+            _fingerprinted({**request, "stored_input": "Exa_Key"}),
+            _fingerprinted({**request, "stored_input": None}),
+            _fingerprinted({**text, "stored_input": "exa-api-key"}),
+        ):
+            with self.subTest(request=invalid):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, _response(invalid)), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+
     def test_tampered_or_augmented_challenges_fail_without_reflection(self) -> None:
         request = _request("input:select")
         tampered = dict(request)

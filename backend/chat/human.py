@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import math
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -51,6 +52,8 @@ RESPONSE_FIELDS = frozenset(
     }
 )
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
+# Team names a persistent password Stored Input with this exact identifier grammar (ADR-0059).
+_STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 log = logging.getLogger("shimpz-admin")
 
 
@@ -283,9 +286,12 @@ def _kind(request: dict[str, object], kind: str) -> bool:
     if kind == "approval" or kind in AUTH_KINDS:
         return fields == base
     if kind in LENGTH_KINDS:
-        return fields == base | {"label", "required", "placeholder", "min_length", "max_length"} and _length(
-            request, LENGTH_KINDS[kind]
-        )
+        expected = base | {"label", "required", "placeholder", "min_length", "max_length"}
+        if kind == "input:password" and "stored_input" in fields:
+            if not _stored_input(request["stored_input"]):
+                return False
+            expected |= {"stored_input"}
+        return fields == expected and _length(request, LENGTH_KINDS[kind])
     if kind in CHOICE_KINDS:
         return fields == base | {"label", "required", "options"} and _choices(request, multiple=False)
     if kind == "input:choices":
@@ -297,6 +303,10 @@ def _kind(request: dict[str, object], kind: str) -> bool:
             "max_selections",
         } and _choices(request, multiple=True)
     return False
+
+
+def _stored_input(value: object) -> bool:
+    return isinstance(value, str) and _STORED_INPUT_ID.fullmatch(value) is not None
 
 
 def _length(request: dict[str, object], limit: int) -> bool:
