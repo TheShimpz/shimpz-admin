@@ -593,7 +593,7 @@ test('renders the Store as only the Assistant list for the Team its link names',
   expect(mainBox).not.toBeNull();
   expect(catalogBox.y - mainBox.y).toBeLessThan(80);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
-  await expect(page.getByRole('link', { name: /^Store \d+ Assistants installed$/ })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Open the Store for Marketing' })).toHaveAttribute('aria-current', 'page');
   if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
   await page.goto('/assistants/?team=missing');
@@ -774,7 +774,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
   await page.goto('/teams/');
   await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
-  await page.getByRole('link', { name: /^Store \d+ Assistants installed$/ }).click();
+  await page.getByRole('link', { name: /^Open the Store for / }).first().click();
   await iconRequested;
 
   const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });

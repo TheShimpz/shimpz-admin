@@ -3033,8 +3033,8 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
 
   let navigation = await openTeamNavigation(page);
-  await expect(navigation.getByRole('link', { name: 'Chat', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(navigation.getByRole('link', { name: 'Store 1 Assistants installed' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: 'Chat', exact: true })).toHaveCount(0);
   await expect(page.locator('.context-controls')).toHaveCount(0);
 
   const supportLink = navigation.getByRole('link', { name: 'Support', exact: true });
@@ -3047,12 +3047,12 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   await navigation.getByRole('link', { name: 'Support', exact: true }).click();
   await expect(page).toHaveURL(/\/chat\/?\?team=support$/);
   navigation = await openTeamNavigation(page);
-  await expect(navigation.getByRole('link', { name: 'Chat', exact: true })).toHaveAttribute('aria-current', 'page');
-  await navigation.getByRole('link', { name: /^Store 0 Assistants installed$/ }).click();
+  await expect(navigation.getByRole('link', { name: 'Support', exact: true })).toHaveAttribute('aria-current', 'page');
+  await navigation.getByRole('link', { name: 'Open the Store for Support' }).click();
   await expect(page).toHaveURL(/\/assistants\/?\?team=support$/);
   await expect(page.getByRole('region', { name: 'Shimpz Assistant Store' })).toBeVisible();
   navigation = await openTeamNavigation(page);
-  await expect(navigation.getByRole('link', { name: /^Store 0 Assistants installed$/ })).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: 'Open the Store for Support' })).toHaveAttribute('aria-current', 'page');
   await navigation.getByRole('link', { name: 'Open the Store for Marketing' }).click();
   await expect(page).toHaveURL(/\/assistants\/?\?team=marketing$/);
 

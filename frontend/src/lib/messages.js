@@ -313,9 +313,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.en,
     teamNavigation: {
-      chat: "Chat",
-      store: "Store",
-      installed: "{count} Assistants installed",
       label: "Teams",
       newTeam: "New Team",
       openStore: "Open the Store for {team}",
@@ -671,9 +668,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.pt,
     teamNavigation: {
-      chat: "Chat",
-      store: "Store",
-      installed: "{count} Assistants instalados",
       label: "Times",
       newTeam: "Novo Time",
       openStore: "Abrir a Store de {team}",
@@ -1029,9 +1023,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.es,
     teamNavigation: {
-      chat: "Chat",
-      store: "Store",
-      installed: "{count} Assistants instalados",
       label: "Equipos",
       newTeam: "Nuevo Equipo",
       openStore: "Abrir la Store de {team}",
@@ -1387,9 +1378,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.zh,
     teamNavigation: {
-      chat: "聊天",
-      store: "Store",
-      installed: "已安装 {count} 个 Assistant",
       label: "团队",
       newTeam: "新建团队",
       openStore: "打开 {team} 的 Store",
@@ -1745,9 +1733,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.fr,
     teamNavigation: {
-      chat: "Chat",
-      store: "Store",
-      installed: "{count} Assistants installés",
       label: "Équipes",
       newTeam: "Nouvelle Équipe",
       openStore: "Ouvrir le Store de {team}",
@@ -2103,9 +2088,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.de,
     teamNavigation: {
-      chat: "Chat",
-      store: "Store",
-      installed: "{count} Assistants installiert",
       label: "Teams",
       newTeam: "Neues Team",
       openStore: "Store für {team} öffnen",
@@ -2461,9 +2443,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ja,
     teamNavigation: {
-      chat: "チャット",
-      store: "Store",
-      installed: "{count} 個の Assistant をインストール済み",
       label: "チーム",
       newTeam: "新しいチーム",
       openStore: "{team} の Store を開く",
@@ -2819,9 +2798,6 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ar,
     teamNavigation: {
-      chat: "المحادثة",
-      store: "Store",
-      installed: "{count} من Assistants مثبّتة",
       label: "الفرق",
       newTeam: "فريق جديد",
       openStore: "فتح Store الخاص بـ {team}",
