@@ -13,13 +13,11 @@ import {
 
 const MAX_TEAMS = 128;
 const MAX_PASSWORD_CHARS = 4096;
-const MAX_STORED_INTENT_BYTES = 16 * 1024;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_TEAM_RESIDUE_CLASSES = 32;
-const ASSISTANT_INTENT_VERSION = 2;
-const ASSISTANT_INTENT_KEY_PREFIX = 'shimpz.admin.chat.assistant-intent.v2:';
 const TEAM_RESIDUE_CLASS_RE = /^[a-z][a-z0-9_]{0,63}$/;
-export const MAX_SELECTED_ASSISTANTS = 16;
+// The chat protocol admits at most this many Assistants in one turn's capability scope.
+export const MAX_CHAT_ASSISTANTS = 16;
 
 function emptyContext() {
   return {
@@ -28,7 +26,8 @@ function emptyContext() {
     selectedTeamId: '',
     catalog: [],
     installedAssistants: [],
-    selectedAssistantIds: [],
+    activeAssistantIds: [],
+    omittedAssistantIds: [],
     error: '',
   };
 }
@@ -36,95 +35,15 @@ function emptyContext() {
 export const teamContext = writable(emptyContext());
 
 let generation = 0;
-const assistantIntents = new Map();
-function intentStorage() {
-  try {
-    return typeof globalThis.sessionStorage === 'undefined' ? null : globalThis.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-function intentStorageKey(teamId) {
-  return `${ASSISTANT_INTENT_KEY_PREFIX}${teamId}`;
-}
-
-function readStoredAssistantIntent(teamId) {
-  const storage = intentStorage();
-  if (!storage) return undefined;
-  const key = intentStorageKey(teamId);
-  try {
-    const raw = storage.getItem(key);
-    if (raw === null) return undefined;
-    if (raw.length > MAX_STORED_INTENT_BYTES) throw new Error('oversized preference');
-    const parsed = JSON.parse(raw);
-    if (
-      !exactKeys(parsed, ['disabled', 'version']) ||
-      parsed.version !== ASSISTANT_INTENT_VERSION ||
-      !Array.isArray(parsed.disabled) ||
-      parsed.disabled.length > MAX_INSTALLED_ASSISTANTS ||
-      parsed.disabled.some((id) => typeof id !== 'string' || id.length > 80 || !ASSISTANT_ID_RE.test(id)) ||
-      new Set(parsed.disabled).size !== parsed.disabled.length
-    ) {
-      throw new Error('invalid preference');
-    }
-    return { disabled: [...parsed.disabled] };
-  } catch {
-    try { storage.removeItem(key); } catch { /* Session preferences are best-effort only. */ }
-    return undefined;
-  }
-}
-
-function writeStoredAssistantIntent(teamId, intent) {
-  const storage = intentStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(intentStorageKey(teamId), JSON.stringify({
-      version: ASSISTANT_INTENT_VERSION,
-      disabled: intent.disabled,
-    }));
-  } catch {
-    // Chat scope stays correct in memory when browser session storage is unavailable.
-  }
-}
-
-function clearStoredAssistantIntent(teamId) {
-  assistantIntents.delete(teamId);
-  const storage = intentStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(intentStorageKey(teamId));
-  } catch {
-    // Deletion remains authoritative when browser session storage is unavailable.
-  }
-}
-
-function runningAssistantIds(installedAssistants) {
-  return installedAssistants
+function chatScope(installedAssistants) {
+  // Every running Assistant joins the chat in inventory order; any beyond the protocol bound is reported as omitted.
+  const running = installedAssistants
     .filter((entry) => entry.status === 'running')
     .map((entry) => entry.assistant);
-}
-
-function activeAssistantIds(installedAssistants, disabled) {
-  const blocked = new Set(disabled);
-  return runningAssistantIds(installedAssistants)
-    .filter((id) => !blocked.has(id))
-    .slice(0, MAX_SELECTED_ASSISTANTS);
-}
-
-function reconcileAssistantIntent(teamId, installedAssistants) {
-  const installed = new Set(installedAssistants.map((entry) => entry.assistant));
-  const remembered = assistantIntents.has(teamId)
-    ? assistantIntents.get(teamId)
-    : readStoredAssistantIntent(teamId);
-  // Absence means enabled. This distinguishes explicit user choice from temporary runtime state:
-  // outdated/stopped Assistants remain intended, while a confirmed uninstall removes old intent.
-  const intent = {
-    disabled: (remembered?.disabled ?? []).filter((id) => installed.has(id)),
+  return {
+    activeAssistantIds: running.slice(0, MAX_CHAT_ASSISTANTS),
+    omittedAssistantIds: running.slice(MAX_CHAT_ASSISTANTS),
   };
-  assistantIntents.set(teamId, intent);
-  writeStoredAssistantIntent(teamId, intent);
-  return activeAssistantIds(installedAssistants, intent.disabled);
 }
 
 function hasExactEnvelopeKeys(value, expected) {
@@ -215,7 +134,8 @@ function markFailure(attempt, error, fallback, clearAuthority) {
       ...(clearAuthority ? emptyContext() : state),
       phase: 'error',
       installedAssistants: [],
-      selectedAssistantIds: [],
+      activeAssistantIds: [],
+      omittedAssistantIds: [],
       error: safe.message,
     }));
   }
@@ -234,7 +154,8 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       selectedTeamId: '',
       catalog,
       installedAssistants: [],
-      selectedAssistantIds: [],
+      activeAssistantIds: [],
+      omittedAssistantIds: [],
     };
     if (attempt === generation) {
       teamContext.set({
@@ -247,10 +168,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   }
 
   const inventory = await inventorySnapshot(fetcher, selectedTeamId);
-  const selectedAssistantIds = reconcileAssistantIntent(
-    selectedTeamId,
-    inventory.installedAssistants,
-  );
+  const scope = chatScope(inventory.installedAssistants);
   if (attempt === generation) {
     teamContext.set({
       phase: 'ready',
@@ -258,11 +176,11 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       selectedTeamId,
       catalog,
       ...inventory,
-      selectedAssistantIds,
+      ...scope,
       error: '',
     });
   }
-  return { teams, selectedTeamId, catalog, ...inventory, selectedAssistantIds };
+  return { teams, selectedTeamId, catalog, ...inventory, ...scope };
 }
 
 export async function loadTeamContext(fetcher, preferredId = '') {
@@ -291,7 +209,8 @@ export async function selectTeam(fetcher, id) {
     phase: 'loading',
     selectedTeamId: canonicalId,
     installedAssistants: [],
-    selectedAssistantIds: [],
+    activeAssistantIds: [],
+    omittedAssistantIds: [],
     error: '',
   });
   try {
@@ -299,10 +218,7 @@ export async function selectTeam(fetcher, id) {
       listAssistantCatalog(fetcher),
       inventorySnapshot(fetcher, canonicalId),
     ]);
-    const selectedAssistantIds = reconcileAssistantIntent(
-      canonicalId,
-      inventory.installedAssistants,
-    );
+    const scope = chatScope(inventory.installedAssistants);
     if (attempt === generation) {
       teamContext.set({
         ...current,
@@ -310,7 +226,7 @@ export async function selectTeam(fetcher, id) {
         selectedTeamId: canonicalId,
         catalog,
         ...inventory,
-        selectedAssistantIds,
+        ...scope,
         error: '',
       });
     }
@@ -322,7 +238,8 @@ export async function selectTeam(fetcher, id) {
         ...current,
         phase: 'error',
         installedAssistants: [],
-        selectedAssistantIds: [],
+        activeAssistantIds: [],
+        omittedAssistantIds: [],
         error: safe.message,
       });
     }
@@ -338,7 +255,8 @@ export async function refreshTeamInventory(fetcher) {
       ...current,
       phase: 'ready',
       installedAssistants: [],
-      selectedAssistantIds: [],
+      activeAssistantIds: [],
+      omittedAssistantIds: [],
       error: '',
     });
     return { installedAssistants: [] };
@@ -352,7 +270,8 @@ export async function refreshTeamInventory(fetcher) {
     ...current,
     phase: 'loading',
     installedAssistants: [],
-    selectedAssistantIds: [],
+    activeAssistantIds: [],
+    omittedAssistantIds: [],
     error: '',
   });
   try {
@@ -360,17 +279,14 @@ export async function refreshTeamInventory(fetcher) {
       listAssistantCatalog(fetcher),
       inventorySnapshot(fetcher, current.selectedTeamId),
     ]);
-    const selectedAssistantIds = reconcileAssistantIntent(
-      current.selectedTeamId,
-      inventory.installedAssistants,
-    );
+    const scope = chatScope(inventory.installedAssistants);
     if (attempt === generation) {
       teamContext.set({
         ...current,
         phase: 'ready',
         catalog,
         ...inventory,
-        selectedAssistantIds,
+        ...scope,
         error: '',
       });
     }
@@ -380,64 +296,8 @@ export async function refreshTeamInventory(fetcher) {
   }
 }
 
-function updateAssistantIntent(project) {
-  let changed = false;
-  teamContext.update((state) => {
-    if (!state.selectedTeamId || state.phase !== 'ready') return state;
-    const installed = state.installedAssistants.map((entry) => entry.assistant);
-    const running = runningAssistantIds(state.installedAssistants);
-    const current = assistantIntents.get(state.selectedTeamId) ?? { disabled: [] };
-    const nextDisabled = project(installed, running, current.disabled, state.selectedAssistantIds);
-    if (
-      !Array.isArray(nextDisabled) ||
-      nextDisabled.length > MAX_INSTALLED_ASSISTANTS ||
-      nextDisabled.some((id) => !installed.includes(id)) ||
-      new Set(nextDisabled).size !== nextDisabled.length
-    ) return state;
-    const nextIntent = { disabled: [...nextDisabled] };
-    const nextSelected = activeAssistantIds(state.installedAssistants, nextIntent.disabled);
-    const intentChanged = (
-      nextIntent.disabled.length !== current.disabled.length
-      || nextIntent.disabled.some((id, index) => id !== current.disabled[index])
-    );
-    const selectionChanged = (
-      nextSelected.length !== state.selectedAssistantIds.length
-      || nextSelected.some((id, index) => id !== state.selectedAssistantIds[index])
-    );
-    if (!intentChanged && !selectionChanged) return state;
-    assistantIntents.set(state.selectedTeamId, nextIntent);
-    writeStoredAssistantIntent(state.selectedTeamId, nextIntent);
-    changed = true;
-    return { ...state, selectedAssistantIds: nextSelected };
-  });
-  return changed;
-}
-
-export function toggleTeamAssistant(id) {
-  return updateAssistantIntent((_installed, running, disabled, selected) => {
-    if (!running.includes(id)) return disabled;
-    if (disabled.includes(id)) {
-      if (selected.length >= MAX_SELECTED_ASSISTANTS) return disabled;
-      return disabled.filter((assistantId) => assistantId !== id);
-    }
-    return selected.includes(id) ? [...disabled, id] : disabled;
-  });
-}
-
-export function selectAllTeamAssistants() {
-  return updateAssistantIntent((installed, running) => {
-    const enabled = new Set(running.slice(0, MAX_SELECTED_ASSISTANTS));
-    return installed.filter((id) => !enabled.has(id));
-  });
-}
-
-export function unselectAllTeamAssistants() {
-  return updateAssistantIntent((installed) => [...installed]);
-}
-
 export function clearTeamContext() {
   generation += 1;
-  assistantIntents.clear();
   teamContext.set(emptyContext());
 }
 
@@ -452,7 +312,8 @@ export async function createTeam(fetcher, name) {
     ...current,
     phase: 'loading',
     error: '',
-    selectedAssistantIds: [],
+    activeAssistantIds: [],
+    omittedAssistantIds: [],
   });
   let created;
   try {
@@ -543,8 +404,6 @@ export async function deleteTeam(fetcher, id, name, password) {
     if (attempt === generation) teamContext.set({ ...current, phase: 'ready', error: '' });
     throw safe;
   }
-
-  clearStoredAssistantIntent(canonicalId);
   const preferredId = current.selectedTeamId === canonicalId ? '' : current.selectedTeamId;
   try {
     await hydrate(fetcher, preferredId, attempt, '');

@@ -105,7 +105,7 @@ test('completes mandatory authenticator enrollment before opening Admin', async 
   await page.getByRole('button', { name: 'Verify and continue' }).click();
   await enrollmentResponse;
 
-  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
 });
 
 test('announces a rejected TOTP and returns focus to password entry', async ({ page }) => {
@@ -227,7 +227,7 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
   await expect(page.getByRole('heading', { name: 'Make future sign-ins easier' })).toBeVisible();
   await page.getByRole('button', { name: 'Create passkey' }).click();
   await expect.poll(() => credentialId).not.toBe('');
-  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
 
   sessionState = 'none';
   await page.goto('http://localhost:4173/');
@@ -237,7 +237,7 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
   await page.getByRole('button', { name: 'Use a passkey' }).click();
 
   await expect.poll(() => assertionReceived).toBe(true);
-  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
   await client.send('WebAuthn.disable');
 });
 
@@ -332,9 +332,8 @@ test('renders authenticated navigation with canonical primitives', async ({ page
 
   await page.goto('/assistants/');
 
-  await expect(page.getByRole('link', { name: /assistants/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: /chat/i })).toBeVisible();
-  await expect(page.locator('.shimpz-nav-item')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
   await expect(page.locator('body')).toHaveCSS('background-image', 'none');
   await expect(page.getByRole('region', { name: 'Shimpz Assistant Store' })).toBeVisible();
   await page.addStyleTag({ path: visualStylePath });
@@ -389,36 +388,27 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   const header = page.locator('[data-slot="workspace-header"]');
   const main = page.locator('[data-slot="workspace-main"]');
   const tabs = page.locator('[data-slot="workspace-sidebar"]');
-  const tabLinks = tabs.locator('nav').getByRole('link');
   await expect(shell).toHaveCSS('overflow', 'hidden');
   await expect(main).toHaveCSS('overflow-y', 'auto');
-  await expect(tabs.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
-  await expect(tabLinks).toHaveCount(2);
+  await expect(tabs.locator('nav')).toHaveCount(0);
 
-  const [headerBox, mainBox, tabsBox, assistantTabBox, chatTabBox] = await Promise.all([
+  const [headerBox, mainBox, tabsBox] = await Promise.all([
     header.boundingBox(),
     main.boundingBox(),
     tabs.boundingBox(),
-    tabLinks.nth(0).boundingBox(),
-    tabLinks.nth(1).boundingBox(),
   ]);
   expect(headerBox).not.toBeNull();
   expect(mainBox).not.toBeNull();
   expect(tabsBox).not.toBeNull();
-  expect(assistantTabBox).not.toBeNull();
-  expect(chatTabBox).not.toBeNull();
   expect(Math.abs(headerBox.y)).toBeLessThan(1);
   expect(Math.abs(mainBox.y - (headerBox.y + headerBox.height))).toBeLessThan(1);
   expect(Math.abs((mainBox.y + mainBox.height) - tabsBox.y)).toBeLessThan(1);
   expect(Math.abs(tabsBox.y + tabsBox.height - page.viewportSize().height)).toBeLessThan(1);
   expect(Math.abs(tabsBox.x)).toBeLessThan(1);
   expect(Math.abs(tabsBox.width - page.viewportSize().width)).toBeLessThan(1);
-  expect(assistantTabBox.height).toBeGreaterThanOrEqual(44);
-  expect(chatTabBox.height).toBeGreaterThanOrEqual(44);
-  expect(Math.abs(assistantTabBox.width - chatTabBox.width)).toBeLessThanOrEqual(1);
 
   const appbarButtons = header.getByRole('button');
-  await expect(appbarButtons).toHaveCount(2);
+  await expect(appbarButtons).toHaveCount(3);
   for (const button of await appbarButtons.all()) {
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
@@ -475,7 +465,6 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   expect(Math.abs(rtlTabsBox.width - page.viewportSize().width)).toBeLessThan(1);
 
   await page.setViewportSize({ width: 320, height: 640 });
-  await expect(tabLinks).toHaveCount(2);
   const narrowOverflow = await page.locator('html').evaluate((element) => ({
     client: element.clientWidth,
     scroll: element.scrollWidth,
@@ -550,7 +539,7 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
-test('opens the Store destination workflow through shared modal controls', async ({ page }) => {
+test('renders the Store as only the Assistant list for the Team its link names', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -595,128 +584,35 @@ test('opens the Store destination workflow through shared modal controls', async
     body: JSON.stringify({ files: [] }),
   }));
 
-  const localInventory = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === '/api/local-assistants'
-  ));
-  await page.goto('/assistants/');
-  await localInventory;
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  }));
+  await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
   await expect(catalog).toBeVisible();
-  await expect(page.locator('iframe')).toHaveCount(0);
-  const destination = page.getByRole('button', { name: /marketing/i });
-  const destinationContext = page.locator('.destination-context');
-  const destinationKicker = destinationContext.getByText('Installation destination', { exact: true });
-  const removedDestinationLead = destinationContext.getByText(
-    'Assistants listed below will be installed only in Team Marketing.',
-    { exact: true },
-  );
-  const titleBlock = page.locator('.shimpz-page-intro > div').first();
-  await expect(destination).toBeVisible();
-  await expect(destinationKicker).toBeVisible();
-  await expect(removedDestinationLead).toHaveCount(0);
-  await expect(page.locator('.trust-boundary')).toHaveCount(0);
-  await expect(titleBlock).toHaveText('Assistants');
-  await expect(destination).toHaveCSS('border-top-width', '0px');
-  await expect(destination).toHaveCSS('box-shadow', 'none');
-  const [kickerBox, teamBox, changeBox, destinationBox, headingBox] = await Promise.all([
-    destinationKicker.boundingBox(),
-    destination.locator('.destination-name').boundingBox(),
-    destination.locator('.destination-change').boundingBox(),
-    destination.boundingBox(),
-    page.getByRole('heading', { level: 1, name: 'Assistants' }).boundingBox(),
-  ]);
-  expect(kickerBox).not.toBeNull();
-  expect(teamBox).not.toBeNull();
-  expect(changeBox).not.toBeNull();
-  expect(destinationBox).not.toBeNull();
-  expect(headingBox).not.toBeNull();
-  expect(kickerBox.y + kickerBox.height).toBeLessThanOrEqual(teamBox.y);
-  expect(Math.abs(teamBox.x - kickerBox.x)).toBeLessThan(1);
-  expect(changeBox.x - (teamBox.x + teamBox.width)).toBeGreaterThanOrEqual(8);
-  if (page.viewportSize().width <= 680) {
-    expect(destinationBox.y).toBeLessThan(headingBox.y);
-  } else {
-    expect(destinationBox.x).toBeLessThan(headingBox.x);
-    expect(Math.abs(
-      (headingBox.y + headingBox.height) - (destinationBox.y + destinationBox.height),
-    )).toBeLessThan(1);
-  }
-  const intro = page.locator('.shimpz-page-intro');
-  await expect(intro).toHaveCSS('border-bottom-width', '0px');
-  expect(Number.parseFloat(await intro.evaluate(
-    (element) => getComputedStyle(element).paddingBottom,
-  ))).toBeGreaterThan(0);
-  const [teamFontSize, headingFontSize] = await Promise.all([
-    destination.locator('.destination-name').evaluate(
-      (element) => Number.parseFloat(getComputedStyle(element).fontSize),
-    ),
-    page.getByRole('heading', { level: 1, name: 'Assistants' }).evaluate(
-      (element) => Number.parseFloat(getComputedStyle(element).fontSize),
-    ),
-  ]);
-  expect(teamFontSize).toBeGreaterThan(headingFontSize);
-  const [introBox, catalogBox] = await Promise.all([
-    intro.boundingBox(),
+  await expect(page.locator('.shimpz-page-intro')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Switch Team|Change/i })).toHaveCount(0);
+  const heading = page.getByRole('heading', { level: 1, name: 'Assistants' });
+  await expect(heading).toHaveCount(1);
+  const headingBox = await heading.boundingBox();
+  expect(headingBox === null || headingBox.width <= 1).toBe(true);
+  const [catalogBox, mainBox] = await Promise.all([
     catalog.boundingBox(),
+    page.locator('[data-slot="workspace-main"]').boundingBox(),
   ]);
-  expect(introBox).not.toBeNull();
   expect(catalogBox).not.toBeNull();
-  expect(catalogBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
-  await expect(intro).toHaveScreenshot('store-destination.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-  await destination.click();
+  expect(mainBox).not.toBeNull();
+  expect(catalogBox.y - mainBox.y).toBeLessThan(80);
+  if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
+  await expect(page.getByRole('link', { name: 'Open the Store for Marketing' })).toHaveAttribute('aria-current', 'page');
+  if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
-  const dialog = page.getByRole('dialog', { name: 'Choose a destination Team' });
-  await expect(dialog).toBeVisible();
-  const currentChoice = dialog.getByRole('button', { name: /marketing.*current/i });
-  await expect(currentChoice).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /gestão.*gestao/i })).toBeVisible();
-  const [dialogBox, markerBox, copyBox, metaBox] = await Promise.all([
-    dialog.boundingBox(),
-    currentChoice.locator('.marker').boundingBox(),
-    currentChoice.locator('.copy').boundingBox(),
-    currentChoice.locator('.meta').boundingBox(),
-  ]);
-  expect(dialogBox).not.toBeNull();
-  expect(markerBox).not.toBeNull();
-  expect(copyBox).not.toBeNull();
-  expect(metaBox).not.toBeNull();
-  expect(dialogBox.width).toBeLessThanOrEqual(512);
-  expect(Math.abs((dialogBox.x + (dialogBox.width / 2)) - (page.viewportSize().width / 2)))
-    .toBeLessThanOrEqual(1);
-  expect(copyBox.x - (markerBox.x + markerBox.width)).toBeGreaterThanOrEqual(10);
-  expect(metaBox.x).toBeGreaterThan(copyBox.x + copyBox.width);
-  await expect(dialog).toHaveScreenshot('store-destination-dialog.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-  await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('dialog', { name: 'Choose a destination Team' })).toBeHidden();
-
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'Português' }).click();
-  await expect(page.locator('.destination-kicker')).toHaveText('Destino das instalações');
-  await expect(page.locator('iframe')).toHaveCount(0);
-
-  await page.getByRole('button', { name: /Português/ }).click();
-  await page.getByRole('menuitemradio', { name: 'العربية' }).click();
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  await page.locator('.destination-trigger').click();
-  const rtlChoice = page.locator('dialog.destination-dialog[open] .shimpz-choice-item.is-selected');
-  const [rtlCopyBox, rtlMetaBox] = await Promise.all([
-    rtlChoice.locator('.copy').boundingBox(),
-    rtlChoice.locator('.meta').boundingBox(),
-  ]);
-  expect(rtlCopyBox).not.toBeNull();
-  expect(rtlMetaBox).not.toBeNull();
-  expect(rtlMetaBox.x + rtlMetaBox.width).toBeLessThan(rtlCopyBox.x);
+  await page.goto('/assistants/?team=missing');
+  await expect(catalog).toBeVisible();
+  await expect(page.getByText(
+    'The Team in this link is not available. Choose a Team from the Team list.',
+    { exact: true },
+  )).toBeVisible();
+  const install = catalog.getByRole('button', { name: /install/i }).first();
+  if (await install.count()) await expect(install).toBeDisabled();
 });
-
 test('never renders a matching publication while Local snapshots are settling', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
@@ -885,7 +781,8 @@ test('renders Assistant identities immediately during in-app icon hydration', as
 
   await page.goto('/teams/');
   await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
-  await page.getByRole('link', { name: /assistants/i }).click();
+  if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
+  await page.getByRole('link', { name: /^Open the Store for / }).first().click();
   await iconRequested;
 
   const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
@@ -1335,7 +1232,7 @@ test('lets an explicit Local install replace the matching publication', async ({
   await expect(card).toHaveClass(/is-installed/);
 });
 
-test('keeps the Store destination guidance when no Team exists', async ({ page }) => {
+test('asks for the first Team from the Store when no Team exists', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -1356,8 +1253,9 @@ test('keeps the Store destination guidance when no Team exists', async ({ page }
 
   await page.goto('/assistants/');
 
-  await expect(page.locator('.destination-name')).toHaveText('Choose a destination Team');
-  await expect(page.locator('.destination-lead')).toHaveText(
-    'Create a Team to give new Assistants a private destination.',
-  );
+  const dialog = page.getByRole('dialog', { name: 'Create a Team' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
 });

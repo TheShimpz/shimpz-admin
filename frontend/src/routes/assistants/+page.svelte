@@ -1,8 +1,7 @@
 <script>
-  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { getContext, onMount, tick } from 'svelte';
-  import { AssistantCard, Button, ChoiceItem, DialogFrame, Modal, Notice, PageIntro, Skeleton, TextField, Toolbar } from '@shimpz/frontend';
+  import { AssistantCard, Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
   import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
@@ -19,19 +18,14 @@
   import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
-  import { createTeam, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { TEAM_ID_RE } from '$lib/validate.js';
   import { jsonObject } from '$lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
 
   let dialogError = $state('');
   let busy = $state(false);
-  let destinationDialog = $state();
-  let destinationTrigger = $state();
-  let createTeamDialog = $state();
-  let destinationBusy = $state(false);
-  let destinationError = $state('');
-  let newTeamName = $state('');
   let selectedTeam = $state('');
   let pendingAssistant = $state('');
   let pendingSourceDigest = $state('');
@@ -59,7 +53,6 @@
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
-  let destinationCopy = $derived($t('assistantDestination'));
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let localProfile = $derived($sessionContext.profile === 'local');
   let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
@@ -80,9 +73,23 @@
     /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
       (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
   );
-  let activeTeamRecord = $derived(
-    runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
+  let requestedTeamId = $derived.by(() => {
+    const candidate = page.url.searchParams.get('team') ?? '';
+    return TEAM_ID_RE.test(candidate) ? candidate : '';
+  });
+  // Without a visible destination header, the Store acts only for the exact Team its link names, and only once
+  // that Team's context is ready; every confirmation rechecks the Team it was opened for.
+  let requestedTeamUnavailable = $derived(
+    $teamContext.phase === 'ready'
+      && page.url.searchParams.has('team')
+      && requestedTeamId !== $teamContext.selectedTeamId,
   );
+  let activeTeamRecord = $derived(
+    $teamContext.phase !== 'ready' || requestedTeamUnavailable
+      ? null
+      : runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
+  );
+  let pendingLocalTeamId = $state('');
   let selectedTeamRecord = $derived(runningTeams.find((team) => team.id === selectedTeam) ?? null);
   let pendingAssistantName = $derived(
     localSnapshotGroups.find((entry) => entry.assistant_id === pendingAssistant)?.primary.name ??
@@ -146,88 +153,6 @@
         : copy.cancel
       : $t('integration.close'),
   );
-
-  function openDestinationDialog() {
-    if (destinationBusy || $teamContext.phase === 'loading') return;
-    destinationError = '';
-    if (!destinationDialog?.open) destinationDialog?.showModal();
-  }
-
-  function focusDestinationTrigger() {
-    queueMicrotask(() => destinationTrigger?.focus());
-  }
-
-  function closeDestinationDialog() {
-    if (destinationBusy) return;
-    destinationDialog?.close();
-    focusDestinationTrigger();
-  }
-
-  function cancelDestinationDialog(event) {
-    event.preventDefault();
-    closeDestinationDialog();
-  }
-
-  function destinationUrl(teamId) {
-    const next = new URL(page.url);
-    next.searchParams.set('team', teamId);
-    return next;
-  }
-
-  async function chooseDestinationTeam(teamId) {
-    if (destinationBusy || !runningTeams.some((team) => team.id === teamId)) return;
-    if (teamId === activeTeamRecord?.id) {
-      closeDestinationDialog();
-      return;
-    }
-    destinationBusy = true;
-    destinationError = '';
-    try {
-      await goto(destinationUrl(teamId), { replaceState: true, keepFocus: true, noScroll: true });
-      destinationDialog?.close();
-      focusDestinationTrigger();
-    } catch {
-      destinationError = destinationCopy.switchFailed;
-    } finally {
-      destinationBusy = false;
-    }
-  }
-
-  function openCreateTeamDialog() {
-    if (destinationBusy) return;
-    destinationDialog?.close();
-    newTeamName = '';
-    destinationError = '';
-    queueMicrotask(() => createTeamDialog?.showModal());
-  }
-
-  function closeCreateTeamDialog() {
-    if (destinationBusy) return;
-    createTeamDialog?.close();
-    focusDestinationTrigger();
-  }
-
-  function cancelCreateTeamDialog(event) {
-    event.preventDefault();
-    closeCreateTeamDialog();
-  }
-
-  async function submitDestinationTeam(event) {
-    event.preventDefault();
-    if (destinationBusy || !newTeamName.trim()) return;
-    destinationBusy = true;
-    destinationError = '';
-    try {
-      const created = await createTeam(fetch, newTeamName);
-      await goto(destinationUrl(created.id), { replaceState: true, keepFocus: true, noScroll: true });
-      createTeamDialog?.close();
-      focusDestinationTrigger();
-    } catch {
-      destinationError = destinationCopy.createFailed;
-    } finally {
-      destinationBusy = false;
-    }
-  }
 
   function waitForTeamContext() {
     if (!['idle', 'loading'].includes($teamContext.phase)) return Promise.resolve();
@@ -301,6 +226,11 @@
     ) return;
     const team = runningTeams.find((item) => item.id === selectedTeam);
     if (!team) return;
+    if (team.id !== activeTeamRecord?.id) {
+      dialogError = localCopy.teamUnavailable;
+      dialogMode = 'error';
+      return;
+    }
 
     busy = true;
     dialogError = '';
@@ -344,6 +274,11 @@
   async function confirmUninstall() {
     if (busy || !selectedTeamRecord || dialogAction !== 'uninstall') return;
     const team = selectedTeamRecord;
+    if (team.id !== activeTeamRecord?.id) {
+      dialogError = localCopy.teamUnavailable;
+      dialogMode = 'error';
+      return;
+    }
     const assistantId = pendingAssistant;
     const assistantName = pendingAssistantName;
     busy = true;
@@ -558,6 +493,7 @@
   function beginLocalSnapshotInstall(group) {
     const team = activeTeamRecord;
     if (!team || busy || dialogOpen || localInstallDialogOpen || localInstallImageId) return;
+    pendingLocalTeamId = team.id;
     pendingLocalSnapshot = group.primary;
     pendingLocalSnapshots = [group.primary, ...group.alternatives];
     localInstallDialogError = '';
@@ -573,6 +509,7 @@
   function closeLocalSnapshotInstall() {
     if (localInstallImageId) return;
     localInstallDialogOpen = false;
+    pendingLocalTeamId = '';
     pendingLocalSnapshot = null;
     pendingLocalSnapshots = [];
     localInstallDialogError = '';
@@ -582,12 +519,17 @@
     const team = activeTeamRecord;
     const snapshot = pendingLocalSnapshot;
     if (!team || !snapshot || busy || localInstallImageId) return;
+    if (team.id !== pendingLocalTeamId) {
+      localInstallDialogError = localCopy.teamUnavailable;
+      return;
+    }
     localInstallImageId = snapshot.image_id;
     localInstallDialogError = '';
     try {
       const installed = await installLocalAssistant(fetch, team.id, snapshot.image_id);
       await refreshInstalled(team.id);
       localInstallDialogOpen = false;
+      pendingLocalTeamId = '';
       pendingLocalSnapshot = null;
       pendingLocalSnapshots = [];
       showAdminNotice({
@@ -621,37 +563,16 @@
   <meta name="description" content="Browse and evaluate trusted Shimpz Assistants from the local Admin." />
 </svelte:head>
 
-<PageIntro
-  title={$t('store.nav')}
-  actionsPosition="start"
->
-  {#snippet actions()}
-    <div class="destination-context">
-      <p class="destination-kicker">{$t('store.destinationKicker')}</p>
-      <Button
-        bind:element={destinationTrigger}
-        variant="ghost"
-        class="destination-trigger"
-        type="button"
-        onclick={openDestinationDialog}
-        disabled={destinationBusy || $teamContext.phase === 'loading'}
-        aria-haspopup="dialog"
-        aria-controls="store-team-destination-dialog"
-      >
-        <strong class="destination-name">{activeTeamRecord?.name ?? destinationCopy.chooseTitle}</strong>
-        <small class="destination-change">{destinationCopy.change}<b aria-hidden="true">↘</b></small>
-      </Button>
-      {#if !activeTeamRecord}<p class="destination-lead">{destinationCopy.empty}</p>{/if}
-    </div>
-  {/snippet}
-</PageIntro>
+<h1 class="sr-only">{$t('store.nav')}</h1>
 
 <section
   class="assistant-catalog"
   aria-label={$t('store.frameTitle')}
   aria-busy={catalogBusy}
 >
-  {#if !activeTeamRecord && (localSnapshotGroups.length > 0 || visiblePublicAssistants.length > 0)}
+  {#if requestedTeamUnavailable}
+    <Notice variant="warning">{localCopy.teamUnavailable}</Notice>
+  {:else if !activeTeamRecord && (localSnapshotGroups.length > 0 || visiblePublicAssistants.length > 0)}
     <Notice variant="info">{localCopy.localNoTeam}</Notice>
   {/if}
   {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
@@ -735,92 +656,6 @@
   {/if}
 </section>
 
-<Modal
-  id="store-team-destination-dialog"
-  class="destination-dialog"
-  bind:element={destinationDialog}
-  labelledBy="store-team-destination-title"
-  oncancel={cancelDestinationDialog}
->
-  <DialogFrame
-    kicker={$t('store.destinationKicker')}
-    title={destinationCopy.chooseTitle}
-    titleId="store-team-destination-title"
-    lead={destinationCopy.chooseLead}
-  >
-    {#if runningTeams.length > 0}
-      <ul class="destination-team-list">
-        {#each runningTeams as team (team.id)}
-          <li>
-            <ChoiceItem
-              title={team.name}
-              description={team.id}
-              meta={team.id === activeTeamRecord?.id ? destinationCopy.current : undefined}
-              selected={team.id === activeTeamRecord?.id}
-              onclick={() => chooseDestinationTeam(team.id)}
-              disabled={destinationBusy}
-            />
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="destination-empty">{destinationCopy.empty}</p>
-    {/if}
-
-    {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
-
-    {#snippet footer()}
-      <Button variant="secondary" type="button" onclick={closeDestinationDialog} disabled={destinationBusy}>
-        {$t('integration.close')}
-      </Button>
-      <Button type="button" onclick={openCreateTeamDialog} disabled={destinationBusy}>
-        {$t('teams.create')}
-      </Button>
-    {/snippet}
-  </DialogFrame>
-</Modal>
-
-<Modal
-  class="destination-dialog"
-  bind:element={createTeamDialog}
-  labelledBy="store-create-team-title"
-  oncancel={cancelCreateTeamDialog}
->
-  <form onsubmit={submitDestinationTeam}>
-    <DialogFrame
-      kicker={$t('store.destinationKicker')}
-      title={$t('teams.createTitle')}
-      titleId="store-create-team-title"
-      lead={$t('teams.createLead')}
-    >
-    <TextField
-        id="store-create-team-name"
-        label={$t('teams.name')}
-        type="text"
-        bind:value={newTeamName}
-        placeholder={$t('teams.placeholder')}
-        maxlength="80"
-        autocomplete="off"
-        autocapitalize="words"
-        spellcheck="false"
-        required
-        disabled={destinationBusy}
-      />
-
-    {#if destinationError}<Notice variant="error">{destinationError}</Notice>{/if}
-
-    {#snippet footer()}
-      <Button variant="secondary" type="button" onclick={closeCreateTeamDialog} disabled={destinationBusy}>
-        {$t('teams.cancel')}
-      </Button>
-      <Button type="submit" disabled={destinationBusy || !newTeamName.trim()}>
-        {destinationBusy ? $t('teams.creating') : $t('teams.createAction')}
-      </Button>
-    {/snippet}
-    </DialogFrame>
-  </form>
-</Modal>
-
 <AssistantActionDialog
   bind:open={dialogOpen}
   title={dialogTitle}
@@ -844,7 +679,7 @@
   bind:open={localInstallDialogOpen}
   snapshot={pendingLocalSnapshot}
   snapshots={pendingLocalSnapshots}
-  team={activeTeamRecord}
+  team={runningTeams.find((team) => team.id === pendingLocalTeamId) ?? null}
   busy={Boolean(localInstallImageId)}
   error={localInstallDialogError}
   onconfirm={installLocalSnapshot}
@@ -853,114 +688,9 @@
 />
 
 <style>
-  .destination-context {
-    display: grid;
-    min-width: 0;
-    max-width: 54rem;
-    gap: var(--shimpz-space-2);
-  }
-
-  .destination-kicker,
-  .destination-lead {
-    margin: 0;
-  }
-
-  .destination-kicker {
-    color: var(--accent);
-    font: 600 0.68rem/1.4 var(--font-mono);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-
-  .destination-lead {
-    color: var(--text-dim);
-    font-size: 0.95rem;
-    line-height: 1.55;
-  }
-
-  :global(.shimpz-page-intro.actions-start) {
-    align-items: flex-end;
-    border-block-end: 0;
-  }
-
-  :global(.destination-trigger.shimpz-button) {
-    width: fit-content;
-    max-width: 100%;
-    justify-content: flex-start;
-    justify-self: start;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    box-shadow: none;
-    color: var(--text);
-    cursor: pointer;
-    clip-path: none;
-    text-align: start;
-  }
-
-  :global(.destination-trigger > span) {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    gap: clamp(0.85rem, 2vw, 1.35rem);
-    justify-content: flex-start;
-  }
-
-  :global(.destination-trigger .destination-name) {
-    overflow-wrap: anywhere;
-    color: inherit;
-    font-family: var(--font-mono);
-    font-size: clamp(1.65rem, 4vw, 3rem);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1.1;
-  }
-
-  :global(.shimpz-page-intro.actions-start h1) {
-    font-size: clamp(1.35rem, 3vw, 1.9rem);
-  }
-
-  :global(.destination-trigger .destination-change) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.52rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  :global(.destination-trigger .destination-change b) { font-size: 0.75rem; }
-  :global(.destination-trigger:hover > span) { color: var(--accent); }
-  :global(.destination-trigger:focus-visible) { outline: 2px solid var(--accent); outline-offset: 0.35rem; }
-  :global(.destination-trigger:disabled) { cursor: wait; opacity: 0.55; }
-
-  :global(.destination-dialog form) { margin: 0; }
-
-  @media (max-width: 680px) {
-    :global(.shimpz-page-intro.actions-start) { align-items: stretch; }
-  }
-
-  .destination-team-list {
-    display: grid;
-    gap: 0.25rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .destination-team-list li { min-width: 0; }
-
-  .destination-empty { margin: 0; font-size: 0.7rem; line-height: 1.5; }
-  .destination-empty { color: var(--text-dim); }
-
   .assistant-catalog {
     display: grid;
     gap: var(--shimpz-space-3);
-    margin-block-start: var(--shimpz-space-4);
   }
   .assistant-grid {
     display: grid;

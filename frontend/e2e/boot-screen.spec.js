@@ -345,7 +345,7 @@ test('releases to the empty-Team final state without waiting for a model request
   await expect(boot).toBeVisible();
   teamGate.resolve();
   await expect(boot).toHaveCount(0);
-  await expect(page.getByText('Create a Team below to start chatting.')).toBeVisible();
+  await expect(page.getByText('Create a Team with the + button to start chatting.')).toBeVisible();
   expect(inferenceRequests).toBe(0);
 });
 
@@ -372,7 +372,7 @@ test('keeps boot visible across the authenticated root redirect', async ({ page 
   await expect(page.locator('.chat-route')).toBeHidden();
   teamGate.resolve();
   await expect(boot).toHaveCount(0);
-  await expect(page.getByText('Create a Team below to start chatting.')).toBeVisible();
+  await expect(page.getByText('Create a Team with the + button to start chatting.')).toBeVisible();
 });
 
 test('releases to the final Chat error when Team hydration fails', async ({ page }) => {

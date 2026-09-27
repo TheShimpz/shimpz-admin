@@ -1,11 +1,13 @@
 <script>
-  import { NavItem, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
+  import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import AdminNotice from '$lib/AdminNotice.svelte';
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import NotificationCenter from '$lib/NotificationCenter.svelte';
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
+  import TeamDialogs from '$lib/TeamDialogs.svelte';
+  import TeamNavigation from '$lib/TeamNavigation.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, profile = '', children } = $props();
@@ -13,6 +15,28 @@
   let mobile = $state(
     typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches,
   );
+  let teamDialogs = $state();
+  let teamDrawer = $state();
+  let teamDrawerTrigger = $state();
+  let createButton = $state();
+
+  function closeTeamDrawer() {
+    teamDrawer?.close();
+  }
+
+  function createTeam() {
+    closeTeamDrawer();
+    teamDialogs?.openCreate();
+  }
+
+  function deleteTeam(team) {
+    closeTeamDrawer();
+    teamDialogs?.openDelete(team);
+  }
+
+  function restoreTeamFocus() {
+    queueMicrotask(() => (mobile ? teamDrawerTrigger : createButton)?.focus());
+  }
 
   onMount(() => {
     const query = window.matchMedia('(max-width: 820px)');
@@ -25,13 +49,7 @@
 
 {#snippet sidebar()}
   {#if mobile}
-    <div class="mobile-navigation">
-      {#if profile === 'local'}<PlatformReleaseStatus />{/if}
-      <nav aria-label={$t('shell.primaryNav')}>
-        <NavItem href="/assistants/" active={active === 'assistants'} index="01">{$t('store.nav')}</NavItem>
-        <NavItem href="/chat/" active={active === 'chat'} index="02">{$t('chat.nav')}</NavItem>
-      </nav>
-    </div>
+    {#if profile === 'local'}<div class="mobile-navigation"><PlatformReleaseStatus /></div>{/if}
   {:else}
     <div class="shell-sidebar">
       <div class="sidebar-brand">
@@ -40,12 +58,11 @@
       </div>
       <div class="sidebar-controls">
         <LocaleMenu wide />
-        <nav aria-label={$t('shell.primaryNav')}>
-          <NavItem href="/assistants/" active={active === 'assistants'} index="01">{$t('store.nav')}</NavItem>
-          <NavItem href="/chat/" active={active === 'chat'} index="02">{$t('chat.nav')}</NavItem>
-        </nav>
       </div>
-      <div class="team-sidebar-region"><TeamSidebar {active} /></div>
+      <div class="team-sidebar-region">
+        <TeamNavigation {active} bind:createButton oncreate={createTeam} ondelete={deleteTeam} />
+        <TeamSidebar {active} />
+      </div>
       {#if profile === 'local'}<PlatformReleaseStatus />{/if}
     </div>
   {/if}
@@ -61,6 +78,18 @@
 
 {#snippet mobileHeader()}
   <div class="mobile-appbar">
+    <Button
+      bind:element={teamDrawerTrigger}
+      variant="ghost"
+      size="sm"
+      iconOnly
+      type="button"
+      aria-label={$t('teamNavigation.open')}
+      aria-haspopup="dialog"
+      onclick={() => teamDrawer?.showModal()}
+    >
+      <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </Button>
     <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
     <div class="mobile-appbar-actions">
       <LocaleMenu compact />
@@ -81,6 +110,18 @@
   scroll={chat ? 'hidden' : 'auto'}
 >
   {#if authenticated}
+    <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
+    {#if mobile}
+      <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
+        <div class="team-drawer-head">
+          <h2 id="team-drawer-title">{$t('teamNavigation.label')}</h2>
+          <Button variant="ghost" size="sm" iconOnly type="button" aria-label={$t('teamNavigation.close')} onclick={closeTeamDrawer}>
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </Button>
+        </div>
+        <TeamNavigation {active} oncreate={createTeam} ondelete={deleteTeam} onnavigate={closeTeamDrawer} />
+      </Modal>
+    {/if}
     <div class:chat-layout={chat} class="authenticated-content">
       <div class="admin-notice-region"><AdminNotice /></div>
       {#if mobile}<div class="mobile-team-region"><TeamSidebar {active} /></div>{/if}
@@ -108,9 +149,12 @@
   .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
   .chat-layout .authenticated-page { width: 100%; min-height: 0; margin: 0; padding: 0; overflow: hidden; }
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
+  :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); }
+  .team-drawer-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: var(--shimpz-space-3) var(--shimpz-space-4) 0; }
+  .team-drawer-head h2 { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
   .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
-  nav { display: grid; gap: var(--shimpz-space-2); }
   .team-sidebar-region { min-width: 0; min-height: 0; overflow: auto; }
   .mobile-team-region { min-width: 0; }
   .mobile-appbar,
@@ -136,7 +180,7 @@
     .mobile-appbar {
       display: grid;
       min-height: 3.75rem;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       gap: var(--shimpz-space-2);
       padding-inline: var(--shimpz-space-3);
@@ -156,19 +200,6 @@
       min-width: 0;
       border-block-start: 1px solid var(--shimpz-color-border);
       background: var(--shimpz-color-surface);
-    }
-    .mobile-navigation nav {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0;
-    }
-    .mobile-navigation :global(.shimpz-nav-item) {
-      min-width: 0;
-      border-block: 0;
-      border-inline-start: 0;
-    }
-    .mobile-navigation :global(.shimpz-nav-item:last-child) {
-      border-inline-end: 0;
     }
     .mobile-team-region :global(.context-error) {
       border-inline: 0;

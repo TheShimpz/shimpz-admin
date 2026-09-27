@@ -1,11 +1,11 @@
 <script>
   import { flushSync, onMount, tick } from 'svelte';
-  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import { listChatHistory } from '$lib/chatHistory.js';
-  import ChatContextControls from '$lib/ChatContextControls.svelte';
+  import BrainMenu from '$lib/BrainMenu.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -19,7 +19,7 @@
   import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
   import { sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
-  import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { MAX_CHAT_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
@@ -145,6 +145,9 @@
   );
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
+  let omittedAssistantNames = $derived(
+    $teamContext.omittedAssistantIds.map((id) => assistantNames.get(id) ?? id),
+  );
   let liveStatus = $derived(
     lifecycleWorking
       ? installPlanWorking
@@ -652,7 +655,7 @@
       !team ||
       $teamContext.phase !== 'ready' ||
       $teamContext.selectedTeamId !== incoming.team_id ||
-      $teamContext.selectedAssistantIds.includes(incoming.assistant_id)
+      $teamContext.activeAssistantIds.includes(incoming.assistant_id)
     ) throw new Error('uninstalled Assistant inventory mismatch');
     turns = turns.map((turn, turnIndex) => (
       turnIndex === index
@@ -770,7 +773,7 @@
   }
 
   function knownIntegrationAssistants(incoming) {
-    const selected = new Set($teamContext.selectedAssistantIds);
+    const selected = new Set($teamContext.activeAssistantIds);
     return integrationAssistantIds(incoming).every((id) => selected.has(id) || installedThisTurn(id));
   }
 
@@ -1318,7 +1321,7 @@
     let frame;
     let resumedObjective = '';
     clearTurnInstalled();
-    const assistantIds = [...$teamContext.selectedAssistantIds];
+    const assistantIds = [...$teamContext.activeAssistantIds];
     const continuation = useCapabilityObjective && capabilityContinuation(normalized);
     const sameAssistantIds = continuation && capabilityObjective
       ? assistantIds.length === capabilityObjective.assistant_ids.length &&
@@ -1769,6 +1772,15 @@
           {/each}
         </ScrollArea>
 
+        {#if omittedAssistantNames.length > 0}
+          <Notice class="assistant-overflow" variant="warning">
+            {$t('chatPage.assistantOverflow', {
+              limit: MAX_CHAT_ASSISTANTS,
+              names: omittedAssistantNames.join(', '),
+            })}
+            <TextLink href={`/assistants/?team=${encodeURIComponent($teamContext.selectedTeamId)}`}>{copy.openStore}</TextLink>
+          </Notice>
+        {/if}
         {#if visibleError}
           <Notice class="error" variant="error">
             <strong>{visibleError}</strong>
@@ -1777,7 +1789,6 @@
         {/if}
 
           <form class="composer" onsubmit={send}>
-            <ChatContextControls disabled={composerBusy || stopping} />
             <div class="composer-input">
               <TextAreaField
                 id="chat-composer"
@@ -1793,6 +1804,7 @@
                 onkeydown={handleComposerKeydown}
               />
               <Toolbar class="composer-actions">
+              <BrainMenu disabled={composerBusy || stopping} />
               {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
                 <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
                   {copy.stop}
@@ -1863,7 +1875,7 @@
     {:else}
       <section class="provider-setup" aria-live="polite">
         <ProviderSetupGate />
-        <div class="context-dock"><ChatContextControls /></div>
+        <div class="context-dock"><BrainMenu /></div>
       </section>
     {/if}
   {:else}
@@ -1878,7 +1890,6 @@
           </Notice>
         {/if}
       </EmptyState>
-      <div class="context-dock"><ChatContextControls /></div>
     </section>
   {/if}
 </div>
@@ -2172,8 +2183,9 @@
     :global(.turns .shimpz-message--user) { max-width: 92%; }
     .conversation { --chat-rail-gutter: 0.6rem; }
     .composer { gap: 0.45rem; padding: 0.6rem 0; }
-    .composer-input { gap: 0.45rem; }
+    .composer-input { grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
     :global(.composer-actions) { gap: 0.3rem; }
+    :global(.composer-actions .brain-menu) { margin-inline-end: auto; }
     .composer :global(.shimpz-button) { padding-inline: 0.65rem; }
   }
 </style>

@@ -41,7 +41,7 @@ function workloadMessages(locale) {
     copy.teams.createLead,
     copy.teams.emptyLead,
     copy.teams.destroyLead,
-    copy.assistantDestination.empty,
+    copy.store.teamUnavailable,
   ];
 }
 
