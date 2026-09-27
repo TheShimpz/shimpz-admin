@@ -177,14 +177,14 @@ class TeamInferenceTests(unittest.TestCase):
 
     def test_rejects_secrets_and_retired_cli_providers_before_network_io(self) -> None:
         payloads = (
-            {"provider": "openai", "model": "gpt-6-luna", "api_key": "must-not-cross"},
-            {"provider": "codex", "model": "gpt-6-luna"},
-            {"provider": "claude-code", "model": "claude-sonnet-5"},
-            {"provider": "anthropic", "model": "bad model"},
-            {"provider": "anthropic", "model": "gpt-6-sol"},
-            {"provider": "openai", "model": "claude-sonnet-5"},
-            {"provider": "openai", "model": "gpt-5.7"},
-            {"provider": "OpenAI", "model": "gpt-6-sol"},
+            {"provider": "openai", "model": "gpt-6-luna", "effort": "low", "api_key": "must-not-cross"},
+            {"provider": "codex", "model": "gpt-6-luna", "effort": "low"},
+            {"provider": "claude-code", "model": "claude-sonnet-5", "effort": "low"},
+            {"provider": "anthropic", "model": "bad model", "effort": "low"},
+            {"provider": "anthropic", "model": "gpt-6-sol", "effort": "low"},
+            {"provider": "openai", "model": "claude-sonnet-5", "effort": "low"},
+            {"provider": "openai", "model": "gpt-5.7", "effort": "low"},
+            {"provider": "OpenAI", "model": "gpt-6-sol", "effort": "low"},
         )
         with mock.patch.object(team, "_call") as call:
             for payload in payloads:
