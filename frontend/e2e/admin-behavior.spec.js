@@ -857,7 +857,7 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
     .toEqual([]);
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(notices.nth(0)).toHaveCSS('border-left-color', 'rgb(0, 0, 0)');
-  await expect(page.getByText(/1 execution stages completed/i)).toBeVisible();
+  await expect(page.getByText(/Execution stages recorded: 1/i)).toBeVisible();
 });
 
 test('finishing a measured span updates its duration and announcements across turns', async ({ page }) => {
@@ -882,14 +882,14 @@ test('finishing a measured span updates its duration and announcements across tu
   await expect(liveStatus).toHaveText(/Complete$/);
 
   chat.releaseReply();
-  await expect(page.getByText('1 execution stages completed')).toBeVisible();
+  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await composer.fill('Check progress again');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(liveStatus).toHaveText(/In progress$/);
   chat.releaseProgressFinish();
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
-  await expect(page.getByText('1 execution stages completed')).toHaveCount(2);
+  await expect(page.getByText('Execution stages recorded: 1')).toHaveCount(2);
 });
 
 test('overlapping progress returns the visible summary to the earlier active phase @browser-sensitive', async ({ page }) => {
@@ -902,15 +902,15 @@ test('overlapping progress returns the visible summary to the earlier active pha
 
   const thinking = page.getByRole('group', { name: 'I’m processing…' });
   const current = thinking.locator('.summary .step-copy');
-  await expect(current).toContainText(/Admin prepares a secure request for.*Marketing/);
+  await expect(current).toContainText(/Admin prepares your request to send to me/);
   chat.sendProgressEvent({
     type: 'progress', seq: 2, origin: 'team', phase: 'team-context', state: 'started',
   });
-  await expect(current).toContainText(/Marketing.*assembles the context needed for this turn/);
+  await expect(current).toContainText(/I gather the context I need for your request/);
   chat.sendProgressEvent({
     type: 'progress', seq: 3, origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 9,
   });
-  await expect(current).toContainText(/Admin prepares a secure request for.*Marketing/);
+  await expect(current).toContainText(/Admin prepares your request to send to me/);
   await thinking.locator('[data-slot="disclosure-trigger"]').click();
   const rows = thinking.locator('.ledger li');
   await expect(rows).toHaveCount(2);
@@ -924,7 +924,7 @@ test('overlapping progress returns the visible summary to the earlier active pha
   });
   await expect(current).toHaveText('Waiting for execution');
   chat.releaseReply();
-  await expect(page.getByText('2 execution stages completed')).toBeVisible();
+  await expect(page.getByText('Execution stages recorded: 2')).toBeVisible();
 });
 
 test('shows a pending chat state before any server progress frame', async ({ page }) => {
@@ -948,7 +948,7 @@ test('shows a pending chat state before any server progress frame', async ({ pag
   chat.releaseProgressStart();
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
-  await expect(page.getByText('1 execution stages completed')).toBeVisible();
+  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await expect(composer).toBeEnabled();
   expect(chat.chatFrames()).toHaveLength(1);
 });
@@ -1538,7 +1538,7 @@ test('shows the continued task execution stages after an explicit install', asyn
   );
   const thinking = page.getByRole('group', { name: 'I’m processing…' });
   await expect(thinking).toBeVisible();
-  await expect(thinking).toContainText('decides how to handle your request');
+  await expect(thinking).toContainText('I work out how to handle your request');
   chat.releaseReply();
   await expect(page.getByText('Continued task complete.')).toBeVisible();
   await expect(thinking).toHaveCount(0);

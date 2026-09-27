@@ -261,7 +261,7 @@ export const messages = {
       "sending": "I’m processing…",
       "elapsed": "Elapsed time",
       "progressStages": "Execution stages",
-      "progressStagesExecuted": "{count} execution stages completed",
+      "progressStagesExecuted": "Execution stages recorded: {count}",
       "progress": {
         "awaiting": "Waiting for execution",
         "origins": { "admin": "Admin", "team": "Team" },
@@ -275,18 +275,18 @@ export const messages = {
           "action-delivery": "Action delivery confirmation"
         },
         "narrative": {
-          "adminPreparation": "Admin prepares a secure request for {team}",
-          "replyValidation": "Admin checks the final response from {team} before displaying it",
-          "teamContextInitial": "{team} assembles the context needed for this turn",
-          "teamContextFinal": "{team} verifies that its context still matches the completed work",
-          "modelInitial": "{team} decides how to handle your request",
-          "modelAfterAction": "{team} evaluates the results returned by the Assistants",
-          "actionPreparation": "{team} prepares the Assistant actions requested by the model",
-          "actionPreparationAgain": "{team} prepares the next Assistant actions requested by the model",
-          "action": "{assistant} runs {action} for {team}",
-          "actionAgain": "{assistant} runs {action} again for {team}",
+          "adminPreparation": "Admin prepares your request to send to me",
+          "replyValidation": "Admin checks my reply before showing it to you",
+          "teamContextInitial": "I gather the context I need for your request",
+          "teamContextFinal": "I check that my context still matches the work done",
+          "modelInitial": "I work out how to handle your request",
+          "modelAfterAction": "I review what the Assistants returned",
+          "actionPreparation": "I prepare the Assistant Actions I chose to use",
+          "actionPreparationAgain": "I prepare the next Assistant Actions",
+          "action": "I try to run the {action} Action with the {assistant} Assistant",
+          "actionAgain": "I try to run the {action} Action again with the {assistant} Assistant",
           "actionPosition": "· action {index} of {total}",
-          "actionDelivery": "{team} records the Action results accepted by the model"
+          "actionDelivery": "I record the results I already used"
         },
         "states": { "started": "In progress", "finished": "Complete" }
       },
@@ -655,7 +655,7 @@ export const messages = {
       "sending": "Estou processando...",
       "elapsed": "Tempo decorrido",
       "progressStages": "Etapas da execução",
-      "progressStagesExecuted": "{count} etapas executadas",
+      "progressStagesExecuted": "Etapas registradas: {count}",
       "progress": {
         "awaiting": "Aguardando a execução",
         "origins": { "admin": "Admin", "team": "Time" },
@@ -669,18 +669,18 @@ export const messages = {
           "action-delivery": "Confirmação da entrega dos Actions"
         },
         "narrative": {
-          "adminPreparation": "O Admin prepara uma solicitação segura para {team}",
-          "replyValidation": "O Admin verifica a resposta final de {team} antes de exibi-la",
-          "teamContextInitial": "{team} reúne o contexto necessário para este turno",
-          "teamContextFinal": "{team} confirma que seu contexto ainda corresponde ao trabalho concluído",
-          "modelInitial": "{team} decide como tratar sua solicitação",
-          "modelAfterAction": "{team} avalia os resultados devolvidos pelos Assistants",
-          "actionPreparation": "{team} prepara as ações de Assistants solicitadas pelo modelo",
-          "actionPreparationAgain": "{team} prepara as próximas ações de Assistants solicitadas pelo modelo",
-          "action": "{assistant} executa {action} para {team}",
-          "actionAgain": "{assistant} executa {action} novamente para {team}",
+          "adminPreparation": "O Admin prepara seu pedido para me enviar",
+          "replyValidation": "O Admin confere minha resposta antes de mostrá-la a você",
+          "teamContextInitial": "Reúno o contexto de que preciso para o seu pedido",
+          "teamContextFinal": "Confiro se meu contexto ainda corresponde ao trabalho feito",
+          "modelInitial": "Avalio como atender o seu pedido",
+          "modelAfterAction": "Analiso o que os Assistants me devolveram",
+          "actionPreparation": "Preparo as Actions dos Assistants que escolhi usar",
+          "actionPreparationAgain": "Preparo as próximas Actions dos Assistants",
+          "action": "Tento executar a Action {action} com o Assistant {assistant}",
+          "actionAgain": "Tento executar de novo a Action {action} com o Assistant {assistant}",
           "actionPosition": "· ação {index} de {total}",
-          "actionDelivery": "{team} registra os resultados de Actions aceitos pelo modelo"
+          "actionDelivery": "Registro os resultados que já usei"
         },
         "states": { "started": "Em andamento", "finished": "Concluído" }
       },
@@ -1049,7 +1049,7 @@ export const messages = {
       "sending": "Estoy procesando…",
       "elapsed": "Tiempo transcurrido",
       "progressStages": "Etapas de ejecución",
-      "progressStagesExecuted": "{count} etapas ejecutadas",
+      "progressStagesExecuted": "Etapas registradas: {count}",
       "progress": {
         "awaiting": "Esperando la ejecución",
         "origins": { "admin": "Admin", "team": "Equipo" },
@@ -1063,18 +1063,18 @@ export const messages = {
           "action-delivery": "Confirmación de entrega de Actions"
         },
         "narrative": {
-          "adminPreparation": "Admin prepara una solicitud segura para {team}",
-          "replyValidation": "Admin comprueba la respuesta final de {team} antes de mostrarla",
-          "teamContextInitial": "{team} reúne el contexto necesario para este turno",
-          "teamContextFinal": "{team} verifica que su contexto aún coincide con el trabajo completado",
-          "modelInitial": "{team} decide cómo atender tu solicitud",
-          "modelAfterAction": "{team} evalúa los resultados devueltos por los Assistants",
-          "actionPreparation": "{team} prepara las acciones de Assistants solicitadas por el modelo",
-          "actionPreparationAgain": "{team} prepara las siguientes acciones de Assistants solicitadas por el modelo",
-          "action": "{assistant} ejecuta {action} para {team}",
-          "actionAgain": "{assistant} vuelve a ejecutar {action} para {team}",
+          "adminPreparation": "El Admin prepara tu solicitud para enviármela",
+          "replyValidation": "El Admin revisa mi respuesta antes de mostrártela",
+          "teamContextInitial": "Reúno el contexto que necesito para tu solicitud",
+          "teamContextFinal": "Compruebo que mi contexto aún corresponde al trabajo hecho",
+          "modelInitial": "Evalúo cómo atender tu solicitud",
+          "modelAfterAction": "Analizo lo que me devolvieron los Assistants",
+          "actionPreparation": "Preparo las Actions de los Assistants que elegí usar",
+          "actionPreparationAgain": "Preparo las siguientes Actions de los Assistants",
+          "action": "Intento ejecutar la Action {action} con el Assistant {assistant}",
+          "actionAgain": "Intento ejecutar de nuevo la Action {action} con el Assistant {assistant}",
           "actionPosition": "· acción {index} de {total}",
-          "actionDelivery": "{team} registra los resultados de Actions aceptados por el modelo"
+          "actionDelivery": "Registro los resultados que ya usé"
         },
         "states": { "started": "En curso", "finished": "Completado" }
       },
@@ -1443,7 +1443,7 @@ export const messages = {
       "sending": "正在处理…",
       "elapsed": "已用时间",
       "progressStages": "执行阶段",
-      "progressStagesExecuted": "已执行 {count} 个阶段",
+      "progressStagesExecuted": "已记录的执行阶段：{count}",
       "progress": {
         "awaiting": "等待执行",
         "origins": { "admin": "Admin", "team": "团队" },
@@ -1457,18 +1457,18 @@ export const messages = {
           "action-delivery": "Action 交付确认"
         },
         "narrative": {
-          "adminPreparation": "Admin 为 {team} 准备安全请求",
-          "replyValidation": "Admin 在显示前检查 {team} 的最终响应",
-          "teamContextInitial": "{team} 汇集本轮所需的上下文",
-          "teamContextFinal": "{team} 确认上下文仍与已完成的工作一致",
-          "modelInitial": "{team} 决定如何处理你的请求",
-          "modelAfterAction": "{team} 评估 Assistants 返回的结果",
-          "actionPreparation": "{team} 准备模型请求的 Assistant 操作",
-          "actionPreparationAgain": "{team} 准备模型请求的下一组 Assistant 操作",
-          "action": "{assistant} 为 {team} 执行 {action}",
-          "actionAgain": "{assistant} 再次为 {team} 执行 {action}",
+          "adminPreparation": "Admin 准备要发给我的请求",
+          "replyValidation": "Admin 在向你展示前检查我的回复",
+          "teamContextInitial": "我收集处理你的请求所需的上下文",
+          "teamContextFinal": "我确认我的上下文仍与已完成的工作一致",
+          "modelInitial": "我评估如何处理你的请求",
+          "modelAfterAction": "我分析 Assistants 返回的内容",
+          "actionPreparation": "我准备选定要用的 Assistant Action",
+          "actionPreparationAgain": "我准备接下来的 Assistant Action",
+          "action": "我尝试用 Assistant {assistant} 执行 Action {action}",
+          "actionAgain": "我再次尝试用 Assistant {assistant} 执行 Action {action}",
           "actionPosition": "· 第 {index}/{total} 个操作",
-          "actionDelivery": "{team} 记录模型已接受的 Action 结果"
+          "actionDelivery": "我记录刚才已经使用的结果"
         },
         "states": { "started": "进行中", "finished": "已完成" }
       },
@@ -1837,7 +1837,7 @@ export const messages = {
       "sending": "Je traite votre demande…",
       "elapsed": "Temps écoulé",
       "progressStages": "Étapes d’exécution",
-      "progressStagesExecuted": "{count} étapes exécutées",
+      "progressStagesExecuted": "Étapes enregistrées : {count}",
       "progress": {
         "awaiting": "En attente de l’exécution",
         "origins": { "admin": "Admin", "team": "Équipe" },
@@ -1851,18 +1851,18 @@ export const messages = {
           "action-delivery": "Confirmation de livraison des Actions"
         },
         "narrative": {
-          "adminPreparation": "Admin prépare une requête sécurisée pour {team}",
-          "replyValidation": "Admin vérifie la réponse finale de {team} avant de l’afficher",
-          "teamContextInitial": "{team} rassemble le contexte nécessaire à ce tour",
-          "teamContextFinal": "{team} vérifie que son contexte correspond toujours au travail accompli",
-          "modelInitial": "{team} décide comment traiter votre demande",
-          "modelAfterAction": "{team} évalue les résultats renvoyés par les Assistants",
-          "actionPreparation": "{team} prépare les actions d’Assistants demandées par le modèle",
-          "actionPreparationAgain": "{team} prépare les prochaines actions d’Assistants demandées par le modèle",
-          "action": "{assistant} exécute {action} pour {team}",
-          "actionAgain": "{assistant} exécute à nouveau {action} pour {team}",
+          "adminPreparation": "L’Admin prépare votre demande pour me l’envoyer",
+          "replyValidation": "L’Admin vérifie ma réponse avant de vous l’afficher",
+          "teamContextInitial": "Je rassemble le contexte dont j’ai besoin pour votre demande",
+          "teamContextFinal": "Je vérifie que mon contexte correspond toujours au travail effectué",
+          "modelInitial": "J’évalue comment traiter votre demande",
+          "modelAfterAction": "J’analyse ce que les Assistants m’ont renvoyé",
+          "actionPreparation": "Je prépare les Actions des Assistants que j’ai choisi d’utiliser",
+          "actionPreparationAgain": "Je prépare les Actions suivantes des Assistants",
+          "action": "J’essaie d’exécuter l’Action {action} avec l’Assistant {assistant}",
+          "actionAgain": "J’essaie à nouveau d’exécuter l’Action {action} avec l’Assistant {assistant}",
           "actionPosition": "· action {index} sur {total}",
-          "actionDelivery": "{team} enregistre les résultats de Actions acceptés par le modèle"
+          "actionDelivery": "J’enregistre les résultats que j’ai déjà utilisés"
         },
         "states": { "started": "En cours", "finished": "Terminé" }
       },
@@ -2231,7 +2231,7 @@ export const messages = {
       "sending": "Ich verarbeite deine Anfrage…",
       "elapsed": "Vergangene Zeit",
       "progressStages": "Ausführungsphasen",
-      "progressStagesExecuted": "{count} Ausführungsschritte abgeschlossen",
+      "progressStagesExecuted": "Erfasste Ausführungsschritte: {count}",
       "progress": {
         "awaiting": "Warten auf die Ausführung",
         "origins": { "admin": "Admin", "team": "Team" },
@@ -2245,18 +2245,18 @@ export const messages = {
           "action-delivery": "Bestätigung der Action-Übergabe"
         },
         "narrative": {
-          "adminPreparation": "Admin bereitet eine sichere Anfrage für {team} vor",
-          "replyValidation": "Admin prüft die endgültige Antwort von {team}, bevor sie angezeigt wird",
-          "teamContextInitial": "{team} stellt den für diesen Turn benötigten Kontext zusammen",
-          "teamContextFinal": "{team} prüft, ob der Kontext weiterhin zur abgeschlossenen Arbeit passt",
-          "modelInitial": "{team} entscheidet, wie deine Anfrage bearbeitet wird",
-          "modelAfterAction": "{team} bewertet die von den Assistants gelieferten Ergebnisse",
-          "actionPreparation": "{team} bereitet die vom Modell angeforderten Assistant-Aktionen vor",
-          "actionPreparationAgain": "{team} bereitet die nächsten vom Modell angeforderten Assistant-Aktionen vor",
-          "action": "{assistant} führt {action} für {team} aus",
-          "actionAgain": "{assistant} führt {action} erneut für {team} aus",
+          "adminPreparation": "Der Admin bereitet deine Anfrage vor, um sie mir zu senden",
+          "replyValidation": "Der Admin prüft meine Antwort, bevor er sie dir zeigt",
+          "teamContextInitial": "Ich sammle den Kontext, den ich für deine Anfrage brauche",
+          "teamContextFinal": "Ich prüfe, ob mein Kontext noch zur erledigten Arbeit passt",
+          "modelInitial": "Ich prüfe, wie ich deine Anfrage bearbeite",
+          "modelAfterAction": "Ich werte aus, was die Assistants zurückgegeben haben",
+          "actionPreparation": "Ich bereite die Assistant-Actions vor, die ich nutzen will",
+          "actionPreparationAgain": "Ich bereite die nächsten Assistant-Actions vor",
+          "action": "Ich versuche, die Action {action} mit dem Assistant {assistant} auszuführen",
+          "actionAgain": "Ich versuche erneut, die Action {action} mit dem Assistant {assistant} auszuführen",
           "actionPosition": "· Aktion {index} von {total}",
-          "actionDelivery": "{team} erfasst die vom Modell akzeptierten Action-Ergebnisse"
+          "actionDelivery": "Ich erfasse die Ergebnisse, die ich bereits verwendet habe"
         },
         "states": { "started": "Läuft", "finished": "Abgeschlossen" }
       },
@@ -2625,7 +2625,7 @@ export const messages = {
       "sending": "処理しています…",
       "elapsed": "経過時間",
       "progressStages": "実行ステージ",
-      "progressStagesExecuted": "{count} 件の実行ステップが完了",
+      "progressStagesExecuted": "記録された実行ステップ：{count}",
       "progress": {
         "awaiting": "実行を待機中",
         "origins": { "admin": "Admin", "team": "チーム" },
@@ -2639,18 +2639,18 @@ export const messages = {
           "action-delivery": "Action 配信の確認"
         },
         "narrative": {
-          "adminPreparation": "Admin が {team} のために安全なリクエストを準備します",
-          "replyValidation": "Admin が表示前に {team} の最終回答を確認します",
-          "teamContextInitial": "{team} がこのターンに必要なコンテキストをまとめます",
-          "teamContextFinal": "{team} が完了した作業とコンテキストの整合性を確認します",
-          "modelInitial": "{team} がリクエストの処理方法を判断します",
-          "modelAfterAction": "{team} が Assistants から返された結果を評価します",
-          "actionPreparation": "{team} がモデルの要求した Assistant アクションを準備します",
-          "actionPreparationAgain": "{team} がモデルの要求した次の Assistant アクションを準備します",
-          "action": "{assistant} が {team} のために {action} を実行します",
-          "actionAgain": "{assistant} が {team} のために {action} をもう一度実行します",
+          "adminPreparation": "Admin があなたの依頼を私に送る準備をします",
+          "replyValidation": "表示する前に Admin が私の回答を確認します",
+          "teamContextInitial": "ご依頼に必要なコンテキストを集めます",
+          "teamContextFinal": "コンテキストが行った作業とまだ一致しているか確認します",
+          "modelInitial": "ご依頼への対応方法を検討します",
+          "modelAfterAction": "Assistant から返ってきた内容を分析します",
+          "actionPreparation": "使うことにした Assistant の Action を準備します",
+          "actionPreparationAgain": "次の Assistant の Action を準備します",
+          "action": "Assistant {assistant} で Action {action} の実行を試みます",
+          "actionAgain": "Assistant {assistant} で Action {action} の実行を再度試みます",
           "actionPosition": "· {total} 件中 {index} 件目のアクション",
-          "actionDelivery": "{team} がモデルに受け入れられた Action の結果を記録します"
+          "actionDelivery": "すでに使った結果を記録します"
         },
         "states": { "started": "実行中", "finished": "完了" }
       },
@@ -3019,7 +3019,7 @@ export const messages = {
       "sending": "أعالج طلبك الآن…",
       "elapsed": "الوقت المنقضي",
       "progressStages": "مراحل التنفيذ",
-      "progressStagesExecuted": "تم تنفيذ {count} مراحل",
+      "progressStagesExecuted": "المراحل المسجّلة: {count}",
       "progress": {
         "awaiting": "في انتظار التنفيذ",
         "origins": { "admin": "Admin", "team": "الفريق" },
@@ -3033,18 +3033,18 @@ export const messages = {
           "action-delivery": "تأكيد تسليم Actions"
         },
         "narrative": {
-          "adminPreparation": "يُعِد Admin طلبًا آمنًا لـ {team}",
-          "replyValidation": "يتحقق Admin من الرد النهائي لـ {team} قبل عرضه",
-          "teamContextInitial": "يجمع {team} السياق اللازم لهذا الدور",
-          "teamContextFinal": "يتحقق {team} من أن سياقه ما زال مطابقًا للعمل المكتمل",
-          "modelInitial": "يقرر {team} كيفية معالجة طلبك",
-          "modelAfterAction": "يقيّم {team} النتائج التي أعادها Assistants",
-          "actionPreparation": "يُعِد {team} إجراءات Assistants التي طلبها النموذج",
-          "actionPreparationAgain": "يُعِد {team} إجراءات Assistants التالية التي طلبها النموذج",
-          "action": "ينفذ {assistant} الإجراء {action} لصالح {team}",
-          "actionAgain": "ينفذ {assistant} الإجراء {action} مرة أخرى لصالح {team}",
+          "adminPreparation": "يُجهّز Admin طلبك لإرساله إليّ",
+          "replyValidation": "يراجع Admin ردّي قبل عرضه عليك",
+          "teamContextInitial": "أجمع السياق الذي أحتاجه لطلبك",
+          "teamContextFinal": "أتحقق من أن سياقي ما زال مطابقًا للعمل المنجز",
+          "modelInitial": "أقيّم كيف أتعامل مع طلبك",
+          "modelAfterAction": "أحلّل ما أعادته Assistants إليّ",
+          "actionPreparation": "أجهّز Actions الخاصة بـ Assistants التي اخترت استخدامها",
+          "actionPreparationAgain": "أجهّز Actions التالية الخاصة بـ Assistants",
+          "action": "أحاول تنفيذ Action {action} باستخدام Assistant {assistant}",
+          "actionAgain": "أحاول مجددًا تنفيذ Action {action} باستخدام Assistant {assistant}",
           "actionPosition": "· الإجراء {index} من {total}",
-          "actionDelivery": "يسجل {team} نتائج Actions التي قبلها النموذج"
+          "actionDelivery": "أسجّل النتائج التي استخدمتها بالفعل"
         },
         "states": { "started": "قيد التنفيذ", "finished": "مكتمل" }
       },

@@ -9,7 +9,7 @@
 
   let {
     events = [],
-    label = '{count} execution stages completed',
+    label = 'Execution stages recorded: {count}',
     progressLabels = {},
     teamName = 'Team',
     assistantNames = new Map(),

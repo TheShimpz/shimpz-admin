@@ -133,6 +133,23 @@ test('humanizes every observed phase in every supported Admin locale', () => {
   }
 });
 
+const TEST_NARRATIVE = {
+  narrative: {
+    adminPreparation: 'admin-preparation',
+    replyValidation: 'reply-validation',
+    teamContextInitial: 'context-initial',
+    teamContextFinal: 'context-final',
+    modelInitial: 'model-initial',
+    modelAfterAction: 'model-after-action',
+    actionPreparation: 'action-preparation',
+    actionPreparationAgain: 'action-preparation-again',
+    action: 'action {assistant}/{action}',
+    actionAgain: 'action-again {assistant}/{action}',
+    actionPosition: '· {index}/{total}',
+    actionDelivery: 'action-delivery',
+  },
+};
+
 test('turns repeated Action calls into one truthful contextual narrative', () => {
   const events = [
     { seq: 1, origin: 'admin', phase: 'admin-preparation', state: 'started' },
@@ -161,22 +178,23 @@ test('turns repeated Action calls into one truthful contextual narrative', () =>
       action: 'list-zones', index: 1, total: 1,
     },
   ];
-  const labels = messages.pt.chatPage.progress;
   const context = {
     teamName: 'Marketing',
     assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
   };
-  const visible = (value) => value.replaceAll(/[\u2068\u2069]/gu, '');
-  const narrative = executionSteps(events).map((step) => visible(localizedStepLabel(step, labels, context)));
+  const narrative = executionSteps(events).map((step) => localizedStepLabel(step, TEST_NARRATIVE, context));
 
-  assert.equal(narrative[0], 'O Admin prepara uma solicitação segura para Marketing');
-  assert.equal(narrative[2], 'Marketing decide como tratar sua solicitação');
-  assert.equal(narrative[4], 'Shimpz Cloudflare executa List Zones para Marketing');
-  assert.equal(narrative[5], 'Marketing avalia os resultados devolvidos pelos Assistants');
-  assert.equal(narrative[6], 'Marketing registra os resultados de Actions aceitos pelo modelo');
-  assert.equal(narrative[7], 'Marketing prepara as próximas ações de Assistants solicitadas pelo modelo');
-  assert.equal(narrative[8], 'Shimpz Cloudflare executa List Zones novamente para Marketing');
-  assert.ok(narrative.every((label) => !label.includes('Action 1')));
+  assert.deepEqual(narrative, [
+    'admin-preparation',
+    'context-initial',
+    'model-initial',
+    'action-preparation',
+    'action \u2068Shimpz Cloudflare\u2069/\u2068List Zones\u2069',
+    'model-after-action',
+    'action-delivery',
+    'action-preparation-again',
+    'action-again \u2068Shimpz Cloudflare\u2069/\u2068List Zones\u2069',
+  ]);
 });
 
 test('renders a resumed partial stream without inventing an absolute round', () => {
@@ -187,13 +205,11 @@ test('renders a resumed partial stream without inventing an absolute round', () 
       action: 'lookup', index: 1, total: 1,
     },
   ]);
-  const labels = messages.en.chatPage.progress;
-  const first = localizedStepLabel(steps[0], labels, { teamName: 'Research' });
-  const second = localizedStepLabel(steps[1], labels, { teamName: 'Research' });
+  const first = localizedStepLabel(steps[0], TEST_NARRATIVE, { teamName: 'Research' });
+  const second = localizedStepLabel(steps[1], TEST_NARRATIVE, { teamName: 'Research' });
 
-  assert.match(first, /prepares the Assistant actions/);
-  assert.match(second, /runs.*Lookup.*Research/);
-  assert.doesNotMatch(`${first} ${second}`, /round|cycle/i);
+  assert.equal(first, 'action-preparation');
+  assert.equal(second, 'action \u2068Helper\u2069/\u2068Lookup\u2069');
 });
 
 test('narrates the final context check truthfully for a Brain-only turn', () => {
@@ -202,13 +218,9 @@ test('narrates the final context check truthfully for a Brain-only turn', () => 
     { seq: 2, origin: 'team', phase: 'model', state: 'started' },
     { seq: 3, origin: 'team', phase: 'team-context', state: 'started' },
   ]);
-  const labels = messages.en.chatPage.progress;
-  const narrative = steps.map((step) => localizedStepLabel(step, labels, { teamName: 'Research' }));
+  const narrative = steps.map((step) => localizedStepLabel(step, TEST_NARRATIVE, { teamName: 'Research' }));
 
-  assert.match(narrative[0], /assembles the context/);
-  assert.match(narrative[1], /decides how to handle/);
-  assert.match(narrative[2], /verifies that its context still matches/);
-  assert.doesNotMatch(narrative[2], /assembles/);
+  assert.deepEqual(narrative, ['context-initial', 'model-initial', 'context-final']);
 });
 
 test('every locale resolves every narrative variant without placeholder remnants', () => {
