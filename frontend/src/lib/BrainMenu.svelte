@@ -173,18 +173,11 @@
         />
       {/each}
     </div>
-    <p class="section-label" id={`${panelId}-effort`}>{copy.effort}</p>
-    <div
-      class="effort"
-      role="radiogroup"
-      aria-labelledby={`${panelId}-effort`}
-      style={`--effort-fill: ${effortIndex / (INFERENCE_EFFORTS.length - 1)}`}
-    >
-      <span class="track" aria-hidden="true"><span class="fill"></span></span>
+    <div class="effort" role="radiogroup" aria-label={copy.effort}>
       {#each INFERENCE_EFFORTS as effort, index (effort)}
         <Button
           bind:element={effortButtons[index]}
-          class={['stop', index <= effortIndex && 'is-reached', index === effortIndex && 'is-current']}
+          class={['stop', index === effortIndex && 'is-current']}
           variant="ghost"
           size="sm"
           type="button"
@@ -195,12 +188,22 @@
           onclick={() => chooseEffort(index)}
           onkeydown={effortKeydown}
         >
-          <span class="dot" aria-hidden="true"></span>
+          <span
+            class={[
+              'rail',
+              index === 0 && 'is-first',
+              index === INFERENCE_EFFORTS.length - 1 && 'is-last',
+              index > 0 && index <= effortIndex && 'fill-before',
+              index < effortIndex && 'fill-after',
+            ]}
+            aria-hidden="true"
+          >
+            <span class={['dot', index <= effortIndex && 'is-reached', index === effortIndex && 'is-current']}></span>
+          </span>
           <span class="stop-label">{copy.efforts[effort]}</span>
         </Button>
       {/each}
     </div>
-    <p class="hint">{copy.effortHint}</p>
   </div>
 </div>
 
@@ -212,19 +215,23 @@
   .panel { position: fixed; z-index: 80; top: var(--panel-top); left: var(--panel-left); display: grid; width: min(20rem, calc(100vw - 1rem)); gap: var(--shimpz-space-2); margin: 0; padding: var(--shimpz-space-3); color: var(--shimpz-color-text); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); box-shadow: 0 1rem 3rem rgb(0 0 0 / 65%); }
   .panel:not(:popover-open) { display: none; }
   .section-label { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
-  .section-label:not(:first-child) { margin-block-start: var(--shimpz-space-2); }
   .models { display: grid; gap: 2px; }
-  .effort { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .track { position: absolute; inset-inline: calc(100% / 6); top: calc(0.5rem + 0.45rem); height: 2px; background: var(--shimpz-color-border); }
-  .fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: calc(var(--effort-fill) * 100%); background: var(--shimpz-color-cyan); transition: width var(--shimpz-duration-fast) var(--shimpz-ease); }
-  .effort :global(.stop) { position: relative; height: auto; min-height: 0; padding: 0.5rem 0.25rem; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-dim); }
-  .effort :global(.stop .button-content) { display: grid; justify-items: center; gap: 0.5rem; }
-  .dot { display: block; width: 0.9rem; height: 0.9rem; background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); transform: rotate(45deg); transition: background var(--shimpz-duration-fast) var(--shimpz-ease), border-color var(--shimpz-duration-fast) var(--shimpz-ease); }
-  .effort :global(.stop.is-reached .dot) { border-color: var(--shimpz-color-cyan); }
-  .effort :global(.stop.is-current .dot) { background: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
-  .effort :global(.stop.is-current) { color: var(--shimpz-color-cyan); }
-  .stop-label { font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
-  .effort :global(.stop:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; }
-  .hint { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.75rem/1.45 var(--shimpz-font-sans); }
-  @media (prefers-reduced-motion: reduce) { .fill, .dot { transition: none; } }
+  .effort { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block-start: var(--shimpz-space-2); }
+  .effort :global(.stop) { width: 100%; height: auto; min-height: 0; padding: 0.35rem 0 0.45rem; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-dim); box-shadow: none; }
+  .effort :global(.stop:hover:not(:disabled)) { color: var(--shimpz-color-text); background: transparent; border-color: transparent; box-shadow: none; }
+  .effort :global(.stop.is-current), .effort :global(.stop.is-current:hover:not(:disabled)) { color: var(--shimpz-color-cyan); }
+  .effort :global(.stop .button-content) { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); justify-content: stretch; justify-items: stretch; gap: 0.55rem; }
+  /* Each stop draws its connectors from the exact center of its own diamond, so the line always meets it. */
+  .rail { position: relative; display: grid; height: 1.3rem; place-items: center; }
+  .rail::before, .rail::after { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--shimpz-color-border); content: ""; transition: background var(--shimpz-duration-fast) var(--shimpz-ease); }
+  .rail::before { inset-inline: 0 50%; }
+  .rail::after { inset-inline: 50% 0; }
+  .rail.is-first::before, .rail.is-last::after { display: none; }
+  .rail.fill-before::before, .rail.fill-after::after { background: var(--shimpz-color-cyan); }
+  .dot { position: relative; z-index: 1; display: block; width: 0.9rem; height: 0.9rem; background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); transform: rotate(45deg); transition: background var(--shimpz-duration-fast) var(--shimpz-ease), border-color var(--shimpz-duration-fast) var(--shimpz-ease); }
+  .dot.is-reached { border-color: var(--shimpz-color-cyan); }
+  .dot.is-current { background: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
+  .stop-label { justify-self: center; font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; transition: color var(--shimpz-duration-fast) var(--shimpz-ease); }
+  .effort :global(.stop:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; box-shadow: none; }
+  @media (prefers-reduced-motion: reduce) { .rail::before, .rail::after, .dot, .stop-label { transition: none; } }
 </style>

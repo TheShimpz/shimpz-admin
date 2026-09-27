@@ -145,6 +145,7 @@
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
   .sidebar-footer { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-3); border-block-start: 1px solid var(--shimpz-color-border); }
   .sidebar-footer > :global(.shimpz-dropdown) { width: auto; margin-inline: var(--shimpz-space-4); }
+  .sidebar-footer > :global(.platform-release) { justify-content: center; border-block-start: 0; }
 
   .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); }
@@ -191,6 +192,7 @@
       background: var(--shimpz-color-surface);
     }
     .mobile-footer > :global(:last-child) { margin-inline-start: auto; }
+    .mobile-footer > :global(.platform-release) { border-block-start: 0; }
     .mobile-footer :global(.shimpz-dropdown .trigger) { min-width: 2.75rem; min-height: 2.75rem; }
     .mobile-team-region :global(.context-error) {
       border-inline: 0;

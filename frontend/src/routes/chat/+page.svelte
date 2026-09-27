@@ -2152,11 +2152,13 @@
 
   .composer-input:focus-within {
     border-color: var(--shimpz-color-cyan);
-    box-shadow: 0 0 0 1px var(--shimpz-color-cyan);
   }
 
-  .composer-input :global(.composer-field textarea:focus-visible) {
+  /* The box border carries focus; the field's own focus outline would draw a line inside the box. */
+  .composer-input :global(.composer-field textarea:focus) {
+    border: 0;
     outline: none;
+    box-shadow: none;
   }
 
   :global(.composer-actions) {
