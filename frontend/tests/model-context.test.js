@@ -10,6 +10,7 @@ import {
   modelContext,
   preloadModelProviders,
   selectTeamBrain,
+  selectTeamEffort,
 } from '../src/lib/modelContext.js';
 
 function response(status, body) {
@@ -35,7 +36,7 @@ const providers = [
 
 function fixtureFetcher(
   teamId = 'marketing',
-  inference = { provider: 'openai', model: 'gpt-6-sol' },
+  inference = { provider: 'openai', model: 'gpt-6-sol', effort: 'low' },
   providerCatalog = providers,
 ) {
   return async (url, options = {}) => {
@@ -58,7 +59,7 @@ test('loads one verified provider/model authority for the selected Team', async 
   await loadModelContext(fixtureFetcher(), 'marketing');
   assert.deepEqual(get(modelContext), {
     phase: 'ready', teamId: 'marketing', providers,
-    provider: 'openai', model: 'gpt-6-sol', ready: true, error: '',
+    provider: 'openai', model: 'gpt-6-sol', effort: 'low', ready: true, error: '',
   });
 });
 
@@ -75,7 +76,7 @@ test('provider preload is shared with model hydration and cached across Team swi
     if (url === '/api/teams/marketing/inference' || url === '/api/teams/support/inference') {
       inferenceRequests += 1;
       const teamId = url.split('/')[3];
-      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-6-sol' });
+      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-6-sol', effort: 'low' });
     }
     throw new Error(`Unexpected request: GET ${url}`);
   };
@@ -111,6 +112,7 @@ test('opens Chat by persisting the default Brain when its provider key already e
   assert.deepEqual(JSON.parse(calls[2].options.body), {
     provider: 'openai',
     model: 'gpt-6-sol',
+    effort: 'low',
   });
   assert.equal(get(modelContext).provider, 'openai');
   assert.equal(get(modelContext).model, 'gpt-6-sol');
@@ -136,7 +138,7 @@ test('persists one atomic Brain change when its provider key is verified', async
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/teams/marketing/inference');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-luna' });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
   assert.equal(get(modelContext).model, 'gpt-6-luna');
   assert.equal(get(modelContext).ready, true);
 });
@@ -193,6 +195,7 @@ test('validated credential is saved before inference and unlocks the Team', asyn
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     provider: 'anthropic',
     model: 'claude-opus-5-5',
+    effort: 'low',
   });
   assert.equal(get(modelContext).ready, true);
   assert.equal(get(modelContext).providers[1].configured, true);
@@ -221,7 +224,7 @@ test('switching to another verified provider writes only the selected Brain once
   const calls = [];
   const base = fixtureFetcher(
     'marketing',
-    { provider: 'openai', model: 'gpt-6-sol' },
+    { provider: 'openai', model: 'gpt-6-sol', effort: 'low' },
     configuredProviders,
   );
   const fetcher = async (url, options = {}) => {
@@ -238,6 +241,7 @@ test('switching to another verified provider writes only the selected Brain once
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     provider: 'anthropic',
     model: 'claude-opus-5-5',
+    effort: 'low',
   });
   assert.equal(get(modelContext).ready, true);
 });
@@ -271,8 +275,44 @@ test('late model responses from the previous Team cannot replace current authori
     team_id: 'marketing',
     provider: 'openai',
     model: 'gpt-6-sol',
+    effort: 'low',
   }));
   await oldLoad;
   assert.equal(get(modelContext).teamId, 'support');
   assert.equal(get(modelContext).ready, true);
 });
+
+test('changing only the reasoning effort writes one exact Team selection', async () => {
+  const calls = [];
+  const base = fixtureFetcher();
+  const fetcher = async (url, options = {}) => {
+    calls.push({ url, options });
+    return base(url, options);
+  };
+  await loadModelContext(fetcher, 'marketing');
+  calls.length = 0;
+  const pending = selectTeamEffort(fetcher, 'marketing', 'high');
+  assert.equal(get(modelContext).ready, true);
+  await pending;
+  assert.deepEqual(calls.map((call) => `${call.options.method ?? 'GET'} ${call.url}`), [
+    'PUT /api/teams/marketing/inference',
+  ]);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-sol', effort: 'high' });
+  assert.equal(get(modelContext).effort, 'high');
+  assert.equal(get(modelContext).ready, true);
+  calls.length = 0;
+  assert.equal((await selectTeamEffort(fetcher, 'marketing', 'high')).effort, 'high');
+  assert.equal(calls.length, 0);
+  await assert.rejects(selectTeamEffort(fetcher, 'marketing', 'xhigh'), /Invalid Team model request/);
+  await assert.rejects(selectTeamEffort(fetcher, 'support', 'low'), /Invalid Team model request/);
+});
+
+test('a new Team starts with low reasoning effort and rejects an unknown effort from Team', async () => {
+  await loadModelContext(fixtureFetcher('marketing', null), 'marketing');
+  assert.equal(get(modelContext).effort, 'low');
+  await assert.rejects(
+    loadModelContext(fixtureFetcher('marketing', { provider: 'openai', model: 'gpt-6-sol', effort: 'xhigh' }), 'marketing'),
+    /Team inference settings are invalid/,
+  );
+});
+

@@ -1,7 +1,13 @@
 import { get, writable } from 'svelte/store';
 
 import { LocalApiError } from './localApi.js';
-import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
+import {
+  DEFAULT_INFERENCE_EFFORT,
+  INFERENCE_EFFORTS,
+  listModelProviders,
+  loadInference,
+  saveModelSetup,
+} from './modelProviders.js';
 import { publicError, TEAM_ID_RE } from './validate.js';
 
 function emptyContext() {
@@ -11,6 +17,7 @@ function emptyContext() {
     providers: [],
     provider: '',
     model: '',
+    effort: DEFAULT_INFERENCE_EFFORT,
     ready: false,
     error: '',
   };
@@ -86,13 +93,14 @@ export async function loadModelContext(fetcher, teamId) {
       : providers.find((entry) => entry.configured) ?? providers[0];
     if (!selected) throw new LocalApiError('Model provider settings are invalid.');
     const model = inference?.model ?? selected.default_model;
+    const effort = inference?.effort ?? DEFAULT_INFERENCE_EFFORT;
     if (!selectedModel(selected, model)) throw new LocalApiError('Team model settings are invalid.');
     let selectionReady = Boolean(inference && selected.configured);
     if (!inference && selected.configured) {
       await saveModelSetup(
         fetcher,
         teamId,
-        { provider: selected.id, model, apiKey: '' },
+        { provider: selected.id, model, effort, apiKey: '' },
         providers,
       );
       selectionReady = true;
@@ -103,6 +111,7 @@ export async function loadModelContext(fetcher, teamId) {
       providers,
       provider: selected.id,
       model,
+      effort,
       ready: selectionReady,
       error: '',
     };
@@ -128,13 +137,14 @@ async function persist(fetcher, teamId, apiKey = '') {
   }
 
   const attempt = ++generation;
-  const saving = { ...current, phase: 'saving', ready: false, error: '' };
+  // Switching between configured selections keeps the chat open; only a new credential gates it.
+  const saving = { ...current, phase: 'saving', ready: current.ready && !apiKey, error: '' };
   modelContext.set(saving);
   try {
     const result = await saveModelSetup(
       fetcher,
       teamId,
-      { provider: current.provider, model: current.model, apiKey },
+      { provider: current.provider, model: current.model, effort: current.effort, apiKey },
       current.providers,
     );
     const providers = current.providers.map((entry) => (
@@ -147,6 +157,7 @@ async function persist(fetcher, teamId, apiKey = '') {
       providers,
       provider: result.inference.provider,
       model: result.inference.model,
+      effort: result.inference.effort,
       ready: true,
       error: '',
     };
@@ -181,8 +192,27 @@ export async function selectTeamBrain(fetcher, teamId, providerId, modelId) {
     phase: 'ready',
     provider: selected.id,
     model: modelId,
-    ready: false,
+    ready: selected.configured && current.ready,
     error: '',
   });
+  return selected.configured ? persist(fetcher, teamId) : get(modelContext);
+}
+
+export async function selectTeamEffort(fetcher, teamId, effort) {
+  requireRequest(fetcher, teamId);
+  const current = get(modelContext);
+  const selected = providerFrom(current);
+  if (
+    current.teamId !== teamId ||
+    !selected ||
+    !INFERENCE_EFFORTS.includes(effort) ||
+    current.phase === 'loading' ||
+    current.phase === 'saving'
+  ) {
+    throw new LocalApiError('Invalid Team model request.');
+  }
+  if (current.effort === effort) return current;
+  generation += 1;
+  modelContext.set({ ...current, phase: 'ready', effort, error: '' });
   return selected.configured ? persist(fetcher, teamId) : get(modelContext);
 }

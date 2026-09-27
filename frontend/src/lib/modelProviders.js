@@ -67,6 +67,10 @@ export async function listModelProviders(fetcher) {
   return body.providers;
 }
 
+// The closed chat reasoning efforts a Team configuration carries next to its model (ADR-0074).
+export const INFERENCE_EFFORTS = Object.freeze(['low', 'medium', 'high']);
+export const DEFAULT_INFERENCE_EFFORT = 'low';
+
 /** Read only provider/model metadata from one Team. HTTP 409 means it has no selection yet. */
 export async function loadInference(fetcher, teamId) {
   if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
@@ -82,13 +86,14 @@ export async function loadInference(fetcher, teamId) {
     throw new LocalApiError(safeApiError(body, 'Team inference settings are unavailable.'), response.status);
   }
   if (
-    !exactKeys(body, ['team_id', 'model', 'provider']) ||
+    !exactKeys(body, ['team_id', 'model', 'provider', 'effort']) ||
     body.team_id !== teamId ||
-    !validSelection(body.provider, body.model)
+    !validSelection(body.provider, body.model) ||
+    !INFERENCE_EFFORTS.includes(body.effort)
   ) {
     throw new LocalApiError('Team inference settings are invalid.', response.status);
   }
-  return { provider: body.provider, model: body.model };
+  return { provider: body.provider, model: body.model, effort: body.effort };
 }
 
 /** Save a key to the backend first, then send only provider/model to the Team controller. */
@@ -97,6 +102,7 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
     typeof fetcher !== 'function' ||
     !TEAM_ID_RE.test(teamId) ||
     !validSelection(setup?.provider, setup?.model) ||
+    !INFERENCE_EFFORTS.includes(setup?.effort) ||
     !Array.isArray(providers) ||
     providers.length !== MAX_PROVIDERS ||
     !providers.every(validProvider)
@@ -131,7 +137,7 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
   const inferenceResponse = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
     method: 'PUT',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: setup.provider, model: setup.model }),
+    body: JSON.stringify({ provider: setup.provider, model: setup.model, effort: setup.effort }),
   });
   const inferenceBody = await jsonObject(inferenceResponse);
   if (!inferenceResponse.ok) {
@@ -141,12 +147,13 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
     );
   }
   if (
-    !exactKeys(inferenceBody, ['team_id', 'model', 'provider']) ||
+    !exactKeys(inferenceBody, ['team_id', 'model', 'provider', 'effort']) ||
     inferenceBody.team_id !== teamId ||
     inferenceBody.provider !== setup.provider ||
-    inferenceBody.model !== setup.model
+    inferenceBody.model !== setup.model ||
+    inferenceBody.effort !== setup.effort
   ) {
     throw new LocalApiError('The Team inference response is invalid.', inferenceResponse.status);
   }
-  return { providerState, inference: { provider: setup.provider, model: setup.model } };
+  return { providerState, inference: { provider: setup.provider, model: setup.model, effort: setup.effort } };
 }

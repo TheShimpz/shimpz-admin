@@ -207,21 +207,26 @@ def destroy(team_id: object, expected_team_name: object) -> TeamResponse:
     return _call("DELETE", f"/v1/teams/{canonical_id}")
 
 
+# The closed chat reasoning efforts a Team configuration carries next to its model (ADR-0074).
+INFERENCE_EFFORTS = ("low", "medium", "high")
+
+
 def _project_inference_response(
     response: TeamResponse,
     team_id: str,
     *,
-    expected: tuple[str, str] | None = None,
+    expected: tuple[str, str, str] | None = None,
 ) -> TeamResponse:
     """Project the authenticated controller envelope into the smaller browser contract."""
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"team_id", "provider", "model", "trace_id"}:
+        if set(response.body) != {"team_id", "provider", "model", "effort", "trace_id"}:
             raise ValueError("unexpected inference fields")
         response_team_id = response.body["team_id"]
         provider = response.body["provider"]
         model = response.body["model"]
+        effort = response.body["effort"]
         trace_id = response.body["trace_id"]
         selected_team_id = canonical_team_id(response_team_id)
         selected_provider = models.canonical_provider(provider)
@@ -231,11 +236,12 @@ def _project_inference_response(
             or selected_team_id != team_id
             or provider != selected_provider
             or model != selected_model
+            or effort not in INFERENCE_EFFORTS
             or not isinstance(trace_id, str)
             or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
         ):
             raise ValueError("non-canonical inference metadata")
-        if expected is not None and (selected_provider, selected_model) != expected:
+        if expected is not None and (selected_provider, selected_model, effort) != expected:
             raise ValueError("mismatched inference metadata")
     except KeyError, TypeError, ValueError, TeamRequestError, models.ModelProviderError:
         # Never reflect controller fields: an invalid response could contain credentials or internals.
@@ -243,7 +249,7 @@ def _project_inference_response(
         return TeamResponse(502, {"detail": "Team inference response is invalid."})
     return TeamResponse(
         response.status,
-        {"team_id": team_id, "provider": selected_provider, "model": selected_model},
+        {"team_id": team_id, "provider": selected_provider, "model": selected_model, "effort": effort},
     )
 
 
@@ -257,10 +263,13 @@ def get_inference(team_id: object) -> TeamResponse:
 def configure_inference(team_id: object, payload: object) -> TeamResponse:
     """Forward the closed, secret-free Team inference contract."""
     canonical_id = canonical_team_id(team_id)
-    if not isinstance(payload, dict) or set(payload) != {"provider", "model"}:
-        raise TeamRequestError("inference requires only provider and model")
+    if not isinstance(payload, dict) or set(payload) != {"provider", "model", "effort"}:
+        raise TeamRequestError("inference requires only provider, model, and effort")
     provider = payload["provider"]
     model = payload["model"]
+    effort = payload["effort"]
+    if not isinstance(effort, str) or effort not in INFERENCE_EFFORTS:
+        raise TeamRequestError("reasoning effort is not supported")
     try:
         selected_provider = models.canonical_provider(provider)
         selected_model = models.canonical_model(selected_provider, model)
@@ -271,12 +280,12 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
     response = _call(
         "PUT",
         f"/v1/teams/{canonical_id}/inference",
-        {"provider": selected_provider, "model": selected_model},
+        {"provider": selected_provider, "model": selected_model, "effort": effort},
     )
     return _project_inference_response(
         response,
         canonical_id,
-        expected=(selected_provider, selected_model),
+        expected=(selected_provider, selected_model, effort),
     )
 
 

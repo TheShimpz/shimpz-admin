@@ -209,6 +209,7 @@ async function routeReadyChat(page, {
   reply,
 } = {}) {
   let inferenceWrites = 0;
+  const inferenceBodies = [];
   const humanResponses = [];
   let chatConnections = 0;
   let disconnectHumanSocket = () => {};
@@ -387,11 +388,16 @@ async function routeReadyChat(page, {
     }
     if (route.request().method() === 'PUT') {
       inferenceWrites += 1;
+      inferenceBodies.push(route.request().postDataJSON());
       if (holdInferenceWrite) await inferenceWriteHold;
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ team_id: 'marketing', ...route.request().postDataJSON() }),
+      });
     }
     return route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6-sol' }),
+      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6-sol', effort: 'low' }),
     });
   });
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
@@ -779,6 +785,7 @@ async function routeReadyChat(page, {
     humanResponses: () => humanResponses,
     historyRequests: () => historyRequests,
     inferenceWrites: () => inferenceWrites,
+    inferenceBodies: () => inferenceBodies,
     advanceAssistantPlan: () => advanceAssistantPlan(),
     completeAssistantPlan: () => completeAssistantPlan(),
     releaseAssistantPlan: () => releaseAssistantPlan(),
@@ -1786,8 +1793,8 @@ test('never falls back to the Store icon when model context leaves an uninstall 
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
   );
 
-  await page.getByRole('button', { name: 'Brain: GPT-6 Sol' }).click();
-  await page.getByRole('menuitemradio', { name: 'GPT-6 Luna' }).click();
+  await page.getByRole('button', { name: 'Brain: GPT-6 Sol, Low reasoning' }).click();
+  await page.getByRole('dialog', { name: 'Brain settings' }).getByRole('button', { name: /GPT-6 Luna/ }).click();
   await expect.poll(chat.inferenceWrites).toBe(1);
   await expect.poll(
     () => chat.assistantIconRequests().some((url) => url.includes('/catalog-icon')),
@@ -2971,7 +2978,7 @@ test('keeps a first Store install ready while local display metadata catches up'
 });
 
 test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
-  await routeReadyChat(page);
+  const chat = await routeReadyChat(page);
   await page.goto('/chat/');
 
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -2982,16 +2989,29 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   expect(results.violations).toEqual([]);
   await expect(page).toHaveScreenshot('chat-ready.png', visualContract);
 
-  const brainTrigger = page.getByRole('button', { name: 'Brain: GPT-6 Sol' });
+  const brainTrigger = page.getByRole('button', { name: /^Brain: / });
+  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6 Sol, Low reasoning');
+  await expect(brainTrigger.getByText('GPT-6 Sol')).toHaveCount(0);
   await brainTrigger.click();
-  const brainMenu = page.getByRole('menu', { name: 'Choose the Brain' });
-  await expect(brainMenu).toBeVisible();
-  await expect(brainMenu.getByRole('menuitemradio', { name: 'GPT-6 Sol' })).toHaveAttribute('aria-checked', 'true');
-  await expect(brainMenu.getByRole('menuitemradio', { name: 'GPT-6 Sol' })).toBeFocused();
+  const brainPanel = page.getByRole('dialog', { name: 'Brain settings' });
+  await expect(brainPanel).toBeVisible();
+  const models = brainPanel.getByRole('group', { name: 'Model' });
+  await expect(models.getByRole('button', { name: /GPT-6 Sol/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(models.getByRole('button', { name: /GPT-6 Sol/ })).toBeFocused();
+  const effort = brainPanel.getByRole('radiogroup', { name: 'Reasoning effort' });
+  await expect(effort.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
   await page.mouse.move(0, 0);
   await expect(page).toHaveScreenshot('brain-chooser.png', visualContract);
+  await effort.getByRole('radio', { name: 'Low' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => chat.inferenceBodies().at(-1)).toEqual({ provider: 'openai', model: 'gpt-6-sol', effort: 'medium' });
+  await expect(effort.getByRole('radio', { name: 'Medium' })).toHaveAttribute('aria-checked', 'true');
+  await expect(effort.getByRole('radio', { name: 'Medium' })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect.poll(() => chat.inferenceBodies().at(-1)?.effort).toBe('high');
+  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6 Sol, High reasoning');
   await page.keyboard.press('Escape');
-  await expect(brainMenu).toBeHidden();
+  await expect(brainPanel).toBeHidden();
   await expect(brainTrigger).toBeFocused();
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -3123,3 +3143,31 @@ test('names every running Assistant beyond the chat limit and sends exactly the 
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   expect(chat.chatFrames()[0].assistant_ids).toEqual(ids.slice(0, 16));
 });
+
+test('holds Send while a Brain change is saving so the turn uses the saved selection', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdInferenceWrite: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Use the new effort');
+  const send = page.getByRole('button', { name: 'Send' });
+  await expect(send).toBeEnabled();
+
+  await page.getByRole('button', { name: /^Brain: / }).click();
+  await page.getByRole('dialog', { name: 'Brain settings' })
+    .getByRole('radiogroup', { name: 'Reasoning effort' })
+    .getByRole('radio', { name: 'High' })
+    .click();
+  await expect.poll(chat.inferenceWrites).toBe(1);
+  await expect(send).toBeDisabled();
+  await expect(composer).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await composer.press('Enter');
+  expect(chat.chatFrames()).toHaveLength(0);
+
+  chat.releaseInferenceWrite();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'high' }]);
+});
+

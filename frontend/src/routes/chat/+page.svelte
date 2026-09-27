@@ -143,6 +143,8 @@
   let composerBusy = $derived(
     busy || syncing || lifecycleOutcomePending !== null || historyHydrating,
   );
+  // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
+  let brainSaving = $derived($modelContext.phase === 'saving');
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let omittedAssistantNames = $derived(
@@ -1312,6 +1314,7 @@
     const normalized = message.trim();
     if (
       composerBusy ||
+      brainSaving ||
       !teamId ||
       chatTeamId !== teamId ||
       !normalized ||
@@ -1805,13 +1808,9 @@
               />
               <Toolbar class="composer-actions">
               <BrainMenu disabled={composerBusy || stopping} />
-              {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
-                <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
-                  {copy.stop}
-                </Button>
-              {/if}
               <Button
                 bind:element={integrationsButton}
+                class="composer-integrations"
                 variant="ghost"
                 size="icon"
                 type="button"
@@ -1826,9 +1825,14 @@
                   <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
                 </svg>
               </Button>
+              {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
+                <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
+                  {copy.stop}
+                </Button>
+              {/if}
               <Button
                 type="submit"
-                disabled={composerBusy || !socketReady || !draft.trim()}
+                disabled={composerBusy || brainSaving || !socketReady || !draft.trim()}
               >
                 {socketReady ? copy.send : copy.connecting}
               </Button>
@@ -2124,29 +2128,56 @@
 
   :global(.composer-field textarea) {
     width: 100%;
-    height: 2.75rem;
+    height: 3rem;
     min-height: 0;
     resize: none;
-    border: 1px solid var(--border-strong);
-    padding: 0.55rem 0.7rem;
-    background: #050708;
+    border: 0;
+    padding: 0.7rem 0.8rem 0.2rem;
+    background: transparent;
     color: var(--text);
     font-family: var(--font-mono);
     line-height: 1.45;
     overflow-y: auto;
   }
 
+  /* One bordered composer box holds the message and, beneath it, the Brain and tool controls. */
   .composer-input {
     display: grid;
     min-width: 0;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 0.65rem;
+    grid-template-columns: minmax(0, 1fr);
+    border: 1px solid var(--border-strong);
+    background: #050708;
+    transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease);
+  }
+
+  .composer-input:focus-within {
+    border-color: var(--shimpz-color-cyan);
+    box-shadow: 0 0 0 1px var(--shimpz-color-cyan);
+  }
+
+  .composer-input :global(.composer-field textarea:focus-visible) {
+    outline: none;
+  }
+
+  :global(.composer-actions) {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.4rem 0.4rem;
+  }
+
+  :global(.composer-actions .composer-integrations) {
+    margin-inline-end: auto;
   }
 
   .composer :global(.shimpz-button) {
-    height: 2.75rem;
+    height: 2.5rem;
     min-height: 0;
+  }
+
+  .composer-input :global(.brain-trigger) {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 
   :global(.composer-actions .shimpz-button svg) {
@@ -2183,9 +2214,7 @@
     :global(.turns .shimpz-message--user) { max-width: 92%; }
     .conversation { --chat-rail-gutter: 0.6rem; }
     .composer { gap: 0.45rem; padding: 0.6rem 0; }
-    .composer-input { grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
     :global(.composer-actions) { gap: 0.3rem; }
-    :global(.composer-actions .brain-menu) { margin-inline-end: auto; }
     .composer :global(.shimpz-button) { padding-inline: 0.65rem; }
   }
 </style>

@@ -63,18 +63,18 @@ test('saves the key only to Admin and provider/model only to inference', async (
     calls.push({ url, options });
     return calls.length === 1
       ? response(200, { ...providers[0], configured: true, masked: '••••test' })
-      : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-6-luna' });
+      : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
   };
 
   await saveModelSetup(
     fetcher,
     'team_1',
-    { provider: 'openai', model: 'gpt-6-luna', apiKey: 'sk-test-0123456789' },
+    { provider: 'openai', model: 'gpt-6-luna', effort: 'low', apiKey: 'sk-test-0123456789' },
     providers,
   );
 
   assert.deepEqual(JSON.parse(calls[0].options.body), { api_key: 'sk-test-0123456789' });
-  assert.deepEqual(JSON.parse(calls[1].options.body), { provider: 'openai', model: 'gpt-6-luna' });
+  assert.deepEqual(JSON.parse(calls[1].options.body), { provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
   assert.doesNotMatch(calls[1].options.body, /api_key|sk-test/);
 });
 
@@ -83,10 +83,10 @@ test('reuses a configured key without a credential write', async () => {
   await saveModelSetup(
     async (url, options) => {
       calls.push({ url, options });
-      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5' });
+      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5', effort: 'low' });
     },
     'team_1',
-    { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: '' },
+    { provider: 'anthropic', model: 'claude-sonnet-5', effort: 'low', apiKey: '' },
     providers,
   );
   assert.equal(calls.length, 1);
@@ -96,7 +96,7 @@ test('reuses a configured key without a credential write', async () => {
 test('rejects inference models outside the provider catalog before saving', async () => {
   await assert.rejects(
     loadInference(
-      async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5' }),
+      async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5', effort: 'low' }),
       'team_1',
     ),
     /invalid/,
@@ -107,7 +107,7 @@ test('rejects inference models outside the provider catalog before saving', asyn
     saveModelSetup(
       async () => { called = true; },
       'team_1',
-      { provider: 'openai', model: 'gpt-5.7', apiKey: 'sk-test-0123456789' },
+      { provider: 'openai', model: 'gpt-5.7', effort: 'low', apiKey: 'sk-test-0123456789' },
       providers,
     ),
     /invalid/i,

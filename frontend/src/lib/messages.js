@@ -323,7 +323,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Choose the Brain",
-      current: "Brain: {model}",
+      current: "Brain: {model}, {effort} reasoning",
+      settings: "Brain settings",
+      model: "Model",
+      effort: "Reasoning effort",
+      efforts: { low: "Low", medium: "Medium", high: "High" },
+      effortHint: "Higher effort thinks longer and uses more of your model credit.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -678,7 +683,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Escolher o Brain",
-      current: "Brain: {model}",
+      current: "Brain: {model}, raciocínio {effort}",
+      settings: "Configurações do Brain",
+      model: "Modelo",
+      effort: "Esforço de raciocínio",
+      efforts: { low: "Baixo", medium: "Médio", high: "Alto" },
+      effortHint: "Mais esforço pensa por mais tempo e consome mais crédito do seu modelo.",
     },
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
@@ -1033,7 +1043,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Elegir el Brain",
-      current: "Brain: {model}",
+      current: "Brain: {model}, razonamiento {effort}",
+      settings: "Configuración del Brain",
+      model: "Modelo",
+      effort: "Esfuerzo de razonamiento",
+      efforts: { low: "Bajo", medium: "Medio", high: "Alto" },
+      effortHint: "Más esfuerzo piensa durante más tiempo y consume más crédito de tu modelo.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -1388,7 +1403,12 @@ export const messages = {
     },
     brainMenu: {
       label: "选择 Brain",
-      current: "Brain：{model}",
+      current: "Brain：{model}，推理 {effort}",
+      settings: "Brain 设置",
+      model: "模型",
+      effort: "推理强度",
+      efforts: { low: "低", medium: "中", high: "高" },
+      effortHint: "强度越高，思考时间越长，消耗的模型额度也越多。",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -1743,7 +1763,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Choisir le Brain",
-      current: "Brain : {model}",
+      current: "Brain : {model}, raisonnement {effort}",
+      settings: "Réglages du Brain",
+      model: "Modèle",
+      effort: "Effort de raisonnement",
+      efforts: { low: "Faible", medium: "Moyen", high: "Élevé" },
+      effortHint: "Un effort plus élevé réfléchit plus longtemps et consomme davantage de crédit de votre modèle.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2098,7 +2123,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Brain wählen",
-      current: "Brain: {model}",
+      current: "Brain: {model}, Denkaufwand {effort}",
+      settings: "Brain-Einstellungen",
+      model: "Modell",
+      effort: "Denkaufwand",
+      efforts: { low: "Niedrig", medium: "Mittel", high: "Hoch" },
+      effortHint: "Mehr Aufwand denkt länger nach und verbraucht mehr Guthaben deines Modells.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2453,7 +2483,12 @@ export const messages = {
     },
     brainMenu: {
       label: "Brain を選択",
-      current: "Brain：{model}",
+      current: "Brain：{model}、推論 {effort}",
+      settings: "Brain の設定",
+      model: "モデル",
+      effort: "推論の強度",
+      efforts: { low: "低", medium: "中", high: "高" },
+      effortHint: "強度を上げると長く考え、モデルのクレジットをより多く使います。",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2808,7 +2843,12 @@ export const messages = {
     },
     brainMenu: {
       label: "اختيار Brain",
-      current: "Brain: {model}",
+      current: "Brain: {model}، استدلال {effort}",
+      settings: "إعدادات Brain",
+      model: "النموذج",
+      effort: "مستوى الاستدلال",
+      efforts: { low: "منخفض", medium: "متوسط", high: "مرتفع" },
+      effortHint: "المستوى الأعلى يفكر وقتًا أطول ويستهلك رصيدًا أكبر من نموذجك.",
     },
     teamSidebar: {
       "retry": "Retry local data"
