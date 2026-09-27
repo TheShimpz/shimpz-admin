@@ -5,7 +5,7 @@ online, enabled Account session with current Supervisor privilege. Query paramet
 session in either profile.
 
 The static SPA + the auth endpoints are open (the login form carries no secret); every Team,
-Assistant, model-provider, OAuth, notification, and chat endpoint requires a valid session. This
+Assistant, model-provider, OAuth, and chat endpoint requires a valid session. This
 process holds no Docker socket and has no host configuration write surface.
 """
 
@@ -29,7 +29,6 @@ import auth
 import host_reset
 import local_auth
 import models
-import notifications
 import platform_release
 import space_reset
 import state
@@ -133,7 +132,6 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
-notifications.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,

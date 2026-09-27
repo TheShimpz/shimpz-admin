@@ -59,6 +59,7 @@ class ModelProviderRouteTests(unittest.TestCase):
         self.assertIn("/api/teams/{team_id}/chat/ws", websocket_paths)
         self.assertNotIn(("/api/teams/{team_id}/chat", "POST"), routes)
         self.assertNotIn(("/api/teams/{team_id}/chat/stop", "POST"), routes)
+        self.assertFalse(any(path.startswith("/api/notifications") for path, _method in routes))
         model_credential_routes = {
             (path, method)
             for path, method in routes

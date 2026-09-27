@@ -46,7 +46,7 @@ RUN groupadd -g 1000 admin && \
 WORKDIR /app/backend
 COPY backend/app.py backend/auth.py backend/authentication_state.py backend/browser.py backend/host_reset.py \
     backend/local_auth.py backend/models.py \
-    backend/model_catalog.json backend/notifications.py \
+    backend/model_catalog.json \
     backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
 COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
 COPY backend/action/stored_input.py ./action/
@@ -83,8 +83,7 @@ RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-reset /run/shimpz
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    SHIMPZ_ADMIN_STORE=/data/admin.json \
-    SHIMPZ_NOTIFICATION_STORE=/data/notifications.json
+    SHIMPZ_ADMIN_STORE=/data/admin.json
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
 # copy surface omits a module imported by the Admin application.
 RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app"
