@@ -355,18 +355,16 @@ test('renders authenticated navigation with canonical primitives', async ({ page
   await expect(localeMenu.getByRole('menuitemradio').first()).toHaveCSS('border-top-width', '0px');
   await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
 
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /notifications/i })).toHaveCount(0);
   if (testInfo.project.name === 'desktop') {
-    await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Open notifications. 0 unread.' }).click();
-    const notificationDialog = page.getByRole('dialog', { name: 'Notifications' });
-    await expect(notificationDialog).toBeVisible();
-    const notificationBox = await notificationDialog.boundingBox();
-    expect(notificationBox).not.toBeNull();
-    expect(Math.abs(notificationBox.width - 448)).toBeLessThan(1);
-    expect(Math.abs((notificationBox.x + notificationBox.width) - page.viewportSize().width)).toBeLessThan(1);
-    expect(Math.abs(notificationBox.height - page.viewportSize().height)).toBeLessThan(1);
-    await expect(notificationDialog).toHaveScreenshot('notification-drawer.png', visualContract);
-    await notificationDialog.getByRole('button', { name: 'Close notifications' }).click();
+    const [localeBox, releaseBox] = await Promise.all([
+      localeTrigger.boundingBox(),
+      page.locator('.sidebar-footer .platform-release').boundingBox(),
+    ]);
+    expect(localeBox).not.toBeNull();
+    expect(releaseBox).not.toBeNull();
+    expect(localeBox.y + localeBox.height).toBeLessThanOrEqual(releaseBox.y);
   }
 });
 
@@ -408,7 +406,7 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   expect(Math.abs(tabsBox.width - page.viewportSize().width)).toBeLessThan(1);
 
   const appbarButtons = header.getByRole('button');
-  await expect(appbarButtons).toHaveCount(3);
+  await expect(appbarButtons).toHaveCount(1);
   for (const button of await appbarButtons.all()) {
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
@@ -427,17 +425,11 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height);
   expect(retryBox.height).toBeGreaterThanOrEqual(44);
 
-  const notificationTrigger = header.getByRole('button', { name: 'Open notifications. 0 unread.' });
-  await notificationTrigger.click();
-  const notificationDialog = page.getByRole('dialog', { name: 'Notifications' });
-  await expect(notificationDialog).toBeVisible();
-  const notificationBox = await notificationDialog.boundingBox();
-  expect(notificationBox).not.toBeNull();
-  expect(Math.abs(notificationBox.x)).toBeLessThan(1);
-  expect(Math.abs(notificationBox.width - page.viewportSize().width)).toBeLessThan(1);
-  expect(Math.abs(notificationBox.height - page.viewportSize().height)).toBeLessThan(1);
-  await notificationDialog.getByRole('button', { name: 'Close notifications' }).click();
-  await expect(notificationDialog).toBeHidden();
+  const footerLocale = tabs.getByRole('button', { name: 'Language: English' });
+  await expect(footerLocale).toBeVisible();
+  const footerLocaleBox = await footerLocale.boundingBox();
+  expect(footerLocaleBox).not.toBeNull();
+  expect(footerLocaleBox.height).toBeGreaterThanOrEqual(44);
 
   const overflow = await page.locator('html').evaluate((element) => ({
     client: element.clientWidth,
@@ -456,7 +448,7 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   expect(skipBox.y).toBeGreaterThanOrEqual(0);
   expect(skipZIndex).toBeGreaterThan(headerZIndex);
 
-  await header.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: 'العربية' }).click();
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   const rtlTabsBox = await tabs.boundingBox();
@@ -601,7 +593,7 @@ test('renders the Store as only the Assistant list for the Team its link names',
   expect(mainBox).not.toBeNull();
   expect(catalogBox.y - mainBox.y).toBeLessThan(80);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
-  await expect(page.getByRole('link', { name: 'Open the Store for Marketing' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: /^Store \d+ Assistants installed$/ })).toHaveAttribute('aria-current', 'page');
   if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
   await page.goto('/assistants/?team=missing');
@@ -782,7 +774,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
   await page.goto('/teams/');
   await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
-  await page.getByRole('link', { name: /^Open the Store for / }).first().click();
+  await page.getByRole('link', { name: /^Store \d+ Assistants installed$/ }).click();
   await iconRequested;
 
   const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });

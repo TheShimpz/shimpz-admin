@@ -84,11 +84,6 @@ function apiBody(path, data) {
     passkey_registered: true, oauth_completion_mode: 'automatic',
     features: { teamCredentials: true },
   };
-  if (path === '/api/notifications') return { notifications: [], unread_count: 0 };
-  if (path === '/api/notifications/sync') return {
-    notifications: [], unread_count: 0,
-    sync: { status: 'ok', updated_assistants: 0, notifications_added: 0, failed_updates: 0 },
-  };
   if (path === '/api/model-providers') return {
     providers: modelCatalog.providers.map((provider) => ({
       id: provider.id,

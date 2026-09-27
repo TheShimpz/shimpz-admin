@@ -59,11 +59,6 @@ function apiFixture(path) {
   };
   if (path === '/api/teams') return { teams: [team] };
   if (path === '/api/assistants') return { assistants: [] };
-  if (path === '/api/notifications') return { notifications: [], unread_count: 0 };
-  if (path === '/api/notifications/sync') return {
-    notifications: [], unread_count: 0,
-    sync: { status: 'ok', updated_assistants: 0, notifications_added: 0, failed_updates: 0 },
-  };
   if (path === '/api/model-providers') return { providers: models };
   if (path === '/api/platform-release') return {
     release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),

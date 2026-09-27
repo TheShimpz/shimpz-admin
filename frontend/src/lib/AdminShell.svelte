@@ -4,7 +4,6 @@
   import AdminNotice from '$lib/AdminNotice.svelte';
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
-  import NotificationCenter from '$lib/NotificationCenter.svelte';
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
   import TeamDialogs from '$lib/TeamDialogs.svelte';
   import TeamNavigation from '$lib/TeamNavigation.svelte';
@@ -49,21 +48,20 @@
 
 {#snippet sidebar()}
   {#if mobile}
-    {#if profile === 'local'}<div class="mobile-navigation"><PlatformReleaseStatus /></div>{/if}
+    <div class="mobile-footer">
+      {#if profile === 'local'}<PlatformReleaseStatus />{/if}
+      <LocaleMenu compact />
+    </div>
   {:else}
     <div class="shell-sidebar">
-      <div class="sidebar-brand">
-        <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
-        <NotificationCenter />
-      </div>
-      <div class="sidebar-controls">
-        <LocaleMenu wide />
-      </div>
       <div class="team-sidebar-region">
         <TeamNavigation {active} bind:createButton oncreate={createTeam} ondelete={deleteTeam} />
         <TeamSidebar {active} />
       </div>
-      {#if profile === 'local'}<PlatformReleaseStatus />{/if}
+      <div class="sidebar-footer">
+        <LocaleMenu wide />
+        {#if profile === 'local'}<PlatformReleaseStatus />{/if}
+      </div>
     </div>
   {/if}
 {/snippet}
@@ -91,10 +89,6 @@
       <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
     </Button>
     <ShimpzBrand product="Admin" href="/chat/" ariaLabel={$t('shell.adminHome')} />
-    <div class="mobile-appbar-actions">
-      <LocaleMenu compact />
-      <NotificationCenter />
-    </div>
   </div>
 {/snippet}
 
@@ -148,17 +142,18 @@
   }
   .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
   .chat-layout .authenticated-page { width: 100%; min-height: 0; margin: 0; padding: 0; overflow: hidden; }
-  .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
+  .sidebar-footer { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-3); border-block-start: 1px solid var(--shimpz-color-border); }
+  .sidebar-footer > :global(.shimpz-dropdown) { width: auto; margin-inline: var(--shimpz-space-4); }
+
   .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); }
   .team-drawer-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: var(--shimpz-space-3) var(--shimpz-space-4) 0; }
   .team-drawer-head h2 { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
-  .sidebar-brand { display: grid; min-width: 0; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); padding-inline: var(--shimpz-space-4); }
-  .sidebar-controls { display: grid; min-width: 0; gap: var(--shimpz-space-3); padding: 0 var(--shimpz-space-4) var(--shimpz-space-3); border-block-end: 1px solid var(--shimpz-color-border); }
   .team-sidebar-region { min-width: 0; min-height: 0; overflow: auto; }
   .mobile-team-region { min-width: 0; }
   .mobile-appbar,
-  .mobile-navigation { display: none; }
+  .mobile-footer { display: none; }
   .topbar { display: grid; min-height: 3.75rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-3); padding-inline: var(--shimpz-page-padding); }
   .locale-compact { display: none; }
   @media (max-width: 820px) {
@@ -180,27 +175,23 @@
     .mobile-appbar {
       display: grid;
       min-height: 3.75rem;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       gap: var(--shimpz-space-2);
       padding-inline: var(--shimpz-space-3);
     }
-    .mobile-appbar-actions {
+    .mobile-footer {
       display: flex;
       min-width: 0;
       align-items: center;
-      gap: var(--shimpz-space-1);
-    }
-    .mobile-appbar-actions :global(button) {
-      min-width: 2.75rem;
-      min-height: 2.75rem;
-    }
-    .mobile-navigation {
-      display: grid;
-      min-width: 0;
+      justify-content: space-between;
+      gap: var(--shimpz-space-2);
+      padding-inline-end: var(--shimpz-space-3);
       border-block-start: 1px solid var(--shimpz-color-border);
       background: var(--shimpz-color-surface);
     }
+    .mobile-footer > :global(:last-child) { margin-inline-start: auto; }
+    .mobile-footer :global(.shimpz-dropdown .trigger) { min-width: 2.75rem; min-height: 2.75rem; }
     .mobile-team-region :global(.context-error) {
       border-inline: 0;
     }

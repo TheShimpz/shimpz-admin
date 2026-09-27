@@ -313,6 +313,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.en,
     teamNavigation: {
+      chat: "Chat",
+      store: "Store",
+      installed: "{count} Assistants installed",
       label: "Teams",
       newTeam: "New Team",
       openStore: "Open the Store for {team}",
@@ -327,21 +330,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "Notifications",
-      "open": "Open notifications. {count} unread.",
-      "close": "Close notifications",
-      "kicker": "Space // updates",
-      "empty": "You are all caught up.",
-      "unavailable": "Saved notifications are temporarily unavailable.",
-      "unread": "Unread",
-      "read": "Read",
-      "markAll": "Mark all as read",
-      "clear": "Clear notifications",
-      "back": "Back to notifications",
-      "assistant": "Assistant",
-      "published": "Published {date}"
     },
     providerSetup: {
       "eyebrow": "Secure model setup",
@@ -683,6 +671,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.pt,
     teamNavigation: {
+      chat: "Chat",
+      store: "Store",
+      installed: "{count} Assistants instalados",
       label: "Times",
       newTeam: "Novo Time",
       openStore: "Abrir a Store de {team}",
@@ -697,21 +688,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
-    },
-    notifications: {
-      "label": "Notificações",
-      "open": "Abrir notificações. {count} não lidas.",
-      "close": "Fechar notificações",
-      "kicker": "Space // atualizações",
-      "empty": "Você está em dia.",
-      "unavailable": "As notificações salvas estão temporariamente indisponíveis.",
-      "unread": "Não lida",
-      "read": "Lida",
-      "markAll": "Marcar todas como lidas",
-      "clear": "Limpar notificações",
-      "back": "Voltar às notificações",
-      "assistant": "Assistant",
-      "published": "Publicada em {date}"
     },
     providerSetup: {
       "eyebrow": "Configuração segura do modelo",
@@ -1053,6 +1029,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.es,
     teamNavigation: {
+      chat: "Chat",
+      store: "Store",
+      installed: "{count} Assistants instalados",
       label: "Equipos",
       newTeam: "Nuevo Equipo",
       openStore: "Abrir la Store de {team}",
@@ -1067,21 +1046,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "Notificaciones",
-      "open": "Abrir notificaciones. {count} sin leer.",
-      "close": "Cerrar notificaciones",
-      "kicker": "Space // actualizaciones",
-      "empty": "Estás al día.",
-      "unavailable": "Las notificaciones guardadas no están disponibles temporalmente.",
-      "unread": "Sin leer",
-      "read": "Leída",
-      "markAll": "Marcar todas como leídas",
-      "clear": "Borrar notificaciones",
-      "back": "Volver a notificaciones",
-      "assistant": "Assistant",
-      "published": "Publicada el {date}"
     },
     providerSetup: {
       "eyebrow": "Configuración segura del modelo",
@@ -1423,6 +1387,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.zh,
     teamNavigation: {
+      chat: "聊天",
+      store: "Store",
+      installed: "已安装 {count} 个 Assistant",
       label: "团队",
       newTeam: "新建团队",
       openStore: "打开 {team} 的 Store",
@@ -1437,21 +1404,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "通知",
-      "open": "打开通知。{count} 条未读。",
-      "close": "关闭通知",
-      "kicker": "Space // 更新",
-      "empty": "你已查看全部更新。",
-      "unavailable": "已保存的通知暂时不可用。",
-      "unread": "未读",
-      "read": "已读",
-      "markAll": "全部标为已读",
-      "clear": "清空通知",
-      "back": "返回通知列表",
-      "assistant": "Assistant",
-      "published": "发布于 {date}"
     },
     providerSetup: {
       "eyebrow": "安全模型设置",
@@ -1793,6 +1745,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.fr,
     teamNavigation: {
+      chat: "Chat",
+      store: "Store",
+      installed: "{count} Assistants installés",
       label: "Équipes",
       newTeam: "Nouvelle Équipe",
       openStore: "Ouvrir le Store de {team}",
@@ -1807,21 +1762,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "Notifications",
-      "open": "Ouvrir les notifications. {count} non lues.",
-      "close": "Fermer les notifications",
-      "kicker": "Space // mises à jour",
-      "empty": "Vous êtes à jour.",
-      "unavailable": "Les notifications enregistrées sont temporairement indisponibles.",
-      "unread": "Non lue",
-      "read": "Lue",
-      "markAll": "Tout marquer comme lu",
-      "clear": "Effacer les notifications",
-      "back": "Retour aux notifications",
-      "assistant": "Assistant",
-      "published": "Publiée le {date}"
     },
     providerSetup: {
       "eyebrow": "Configuration sécurisée du modèle",
@@ -2163,6 +2103,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.de,
     teamNavigation: {
+      chat: "Chat",
+      store: "Store",
+      installed: "{count} Assistants installiert",
       label: "Teams",
       newTeam: "Neues Team",
       openStore: "Store für {team} öffnen",
@@ -2177,21 +2120,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "Benachrichtigungen",
-      "open": "Benachrichtigungen öffnen. {count} ungelesen.",
-      "close": "Benachrichtigungen schließen",
-      "kicker": "Space // Updates",
-      "empty": "Alles ist auf dem neuesten Stand.",
-      "unavailable": "Gespeicherte Benachrichtigungen sind vorübergehend nicht verfügbar.",
-      "unread": "Ungelesen",
-      "read": "Gelesen",
-      "markAll": "Alle als gelesen markieren",
-      "clear": "Benachrichtigungen löschen",
-      "back": "Zurück zu Benachrichtigungen",
-      "assistant": "Assistant",
-      "published": "Veröffentlicht am {date}"
     },
     providerSetup: {
       "eyebrow": "Sichere Modelleinrichtung",
@@ -2533,6 +2461,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ja,
     teamNavigation: {
+      chat: "チャット",
+      store: "Store",
+      installed: "{count} 個の Assistant をインストール済み",
       label: "チーム",
       newTeam: "新しいチーム",
       openStore: "{team} の Store を開く",
@@ -2547,21 +2478,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "通知",
-      "open": "通知を開く。未読 {count} 件。",
-      "close": "通知を閉じる",
-      "kicker": "Space // 更新",
-      "empty": "すべて確認済みです。",
-      "unavailable": "保存済みの通知は一時的に利用できません。",
-      "unread": "未読",
-      "read": "既読",
-      "markAll": "すべて既読にする",
-      "clear": "通知を消去",
-      "back": "通知一覧に戻る",
-      "assistant": "Assistant",
-      "published": "{date} に公開"
     },
     providerSetup: {
       "eyebrow": "安全なモデル設定",
@@ -2903,6 +2819,9 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ar,
     teamNavigation: {
+      chat: "المحادثة",
+      store: "Store",
+      installed: "{count} من Assistants مثبّتة",
       label: "الفرق",
       newTeam: "فريق جديد",
       openStore: "فتح Store الخاص بـ {team}",
@@ -2917,21 +2836,6 @@ export const messages = {
     },
     teamSidebar: {
       "retry": "Retry local data"
-    },
-    notifications: {
-      "label": "الإشعارات",
-      "open": "فتح الإشعارات. {count} غير مقروءة.",
-      "close": "إغلاق الإشعارات",
-      "kicker": "Space // التحديثات",
-      "empty": "اطّلعت على جميع التحديثات.",
-      "unavailable": "الإشعارات المحفوظة غير متاحة مؤقتًا.",
-      "unread": "غير مقروء",
-      "read": "مقروء",
-      "markAll": "تعليم الكل كمقروء",
-      "clear": "مسح الإشعارات",
-      "back": "العودة إلى الإشعارات",
-      "assistant": "Assistant",
-      "published": "نُشر في {date}"
     },
     providerSetup: {
       "eyebrow": "إعداد آمن للنموذج",
