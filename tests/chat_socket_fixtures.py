@@ -10,6 +10,9 @@ import json
 import threading
 
 TURN_ID = "a" * 32
+# How long a test waits for a frame or worker it expects. CI runs every lane on all processors, where a one-second
+# wait timed out on a correct frame; checks that nothing arrives pass their own short wait instead.
+EXPECTED_FRAME_SECONDS = 10.0
 CHALLENGE_ID = "b" * 32
 
 
@@ -81,10 +84,10 @@ class Socket:
         await self._incoming.put({"type": "websocket.connect"})
         return await self.next_message()
 
-    async def next_message(self, wait_seconds: float = 1.0) -> dict:
+    async def next_message(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
         return await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
 
-    async def next_json(self, wait_seconds: float = 1.0) -> dict:
+    async def next_json(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
         message = await self.next_message(wait_seconds)
         if message.get("type") != "websocket.send" or "text" not in message:
             raise AssertionError(f"expected a text WebSocket frame, got {message!r}")
@@ -105,10 +108,10 @@ class Socket:
 
     async def finish(self) -> None:
         if self._task is not None:
-            await asyncio.wait_for(self._task, timeout=2)
+            await asyncio.wait_for(self._task, timeout=EXPECTED_FRAME_SECONDS)
 
 
-async def wait_for_thread(event: threading.Event, wait_seconds: float = 1.0) -> None:
+async def wait_for_thread(event: threading.Event, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> None:
     deadline = asyncio.get_running_loop().time() + wait_seconds
     while not event.is_set():
         if asyncio.get_running_loop().time() >= deadline:
