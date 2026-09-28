@@ -837,10 +837,13 @@ test('shows the first Assistants view before a public icon finishes loading', as
     await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0, { timeout: 1000 });
     await expect(card).toBeVisible();
     await expect(iconBox.locator('img')).toHaveCount(0);
+    await expect(iconBox).toHaveAttribute('data-state', 'loading');
+    await expect(iconBox.locator('svg')).toHaveCount(0);
     const before = await iconBox.boundingBox();
     expect(before).not.toBeNull();
     releaseIcon();
     await expect(iconBox.locator('img')).toHaveAttribute('src', /^blob:/);
+    await expect(iconBox).toHaveAttribute('data-state', 'loaded');
     const after = await iconBox.boundingBox();
     expect(after).not.toBeNull();
     expect({ width: after.width, height: after.height }).toEqual({
@@ -849,6 +852,38 @@ test('shows the first Assistants view before a public icon finishes loading', as
   } finally {
     releaseIcon();
   }
+});
+
+test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
+    if (path === '/api/assistants/hello-pulse/catalog-icon') return;
+    const body = {
+      '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
+      '/api/assistants': { assistants: [] },
+      '/api/teams/marketing/assistants': { assistants: [] },
+      '/api/assistant-catalog': { version: 1, assistants: [{
+        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
+        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
+        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+      }] },
+      '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
+    }[path];
+    await route.fulfill({
+      status: body ? 200 : 503,
+      contentType: 'application/json',
+      body: JSON.stringify(body ?? {}),
+    });
+  });
+
+  await page.goto('/assistants/');
+  const iconBox = page.getByRole('article', { name: 'hello-pulse' }).locator('.shimpz-assistant-icon');
+  await expect(iconBox).toHaveAttribute('data-state', 'loading');
+  await expect(iconBox).toHaveAttribute('data-state', 'failed', { timeout: 5000 });
+  await expect(iconBox.locator('img')).toHaveCount(0);
+  await expect(iconBox.locator('svg')).toHaveCount(0);
 });
 
 test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {

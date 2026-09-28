@@ -292,6 +292,11 @@
     return `/api/assistants/${assistantId}/catalog-icon`;
   }
 
+  // A Local snapshot has no catalog icon; its icon appears only once installed, so a settled plan without one failed.
+  function installPlanIconStatus(assistant) {
+    return assistant.status === 'pending' || assistant.status === 'installing' ? 'loading' : 'failed';
+  }
+
   function installPlanTurnIndex(planId) {
     return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
   }
@@ -1735,6 +1740,7 @@
                           <AssistantIcon
                             assistant={assistant.id}
                             src={installPlanIconSource(assistant)}
+                            status={installPlanIconStatus(assistant)}
                             size={44}
                           />
                         {/snippet}
@@ -1773,6 +1779,7 @@
                       <AssistantIcon
                         assistant={lifecycle.assistant.id}
                         src={lifecycleIconSource(lifecycle)}
+                        status={lifecycle.state === 'uninstalled' ? 'failed' : 'loading'}
                         size={44}
                       />
                     {/snippet}

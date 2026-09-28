@@ -1529,6 +1529,38 @@ test('restores an already-installed Assistant result from durable history', asyn
   await expect(task).toContainText('Already installed');
 });
 
+test('settles a failed Local install plan icon as unavailable instead of loading', async ({ page }) => {
+  const turnId = 'b'.repeat(32);
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        {
+          id: `${turnId}:install`,
+          kind: 'assistant-install',
+          state: 'failed',
+          status: 503,
+          assistants: [{
+            id: 'shimpz-cloudflare',
+            name: 'Shimpz Cloudflare',
+            summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            providers: [],
+            provenance: 'local',
+            status: 'failed',
+          }],
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+
+  const icon = page.locator('.assistant-install-plan .shimpz-assistant-icon');
+  await expect(icon).toHaveAttribute('data-state', 'failed');
+  await expect(icon.locator('img')).toHaveCount(0);
+  await expect(icon.locator('svg')).toHaveCount(0);
+});
+
 test('keeps chat available when durable history cannot be loaded', async ({ page }) => {
   await routeReadyChat(page, { historyStatus: 503, reply: 'The live chat still works.' });
   await page.goto('/chat/');
@@ -1590,6 +1622,10 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
   expect(outcomeBounds.y - (taskBounds.y + taskBounds.height)).toBeGreaterThanOrEqual(12);
   await page.reload();
   await expect(outcomeText).toBeVisible();
+  // An uninstalled Assistant has no icon left to fetch, so its frame settles as unavailable.
+  const icon = page.locator('.assistant-lifecycle-task .shimpz-assistant-icon');
+  await expect(icon).toHaveAttribute('data-state', 'failed');
+  await expect(icon.locator('svg')).toHaveCount(0);
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
@@ -2199,15 +2235,16 @@ test('renders and clears a persistent Action input without exposing its value', 
   expect(chat.storedInputClears()).toBe(1);
 });
 
-test('keeps the generated mark when an integration icon is unavailable and toggles through it', async ({ page }) => {
+test('shows an unavailable integration icon as failed without a substitute mark and toggles through it', async ({ page }) => {
   await routeReadyChat(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({ status: 404 }));
   await page.goto('/chat/');
   await page.getByRole('button', { name: 'Assistant integrations' }).click();
   const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
   const icon = drawer.locator('.assistant-group .shimpz-assistant-icon');
-  await expect(icon.locator('svg')).toBeVisible();
-  await expect(icon.locator('img')).toHaveCount(0);
+  await expect(icon).toHaveAttribute('data-state', 'failed');
+  await expect(icon.locator('img')).toBeHidden();
+  await expect(icon.locator('svg')).toHaveCount(0);
 
   const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
   const iconBox = await icon.boundingBox();

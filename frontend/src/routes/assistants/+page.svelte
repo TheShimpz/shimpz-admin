@@ -46,6 +46,8 @@
   let pendingLocalSnapshot = $state(null);
   let pendingLocalSnapshots = $state([]);
   let catalogIconUrls = $state({});
+  // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
+  let catalogIconFailures = $state({});
   let catalogPresentationSettled = $state(false);
   let catalogRefreshing = $state(false);
   let catalogPresentationRequest = 0;
@@ -377,6 +379,7 @@
   function releaseCatalogIconUrls() {
     for (const url of Object.values(catalogIconUrls)) URL.revokeObjectURL(url);
     catalogIconUrls = {};
+    catalogIconFailures = {};
   }
 
   function releaseObsoleteIconUrls(previousUrls, nextUrls) {
@@ -458,6 +461,7 @@
         localSnapshotSettled = true;
       }
       catalogIconUrls = nextUrls;
+      catalogIconFailures = {};
       catalogPresentationSettled = true;
       catalogRefreshing = false;
       await tick();
@@ -480,7 +484,8 @@
           }
           catalogIconUrls[entry.key] = url;
         } catch {
-          // The shared card retains its bounded fallback icon when preview is unavailable.
+          // A failed or over-budget icon is shown as unavailable, never as a substitute mark.
+          if (request === catalogPresentationRequest) catalogIconFailures[entry.key] = true;
         }
       }));
       globalThis.clearTimeout(iconTimeout);
@@ -595,6 +600,7 @@
         meta={group.primary.declared_creators.join(', ')}
         summary={group.primary.summary}
         iconSrc={catalogIconUrls[localIconKey(group.primary)]}
+        iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
         iconLoading="eager"
         badge={localCopy.localBadge}
         badgeTone="local"
@@ -624,6 +630,7 @@
         meta={assistant.creators.join(', ')}
         summary={assistant.summary}
         iconSrc={catalogIconUrls[publicIconKey(assistant)]}
+        iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
         iconLoading="eager"
         badge={localCopy.publicBadge}
         installed={publicationInstalled}
