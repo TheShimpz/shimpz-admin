@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profile
 
 import auth
+import decision
 import host_reset
 import local_auth
 import models
@@ -558,6 +559,7 @@ if ADMIN_PROFILE == "local":
     app.add_api_route("/api/model-providers", model_providers_status, methods=["GET"])
     app.add_api_route("/api/model-providers/{provider}", model_provider_configure, methods=["PUT"])
     app.add_api_route("/api/model-providers/{provider}", model_provider_delete, methods=["DELETE"])
+    decision.register(app)
 
 
 @app.get("/api/teams")

@@ -126,9 +126,11 @@ def _validation_headers(provider: str, secret: str) -> dict[str, str]:
     }
 
 
-def _validate_api_key(provider: str, secret: str) -> None:
-    """Confirm one key against its fixed TLS endpoint without consuming response data."""
-    host, path = _VALIDATION_ENDPOINTS[provider]
+def probe_status(host: str, path: str, headers: dict[str, str]) -> int | None:
+    """GET one fixed TLS endpoint with a credential and return its status, or None when it cannot be reached.
+
+    No response data is consumed, so a key can be confirmed without reading provider content.
+    """
     try:
         connection = http.client.HTTPSConnection(
             host,
@@ -137,19 +139,27 @@ def _validate_api_key(provider: str, secret: str) -> None:
             context=ssl.create_default_context(),
         )
     except OSError, TimeoutError, http.client.HTTPException:
-        raise ModelProviderUnavailableError("model provider validation is temporarily unavailable") from None
+        return None
     response = None
     try:
-        connection.request("GET", path, headers=_validation_headers(provider, secret))
+        connection.request("GET", path, headers=headers)
         response = connection.getresponse()
-        status_code = response.status
     except OSError, TimeoutError, http.client.HTTPException:
-        raise ModelProviderUnavailableError("model provider validation is temporarily unavailable") from None
+        return None
+    else:
+        return response.status
     finally:
         if response is not None:
             response.close()
         connection.close()
 
+
+def _validate_api_key(provider: str, secret: str) -> None:
+    """Confirm one key against its fixed TLS endpoint without consuming response data."""
+    host, path = _VALIDATION_ENDPOINTS[provider]
+    status_code = probe_status(host, path, _validation_headers(provider, secret))
+    if status_code is None:
+        raise ModelProviderUnavailableError("model provider validation is temporarily unavailable")
     if 200 <= status_code < 300:
         return
     if status_code in {401, 403}:

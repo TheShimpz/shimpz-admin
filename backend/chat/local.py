@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 
+import decision
 import models
 from history import context as conversation_context
 from team import bridge as team
@@ -513,6 +514,8 @@ def intent_route(
         },
         provider=provider,
         api_key=api_key,
+        # Only classification may try the Jev fast path; selection always runs the LLM route (ADR-0077).
+        decision_key=decision.resolve() if expected is None else None,
     )
     if not 200 <= response.status < 300:
         return _safe_error(response)

@@ -523,3 +523,25 @@ def delete_model_api_key(provider):
         return records.pop(provider, None) is not None
 
     return bool(_mutate(delete_key, bool))
+
+
+def decision_credential() -> dict[str, object] | None:
+    """Return the private TypeSafe decision-key record for trusted backend callers only (ADR-0077)."""
+    record = _read().get("decision_credential")
+    if record is not None and not isinstance(record, dict):
+        raise RuntimeError(f"admin store {STORE_PATH} has an invalid decision credential")
+    return record
+
+
+def set_decision_api_key(api_key: str) -> None:
+    """Atomically persist the remotely verified TypeSafe key in the 0600 Admin store."""
+
+    def set_key(data: dict) -> None:
+        data["decision_credential"] = {"api_key": api_key, "verified_at": int(time.time())}
+
+    _mutate(set_key)
+
+
+def delete_decision_api_key() -> None:
+    """Delete the TypeSafe key without disturbing model keys or the Admin session."""
+    _mutate(lambda data: data.pop("decision_credential", None))

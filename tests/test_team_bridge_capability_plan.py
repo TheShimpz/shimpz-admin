@@ -92,6 +92,7 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "/v1/teams/team_1/chat/intent-route",
             payload,
             model_credential=("openai", API_KEY),
+            decision_key=None,
             timeout=team.INTENT_ROUTE_TIMEOUT_SECONDS,
         )
         self.assertNotIn(API_KEY, repr(response))

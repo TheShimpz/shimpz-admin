@@ -47,7 +47,11 @@ class _SupervisorSession:
 class _RequestBindings:
     model_credential: tuple[str, str] | None = None
     human_assurance: dict[str, str] | None = None
+    # The Supervisor's TypeSafe key, sent only with intent classification (ADR-0077).
+    decision_key: str | None = None
 
+
+_NO_BINDINGS = _RequestBindings()
 
 _SUPERVISOR_SESSION: ContextVar[_SupervisorSession | None] = ContextVar(
     "shimpz_supervisor_session",
@@ -162,6 +166,7 @@ def _local_assertion(
             path=path,
             body=body_binding,
             model=local_supervisor.model_binding(bindings.model_credential),
+            decision=local_supervisor.decision_binding(bindings.decision_key),
             assurance=bindings.human_assurance,
         ),
         authority_kind=binding.authority_kind,
@@ -263,6 +268,13 @@ def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
     return body
 
 
+def _private_key(value: object, message: str) -> str:
+    encoded = value.encode("ascii") if isinstance(value, str) and value.isascii() else b""
+    if not 16 <= len(encoded) <= 8 * 1024 or any(not 33 <= byte <= 126 for byte in encoded):
+        raise OSError(message)
+    return value
+
+
 def _request_headers(
     method: str,
     path: str,
@@ -292,6 +304,10 @@ def _request_headers(
             raise OSError("invalid private model credential")
         headers["X-Shimpz-Model-Provider"] = provider
         headers["X-Shimpz-Model-Api-Key"] = api_key
+    if bindings.decision_key is not None:
+        headers["X-Shimpz-Decision-Api-Key"] = _private_key(
+            bindings.decision_key, "invalid private decision credential"
+        )
     assertion = _local_assertion(
         method,
         path,
@@ -313,7 +329,7 @@ def _request(
     content_type: str | None,
     filename: str | None,
     timeout: int,
-    model_credential: tuple[str, str] | None = None,
+    bindings: _RequestBindings = _NO_BINDINGS,
 ) -> TeamResponse:
     try:
         host, port = _endpoint()
@@ -324,7 +340,7 @@ def _request(
             accept="application/json",
             content_type=content_type,
             filename=filename,
-            bindings=_RequestBindings(model_credential),
+            bindings=bindings,
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
     except OSError, UnicodeError, http.client.HTTPException:
@@ -490,6 +506,7 @@ def _call(
     timeout: int = CONTROL_TIMEOUT_SECONDS,
     max_body_bytes: int = MAX_JSON_BODY_BYTES,
     model_credential: tuple[str, str] | None = None,
+    decision_key: str | None = None,
 ) -> TeamResponse:
     body = _encode_payload(payload, max_bytes=max_body_bytes)
     return _request(
@@ -499,7 +516,7 @@ def _call(
         content_type="application/json" if body is not None else None,
         filename=None,
         timeout=timeout,
-        model_credential=model_credential,
+        bindings=_RequestBindings(model_credential, decision_key=decision_key),
     )
 
 

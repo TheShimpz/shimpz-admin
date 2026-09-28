@@ -913,6 +913,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             },
             provider="openai",
             api_key=api_key,
+            decision_key=None,
         )
         self.assertNotIn(api_key, repr(response))
         self.assertNotIn("trace_id", response.body)

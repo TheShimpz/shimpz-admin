@@ -56,6 +56,7 @@ class RequestBinding:
     body: dict[str, object]
     model: dict[str, str] | None
     assurance: dict[str, str] | None = None
+    decision: dict[str, str] | None = None
 
 
 def new_identity() -> LocalIdentity:
@@ -222,6 +223,13 @@ def model_binding(model_credential: tuple[str, str] | None) -> dict[str, str] | 
     }
 
 
+def decision_binding(decision_key: str | None) -> dict[str, str] | None:
+    """Bind the TypeSafe key's digest into the assertion exactly as the model credential is bound (ADR-0077)."""
+    if decision_key is None:
+        return None
+    return {"provider": "typesafe", "key_sha256": hashlib.sha256(decision_key.encode("ascii")).hexdigest()}
+
+
 def _segment(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
@@ -251,6 +259,8 @@ def sign_request(
     }
     if request.model is not None:
         claims["model"] = request.model
+    if request.decision is not None:
+        claims["decision"] = request.decision
     if request.assurance is not None:
         claims["assurance"] = request.assurance
     header = _segment(contract.canonical_json(contract.JWT_HEADER))

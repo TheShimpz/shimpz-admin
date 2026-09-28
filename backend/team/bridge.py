@@ -344,6 +344,7 @@ def intent_route(
     *,
     provider: str,
     api_key: str,
+    decision_key: str | None = None,
 ) -> TeamResponse:
     """Request one stateless route over an optional caller-supplied closed directory."""
     canonical_id = canonical_team_id(team_id)
@@ -361,6 +362,7 @@ def intent_route(
         f"/v1/teams/{canonical_id}/chat/intent-route",
         payload,
         model_credential=(provider, api_key),
+        decision_key=decision_key,
         timeout=INTENT_ROUTE_TIMEOUT_SECONDS,
     )
 

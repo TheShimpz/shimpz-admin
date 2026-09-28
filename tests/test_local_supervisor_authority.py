@@ -69,6 +69,24 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         )
         supervisor.materialize_public_key(identity)
 
+    def test_an_intent_classification_assertion_binds_the_decision_key_digest(self) -> None:
+        identity = supervisor.new_identity()
+        decision = supervisor.decision_binding("tsk-test-0123456789abcdef")
+        encoded = supervisor.sign_request(
+            identity,
+            "v1:9999999999:0123456789abcdef:" + "a" * 64,
+            request=supervisor.RequestBinding(
+                method="POST",
+                path="/v1/teams/marketing/chat/intent-route",
+                body=supervisor.json_body(b"{}"),
+                model=supervisor.model_binding(("openai", "sk-test-0123456789")),
+                decision=decision,
+            ),
+            now=2_200_000_000,
+        )
+        claims = contract.canonical_claims(json.loads(_decode(encoded.split(".")[1])))
+        self.assertEqual(claims["decision"], decision)
+
     def test_request_assertion_is_canonical_short_lived_and_exactly_bound(self) -> None:
         identity = supervisor.new_identity()
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
