@@ -91,7 +91,10 @@
       await selectTeamBrain(fetch, teamId, option.provider, option.model);
     } catch {
       failed();
+      return;
     }
+    // A model whose provider has no key asks for it in the composer, which this panel would cover.
+    if (!$modelContext.ready) close();
   }
 
   async function chooseEffort(index) {

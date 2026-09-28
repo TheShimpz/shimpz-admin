@@ -333,19 +333,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "Secure model setup",
-      "title": "Brain BYOK",
-      "lead": "Bring your own model API key to start this private Team chat. The key stays sealed inside your local Admin.",
-      "provider": "Provider",
-      "model": "Model",
       "key": "API key",
-      "keyPlaceholder": "Paste your API key",
-      "verified": "Verified key ready",
-      "startChatting": "Start Chatting",
+      "keyPlaceholder": "{provider} API key for {model}",
+      "keyNote": "Your local Admin stores this key for the provider; it is never sent as a chat message.",
+      "saveKey": "Save key",
       "validating": "Validating securely…",
-      "loading": "Loading model settings…",
-      "retry": "Try again",
-      "ready": "Everything is ready"
+      "retry": "Try again"
     },
     assistantStore: {
       "createFromSidebar": "Close this dialog and create a Team with the + button in the Team list.",
@@ -692,19 +685,12 @@ export const messages = {
       "retry": "Tentar dados locais novamente"
     },
     providerSetup: {
-      "eyebrow": "Configuração segura do modelo",
-      "title": "Brain BYOK",
-      "lead": "Use sua própria chave de API de modelo para iniciar este chat privado do Time. A chave permanece protegida no seu Admin local.",
-      "provider": "Provider",
-      "model": "Modelo",
       "key": "Chave da API",
-      "keyPlaceholder": "Cole sua chave da API",
-      "verified": "Chave validada e pronta",
-      "startChatting": "Começar a conversar",
+      "keyPlaceholder": "Chave da API {provider} para o {model}",
+      "keyNote": "Seu Admin local guarda esta chave do provider; ela nunca é enviada como mensagem do chat.",
+      "saveKey": "Salvar chave",
       "validating": "Validando com segurança…",
-      "loading": "Carregando configuração do modelo…",
-      "retry": "Tentar novamente",
-      "ready": "Está tudo certo"
+      "retry": "Tentar novamente"
     },
     assistantStore: {
       "createFromSidebar": "Feche esta janela e crie um Time com o botão + na lista de Times.",
@@ -1051,19 +1037,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "Configuración segura del modelo",
-      "title": "Brain BYOK",
-      "lead": "Usa tu propia clave de API de modelo para iniciar este chat privado del Equipo. La clave permanece protegida en tu Admin local.",
-      "provider": "Proveedor",
-      "model": "Modelo",
       "key": "Clave de API",
-      "keyPlaceholder": "Pega tu clave de API",
-      "verified": "Clave verificada y lista",
-      "startChatting": "Empezar a chatear",
+      "keyPlaceholder": "Clave de API de {provider} para {model}",
+      "keyNote": "Tu Admin local guarda esta clave del proveedor; nunca se envía como mensaje del chat.",
+      "saveKey": "Guardar clave",
       "validating": "Validando de forma segura…",
-      "loading": "Cargando ajustes del modelo…",
-      "retry": "Reintentar",
-      "ready": "Todo está listo"
+      "retry": "Reintentar"
     },
     assistantStore: {
       "createFromSidebar": "Cierra esta ventana y crea un Equipo con el botón + en la lista de Equipos.",
@@ -1410,19 +1389,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "安全模型设置",
-      "title": "Brain BYOK",
-      "lead": "使用你自己的模型 API 密钥开始此团队的私密聊天。密钥始终密封保存在本地 Admin 中。",
-      "provider": "提供商",
-      "model": "模型",
       "key": "API 密钥",
-      "keyPlaceholder": "粘贴你的 API 密钥",
-      "verified": "已验证的密钥已就绪",
-      "startChatting": "开始聊天",
+      "keyPlaceholder": "用于 {model} 的 {provider} API 密钥",
+      "keyNote": "此密钥由你的本地 Admin 为该提供商保存，绝不会作为聊天消息发送。",
+      "saveKey": "保存密钥",
       "validating": "正在安全验证…",
-      "loading": "正在加载模型设置…",
-      "retry": "重试",
-      "ready": "一切准备就绪"
+      "retry": "重试"
     },
     assistantStore: {
       "createFromSidebar": "关闭此对话框，然后使用团队列表中的 + 按钮创建团队。",
@@ -1769,19 +1741,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "Configuration sécurisée du modèle",
-      "title": "Brain BYOK",
-      "lead": "Utilisez votre propre clé d’API de modèle pour démarrer le chat privé de cette Équipe. La clé reste protégée dans votre Admin local.",
-      "provider": "Fournisseur",
-      "model": "Modèle",
       "key": "Clé API",
-      "keyPlaceholder": "Collez votre clé API",
-      "verified": "Clé vérifiée et prête",
-      "startChatting": "Commencer à discuter",
+      "keyPlaceholder": "Clé API {provider} pour {model}",
+      "keyNote": "Votre Admin local conserve cette clé pour le fournisseur ; elle n’est jamais envoyée comme message du chat.",
+      "saveKey": "Enregistrer la clé",
       "validating": "Validation sécurisée…",
-      "loading": "Chargement des paramètres du modèle…",
-      "retry": "Réessayer",
-      "ready": "Tout est prêt"
+      "retry": "Réessayer"
     },
     assistantStore: {
       "createFromSidebar": "Fermez cette fenêtre et créez une Équipe avec le bouton + de la liste des Équipes.",
@@ -2128,19 +2093,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "Sichere Modelleinrichtung",
-      "title": "Brain BYOK",
-      "lead": "Verwenden Sie Ihren eigenen Modell-API-Schlüssel, um den privaten Chat dieses Teams zu starten. Der Schlüssel bleibt sicher in Ihrem lokalen Admin.",
-      "provider": "Anbieter",
-      "model": "Modell",
       "key": "API-Schlüssel",
-      "keyPlaceholder": "API-Schlüssel einfügen",
-      "verified": "Verifizierter Schlüssel bereit",
-      "startChatting": "Chat starten",
+      "keyPlaceholder": "{provider}-API-Schlüssel für {model}",
+      "keyNote": "Ihr lokaler Admin speichert diesen Schlüssel für den Anbieter; er wird nie als Chatnachricht gesendet.",
+      "saveKey": "Schlüssel speichern",
       "validating": "Wird sicher validiert…",
-      "loading": "Modelleinstellungen werden geladen…",
-      "retry": "Erneut versuchen",
-      "ready": "Alles ist bereit"
+      "retry": "Erneut versuchen"
     },
     assistantStore: {
       "createFromSidebar": "Schließe diesen Dialog und erstelle ein Team mit der Schaltfläche + in der Team-Liste.",
@@ -2487,19 +2445,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "安全なモデル設定",
-      "title": "Brain BYOK",
-      "lead": "独自のモデル API キーを使って、このチームのプライベートチャットを開始します。キーはローカル Admin 内に安全に保管されます。",
-      "provider": "プロバイダー",
-      "model": "モデル",
       "key": "API キー",
-      "keyPlaceholder": "API キーを貼り付け",
-      "verified": "検証済みのキーを使用できます",
-      "startChatting": "チャットを開始",
+      "keyPlaceholder": "{model} 用の {provider} API キー",
+      "keyNote": "このキーはローカル Admin がプロバイダー用に保管し、チャットメッセージとして送信されることはありません。",
+      "saveKey": "キーを保存",
       "validating": "安全に検証中…",
-      "loading": "モデル設定を読み込み中…",
-      "retry": "再試行",
-      "ready": "準備が整いました"
+      "retry": "再試行"
     },
     assistantStore: {
       "createFromSidebar": "このダイアログを閉じ、チーム一覧の + ボタンでチームを作成してください。",
@@ -2846,19 +2797,12 @@ export const messages = {
       "retry": "Retry local data"
     },
     providerSetup: {
-      "eyebrow": "إعداد آمن للنموذج",
-      "title": "Brain BYOK",
-      "lead": "استخدم مفتاح API الخاص بنموذجك لبدء الدردشة الخاصة بهذا الفريق. يبقى المفتاح محميًا داخل Admin المحلي.",
-      "provider": "المزوّد",
-      "model": "النموذج",
       "key": "مفتاح API",
-      "keyPlaceholder": "ألصق مفتاح API",
-      "verified": "المفتاح المتحقق منه جاهز",
-      "startChatting": "ابدأ الدردشة",
+      "keyPlaceholder": "مفتاح API من {provider} لـ {model}",
+      "keyNote": "يحتفظ Admin المحلي بهذا المفتاح للمزوّد، ولا يُرسل أبدًا كرسالة في الدردشة.",
+      "saveKey": "حفظ المفتاح",
       "validating": "جارٍ التحقق بأمان…",
-      "loading": "جارٍ تحميل إعدادات النموذج…",
-      "retry": "إعادة المحاولة",
-      "ready": "كل شيء جاهز"
+      "retry": "إعادة المحاولة"
     },
     assistantStore: {
       "createFromSidebar": "أغلق هذه النافذة وأنشئ فريقًا باستخدام زر + في قائمة الفرق.",

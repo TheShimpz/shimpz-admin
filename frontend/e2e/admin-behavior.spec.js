@@ -192,6 +192,8 @@ async function routeReadyChat(page, {
   integrationRequirements,
   missingInference = false,
   holdInferenceWrite = false,
+  unconfiguredProviders = [],
+  failInferenceWrite = false,
   multipleIntegrations = false,
   oauthCompletionMode = 'automatic',
   holdReply = false,
@@ -210,6 +212,10 @@ async function routeReadyChat(page, {
 } = {}) {
   let inferenceWrites = 0;
   const inferenceBodies = [];
+  const credentialBodies = [];
+  const configuredProviders = new Set(
+    modelCatalog.providers.map((provider) => provider.id).filter((id) => !unconfiguredProviders.includes(id)),
+  );
   const humanResponses = [];
   let chatConnections = 0;
   let disconnectHumanSocket = () => {};
@@ -368,16 +374,24 @@ async function routeReadyChat(page, {
         : { detail: 'Synthetic history failure.' }),
     });
   });
+  const providerState = ({ credential_validation: _credential, ...provider }) => ({
+    ...provider,
+    configured: configuredProviders.has(provider.id),
+    masked: configuredProviders.has(provider.id) ? '••••1234' : null,
+  });
   await page.route('**/api/model-providers', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({
-      providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
-        ...provider,
-        configured: true,
-        masked: '••••1234',
-      })),
-    }),
+    body: JSON.stringify({ providers: modelCatalog.providers.map(providerState) }),
   }));
+  await page.route('**/api/model-providers/*', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    credentialBodies.push({ id, ...route.request().postDataJSON() });
+    configuredProviders.add(id);
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(providerState(modelCatalog.providers.find((provider) => provider.id === id))),
+    });
+  });
   await page.route('**/api/teams/marketing/inference', async (route) => {
     if (missingInference && route.request().method() === 'GET') {
       return route.fulfill({
@@ -390,6 +404,13 @@ async function routeReadyChat(page, {
       inferenceWrites += 1;
       inferenceBodies.push(route.request().postDataJSON());
       if (holdInferenceWrite) await inferenceWriteHold;
+      if (failInferenceWrite && inferenceWrites === 1) {
+        return route.fulfill({
+          status: 502,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'The Team model selection could not be saved.' }),
+        });
+      }
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({ team_id: 'marketing', ...route.request().postDataJSON() }),
@@ -781,6 +802,8 @@ async function routeReadyChat(page, {
   return {
     assistantIconRequests: () => assistantIconRequests,
     chatFrames: () => chatFrames,
+    chatConnections: () => chatConnections,
+    credentialBodies: () => credentialBodies,
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     historyRequests: () => historyRequests,
@@ -836,9 +859,133 @@ test('opens Chat directly when the provider key already exists', async ({ page }
   const requests = await routeReadyChat(page, { missingInference: true });
   await page.goto('/chat/');
 
-  await expect(page.locator('.provider-gate')).toBeHidden();
+  await expect(page.getByLabel('API key')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
   expect(requests.inferenceWrites()).toBe(1);
+});
+
+const KEYLESS_HISTORY = {
+  entries: [
+    { id: `${'c'.repeat(32)}:user`, kind: 'message', role: 'user', text: 'Summarize the launch plan' },
+    {
+      id: `${'c'.repeat(32)}:reply`,
+      kind: 'message',
+      role: 'assistant',
+      text: 'The launch plan has three milestones.',
+      author: 'Marketing',
+    },
+  ],
+  before: null,
+};
+
+async function chooseBrainModel(page, name) {
+  const panel = page.getByRole('dialog', { name: 'Brain settings' });
+  if (!await panel.isVisible()) await page.getByRole('button', { name: /^Brain: / }).click();
+  await panel.getByRole('button', { name: new RegExp(`^${name}`) }).click();
+}
+
+test('asks for a missing provider key in the composer without leaving the conversation', async ({ page }) => {
+  const chat = await routeReadyChat(page, { unconfiguredProviders: ['anthropic'], history: KEYLESS_HISTORY });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Draft kept for later');
+  const connections = chat.chatConnections();
+
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  const apiKey = page.getByLabel('API key');
+  await expect(apiKey).toBeFocused();
+  await expect(apiKey).toHaveAttribute('type', 'password');
+  await expect(apiKey).toHaveAttribute('autocomplete', 'off');
+  await expect(apiKey).toHaveAttribute('placeholder', 'Anthropic API key for Claude Opus 5.5');
+  await expect(page.getByRole('dialog', { name: 'Brain settings' })).toBeHidden();
+  await expect(page.getByText('The launch plan has three milestones.')).toBeVisible();
+  await expect(composer).toHaveCount(0);
+  const saveKey = page.getByRole('button', { name: 'Save key' });
+  await expect(saveKey).toBeDisabled();
+
+  const secret = 'sk-ant-browser-contract-1234567890';
+  await apiKey.fill(secret);
+  await saveKey.click();
+  await expect(composer).toHaveValue('Draft kept for later');
+  await expect(composer).toBeFocused();
+  await expect(page.getByLabel('API key')).toHaveCount(0);
+  await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
+  expect(chat.credentialBodies()).toEqual([{ id: 'anthropic', api_key: secret }]);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' }]);
+  expect(chat.chatConnections()).toBe(connections);
+
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  expect(JSON.stringify(chat.chatFrames())).not.toContain(secret);
+});
+
+test('discards an unsent provider key and never sends on the unsaved model', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    unconfiguredProviders: ['anthropic'],
+    history: KEYLESS_HISTORY,
+  });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Keep this message');
+
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  await page.getByLabel('API key').fill('sk-ant-unsent-secret-1234567890');
+  await expect(page.getByRole('button', { name: 'Send' })).toHaveCount(0);
+  await chooseBrainModel(page, 'GPT-6 Sol');
+  await expect(composer).toHaveValue('Keep this message');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+  await chooseBrainModel(page, 'Claude Sonnet 5');
+  await expect(page.getByLabel('API key')).toBeFocused();
+  await expect(page.getByLabel('API key')).toHaveValue('');
+  expect(chat.credentialBodies()).toEqual([]);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'low' }]);
+  expect(chat.chatFrames()).toHaveLength(0);
+});
+
+test('shows a Brain failure and its retry beside an earlier chat error', async ({ page }) => {
+  await routeReadyChat(page, {
+    unconfiguredProviders: ['anthropic'],
+    failInferenceWrite: true,
+    terminalError: true,
+  });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
+
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  await page.getByLabel('API key').fill('sk-ant-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByText('The Team model selection could not be saved.')).toBeVisible();
+  await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+});
+
+test('keeps a saved key when the model selection fails and retries only the selection', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    unconfiguredProviders: ['anthropic'],
+    failInferenceWrite: true,
+    history: KEYLESS_HISTORY,
+  });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Wait for the retry');
+
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  await page.getByLabel('API key').fill('sk-ant-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByText('The Team model selection could not be saved.')).toBeVisible();
+  await expect(page.getByLabel('API key')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await expect(page.getByText('The launch plan has three milestones.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+  expect(chat.credentialBodies()).toHaveLength(1);
+  expect(chat.inferenceBodies()).toEqual([
+    { provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' },
+    { provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' },
+  ]);
 });
 
 test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {

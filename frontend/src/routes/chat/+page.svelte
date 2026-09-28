@@ -1,6 +1,6 @@
 <script>
   import { flushSync, onMount, tick } from 'svelte';
-  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextLink, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
@@ -15,8 +15,7 @@
   import Markdown from '$lib/Markdown.svelte';
   import { escapeMarkdownText } from '$lib/markdown.js';
   import { t } from '$lib/i18n.js';
-  import { modelContext } from '$lib/modelContext.js';
-  import ProviderSetupGate from '$lib/ProviderSetupGate.svelte';
+  import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
   import { MAX_CHAT_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
@@ -124,8 +123,9 @@
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
   );
+  // The conversation stays mounted while this Team's Brain loads, needs a key, or failed; only a send needs it ready.
   let chatTeamId = $derived(
-    $modelContext.ready && $modelContext.teamId === selectedTeamId ? selectedTeamId : '',
+    $modelContext.phase !== 'idle' && $modelContext.teamId === selectedTeamId ? selectedTeamId : '',
   );
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
@@ -145,6 +145,20 @@
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
+  let keyCopy = $derived($t('providerSetup'));
+  let brainProvider = $derived(
+    $modelContext.providers.find((entry) => entry.id === $modelContext.provider) ?? null,
+  );
+  let brainModel = $derived(brainProvider?.models.find((entry) => entry.id === $modelContext.model) ?? null);
+  // A selection whose provider has no key asks for it in place of the message, keeping the conversation.
+  let keyRequired = $derived(
+    Boolean(chatTeamId) && !$modelContext.ready && Boolean(brainModel) && !brainProvider.configured,
+  );
+  let brainUnavailable = $derived(
+    Boolean(chatTeamId) && !$modelContext.ready && !keyRequired && $modelContext.phase === 'error',
+  );
+  let keySelection = $derived(`${chatTeamId}\u0000${$modelContext.provider}`);
+  let providerKey = $state('');
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let omittedAssistantNames = $derived(
@@ -682,11 +696,38 @@
     if (
       !mounted ||
       !chatTeamId ||
+      keyRequired ||
       composerBusy ||
       integrationsOpen ||
-      document.querySelector('dialog[open]')
+      document.querySelector('dialog[open], :popover-open')
     ) return;
     composerInput?.focus({ preventScroll: true });
+  }
+
+  async function saveProviderKey(event) {
+    event.preventDefault();
+    const teamId = chatTeamId;
+    const selection = keySelection;
+    const apiKey = providerKey;
+    providerKey = '';
+    if (!teamId || !keyRequired || brainSaving || apiKey.trim().length < 16) return;
+    try {
+      await configureModelContext(fetch, teamId, apiKey);
+    } catch {
+      // The model context carries the public error shown above the composer.
+      return;
+    }
+    if (keySelection === selection) void focusComposer();
+  }
+
+  function retryBrain() {
+    const teamId = chatTeamId;
+    if (!teamId || brainSaving) return;
+    // A configured selection only needs its save repeated; an unreadable catalog or selection is reloaded.
+    const retry = brainProvider?.configured && brainModel
+      ? configureModelContext(fetch, teamId, '')
+      : loadModelContext(fetch, teamId);
+    retry.catch(() => {});
   }
 
   async function focusStop(fromElement) {
@@ -1315,6 +1356,7 @@
     if (
       composerBusy ||
       brainSaving ||
+      !$modelContext.ready ||
       !teamId ||
       chatTeamId !== teamId ||
       !normalized ||
@@ -1550,7 +1592,19 @@
   });
 
   $effect(() => {
-    if (mounted && chatTeamId && !composerBusy && !integrationsOpen) void focusComposer();
+    if (mounted && chatTeamId && $modelContext.ready && !composerBusy && !integrationsOpen) void focusComposer();
+  });
+
+  // An unsent key belongs to one Team and provider; any change discards it and focuses the new field.
+  $effect(() => {
+    void keySelection;
+    providerKey = '';
+  });
+
+  $effect(() => {
+    void keySelection;
+    if (!mounted || !keyRequired) return;
+    void tick().then(() => document.getElementById('chat-provider-key')?.focus({ preventScroll: true }));
   });
 
   onMount(() => {
@@ -1791,21 +1845,58 @@
           </Notice>
         {/if}
 
-          <form class="composer" onsubmit={send}>
+          <form class="composer" onsubmit={keyRequired ? saveProviderKey : send}>
+            {#if (keyRequired || brainUnavailable) && $modelContext.error}
+              <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
+              <Notice class="brain-error" variant="error">
+                <strong>{$modelContext.error}</strong>
+                {#if brainUnavailable}
+                  <Button variant="secondary" size="compact" type="button" onclick={retryBrain} disabled={brainSaving}>
+                    {keyCopy.retry}
+                  </Button>
+                {/if}
+              </Notice>
+            {/if}
             <div class="composer-input">
-              <TextAreaField
-                id="chat-composer"
-                label={copy.send}
-                visuallyHiddenLabel
-                class="composer-field"
-                bind:element={composerInput}
-                bind:value={draft}
-                maxlength="16000"
-                rows="2"
-                placeholder={placeholder}
-                disabled={composerBusy}
-                onkeydown={handleComposerKeydown}
-              />
+              {#if keyRequired}
+                <TextField
+                  id="chat-provider-key"
+                  label={keyCopy.key}
+                  visuallyHiddenLabel
+                  class="composer-field"
+                  type="password"
+                  bind:value={providerKey}
+                  placeholder={$t('providerSetup.keyPlaceholder', {
+                    provider: brainProvider.title,
+                    model: brainModel.title,
+                  })}
+                  minlength="16"
+                  maxlength="8192"
+                  autocomplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  spellcheck="false"
+                  required
+                  disabled={brainSaving}
+                  aria-describedby="chat-provider-key-note"
+                />
+                <p id="chat-provider-key-note" class="sr-only">{keyCopy.keyNote}</p>
+              {:else}
+                <TextAreaField
+                  id="chat-composer"
+                  label={copy.send}
+                  visuallyHiddenLabel
+                  class="composer-field"
+                  bind:element={composerInput}
+                  bind:value={draft}
+                  maxlength="16000"
+                  rows="2"
+                  placeholder={placeholder}
+                  disabled={composerBusy}
+                  onkeydown={handleComposerKeydown}
+                />
+              {/if}
               <Toolbar class="composer-actions">
               <BrainMenu disabled={composerBusy || stopping} />
               <Button
@@ -1830,12 +1921,18 @@
                   {copy.stop}
                 </Button>
               {/if}
-              <Button
-                type="submit"
-                disabled={composerBusy || brainSaving || !socketReady || !draft.trim()}
-              >
-                {socketReady ? copy.send : copy.connecting}
-              </Button>
+              {#if keyRequired}
+                <Button type="submit" disabled={brainSaving || providerKey.trim().length < 16}>
+                  {brainSaving ? keyCopy.validating : keyCopy.saveKey}
+                </Button>
+              {:else}
+                <Button
+                  type="submit"
+                  disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                >
+                  {socketReady ? copy.send : copy.connecting}
+                </Button>
+              {/if}
               </Toolbar>
             </div>
           </form>
@@ -1877,9 +1974,8 @@
         {/if}
       </div>
     {:else}
-      <section class="provider-setup" aria-live="polite">
-        <ProviderSetupGate />
-        <div class="context-dock"><BrainMenu /></div>
+      <section class="empty-state" aria-live="polite">
+        <EmptyState title={copy.loading} />
       </section>
     {/if}
   {:else}
@@ -1943,17 +2039,6 @@
     border-bottom: 1px solid var(--admin-divider);
     background: var(--surface-1);
     overflow: hidden;
-  }
-
-  .provider-setup {
-    display: grid;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    border-inline-end: 1px solid var(--admin-divider);
-    border-bottom: 1px solid var(--admin-divider);
-    grid-template-rows: minmax(0, 1fr) auto;
-    overflow: auto;
   }
 
   :global(.turns) {
@@ -2092,7 +2177,15 @@
     overflow-y: auto;
   }
 
+  :global(.brain-error) {
+    display: grid;
+    justify-items: start;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+  }
+
   :global(.error strong),
+  :global(.brain-error strong),
   :global(.empty-error strong) {
     font-weight: 600;
   }
@@ -2126,7 +2219,8 @@
     align-self: center;
   }
 
-  :global(.composer-field textarea) {
+  :global(.composer-field textarea),
+  :global(.composer-field input) {
     width: 100%;
     height: 3rem;
     min-height: 0;
@@ -2155,7 +2249,8 @@
   }
 
   /* The box border carries focus; the field's own focus outline would draw a line inside the box. */
-  .composer-input :global(.composer-field textarea:focus) {
+  .composer-input :global(.composer-field textarea:focus),
+  .composer-input :global(.composer-field input:focus) {
     border: 0;
     outline: none;
     box-shadow: none;
@@ -2200,12 +2295,6 @@
     border-bottom: 1px solid var(--admin-divider);
     color: var(--text-faint);
     overflow: auto;
-  }
-
-  .context-dock {
-    width: min(calc(100% - 1.6rem), 48rem);
-    justify-self: center;
-    padding: 0.6rem 0;
   }
 
   @media (max-width: 820px) {
