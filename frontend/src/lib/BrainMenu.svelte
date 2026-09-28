@@ -214,7 +214,11 @@
   .brain-menu { display: contents; }
   .brain-menu :global(.brain-trigger) { width: 2.75rem; height: 2.75rem; padding: 0; }
   .brain-menu :global(.brain-trigger svg) { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
-  .brain-menu :global(.brain-trigger[aria-expanded="true"]) { color: var(--shimpz-color-cyan); border-color: var(--shimpz-color-cyan); }
+  /* A bare icon inside the composer box: no frame or fill, only its color reacts. */
+  .brain-menu :global(.shimpz-button.brain-trigger),
+  .brain-menu :global(.shimpz-button.brain-trigger:hover:not(:disabled)) { border-color: transparent; background: transparent; clip-path: none; box-shadow: none; }
+  .brain-menu :global(.shimpz-button.brain-trigger:hover:not(:disabled)),
+  .brain-menu :global(.brain-trigger[aria-expanded="true"]) { color: var(--shimpz-color-cyan); }
   .panel { position: fixed; z-index: 80; top: var(--panel-top); left: var(--panel-left); display: grid; width: min(20rem, calc(100vw - 1rem)); gap: var(--shimpz-space-2); margin: 0; padding: var(--shimpz-space-3); color: var(--shimpz-color-text); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); box-shadow: 0 1rem 3rem rgb(0 0 0 / 65%); }
   .panel:not(:popover-open) { display: none; }
   .section-label { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }

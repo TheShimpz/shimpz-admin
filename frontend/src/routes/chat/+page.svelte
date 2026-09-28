@@ -2245,6 +2245,7 @@
     grid-template-columns: minmax(0, 1fr);
     border: 1px solid var(--border-strong);
     background: #050708;
+    clip-path: var(--shimpz-control-shape);
     transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease);
   }
 
@@ -2269,6 +2270,20 @@
 
   :global(.composer-actions .composer-integrations) {
     margin-inline-end: auto;
+  }
+
+  /* Tool controls are bare icons inside the composer box: no frame, only their color reacts. */
+  .composer-input :global(.shimpz-button.composer-integrations),
+  .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)) {
+    border-color: transparent;
+    background: transparent;
+    clip-path: none;
+    box-shadow: none;
+  }
+
+  .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)),
+  .composer-input :global(.shimpz-button.composer-integrations[aria-expanded="true"]) {
+    color: var(--shimpz-color-cyan);
   }
 
   .composer :global(.shimpz-button) {
@@ -2303,6 +2318,10 @@
 
   @media (max-width: 820px) {
     .empty-conversation .composer { align-self: end; }
+  }
+
+  @media (forced-colors: active) {
+    .composer-input { border-color: CanvasText; clip-path: none; }
   }
 
   @media (max-width: 640px) {
