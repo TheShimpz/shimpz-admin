@@ -884,6 +884,21 @@ async function chooseBrainModel(page, name) {
   await panel.getByRole('button', { name: new RegExp(`^${name}`) }).click();
 }
 
+test('a first Team without any provider key asks for one in the focused composer', async ({ page }) => {
+  const chat = await routeReadyChat(page, { missingInference: true, unconfiguredProviders: ['openai', 'anthropic'] });
+  await page.goto('/chat/');
+
+  const apiKey = page.getByLabel('API key');
+  await expect(apiKey).toBeFocused();
+  await expect(apiKey).toHaveAttribute('placeholder', 'OpenAI API key for GPT-6 Sol');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveCount(0);
+  await apiKey.fill('sk-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
+  expect(chat.credentialBodies()).toEqual([{ id: 'openai', api_key: 'sk-browser-contract-1234567890' }]);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'low' }]);
+});
+
 test('asks for a missing provider key in the composer without leaving the conversation', async ({ page }) => {
   const chat = await routeReadyChat(page, { unconfiguredProviders: ['anthropic'], history: KEYLESS_HISTORY });
   await page.goto('/chat/');

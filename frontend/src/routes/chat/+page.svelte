@@ -1601,10 +1601,14 @@
     providerKey = '';
   });
 
+  // The conversation is inert while its history hydrates, so the key field takes focus once it is usable.
   $effect(() => {
     void keySelection;
-    if (!mounted || !keyRequired) return;
-    void tick().then(() => document.getElementById('chat-provider-key')?.focus({ preventScroll: true }));
+    if (!mounted || !keyRequired || historyHydrating || integrationsOpen) return;
+    void tick().then(() => {
+      if (document.querySelector('dialog[open], :popover-open')) return;
+      document.getElementById('chat-provider-key')?.focus({ preventScroll: true });
+    });
   });
 
   onMount(() => {
