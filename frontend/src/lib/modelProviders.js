@@ -96,6 +96,30 @@ export async function loadInference(fetcher, teamId) {
   return { provider: body.provider, model: body.model, effort: body.effort };
 }
 
+async function saveInference(fetcher, teamId, setup) {
+  const inferenceResponse = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: setup.provider, model: setup.model, effort: setup.effort }),
+  });
+  const inferenceBody = await jsonObject(inferenceResponse);
+  if (!inferenceResponse.ok) {
+    throw new LocalApiError(
+      safeApiError(inferenceBody, 'The Team model selection could not be saved.'),
+      inferenceResponse.status,
+    );
+  }
+  if (
+    !exactKeys(inferenceBody, ['team_id', 'model', 'provider', 'effort']) ||
+    inferenceBody.team_id !== teamId ||
+    inferenceBody.provider !== setup.provider ||
+    inferenceBody.model !== setup.model ||
+    inferenceBody.effort !== setup.effort
+  ) {
+    throw new LocalApiError('The Team inference response is invalid.', inferenceResponse.status);
+  }
+}
+
 /** Save a key to the backend first, then send only provider/model to the Team controller. */
 export async function saveModelSetup(fetcher, teamId, setup, providers) {
   if (
@@ -134,26 +158,14 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
     throw new LocalApiError('Add an API key for the selected provider.');
   }
 
-  const inferenceResponse = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
-    method: 'PUT',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: setup.provider, model: setup.model, effort: setup.effort }),
-  });
-  const inferenceBody = await jsonObject(inferenceResponse);
-  if (!inferenceResponse.ok) {
-    throw new LocalApiError(
-      safeApiError(inferenceBody, 'The Team model selection could not be saved.'),
-      inferenceResponse.status,
-    );
-  }
-  if (
-    !exactKeys(inferenceBody, ['team_id', 'model', 'provider', 'effort']) ||
-    inferenceBody.team_id !== teamId ||
-    inferenceBody.provider !== setup.provider ||
-    inferenceBody.model !== setup.model ||
-    inferenceBody.effort !== setup.effort
-  ) {
-    throw new LocalApiError('The Team inference response is invalid.', inferenceResponse.status);
+  try {
+    await saveInference(fetcher, teamId, setup);
+  } catch (error) {
+    // A key saved before the selection failed stays saved, so the caller must not ask for it again.
+    const failure = error instanceof LocalApiError
+      ? error
+      : new LocalApiError('The Team model selection could not be saved.');
+    throw Object.assign(failure, { providerState });
   }
   return { providerState, inference: { provider: setup.provider, model: setup.model, effort: setup.effort } };
 }

@@ -216,6 +216,37 @@ test('rejected credential never reaches the Team inference endpoint', async () =
   assert.equal(get(modelContext).ready, false);
 });
 
+for (const [name, inferenceResponse] of [
+  ['refused', () => response(502, { detail: 'The Team model selection could not be saved.' })],
+  ['invalid', () => response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-6-sol', effort: 'low' })],
+  ['unreachable', () => { throw new TypeError('Failed to fetch'); }],
+]) {
+  test(`a saved credential survives a ${name} Team selection so only the selection is retried`, async () => {
+    const base = fixtureFetcher();
+    let failSelection = true;
+    const fetcher = async (url, options = {}) => {
+      if (url === '/api/model-providers/anthropic') {
+        return response(200, { ...providers[1], configured: true, masked: '••••test' });
+      }
+      if (url === '/api/teams/marketing/inference' && options.method === 'PUT' && failSelection) {
+        failSelection = false;
+        return inferenceResponse();
+      }
+      return base(url, options);
+    };
+    await loadModelContext(fetcher, 'marketing');
+    await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
+    await assert.rejects(configureModelContext(fetcher, 'marketing', 'sk-ant-test-0123456789'));
+    assert.equal(get(modelContext).phase, 'error');
+    assert.equal(get(modelContext).ready, false);
+    assert.equal(get(modelContext).providers[1].configured, true);
+
+    await configureModelContext(fetcher, 'marketing', '');
+    assert.equal(get(modelContext).ready, true);
+    assert.equal(get(modelContext).provider, 'anthropic');
+  });
+}
+
 test('switching to another verified provider writes only the selected Brain once', async () => {
   const configuredProviders = [
     providers[0],

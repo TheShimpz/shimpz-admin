@@ -147,10 +147,7 @@ async function persist(fetcher, teamId, apiKey = '') {
       { provider: current.provider, model: current.model, effort: current.effort, apiKey },
       current.providers,
     );
-    const providers = current.providers.map((entry) => (
-      entry.id === result.providerState.id ? result.providerState : entry
-    ));
-    providerCatalogCache = providers;
+    const providers = withProviderState(current.providers, result.providerState);
     const snapshot = {
       ...saving,
       phase: 'ready',
@@ -164,8 +161,15 @@ async function persist(fetcher, teamId, apiKey = '') {
     if (attempt === generation) modelContext.set(snapshot);
     return snapshot;
   } catch (error) {
-    throw fail(attempt, error, saving);
+    const saved = error?.providerState;
+    throw fail(attempt, error, saved ? { ...saving, providers: withProviderState(saving.providers, saved) } : saving);
   }
+}
+
+function withProviderState(providers, providerState) {
+  const next = providers.map((entry) => (entry.id === providerState.id ? providerState : entry));
+  providerCatalogCache = next;
+  return next;
 }
 
 export async function configureModelContext(fetcher, teamId, apiKey = '') {
