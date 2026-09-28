@@ -1,5 +1,6 @@
 <script>
   import {
+    AssistantIcon,
     Button,
     Card,
     Drawer,
@@ -13,6 +14,7 @@
 
   let {
     open = false,
+    teamId = '',
     integrations = [],
     storedInputs = [],
     assistantNames = new Map(),
@@ -40,6 +42,12 @@
     }
     return [...grouped.values()];
   });
+
+  // The Team's own installed-icon route; sources exist only while the drawer is open so a closed drawer fetches none.
+  function iconSource(assistantId) {
+    if (!open || !teamId) return undefined;
+    return `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+  }
 
   function toggleAssistant(assistantId) {
     expandedAssistantId = expandedAssistantId === assistantId ? '' : assistantId;
@@ -151,12 +159,20 @@
               </svg>
             </Button>
           {/snippet}
+          {#snippet header()}
+            <div class="assistant-heading">
+              <AssistantIcon assistant={assistant.id} src={iconSource(assistant.id)} size={36} />
+              <div>
+                <h3 data-slot="card-title">{assistant.name}</h3>
+                <p data-slot="card-description">v{assistant.version}</p>
+              </div>
+            </div>
+          {/snippet}
           <Card
             class="assistant-group"
-            title={assistant.name}
-            description={`v${assistant.version}`}
             padding="compact"
             aria-label={assistant.name}
+            {header}
             {action}
           >
             <div id={detailsId} class="assistant-details" hidden={!expanded}>
@@ -173,6 +189,7 @@
         {#each storedInputs as item (`${item.assistant_id}/${item.stored_input_id}`)}
           {@const itemKey = `${item.assistant_id}/${item.stored_input_id}`}
           <div class="stored-input-row">
+            <AssistantIcon assistant={item.assistant_id} src={iconSource(item.assistant_id)} size={28} loading="lazy" />
             <div>
               <strong>{assistantNames.get(item.assistant_id) ?? item.assistant_id}</strong>
               <code>{item.stored_input_id}</code>
@@ -210,7 +227,11 @@
   .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.55rem; }
   .assistant-groups { display: grid; gap: 0.8rem; }
   :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); background: var(--surface-2); }
-  :global(.assistant-group [data-slot="card-title"]) { font-size: 0.82rem; }
+  /* The heading is presentation under the full-row toggle, so a click on the icon or name still reaches the toggle. */
+  .assistant-heading { display: flex; min-width: 0; align-items: center; gap: 0.7rem; pointer-events: none; }
+  .assistant-heading > div { display: grid; min-width: 0; gap: 0.2rem; }
+  :global(.assistant-group) h3[data-slot="card-title"] { margin: 0; font: 700 0.82rem/1.3 var(--shimpz-font-mono); letter-spacing: -0.015em; overflow-wrap: anywhere; }
+  :global(.assistant-group) p[data-slot="card-description"] { margin: 0; }
   :global(.assistant-group [data-slot="card-description"]) { color: var(--accent); font-family: var(--font-mono); font-size: 0.56rem; overflow-wrap: anywhere; }
   :global(.assistant-group [data-slot="card-action"]) { width: var(--shimpz-control-height-md); }
   :global(.assistant-group > [data-slot="card-content"]) { padding: 0; }
@@ -222,7 +243,7 @@
   .assistant-details p { margin: 0; padding: 0.75rem; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
   .stored-inputs { display: grid; gap: 0.55rem; margin-top: 1rem; }
   .stored-inputs h3 { margin: 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .stored-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border: 1px solid var(--border); padding: 0.7rem; background: var(--surface-1); }
+  .stored-input-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border: 1px solid var(--border); padding: 0.7rem; background: var(--surface-1); }
   .stored-input-row > div { display: grid; min-width: 0; gap: 0.18rem; }
   .stored-input-row strong { color: var(--text); font-size: 0.7rem; }
   .stored-input-row code { color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; overflow-wrap: anywhere; }
@@ -230,6 +251,7 @@
   @media (max-width: 420px) {
     :global(.assistant-group > [data-slot="card-header"]) { flex-direction: row; align-items: center; }
     .pending-requirement { grid-template-columns: 1fr; }
-    .stored-input-row { grid-template-columns: 1fr; }
+    .stored-input-row { grid-template-columns: auto minmax(0, 1fr); }
+    .stored-input-row > :global(.shimpz-button) { grid-column: 1 / -1; }
   }
 </style>

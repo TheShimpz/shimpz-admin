@@ -1984,6 +1984,7 @@
         </section>
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
+          teamId={chatTeamId}
           {integrations}
           {storedInputs}
           {assistantNames}

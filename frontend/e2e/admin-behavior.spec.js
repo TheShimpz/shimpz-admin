@@ -2129,8 +2129,11 @@ test('renders the integrations drawer as a responsive Sheet surface', async ({ p
   const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveAttribute('data-slot', 'drawer');
-  await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare' })).toBeVisible();
+  await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare', level: 3 })).toBeVisible();
   await expect(drawer.getByText('v0.4.2', { exact: true })).toBeVisible();
+  const groupIcon = drawer.locator('.assistant-group .shimpz-assistant-icon img');
+  await expect(groupIcon).toHaveAttribute('src', '/api/teams/marketing/assistants/shimpz-cloudflare/icon');
+  await expect.poll(() => groupIcon.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
   await expect(drawer.locator('.integration-content')).not.toHaveAttribute('aria-live');
   await expect(drawer.locator('.integration-status')).toHaveAttribute('aria-live', 'polite');
@@ -2180,6 +2183,9 @@ test('renders and clears a persistent Action input without exposing its value', 
   const storedInputs = drawer.getByRole('region', { name: 'Stored Action inputs' });
   await expect(storedInputs.getByText('WhatsApp', { exact: true })).toBeVisible();
   await expect(storedInputs.getByText('whatsapp-token', { exact: true })).toBeVisible();
+  const rowIcon = storedInputs.locator('.stored-input-row .shimpz-assistant-icon img');
+  await expect(rowIcon).toHaveAttribute('src', '/api/teams/marketing/assistants/whatsapp/icon');
+  await expect(rowIcon).toHaveAttribute('loading', 'lazy');
   await expect(storedInputs.getByText('Stored securely. Future Actions reuse it.', { exact: true }))
     .toBeVisible();
   await expect(drawer).not.toContainText('must-not-cross');
@@ -2191,6 +2197,26 @@ test('renders and clears a persistent Action input without exposing its value', 
     .toBeVisible();
   await expect(storedInputs.getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0);
   expect(chat.storedInputClears()).toBe(1);
+});
+
+test('keeps the generated mark when an integration icon is unavailable and toggles through it', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({ status: 404 }));
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const icon = drawer.locator('.assistant-group .shimpz-assistant-icon');
+  await expect(icon.locator('svg')).toBeVisible();
+  await expect(icon.locator('img')).toHaveCount(0);
+
+  const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
+  const iconBox = await icon.boundingBox();
+  expect(iconBox).not.toBeNull();
+  await page.mouse.click(iconBox.x + iconBox.width / 2, iconBox.y + iconBox.height / 2);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('opens and closes an Assistant integration from the whole card header', async ({ page }) => {
