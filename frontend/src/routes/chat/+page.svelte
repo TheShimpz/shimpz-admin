@@ -113,6 +113,10 @@
   let historyLoading = $state(true);
   let historyWorking = $state(false);
   let historyBefore = $state(null);
+  // Earlier history loads when the top of the transcript is in view, only after the opening scroll has settled.
+  let olderHistoryArmed = $state(false);
+  let olderHistoryFailed = $state(false);
+  let historySentinel = $state();
   let historyGeneration = 0;
 
   let copy = $derived($t('chatPage'));
@@ -359,7 +363,8 @@
       historyBefore = page.before;
       historyLoading = false;
       connectSocket(teamId);
-      if (turns.length > 0) void revealLatestExchange();
+      if (turns.length > 0) await revealLatestExchange({ instant: true });
+      if (generation === historyGeneration && chatTeamId === teamId) olderHistoryArmed = true;
     } catch (reason) {
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       historyLoading = false;
@@ -377,16 +382,21 @@
     if (!teamId || !before || historyWorking) return;
     historyWorking = true;
     const generation = historyGeneration;
-    const viewport = turnsViewport;
-    const previousHeight = viewport?.scrollHeight ?? 0;
-    const previousTop = viewport?.scrollTop ?? 0;
     try {
       const page = await listChatHistory(fetch, teamId, before);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
+      // An older page must move the cursor, or automatic loading would request the same page forever.
+      if (page.before === before || (page.entries.length === 0 && page.before !== null)) {
+        throw new Error(copy.loadFailed);
+      }
       const known = new Set(turns.map((turn) => turn.historyId).filter(Boolean));
       if (page.entries.some((entry) => known.has(entry.id))) throw new Error(copy.loadFailed);
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
+      // Measure where the reader is now, not when the request started, so prepending never moves their view.
+      const viewport = turnsViewport;
+      const previousHeight = viewport?.scrollHeight ?? 0;
+      const previousTop = viewport?.scrollTop ?? 0;
       turns = [
         ...page.entries.map((entry) => historyTurn(entry, team.name)),
         ...turns,
@@ -399,6 +409,7 @@
       clearError();
     } catch (reason) {
       if (generation === historyGeneration && chatTeamId === teamId) {
+        olderHistoryFailed = true;
         setError(
           copy.loadFailed,
           reason instanceof Error ? reason.message : copy.loadFailed,
@@ -407,6 +418,11 @@
     } finally {
       if (generation === historyGeneration && chatTeamId === teamId) historyWorking = false;
     }
+  }
+
+  function retryOlderHistory() {
+    olderHistoryFailed = false;
+    void loadOlderHistory();
   }
 
   function applyInstallPlanEvent(incoming, receipt) {
@@ -747,7 +763,7 @@
     document.getElementById(`assistant-lifecycle-${proposalId}`)?.focus({ preventScroll: true });
   }
 
-  async function revealLatestExchange() {
+  async function revealLatestExchange({ instant = false } = {}) {
     const request = ++scrollRequest;
     await tick();
     if (request !== scrollRequest || !turnsViewport) return;
@@ -756,7 +772,7 @@
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     latest.scrollIntoView({
       block: 'start',
-      behavior: reducedMotion ? 'auto' : 'smooth',
+      behavior: instant || reducedMotion ? 'auto' : 'smooth',
     });
   }
 
@@ -1153,6 +1169,8 @@
     busy = false;
     historyBefore = null;
     historyWorking = false;
+    olderHistoryArmed = false;
+    olderHistoryFailed = false;
     historyLoading = Boolean(nextTeamId);
     const generation = ++historyGeneration;
     resetProgress();
@@ -1595,6 +1613,18 @@
     if (mounted && chatTeamId && $modelContext.ready && !composerBusy && !integrationsOpen) void focusComposer();
   });
 
+  // A fresh observer after every load reports whether the top is still in view, so a short page keeps filling.
+  $effect(() => {
+    const sentinel = historySentinel;
+    const root = turnsViewport;
+    if (!olderHistoryArmed || olderHistoryFailed || historyWorking || !sentinel || !root) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadOlderHistory();
+    }, { root, rootMargin: '240px 0px 0px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  });
+
   // An unsent key belongs to one Team and provider; any change discards it and focuses the new field.
   $effect(() => {
     void keySelection;
@@ -1647,18 +1677,29 @@
           inert={historyHydrating}
         >
         <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
-        <ScrollArea class="turns" bind:element={turnsViewport}>
+        {#if historyBefore && !olderHistoryFailed}
+          <p id="chat-history-hint" class="sr-only">{copy.olderHint}</p>
+        {/if}
+        <ScrollArea
+          class="turns"
+          bind:element={turnsViewport}
+          aria-describedby={historyBefore && !olderHistoryFailed ? 'chat-history-hint' : undefined}
+        >
           {#if historyBefore}
-            <div class="history-older">
-              <Button
-                variant="ghost"
-                size="compact"
-                type="button"
-                onclick={loadOlderHistory}
-                disabled={historyWorking}
-              >
-                {copy.olderMessages}
-              </Button>
+            <div class="history-older" bind:this={historySentinel}>
+              {#if olderHistoryFailed}
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  type="button"
+                  onclick={retryOlderHistory}
+                  disabled={historyWorking}
+                >
+                  {copy.olderMessages}
+                </Button>
+              {:else if historyWorking}
+                <p class="history-older-status" role="status">{copy.olderLoading}</p>
+              {/if}
             </div>
           {/if}
           {#each exchanges as exchange, index (exchange.key)}
@@ -2061,7 +2102,17 @@
 
   .history-older {
     display: flex;
+    min-height: 1px;
     justify-content: center;
+  }
+
+  .history-older-status {
+    margin: 0;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .empty-conversation :global(.turns) {

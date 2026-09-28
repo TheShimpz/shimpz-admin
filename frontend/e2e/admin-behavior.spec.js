@@ -1236,23 +1236,158 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
   await expect(task).toContainText('Shimpz Cloudflare');
   await expect(page.getByText('Installed', { exact: true })).toHaveCount(1);
   await expect(page.getByText('Your zone is example.com.', { exact: true })).toBeVisible();
-  await expect.poll(() => chat.historyRequests()).toEqual([null]);
+  const turns = page.locator('.turns');
+  await expect(page.getByRole('button', { name: 'Load older messages' })).toHaveCount(0);
+  await turns.evaluate((element) => { element.scrollTop = 0; });
+  await expect(page.getByText('Install Cloudflare', { exact: true })).toBeAttached();
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 
   await page.reload();
   await expect(task).toHaveCount(1);
   await expect(page.getByText('Your zone is example.com.', { exact: true })).toBeVisible();
-  await expect.poll(() => chat.historyRequests()).toEqual([null, null]);
+  await turns.evaluate((element) => { element.scrollTop = 0; });
+  await expect(page.getByText('Install Cloudflare', { exact: true })).toBeAttached();
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor, null, cursor]);
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('List my Cloudflare DNS zones');
-  await composer.fill('');
-  await page.getByRole('button', { name: 'Load older messages' }).click();
-  await expect(page.getByText('Install Cloudflare', { exact: true })).toBeVisible();
-  await expect.poll(() => chat.historyRequests()).toEqual([null, null, cursor]);
-  await composer.press('ArrowUp');
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('Install Cloudflare');
+});
+
+function longHistory(prefix, count, before, { detail = true } = {}) {
+  const label = { d: 'Oldest', e: 'Earlier' }[prefix] ?? 'Recent';
+  return {
+    entries: Array.from({ length: count }, (_, index) => {
+      const id = `${prefix}${String(index).padStart(31, '0')}`;
+      return [
+        { id: `${id}:user`, kind: 'message', role: 'user', text: `${label} question ${index + 1}` },
+        { id: `${id}:reply`, kind: 'message', role: 'assistant',
+          text: detail ? `${label} answer ${index + 1}\n\n${'Detail line. '.repeat(20).trim()}` : `${label} answer ${index + 1}`,
+          author: 'Marketing' },
+      ];
+    }).flat(),
+    before,
+  };
+}
+
+test('loads earlier history only when the transcript is scrolled to its top', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: longHistory('f', 12, cursor),
+    olderHistory: longHistory('e', 12, null),
+  });
+  await page.goto('/chat/');
+  const turns = page.locator('.turns');
+  await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
+  await expect(page.getByText('Recent question 1', { exact: true })).not.toBeInViewport();
+  await page.waitForTimeout(300);
+  expect(chat.historyRequests()).toEqual([null]);
+  await expect(page.getByRole('button', { name: 'Load older messages' })).toHaveCount(0);
+  await expect(turns).toHaveAccessibleDescription('Scroll up to load earlier messages.');
+
+  await turns.evaluate((element) => { element.scrollTop = 0; });
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
+  await expect(page.getByText('Earlier question 12', { exact: true })).toBeAttached();
+  // The prepended page keeps the message the reader was looking at in place.
+  await expect(page.getByText('Recent question 1', { exact: true })).toBeInViewport();
+  await expect(turns).not.toHaveAttribute('aria-describedby');
+});
+
+test('keeps the reader in place when they scroll while earlier history is loading', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: longHistory('f', 12, cursor),
+    olderHistory: longHistory('e', 12, null),
+  });
+  let releaseOlder;
+  const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
+  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
+    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
+    return route.fallback();
+  });
+  await page.goto('/chat/');
+  const turns = page.locator('.turns');
+  await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
+
+  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
+  await turns.evaluate((element) => { element.scrollTop = 0; });
+  await olderRequest;
+  await expect(page.getByRole('status').filter({ hasText: 'Loading earlier messages…' })).toBeAttached();
+  const reading = page.getByText('Recent question 6', { exact: true });
+  await reading.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await expect(reading).toBeInViewport();
+  releaseOlder();
+  await expect(page.getByText('Earlier question 12', { exact: true })).toBeAttached();
+  await expect(reading).toBeInViewport();
+  expect(chat.historyRequests()).toEqual([null, cursor]);
+});
+
+test('fills a short transcript through consecutive earlier pages', async ({ page }) => {
+  const first = 'AAAAAAAAAAI';
+  const second = 'AAAAAAAAABA';
+  const chat = await routeReadyChat(page, { history: longHistory('f', 1, first, { detail: false }) });
+  const pages = {
+    [first]: longHistory('e', 1, second, { detail: false }),
+    [second]: longHistory('d', 1, null, { detail: false }),
+  };
+  await page.route('**/api/teams/marketing/chat/history**', (route) => {
+    const before = new URL(route.request().url()).searchParams.get('before');
+    if (!before) return route.fallback();
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(pages[before]) });
+  });
+  const requested = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/chat/history')) requested.push(url.searchParams.get('before'));
+  });
+  await page.goto('/chat/');
+  await expect(page.getByText('Oldest question 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
+  await expect.poll(() => requested).toEqual([null, first, second]);
+  await expect(page.locator('.turns')).not.toHaveAttribute('aria-describedby');
+  expect(chat.historyRequests()).toEqual([null]);
+});
+
+test('offers a retry only after automatic earlier history fails', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: longHistory('f', 1, cursor),
+    olderHistory: longHistory('e', 1, null),
+  });
+  let olderAttempts = 0;
+  await page.route('**/api/teams/marketing/chat/history**', (route) => {
+    if (!new URL(route.request().url()).searchParams.has('before')) return route.fallback();
+    olderAttempts += 1;
+    if (olderAttempts > 1) return route.fallback();
+    return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'offline' }) });
+  });
+  await page.goto('/chat/');
+  const retry = page.getByRole('button', { name: 'Load older messages' });
+  await expect(retry).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(olderAttempts).toBe(1);
+  await expect(page.locator('.turns')).not.toHaveAttribute('aria-describedby');
+
+  await retry.click();
+  await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  expect(olderAttempts).toBe(2);
+  expect(chat.historyRequests()).toEqual([null, cursor]);
+});
+
+test('stops automatic earlier history when a page does not advance its cursor', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: longHistory('f', 1, cursor),
+    olderHistory: longHistory('e', 1, cursor),
+  });
+  await page.goto('/chat/');
+  await expect(page.getByRole('button', { name: 'Load older messages' })).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(chat.historyRequests()).toEqual([null, cursor]);
+  await expect(page.getByText('Earlier question 1', { exact: true })).toHaveCount(0);
 });
 
 test('keeps focus on a message link when older history arrives @browser-sensitive', async ({ page }) => {
@@ -1284,11 +1419,10 @@ test('keeps focus on a message link when older history arrives @browser-sensitiv
     return route.fallback();
   });
 
+  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
   await page.goto('/chat/');
   const link = page.getByRole('link', { name: 'current status' });
   await expect(link).toBeVisible();
-  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
-  await page.getByRole('button', { name: 'Load older messages' }).click();
   await olderRequest;
   await link.focus();
   await expect(link).toBeFocused();
