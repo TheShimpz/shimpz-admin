@@ -208,9 +208,13 @@ async function routeReadyChat(page, {
   holdHistory = false,
   history = { entries: [], before: null },
   olderHistory = null,
+  rejectDecisionKey = false,
+  hostedSession = false,
   reply,
 } = {}) {
   let inferenceWrites = 0;
+  const decisionRequests = [];
+  let decisionMasked = null;
   const inferenceBodies = [];
   const credentialBodies = [];
   const configuredProviders = new Set(
@@ -265,7 +269,9 @@ async function routeReadyChat(page, {
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
+    body: JSON.stringify(hostedSession
+      ? { profile: 'hosted', authenticated: true, account_id: 'account-1' }
+      : authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
   }));
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
@@ -390,6 +396,19 @@ async function routeReadyChat(page, {
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(providerState(modelCatalog.providers.find((provider) => provider.id === id))),
+    });
+  });
+  await page.route('**/api/decision-provider', (route) => {
+    const method = route.request().method();
+    decisionRequests.push({ method, body: route.request().postDataJSON() });
+    if (method === 'PUT' && rejectDecisionKey) {
+      return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: 'TypeSafe rejected API key' }) });
+    }
+    if (method === 'PUT') decisionMasked = `••••${route.request().postDataJSON().api_key.slice(-4)}`;
+    if (method === 'DELETE') decisionMasked = null;
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ provider: 'typesafe', configured: decisionMasked !== null, masked: decisionMasked }),
     });
   });
   await page.route('**/api/teams/marketing/inference', async (route) => {
@@ -804,6 +823,10 @@ async function routeReadyChat(page, {
     chatFrames: () => chatFrames,
     chatConnections: () => chatConnections,
     credentialBodies: () => credentialBodies,
+    decisionRequests: () => decisionRequests,
+    configureDecisionElsewhere: (masked) => {
+      decisionMasked = masked;
+    },
     disconnectHumanSocket: () => disconnectHumanSocket(),
     humanResponses: () => humanResponses,
     historyRequests: () => historyRequests,
@@ -932,6 +955,94 @@ test('asks for a missing provider key in the composer without leaving the conver
   await page.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   expect(JSON.stringify(chat.chatFrames())).not.toContain(secret);
+});
+
+test('the Supervisor adds and removes the Jev key after reading what goes to TypeSafe', async ({ page }) => {
+  const chat = await routeReadyChat(page);
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Brain: / }).click();
+  const panel = page.getByRole('dialog', { name: 'Brain settings' });
+  const fast = panel.getByRole('region', { name: 'Fast routing (Jev)' });
+  await expect(fast).toContainText('Off. The model routes every message.');
+
+  await fast.getByRole('button', { name: 'Add key' }).click();
+  const key = fast.getByLabel('TypeSafe API key');
+  await expect(key).toBeFocused();
+  await expect(key).toHaveAttribute('type', 'password');
+  await expect(key).toHaveAttribute('autocomplete', 'off');
+  await expect(key).toHaveAccessibleDescription(
+    /when it is confident a request is ordinary, the model's routing step is skipped\..*go to TypeSafe\. TypeSafe says it does not train on them/,
+  );
+  const save = fast.getByRole('button', { name: 'Save key' });
+  await expect(save).toBeDisabled();
+  await page.mouse.move(0, 0);
+  await expect(page).toHaveScreenshot('jev-key-disclosure.png', visualContract);
+  const secret = 'tsk-browser-contract-0123456789';
+  await key.fill(secret);
+  await save.click();
+  await expect(fast).toContainText('On · key ••••6789');
+  await expect(fast.getByRole('button', { name: 'Remove' })).toBeFocused();
+  await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
+
+  await fast.getByRole('button', { name: 'Remove' }).click();
+  await expect(fast).toContainText('Off. The model routes every message.');
+  await expect(fast.getByRole('button', { name: 'Add key' })).toBeFocused();
+  expect(chat.decisionRequests()).toEqual([
+    { method: 'GET', body: null },
+    { method: 'PUT', body: { api_key: secret } },
+    { method: 'DELETE', body: null },
+  ]);
+  expect(chat.credentialBodies()).toEqual([]);
+});
+
+test('a rejected Jev key is reported and an unsent one never outlives the panel', async ({ page }) => {
+  const chat = await routeReadyChat(page, { rejectDecisionKey: true });
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const trigger = page.getByRole('button', { name: /^Brain: / });
+  await trigger.click();
+  const fast = page.getByRole('dialog', { name: 'Brain settings' }).getByRole('region', { name: 'Fast routing (Jev)' });
+  await fast.getByRole('button', { name: 'Add key' }).click();
+  await fast.getByLabel('TypeSafe API key').fill('tsk-rejected-contract-0123456789');
+  await fast.getByRole('button', { name: 'Save key' }).click();
+  await expect(fast.getByRole('alert')).toHaveText('TypeSafe rejected this key.');
+  await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('tsk-rejected-contract-0123456789');
+
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect(fast.getByLabel('TypeSafe API key')).toHaveCount(0);
+  await expect(fast.getByRole('alert')).toHaveCount(0);
+  await fast.getByRole('button', { name: 'Add key' }).click();
+  await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'PUT', 'GET']);
+});
+
+test('reopening the Brain menu re-reads a Jev key another session changed', async ({ page }) => {
+  const chat = await routeReadyChat(page);
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const trigger = page.getByRole('button', { name: /^Brain: / });
+  await trigger.click();
+  const fast = page.getByRole('dialog', { name: 'Brain settings' }).getByRole('region', { name: 'Fast routing (Jev)' });
+  await expect(fast).toContainText('Off. The model routes every message.');
+  await page.keyboard.press('Escape');
+
+  chat.configureDecisionElsewhere('••••abcd');
+  await trigger.click();
+  await expect(fast).toContainText('On · key ••••abcd');
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET']);
+});
+
+test('Hosted Brain settings never offer or request a Jev key', async ({ page }) => {
+  const chat = await routeReadyChat(page, { hostedSession: true });
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Brain: / }).click();
+  const panel = page.getByRole('dialog', { name: 'Brain settings' });
+  await expect(panel.getByRole('radiogroup', { name: 'Reasoning effort' })).toBeVisible();
+  await expect(panel.getByRole('region', { name: 'Fast routing (Jev)' })).toHaveCount(0);
+  expect(chat.decisionRequests()).toEqual([]);
 });
 
 test('discards an unsent provider key and never sends on the unsaved model', async ({ page }) => {
