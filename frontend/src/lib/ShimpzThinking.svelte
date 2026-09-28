@@ -153,9 +153,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  :global(.ledger-details) {
+  :global(.ledger-details.shimpz-disclosure) {
     min-width: 0;
-    border-block-start: 1px solid var(--admin-divider);
+    border-block-start: 0;
     padding-block-start: 0.65rem;
   }
 

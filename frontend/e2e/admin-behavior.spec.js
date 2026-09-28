@@ -1160,6 +1160,8 @@ test('finishing a measured span updates its duration and announcements across tu
   const liveStatus = page.locator('.conversation .live-status');
   await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
   await expect(liveStatus).toHaveText(/In progress$/);
+  // No divider line separates the processing summary from its execution steps.
+  await expect(thinking.locator('.ledger-details')).toHaveCSS('border-top-width', '0px');
   await thinking.locator('[data-slot="disclosure-trigger"]').click();
   const step = thinking.locator('.ledger li');
   await expect(step).toBeVisible();
