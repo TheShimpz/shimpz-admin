@@ -720,7 +720,9 @@
       keyRequired ||
       composerBusy ||
       integrationsOpen ||
-      document.querySelector('dialog[open], :popover-open')
+      document.querySelector('dialog[open], :popover-open') ||
+      // Escape from the Brain menu returns focus to its trigger; a finished Brain save must not take it away.
+      document.activeElement?.closest('.brain-menu')
     ) return;
     composerInput?.focus({ preventScroll: true });
   }

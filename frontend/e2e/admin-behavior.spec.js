@@ -3614,6 +3614,26 @@ test('names every running Assistant beyond the chat limit and sends exactly the 
   expect(chat.chatFrames()[0].assistant_ids).toEqual(ids.slice(0, 16));
 });
 
+test('Escape during a Brain save returns focus to the trigger once it is enabled again', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdInferenceWrite: true });
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const trigger = page.getByRole('button', { name: /^Brain: / });
+  await trigger.click();
+  await page.getByRole('dialog', { name: 'Brain settings' })
+    .getByRole('radiogroup', { name: 'Reasoning effort' })
+    .getByRole('radio', { name: 'High' })
+    .click();
+  await expect.poll(chat.inferenceWrites).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Brain settings' })).toBeHidden();
+  await expect(trigger).toBeDisabled();
+
+  chat.releaseInferenceWrite();
+  await expect(trigger).toBeEnabled();
+  await expect(trigger).toBeFocused();
+});
+
 test('holds Send while a Brain change is saving so the turn uses the saved selection', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdInferenceWrite: true });
   await page.goto('/chat/');
@@ -3636,6 +3656,8 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 
   chat.releaseInferenceWrite();
   await expect(send).toBeEnabled();
+  // Focus the user moved to the composer is never pulled back to the Brain trigger.
+  await expect(composer).toBeFocused();
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'high' }]);

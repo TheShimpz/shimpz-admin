@@ -13,6 +13,7 @@
   let { disabled = false } = $props();
 
   let open = $state(false);
+  let restoreFocus = $state(false);
   let root = $state();
   let trigger = $state();
   let panel = $state();
@@ -57,6 +58,15 @@
     if (disabled && open) close();
   });
 
+  // Escape returns focus to the trigger, which stays disabled while a Brain change is saving; focus it once it is
+  // enabled again, unless the user has already moved focus elsewhere.
+  $effect(() => {
+    if (!restoreFocus || !trigger || (unavailable && !open)) return;
+    restoreFocus = false;
+    const active = document.activeElement;
+    if (!active || active === document.body || root?.contains(active)) trigger.focus();
+  });
+
   function place() {
     if (!trigger || !panel) return;
     const box = trigger.getBoundingClientRect();
@@ -77,7 +87,7 @@
     fastKey = '';
     fast.editing = false;
     fast.error = '';
-    if (restore) queueMicrotask(() => trigger?.focus());
+    restoreFocus = restore;
   }
 
   function toggle() {
@@ -86,6 +96,7 @@
       return;
     }
     if (unavailable) return;
+    restoreFocus = false;
     open = true;
     queueMicrotask(() => {
       panel?.showPopover();
