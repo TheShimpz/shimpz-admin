@@ -123,17 +123,10 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_direct_start_and_route_saturation_are_bounded(self) -> None:
+    def test_route_saturation_is_bounded(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
-            with mock.patch.object(socket, "_submit_team_turn", side_effect=socket.ExecutorSaturatedError):
-                await socket._start_direct_turn(websocket, connection, "team_1", {}, None)
-            self.assertIsNone(connection.active)
-            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
-
             frame = {"type": "chat", "message": "hello", "files": [], "assistant_ids": []}
-            websocket.reset_mock()
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(

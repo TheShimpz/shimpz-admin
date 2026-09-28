@@ -244,7 +244,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 started.set()
                 release.wait(timeout=2)
                 _emit_measured_progress(progress)
@@ -294,6 +294,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 turn_mock.assert_any_call(
                     "team_1",
                     {"message": "first", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
+                    (),
                     mock.ANY,
                 )
                 self.assertEqual(stop_mock.call_count, 1)
@@ -305,7 +306,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[-1]))
@@ -355,7 +356,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             finish_turn = threading.Event()
             finish_stop = threading.Event()
 
-            def turn(_team_id, _payload, _progress):
+            def turn(_team_id, _payload, _conversation, _progress):
                 started.set()
                 finish_turn.wait(timeout=2)
                 return self.chat_socket.local.PublicResponse(
@@ -395,7 +396,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[0]))
@@ -431,7 +432,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 started.set()
                 progress(dict(_MEASURED_PROGRESS[0]))
                 release.wait(timeout=2)
@@ -459,7 +460,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_progress_send_failure_does_not_stop_a_completed_turn(self) -> None:
         async def scenario() -> None:
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 progress(dict(_MEASURED_PROGRESS[0]))
                 return self.chat_socket.local.PublicResponse(
                     200,
@@ -507,7 +508,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_turn_emits_fixed_progress_before_its_single_terminal(self) -> None:
         async def scenario() -> None:
-            def turn(_team_id, _payload, progress):
+            def turn(_team_id, _payload, _conversation, progress):
                 _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,

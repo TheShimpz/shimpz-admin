@@ -32,6 +32,18 @@ def canonical_challenge_id(value: object) -> str:
     return value
 
 
+def canonical_team_chat_body(payload: object) -> dict[str, object]:
+    """Validate the Team chat body: the browser's three fields plus Admin's server-derived conversation window."""
+    if not isinstance(payload, dict) or set(payload) != team_contract.CHAT_BODY_FIELDS:
+        raise TeamRequestError("Team chat requires message, files, assistant_ids, and conversation")
+    conversation = team_contract.canonical_conversation(payload["conversation"])
+    if conversation is None:
+        raise TeamRequestError("conversation window is invalid")
+    body = canonical_chat_payload({key: payload[key] for key in ("message", "files", "assistant_ids")})
+    body["conversation"] = conversation
+    return body
+
+
 def canonical_chat_payload(payload: object) -> dict[str, object]:
     """Validate one explicit Assistant scope without treating an empty scope as all."""
     if not isinstance(payload, dict) or set(payload) != {"message", "files", "assistant_ids"}:

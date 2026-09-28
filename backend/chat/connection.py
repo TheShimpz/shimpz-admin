@@ -8,6 +8,7 @@ import threading
 from dataclasses import dataclass, field
 
 from chat.assistant_proposal import AssistantReference, UninstallProposal
+from history import context as history_context
 
 from chat import lifecycle
 
@@ -24,6 +25,8 @@ class Turn:
     language_exemplar: str | None = field(default=None, repr=False)
     lifecycle_stop: threading.Event | None = field(default=None, repr=False)
     history_id: str | None = field(default=None, repr=False)
+    # Committed presentation history before this turn's user row, captured once and sent with its Team turn start.
+    conversation: tuple[history_context.Entry, ...] = field(default=(), repr=False)
 
 
 @dataclass(slots=True)

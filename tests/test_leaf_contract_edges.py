@@ -21,7 +21,7 @@ import state
 from chat.delivery import progress as chat_progress
 from team import assets, bridge, transport
 
-from chat import payloads
+from chat import local, payloads
 
 
 class AuthenticationEdgeTests(unittest.TestCase):
@@ -148,6 +148,29 @@ class PayloadEdgeTests(unittest.TestCase):
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
                 payloads.canonical_chat_payload(value)
+
+    def test_team_chat_body_admits_only_a_bounded_committed_window(self) -> None:
+        entry = {"role": "user", "text": "Earlier", "truncated": False}
+        body = payloads.canonical_team_chat_body(
+            {"message": " ok ", "files": [], "assistant_ids": [], "conversation": [entry]}
+        )
+        self.assertEqual(body, {"message": "ok", "files": [], "assistant_ids": [], "conversation": [entry]})
+        invalid = (
+            None,
+            {"message": "ok", "files": [], "assistant_ids": []},
+            {"message": "ok", "files": [], "assistant_ids": [], "conversation": "bad"},
+            {"message": "ok", "files": [], "assistant_ids": [], "conversation": [{"role": "user"}]},
+            {"message": "ok", "files": [], "assistant_ids": [], "conversation": [{**entry, "role": "system"}]},
+            {"message": "ok", "files": [], "assistant_ids": [], "conversation": [entry] * 9},
+        )
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
+                payloads.canonical_team_chat_body(value)
+        with self.assertRaises(transport.TeamRequestError):
+            payloads.canonical_chat_payload({"message": "ok", "files": []})
+        with mock.patch.object(bridge, "chat") as chat, self.assertRaises(transport.TeamRequestError):
+            local.turn("team_1", ["not", "a", "payload"], ())
+        chat.assert_not_called()
 
     def test_human_payload_shapes_fail_closed(self) -> None:
         invalid = (

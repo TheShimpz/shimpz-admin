@@ -152,6 +152,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
+                (),
             )
 
         self.assertEqual(response.status, 428)
@@ -214,6 +215,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Hello", "files": [], "assistant_ids": []},
+                (),
                 events.append,
             )
 
@@ -461,7 +463,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         with mock.patch.object(team, "get_inference") as inference:
             for payload in payloads:
                 with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
-                    local.turn("team_1", payload)
+                    local.turn("team_1", payload, ())
         inference.assert_not_called()
 
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
@@ -478,6 +480,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Hi", "files": [], "assistant_ids": []},
+                (),
             )
 
         self.assertEqual(
@@ -485,7 +488,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready"},
         )
         call = chat.call_args
-        self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": []})
+        self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": [], "conversation": []})
         self.assertEqual(call.kwargs["provider"], "anthropic")
         self.assertEqual(call.kwargs["api_key"], "sk-ant-0123456789")
         self.assertTrue(callable(call.kwargs["progress"]))
@@ -500,6 +503,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Hi", "files": [], "assistant_ids": []},
+                (),
             )
         self.assertEqual(response.status, 503)
         self.assertEqual(response.body, {"code": "runtime-unavailable"})
@@ -520,7 +524,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key") as resolve_key,
                 mock.patch.object(team, "chat") as chat,
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
             self.assertEqual(
                 response,
                 team.TeamResponse(502, {"code": "inference-response-invalid"}),
@@ -535,7 +539,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value=None),
             mock.patch.object(team, "chat") as chat,
         ):
-            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
+            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
 
         self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
@@ -571,6 +575,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Hi", "files": [], "assistant_ids": []},
+                (),
             )
         self.assertEqual(response.status, 502)
         self.assertEqual(response.body, {"code": "brain-runtime-failed"})
@@ -593,6 +598,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             response = local.turn(
                 "team_1",
                 {"message": "Hi", "files": [], "assistant_ids": []},
+                (),
             )
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
@@ -610,7 +616,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(team, "chat", return_value=controller),
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
             self.assertEqual(response.status, 502)
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
@@ -638,7 +644,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(team, "chat", return_value=team.TeamResponse(200, controller_body)),
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
             self.assertEqual(response, team.TeamResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
@@ -658,7 +664,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value=api_key),
             mock.patch.object(team, "chat", return_value=controller),
         ):
-            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []})
+            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
 
@@ -972,7 +978,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
             mock.patch.object(team, "chat", return_value=team.TeamResponse(404, {})),
         ):
-            self.assertEqual(local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}).status, 503)
+            self.assertEqual(local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ()).status, 503)
 
         with (
             mock.patch.object(team, "get_inference", return_value=inference),

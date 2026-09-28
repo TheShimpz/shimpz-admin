@@ -62,6 +62,13 @@ class ChatTaskResumeTests(ChatWebSocketCase):
         asyncio.run(scenario())
 
     def test_installs_for_the_prior_objective_and_dispatches_it_once(self) -> None:
+        # The window ends before the continuation row, so it quotes the original objective and the capability reply;
+        # the objective still reaches Team exactly once, as the turn's message.
+        window = (
+            self.chat_socket.history_context.Entry("user", "Lista minhas zonas DNS no Cloudflare", False),
+            self.chat_socket.history_context.Entry("assistant", "Preciso do Assistant Cloudflare para isso.", False),
+        )
+
         async def scenario() -> None:
             plan = self._automatic_plan()
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
@@ -86,6 +93,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                     return_value=self._future(self.assistant_plan.Result("installed", installed)),
                 ),
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
+                mock.patch("history.delivery.conversation", new=mock.AsyncMock(return_value=window)) as projected,
             ):
                 websocket = Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
@@ -120,6 +128,8 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled", "shimpz-cloudflare", "whatsapp"],
                     },
                 )
+                self.assertEqual(turn.call_args.args[2], window)
+                projected.assert_awaited_once()
                 await websocket.disconnect()
 
         asyncio.run(scenario())
@@ -174,5 +184,38 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 )
                 turn.assert_not_called()
                 await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+
+class ChatConversationWindowTests(ChatWebSocketCase):
+    def test_a_direct_turn_carries_the_committed_history_before_its_user_row(self) -> None:
+        async def scenario() -> None:
+            replies = iter(("Your zones are example.com.", "Done."))
+
+            def turn(_team_id, _payload, _conversation, _progress):
+                return self.chat_socket.local.PublicResponse(
+                    200, {"team_id": "team_1", "team_name": "Marketing", "reply": next(replies)}
+                )
+
+            with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as sent:
+                websocket = Socket(self.admin_app.app, token=self.token)
+                self.assertTrue(self._accepted(await websocket.start()))
+                await websocket.send_json(
+                    {"type": "chat", "message": "List my zones", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                await websocket.send_json(
+                    {"type": "chat", "message": "And the first one?", "files": [], "assistant_ids": []}
+                )
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                await websocket.disconnect()
+
+            first, second = sent.call_args_list
+            self.assertEqual(first.args[2], ())
+            self.assertEqual(
+                [(entry.role, entry.text) for entry in second.args[2]],
+                [("user", "List my zones"), ("assistant", "Your zones are example.com.")],
+            )
 
         asyncio.run(scenario())

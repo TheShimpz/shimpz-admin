@@ -100,6 +100,9 @@ async def dispatch(
     payload, objective = admitted
     try:
         history_id = await history_delivery.admit(team_id, payload["message"])
+        # The window ends before the continuation row, so it still holds the original objective and the reply that
+        # asked for a capability; the objective itself runs once, as this turn's message.
+        conversation = await history_delivery.conversation(team_id, history_id)
     except history.HistoryUnavailableError, ValueError:
         await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
         return
@@ -116,6 +119,7 @@ async def dispatch(
         language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
+        conversation=conversation,
     )
     connection.admitted_history_id = None
     connection.active = turn

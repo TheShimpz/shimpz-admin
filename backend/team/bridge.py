@@ -290,6 +290,7 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
 
 
 canonical_chat_payload = payloads.canonical_chat_payload
+canonical_team_chat_body = payloads.canonical_team_chat_body
 canonical_integration_resume = payloads.canonical_integration_resume
 canonical_human_resume = payloads.canonical_human_resume
 canonical_human_assurance = payloads.canonical_human_assurance
@@ -305,7 +306,7 @@ def chat(
 ) -> TeamResponse:
     """Send a turn whose JSON is secret-free; the key uses the private authenticated header."""
     canonical_id = canonical_team_id(team_id)
-    body = canonical_chat_payload(payload)
+    body = canonical_team_chat_body(payload)
     return _call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat",

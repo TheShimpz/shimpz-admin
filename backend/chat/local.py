@@ -738,9 +738,17 @@ def _submit(
 def turn(
     team_id: object,
     payload: object,
+    conversation: tuple[conversation_context.Entry, ...],
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
 ) -> team.TeamResponse:
-    return _submit(team_id, payload, team.canonical_chat_payload, team.chat, progress)
+    """Start one Team turn with the committed presentation history captured before its user row."""
+    wire = [{"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in conversation]
+
+    def team_body(value: object) -> dict[str, object]:
+        # A non-object browser payload reaches the Team body validator unchanged and fails closed there.
+        return team.canonical_team_chat_body({**value, "conversation": wire} if isinstance(value, dict) else value)
+
+    return _submit(team_id, payload, team_body, team.chat, progress)
 
 
 def resume_integrations(

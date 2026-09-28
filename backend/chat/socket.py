@@ -220,9 +220,10 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 def _submit_team_turn(
     team_id: str,
     payload: dict[str, object],
+    conversation: tuple[history_context.Entry, ...],
 ) -> tuple[concurrent.futures.Future, asyncio.Queue[dict[str, object]]]:
     progress, report = _progress_channel()
-    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, report)
+    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, conversation, report)
     return future, progress
 
 
@@ -239,7 +240,7 @@ async def _continue_team_turn(
             connection.active = None
         return
     try:
-        future, progress = _submit_team_turn(team_id, payload)
+        future, progress = _submit_team_turn(team_id, payload, turn.conversation)
     except ExecutorSaturatedError:
         await _send_terminal_once(websocket, connection, turn, _error_terminal(429, "local chat capacity reached"))
         if connection.active is turn:
@@ -624,29 +625,6 @@ def _take_history_id(connection: _Connection) -> str | None:
     return history_id
 
 
-async def _start_direct_turn(
-    websocket: WebSocket,
-    connection: _Connection,
-    team_id: str,
-    payload: dict[str, object],
-    language_exemplar: str | None,
-) -> None:
-    try:
-        future, progress = _submit_team_turn(team_id, payload)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
-        return
-    turn = _Turn(
-        future=future,
-        operation="chat",
-        language_exemplar=language_exemplar,
-        progress=progress,
-        history_id=_take_history_id(connection),
-    )
-    connection.active = turn
-    turn.delivery = asyncio.create_task(_deliver_turn(websocket, connection, turn, team_id))
-
-
 def _bounded_language_exemplar(message: object) -> str | None:
     exemplar = team_contract.canonical_language_exemplar(message)
     if exemplar is not None or not isinstance(message, str):
@@ -696,6 +674,7 @@ async def _dispatch_chat(
         language_exemplar=language_exemplar,
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
+        conversation=conversation,
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(
