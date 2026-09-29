@@ -683,7 +683,7 @@ def _project_turn(
     if clarification is not None:
         # A Brain multiple-choice question is presentation only; it must match the closed Team shape (ADR-0081).
         clarification = team_contract.canonical_clarification(clarification)
-        if clarification is None:
+        if clarification is None or reply != team_contract.render_clarification(clarification):
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = f"{team_name} {reply} {_clarification_text(clarification)}"
     if (

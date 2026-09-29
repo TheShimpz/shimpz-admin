@@ -1,4 +1,4 @@
-import { parseClarification } from './clarification.js';
+import { parseClarification, renderClarification } from './clarification.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -96,7 +96,7 @@ function messageEntry(value, suffix, status) {
     } catch {
       throw invalidHistory(status);
     }
-    if (clarification === null) throw invalidHistory(status);
+    if (clarification === null || value.text !== renderClarification(clarification)) throw invalidHistory(status);
   }
   if (
     !exactKeys(value, expected) ||

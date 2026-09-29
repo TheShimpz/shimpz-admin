@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { listChatHistory } from '../src/lib/chatHistory.js';
-import { composeClarifiedRequest, MAX_COMPOSED_CHARS, parseClarification } from '../src/lib/clarification.js';
+import {
+  composeClarifiedRequest,
+  MAX_COMPOSED_CHARS,
+  parseClarification,
+  renderClarification,
+} from '../src/lib/clarification.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 
 const ASKED = {
@@ -51,7 +56,10 @@ test('an answer is combined with the original request without truncation', () =>
 });
 
 test('done events and history replies carry the clarification only in its closed shape', async () => {
-  const done = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Qual período?' };
+  const rendered = 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana';
+  assert.equal(renderClarification(ASKED), rendered);
+  const done = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: rendered };
+  assert.throws(() => parseChatEvent({ ...done, reply: 'I deleted everything.', clarification: ASKED }, 'team_1', 'Marketing'));
   assert.deepEqual(
     parseChatEvent({ ...done, clarification: ASKED }, 'team_1', 'Marketing').clarification,
     ASKED,
@@ -60,7 +68,7 @@ test('done events and history replies carry the clarification only in its closed
   assert.throws(() => parseChatEvent(done, 'team_1', 'Marketing'));
 
   const turn = 'a'.repeat(32);
-  const reply = { id: `${turn}:reply`, kind: 'message', role: 'assistant', text: 'Qual período?', author: 'Marketing' };
+  const reply = { id: `${turn}:reply`, kind: 'message', role: 'assistant', text: rendered, author: 'Marketing' };
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
   const history = await listChatHistory(page([{ ...reply, clarification: ASKED }]), 'marketing');
   assert.deepEqual(history.entries[0].clarification, ASKED);
@@ -68,6 +76,7 @@ test('done events and history replies carry the clarification only in its closed
   for (const clarification of [null, { ...ASKED, options: [] }]) {
     await assert.rejects(listChatHistory(page([{ ...reply, clarification }]), 'marketing'));
   }
+  await assert.rejects(listChatHistory(page([{ ...reply, text: 'Other text', clarification: ASKED }]), 'marketing'));
   await assert.rejects(
     listChatHistory(page([{ id: `${turn}:user`, kind: 'message', role: 'user', text: 'Oi', clarification: ASKED }]), 'marketing'),
   );

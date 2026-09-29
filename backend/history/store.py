@@ -202,7 +202,7 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     entry: dict[str, object] = {"kind": "message", "role": "assistant", "text": reply, "author": author}
     if event["clarification"] is not None:
         clarification = team_contract.canonical_clarification(event["clarification"])
-        if clarification is None:
+        if clarification is None or reply != team_contract.render_clarification(clarification):
             raise ValueError("chat history reply event is invalid")
         # Stored with its reply so a reload restores the same question card for the same turn.
         entry["clarification"] = clarification
@@ -427,7 +427,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
     expected = {"kind", "role", "text"} | ({"author"} if role == "assistant" else set())
     if role == "assistant" and "clarification" in payload:
         expected.add("clarification")
-        if team_contract.canonical_clarification(payload["clarification"]) != payload["clarification"]:
+        clarification = team_contract.canonical_clarification(payload["clarification"])
+        if clarification != payload["clarification"] or payload.get("text") != team_contract.render_clarification(
+            clarification
+        ):
             raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")

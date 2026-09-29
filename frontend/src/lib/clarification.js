@@ -53,6 +53,17 @@ export function parseClarification(value) {
   return { question: value.question, options: parsed, default_index: defaultIndex };
 }
 
+/** The exact plain reply that accompanies a clarification; every boundary requires the reply to equal it. */
+export function renderClarification(clarification) {
+  return [
+    clarification.question,
+    '',
+    ...clarification.options.map((option, index) => (
+      `${index + 1}. ${option.label}${index === clarification.default_index ? ' ✓' : ''}${option.description ? ` — ${option.description}` : ''}`
+    )),
+  ].join('\n');
+}
+
 /**
  * Combine the original request, the question, and the answer into the message the user will review and send.
  * Returns null when the answer is empty or the combination would exceed the chat message limit; it never truncates.

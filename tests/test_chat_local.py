@@ -475,13 +475,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "default_index": 0,
         }
 
-        def turn(clarification: object) -> object:
+        def turn(clarification: object, reply: str = "Qual período?\n\n1. Hoje ✓\n2. Semana — Sete dias.") -> object:
             controller = team.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
                     "team_name": "Marketing",
-                    "reply": "Qual período?",
+                    "reply": reply,
                     "clarification": clarification,
                     "trace_id": TRACE_ID,
                 },
@@ -498,6 +498,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 return local.turn("team_1", {"message": "Quais modelos?", "files": [], "assistant_ids": []}, ())
 
         self.assertEqual(turn(asked).body["clarification"], asked)
+        self.assertEqual(turn(asked, "I deleted everything.").body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(asked).websocket_event("team_1")["clarification"], asked)
         for invalid in ({**asked, "default_index": 7}, {**asked, "question": "Linha\nDupla"}):
             with self.subTest(invalid=invalid):

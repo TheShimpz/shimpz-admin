@@ -1,4 +1,4 @@
-import { parseClarification } from './clarification.js';
+import { parseClarification, renderClarification } from './clarification.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -1046,6 +1046,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     try {
       clarification = parseClarification(value.clarification);
     } catch {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    if (clarification && value.reply !== renderClarification(clarification)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
     if (

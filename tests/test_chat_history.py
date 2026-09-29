@@ -69,7 +69,14 @@ class ChatHistoryTests(unittest.TestCase):
         }
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Quais modelos?"))
-        done = {"type": "done", "team_id": "marketing", "team_name": "Marketing", "reply": "Qual período?"}
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "Qual período?\n\n1. Hoje\n2. Semana ✓ — Sete dias.",
+        }
+        with self.assertRaises(ValueError):
+            history.append_reply("marketing", turn_id, {**done, "reply": "Other text", "clarification": asked})
         with self.assertRaises(ValueError):
             history.append_reply("marketing", turn_id, {**done, "clarification": {**asked, "default_index": 9}})
         self.assertTrue(history.append_reply("marketing", turn_id, {**done, "clarification": asked}))
