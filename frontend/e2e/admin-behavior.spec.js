@@ -3630,10 +3630,85 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
+  await expect(page.getByRole('menuitem', { name: 'Standing instructions' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Standing instructions' })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeHidden();
   await expect(actions).toBeFocused();
+});
+
+test('a Hosted Admin offers no standing instructions because the Team route is Local-only', async ({ page }) => {
+  await routeReadyChat(page, { hostedSession: true });
+  const instructionRequests = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/instructions')) instructionRequests.push(request.url());
+  });
+  await page.goto('/chat/');
+  const navigation = await openTeamNavigation(page);
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Standing instructions' })).toHaveCount(0);
+  expect(instructionRequests).toEqual([]);
+});
+
+test('a failed read of the standing instructions can never save over them', async ({ page }) => {
+  await routeReadyChat(page);
+  const puts = [];
+  await page.route('**/api/teams/marketing/instructions', async (route) => {
+    if (route.request().method() === 'PUT') puts.push(route.request().postDataJSON());
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'down' }) });
+  });
+  await page.goto('/chat/');
+  const navigation = await openTeamNavigation(page);
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Standing instructions' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Standing instructions' });
+  await expect(dialog.getByText('The Team instructions could not be loaded.')).toBeVisible();
+  await expect(dialog.getByLabel('One rule per line')).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await dialog.getByLabel('One rule per line').evaluate((form) => form.closest('form').requestSubmit());
+  expect(puts).toEqual([]);
+});
+
+test('saves the Team standing instructions one rule per line and refuses an invalid list', async ({ page }) => {
+  await routeReadyChat(page);
+  const puts = [];
+  let saved = ['Responda sempre em português do Brasil.'];
+  await page.route('**/api/teams/marketing/instructions', async (route) => {
+    if (route.request().method() === 'PUT') {
+      puts.push(route.request().postDataJSON());
+      saved = puts.at(-1).instructions;
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ team_id: 'marketing', instructions: saved }),
+    });
+  });
+
+  await page.goto('/chat/');
+  const navigation = await openTeamNavigation(page);
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Standing instructions' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Standing instructions' });
+  const rules = dialog.getByLabel('One rule per line');
+  await expect(rules).toHaveValue('Responda sempre em português do Brasil.');
+
+  await rules.fill('Use listas.\nuse LISTAS.');
+  await expect(dialog.getByText('Line 2 repeats an earlier rule.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+  await rules.fill('  Responda sempre em português do Brasil.  \n\nUse listas curtas, sem tabelas.');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+  expect(puts).toEqual([
+    { instructions: ['Responda sempre em português do Brasil.', 'Use listas curtas, sem tabelas.'] },
+  ]);
+  await expect(page.locator('[data-slot="toast"]')).toContainText('Marketing will follow them from the next message.');
 });
 
 test('opens the mobile Team list as a modal drawer and restores focus', async ({ page }, testInfo) => {

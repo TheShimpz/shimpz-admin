@@ -48,6 +48,8 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/model-providers/{provider}", "DELETE"),
                 ("/api/teams/{team_id}/inference", "GET"),
                 ("/api/teams/{team_id}/inference", "PUT"),
+                ("/api/teams/{team_id}/instructions", "GET"),
+                ("/api/teams/{team_id}/instructions", "PUT"),
                 ("/api/local-assistants", "GET"),
                 ("/api/local-assistants/{image_hash}/icon", "GET"),
                 ("/api/teams/{team_id}/assistants/local", "POST"),

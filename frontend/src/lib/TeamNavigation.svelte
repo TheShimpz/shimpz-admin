@@ -2,6 +2,7 @@
   import { ActionLink, Button } from '@shimpz/frontend';
 
   import { t } from '$lib/i18n.js';
+  import { sessionContext } from '$lib/sessionContext.js';
   import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
   import { teamContext } from '$lib/teamContext.js';
 
@@ -9,6 +10,7 @@
     active = '',
     oncreate = () => {},
     ondelete = () => {},
+    oninstructions = () => {},
     onnavigate = () => {},
     createButton = $bindable(),
   } = $props();
@@ -83,7 +85,9 @@
                 <TeamActionsMenu
                   label={$t('teamNavigation.actions', { team: team.name })}
                   deleteLabel={copy.deleteTeam}
+                  instructionsLabel={$sessionContext.profile === 'local' ? $t('teamInstructions.menuItem') : ''}
                   ondelete={() => ondelete(team)}
+                  oninstructions={() => oninstructions(team)}
                 />
               </div>
             </div>

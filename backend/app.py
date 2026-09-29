@@ -40,6 +40,7 @@ from team import assets as team_assets
 from team import bridge as team
 from team import files as team_files
 from team import http as team_http
+from team import inference as team_inference
 
 import browser
 from action import stored_input as action_stored_input
@@ -133,6 +134,7 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
+team_inference.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,
@@ -630,21 +632,6 @@ async def teams_destroy(team_id: str, request: Request):
     return await run_in_threadpool(
         _team_response,
         lambda: _team_delete_with_history(team_id, lambda: team.destroy(team_id, team_name)),
-    )
-
-
-@app.get("/api/teams/{team_id}/inference")
-def team_inference_status(team_id: str):
-    """Return only the Team's provider/model selection; credentials remain in this backend."""
-    return _team_response(lambda: team.get_inference(team_id))
-
-
-@app.put("/api/teams/{team_id}/inference")
-async def team_inference_configure(team_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    return await run_in_threadpool(
-        _team_response,
-        lambda: team.configure_inference(team_id, payload),
     )
 
 

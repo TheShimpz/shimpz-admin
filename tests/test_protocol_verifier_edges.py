@@ -188,6 +188,23 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_standing_instruction_vectors(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value["instructions"]["valid"] = []
+
+        def accepted_invalid(value: dict[str, object]) -> None:
+            value["instructions"]["invalid"] = [value["instructions"]["valid"][1]]
+
+        def rejected_valid(value: dict[str, object]) -> None:
+            value["instructions"]["valid"] = [["Linha\nquebrada"]]
+
+        for mutate in (missing, accepted_invalid, rejected_valid):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_chat_conversation_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value["chat_conversation"]["invalid"] = []
