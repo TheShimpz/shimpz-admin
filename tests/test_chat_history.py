@@ -103,6 +103,24 @@ class ChatHistoryTests(unittest.TestCase):
             )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (
+                    json.dumps(
+                        {
+                            "kind": "message",
+                            "role": "assistant",
+                            "text": "x",
+                            "author": "Marketing",
+                            "clarification": None,
+                        }
+                    ),
+                    f"{turn_id}:reply",
+                ),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
 
     def test_records_idempotent_terminal_rows_in_presentation_order(self) -> None:
         first = history.new_turn_id()

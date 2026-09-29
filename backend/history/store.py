@@ -428,8 +428,11 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
     if role == "assistant" and "clarification" in payload:
         expected.add("clarification")
         clarification = team_contract.canonical_clarification(payload["clarification"])
-        if clarification != payload["clarification"] or payload.get("text") != team_contract.render_clarification(
-            clarification
+        # A stored reply carries a clarification only when there is one; null or any other shape is invalid.
+        if (
+            clarification is None
+            or clarification != payload["clarification"]
+            or payload.get("text") != team_contract.render_clarification(clarification)
         ):
             raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
