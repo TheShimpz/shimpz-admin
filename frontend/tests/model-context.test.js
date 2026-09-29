@@ -19,7 +19,7 @@ function response(status, body) {
 
 const providers = [
   {
-    id: 'openai', title: 'OpenAI', default_model: 'gpt-6-sol', configured: true, masked: '••••test',
+    id: 'openai', title: 'OpenAI', default_model: 'gpt-6-luna', configured: true, masked: '••••test',
     models: [
       { id: 'gpt-6-sol', title: 'GPT-6 Sol', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
       { id: 'gpt-6-luna', title: 'GPT-6 Luna', input_usd_per_million_cents: 10, output_usd_per_million_cents: 50 },
@@ -111,11 +111,11 @@ test('opens Chat by persisting the default Brain when its provider key already e
   ]);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
     provider: 'openai',
-    model: 'gpt-6-sol',
+    model: 'gpt-6-luna',
     effort: 'low',
   });
   assert.equal(get(modelContext).provider, 'openai');
-  assert.equal(get(modelContext).model, 'gpt-6-sol');
+  assert.equal(get(modelContext).model, 'gpt-6-luna');
   assert.equal(get(modelContext).ready, true);
 });
 

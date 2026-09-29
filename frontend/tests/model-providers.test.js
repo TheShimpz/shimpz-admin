@@ -15,7 +15,7 @@ const providers = [
   {
     id: 'openai',
     title: 'OpenAI',
-    default_model: 'gpt-6-sol',
+    default_model: 'gpt-6-luna',
     models: [
       { id: 'gpt-6-sol', title: 'GPT-6 Sol', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
       { id: 'gpt-6-luna', title: 'GPT-6 Luna', input_usd_per_million_cents: 10, output_usd_per_million_cents: 50 },

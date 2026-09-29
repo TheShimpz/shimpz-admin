@@ -46,7 +46,7 @@ class ModelProviderTests(unittest.TestCase):
                     {
                         "id": "openai",
                         "title": "OpenAI",
-                        "default_model": "gpt-6-sol",
+                        "default_model": "gpt-6-luna",
                         "models": [
                             {
                                 "id": "gpt-6-sol",
