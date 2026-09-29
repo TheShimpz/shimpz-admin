@@ -48,13 +48,12 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/model-providers/{provider}", "DELETE"),
                 ("/api/teams/{team_id}/inference", "GET"),
                 ("/api/teams/{team_id}/inference", "PUT"),
-                ("/api/teams/{team_id}/instructions", "GET"),
-                ("/api/teams/{team_id}/instructions", "PUT"),
                 ("/api/local-assistants", "GET"),
                 ("/api/local-assistants/{image_hash}/icon", "GET"),
                 ("/api/teams/{team_id}/assistants/local", "POST"),
             }.issubset(routes)
         )
+        self.assertFalse({path for path, _method in routes if path.endswith("/instructions")})
         websocket_paths = {
             route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }

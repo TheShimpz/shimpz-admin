@@ -1,13 +1,13 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  // Standing instructions are a Local Team setting (ADR-0083); without a label the item is not offered.
-  let { label, instructionsLabel = '', deleteLabel, oninstructions = () => {}, ondelete } = $props();
+  let { label, deleteLabel, ondelete } = $props();
 
   let open = $state(false);
   let root = $state();
   let trigger = $state();
   let menu = $state();
+  let deleteItem = $state();
   const menuId = $props.id();
 
   function close(restore = false) {
@@ -39,24 +39,16 @@
     queueMicrotask(() => {
       menu?.showPopover();
       place();
-      menu?.querySelector('[role="menuitem"]')?.focus();
+      deleteItem?.focus();
     });
   }
 
-  function choose(action) {
+  function choose() {
     close();
-    action();
+    ondelete();
   }
 
   function keydown(event) {
-    if (open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      event.preventDefault();
-      const items = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])];
-      const current = items.indexOf(document.activeElement);
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      items[(current + step + items.length) % items.length]?.focus();
-      return;
-    }
     if (!open || (event.key !== 'Escape' && event.key !== 'Tab')) return;
     // Escape closes only this menu, never an enclosing dialog such as the mobile Team drawer.
     if (event.key === 'Escape') event.preventDefault();
@@ -88,12 +80,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg>
   </Button>
   <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} popover="manual">
-    {#if instructionsLabel}
-      <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(oninstructions)}>
-        {instructionsLabel}
-      </Button>
-    {/if}
-    <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
+    <Button bind:element={deleteItem} class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={choose}>
       {deleteLabel}
     </Button>
   </div>

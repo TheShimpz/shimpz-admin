@@ -7,13 +7,11 @@
   import { t } from '$lib/i18n.js';
   import { LocalApiError } from '$lib/localApi.js';
   import { createTeam, deleteTeam, teamContext } from '$lib/teamContext.js';
-  import TeamInstructionsDialog from '$lib/TeamInstructionsDialog.svelte';
 
   let { onsettled = () => {} } = $props();
 
   let createDialog = $state();
   let deleteDialog = $state();
-  let instructionsDialog = $state();
   let teamName = $state('');
   let creating = $state(false);
   let createError = $state('');
@@ -41,10 +39,6 @@
     teamName = '';
     createError = '';
     if (!createDialog?.open) createDialog?.showModal();
-  }
-
-  export function openInstructions(team) {
-    instructionsDialog?.open(team);
   }
 
   export function openDelete(team) {
@@ -229,8 +223,6 @@
     </DialogFrame>
   </form>
 </Modal>
-
-<TeamInstructionsDialog bind:this={instructionsDialog} {onsettled} />
 
 <style>
   form { margin: 0; }

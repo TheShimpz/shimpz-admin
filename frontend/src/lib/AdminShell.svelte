@@ -33,11 +33,6 @@
     teamDialogs?.openDelete(team);
   }
 
-  function editInstructions(team) {
-    closeTeamDrawer();
-    teamDialogs?.openInstructions(team);
-  }
-
   function restoreTeamFocus() {
     queueMicrotask(() => (mobile ? teamDrawerTrigger : createButton)?.focus());
   }
@@ -60,13 +55,7 @@
   {:else}
     <div class="shell-sidebar">
       <div class="team-sidebar-region">
-        <TeamNavigation
-          {active}
-          bind:createButton
-          oncreate={createTeam}
-          ondelete={deleteTeam}
-          oninstructions={editInstructions}
-        />
+        <TeamNavigation {active} bind:createButton oncreate={createTeam} ondelete={deleteTeam} />
         <TeamSidebar {active} />
       </div>
       <div class="sidebar-footer">
@@ -124,13 +113,7 @@
             <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </Button>
         </div>
-        <TeamNavigation
-          {active}
-          oncreate={createTeam}
-          ondelete={deleteTeam}
-          oninstructions={editInstructions}
-          onnavigate={closeTeamDrawer}
-        />
+        <TeamNavigation {active} oncreate={createTeam} ondelete={deleteTeam} onnavigate={closeTeamDrawer} />
       </Modal>
     {/if}
     <div class:chat-layout={chat} class="authenticated-content">

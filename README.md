@@ -14,8 +14,6 @@ workload identity, Action execution, storage, Integration encryption, and Brain 
 - Admin password/session state and model-provider API keys live only in `/data/admin.json`, mode `0600`.
   Browser responses expose masked credential state, never stored values.
 - Team inference configuration contains only the canonical `provider` and `model` selection.
-- A Local Team's standing instructions (ADR-0083) are read and replaced through `/api/teams/{team_id}/instructions`
-  with the Supervisor session; Admin forwards only the closed rule list.
 - Browser chat uses `shimpz.chat.v7`: strict `chat`, `resume-task`, `stop`, `sync`, and `human-response` client frames plus
   bounded automatic Assistant install plans and Integration and Action human gates. An admitted plan can widen
   only its original task's Assistant scope after Team proves every planned Assistant running.
