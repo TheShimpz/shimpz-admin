@@ -209,6 +209,7 @@ async function routeReadyChat(page, {
   history = { entries: [], before: null },
   olderHistory = null,
   rejectDecisionKey = false,
+  clarification = null,
   hostedSession = false,
   reply,
 } = {}) {
@@ -534,6 +535,7 @@ async function routeReadyChat(page, {
         team_id: 'marketing',
         team_name: 'Marketing',
         reply: 'The reviewed human response was accepted.',
+        clarification: null,
       }));
     };
 
@@ -593,6 +595,7 @@ async function routeReadyChat(page, {
               team_id: 'marketing',
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
+              clarification: null,
             }));
           }
           return;
@@ -654,6 +657,7 @@ async function routeReadyChat(page, {
                 team_id: 'marketing',
                 team_name: 'Marketing',
                 reply: 'Continued task complete.',
+                clarification: null,
               }));
               return;
             }
@@ -674,6 +678,7 @@ async function routeReadyChat(page, {
               team_id: 'marketing',
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
+              clarification: null,
             }));
           };
           if (!holdAssistantPlan) {
@@ -786,6 +791,7 @@ async function routeReadyChat(page, {
               team_id: 'marketing',
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
+              clarification: clarification ?? null,
             }));
         if (holdReply) releaseReply = completeReply;
         else completeReply();
@@ -1043,6 +1049,78 @@ test('Hosted Brain settings never offer or request a Jev key', async ({ page }) 
   await expect(panel.getByRole('radiogroup', { name: 'Reasoning effort' })).toBeVisible();
   await expect(panel.getByRole('region', { name: 'Fast routing (Jev)' })).toHaveCount(0);
   expect(chat.decisionRequests()).toEqual([]);
+});
+
+const CLARIFICATION = {
+  question: 'Which period should the list cover?',
+  options: [
+    { label: 'Today', description: 'Only models released today.' },
+    { label: 'This week', description: '' },
+    { label: 'This month', description: '' },
+  ],
+  default_index: 0,
+};
+const CLARIFICATION_REPLY = 'Which period should the list cover?\n\n1. Today ✓ — Only models released today.\n2. This week\n3. This month';
+
+test('a multiple-choice question fills the composer with the request and the answer, and sends nothing', async ({ page }) => {
+  const chat = await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Which new AI models were released?');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const card = page.getByRole('form', { name: CLARIFICATION.question });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole('radio', { name: /Today · recommended/ })).toBeChecked();
+  await expect(card.getByRole('radio', { name: 'Other answer' })).not.toBeChecked();
+  await expect(page.getByText('1. Today ✓')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await expect(page).toHaveScreenshot('clarification-card.png', visualContract);
+  const frames = chat.chatFrames().length;
+
+  await card.getByRole('radio', { name: 'This week' }).check();
+  await card.getByRole('button', { name: 'Use this answer' }).click();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue(
+    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: This week',
+  );
+
+  await card.getByRole('radio', { name: 'Other answer' }).check();
+  await card.getByRole('button', { name: 'Use this answer' }).click();
+  await expect(card.getByRole('alert')).toHaveText('Choose an option or write your answer.');
+  await card.getByRole('textbox', { name: 'Other answer' }).fill('The last 48 hours');
+  await card.getByRole('button', { name: 'Use this answer' }).click();
+  await expect(composer).toHaveValue(
+    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: The last 48 hours',
+  );
+  expect(chat.chatFrames()).toHaveLength(frames);
+});
+
+test('a reloaded question stays bound to its own request', async ({ page }) => {
+  const turn = 'd'.repeat(32);
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turn}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
+        {
+          id: `${turn}:reply`,
+          kind: 'message',
+          role: 'assistant',
+          text: CLARIFICATION_REPLY,
+          author: 'Marketing',
+          clarification: CLARIFICATION,
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+  const card = page.getByRole('form', { name: CLARIFICATION.question });
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: 'Use this answer' }).click();
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveValue(
+    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: Today',
+  );
 });
 
 test('discards an unsent provider key and never sends on the unsaved model', async ({ page }) => {

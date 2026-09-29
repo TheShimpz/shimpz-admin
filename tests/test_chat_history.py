@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import sqlite3
 import sys
 import tempfile
@@ -60,6 +61,42 @@ class ChatHistoryTests(unittest.TestCase):
         self.path_patch.start()
         self.addCleanup(self.path_patch.stop)
 
+    def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
+        asked = {
+            "question": "Qual período?",
+            "options": [{"label": "Hoje", "description": ""}, {"label": "Semana", "description": "Sete dias."}],
+            "default_index": 1,
+        }
+        turn_id = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn_id, "Quais modelos?"))
+        done = {"type": "done", "team_id": "marketing", "team_name": "Marketing", "reply": "Qual período?"}
+        with self.assertRaises(ValueError):
+            history.append_reply("marketing", turn_id, {**done, "clarification": {**asked, "default_index": 9}})
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "clarification": asked}))
+        entry = history.page("marketing")["entries"][-1]
+        self.assertEqual(entry["clarification"], asked)
+        self.assertEqual(entry["id"], f"{turn_id}:reply")
+
+        # A tampered stored question makes the history unavailable instead of rendering it.
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (
+                    json.dumps(
+                        {
+                            "kind": "message",
+                            "role": "assistant",
+                            "text": "x",
+                            "author": "Marketing",
+                            "clarification": {**asked, "options": asked["options"][:1]},
+                        }
+                    ),
+                    f"{turn_id}:reply",
+                ),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
     def test_records_idempotent_terminal_rows_in_presentation_order(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
@@ -78,6 +115,7 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_id": "marketing",
                     "team_name": "Marketing",
                     "reply": "Two zones are active.",
+                    "clarification": None,
                 },
             )
         )
@@ -116,6 +154,7 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_id": "marketing",
                     "team_name": "Marketing",
                     "reply": "First finished.",
+                    "clarification": None,
                 },
             )
         )
@@ -129,6 +168,7 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_id": "marketing",
                     "team_name": "Marketing",
                     "reply": "Finished.",
+                    "clarification": None,
                 },
             )
         )
@@ -320,6 +360,7 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_id": "marketing",
                     "team_name": "Marketing",
                     "reply": reply,
+                    "clarification": None,
                 },
             )
         )
@@ -354,7 +395,7 @@ class ChatHistoryTests(unittest.TestCase):
                 (
                     "marketing",
                     "a" * 32,
-                    {"type": "done", "team_id": "sales", "team_name": "Sales", "reply": "No"},
+                    {"type": "done", "team_id": "sales", "team_name": "Sales", "reply": "No", "clarification": None},
                 ),
             ),
             (history._install_assistant, (None,)),

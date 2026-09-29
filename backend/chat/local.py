@@ -33,7 +33,7 @@ MAX_REPLY_CHARS = 60_000
 MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "trace_id"})
+_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -225,7 +225,7 @@ class PublicResponse(team.TeamResponse):
         if body.get("team_id") != team_id:
             return None
         event = None
-        if set(body) == {"team_id", "team_name", "reply"}:
+        if set(body) == {"team_id", "team_name", "reply", "clarification"}:
             event = {"type": "done", **body}
         return event
 
@@ -679,6 +679,13 @@ def _project_turn(
     response_team_id = response.body.get("team_id")
     team_name = response.body.get("team_name")
     reply = response.body.get("reply")
+    clarification = response.body.get("clarification")
+    if clarification is not None:
+        # A Brain multiple-choice question is presentation only; it must match the closed Team shape (ADR-0081).
+        clarification = team_contract.canonical_clarification(clarification)
+        if clarification is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    shown = f"{team_name} {reply} {_clarification_text(clarification)}"
     if (
         set(response.body) != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
@@ -688,13 +695,20 @@ def _project_turn(
         or not reply.strip()
         or len(reply) > MAX_REPLY_CHARS
         or _REPLY_CONTROL_RE.search(reply) is not None
-        or any(value and (value in team_name or value in reply) for value in forbidden_values)
+        or any(value and value in shown for value in forbidden_values)
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     return PublicResponse(
         response.status,
-        {"team_id": team_id, "team_name": team_name, "reply": reply},
+        {"team_id": team_id, "team_name": team_name, "reply": reply, "clarification": clarification},
     )
+
+
+def _clarification_text(clarification: dict[str, object] | None) -> str:
+    if clarification is None:
+        return ""
+    options = clarification["options"]
+    return " ".join([str(clarification["question"])] + [f"{item['label']} {item['description']}" for item in options])
 
 
 def _submit(

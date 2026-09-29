@@ -93,7 +93,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
             headers = {"Cookie": f"shimpz_admin={self.token}"}
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "hello from the Team"},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "hello from the Team", "clarification": None},
             )
             try:
                 with self.assertRaises(InvalidStatus):
@@ -118,6 +118,7 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                                 "team_id": "team_1",
                                 "team_name": "Marketing",
                                 "reply": "hello from the Team",
+                                "clarification": None,
                             },
                         )
                         with self.assertRaises(TimeoutError):

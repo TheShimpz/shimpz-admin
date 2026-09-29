@@ -250,7 +250,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late reply", "clarification": None},
                 )
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
@@ -312,7 +312,12 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 progress(dict(_MEASURED_PROGRESS[-1]))
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Natural terminal."},
+                    {
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Natural terminal.",
+                        "clarification": None,
+                    },
                 )
 
             def stop(_team_id):
@@ -342,6 +347,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "Natural terminal.",
+                        "clarification": None,
                     },
                 )
                 with self.assertRaises(TimeoutError):
@@ -361,7 +367,12 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 finish_turn.wait(timeout=2)
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Bounded terminal."},
+                    {
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Bounded terminal.",
+                        "clarification": None,
+                    },
                 )
 
             def stop(_team_id):
@@ -402,7 +413,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 progress(dict(_MEASURED_PROGRESS[0]))
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me", "clarification": None},
                 )
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
@@ -438,7 +449,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 release.wait(timeout=2)
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "discard me", "clarification": None},
                 )
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
@@ -464,7 +475,12 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 progress(dict(_MEASURED_PROGRESS[0]))
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "already committed"},
+                    {
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "already committed",
+                        "clarification": None,
+                    },
                 )
 
             def submit_completed(_executor, function, /, *args, **kwargs):
@@ -512,7 +528,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Done.", "clarification": None},
                 )
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn):
@@ -530,6 +546,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "Done.",
+                        "clarification": None,
                     },
                 )
                 await websocket.disconnect()
@@ -597,7 +614,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             job = self._future(self.assistant_plan.Result("installed", installed))
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Task complete."},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Task complete.", "clarification": None},
             )
             with (
                 mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
@@ -641,7 +658,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Done."},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Done.", "clarification": None},
             )
             with (
                 mock.patch.object(
@@ -664,6 +681,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "Done.",
+                        "clarification": None,
                     },
                 )
                 submit_plan.assert_not_called()
@@ -676,7 +694,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Tudo certo."},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Tudo certo.", "clarification": None},
             )
             with (
                 mock.patch.object(

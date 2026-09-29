@@ -149,7 +149,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             completed = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Fresh turn."},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Fresh turn.", "clarification": None},
             )
             with (
                 mock.patch.object(
@@ -179,6 +179,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "Fresh turn.",
+                        "clarification": None,
                     },
                 )
                 turn.assert_called_once()
@@ -190,7 +191,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         async def scenario() -> None:
             completed = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Published."},
+                {"team_id": "team_1", "team_name": "Marketing", "reply": "Published.", "clarification": None},
             )
             with (
                 mock.patch.object(
@@ -227,6 +228,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "Published.",
+                        "clarification": None,
                     },
                 )
                 resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
@@ -252,7 +254,12 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 finished.set()
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "Team-authoritative."},
+                    {
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": "Team-authoritative.",
+                        "clarification": None,
+                    },
                 )
 
             with (
@@ -300,7 +307,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 finished.set()
                 return self.chat_socket.local.PublicResponse(
                     200,
-                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late completion"},
+                    {"team_id": "team_1", "team_name": "Marketing", "reply": "late completion", "clarification": None},
                 )
 
             with (
@@ -455,6 +462,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_id": "team_1",
                         "team_name": "Marketing",
                         "reply": "hello",
+                        "clarification": None,
                         "debug": sensitive_marker,
                     },
                 )

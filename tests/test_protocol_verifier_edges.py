@@ -168,6 +168,23 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_clarification_vectors(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value["clarification"]["invalid"] = []
+
+        def accepted_invalid(value: dict[str, object]) -> None:
+            value["clarification"]["invalid"] = [value["clarification"]["valid"][0]]
+
+        def rejected_valid(value: dict[str, object]) -> None:
+            value["clarification"]["valid"] = [{**value["clarification"]["valid"][0], "extra": 1}]
+
+        for mutate in (missing, accepted_invalid, rejected_valid):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_chat_conversation_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value["chat_conversation"]["invalid"] = []

@@ -193,18 +193,20 @@ def append_user(team_id: object, turn_id: object, message: object) -> bool:
 def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
-    if not isinstance(event, Mapping) or set(event) != {"type", "team_id", "team_name", "reply"}:
+    if not isinstance(event, Mapping) or set(event) != {"type", "team_id", "team_name", "reply", "clarification"}:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
     author = chat_ws_common.public_text(event["team_name"], team_contract.MAX_TEAM_NAME_CHARS, field="Team name")
     reply = _text(event["reply"], MAX_REPLY_CHARS, "assistant reply")
-    return _append(
-        canonical_team,
-        f"{canonical_turn}:reply",
-        {"kind": "message", "role": "assistant", "text": reply, "author": author},
-        finish_turn=canonical_turn,
-    )
+    entry: dict[str, object] = {"kind": "message", "role": "assistant", "text": reply, "author": author}
+    if event["clarification"] is not None:
+        clarification = team_contract.canonical_clarification(event["clarification"])
+        if clarification is None:
+            raise ValueError("chat history reply event is invalid")
+        # Stored with its reply so a reload restores the same question card for the same turn.
+        entry["clarification"] = clarification
+    return _append(canonical_team, f"{canonical_turn}:reply", entry, finish_turn=canonical_turn)
 
 
 def _install_assistant(value: object) -> dict[str, object]:
@@ -423,6 +425,10 @@ def _decoded(raw: object) -> dict[str, object]:
 def _validate_stored_message(payload: dict[str, object]) -> None:
     role = payload.get("role")
     expected = {"kind", "role", "text"} | ({"author"} if role == "assistant" else set())
+    if role == "assistant" and "clarification" in payload:
+        expected.add("clarification")
+        if team_contract.canonical_clarification(payload["clarification"]) != payload["clarification"]:
+            raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")
     _text(

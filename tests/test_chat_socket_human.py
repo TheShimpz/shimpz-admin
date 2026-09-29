@@ -64,7 +64,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         )
         self.completed = self.chat_socket.local.PublicResponse(
             200,
-            {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed."},
+            {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed.", "clarification": None},
         )
         route = mock.patch.object(
             self.chat_socket.lifecycle,

@@ -68,7 +68,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = socket._Connection()
             turn = socket._Turn(None, "chat", history_id="a" * 32)
-            event = {"type": "done", "team_id": "team_1", "team_name": "Team 1", "reply": "Done"}
+            event = {"type": "done", "team_id": "team_1", "team_name": "Team 1", "reply": "Done", "clarification": None}
             with mock.patch.object(socket.history, "append_reply", return_value=True) as append:
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))
             append.assert_called_once_with("team_1", "a" * 32, event)
@@ -81,7 +81,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = socket._Connection()
             turn = socket._Turn(None, "chat", history_id="a" * 32)
-            event = {"type": "done", "team_id": "team_1", "team_name": "Team 1", "reply": "Done"}
+            event = {"type": "done", "team_id": "team_1", "team_name": "Team 1", "reply": "Done", "clarification": None}
             with mock.patch.object(socket.history, "append_reply", return_value=False):
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))
             projected = websocket.send_json.await_args.args[0]

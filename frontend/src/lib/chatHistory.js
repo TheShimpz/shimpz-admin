@@ -1,3 +1,4 @@
+import { parseClarification } from './clarification.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -84,9 +85,19 @@ function installAssistant(value, status) {
 
 function messageEntry(value, suffix, status) {
   const assistant = value.role === 'assistant';
+  const clarified = assistant && Object.hasOwn(value, 'clarification');
   const expected = assistant
-    ? ['author', 'id', 'kind', 'role', 'text']
+    ? ['author', 'id', 'kind', 'role', 'text', ...(clarified ? ['clarification'] : [])]
     : ['id', 'kind', 'role', 'text'];
+  let clarification = null;
+  if (clarified) {
+    try {
+      clarification = parseClarification(value.clarification);
+    } catch {
+      throw invalidHistory(status);
+    }
+    if (clarification === null) throw invalidHistory(status);
+  }
   if (
     !exactKeys(value, expected) ||
     !['user', 'assistant'].includes(value.role) ||
@@ -103,6 +114,7 @@ function messageEntry(value, suffix, status) {
       status,
     ),
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
+    ...(clarification ? { clarification } : {}),
   };
 }
 

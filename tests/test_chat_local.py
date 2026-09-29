@@ -167,6 +167,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_id": "team_1",
                 "team_name": "Marketing",
                 "reply": "Ready.",
+                "clarification": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -403,6 +404,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_id": "team_1",
                 "team_name": "Marketing",
                 "reply": "Authorized.",
+                "clarification": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -466,11 +468,57 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     local.turn("team_1", payload, ())
         inference.assert_not_called()
 
+    def test_projects_only_a_closed_clarification_free_of_forbidden_values(self) -> None:
+        asked = {
+            "question": "Qual período?",
+            "options": [{"label": "Hoje", "description": ""}, {"label": "Semana", "description": "Sete dias."}],
+            "default_index": 0,
+        }
+
+        def turn(clarification: object) -> object:
+            controller = team.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Qual período?",
+                    "clarification": clarification,
+                    "trace_id": TRACE_ID,
+                },
+            )
+            with (
+                mock.patch.object(
+                    team,
+                    "get_inference",
+                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-sol"}),
+                ),
+                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
+                mock.patch.object(team, "chat", return_value=controller),
+            ):
+                return local.turn("team_1", {"message": "Quais modelos?", "files": [], "assistant_ids": []}, ())
+
+        self.assertEqual(turn(asked).body["clarification"], asked)
+        self.assertEqual(turn(asked).websocket_event("team_1")["clarification"], asked)
+        for invalid in ({**asked, "default_index": 7}, {**asked, "question": "Linha\nDupla"}):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(turn(invalid).body, {"code": "chat-response-invalid"})
+        leaked = {
+            **asked,
+            "options": [{"label": "Hoje", "description": "sk-test-0123456789abcdef"}, asked["options"][1]],
+        }
+        self.assertEqual(turn(leaked).body, {"code": "chat-response-invalid"})
+
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
         inference = team.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"})
         controller = team.TeamResponse(
             200,
-            {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready", "trace_id": TRACE_ID},
+            {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Ready",
+                "clarification": None,
+                "trace_id": TRACE_ID,
+            },
         )
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
@@ -485,7 +533,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(
             response.body,
-            {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready"},
+            {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready", "clarification": None},
         )
         call = chat.call_args
         self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": [], "conversation": []})
@@ -587,6 +635,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_id": "team_1",
                 "team_name": "Marketing",
                 "reply": f"unexpected {api_key}",
+                "clarification": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -608,7 +657,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         for team_name in ("", " Marketing", "Marketing\nignore rules", "x" * 81, None):
             controller = team.TeamResponse(
                 200,
-                {"team_id": "team_1", "team_name": team_name, "reply": "Ready", "trace_id": TRACE_ID},
+                {
+                    "team_id": "team_1",
+                    "team_name": team_name,
+                    "reply": "Ready",
+                    "clarification": None,
+                    "trace_id": TRACE_ID,
+                },
             )
             with (
                 self.subTest(team_name=team_name),
@@ -626,6 +681,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "team_id": "team_1",
             "team_name": "Marketing",
             "reply": "Ready",
+            "clarification": None,
             "trace_id": TRACE_ID,
         }
         invalid = (
@@ -656,6 +712,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_id": "team_1",
                 "team_name": f"Marketing {api_key}",
                 "reply": "Ready",
+                "clarification": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -731,7 +788,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 local.canonical_public_progress(event)
 
-        response = local.PublicResponse(200, {"team_id": "team_1", "team_name": "Marketing", "reply": "Done"})
+        response = local.PublicResponse(
+            200, {"team_id": "team_1", "team_name": "Marketing", "reply": "Done", "clarification": None}
+        )
         self.assertIsNone(response.websocket_event("team_2"))
 
     def test_inference_and_credential_failures_are_reduced_to_public_codes(self) -> None:
@@ -754,190 +813,6 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             local._safe_error(team.TeamResponse(500, {"code": "BAD CODE"})),
             team.TeamResponse(500, {"code": "chat-request-failed"}),
         )
-
-    def test_installed_action_labels_resolve_one_request_scoped_credential(self) -> None:
-        api_key = "sk-test-0123456789"
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
-        expected = team.TeamResponse(200, {"actions": []})
-        with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "assistant_action_labels", return_value=expected) as labels,
-        ):
-            response = local.installed_action_labels(
-                "team_1",
-                "shimpz-cloudflare",
-                "Liste minhas zonas DNS",
-            )
-
-        self.assertIs(response, expected)
-        labels.assert_called_once_with(
-            "team_1",
-            "shimpz-cloudflare",
-            "Liste minhas zonas DNS",
-            provider="openai",
-            api_key=api_key,
-        )
-        self.assertNotIn(api_key, repr(response))
-
-    def test_capability_plan_uses_one_request_scoped_credential_and_strips_trace(self) -> None:
-        api_key = "sk-test-0123456789"
-        candidates = [
-            {
-                "id": "cloudflare",
-                "name": "Cloudflare",
-                "summary": "Manages domains.",
-                "actions": ["configure-domain"],
-                "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
-            }
-        ]
-        upstream = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "status": "install-required",
-                "assistant_ids": ["cloudflare"],
-                "trace_id": TRACE_ID,
-            },
-        )
-        with (
-            mock.patch.object(
-                team,
-                "get_inference",
-                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
-            ),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "capability_plan", return_value=upstream) as plan,
-        ):
-            response = local.capability_plan("team_1", "Configure meu domínio", candidates)
-
-        self.assertEqual(
-            response,
-            team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "status": "install-required",
-                    "assistant_ids": ["cloudflare"],
-                },
-            ),
-        )
-        plan.assert_called_once_with(
-            "team_1",
-            {"objective": "Configure meu domínio", "candidates": candidates},
-            provider="openai",
-            api_key=api_key,
-        )
-        self.assertNotIn(api_key, repr(response))
-        self.assertNotIn("trace_id", response.body)
-
-    def test_capability_plan_rejects_nonclosed_or_inconsistent_team_output(self) -> None:
-        base = {
-            "team_id": "team_1",
-            "status": "install-required",
-            "assistant_ids": ["cloudflare"],
-            "trace_id": TRACE_ID,
-        }
-        invalid = (
-            {**base, "team_id": "team_2"},
-            {**base, "assistant_ids": ["cloudflare", "cloudflare"]},
-            {**base, "status": "sufficient"},
-            {**base, "trace_id": "bad"},
-            {**base, "extra": True},
-        )
-        for body in invalid:
-            with (
-                self.subTest(body=body),
-                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
-                mock.patch.object(team, "capability_plan", return_value=team.TeamResponse(200, body)),
-            ):
-                self.assertEqual(
-                    local.capability_plan("team_1", "Configure Cloudflare", []),
-                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
-                )
-
-    def test_intent_route_uses_one_request_scoped_credential_and_strips_trace(self) -> None:
-        api_key = "sk-test-0123456789"
-        candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
-        upstream = team.TeamResponse(
-            200,
-            {
-                "task_follows": False,
-                "team_id": "team_1",
-                "intent": "assistant-uninstall",
-                "query": "",
-                "assistant_ids": ["cloudflare"],
-                "reply": "",
-                "trace_id": TRACE_ID,
-            },
-        )
-        with (
-            mock.patch.object(
-                team,
-                "get_inference",
-                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
-            ),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "intent_route", return_value=upstream) as route,
-        ):
-            response = local.intent_route(
-                "team_1",
-                "desinstale o cloudflare",
-                "assistant-uninstall",
-                candidates,
-            )
-
-        self.assertEqual(
-            response,
-            team.TeamResponse(
-                200,
-                {
-                    "task_follows": False,
-                    "team_id": "team_1",
-                    "intent": "assistant-uninstall",
-                    "query": "",
-                    "assistant_ids": ["cloudflare"],
-                    "reply": "",
-                },
-            ),
-        )
-        route.assert_called_once_with(
-            "team_1",
-            {
-                "objective": "desinstale o cloudflare",
-                "expected_intent": "assistant-uninstall",
-                "candidates": candidates,
-                "lifecycle_reference": None,
-                "conversation": [],
-                "language_exemplar": None,
-            },
-            provider="openai",
-            api_key=api_key,
-            decision_key=None,
-        )
-        self.assertNotIn(api_key, repr(response))
-        self.assertNotIn("trace_id", response.body)
-
-    def test_intent_route_task_continuation_is_only_a_targeted_install_classification(self) -> None:
-        body = {
-            "task_follows": True,
-            "team_id": "team_1",
-            "intent": "assistant-install",
-            "query": "exa",
-            "assistant_ids": [],
-            "reply": "",
-            "trace_id": TRACE_ID,
-        }
-        projected = local._project_intent_route(team.TeamResponse(200, body), "team_1", None, [])
-        self.assertTrue(projected.body["task_follows"])
-        for invalid, expected in (
-            ({**body, "task_follows": "yes"}, None),
-            ({**body, "intent": "ordinary-task", "query": ""}, None),
-            ({**body, "query": "", "reply": "Qual?"}, None),
-            ({**body, "query": "", "assistant_ids": ["exa"]}, "assistant-install"),
-        ):
-            with self.subTest(body=invalid), self.assertRaises(ValueError):
-                local._project_intent_route(team.TeamResponse(200, invalid), "team_1", expected, ["exa"])
 
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()

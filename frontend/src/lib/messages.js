@@ -347,6 +347,17 @@ export const messages = {
         removeFailed: "The key could not be removed. Try again.",
       },
     },
+    clarify: {
+      recommended: "recommended",
+      other: "Other answer",
+      otherPlaceholder: "Write your own answer",
+      use: "Use this answer",
+      hint: "It goes to the message box with your request; review it and send.",
+      empty: "Choose an option or write your answer.",
+      tooLong: "The request plus this answer is too long for one message. Shorten the answer.",
+      questionLabel: "Question",
+      answerLabel: "Answer",
+    },
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -716,6 +727,17 @@ export const messages = {
         failed: "Não foi possível contatar a TypeSafe. Tente novamente.",
         removeFailed: "Não foi possível remover a chave. Tente novamente.",
       },
+    },
+    clarify: {
+      recommended: "recomendado",
+      other: "Outra resposta",
+      otherPlaceholder: "Escreva sua resposta",
+      use: "Usar esta resposta",
+      hint: "Ela vai para a caixa de mensagem junto com seu pedido; revise e envie.",
+      empty: "Escolha uma opção ou escreva sua resposta.",
+      tooLong: "O pedido com esta resposta ficou longo demais para uma mensagem. Encurte a resposta.",
+      questionLabel: "Pergunta",
+      answerLabel: "Resposta",
     },
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
@@ -1087,6 +1109,17 @@ export const messages = {
         removeFailed: "No se pudo quitar la clave. Inténtalo de nuevo.",
       },
     },
+    clarify: {
+      recommended: "recomendado",
+      other: "Otra respuesta",
+      otherPlaceholder: "Escribe tu respuesta",
+      use: "Usar esta respuesta",
+      hint: "Irá al cuadro de mensaje junto con tu pedido; revísalo y envíalo.",
+      empty: "Elige una opción o escribe tu respuesta.",
+      tooLong: "El pedido con esta respuesta es demasiado largo para un mensaje. Acorta la respuesta.",
+      questionLabel: "Pregunta",
+      answerLabel: "Respuesta",
+    },
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -1456,6 +1489,17 @@ export const messages = {
         failed: "无法连接 TypeSafe，请重试。",
         removeFailed: "无法移除密钥，请重试。",
       },
+    },
+    clarify: {
+      recommended: "推荐",
+      other: "其他回答",
+      otherPlaceholder: "写下你的回答",
+      use: "使用此回答",
+      hint: "回答会和你的请求一起放入消息框；检查后再发送。",
+      empty: "请选择一个选项或写下你的回答。",
+      tooLong: "请求加上此回答超出单条消息长度，请缩短回答。",
+      questionLabel: "问题",
+      answerLabel: "回答",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -1827,6 +1871,17 @@ export const messages = {
         removeFailed: "Impossible de retirer la clé. Réessayez.",
       },
     },
+    clarify: {
+      recommended: "recommandé",
+      other: "Autre réponse",
+      otherPlaceholder: "Écrivez votre réponse",
+      use: "Utiliser cette réponse",
+      hint: "Elle va dans la zone de message avec votre demande ; relisez puis envoyez.",
+      empty: "Choisissez une option ou écrivez votre réponse.",
+      tooLong: "La demande avec cette réponse est trop longue pour un message. Raccourcissez la réponse.",
+      questionLabel: "Question",
+      answerLabel: "Réponse",
+    },
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -2196,6 +2251,17 @@ export const messages = {
         failed: "TypeSafe ist nicht erreichbar. Versuchen Sie es erneut.",
         removeFailed: "Der Schlüssel konnte nicht entfernt werden. Versuchen Sie es erneut.",
       },
+    },
+    clarify: {
+      recommended: "empfohlen",
+      other: "Andere Antwort",
+      otherPlaceholder: "Eigene Antwort schreiben",
+      use: "Diese Antwort verwenden",
+      hint: "Sie landet mit Ihrer Anfrage im Nachrichtenfeld; prüfen und senden Sie sie.",
+      empty: "Wählen Sie eine Option oder schreiben Sie Ihre Antwort.",
+      tooLong: "Die Anfrage mit dieser Antwort ist für eine Nachricht zu lang. Kürzen Sie die Antwort.",
+      questionLabel: "Frage",
+      answerLabel: "Antwort",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2567,6 +2633,17 @@ export const messages = {
         removeFailed: "キーを削除できませんでした。もう一度お試しください。",
       },
     },
+    clarify: {
+      recommended: "おすすめ",
+      other: "その他の回答",
+      otherPlaceholder: "回答を入力",
+      use: "この回答を使う",
+      hint: "依頼と一緒にメッセージ欄に入ります。確認してから送信してください。",
+      empty: "選択肢を選ぶか、回答を入力してください。",
+      tooLong: "依頼とこの回答を合わせると 1 通のメッセージには長すぎます。回答を短くしてください。",
+      questionLabel: "質問",
+      answerLabel: "回答",
+    },
     teamSidebar: {
       "retry": "Retry local data"
     },
@@ -2936,6 +3013,17 @@ export const messages = {
         failed: "تعذّر الوصول إلى TypeSafe. حاول مرة أخرى.",
         removeFailed: "تعذّرت إزالة المفتاح. حاول مرة أخرى.",
       },
+    },
+    clarify: {
+      recommended: "موصى به",
+      other: "إجابة أخرى",
+      otherPlaceholder: "اكتب إجابتك",
+      use: "استخدم هذه الإجابة",
+      hint: "ستُضاف إلى مربع الرسالة مع طلبك؛ راجعها ثم أرسلها.",
+      empty: "اختر خيارًا أو اكتب إجابتك.",
+      tooLong: "الطلب مع هذه الإجابة أطول من رسالة واحدة. اختصر الإجابة.",
+      questionLabel: "السؤال",
+      answerLabel: "الإجابة",
     },
     teamSidebar: {
       "retry": "Retry local data"

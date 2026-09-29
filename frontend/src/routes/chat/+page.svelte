@@ -6,6 +6,7 @@
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import { listChatHistory } from '$lib/chatHistory.js';
   import BrainMenu from '$lib/BrainMenu.svelte';
+  import ClarificationCard from '$lib/ClarificationCard.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -201,6 +202,24 @@
   let visibleError = $derived(error || (contextFailed ? copy.loadFailed : ''));
   let visibleErrorDetail = $derived(error ? errorDetail : contextErrorDetail);
 
+  // A question card is offered only when its exchange still holds the exact user request it clarifies.
+  function clarifiedRequest(exchange) {
+    const { user, assistant } = exchange;
+    if (!assistant?.clarification || !user) return null;
+    if (user.historyId || assistant.historyId) {
+      const turn = (value) => value?.split(':')[0];
+      if (!user.historyId || !assistant.historyId || turn(user.historyId) !== turn(assistant.historyId)) return null;
+    }
+    return user.text;
+  }
+
+  async function useClarifiedRequest(composed) {
+    draft = composed;
+    await tick();
+    composerInput?.focus({ preventScroll: true });
+    composerInput?.setSelectionRange?.(composed.length, composed.length);
+  }
+
   function groupExchanges(values) {
     const grouped = [];
     for (const turn of values) {
@@ -310,6 +329,7 @@
         role: entry.role,
         text: entry.text,
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
+        ...(entry.clarification ? { clarification: entry.clarification } : {}),
       };
     }
     if (entry.kind === 'guidance') {
@@ -1135,6 +1155,7 @@
           text: incoming.reply,
           author: incoming.team_name,
           receipt,
+          ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -1726,7 +1747,16 @@
               {/if}
               {#if assistantTurn}
                 <Message variant="assistant" author={assistantTurn.author}>
-                  {#if !assistantTurn.installPlan && (
+                  {@const clarifiedOriginal = clarifiedRequest(exchange)}
+                  {#if clarifiedOriginal !== null}
+                    <ClarificationCard
+                      clarification={assistantTurn.clarification}
+                      original={clarifiedOriginal}
+                      copy={$t('clarify')}
+                      disabled={composerBusy}
+                      onuse={useClarifiedRequest}
+                    />
+                  {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
                     <Markdown markdown={assistantTurn.text} variant="chat" />
