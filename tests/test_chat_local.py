@@ -510,7 +510,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(turn(leaked).body, {"code": "chat-response-invalid"})
 
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5"})
+        inference = team.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5-5"})
         controller = team.TeamResponse(
             200,
             {
@@ -562,7 +562,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
     def test_inference_response_must_use_an_exact_catalog_pair(self) -> None:
         invalid = (
             {"provider": "openai", "model": "gpt-5.7"},
-            {"provider": "openai", "model": "claude-sonnet-5"},
+            {"provider": "openai", "model": "claude-sonnet-5-5"},
             {"provider": "anthropic", "model": "gpt-6-sol"},
             {"provider": "OpenAI", "model": "gpt-6-sol"},
         )

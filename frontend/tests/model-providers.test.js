@@ -26,10 +26,10 @@ const providers = [
   {
     id: 'anthropic',
     title: 'Anthropic',
-    default_model: 'claude-sonnet-5',
+    default_model: 'claude-sonnet-5-5',
     models: [
       { id: 'claude-opus-5-5', title: 'Claude Opus 5.5', input_usd_per_million_cents: 400, output_usd_per_million_cents: 2000 },
-      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
+      { id: 'claude-sonnet-5-5', title: 'Claude Sonnet 5.5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
     ],
     configured: true,
     masked: '••••test',
@@ -83,10 +83,10 @@ test('reuses a configured key without a credential write', async () => {
   await saveModelSetup(
     async (url, options) => {
       calls.push({ url, options });
-      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5', effort: 'low' });
+      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
     },
     'team_1',
-    { provider: 'anthropic', model: 'claude-sonnet-5', effort: 'low', apiKey: '' },
+    { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low', apiKey: '' },
     providers,
   );
   assert.equal(calls.length, 1);
@@ -96,7 +96,7 @@ test('reuses a configured key without a credential write', async () => {
 test('rejects inference models outside the provider catalog before saving', async () => {
   await assert.rejects(
     loadInference(
-      async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5', effort: 'low' }),
+      async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5-5', effort: 'low' }),
       'team_1',
     ),
     /invalid/,

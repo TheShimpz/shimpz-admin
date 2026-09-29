@@ -34,7 +34,7 @@ class TeamInferenceTests(unittest.TestCase):
                 {
                     "team_id": "team_1",
                     "provider": "anthropic",
-                    "model": "claude-sonnet-5",
+                    "model": "claude-sonnet-5-5",
                     "effort": "high",
                     "trace_id": TRACE_PUT,
                 },
@@ -51,14 +51,14 @@ class TeamInferenceTests(unittest.TestCase):
             self.assertEqual(
                 team.configure_inference(
                     "team_1",
-                    {"provider": "anthropic", "model": "claude-sonnet-5", "effort": "high"},
+                    {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "high"},
                 ),
                 team.TeamResponse(
                     200,
                     {
                         "team_id": "team_1",
                         "provider": "anthropic",
-                        "model": "claude-sonnet-5",
+                        "model": "claude-sonnet-5-5",
                         "effort": "high",
                     },
                 ),
@@ -71,7 +71,7 @@ class TeamInferenceTests(unittest.TestCase):
                 mock.call(
                     "PUT",
                     "/v1/teams/team_1/inference",
-                    {"provider": "anthropic", "model": "claude-sonnet-5", "effort": "high"},
+                    {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "high"},
                 ),
             ],
         )
@@ -179,10 +179,10 @@ class TeamInferenceTests(unittest.TestCase):
         payloads = (
             {"provider": "openai", "model": "gpt-6-luna", "effort": "low", "api_key": "must-not-cross"},
             {"provider": "codex", "model": "gpt-6-luna", "effort": "low"},
-            {"provider": "claude-code", "model": "claude-sonnet-5", "effort": "low"},
+            {"provider": "claude-code", "model": "claude-sonnet-5-5", "effort": "low"},
             {"provider": "anthropic", "model": "bad model", "effort": "low"},
             {"provider": "anthropic", "model": "gpt-6-sol", "effort": "low"},
-            {"provider": "openai", "model": "claude-sonnet-5", "effort": "low"},
+            {"provider": "openai", "model": "claude-sonnet-5-5", "effort": "low"},
             {"provider": "openai", "model": "gpt-5.7", "effort": "low"},
             {"provider": "OpenAI", "model": "gpt-6-sol", "effort": "low"},
         )

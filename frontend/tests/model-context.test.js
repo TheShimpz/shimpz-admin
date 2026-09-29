@@ -26,10 +26,10 @@ const providers = [
     ],
   },
   {
-    id: 'anthropic', title: 'Anthropic', default_model: 'claude-sonnet-5', configured: false, masked: null,
+    id: 'anthropic', title: 'Anthropic', default_model: 'claude-sonnet-5-5', configured: false, masked: null,
     models: [
       { id: 'claude-opus-5-5', title: 'Claude Opus 5.5', input_usd_per_million_cents: 400, output_usd_per_million_cents: 2000 },
-      { id: 'claude-sonnet-5', title: 'Claude Sonnet 5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
+      { id: 'claude-sonnet-5-5', title: 'Claude Sonnet 5.5', input_usd_per_million_cents: 200, output_usd_per_million_cents: 1000 },
     ],
   },
 ];
@@ -210,7 +210,7 @@ test('rejected credential never reaches the Team inference endpoint', async () =
     return base(url, options);
   };
   await loadModelContext(fetcher, 'marketing');
-  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-sonnet-5');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-sonnet-5-5');
   await assert.rejects(configureModelContext(fetcher, 'marketing', 'sk-ant-invalid-0123456789'), /rejected/i);
   assert.equal(inferenceWrites, 0);
   assert.equal(get(modelContext).ready, false);
@@ -285,7 +285,7 @@ test('rejects an invalid Brain pair before making a network request', async () =
   calls = 0;
 
   await assert.rejects(
-    selectTeamBrain(fetcher, 'marketing', 'openai', 'claude-sonnet-5'),
+    selectTeamBrain(fetcher, 'marketing', 'openai', 'claude-sonnet-5-5'),
     /Invalid Team model request/,
   );
   assert.equal(calls, 0);

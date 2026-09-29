@@ -1139,7 +1139,7 @@ test('discards an unsent provider key and never sends on the unsaved model', asy
   await expect(composer).toHaveValue('Keep this message');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
 
-  await chooseBrainModel(page, 'Claude Sonnet 5');
+  await chooseBrainModel(page, 'Claude Sonnet 5.5');
   await expect(page.getByLabel('API key')).toBeFocused();
   await expect(page.getByLabel('API key')).toHaveValue('');
   expect(chat.credentialBodies()).toEqual([]);

@@ -67,7 +67,7 @@ class ModelProviderTests(unittest.TestCase):
                     {
                         "id": "anthropic",
                         "title": "Anthropic",
-                        "default_model": "claude-sonnet-5",
+                        "default_model": "claude-sonnet-5-5",
                         "models": [
                             {
                                 "id": "claude-opus-5-5",
@@ -76,8 +76,8 @@ class ModelProviderTests(unittest.TestCase):
                                 "output_usd_per_million_cents": 2_000,
                             },
                             {
-                                "id": "claude-sonnet-5",
-                                "title": "Claude Sonnet 5",
+                                "id": "claude-sonnet-5-5",
+                                "title": "Claude Sonnet 5.5",
                                 "input_usd_per_million_cents": 200,
                                 "output_usd_per_million_cents": 1_000,
                             },
@@ -229,7 +229,7 @@ class ModelProviderTests(unittest.TestCase):
 
     def test_model_must_belong_to_its_provider(self) -> None:
         for provider, model in (
-            ("openai", "claude-sonnet-5"),
+            ("openai", "claude-sonnet-5-5"),
             ("anthropic", "gpt-6-sol"),
             ("openai", "gpt-5.7"),
         ):
