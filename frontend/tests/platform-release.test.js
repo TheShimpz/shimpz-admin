@@ -28,6 +28,13 @@ test('admits only the closed Local platform release status', async () => {
   });
 });
 
+test('admits the whole range of release check times the backend projects', async () => {
+  for (const checked_at of ['1970-01-01T00:00:01Z', '9999-12-31T23:59:59Z']) {
+    const body = { release, ordinal: 42, checked_at, outcome: 'current' };
+    assert.deepEqual(await fetchPlatformRelease(async () => response(200, body)), body);
+  }
+});
+
 test('hides unavailable, malformed, widened, or secret-bearing status', async () => {
   assert.equal(await fetchPlatformRelease(async () => response(503, {})), null);
   for (const body of [

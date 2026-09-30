@@ -69,6 +69,8 @@ class PlatformReleaseStatusTests(unittest.TestCase):
             lambda value: value.update({"checked_at": 2**63}),
             lambda value: value.update({"checked_at": None}),
             lambda value: value.update({"outcome": "installing"}),
+            lambda value: value.update({"outcome": []}),
+            lambda value: value.update({"outcome": {}}),
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate), self.assertRaises(platform_release.PlatformReleaseUnavailableError):

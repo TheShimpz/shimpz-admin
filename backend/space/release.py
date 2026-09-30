@@ -67,6 +67,7 @@ def read_status(path: Path = STATUS_PATH) -> dict[str, object]:
         or isinstance(ordinal, bool)
         or ordinal <= 0
         or not _valid_timestamp(document["checked_at"])
+        or not isinstance(outcome, str)
         or outcome not in OUTCOMES
     ):
         raise PlatformReleaseUnavailableError
