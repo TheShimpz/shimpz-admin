@@ -143,7 +143,7 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
-routine_http.register(app, ADMIN_PROFILE)
+routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST)
 team_inference.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",

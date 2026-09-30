@@ -29,7 +29,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
     def test_reference_is_classification_only_and_crosses_as_identity_only(self) -> None:
         reference = assistant_proposal.AssistantReference("cloudflare", "Cloudflare")
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
         ):
             local.intent_route(
@@ -132,7 +132,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         for body in invalid_output:
             with (
                 self.subTest(body=body),
-                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+                mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
                 mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
             ):
                 self.assertEqual(
@@ -177,7 +177,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         for body in classification_invalid:
             with (
                 self.subTest(body=body),
-                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+                mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
                 mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
             ):
                 self.assertEqual(
@@ -195,7 +195,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             "trace_id": TRACE_ID,
         }
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(
                 team,
                 "intent_route",
@@ -220,7 +220,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             "trace_id": TRACE_ID,
         }
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, invalid_unresolved)),
         ):
             self.assertEqual(
@@ -230,7 +230,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
 
         valid_unresolved = {**invalid_unresolved, "query": "", "reply": "Qual Assistant você quer instalar?"}
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, valid_unresolved)),
         ):
             self.assertEqual(

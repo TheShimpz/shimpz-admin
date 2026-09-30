@@ -150,7 +150,7 @@ class DecisionHandOffTests(unittest.TestCase):
             },
         )
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "sk-test-0123456789")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "sk-test-0123456789")),
             mock.patch.object(local.decision, "resolve", return_value=KEY),
             mock.patch.object(team, "intent_route", return_value=ordinary) as route,
         ):

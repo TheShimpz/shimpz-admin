@@ -4007,6 +4007,87 @@ test.describe('Team Routines', () => {
     expect(results.violations).toEqual([]);
   });
 
+  test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {
+    const run = 'd'.repeat(32);
+    const frozenRow = (id, requestKind) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: 'a'.repeat(32),
+      quote: 'Every day at 9, list my DNS zones',
+      run_id: id,
+      outcome: 'frozen',
+      created_at: '2026-10-01T12:01:07Z',
+      detail: { request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+      version: 1,
+    });
+    await routeReadyChat(page, {
+      history: { entries: [frozenRow('e'.repeat(32), 'integrations'), frozenRow(run, 'human')], before: null },
+    });
+    const answers = [];
+    const resumes = [];
+    await page.route('**/api/teams/marketing/routines/runs/*/challenge', async (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[6];
+      await route.fulfill({
+        json: runId === run
+          ? {
+            team_id: 'marketing',
+            run_id: run,
+            status: 'human-required',
+            challenge: {
+              type: 'human-required',
+              challenge_id: 'b'.repeat(32),
+              expires_in: 300,
+              assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+              action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+              request: humanRequest('approval'),
+            },
+          }
+          : { team_id: 'marketing', run_id: runId, status: 'integrations-required' },
+      });
+    });
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+      answers.push(route.request().postDataJSON());
+      // The first approval resumes a run that freezes again for its next approval; the second completes it.
+      const status = answers.length === 1 ? 'frozen' : 'done';
+      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status } });
+    });
+    await page.route('**/api/teams/marketing/routines/runs/*/integrations', async (route) => {
+      resumes.push(route.request().method());
+      await route.fulfill({ json: { team_id: 'marketing', run_id: 'e'.repeat(32), status: 'frozen' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    await expect(rows).toHaveCount(2);
+
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+    await expect(dialog).toBeVisible();
+    // Dismissing answers nothing: the run stays frozen and can be reviewed again.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await dialog.getByRole('button', { name: 'Not now' }).click();
+    await expect(dialog).toBeHidden();
+    expect(answers).toEqual([]);
+    const approval = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true };
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await dialog.getByRole('button', { name: 'Approve action' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await dialog.getByRole('button', { name: 'Approve action' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: Done');
+    await expect(rows.nth(1).getByRole('button', { name: 'Review' })).toHaveCount(0);
+    expect(answers).toEqual([approval, approval]);
+
+    await rows.nth(0).getByRole('button', { name: 'Review' }).click();
+    await expect(rows.nth(0)).toContainText('Connect shimpz-cloudflare from the Team\'s Store, then continue the run.');
+    expect(resumes).toEqual([]);
+    await rows.nth(0).getByRole('button', { name: 'Continue the run' }).click();
+    await expect(rows.nth(0).getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    expect(resumes).toEqual(['POST']);
+  });
+
   test('Hosted offers no Routines', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
     await page.goto('/chat/?team=marketing');

@@ -17,7 +17,7 @@ from protocol.http.v1 import routine as routine_contract
 
 RUN_TIMEOUT_SECONDS = 15 * 60
 _TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-_RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
+RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
 
 
 class RoutineTeamError(RuntimeError):
@@ -69,7 +69,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
     body = _answer(response)
     if set(body) != {"team_id", "run_id", "status"} or (body["team_id"], body["run_id"]) != (team_id, run_id):
         raise RoutineTeamError("Routine run answer is invalid")
-    if body["status"] not in _RUN_STATUSES:
+    if body["status"] not in RUN_STATUSES:
         raise RoutineTeamError("Routine run status is invalid")
     return body["status"]
 

@@ -851,7 +851,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             ),
             mock.patch.object(models, "resolve_api_key", side_effect=models.ModelProviderError("invalid")),
         ):
-            response = local._model_credential("team_1")
+            response = local.model_credential("team_1")
         self.assertEqual(response, team.TeamResponse(502, {"code": "model-credential-store-invalid"}))
 
         self.assertEqual(

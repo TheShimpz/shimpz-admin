@@ -4,6 +4,7 @@ import test from 'node:test';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 import {
+  answerRoutineChallenge,
   browserTimezone,
   confirmRoutine,
   deleteRoutine,
@@ -13,6 +14,7 @@ import {
   isSchedule,
   isTimezone,
   listRoutines,
+  openRoutineChallenge,
   parseRoutinePreview,
   previewMatches,
   parseRoutineProposal,
@@ -21,6 +23,7 @@ import {
   parseRunView,
   previewRoutine,
   resolveRoutineRun,
+  resumeRoutineIntegrations,
   RoutineError,
   routineErrorMessage,
   scheduleWords,
@@ -388,4 +391,47 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
   assert.equal(history.entries[0].kind, 'routine-run');
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, outcome: 'run' }]), 'marketing'));
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing'));
+});
+
+test('a frozen run is opened, answered, and resumed only through exact answers', async () => {
+  const run = 'd'.repeat(32);
+  const challenge = { type: 'human-required', challenge_id: 'b'.repeat(32) };
+  let api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'human-required', challenge }]]);
+  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, (value) => ({ parsed: value })), {
+    status: 'human-required',
+    challenge: { parsed: challenge },
+  });
+  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/challenge`);
+  api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'integrations-required' }]]);
+  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, () => null), { status: 'integrations-required' });
+  for (const [body, parse] of [
+    [{ team_id: 'team_1', run_id: 'e'.repeat(32), status: 'integrations-required' }, () => null],
+    [{ team_id: 'team_1', run_id: run, status: 'human-required', challenge }, () => { throw new Error('x'); }],
+    [{ team_id: 'team_1', run_id: run, status: 'done' }, () => null],
+  ]) {
+    await assert.rejects(openRoutineChallenge(fetcher([[200, body]]).fetch, 'team_1', run, parse), RoutineError);
+  }
+
+  const frame = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'deny' };
+  api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'denied' }]]);
+  assert.deepEqual(await answerRoutineChallenge(api.fetch, 'team_1', run, frame), { status: 'denied' });
+  assert.deepEqual(JSON.parse(api.calls[0].init.body), frame);
+  const rejection = { type: 'human-response-rejected', challenge_id: 'b'.repeat(32), reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 };
+  api = fetcher([[409, { code: 'authentication-denied', ...rejection }]]);
+  assert.deepEqual(await answerRoutineChallenge(api.fetch, 'team_1', run, frame), { rejection });
+  await assert.rejects(
+    answerRoutineChallenge(fetcher([[409, { code: 'human-request-expired' }]]).fetch, 'team_1', run, frame),
+    (error) => error.code === 'human-request-expired',
+  );
+  await assert.rejects(
+    answerRoutineChallenge(fetcher([[500, { code: 'Not Safe' }]]).fetch, 'team_1', run, frame),
+    (error) => error.code === 'routine-request-failed',
+  );
+  await assert.rejects(
+    answerRoutineChallenge(fetcher([[200, { team_id: 'team_1', run_id: run, status: 'running' }]]).fetch, 'team_1', run, frame),
+    RoutineError,
+  );
+  api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'frozen' }]]);
+  assert.equal(await resumeRoutineIntegrations(api.fetch, 'team_1', run), 'frozen');
+  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/integrations`);
 });

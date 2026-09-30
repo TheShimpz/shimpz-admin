@@ -266,7 +266,7 @@ class LocalPlannerEdges(unittest.TestCase):
     def test_credential_failures_short_circuit_label_and_plan_calls(self) -> None:
         unavailable = team.TeamResponse(409, {"code": "model-credential-missing"})
         with (
-            mock.patch.object(local, "_model_credential", return_value=unavailable),
+            mock.patch.object(local, "model_credential", return_value=unavailable),
             mock.patch.object(local.team, "assistant_action_labels") as labels,
             mock.patch.object(local.team, "capability_plan") as planner,
         ):
@@ -278,7 +278,7 @@ class LocalPlannerEdges(unittest.TestCase):
     def test_planner_error_is_reduced_to_a_safe_machine_code(self) -> None:
         upstream = team.TeamResponse(503, {"code": "safe-code", "secret": "must-not-cross"})
         with (
-            mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+            mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(local.team, "capability_plan", return_value=upstream),
         ):
             result = local.capability_plan("team_1", "send", [])

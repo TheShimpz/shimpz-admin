@@ -475,3 +475,57 @@ export function parseRoutineRunEntry(value) {
     detail: structuredClone(value.detail),
   };
 }
+
+/** Open a frozen run's fresh challenge, or learn that it waits for an Integration. */
+export async function openRoutineChallenge(fetcher, teamId, runId, parseChallenge) {
+  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/challenge`), { method: 'POST' });
+  if (exact(body, ['team_id', 'run_id', 'status']) && body.status === 'integrations-required'
+    && body.team_id === teamId && body.run_id === runId) {
+    return { status: 'integrations-required' };
+  }
+  if (!exact(body, ['team_id', 'run_id', 'status', 'challenge']) || body.status !== 'human-required'
+    || body.team_id !== teamId || body.run_id !== runId) {
+    throw new RoutineError('routine-response-invalid');
+  }
+  try {
+    return { status: 'human-required', challenge: parseChallenge(body.challenge) };
+  } catch {
+    throw new RoutineError('routine-response-invalid');
+  }
+}
+
+function resumed(body, teamId, runId) {
+  if (
+    !exact(body, ['team_id', 'run_id', 'status']) ||
+    body.team_id !== teamId ||
+    body.run_id !== runId ||
+    !['done', 'failed', 'denied', 'uncertain', 'stopped', 'needs-input', 'frozen'].includes(body.status)
+  ) throw new RoutineError('routine-response-invalid');
+  return body.status;
+}
+
+/** Answer the open challenge with chat's exact human-response frame; the run then resumes or ends. */
+export async function answerRoutineChallenge(fetcher, teamId, runId, frame) {
+  const response = await fetcher(teamPath(teamId, `/runs/${opaque(runId)}/human`), {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(frame),
+  });
+  const body = await jsonObject(response);
+  // A wrong password keeps the challenge open, as in chat.
+  if (response.status === 409 && ['authentication-denied', 'authentication-locked'].includes(body.code)) {
+    const { code: _code, ...rejection } = body;
+    return { rejection };
+  }
+  if (!response.ok) {
+    const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
+    throw new RoutineError(code, response.status);
+  }
+  return { status: resumed(body, teamId, runId) };
+}
+
+export async function resumeRoutineIntegrations(fetcher, teamId, runId) {
+  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/integrations`), { method: 'POST' });
+  return resumed(body, teamId, runId);
+}

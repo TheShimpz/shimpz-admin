@@ -266,7 +266,7 @@ def _inference(team_id: str) -> tuple[str, str] | team.TeamResponse:
     return selected_provider, selected_model
 
 
-def _model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
+def model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
     inference = _inference(team_id)
     if isinstance(inference, team.TeamResponse):
         return inference
@@ -287,7 +287,7 @@ def installed_action_labels(
 ) -> team.TeamResponse:
     """Request optional presentation labels without exposing the model credential."""
     canonical_id = team.canonical_team_id(team_id)
-    credential = _model_credential(canonical_id)
+    credential = model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
@@ -307,7 +307,7 @@ def capability_plan(
 ) -> team.TeamResponse:
     """Project one credential-bound stateless planner result without lifecycle authority."""
     canonical_id = team.canonical_team_id(team_id)
-    credential = _model_credential(canonical_id)
+    credential = model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
@@ -501,7 +501,7 @@ def intent_route(
     canonical_id = team.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
     projected_reference, conversation, language_exemplar = _intent_route_context(expected, context)
-    credential = _model_credential(canonical_id)
+    credential = model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
@@ -737,7 +737,7 @@ def _submit(
     with _admin_span(progress, "admin-preparation"):
         canonical_id = team.canonical_team_id(team_id)
         body = canonicalize(payload)
-        credential = _model_credential(canonical_id)
+        credential = model_credential(canonical_id)
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential

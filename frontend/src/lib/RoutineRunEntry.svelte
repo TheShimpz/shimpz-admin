@@ -1,10 +1,30 @@
 <script>
+  import { Button } from '@shimpz/frontend';
+
+  import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import Markdown from '$lib/Markdown.svelte';
-  import { fillRoutineCopy } from '$lib/routine.js';
+  import {
+    answerRoutineChallenge,
+    fillRoutineCopy,
+    openRoutineChallenge,
+    resumeRoutineIntegrations,
+    routineErrorMessage,
+  } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086). It names the Routine by its quoted request and never
-  // carries an Action's raw input or result; it is not part of the Brain's conversation.
-  let { entry, copy } = $props();
+  // carries an Action's raw input or result; it is not part of the Brain's conversation. A frozen run is answered
+  // here with chat's own approval dialog, and nothing runs until the Supervisor answers.
+  let { entry, copy, teamId, teamName } = $props();
+
+  let challenge = $state(null);
+  let rejection = $state(undefined);
+  let working = $state(false);
+  let waitingIntegration = $state(false);
+  let result = $state('');
+  // Set once the run has left its freeze; until then Review stays available after a dismissal, an error, an expiry,
+  // or a resumed run that froze again for its next approval.
+  let ended = $state(false);
 
   let detail = $derived(entry.detail);
   let actions = $derived(
@@ -28,6 +48,69 @@
         });
     }
   });
+  function outcomeWords(status) {
+    const run = copy.run;
+    return {
+      done: run.done,
+      denied: run.denied,
+      stopped: run.stopped,
+      uncertain: run.uncertain,
+      frozen: run.waitingAgain,
+    }[status] ?? run.failedOutcome;
+  }
+
+  async function settle(action) {
+    working = true;
+    try {
+      const status = await action();
+      result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(status) });
+      ended = status !== 'frozen';
+      waitingIntegration = false;
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    } finally {
+      challenge = null;
+      working = false;
+    }
+  }
+
+  async function review() {
+    working = true;
+    result = '';
+    try {
+      const opened = await openRoutineChallenge(fetch, teamId, entry.runId, (value) => parseChatEvent(value, teamId, teamName));
+      if (opened.status === 'integrations-required') waitingIntegration = true;
+      else challenge = opened.challenge;
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    } finally {
+      working = false;
+    }
+  }
+
+  async function respond(response) {
+    const frame = createHumanResponseFrame(teamId, challenge.challenge_id, response.decision, response.value);
+    working = true;
+    let answered;
+    try {
+      answered = await answerRoutineChallenge(fetch, teamId, entry.runId, frame);
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+      challenge = null;
+      working = false;
+      return;
+    }
+    working = false;
+    if (answered.rejection) {
+      // A wrong password keeps the dialog open for another attempt, as in chat.
+      rejection = answered.rejection;
+      return;
+    }
+    result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(answered.status) });
+    ended = answered.status !== 'frozen';
+    challenge = null;
+  }
+
   let tone = $derived(
     ['failed', 'denied', 'uncertain'].includes(entry.outcome)
       ? 'bad'
@@ -46,7 +129,43 @@
   {#if actions}
     <p class="actions">{fillRoutineCopy(copy.run.actions, { actions })}</p>
   {/if}
+  {#if result}
+    <p class="result" role="status">{result}</p>
+  {/if}
+  {#if entry.outcome !== 'frozen' || ended}
+    <!-- The run is no longer waiting here; its next outcome replaces this row when it is delivered. -->
+  {:else if waitingIntegration}
+    <p class="actions">{fillRoutineCopy(copy.run.connect, { assistant: detail.assistant_id })}</p>
+    <div class="buttons">
+      <Button
+        size="sm"
+        type="button"
+        disabled={working}
+        onclick={() => settle(() => resumeRoutineIntegrations(fetch, teamId, entry.runId))}
+      >{working ? copy.run.working : copy.run.continue}</Button>
+    </div>
+  {:else}
+    <div class="buttons">
+      <Button size="sm" type="button" disabled={working} onclick={review}>
+        {working ? copy.run.working : copy.run.review}
+      </Button>
+    </div>
+  {/if}
 </div>
+
+{#if challenge}
+  <AssistantHumanRequestDialog
+    open={Boolean(challenge)}
+    {challenge}
+    {rejection}
+    {working}
+    onrespond={respond}
+    ondismiss={() => (challenge = null)}
+    dismissLabel={copy.card.dismiss}
+    onretry={() => (rejection = undefined)}
+    onexpire={() => { challenge = null; result = copy.errors.gone; }}
+  />
+{/if}
 
 <style>
   .routine-run { display: grid; gap: var(--shimpz-space-1); }
@@ -55,5 +174,7 @@
   .summary { margin: 0; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
   .bad .summary { color: var(--shimpz-color-danger); }
   .waiting .summary { color: var(--shimpz-color-yellow); }
-  .actions { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+  .actions, .result { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+  .result { color: var(--shimpz-color-text); }
+  .buttons { display: flex; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-1); }
 </style>

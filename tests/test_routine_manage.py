@@ -124,11 +124,11 @@ class RoutineManageTests(unittest.TestCase):
 class RoutineRouteTests(unittest.TestCase):
     def test_routes_exist_only_on_local_and_are_never_cached(self) -> None:
         hosted = FastAPI()
-        routine_http.register(hosted, "hosted")
+        routine_http.register(hosted, "hosted", mock.AsyncMock())
         self.assertEqual([route.path for route in hosted.routes if "routines" in route.path], [])
         local = FastAPI()
-        routine_http.register(local, "local")
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 6)
+        routine_http.register(local, "local", mock.AsyncMock())
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 9)
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,

@@ -112,7 +112,7 @@ class LocalBrainOperationTests(unittest.TestCase):
         for body in invalid:
             with (
                 self.subTest(body=body),
-                mock.patch.object(local, "_model_credential", return_value=("openai", "secret")),
+                mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
                 mock.patch.object(team, "capability_plan", return_value=team.TeamResponse(200, body)),
             ):
                 self.assertEqual(

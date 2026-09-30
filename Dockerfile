@@ -68,7 +68,7 @@ COPY backend/history/context.py backend/history/delivery.py backend/history/http
     ./history/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
-COPY backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
+COPY backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py \
     backend/team/transport.py ./team/

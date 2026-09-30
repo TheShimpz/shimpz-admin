@@ -17,6 +17,9 @@
     onrespond = () => {},
     onretry = () => {},
     onexpire = () => {},
+    // A Routine run's challenge may be dismissed without an answer, leaving the run frozen (ADR-0086); chat has none.
+    ondismiss = null,
+    dismissLabel = '',
   } = $props();
 
   let challengeId = $state('');
@@ -135,6 +138,15 @@
     if (!working && challenge) onrespond({ decision: 'deny' });
   }
 
+  function cancel(event) {
+    if (!ondismiss) {
+      deny(event);
+      return;
+    }
+    event?.preventDefault();
+    if (!working) ondismiss();
+  }
+
   function submit(event) {
     event.preventDefault();
     if (working || !challenge) return;
@@ -179,7 +191,7 @@
     lead={request.description}
     titleId="human-request-title"
     size="md"
-    oncancel={deny}
+    oncancel={cancel}
     onsubmit={submit}
   >
     <p class="request-context">{#each contextParts as part}{#if part.emphasized}<strong><bdi>{part.text}</bdi></strong>{:else}{part.text}{/if}{/each}</p>
@@ -209,6 +221,9 @@
       </div>
     {/if}
     {#snippet footer()}
+      {#if ondismiss}
+        <Button type="button" variant="ghost" disabled={working} onclick={cancel}>{dismissLabel}</Button>
+      {/if}
       <Button type="button" variant="secondary" disabled={working} onclick={deny}>{copy.cancel}</Button>
       {#if rejected}
         <Button type="button" disabled={working || (locked && retrySeconds > 0)} onclick={retry}>

@@ -1764,7 +1764,12 @@
                       onuse={useClarifiedRequest}
                     />
                   {:else if assistantTurn.routineRun}
-                    <RoutineRunEntry entry={assistantTurn.routineRun} copy={$t('routine')} />
+                    <RoutineRunEntry
+                      entry={assistantTurn.routineRun}
+                      copy={$t('routine')}
+                      teamId={selectedTeamId}
+                      teamName={assistantTurn.author}
+                    />
                   {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
