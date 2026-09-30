@@ -214,7 +214,7 @@ class RoutineTeamCallTests(unittest.TestCase):
         for response, action in (
             (answer({"run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
             (answer({"notices": [], "more": True}), team.notices),
-            (answer({"acknowledged": False}), lambda: team.acknowledge([])),
+            (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
             (team_bridge.TeamResponse(200, {"run": None}), lambda: team.claim(("openai",))),
             (answer({"code": "x"}, 503), team.notices),
             (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
@@ -225,6 +225,39 @@ class RoutineTeamCallTests(unittest.TestCase):
                 self.assertRaises(team.RoutineTeamError),
             ):
                 action()
+
+    def test_an_acknowledgment_is_split_to_fit_team_and_the_request_bound(self) -> None:
+        # Ten Teams with thirty notices each: one 300-delivery acknowledgment would exceed both bounds.
+        delivered = [
+            {"team_id": f"team_{index // 30:02d}", "notice_id": f"{index:032x}", "version": 1} for index in range(300)
+        ]
+        self.assertGreater(len(json.dumps({"deliveries": delivered}, separators=(",", ":"))), 16 * 1024)
+        acknowledged = answer({"acknowledged": True})
+        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+            team.acknowledge([{**item, "outcome": "done"} for item in delivered])
+        bodies = [request.args[2] for request in call.call_args_list]
+        self.assertGreater(len(bodies), 1)
+        for body in bodies:
+            self.assertLessEqual(len(body["deliveries"]), team.MAX_ACK_DELIVERIES)
+            self.assertLessEqual(len(transport._encode_payload(body)), transport.MAX_JSON_BODY_BYTES)
+        self.assertEqual([item for body in bodies for item in body["deliveries"]], delivered)
+        # Deliveries small enough to reach Team's count bound before the byte bound are split by count.
+        small = [{"team_id": "t", "notice_id": str(index), "version": 1} for index in range(300)]
+        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+            team.acknowledge(small)
+        self.assertEqual([len(request.args[2]["deliveries"]) for request in call.call_args_list], [256, 44])
+        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+            team.acknowledge([])
+        call.assert_not_called()
+        # A failed acknowledgment is reported and ends the rest; the acknowledged part stays acknowledged.
+        many = [{"team_id": "team_1", "notice_id": f"{index:032x}", "version": 1} for index in range(700)]
+        failed = answer({"code": "x"}, 503)
+        with (
+            mock.patch.object(transport, "_call", side_effect=[acknowledged, failed, acknowledged]) as call,
+            self.assertRaises(team.RoutineTeamError),
+        ):
+            team.acknowledge(many)
+        self.assertEqual(call.call_count, 2)
 
     def test_a_run_segment_is_signed_for_its_own_lease_and_answers_its_own_run(self) -> None:
         identity = supervisor.new_identity()

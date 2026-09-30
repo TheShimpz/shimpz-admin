@@ -6,6 +6,7 @@ lease. Every answer is admitted only in its canonical protocol view.
 
 from __future__ import annotations
 
+import json
 import re
 
 import models
@@ -18,6 +19,8 @@ from protocol.http.v1 import routine as routine_contract
 RUN_TIMEOUT_SECONDS = 15 * 60
 _TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
+# Team admits at most this many deliveries in one notice acknowledgment.
+MAX_ACK_DELIVERIES = 256
 
 
 class RoutineTeamError(RuntimeError):
@@ -82,9 +85,37 @@ def notices() -> dict[str, object]:
     return batch
 
 
+def _encoded_bytes(value: object) -> int:
+    """The size of a value in the transport's request encoding."""
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
+
+
+def _acknowledgments(deliveries: list[dict[str, object]]) -> list[list[dict[str, object]]]:
+    """Split deliveries so each acknowledgment fits both Team's delivery count and Admin's request body bound."""
+    empty = _encoded_bytes({"deliveries": []})
+    chunks: list[list[dict[str, object]]] = []
+    chunk: list[dict[str, object]] = []
+    size = empty
+    for item in deliveries:
+        cost = _encoded_bytes(item)
+        if chunk and (len(chunk) == MAX_ACK_DELIVERIES or size + 1 + cost > transport.MAX_JSON_BODY_BYTES):
+            chunks.append(chunk)
+            chunk, size = [], empty
+        size += cost + (1 if chunk else 0)
+        chunk.append(item)
+    if chunk:
+        chunks.append(chunk)
+    return chunks
+
+
 def acknowledge(delivered: list[dict[str, object]]) -> None:
-    """Admin wrote these exact notice versions to their transcripts."""
+    """Admin wrote these exact notice versions to their transcripts.
+
+    A batch may hold more deliveries than one acknowledgment admits, so it is acknowledged in bounded requests.
+    Acknowledging is idempotent per version: a failure leaves only the unacknowledged rest pending, delivered again.
+    """
     deliveries = [{name: item[name] for name in ("team_id", "notice_id", "version")} for item in delivered]
-    answer = _answer(transport._call("POST", "/v1/routines/notices/ack", {"deliveries": deliveries}))
-    if answer != {"acknowledged": True}:
-        raise RoutineTeamError("Routine acknowledgment is invalid")
+    for chunk in _acknowledgments(deliveries):
+        answer = _answer(transport._call("POST", "/v1/routines/notices/ack", {"deliveries": chunk}))
+        if answer != {"acknowledged": True}:
+            raise RoutineTeamError("Routine acknowledgment is invalid")
