@@ -12,7 +12,8 @@ const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
-const MAX_PUBLIC_ASSISTANTS = 256;
+// The producer contract: Store and Developers admit up to 1,000 public Assistants.
+const MAX_PUBLIC_ASSISTANTS = 1000;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;

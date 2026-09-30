@@ -17,9 +17,12 @@ CATALOG_HOST = "shimpz.com"
 CATALOG_PATH = "/api/assistants"
 CATALOG_TIMEOUT_SECONDS = 5
 CATALOG_TTL_SECONDS = 60
-MAX_CATALOG_BYTES = 512 * 1024
+# The producer contract: Store and Developers admit up to 1,000 Assistants and Store reads at most 4 MiB of them.
+MAX_CATALOG_BYTES = 4 * 1024 * 1024
 MAX_ICON_BYTES = 1024 * 1024
-MAX_ASSISTANTS = 256
+MAX_ASSISTANTS = 1000
+# Icons stay a bounded process-memory cache, independent of the catalog size.
+MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
 MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
 _ASSISTANT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
@@ -313,7 +316,7 @@ class StoreIconCache:
             self._cached_bytes -= len(self._icons.pop(key, b""))
             self._icons[key] = contents
             self._cached_bytes += len(contents)
-            while len(self._icons) > MAX_ASSISTANTS or self._cached_bytes > MAX_CACHED_ICON_BYTES:
+            while len(self._icons) > MAX_CACHED_ICONS or self._cached_bytes > MAX_CACHED_ICON_BYTES:
                 _, evicted = self._icons.popitem(last=False)
                 self._cached_bytes -= len(evicted)
 

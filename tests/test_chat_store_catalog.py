@@ -97,6 +97,16 @@ class StoreCatalogTests(unittest.TestCase):
         self.assertNotIn("github", repr(result))
         self.assertNotIn("allowed_hosts", repr(result))
 
+    def test_admits_the_producer_catalog_size_and_no_more(self) -> None:
+        # Store and Developers admit up to 1,000 Assistants; Admin must consume every valid producer catalog.
+        def catalog(count: int) -> dict[str, object]:
+            assistants = [_assistant(assistant_id=f"assistant-{index:04d}") for index in range(count)]
+            return {"version": 1, "assistants": assistants}
+
+        self.assertEqual(len(store_catalog.validate_catalog(catalog(1000))), 1000)
+        with self.assertRaisesRegex(ValueError, "catalog size is invalid"):
+            store_catalog.validate_catalog(catalog(1001))
+
     def test_rejects_malformed_or_ambiguous_catalogs(self) -> None:
         mutations = (
             lambda value: value.update(extra=True),
@@ -449,7 +459,7 @@ class StoreCatalogTests(unittest.TestCase):
 
     def test_icon_cache_enforces_independent_lru_byte_and_count_bounds(self) -> None:
         cache = store_catalog.StoreIconCache()
-        keys = [(f"source-{value}", f"icon-{value}") for value in range(store_catalog.MAX_ASSISTANTS + 1)]
+        keys = [(f"source-{value}", f"icon-{value}") for value in range(store_catalog.MAX_CACHED_ICONS + 1)]
         large_icon = b"x" * store_catalog.MAX_ICON_BYTES
         for key in keys[:8]:
             cache.remember(key, large_icon)

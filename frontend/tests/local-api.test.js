@@ -358,6 +358,24 @@ test('projects the strict public Assistant catalog used by native cards', async 
   assert.deepEqual(await listPublicAssistantCatalog(fetcher, controller.signal), [assistant]);
 });
 
+test('admits the producer public catalog size and no more', async () => {
+  // Store and Developers admit up to 1,000 Assistants; the Admin browser must accept every valid producer catalog.
+  const entries = (count) => Array.from({ length: count }, (_, index) => ({
+    assistant_id: `assistant-${String(index).padStart(4, '0')}`,
+    assistant_version: '1.0.0',
+    creators: ['@shimpz'],
+    icon_digest: `sha256:${'b'.repeat(64)}`,
+    name: `Assistant ${index}`,
+    source_digest: SOURCE_DIGEST,
+    summary: 'A reviewed Assistant.',
+  }));
+  assert.equal((await listPublicAssistantCatalog(async () => response(200, { version: 1, assistants: entries(1000) }))).length, 1000);
+  await assert.rejects(
+    listPublicAssistantCatalog(async () => response(200, { version: 1, assistants: entries(1001) })),
+    (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
+  );
+});
+
 test('rejects malformed public Assistant catalog projections', async () => {
   const valid = {
     assistant_id: 'shimpz-cloudflare',
