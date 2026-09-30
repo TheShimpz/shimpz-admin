@@ -2722,6 +2722,31 @@ for (const [kind, title] of humanPresentations) {
   });
 }
 
+test('bounds a human text response in Unicode code points like the Admin backend', async ({ page }) => {
+  const contract = await routeReadyChat(page, { humanKind: 'input:text' });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue with the reviewed Action');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  const field = dialog.getByLabel(/Response/);
+  const send = dialog.getByRole('button', { name: 'Send response' });
+  // The fixture bounds input:text to 64 code points; each emoji is two UTF-16 code units.
+  const atLimit = '😀'.repeat(humanRequest('input:text').max_length);
+
+  await field.fill(`${atLimit}😀`);
+  await expect(field).toHaveValue(`${atLimit}😀`);
+  await send.click();
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  expect(contract.humanResponses()).toHaveLength(0);
+
+  await field.fill(atLimit);
+  await expect(field).toHaveValue(atLimit);
+  await send.click();
+  await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+  expect(contract.humanResponses()).toHaveLength(1);
+  expect(contract.humanResponses()[0]).toMatchObject({ decision: 'submit', value: atLimit });
+});
+
 test('updates the Action human request countdown without a page refresh', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
   await routeReadyChat(page, { humanKind: 'approval' });
