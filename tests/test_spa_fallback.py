@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -27,6 +28,10 @@ class SpaFallbackTests(unittest.TestCase):
         (cls.ui_dir / "asset.txt").write_bytes(b"public asset")
         cls.external_file = cls.root / "admin-secret.json"
         cls.external_file.write_bytes(b"secret sentinel")
+        (cls.ui_dir / "escape.txt").symlink_to(cls.external_file)
+        sibling = cls.root / "ui-sibling"
+        sibling.mkdir()
+        (sibling / "secret.txt").write_bytes(b"secret sentinel")
 
         with (
             mock.patch.dict(
@@ -64,7 +69,7 @@ class SpaFallbackTests(unittest.TestCase):
             "http_version": "1.1",
             "method": "GET",
             "scheme": "http",
-            "path": path,
+            "path": unquote(path),
             "raw_path": path.encode(),
             "query_string": b"",
             "root_path": "",
@@ -86,6 +91,10 @@ class SpaFallbackTests(unittest.TestCase):
             "//repo/.env",
             "/../../etc/passwd",
             f"/{self.external_file}",
+            f"/{self.ui_dir / 'asset.txt'}",
+            "/escape.txt",
+            "/../ui-sibling/secret.txt",
+            "/%2e%2e/ui-sibling/secret.txt",
         )
 
         for path in paths:

@@ -984,13 +984,14 @@ if UI_DIR.is_dir():
     # (StaticFiles(html=True) 404s nested routes). The explicit /api/* fallback above prevents API
     # typos or retired endpoints from being answered with the SPA shell.
     @app.get("/{path:path}")
-    async def spa(path: str):
-        ui_root = UI_DIR.resolve()
-        if path and not Path(path).is_absolute() and not path.startswith("/"):
-            candidate = (ui_root / path).resolve()
-            if candidate.is_relative_to(ui_root) and candidate.is_file():
+    def spa(path: str):
+        # Only a relative path can name an asset, and its real path, symlinks resolved, must stay inside the UI root.
+        ui_root = os.path.realpath(UI_DIR)
+        if not Path(path).is_absolute():
+            candidate = os.path.realpath(Path(ui_root, path))
+            if candidate.startswith(ui_root + os.sep) and Path(candidate).is_file():
                 return FileResponse(candidate)
-        return FileResponse(ui_root / "index.html")
+        return FileResponse(Path(ui_root, "index.html"))
 else:
 
     @app.get("/")
