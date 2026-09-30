@@ -26,6 +26,26 @@
   --ring: var(--shimpz-focus-ring);
   --admin-divider: var(--shimpz-color-border);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The cyberpunk hover language shared by Admin controls: a chromatic split and a short stepped glitch on entry. */
+  --glitch-split-text: -1px 0 color-mix(in srgb, var(--shimpz-color-magenta) 70%, transparent), 1px 0 color-mix(in srgb, var(--shimpz-color-cyan) 70%, transparent);
+  --glitch-split-icon: drop-shadow(-1px 0 var(--shimpz-color-magenta)) drop-shadow(1px 0 var(--shimpz-color-cyan));
+}
+
+@keyframes admin-glitch-text {
+  0% { transform: translateX(1px); text-shadow: -2px 0 var(--shimpz-color-magenta), 2px 0 var(--shimpz-color-cyan); }
+  30% { transform: translateX(-1px); text-shadow: 2px 0 var(--shimpz-color-magenta), -2px 0 var(--shimpz-color-cyan); }
+  60% { transform: translateX(0); clip-path: inset(0 0 45% 0); }
+  80%, 100% { transform: none; clip-path: none; }
+}
+
+@keyframes admin-glitch-icon {
+  0% { transform: translateX(-1px); filter: drop-shadow(-2px 0 var(--shimpz-color-magenta)) drop-shadow(2px 0 var(--shimpz-color-cyan)); }
+  35% { transform: translateX(1px); filter: drop-shadow(2px 0 var(--shimpz-color-magenta)) drop-shadow(-2px 0 var(--shimpz-color-cyan)); }
+  70%, 100% { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --glitch-split-text: none; --glitch-split-icon: none; }
 }
 
 *,

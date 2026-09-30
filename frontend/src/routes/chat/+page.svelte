@@ -6,6 +6,8 @@
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import { listChatHistory } from '$lib/chatHistory.js';
   import BrainMenu from '$lib/BrainMenu.svelte';
+  import EffortMenu from '$lib/EffortMenu.svelte';
+  import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
@@ -747,8 +749,8 @@
       composerBusy ||
       integrationsOpen ||
       document.querySelector('dialog[open], :popover-open') ||
-      // Escape from the Brain menu returns focus to its trigger; a finished Brain save must not take it away.
-      document.activeElement?.closest('.brain-menu')
+      // Escape from a composer control returns focus to its trigger; a finished save must not take it away.
+      document.activeElement?.closest('.brain-menu, .effort-menu, .fast-menu')
     ) return;
     composerInput?.focus({ preventScroll: true });
   }
@@ -2004,6 +2006,10 @@
               {/if}
               <Toolbar class="composer-actions">
               <BrainMenu disabled={composerBusy || stopping} />
+              <EffortMenu disabled={composerBusy || stopping} />
+              {#if $sessionContext.profile === 'local'}
+                <FastRoutingMenu disabled={composerBusy || stopping} />
+              {/if}
               <Button
                 bind:element={integrationsButton}
                 class="composer-integrations"
@@ -2018,7 +2024,7 @@
                 aria-controls="assistant-integrations-drawer"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9.2 14.8 14.8 9.2M7.1 17H5.5a3.5 3.5 0 0 1 0-7h3M16.9 7h1.6a3.5 3.5 0 1 1 0 7h-3"></path>
+                  <path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0zM12 16v2.2a2.8 2.8 0 0 1-2.8 2.8H8"></path>
                 </svg>
               </Button>
               {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
@@ -2032,10 +2038,14 @@
                 </Button>
               {:else}
                 <Button
+                  class="composer-send"
                   type="submit"
+                  variant="ghost"
                   disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                  title={socketReady ? copy.send : copy.connecting}
                 >
-                  {socketReady ? copy.send : copy.connecting}
+                  <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
                 </Button>
               {/if}
               </Toolbar>
@@ -2335,37 +2345,66 @@
     align-self: center;
   }
 
-  :global(.composer-field textarea),
-  :global(.composer-field input) {
-    width: 100%;
-    height: 3rem;
-    min-height: 0;
-    resize: none;
-    border: 0;
-    padding: 0.7rem 0.8rem 0.2rem;
-    background: transparent;
-    color: var(--text);
-    font-family: var(--font-mono);
-    line-height: 1.45;
-    overflow-y: auto;
-  }
-
-  /* One bordered composer box holds the message and, beneath it, the Brain and tool controls. */
+  /* The composer is one quiet chamfered surface: the message, then a hairline-free row of bare tool icons and a
+     compact send key. Focus lights the frame and a cyan corner tick; nothing else competes with the text. */
   .composer-input {
+    position: relative;
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
-    border: 1px solid var(--border-strong);
-    background: #050708;
+    border: 1px solid color-mix(in srgb, var(--shimpz-color-text) 10%, transparent);
+    background: color-mix(in srgb, var(--shimpz-color-cyan) 2%, var(--shimpz-color-bg));
     clip-path: var(--shimpz-control-shape);
-    transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease);
+    transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease), background var(--shimpz-duration-fast) var(--shimpz-ease);
+  }
+
+  .composer-input::before {
+    position: absolute;
+    inset-block-start: -1px;
+    inset-inline-start: -1px;
+    width: 1.1rem;
+    height: 1px;
+    background: var(--shimpz-color-cyan);
+    opacity: 0.45;
+    content: "";
+    transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease), width var(--shimpz-duration-fast) var(--shimpz-ease);
   }
 
   .composer-input:focus-within {
-    border-color: var(--shimpz-color-cyan);
+    border-color: color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
+    background: color-mix(in srgb, var(--shimpz-color-cyan) 4%, var(--shimpz-color-bg));
   }
 
-  /* The box border carries focus; the field's own focus outline would draw a line inside the box. */
+  .composer-input:focus-within::before { width: 2.5rem; opacity: 1; }
+
+  .composer-input :global(.composer-field) { gap: 0; }
+
+  .composer-input :global(.composer-field textarea),
+  .composer-input :global(.composer-field input) {
+    width: 100%;
+    height: auto;
+    min-height: 3.25rem;
+    max-height: 12rem;
+    field-sizing: content;
+    resize: none;
+    padding: 0.85rem 1rem 0.25rem;
+    color: var(--shimpz-color-text);
+    font: 400 0.95rem/1.5 var(--shimpz-font-sans);
+    background: transparent;
+    border: 0;
+    clip-path: none;
+    overflow-y: auto;
+  }
+
+  .composer-input :global(.composer-field textarea::placeholder),
+  .composer-input :global(.composer-field input::placeholder) {
+    color: var(--shimpz-color-text-dim);
+    font-family: var(--shimpz-font-mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* The frame carries focus; the field's own ring would draw a box inside the box. */
   .composer-input :global(.composer-field textarea:focus),
   .composer-input :global(.composer-field input:focus) {
     border: 0;
@@ -2376,17 +2415,18 @@
   :global(.composer-actions) {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.4rem 0.4rem;
+    gap: 0.15rem;
+    padding: 0.2rem 0.45rem 0.45rem;
   }
 
   :global(.composer-actions .composer-integrations) {
     margin-inline-end: auto;
   }
 
-  /* Tool controls are bare icons inside the composer box: no frame, only their color reacts. */
+  /* Tool controls are bare icons: no frame, only their color reacts. */
   .composer-input :global(.shimpz-button.composer-integrations),
   .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)) {
+    color: var(--shimpz-color-text-dim);
     border-color: transparent;
     background: transparent;
     clip-path: none;
@@ -2399,21 +2439,60 @@
   }
 
   .composer :global(.shimpz-button) {
-    height: 2.5rem;
+    height: 2.25rem;
     min-height: 0;
   }
 
-  .composer-input :global(.brain-trigger) {
-    width: 2.5rem;
-    height: 2.5rem;
+  .composer-input :global(.brain-trigger),
+  .composer-input :global(.composer-integrations) {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  /* Send is a compact chamfered key: a dim outline at rest, cyan once there is something to send. */
+  .composer-input :global(.shimpz-button.composer-send) {
+    width: 2.25rem;
+    padding: 0;
+    color: var(--shimpz-color-cyan);
+    background: color-mix(in srgb, var(--shimpz-color-cyan) 10%, transparent);
+    border-color: color-mix(in srgb, var(--shimpz-color-cyan) 55%, transparent);
+  }
+
+  .composer-input :global(.shimpz-button.composer-send:hover:not(:disabled)) {
+    color: var(--shimpz-color-bg);
+    background: var(--shimpz-color-cyan);
+    border-color: var(--shimpz-color-cyan);
+  }
+
+  .composer-input :global(.shimpz-button.composer-send:disabled) {
+    color: var(--shimpz-color-text-dim);
+    background: transparent;
+    border-color: var(--shimpz-color-border);
+    filter: none;
+    opacity: 1;
   }
 
   :global(.composer-actions .shimpz-button svg) {
-    width: 1rem;
+    width: 1.05rem;
+    height: 1.05rem;
     fill: none;
     stroke: currentColor;
-    stroke-linecap: square;
-    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
+  }
+
+  .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled) svg),
+  .composer-input :global(.shimpz-button.composer-send:hover:not(:disabled) svg) {
+    filter: var(--glitch-split-icon);
+    animation: admin-glitch-icon 280ms steps(1, end);
+  }
+
+  .composer-input :global(.shimpz-button.composer-send:hover:not(:disabled) svg) { filter: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .composer-input, .composer-input::before { transition: none; }
+    .composer-input :global(svg) { animation: none !important; }
   }
 
   .empty-state {

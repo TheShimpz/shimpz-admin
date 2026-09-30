@@ -153,7 +153,7 @@
   .chat-layout { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
   .chat-layout .authenticated-page { width: 100%; min-height: 0; margin: 0; padding: 0; overflow: hidden; }
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
-  .sidebar-footer { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-3); border-block-start: 1px solid var(--shimpz-color-border); }
+  .sidebar-footer { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-3); }
   .sidebar-footer > :global(.shimpz-dropdown) { width: auto; margin-inline: var(--shimpz-space-4); }
   .sidebar-footer > :global(.platform-release) { justify-content: center; border-block-start: 0; }
 
