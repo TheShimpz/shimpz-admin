@@ -13,6 +13,8 @@ from unittest import mock
 
 from tests.mfa_helper import configure_supervisor
 
+from tests import chat_socket_fixtures
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -59,6 +61,7 @@ class ChatWebSocketCase(unittest.TestCase):
         )
         route.start()
         self.addCleanup(route.stop)
+        chat_socket_fixtures.live_team(self)
 
     def _install_candidate(self):
         return self.chat_socket.lifecycle.store_catalog.CatalogAssistant(

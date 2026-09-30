@@ -8,6 +8,7 @@ import hashlib
 import importlib
 import json
 import threading
+from unittest import mock
 
 TURN_ID = "a" * 32
 # How long a test waits for a frame or worker it expects. CI runs every lane on all processors, where a one-second
@@ -189,3 +190,12 @@ def human_challenge(kind: str, status: int = 428) -> object:
             "request": request,
         },
     )
+
+
+def live_team(case, name: str = "Team") -> None:
+    """History admission confirms the Team is live under the lifecycle lock; these sockets chat with a live Team."""
+    from history import delivery
+
+    patch = mock.patch.object(delivery.team, "resolve_team_name", return_value=name)
+    patch.start()
+    case.addCleanup(patch.stop)

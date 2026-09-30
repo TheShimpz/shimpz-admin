@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.delivery import plan as plan_delivery
 
 from chat import assistant_route, local, socket, task_resume
+from tests import chat_socket_fixtures
 
 
 def _resume_operations() -> task_resume.Operations:
@@ -48,6 +49,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
         cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
 
     def setUp(self) -> None:
+        chat_socket_fixtures.live_team(self)
         socket.history.STORE_PATH.unlink(missing_ok=True)
         socket.history_delivery.configure("local")
 

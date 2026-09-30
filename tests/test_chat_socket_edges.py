@@ -21,6 +21,7 @@ from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
 from chat import human, local, socket, task_resume
+from tests import chat_socket_fixtures
 
 
 def _resume_operations() -> task_resume.Operations:
@@ -46,6 +47,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
         cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
 
     def setUp(self) -> None:
+        chat_socket_fixtures.live_team(self)
         socket.history.STORE_PATH.unlink(missing_ok=True)
         socket.history_delivery.configure("local")
 

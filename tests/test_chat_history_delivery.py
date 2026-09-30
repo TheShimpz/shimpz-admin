@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +16,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
+from history import http as history_http
+from team import bridge as team
 
 from chat import socket
 from tests import chat_socket_fixtures
@@ -30,6 +33,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
 
     def setUp(self) -> None:
+        chat_socket_fixtures.live_team(self)
         socket.history.STORE_PATH.unlink(missing_ok=True)
         socket.history_delivery.configure("local")
 
@@ -62,6 +66,37 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             self.assertEqual(send.await_args.args[1]["status"], 503)
 
         asyncio.run(scenario())
+
+    def test_an_admission_queued_behind_team_deletion_never_survives_it(self) -> None:
+        # A user message is admitted while a Team deletion holds the lifecycle lock. Once deletion removed the Team
+        # and cleared its transcript, the admission must find the Team gone instead of recreating its row.
+        delivery = socket.history_delivery
+        deleted = threading.Event()
+        outcome: dict[str, object] = {}
+
+        def resolve(_team_id: str) -> team.TeamResponse | str:
+            return team.TeamResponse(404, {"detail": "Team not found"}) if deleted.is_set() else "Marketing"
+
+        def admit() -> None:
+            try:
+                outcome["turn"] = asyncio.run(delivery.admit("marketing", "Hello"))
+            except socket.history.HistoryUnavailableError as exc:
+                outcome["error"] = exc
+
+        worker = threading.Thread(target=admit)
+
+        def delete() -> team.TeamResponse:
+            worker.start()
+            worker.join(0.3)
+            self.assertTrue(worker.is_alive(), "the admission must wait behind the deletion")
+            deleted.set()
+            return team.TeamResponse(200, {"deleted": True})
+
+        with mock.patch.object(delivery.team, "resolve_team_name", side_effect=resolve):
+            self.assertEqual(history_http.team_delete("marketing", delete).status, 200)
+            worker.join(10)
+        self.assertIsInstance(outcome.get("error"), socket.history.HistoryUnavailableError)
+        self.assertEqual(socket.history.page("marketing")["entries"], [])
 
     def test_terminal_reply_is_committed_before_socket_projection(self) -> None:
         async def scenario() -> None:

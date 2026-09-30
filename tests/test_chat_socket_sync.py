@@ -74,6 +74,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
+        chat_socket_fixtures.live_team(self)
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
         self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
         secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
