@@ -78,11 +78,21 @@ def _read():
         return copy.deepcopy(data)
 
 
+def _fsync_directory(path: Path) -> None:
+    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def _write(data):
-    """Atomically write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs).
+    """Atomically and durably write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs).
 
     The temporary name is random and exclusively created, so a leftover from a killed process (the
-    container restarts as the same PID) can never block a later write.
+    container restarts as the same PID) can never block a later write. The file is fsynced before the
+    rename and the directory after it, so an acknowledged security update (session-secret rotation,
+    TOTP replay evidence, passkey counters) survives power loss; the cache updates only after both.
     """
     global _store_cache
     with _STORE_LOCK:
@@ -98,9 +108,11 @@ def _write(data):
                 view = memoryview(payload)
                 while view:
                     view = view[os.write(fd, view) :]
+                os.fsync(fd)
             finally:
                 os.close(fd)
             tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
+            _fsync_directory(STORE_PATH.parent)
         except BaseException:
             tmp.unlink(missing_ok=True)
             raise

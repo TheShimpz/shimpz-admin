@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import stat
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -91,6 +93,61 @@ class AdminStoreCacheTests(unittest.TestCase):
         self.assertEqual(state.get(), {"session_secret": "again"})
         self.assertEqual(state.STORE_PATH.stat().st_mode & 0o777, 0o600)
         self.assertEqual(sorted(path.name for path in state.STORE_PATH.parent.iterdir()), [leftover.name, "admin.json"])
+
+    def test_a_write_fsyncs_the_file_before_replace_and_the_directory_after(self) -> None:
+        events: list[str] = []
+        real_fsync = state.os.fsync
+        real_replace = state.os.replace
+
+        def recording_fsync(fd: int) -> None:
+            mode = state.os.fstat(fd).st_mode
+            events.append("fsync-directory" if stat.S_ISDIR(mode) else "fsync-file")
+            real_fsync(fd)
+
+        def recording_replace(source: object, target: object) -> None:
+            events.append("replace")
+            real_replace(source, target)
+
+        with (
+            mock.patch.object(state.os, "fsync", side_effect=recording_fsync),
+            mock.patch.object(state.os, "replace", side_effect=recording_replace),
+        ):
+            state._write({"session_secret": "durable"})
+
+        self.assertEqual(events, ["fsync-file", "replace", "fsync-directory"])
+        self.assertEqual(state.get(), {"session_secret": "durable"})
+
+    def test_a_failed_fsync_is_never_acknowledged_and_removes_the_temporary(self) -> None:
+        state._write({"session_secret": "previous"})
+        real_fsync = state.os.fsync
+
+        def failing_fsync(failing_directory: bool) -> Callable[[int], None]:
+            def fsync(fd: int) -> None:
+                if stat.S_ISDIR(state.os.fstat(fd).st_mode) is failing_directory:
+                    raise OSError("I/O error")
+                real_fsync(fd)
+
+            return fsync
+
+        with (
+            mock.patch.object(state.os, "fsync", side_effect=failing_fsync(failing_directory=False)),
+            self.assertRaisesRegex(OSError, "I/O error"),
+        ):
+            state._write({"session_secret": "unsynced-file"})
+        self.assertEqual([path.name for path in state.STORE_PATH.parent.iterdir()], ["admin.json"])
+        with state._STORE_LOCK:
+            state._store_cache = None
+        self.assertEqual(state.get(), {"session_secret": "previous"})
+
+        with (
+            mock.patch.object(state.os, "fsync", side_effect=failing_fsync(failing_directory=True)),
+            self.assertRaisesRegex(OSError, "I/O error"),
+        ):
+            state._write({"session_secret": "unsynced-directory"})
+        self.assertEqual([path.name for path in state.STORE_PATH.parent.iterdir()], ["admin.json"])
+
+        state._write({"session_secret": "next"})
+        self.assertEqual(state.get(), {"session_secret": "next"})
 
     def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
         configure_supervisor(state, "violet otter lantern quartz 92")
