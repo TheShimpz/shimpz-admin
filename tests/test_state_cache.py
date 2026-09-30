@@ -60,6 +60,25 @@ class AdminStoreCacheTests(unittest.TestCase):
 
         read_store.assert_not_called()
 
+    def test_a_short_write_still_stores_the_complete_payload(self) -> None:
+        real_write = state.os.write
+
+        def one_byte_at_a_time(fd: int, data: bytes) -> int:
+            return real_write(fd, bytes(data[:1]))
+
+        with mock.patch.object(state.os, "write", side_effect=one_byte_at_a_time):
+            state._write({"session_secret": "complete"})
+        with state._STORE_LOCK:
+            state._store_cache = None
+        self.assertEqual(state.get(), {"session_secret": "complete"})
+
+    def test_a_failed_write_leaves_no_temporary_file_and_the_next_write_succeeds(self) -> None:
+        with mock.patch.object(state.os, "write", side_effect=OSError("disk full")), self.assertRaises(OSError):
+            state._write({"session_secret": "lost"})
+        self.assertEqual([path.name for path in state.STORE_PATH.parent.iterdir()], [])
+        state._write({"session_secret": "next"})
+        self.assertEqual(state.get(), {"session_secret": "next"})
+
     def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
         configure_supervisor(state, "violet otter lantern quartz 92")
         first = state.local_supervisor()

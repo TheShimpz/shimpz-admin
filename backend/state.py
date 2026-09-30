@@ -88,10 +88,17 @@ def _write(data):
         tmp = STORE_PATH.with_name(f".{STORE_PATH.name}.{os.getpid()}.tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_TRUNC, 0o600)
         try:
-            os.write(fd, payload)
-        finally:
-            os.close(fd)
-        tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
+            try:
+                # os.write may write fewer bytes than asked; only a complete payload may replace the store.
+                view = memoryview(payload)
+                while view:
+                    view = view[os.write(fd, view) :]
+            finally:
+                os.close(fd)
+            tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         _store_cache = _StoreCache(STORE_PATH, _store_identity(STORE_PATH), copy.deepcopy(data))
 
 
