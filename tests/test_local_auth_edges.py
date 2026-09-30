@@ -272,22 +272,28 @@ class LocalAuthEdgeTests(unittest.TestCase):
             asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
         self.assertEqual(unavailable.exception.status_code, 401)
 
-        context = local_auth.Context()
-        with (
-            mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
-            mock.patch.object(context.challenge_store, "consume", return_value=challenge),
-            mock.patch.object(local_auth.passkeys, "credential_id", return_value="credential"),
-            mock.patch.object(local_auth.state, "passkey_for_authentication", return_value=original),
-            mock.patch.object(local_auth.passkeys, "verify_authentication", return_value=verified),
-            mock.patch.object(
-                local_auth.state,
-                "commit_passkey_authentication",
-                return_value=("a" * 64, "counter-regression"),
-            ),
-            self.assertRaises(HTTPException) as suspended,
-        ):
-            asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
-        self.assertEqual(suspended.exception.status_code, 401)
+        for reason in ("counter-regression", "backup-identity-change"):
+            context = local_auth.Context()
+            with (
+                self.subTest(reason=reason),
+                mock.patch.object(local_auth, "_ticket", return_value=("b" * 32, ticket)),
+                mock.patch.object(context.challenge_store, "consume", return_value=challenge),
+                mock.patch.object(local_auth.passkeys, "credential_id", return_value="credential"),
+                mock.patch.object(local_auth.state, "passkey_for_authentication", return_value=original),
+                mock.patch.object(local_auth.passkeys, "verify_authentication", return_value=verified),
+                mock.patch.object(
+                    local_auth.state,
+                    "commit_passkey_authentication",
+                    return_value=("a" * 64, reason),
+                ),
+                self.assertLogs("shimpz-admin", level="WARNING") as captured,
+                self.assertRaises(HTTPException) as suspended,
+            ):
+                asyncio.run(local_auth.confirm_login_passkey(_request({"credential": {}}), context))
+            self.assertEqual(suspended.exception.status_code, 401)
+            messages = [record.getMessage() for record in captured.records]
+            self.assertEqual(messages, [f"Local Supervisor passkey suspended: {reason}"])
+            self.assertNotIn("a" * 64, " ".join(messages))
 
     def test_passkey_registration_begin_requires_empty_payload_available_origin_and_fresh_mfa(self) -> None:
         with self.assertRaises(HTTPException) as shape:

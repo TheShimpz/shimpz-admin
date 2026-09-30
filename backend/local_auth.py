@@ -137,9 +137,12 @@ def _ticket(request: Request, context: Context, purpose: str) -> tuple[str, tick
 
 def _bind_origin(origin: str | None) -> None:
     if external := _external_origin(origin):
+        # Log only constant messages: the transition is read back from the shared state transaction, never logged.
         transition = state.bind_browser_origin(external)
-        if transition != "unchanged":
-            log.info("Local Admin browser origin %s after MFA", transition)
+        if transition == "learned":
+            log.info("Local Admin browser origin learned after MFA")
+        elif transition == "replaced":
+            log.info("Local Admin browser origin replaced after MFA")
 
 
 def _complete_totp(code: object, *, enrollment: bool) -> None:
@@ -272,7 +275,10 @@ async def confirm_login_passkey(request: Request, context: Context) -> JSONRespo
         raise HTTPException(status_code=401, detail="invalid passkey authentication") from None
     if suspension_reason is not None:
         context.factor_changed()
-        log.warning("Local Supervisor passkey suspended: %s", suspension_reason)
+        if suspension_reason == "counter-regression":
+            log.warning("Local Supervisor passkey suspended: counter-regression")
+        else:
+            log.warning("Local Supervisor passkey suspended: backup-identity-change")
         raise HTTPException(status_code=401, detail="passkey was suspended; enter the password and use TOTP")
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "passkey"})

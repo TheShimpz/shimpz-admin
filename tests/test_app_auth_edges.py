@@ -195,9 +195,23 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
             "http://localhost:7777",
         )
 
-        with mock.patch.object(self.admin_app.state, "bind_browser_origin", return_value="unchanged") as bind:
+        with (
+            mock.patch.object(self.admin_app.state, "bind_browser_origin", return_value="unchanged") as bind,
+            self.assertNoLogs("shimpz-admin", level="INFO"),
+        ):
             self.admin_app.local_auth._bind_origin("https://developer.example.test")
         bind.assert_called_once_with("https://developer.example.test")
+        for transition in ("learned", "replaced"):
+            with (
+                self.subTest(transition=transition),
+                mock.patch.object(self.admin_app.state, "bind_browser_origin", return_value=transition),
+                self.assertLogs("shimpz-admin", level="INFO") as captured,
+            ):
+                self.admin_app.local_auth._bind_origin("https://developer.example.test")
+            self.assertEqual(
+                [record.getMessage() for record in captured.records],
+                [f"Local Admin browser origin {transition} after MFA"],
+            )
 
     def test_oauth_completion_mode_projects_only_the_admin_origin_decision(self) -> None:
         for callback_mode, completion_mode in (
