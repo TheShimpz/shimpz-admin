@@ -481,6 +481,40 @@ test('Team deletion preserves the bounded API reason and status for safe diagnos
   assert.equal(get(teamContext).selectedTeamId, 'marketing');
 });
 
+test('Team deletion bounds the Supervisor password in code points, not UTF-16 units', async () => {
+  // 1,600 astral characters and 1,001 BMP characters: 2,601 code points but 4,201 UTF-16 units.
+  const password = '\u{1F512}'.repeat(1600) + 'a'.repeat(1001);
+  assert.equal(password.length, 4201);
+  let sent = '';
+  const fetcher = fixtureFetcher({
+    '/api/teams/marketing': async (init) => {
+      sent = JSON.parse(init.body).password;
+      return response(200, {
+        team_id: 'marketing',
+        destroyed: true,
+        assistants_removed: 1,
+        residue_absent: LOCAL_TEAM_RESIDUES,
+        storage_removed: true,
+      });
+    },
+  });
+  try {
+    await loadTeamContext(fetcher, 'marketing');
+    await deleteTeam(fetcher, 'marketing', 'Marketing', password);
+    assert.equal(sent, password);
+
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    let requests = 0;
+    await assert.rejects(
+      deleteTeam(async () => { requests += 1; }, 'marketing', 'Marketing', '\u{1F512}'.repeat(4097)),
+      (error) => error instanceof LocalApiError && error.message === 'Enter the current Supervisor password.',
+    );
+    assert.equal(requests, 0);
+  } finally {
+    clearTeamContext();
+  }
+});
+
 test('deleting the last Team rehydrates an authoritative empty context', async () => {
   let deleted = false;
   const fetcher = fixtureFetcher({

@@ -4,6 +4,7 @@ import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiEr
 import {
   ASSISTANT_ID_RE,
   canonicalTeamName,
+  codePointLength,
   exactKeys,
   jsonObject,
   publicError,
@@ -428,7 +429,7 @@ export async function deleteTeam(fetcher, id, name, password) {
   if (typeof name !== 'string' || name !== target.name) {
     throw new LocalApiError('Enter the exact Team name.');
   }
-  if (typeof password !== 'string' || !password || password.length > MAX_PASSWORD_CHARS) {
+  if (typeof password !== 'string' || !password || codePointLength(password) > MAX_PASSWORD_CHARS) {
     throw new LocalApiError('Enter the current Supervisor password.');
   }
 

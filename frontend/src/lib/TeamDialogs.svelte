@@ -172,7 +172,6 @@
         type="password"
         bind:value={supervisorPassword}
         placeholder={copy.passwordPlaceholder}
-        maxlength="4096"
         autocomplete="current-password"
         required
         disabled={deleting}
