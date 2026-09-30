@@ -48,6 +48,44 @@
   :root { --glitch-split-text: none; --glitch-split-icon: none; }
 }
 
+/* The one Admin hover glitch. Mark the control that is hovered or focused `glitch-host`, and inside it the label
+   `glitch-text` and the icon `glitch-icon`; a disabled host stays still. */
+.glitch-text { display: inline-block; }
+
+.glitch-host:is(:hover, :focus-visible, :has(:focus-visible)):not(:disabled, [aria-disabled="true"]) .glitch-text {
+  text-shadow: var(--glitch-split-text);
+  animation: admin-glitch-text 280ms steps(1, end);
+}
+
+.glitch-host:is(:hover, :focus-visible, :has(:focus-visible)):not(:disabled, [aria-disabled="true"]) .glitch-icon {
+  filter: var(--glitch-split-icon);
+  animation: admin-glitch-icon 280ms steps(1, end);
+}
+
+/* One outline for every Admin text entry, matching the composer: a quiet chamfered frame with a short cyan corner
+   tick; focus lights the frame and lengthens the tick. */
+:root .shimpz-field input:not([type="checkbox"], [type="radio"], [type="file"]),
+:root .shimpz-field textarea,
+:root .shimpz-field select {
+  border: 1px solid color-mix(in srgb, var(--shimpz-color-text) 10%, transparent);
+  background:
+    linear-gradient(color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent), color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent)) top left / 1.1rem 1px no-repeat,
+    color-mix(in srgb, var(--shimpz-color-cyan) 2%, var(--shimpz-color-bg));
+  clip-path: var(--shimpz-control-shape);
+  transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease), background var(--shimpz-duration-fast) var(--shimpz-ease);
+}
+
+:root .shimpz-field input:not([type="checkbox"], [type="radio"], [type="file"]):focus,
+:root .shimpz-field textarea:focus,
+:root .shimpz-field select:focus {
+  border-color: color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
+  background:
+    linear-gradient(var(--shimpz-color-cyan), var(--shimpz-color-cyan)) top left / 2.5rem 1px no-repeat,
+    color-mix(in srgb, var(--shimpz-color-cyan) 4%, var(--shimpz-color-bg));
+  outline: none;
+  box-shadow: none;
+}
+
 *,
 *::before,
 *::after {

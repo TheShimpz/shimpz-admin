@@ -114,7 +114,7 @@
 <div bind:this={root} class="effort-menu">
   <Button
     bind:element={trigger}
-    class="effort-trigger"
+    class="effort-trigger glitch-host"
     variant="ghost"
     size="sm"
     iconOnly
@@ -128,7 +128,7 @@
     onclick={toggle}
   >
     <!-- A dial whose needle points to the current effort: left, center, or right. -->
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M3.8 17a8.2 8.2 0 1 1 16.4 0"></path>
       <path d="M5.9 10.2 7 11M12 5.8v1.4M18.1 10.2 17 11"></path>
       <path class="needle" d="M12 17 12 9.8" transform={`rotate(${(effortIndex - 1) * 55} 12 17)`}></path>
@@ -155,7 +155,7 @@
       {#each INFERENCE_EFFORTS as effort, index (effort)}
         <Button
           bind:element={stops[index]}
-          class={['stop', index === effortIndex && 'is-current']}
+          class={['stop', 'glitch-host', index === effortIndex && 'is-current']}
           variant="ghost"
           size="sm"
           type="button"
@@ -166,7 +166,7 @@
           onclick={() => choose(index)}
           onkeydown={stopKeydown}
         >
-          <span class="stop-label">{copy.efforts[effort]}</span>
+          <span class="stop-label glitch-text">{copy.efforts[effort]}</span>
         </Button>
       {/each}
     </div>
@@ -183,7 +183,6 @@
   .effort-menu :global(.effort-trigger svg) { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .hub { fill: currentColor; }
   .needle { transition: transform 220ms var(--shimpz-ease); }
-  .effort-menu :global(.effort-trigger:hover:not(:disabled) svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   .panel {
     position: fixed; z-index: 80; top: var(--panel-top); left: var(--panel-left); display: grid; width: min(16rem, calc(100vw - 1rem));
     gap: var(--shimpz-space-2); margin: 0; padding: var(--shimpz-space-3); color: var(--shimpz-color-text); background: var(--shimpz-color-bg);
@@ -206,7 +205,6 @@
   .effort :global(.stop::after) { position: absolute; top: calc(0.95rem + 1px); left: 50%; width: 0.4rem; height: 0.4rem; background: var(--shimpz-color-bg); border: 1px solid var(--shimpz-color-text-dim); content: ""; transform: translate(-50%, -50%) rotate(45deg); }
   .effort :global(.stop:hover:not(:disabled)) { color: var(--shimpz-color-text); background: transparent; border-color: transparent; box-shadow: none; }
   .effort :global(.stop:hover:not(:disabled)::after) { border-color: var(--shimpz-color-cyan); }
-  .effort :global(.stop:hover:not(:disabled) .stop-label) { display: inline-block; text-shadow: var(--glitch-split-text); animation: admin-glitch-text 280ms steps(1, end); }
   .effort :global(.stop.is-current), .effort :global(.stop.is-current:hover:not(:disabled)) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; text-shadow: 0 0 0.5rem rgb(0 240 255 / 60%); }
   .stop-label { font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
   .effort :global(.stop:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; box-shadow: none; }

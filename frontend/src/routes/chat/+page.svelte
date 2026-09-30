@@ -2011,7 +2011,7 @@
               {/if}
               <Button
                 bind:element={integrationsButton}
-                class="composer-integrations"
+                class="composer-integrations glitch-host"
                 variant="ghost"
                 size="icon"
                 type="button"
@@ -2022,7 +2022,7 @@
                 aria-expanded={integrationsOpen}
                 aria-controls="assistant-integrations-drawer"
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
+                <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0zM12 16v2.2a2.8 2.8 0 0 1-2.8 2.8H8"></path>
                 </svg>
               </Button>
@@ -2037,14 +2037,14 @@
                 </Button>
               {:else}
                 <Button
-                  class="composer-send"
+                  class="composer-send glitch-host"
                   type="submit"
                   variant="ghost"
                   disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
+                  <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
                 </Button>
               {/if}
               </Toolbar>
@@ -2479,12 +2479,6 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.5;
-  }
-
-  .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled) svg),
-  .composer-input :global(.shimpz-button.composer-send:hover:not(:disabled) svg) {
-    filter: var(--glitch-split-icon);
-    animation: admin-glitch-icon 280ms steps(1, end);
   }
 
   .composer-input :global(.shimpz-button.composer-send:hover:not(:disabled) svg) { filter: none; }

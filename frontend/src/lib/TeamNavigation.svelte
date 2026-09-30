@@ -129,7 +129,7 @@
     <ShimpzBrand class="head-mark" variant="symbol" decorative />
     <Button
       bind:element={createButton}
-      class="new-team"
+      class="new-team glitch-host"
       variant="ghost"
       size="sm"
       iconOnly
@@ -139,7 +139,7 @@
       onclick={oncreate}
       disabled={busy}
     >
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
     </Button>
   </div>
   {#if $teamContext.teams.length > 0}
@@ -148,7 +148,7 @@
         {#each $teamContext.teams as team (team.id)}
           {@const selected = team.id === $teamContext.selectedTeamId}
           <li class={['team', selected && 'is-selected']}>
-            <div class={['row', renaming === team.id && 'is-renaming']}>
+            <div class={['row', 'glitch-host', renaming === team.id && 'is-renaming']}>
               {#if renaming === team.id}
                 <div class="team-rename">
                   <span class="monogram" aria-hidden="true">{monogram(renameDraft.trim() || team.name)}</span>
@@ -175,12 +175,12 @@
                 onclick={onnavigate}
               >
                 <span class="monogram" aria-hidden="true">{monogram(team.name)}</span>
-                <span class="name">{team.name}</span>
+                <span class="name glitch-text">{team.name}</span>
               </ActionLink>
               {/if}
               <div class="row-actions">
                 <ActionLink
-                  class={['row-action', selected && active === 'assistants' && 'is-here']}
+                  class={['row-action', 'glitch-host', selected && active === 'assistants' && 'is-here']}
                   variant="ghost"
                   href={storeHref(team)}
                   aria-label={$t('teamNavigation.openStore', { team: team.name })}
@@ -189,7 +189,7 @@
                   onclick={onnavigate}
                 >
                   {#snippet icon()}
-                    <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>
+                    <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>
                   {/snippet}
                 </ActionLink>
                 <TeamActionsMenu
@@ -246,7 +246,6 @@
   .head :global(.new-team::before), .row::before { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   .head :global(.new-team:hover:not(:disabled)), .head :global(.new-team:focus-visible) { color: var(--shimpz-color-cyan); background: transparent; border: 0; box-shadow: none; }
   .head :global(.new-team:hover:not(:disabled)::before), .head :global(.new-team:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
-  .head :global(.new-team:hover:not(:disabled) svg), .head :global(.new-team:focus-visible svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   .head svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   .team-navigation {
     --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
@@ -262,7 +261,6 @@
   /* The selected Team keeps the hover treatment: the same tint and scanlines. */
   .row:hover, .row:focus-within, .is-selected > .row { --row-bg: var(--team-hover-bg); }
   .row:hover::before, .row:focus-within::before, .is-selected > .row::before { background-image: var(--team-scanlines); }
-  .row:hover .name, .row:focus-within .name { text-shadow: var(--glitch-split-text); animation: admin-glitch-text 280ms steps(1, end); }
   .row:hover .monogram { animation: admin-glitch-icon 280ms steps(1, end); }
   /* Row actions overlay the end of the name so collapsed Teams keep their full width until hover or focus. */
   .row-actions { position: absolute; inset-block: 0; inset-inline-end: 0; display: flex; align-items: center; padding-inline: 1.5rem var(--shimpz-space-2); background: linear-gradient(to right, transparent, var(--row-bg) 1.5rem); opacity: 0; transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease); }
@@ -282,7 +280,6 @@
   .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.25rem; height: 2.25rem; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-dim); }
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
-  .row :global(.row-action:hover svg), .row :global(.team-actions > .shimpz-button:hover svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
   @media (pointer: coarse) {
     .row { grid-template-columns: minmax(0, 1fr) auto; }

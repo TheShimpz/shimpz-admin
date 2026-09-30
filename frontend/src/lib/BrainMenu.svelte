@@ -111,7 +111,7 @@
 <div bind:this={root} class="brain-menu">
   <Button
     bind:element={trigger}
-    class="brain-trigger"
+    class="brain-trigger glitch-host"
     variant="ghost"
     size="sm"
     iconOnly
@@ -124,7 +124,7 @@
     disabled={unavailable && !open}
     onclick={toggle}
   >
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 5.2a2.9 2.9 0 0 0-5.4-1.3A2.9 2.9 0 0 0 4.3 8a3 3 0 0 0 .3 5.6A3.1 3.1 0 0 0 8 18.4a2.8 2.8 0 0 0 4 .9"></path>
       <path d="M12 5.2a2.9 2.9 0 0 1 5.4-1.3A2.9 2.9 0 0 1 19.7 8a3 3 0 0 1-.3 5.6 3.1 3.1 0 0 1-3.4 4.8 2.8 2.8 0 0 1-4 .9"></path>
       <path d="M12 5.2v14.1M8.6 9.2a2.2 2.2 0 0 1 3.4.4M15.4 9.2a2.2 2.2 0 0 0-3.4.4M8.4 14a2.4 2.4 0 0 0 3.6.3M15.6 14a2.4 2.4 0 0 1-3.6.3"></path>
@@ -188,7 +188,6 @@
   .models :global(.model:hover:not(:disabled) strong) { text-shadow: var(--glitch-split-text); animation: admin-glitch-text 280ms steps(1, end); }
   /* The diamond keeps its rotation; only its chromatic split flickers. */
   .models :global(.model:hover:not(:disabled) .marker) { filter: var(--glitch-split-icon); }
-  .brain-menu :global(.brain-trigger:hover:not(:disabled) svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   @media (prefers-reduced-motion: reduce) {
     .models :global(.model strong), .models :global(.model .marker), .brain-menu :global(svg) { animation: none !important; }
   }
