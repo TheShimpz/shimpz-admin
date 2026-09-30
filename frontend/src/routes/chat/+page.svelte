@@ -1997,7 +1997,6 @@
                   class="composer-field"
                   bind:element={composerInput}
                   bind:value={draft}
-                  maxlength="16000"
                   rows="2"
                   placeholder={placeholder}
                   disabled={composerBusy}

@@ -358,6 +358,50 @@ test('projects the strict public Assistant catalog used by native cards', async 
   assert.deepEqual(await listPublicAssistantCatalog(fetcher, controller.signal), [assistant]);
 });
 
+test('bounds Assistant catalog names and summaries by Unicode code points, as their producers count them', async () => {
+  const invalid = (error) => error instanceof LocalApiError;
+  for (const character of ['界', '😀']) {
+    const text = (length) => character.repeat(length);
+    const local = (title, summary) => listAssistantCatalog(async () => response(200, {
+      assistants: [{ id: 'hello-pulse', title, summary, actions: [] }],
+    }));
+    const published = (name, summary) => listPublicAssistantCatalog(async () => response(200, {
+      version: 1,
+      assistants: [{
+        assistant_id: 'shimpz-cloudflare',
+        assistant_version: '0.4.5',
+        creators: ['@shimpz'],
+        icon_digest: `sha256:${'b'.repeat(64)}`,
+        name,
+        source_digest: SOURCE_DIGEST,
+        summary,
+      }],
+    }));
+    const snapshots = (name, summary) => listLocalAssistantSnapshots(async () => response(200, {
+      assistants: [{
+        assistant_id: 'hello-pulse',
+        assistant_version: '1.2.3',
+        name,
+        summary,
+        actions: ['say-hello'],
+        integrations: [],
+        declared_creators: ['@shimpz'],
+        created_at: '2026-08-28T17:00:00Z',
+        image_id: LOCAL_IMAGE_ID,
+        platform: 'linux/amd64',
+        provenance: 'local',
+        unpublished: true,
+      }],
+    }));
+    for (const list of [local, published, snapshots]) {
+      const [entry] = await list(text(80), text(160));
+      assert.deepEqual([entry.name, entry.summary], [text(80), text(160)]);
+      await assert.rejects(list(text(81), 'Summary'), invalid);
+      await assert.rejects(list('Name', text(161)), invalid);
+    }
+  }
+});
+
 test('admits the producer public catalog size and no more', async () => {
   // Store and Developers admit up to 1,000 Assistants; the Admin browser must accept every valid producer catalog.
   const entries = (count) => Array.from({ length: count }, (_, index) => ({

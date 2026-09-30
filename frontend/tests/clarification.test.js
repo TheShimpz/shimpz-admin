@@ -55,6 +55,30 @@ test('an answer is combined with the original request without truncation', () =>
   assert.equal(composeClarifiedRequest('x'.repeat(MAX_COMPOSED_CHARS), ASKED.question, 'Hoje', LABELS), null);
 });
 
+test('clarification text is bounded by Unicode code points, as Team counts it', () => {
+  for (const character of ['界', '😀']) {
+    const text = (length) => character.repeat(length);
+    const longest = {
+      question: text(240),
+      options: [{ label: text(80), description: text(160) }, { label: 'B', description: '' }],
+      default_index: 0,
+    };
+    assert.deepEqual(parseClarification(longest), longest);
+    for (const value of [
+      { ...longest, question: text(241) },
+      { ...longest, options: [{ label: text(81), description: '' }, longest.options[1]] },
+      { ...longest, options: [{ label: 'A', description: text(161) }, longest.options[1]] },
+    ]) {
+      assert.throws(() => parseClarification(value), /invalid clarification/);
+    }
+
+    // '\n\n' + 'Pergunta: ' + 'Q?' + '\n' + 'Resposta: ' + 'A' adds 26 code points after the request.
+    const composed = composeClarifiedRequest(text(MAX_COMPOSED_CHARS - 26), 'Q?', 'A', LABELS);
+    assert.equal([...composed].length, MAX_COMPOSED_CHARS);
+    assert.equal(composeClarifiedRequest(text(MAX_COMPOSED_CHARS - 25), 'Q?', 'A', LABELS), null);
+  }
+});
+
 test('done events and history replies carry the clarification only in its closed shape', async () => {
   const rendered = 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana';
   assert.equal(renderClarification(ASKED), rendered);

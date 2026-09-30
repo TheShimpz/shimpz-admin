@@ -1029,6 +1029,45 @@ test('a terminal event admits a Team name of 80 code points and refuses 81', () 
   }
 });
 
+test('chat text is bounded by Unicode code points, as its producers count it', () => {
+  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] });
+  const human = (value) => createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', value);
+  const done = (reply) => parseChatEvent(
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply, clarification: null, routine_proposal: null },
+    'team_1',
+    'Marketing',
+  );
+  const failure = (detail) => parseChatEvent({ type: 'error', status: 503, detail }, 'team_1', 'Marketing');
+  const uninstall = (reply, name, summary) => parseChatEvent({
+    type: 'assistant-uninstall',
+    state: 'proposed',
+    proposal_id: 'd'.repeat(32),
+    team_id: 'team_1',
+    reply,
+    expires_in: 120,
+    assistant: { id: 'shimpz-cloudflare', name, summary, version: '0.4.4' },
+  }, 'team_1', 'Marketing');
+  for (const character of ['界', '😀']) {
+    const text = (length) => character.repeat(length);
+    assert.equal(chat(text(16_000)).message, text(16_000));
+    assert.throws(() => chat(text(16_001)), /Invalid local chat request/);
+    assert.equal(human(text(16_000)).value, text(16_000));
+    assert.deepEqual(human([text(128)]).value, [text(128)]);
+    for (const value of [text(16_001), [text(129)]]) {
+      assert.throws(() => human(value), /Invalid human response/);
+    }
+    assert.equal(done(text(60_000)).reply, text(60_000));
+    assert.throws(() => done(text(60_001)), /response is invalid/);
+    assert.equal(failure(text(800)).detail, text(800));
+    assert.throws(() => failure(text(801)), /response is invalid/);
+    const proposed = uninstall(text(60_000), text(80), text(160));
+    assert.deepEqual([proposed.reply, proposed.assistant.name, proposed.assistant.summary], [text(60_000), text(80), text(160)]);
+    for (const args of [[text(60_001), 'Name', 'Summary'], ['Reply', text(81), 'Summary'], ['Reply', 'Name', text(161)]]) {
+      assert.throws(() => uninstall(...args), /response is invalid/);
+    }
+  }
+});
+
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
   for (const body of [
     { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },

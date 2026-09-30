@@ -1,5 +1,6 @@
 import {
   ASSISTANT_ID_RE,
+  codePointLength,
   CONTROL_RE,
   exactKeys,
   jsonObject,
@@ -56,12 +57,12 @@ export async function listAssistantCatalog(fetcher) {
       typeof name !== 'string' ||
       name !== name.trim() ||
       !name ||
-      name.length > 80 ||
+      codePointLength(name) > 80 ||
       CONTROL_RE.test(name) ||
       typeof summary !== 'string' ||
       summary !== summary.trim() ||
       !summary ||
-      summary.length > 160 ||
+      codePointLength(summary) > 160 ||
       CONTROL_RE.test(summary) ||
       seen.has(id)
     ) {
@@ -113,12 +114,12 @@ export async function listPublicAssistantCatalog(fetcher, signal) {
       typeof entry.name !== 'string' ||
       entry.name !== entry.name.trim() ||
       !entry.name ||
-      entry.name.length > 80 ||
+      codePointLength(entry.name) > 80 ||
       CONTROL_RE.test(entry.name) ||
       typeof entry.summary !== 'string' ||
       entry.summary !== entry.summary.trim() ||
       !entry.summary ||
-      entry.summary.length > 160 ||
+      codePointLength(entry.summary) > 160 ||
       CONTROL_RE.test(entry.summary) ||
       !Array.isArray(entry.creators) ||
       entry.creators.length < 1 ||
@@ -258,12 +259,12 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
       typeof entry.name !== 'string' ||
       entry.name !== entry.name.trim() ||
       !entry.name ||
-      entry.name.length > 80 ||
+      codePointLength(entry.name) > 80 ||
       CONTROL_RE.test(entry.name) ||
       typeof entry.summary !== 'string' ||
       entry.summary !== entry.summary.trim() ||
       !entry.summary ||
-      entry.summary.length > 160 ||
+      codePointLength(entry.summary) > 160 ||
       CONTROL_RE.test(entry.summary) ||
       !Array.isArray(entry.actions) ||
       entry.actions.length < 1 ||

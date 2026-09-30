@@ -1,6 +1,8 @@
 // One Brain multiple-choice clarification (ADR-0081). It is presentation only: answering never sends anything;
 // it fills the composer with the original request and the answer, and the user reviews and sends that message.
 
+import { codePointLength } from './validate.js';
+
 export const MAX_QUESTION_CHARS = 240;
 export const MAX_LABEL_CHARS = 80;
 export const MAX_DESCRIPTION_CHARS = 160;
@@ -12,7 +14,7 @@ function closedText(value, maximum, empty = false) {
     typeof value === 'string' &&
     value.normalize('NFC') === value &&
     value.trim() === value &&
-    value.length <= maximum &&
+    codePointLength(value) <= maximum &&
     (empty || value.length > 0) &&
     !FORBIDDEN_RE.test(value)
   );
@@ -72,5 +74,5 @@ export function composeClarifiedRequest(original, question, answer, labels) {
   const text = typeof answer === 'string' ? answer.trim() : '';
   if (!text) return null;
   const composed = `${original.trim()}\n\n${labels.question}: ${question}\n${labels.answer}: ${text}`;
-  return composed.length <= MAX_COMPOSED_CHARS ? composed : null;
+  return codePointLength(composed) <= MAX_COMPOSED_CHARS ? composed : null;
 }

@@ -1063,6 +1063,28 @@ test('a multiple-choice question fills the composer with the request and the ans
   expect(chat.chatFrames()).toHaveLength(frames);
 });
 
+test('a question of 240 emoji is offered and its emoji answer fills the composer', async ({ page }) => {
+  // Team bounds clarification text by Unicode code points; each emoji is two UTF-16 units.
+  const clarification = {
+    question: '😀'.repeat(240),
+    options: [{ label: '🌙'.repeat(80), description: '⭐'.repeat(160) }, { label: 'This week', description: '' }],
+    default_index: 0,
+  };
+  const reply = `${clarification.question}\n\n1. ${clarification.options[0].label} ✓ — ${clarification.options[0].description}\n2. This week`;
+  await routeReadyChat(page, { clarification, reply });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Which new AI models were released?');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const card = page.getByRole('form', { name: clarification.question });
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: 'Use this answer' }).click();
+  await expect(composer).toHaveValue(
+    `Which new AI models were released?\n\nQuestion: ${clarification.question}\nAnswer: ${clarification.options[0].label}`,
+  );
+});
+
 test('a reloaded question stays bound to its own request', async ({ page }) => {
   const turn = 'd'.repeat(32);
   await routeReadyChat(page, {
@@ -1274,6 +1296,21 @@ test('shows a pending chat state before any server progress frame', async ({ pag
   await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await expect(composer).toBeEnabled();
   expect(chat.chatFrames()).toHaveLength(1);
+});
+
+test('the composer sends 16,000 emoji and shows a reply longer than 60,000 UTF-16 units', async ({ page }) => {
+  // Team and Admin bound chat text by Unicode code points; each emoji is two UTF-16 units.
+  const message = '😀'.repeat(16_000);
+  const chat = await routeReadyChat(page, { reply: `Accepted ${'😀'.repeat(30_001)}` });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, message);
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  expect(chat.chatFrames()[0].message).toBe(message);
+  await expect(page.getByText(/^Accepted 😀/)).toBeVisible();
+  await expect(composer).toBeEnabled();
 });
 
 test('rejects an out-of-order first chat progress frame', async ({ page }) => {

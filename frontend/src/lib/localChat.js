@@ -128,7 +128,7 @@ function canonicalPublicText(value, maximum) {
     typeof value !== 'string' ||
     !value ||
     value !== value.trim() ||
-    value.length > maximum ||
+    codePointLength(value) > maximum ||
     SECRET_CONTROL_RE.test(value)
   ) {
     throw new LocalApiError('The local chat response is invalid.');
@@ -518,7 +518,7 @@ function canonicalChatTurn(turn) {
   const message = typeof turn.message === 'string' ? turn.message.trim() : '';
   if (
     !message ||
-    message.length > MAX_MESSAGE_CHARS ||
+    codePointLength(message) > MAX_MESSAGE_CHARS ||
     !Array.isArray(turn.files) ||
     turn.files.length > MAX_FILES ||
     turn.files.some((fileId) => !OPAQUE_ID_RE.test(fileId)) ||
@@ -597,11 +597,11 @@ export function createSyncFrame(teamId) {
 
 function canonicalHumanResponseValue(value) {
   if (value === true) return true;
-  if (typeof value === 'string' && value.length <= MAX_HUMAN_RESPONSE_CHARS) return value;
+  if (typeof value === 'string' && codePointLength(value) <= MAX_HUMAN_RESPONSE_CHARS) return value;
   if (
     Array.isArray(value) &&
     value.length <= MAX_HUMAN_OPTIONS &&
-    value.every((item) => typeof item === 'string' && item.length <= 128) &&
+    value.every((item) => typeof item === 'string' && codePointLength(item) <= 128) &&
     new Set(value).size === value.length
   ) return [...value];
   throw new LocalApiError('Invalid human response.');
@@ -977,7 +977,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       value.expires_in > 120 ||
       typeof value.reply !== 'string' ||
       !value.reply.trim() ||
-      value.reply.length > MAX_REPLY_CHARS ||
+      codePointLength(value.reply) > MAX_REPLY_CHARS ||
       CHAT_TEXT_CONTROL_RE.test(value.reply)
     ) throw new LocalApiError('The local chat response is invalid.');
     return {
@@ -1063,7 +1063,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !canonicalTeam(value.team_name) ||
       typeof value.reply !== 'string' ||
       !value.reply.trim() ||
-      value.reply.length > MAX_REPLY_CHARS ||
+      codePointLength(value.reply) > MAX_REPLY_CHARS ||
       CHAT_TEXT_CONTROL_RE.test(value.reply)
     ) {
       throw new LocalApiError('The local chat response is invalid.');
@@ -1111,7 +1111,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       typeof value.detail !== 'string' ||
       !value.detail ||
       value.detail !== value.detail.trim() ||
-      value.detail.length > MAX_ERROR_DETAIL_CHARS ||
+      codePointLength(value.detail) > MAX_ERROR_DETAIL_CHARS ||
       CONTROL_RE.test(value.detail)
     ) {
       throw new LocalApiError('The local chat response is invalid.');
