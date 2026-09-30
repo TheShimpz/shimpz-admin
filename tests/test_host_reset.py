@@ -21,8 +21,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import host_reset
 import state
+from space import host_reset
 
 SPACE_ID = "space-0123456789abcdef01234567"
 CAPABILITY = "a" * 64

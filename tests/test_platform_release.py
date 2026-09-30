@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from backend import platform_release
+from backend.space import release as platform_release
 
 
 class PlatformReleaseStatusTests(unittest.TestCase):

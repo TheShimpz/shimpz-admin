@@ -45,10 +45,9 @@ RUN groupadd -g 1000 admin && \
 
 WORKDIR /app/backend
 COPY backend/app.py backend/auth.py backend/authentication_state.py backend/browser.py backend/decision.py \
-    backend/host_reset.py \
     backend/local_auth.py backend/models.py \
     backend/model_catalog.json \
-    backend/platform_release.py backend/profile.py backend/space_reset.py backend/state.py backend/supervisor.py ./
+    backend/profile.py backend/state.py backend/supervisor.py ./
 COPY backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
 COPY backend/action/stored_input.py ./action/
 COPY backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
@@ -68,6 +67,7 @@ COPY backend/history/context.py backend/history/delivery.py backend/history/http
     ./history/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
+COPY backend/space/host_reset.py backend/space/release.py backend/space/reset.py ./space/
 COPY backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py \

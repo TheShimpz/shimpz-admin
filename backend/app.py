@@ -27,15 +27,15 @@ import profile
 
 import auth
 import decision
-import host_reset
 import local_auth
 import models
-import platform_release
-import space_reset
 import state
 import supervisor
 from history import delivery as chat_history_delivery
 from history import http as chat_history_http
+from space import host_reset
+from space import release as platform_release
+from space import reset as space_reset
 from team import assets as team_assets
 from team import bridge as team
 from team import files as team_files
