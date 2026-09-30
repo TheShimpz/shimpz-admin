@@ -3636,6 +3636,53 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   await expect(actions).toBeFocused();
 });
 
+test('heads the Team list with the Shimpz symbol and borderless controls that glitch on hover', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'hover contract');
+  await routeReadyChat(page);
+  await page.unroute('**/api/teams');
+  await page.route('**/api/teams', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ teams: [
+      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+      { team_id: 'support', team_name: 'Support', status: 'running' },
+    ] }),
+  }));
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+
+  const navigation = await openTeamNavigation(page);
+  const head = navigation.locator('.team-navigation .head');
+  await expect(head.locator('[data-slot="shimpz-brand-mark"]')).toBeVisible();
+  await expect(head).not.toContainText('Teams');
+  await expect(navigation.getByRole('navigation', { name: 'Teams' })).toBeVisible();
+
+  const newTeam = navigation.getByRole('button', { name: 'New Team' });
+  const support = navigation.getByRole('link', { name: 'Support', exact: true });
+  const supportRow = support.locator('xpath=ancestor::div[contains(@class, "row")][1]');
+  const selectedRow = navigation.getByRole('link', { name: 'Marketing', exact: true })
+    .locator('xpath=ancestor::div[contains(@class, "row")][1]');
+  for (const control of [newTeam, supportRow, selectedRow]) {
+    for (const side of ['top', 'right', 'bottom', 'left']) await expect(control).toHaveCSS(`border-${side}-width`, '0px');
+  }
+  const scanlines = (locator) => locator.evaluate((element) => getComputedStyle(element, '::before').backgroundImage);
+  expect(await scanlines(supportRow)).toBe('none');
+  await support.hover();
+  expect(await scanlines(supportRow)).toContain('repeating-linear-gradient');
+  await expect(support.locator('.name')).not.toHaveCSS('text-shadow', 'none');
+  await newTeam.hover();
+  expect(await scanlines(newTeam)).toContain('repeating-linear-gradient');
+  await expect(newTeam).toHaveCSS('color', 'rgb(0, 240, 255)');
+  await page.mouse.move(900, 900);
+  await support.focus();
+  expect(await scanlines(supportRow)).toContain('repeating-linear-gradient');
+  await expect(support).toHaveCSS('outline-style', 'solid');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await support.hover();
+  await expect(support.locator('.name')).toHaveCSS('animation-name', 'none');
+  const results = await new AxeBuilder({ page }).include('.team-navigation').analyze();
+  expect(results.violations).toEqual([]);
+});
+
 test('opens the mobile Team list as a modal drawer and restores focus', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'mobile drawer contract');
   await routeReadyChat(page);
