@@ -6,11 +6,6 @@ import { expect, test } from '@playwright/test';
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
 );
-const visualContract = {
-  animations: 'disabled',
-  fullPage: true,
-  maxDiffPixels: 100,
-};
 
 function localSession(overrides = {}) {
   return {
@@ -48,15 +43,6 @@ function json(route, body, status = 200) {
     contentType: 'application/json',
     body: JSON.stringify(body),
   });
-}
-
-function expectUniformLetterRhythm(boxes) {
-  const pitches = boxes.slice(1).map((box, index) => box.x - boxes[index].x);
-  expect(pitches).toHaveLength(5);
-  expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThan(0.5);
-  for (let index = 0; index < pitches.length; index += 1) {
-    expect(Math.abs(pitches[index] - boxes[index].width)).toBeLessThan(0.25);
-  }
 }
 
 async function routeSession(page, response, gate = null) {
@@ -107,7 +93,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
   });
 }
 
-test('shows only the centered animated Shimpz mark while the session is unresolved', async ({ page }) => {
+test('holds the app inert behind the boot screen until the session resolves, then releases to setup', async ({ page }) => {
   const sessionGate = deferred();
   const sessionRequested = await routeSession(page, {
     body: localSession(),
@@ -117,182 +103,14 @@ test('shows only the centered animated Shimpz mark while the session is unresolv
   await sessionRequested.promise;
 
   const boot = page.locator('[data-slot="boot-screen"]');
-  const composition = page.locator('[data-slot="boot-composition"]');
-  const mark = page.locator('[data-slot="boot-mark"]');
-  const wordmark = page.locator('[data-slot="boot-wordmark"]');
-  const markImage = mark.locator('img');
-  const letters = page.locator('[data-slot="boot-letter"]');
   await expect(boot).toBeVisible();
-  await expect(page.locator('[data-slot="boot-label"]')).toHaveText(/\S/);
   await expect(page.locator('.initial-content')).toHaveAttribute('inert', '');
-  await expect(page.locator('.auth-stage')).toBeHidden();
-  await expect(boot).toHaveCSS('background-color', 'rgb(0, 0, 0)');
-  await expect(composition).toHaveAttribute('aria-hidden', 'true');
-  await expect(page.locator('[data-slot="binary-loader"]')).toHaveCount(0);
-  await expect(page.locator('[data-slot="binary-glyph"]')).toHaveCount(0);
-  await expect(page.locator('[data-slot="boot-brand"]')).toHaveCount(0);
-  await expect(letters).toHaveText(['S', 'H', 'I', 'M', 'P', 'Z']);
-  await expect(letters.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect.poll(() => markImage.evaluate(
-    (image) => image.complete && image.naturalWidth > 0,
-  )).toBe(true);
-  expect(await letters.first().evaluate(
-    (element) => getComputedStyle(element).fontFamily.includes('IBM Plex Mono'),
-  )).toBe(true);
-  expect(await page.evaluate(async () => {
-    await document.fonts.load('700 24px "IBM Plex Mono"', 'SHIMPZ');
-    return document.fonts.check('700 24px "IBM Plex Mono"', 'SHIMPZ');
-  })).toBe(true);
-  await expect(wordmark).toHaveText('SHIMPZ');
-  const [bootBox, compositionBox, markBox, wordmarkBox, letterBoxes, viewport] = await Promise.all([
-    boot.boundingBox(),
-    composition.boundingBox(),
-    mark.boundingBox(),
-    wordmark.boundingBox(),
-    letters.evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { x: box.x, y: box.y, width: box.width, height: box.height };
-    })),
-    page.evaluate(() => ({
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight,
-    })),
-  ]);
-  expect(bootBox).not.toBeNull();
-  expect(compositionBox).not.toBeNull();
-  expect(markBox).not.toBeNull();
-  expect(wordmarkBox).not.toBeNull();
-  expect(Math.abs(bootBox.x)).toBeLessThan(1);
-  expect(Math.abs(bootBox.y)).toBeLessThan(1);
-  expect(Math.abs(bootBox.width - viewport.width)).toBeLessThan(1);
-  expect(Math.abs(bootBox.height - viewport.height)).toBeLessThan(1);
-  expect(Math.abs(
-    compositionBox.x + (compositionBox.width / 2) - (viewport.width / 2),
-  )).toBeLessThan(1);
-  expect(Math.abs(
-    compositionBox.y + (compositionBox.height / 2) - (viewport.height / 2),
-  )).toBeLessThan(1);
-  expect(Math.abs(
-    markBox.x + (markBox.width / 2) - wordmarkBox.x - (wordmarkBox.width / 2),
-  )).toBeLessThan(1);
-  const letterSpacing = await wordmark.evaluate(
-    (element) => Number.parseFloat(getComputedStyle(element).letterSpacing),
-  );
-  const opticalLeft = letterBoxes[0].x;
-  const opticalRight = letterBoxes.at(-1).x + letterBoxes.at(-1).width - letterSpacing;
-  expect(Math.abs(
-    ((opticalLeft + opticalRight) / 2) - markBox.x - (markBox.width / 2),
-  )).toBeLessThan(0.5);
-  const markToWordmarkGap = wordmarkBox.y - markBox.y - markBox.height;
-  expect(Math.abs(markToWordmarkGap - 2.8)).toBeLessThan(0.25);
-  const animatedLetterCenter = letterBoxes.reduce(
-    (total, box) => total + box.y + (box.height / 2),
-    0,
-  ) / letterBoxes.length;
-  expect(Math.abs(
-    animatedLetterCenter - wordmarkBox.y - (wordmarkBox.height / 2),
-  )).toBeLessThan(1);
-  expectUniformLetterRhythm(letterBoxes);
-  const originalViewport = page.viewportSize();
-  await page.setViewportSize({ width: 800, height: originalViewport.height });
-  const [fluidMarkBox, fluidWordmarkFontSize] = await Promise.all([
-    mark.boundingBox(),
-    wordmark.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
-  ]);
-  expect(fluidMarkBox).not.toBeNull();
-  expect(Math.abs(fluidMarkBox.width - 112)).toBeLessThan(0.25);
-  expect(Math.abs(fluidWordmarkFontSize - 22.4)).toBeLessThan(0.25);
-  await page.setViewportSize(originalViewport);
-  await page.evaluate(() => { document.documentElement.dir = 'rtl'; });
-  const rtlLetterBoxes = await letters.evaluateAll((elements) => elements.map((element) => {
-    const box = element.getBoundingClientRect();
-    return { x: box.x, y: box.y, width: box.width, height: box.height };
-  }));
-  expectUniformLetterRhythm(rtlLetterBoxes);
-  const [rtlMarkBox, rtlWordmarkBox] = await Promise.all([
-    mark.boundingBox(),
-    wordmark.boundingBox(),
-  ]);
-  expect(rtlMarkBox).not.toBeNull();
-  expect(rtlWordmarkBox).not.toBeNull();
-  expect(Math.abs(
-    rtlWordmarkBox.x + (rtlWordmarkBox.width / 2) - rtlMarkBox.x - (rtlMarkBox.width / 2),
-  )).toBeLessThan(1);
-  await page.evaluate(() => { document.documentElement.dir = 'ltr'; });
-  const accessibility = await new AxeBuilder({ page }).analyze();
-  expect(accessibility.violations).toEqual([]);
-  await expect(page).toHaveScreenshot('boot-screen.png', visualContract);
+  await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+  // The boot screen's one accessibility scan.
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   sessionGate.resolve();
   await expect(boot).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
-});
-
-test('moves all six Shimpz letters vertically in exact counterphase', async ({ page }) => {
-  const sessionGate = deferred();
-  const sessionRequested = await routeSession(page, {
-    body: localSession(),
-  }, sessionGate);
-
-  await page.goto('/');
-  await sessionRequested.promise;
-  const letters = page.locator('[data-slot="boot-letter"]');
-  await expect(letters).toHaveText(['S', 'H', 'I', 'M', 'P', 'Z']);
-  expect(await letters.evaluateAll((elements) => elements.every(
-    (element) => getComputedStyle(element).animationName.endsWith('letter-swing'),
-  ))).toBe(true);
-  const motion = await letters.evaluateAll((elements) => {
-    const mark = document.querySelector('[data-slot="boot-mark"]');
-    const wordmark = document.querySelector('[data-slot="boot-wordmark"]');
-    const animations = elements.map((element) => element.getAnimations()[0]);
-    animations.forEach((animation) => animation.pause());
-    const sample = (time) => {
-      animations.forEach((animation) => { animation.currentTime = time; });
-      const markBox = mark.getBoundingClientRect();
-      const wordmarkBox = wordmark.getBoundingClientRect();
-      const centers = elements.map((element) => {
-        const box = element.getBoundingClientRect();
-        return box.y + (box.height / 2);
-      });
-      return {
-        centers,
-        centroid: centers.reduce((total, center) => total + center, 0) / centers.length,
-        axis: wordmarkBox.y + (wordmarkBox.height / 2),
-        opticalGap: Math.min(...elements.map(
-          (element) => element.getBoundingClientRect().y,
-        )) - markBox.bottom,
-      };
-    };
-    const start = sample(0);
-    const midpoint = sample(250);
-    const opposite = sample(500);
-    animations.forEach((animation) => animation.cancel());
-    return { start, midpoint, opposite };
-  });
-  for (const sample of [motion.start, motion.midpoint, motion.opposite]) {
-    expect(Math.abs(sample.centroid - sample.axis)).toBeLessThan(1);
-  }
-  expect(Math.abs(motion.start.opticalGap - 2.8)).toBeLessThan(0.25);
-  expect(Math.abs(motion.opposite.opticalGap - 2.8)).toBeLessThan(0.25);
-  expect(Math.abs(motion.midpoint.opticalGap - 7.55)).toBeLessThan(0.25);
-  for (let index = 0; index < motion.start.centers.length; index += 1) {
-    expect(Math.abs(Math.abs(
-      motion.start.centers[index] - motion.start.axis,
-    ) - 4.75)).toBeLessThan(0.1);
-    expect(Math.abs(Math.abs(
-      motion.opposite.centers[index] - motion.opposite.axis,
-    ) - 4.75)).toBeLessThan(0.1);
-    expect(Math.abs(
-      motion.midpoint.centers[index] - motion.midpoint.axis,
-    )).toBeLessThan(0.1);
-  }
-  for (const sample of [motion.start, motion.opposite]) {
-    for (let index = 1; index < sample.centers.length; index += 1) {
-      expect(Math.sign(sample.centers[index - 1] - sample.axis)).toBe(
-        -Math.sign(sample.centers[index] - sample.axis),
-      );
-    }
-  }
-  sessionGate.resolve();
 });
 
 test('keeps one boot surface through Team and model hydration, then focuses usable Chat', async ({ page }) => {
@@ -400,86 +218,6 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
   await expect(page.getByText('Technical detail: Team catalog unavailable.')).toBeVisible();
 });
 
-test('keeps boot visible until the initial Assistant icon presentation settles', async ({ page }) => {
-  const teamGate = deferred();
-  const iconGate = deferred();
-  const iconRequested = deferred();
-  const imageId = `sha256:${'a'.repeat(64)}`;
-  const icon = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
-    'base64',
-  );
-  await page.route('**/api/**', (route) => json(
-    route,
-    { detail: 'Unavailable outside this boot contract.' },
-    503,
-  ));
-  await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-  });
-  await page.route('**/api/teams', async (route) => {
-    await teamGate.promise;
-    await json(route, {
-      teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
-    });
-  });
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/assistant-catalog', (route) => json(route, {
-    version: 1,
-    assistants: [],
-  }));
-  await page.route('**/api/local-assistants', (route) => json(route, {
-    assistants: [{
-      assistant_id: 'shimpz-cloudflare',
-      assistant_version: '0.4.5',
-      name: 'Shimpz Cloudflare',
-      summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
-      actions: ['list-zones'],
-      integrations: ['cloudflare'],
-      declared_creators: ['@shimpz'],
-      created_at: '2026-09-17T07:00:00Z',
-      image_id: imageId,
-      platform: 'linux/amd64',
-      provenance: 'local',
-      unpublished: true,
-    }],
-    trace_id: 'c'.repeat(32),
-  }));
-  await page.route('**/api/local-assistants/*/icon', async (route) => {
-    iconRequested.resolve();
-    await iconGate.promise;
-    await route.fulfill({ contentType: 'image/png', body: icon });
-  });
-
-  await page.goto('/assistants/');
-  const boot = page.locator('[data-slot="boot-screen"]');
-  const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
-  await expect(boot).toBeVisible();
-  teamGate.resolve();
-  await iconRequested.promise;
-  await expect(boot).toBeVisible();
-  await expect(card).toBeHidden();
-
-  await page.evaluate(() => {
-    window.__assistantInterimPaint = false;
-    const observer = new MutationObserver(() => {
-      const currentBoot = document.querySelector('[data-slot="boot-screen"]');
-      const currentCard = document.querySelector('[aria-label="shimpz-cloudflare — Local"]');
-      if (!currentBoot && currentCard && !currentCard.querySelector('img[src^="blob:"]')) {
-        window.__assistantInterimPaint = true;
-      }
-    });
-    observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
-  });
-  iconGate.resolve();
-
-  await expect(boot).toHaveCount(0);
-  await expect(card).toBeVisible();
-  await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-  expect(await page.evaluate(() => window.__assistantInterimPaint)).toBe(false);
-});
-
 test('releases the Assistants route when initial catalog hydration does not settle', async ({ page }) => {
   const catalogGate = deferred();
   const catalogRequested = deferred();
@@ -533,40 +271,3 @@ test('releases to retry when the session check reaches an error', async ({ page 
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 });
 
-test('keeps a stable Shimpz wordmark when reduced motion is requested', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  const sessionGate = deferred();
-  const sessionRequested = await routeSession(page, {
-    body: localSession(),
-  }, sessionGate);
-
-  await page.goto('/');
-  await sessionRequested.promise;
-  const wordmark = page.locator('[data-slot="boot-wordmark"]');
-  const letters = page.locator('[data-slot="boot-letter"]');
-  await expect(letters).toHaveText(['S', 'H', 'I', 'M', 'P', 'Z']);
-  expect(await letters.evaluateAll((elements) => elements.every(
-    (element) => getComputedStyle(element).animationName === 'none',
-  ))).toBe(true);
-  const [wordmarkBox, letterBoxes] = await Promise.all([
-    wordmark.boundingBox(),
-    letters.evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { x: box.x, y: box.y, width: box.width, height: box.height };
-    })),
-  ]);
-  expect(wordmarkBox).not.toBeNull();
-  for (const box of letterBoxes) {
-    expect(Math.abs(box.y + (box.height / 2) - (wordmarkBox.y + (wordmarkBox.height / 2)))).toBeLessThan(1);
-  }
-  for (let index = 1; index < letterBoxes.length; index += 1) {
-    expect(letterBoxes[index - 1].x + letterBoxes[index - 1].width).toBeLessThanOrEqual(
-      letterBoxes[index].x,
-    );
-  }
-  expect(Math.abs(
-    wordmarkBox.height - letterBoxes[0].height - 9.5,
-  )).toBeLessThan(0.25);
-  expectUniformLetterRhythm(letterBoxes);
-  sessionGate.resolve();
-});

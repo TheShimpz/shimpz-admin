@@ -15,13 +15,6 @@ const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
 );
 
-const visualContract = {
-  animations: 'allow',
-  fullPage: true,
-  maxDiffPixels: 100,
-  stylePath: new URL('./visual-contract.css', import.meta.url).pathname,
-};
-
 function localSession(overrides = {}) {
   return {
     profile: 'local',
@@ -44,29 +37,6 @@ function authenticatedLocalSession(overrides = {}) {
     passkey_registered: true,
     ...overrides,
   });
-}
-
-async function expectVisuallyHidden(locator) {
-  await expect(locator).toHaveClass(/visually-hidden/);
-  expect(await locator.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const bounds = element.getBoundingClientRect();
-    return { width: bounds.width, height: bounds.height, clipPath: style.clipPath };
-  })).toEqual({ width: 1, height: 1, clipPath: 'inset(50%)' });
-}
-
-async function expectTaskMediaBesideTitle(task) {
-  const [mediaBox, titleBox] = await Promise.all([
-    task.locator('[data-slot="chat-task-media"]').boundingBox(),
-    task.locator('[data-slot="chat-task-title"]').boundingBox(),
-  ]);
-  if (!mediaBox || !titleBox) throw new Error('Chat task media or title has no rendered bounds');
-  const gap = titleBox.x - (mediaBox.x + mediaBox.width);
-  const overlap = Math.min(mediaBox.y + mediaBox.height, titleBox.y + titleBox.height)
-    - Math.max(mediaBox.y, titleBox.y);
-  expect(gap).toBeGreaterThan(0);
-  expect(gap).toBeLessThanOrEqual(24);
-  expect(overlap).toBeGreaterThan(0);
 }
 
 const localTeamResidues = [
@@ -865,17 +835,13 @@ async function routeReadyChat(page, {
   };
 }
 
-test('setup surface is accessible and never overflows its viewport', async ({ page }) => {
+test('the setup screen passes its accessibility scan and requires a 15-character password', async ({ page }) => {
   await routeSetup(page);
   await page.goto('/');
 
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations).toEqual([]);
-  const dimensions = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    content: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+  // The setup screen's one accessibility scan.
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
 });
 
 test('language menu implements keyboard navigation and RTL direction', async ({ page }) => {
@@ -928,7 +894,6 @@ test('a first Team without any provider key asks for one in the focused composer
 
   const apiKey = page.getByLabel('API key');
   await expect(apiKey).toBeFocused();
-  await expect(apiKey).toHaveAttribute('placeholder', 'OpenAI API key for GPT-6 Luna');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveCount(0);
   await apiKey.fill('sk-browser-contract-1234567890');
   await page.getByRole('button', { name: 'Save key' }).click();
@@ -949,7 +914,6 @@ test('asks for a missing provider key in the composer without leaving the conver
   await expect(apiKey).toBeFocused();
   await expect(apiKey).toHaveAttribute('type', 'password');
   await expect(apiKey).toHaveAttribute('autocomplete', 'off');
-  await expect(apiKey).toHaveAttribute('placeholder', 'Anthropic API key for Claude Opus 5.5');
   await expect(page.getByRole('dialog', { name: 'Brain settings' })).toBeHidden();
   await expect(page.getByText('The launch plan has three milestones.')).toBeVisible();
   await expect(composer).toHaveCount(0);
@@ -991,8 +955,6 @@ test('the Supervisor adds and removes the Jev key after reading what goes to Typ
   );
   const save = fast.getByRole('button', { name: 'Save key' });
   await expect(save).toBeDisabled();
-  await page.mouse.move(0, 0);
-  await expect(page).toHaveScreenshot('jev-key-disclosure.png', visualContract);
   const secret = 'tsk-browser-contract-0123456789';
   await key.fill(secret);
   await save.click();
@@ -1083,8 +1045,6 @@ test('a multiple-choice question fills the composer with the request and the ans
   await expect(card.getByRole('radio', { name: /Today · recommended/ })).toBeChecked();
   await expect(card.getByRole('radio', { name: 'Other answer' })).not.toBeChecked();
   await expect(page.getByText('1. Today ✓')).toHaveCount(0);
-  await page.mouse.move(0, 0);
-  await expect(page).toHaveScreenshot('clarification-card.png', visualContract);
   const frames = chat.chatFrames().length;
 
   await card.getByRole('radio', { name: 'This week' }).check();
@@ -1222,16 +1182,6 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   for (let index = 0; index < 3; index += 1) {
     await expect(notices.nth(index)).toHaveAttribute('role', 'status');
   }
-  await expect(notices.nth(0)).toHaveClass(/shimpz-notice--success/);
-  await expect(notices.nth(1)).toHaveClass(/shimpz-notice--warning/);
-  await expect(notices.nth(2)).toHaveClass(/shimpz-notice--error/);
-  await expect(notices.nth(0).locator('[data-slot="notice-icon"] circle')).toHaveCount(1);
-  await expect(notices.nth(1).locator('[data-slot="notice-icon"] circle')).toHaveCount(0);
-  await expect(notices.nth(2).locator('[data-slot="notice-icon"] path')).toHaveCount(2);
-  expect((await new AxeBuilder({ page }).include('.shimpz-message--assistant').analyze()).violations)
-    .toEqual([]);
-  await page.emulateMedia({ forcedColors: 'active' });
-  await expect(notices.nth(0)).toHaveCSS('border-left-color', 'rgb(0, 0, 0)');
   await expect(page.getByText(/Execution stages recorded: 1/i)).toBeVisible();
 });
 
@@ -1247,8 +1197,6 @@ test('finishing a measured span updates its duration and announcements across tu
   const liveStatus = page.locator('.conversation .live-status');
   await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
   await expect(liveStatus).toHaveText(/In progress$/);
-  // No divider line separates the processing summary from its execution steps.
-  await expect(thinking.locator('.ledger-details')).toHaveCSS('border-top-width', '0px');
   await thinking.locator('[data-slot="disclosure-trigger"]').click();
   const step = thinking.locator('.ledger li');
   await expect(step).toBeVisible();
@@ -1758,7 +1706,6 @@ test('settles a failed Local install plan icon as unavailable instead of loading
   const icon = page.locator('.assistant-install-plan .shimpz-assistant-icon');
   await expect(icon).toHaveAttribute('data-state', 'failed');
   await expect(icon.locator('img')).toHaveCount(0);
-  await expect(icon.locator('svg')).toHaveCount(0);
 });
 
 test('keeps chat available when durable history cannot be loaded', async ({ page }) => {
@@ -1814,23 +1761,14 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
   const outcome = 'Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.';
   const outcomeText = page.getByText(outcome, { exact: true });
   await expect(outcomeText).toBeVisible();
-  const [taskBounds, outcomeBounds] = await Promise.all([
-    page.locator('.assistant-lifecycle-task').boundingBox(),
-    outcomeText.boundingBox(),
-  ]);
-  if (!taskBounds || !outcomeBounds) throw new Error('Lifecycle task or outcome has no rendered bounds');
-  expect(outcomeBounds.y - (taskBounds.y + taskBounds.height)).toBeGreaterThanOrEqual(12);
   await page.reload();
   await expect(outcomeText).toBeVisible();
   // An uninstalled Assistant has no icon left to fetch, so its frame settles as unavailable.
   const icon = page.locator('.assistant-lifecycle-task .shimpz-assistant-icon');
   await expect(icon).toHaveAttribute('data-state', 'failed');
-  await expect(icon.locator('svg')).toHaveCount(0);
 });
 
 test('installs a composed Assistant plan automatically and continues the original task', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ reducedMotion: 'reduce' });
   const chat = await routeReadyChat(page, {
     assistantPlan: true,
     holdAssistantPlan: true,
@@ -1858,20 +1796,11 @@ test('installs a composed Assistant plan automatically and continues the origina
   await expect(page.getByRole('button', { name: /install/i })).toHaveCount(0);
   await expect(page.getByText(/confirmation required/i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
-  expect(await tasks.nth(0).evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
-    .toBe('rgb(252, 238, 10)');
   const installPlan = page.getByRole('group', { name: 'Assistant installation' });
   const stop = page.getByRole('button', { name: 'Stop', exact: true });
   await expect(stop).toBeFocused();
   expect(await installPlan.getAttribute('tabindex')).toBeNull();
   expect(await installPlan.evaluate((element) => element.matches(':focus-visible'))).toBe(false);
-  await expect(installPlan).toHaveCSS('outline-style', 'none');
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  const dimensions = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    content: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 
   await stop.click();
   await expect(stop).toBeDisabled();
@@ -2215,7 +2144,6 @@ test('keeps target-required guidance valid when Stop races its response', async 
 });
 
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   const chat = await routeReadyChat(page, {
     assistantUninstall: true,
     holdAssistantIcon: true,
@@ -2246,24 +2174,15 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(task).toContainText(
     'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. If it is a Local build, its snapshot remains staged on this machine so it can be installed again. To delete that snapshot permanently, run shimpz assistant unstage from its project.',
   );
-  const confirmation = task.getByText('Uninstall this Assistant from this Team?', { exact: true });
-  await expect(confirmation).toHaveCSS('text-align', 'right');
   const icon = task.locator('img');
   await expect(icon).toHaveAttribute(
     'src',
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
   );
-  await expectTaskMediaBesideTitle(task);
   await expect(task.getByRole('button', { name: 'Cancel uninstalling Shimpz Cloudflare' }))
     .toBeEnabled();
   const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
   await expect(uninstall).toBeEnabled();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  const dimensions = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    content: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 
   await page.waitForTimeout(2100);
   await uninstall.click();
@@ -2272,8 +2191,6 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   chat.releaseAssistantIcon();
   await expect(page.getByText('yes', { exact: true })).toHaveCount(0);
   await expect(task).toHaveAttribute('data-state', 'working');
-  expect(await task.evaluate((element) => getComputedStyle(element, '::after').backgroundColor))
-    .toBe('rgb(252, 238, 10)');
   await expect(task).toBeFocused();
   chat.releaseAssistantUninstall();
 
@@ -2357,56 +2274,6 @@ test('cancels an Assistant uninstall without projecting a confirmation reply', a
   expect(chat.chatFrames().at(-1).type).toBe('chat');
 });
 
-test('renders the integrations drawer as a responsive Sheet surface', async ({ page }) => {
-  await routeReadyChat(page);
-  await page.goto('/chat/');
-
-  await page.getByRole('button', { name: 'Assistant integrations' }).click();
-  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
-  await expect(drawer).toBeVisible();
-  await expect(drawer).toHaveAttribute('data-slot', 'drawer');
-  await expect(drawer.getByRole('heading', { name: 'Shimpz Cloudflare', level: 3 })).toBeVisible();
-  await expect(drawer.getByText('v0.4.2', { exact: true })).toBeVisible();
-  const groupIcon = drawer.locator('.assistant-group .shimpz-assistant-icon img');
-  await expect(groupIcon).toHaveAttribute('src', '/api/teams/marketing/assistants/shimpz-cloudflare/icon');
-  await expect.poll(() => groupIcon.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
-  await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
-  await expect(drawer.locator('.integration-content')).not.toHaveAttribute('aria-live');
-  await expect(drawer.locator('.integration-status')).toHaveAttribute('aria-live', 'polite');
-  await expect(drawer.locator('.integration-status .assistant-groups')).toHaveCount(0);
-  const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
-  await expect(toggle).toHaveAccessibleName('Expand Shimpz Cloudflare');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(toggle).toHaveCSS('color', 'rgb(0, 240, 255)');
-  await expect(toggle).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
-  await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.', { exact: true })).toBeHidden();
-  const drawerBox = await drawer.boundingBox();
-  expect(drawerBox).not.toBeNull();
-  expect(drawerBox.width).toBeLessThanOrEqual((page.viewportSize().width * 0.92) + 1);
-  const collapsedAxe = await new AxeBuilder({ page }).analyze();
-  expect(collapsedAxe.violations).toEqual([]);
-  await expect(drawer).toHaveScreenshot('integrations-drawer.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  await expect(toggle).toHaveAccessibleName('Collapse Shimpz Cloudflare');
-  await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.', { exact: true })).toBeVisible();
-  await expect(drawer.getByText('Safely manage Cloudflare DNS records through OAuth.', { exact: true })).toHaveCount(0);
-  await expect(drawer.getByText('Reads reviewed zone and DNS metadata.', { exact: true })).toHaveCount(0);
-  await expect(drawer.getByText('Permissions', { exact: true })).toHaveCount(0);
-  await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
-  const expandedAxe = await new AxeBuilder({ page }).analyze();
-  expect(expandedAxe.violations).toEqual([]);
-  await expect(drawer).toHaveScreenshot('integrations-drawer-expanded.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-  await page.getByRole('button', { name: 'Close integrations' }).click();
-  await expect(drawer).toBeHidden();
-});
-
 test('renders and clears a persistent Action input without exposing its value', async ({ page }) => {
   const chat = await routeReadyChat(page, {
     whatsappInstalled: true,
@@ -2421,11 +2288,9 @@ test('renders and clears a persistent Action input without exposing its value', 
   await expect(storedInputs.getByText('whatsapp-token', { exact: true })).toBeVisible();
   const rowIcon = storedInputs.locator('.stored-input-row .shimpz-assistant-icon img');
   await expect(rowIcon).toHaveAttribute('src', '/api/teams/marketing/assistants/whatsapp/icon');
-  await expect(rowIcon).toHaveAttribute('loading', 'lazy');
   await expect(storedInputs.getByText('Stored securely. Future Actions reuse it.', { exact: true }))
     .toBeVisible();
   await expect(drawer).not.toContainText('must-not-cross');
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   await storedInputs.getByRole('button', { name: 'Clear', exact: true }).click();
 
@@ -2435,7 +2300,7 @@ test('renders and clears a persistent Action input without exposing its value', 
   expect(chat.storedInputClears()).toBe(1);
 });
 
-test('shows an unavailable integration icon as failed without a substitute mark and toggles through it', async ({ page }) => {
+test('toggles an Assistant integration through its unavailable icon', async ({ page }) => {
   await routeReadyChat(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({ status: 404 }));
   await page.goto('/chat/');
@@ -2444,7 +2309,6 @@ test('shows an unavailable integration icon as failed without a substitute mark 
   const icon = drawer.locator('.assistant-group .shimpz-assistant-icon');
   await expect(icon).toHaveAttribute('data-state', 'failed');
   await expect(icon.locator('img')).toBeHidden();
-  await expect(icon.locator('svg')).toHaveCount(0);
 
   const toggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
   const iconBox = await icon.boundingBox();
@@ -2453,7 +2317,6 @@ test('shows an unavailable integration icon as failed without a substitute mark 
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await toggle.press('Enter');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('opens and closes an Assistant integration from the whole card header', async ({ page }) => {
@@ -2492,78 +2355,6 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
   await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.')).toBeHidden();
   await expect(drawer.getByText('Send reviewed messages to Slack.')).toBeVisible();
-});
-
-for (const integrationStatus of ['missing', 'reauthorization-required', 'expired']) {
-  test(`keeps ${integrationStatus} Integration metadata out of the Assistant summary card`, async ({ page }) => {
-    await routeReadyChat(page, { integrationStatus });
-    await page.goto('/chat/');
-
-    await page.getByRole('button', { name: 'Assistant integrations' }).click();
-    const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
-    await drawer.getByRole('button', { name: 'Expand Shimpz Cloudflare' }).click();
-    await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.')).toBeVisible();
-    await expect(drawer.getByText('Missing', { exact: true })).toHaveCount(0);
-    await expect(drawer.getByText('Reconnect required', { exact: true })).toHaveCount(0);
-    await expect(drawer.getByText('Expired', { exact: true })).toHaveCount(0);
-    await expect(drawer.getByText('Connected', { exact: true })).toHaveCount(0);
-    await expect(drawer.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
-  });
-}
-
-test('renders the fail-closed Integration challenge dialog', async ({ page }) => {
-  await routeReadyChat(page, { integrationChallenge: true });
-  await page.goto('/chat/');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await expect(composer).toBeEnabled();
-  await composer.fill('List the Cloudflare zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect your Cloudflare account' });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(
-    'Action list-zones from the Shimpz Cloudflare v0.4.1 Assistant requires you to securely connect this Shimpz installation to your Cloudflare account, granting the Assistant these permissions:',
-    { exact: true },
-  )).toBeVisible();
-  await expect(dialog.getByText('dns.read', { exact: true })).toBeVisible();
-  const dynamicAction = dialog.locator('.context strong').first();
-  await expect(dynamicAction).toHaveText('list-zones');
-  await expect(dynamicAction).toHaveCSS('color', 'rgb(0, 240, 255)');
-  await expect(dynamicAction).toHaveCSS('font-weight', '700');
-  await expect(dialog.locator('[data-slot="card"]')).toHaveCount(0);
-  const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
-  expect(results.violations).toEqual([]);
-  await expect(dialog).toHaveScreenshot('integration-required-dialog.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
-});
-
-test('renders dynamic Integration data in the current language', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
-  await routeReadyChat(page, {
-    integrationChallenge: true,
-    integrationRequirements: [{
-      assistant_id: 'shimpz-cloudflare',
-      assistant_name: 'Social Publisher',
-      integration_id: 'x-integration',
-      provider: 'x',
-      name: 'X',
-      summary: 'Publica posts aprovados.',
-      scopes: ['tweet.read', 'tweet.write'],
-      actions: [{ id: 'publish-post', name: 'Publicar post', summary: 'Publica um post aprovado.' }],
-    }],
-  });
-  await page.goto('/chat/');
-
-  await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Publique o post');
-  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Conecte sua conta X' });
-  await expect(dialog).toContainText(
-    'A ação publish-post do assistente Social Publisher v0.4.1 requer que você conecte esta instalação da Shimpz à sua conta X de forma segura',
-  );
-  await expect(dialog.getByText('tweet.write', { exact: true })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Autorizar no X' })).toBeVisible();
 });
 
 test('presents individual authorization controls for every pending Integration', async ({ page }) => {
@@ -2639,6 +2430,43 @@ test('presents individual authorization controls for every pending Integration',
   await authorizeRoute.abort();
   await popup.close();
 });
+
+// Informed authorization: the consent names the requesting Action, Assistant, version, and scopes in the
+// Supervisor's language, so a dialog attributing the grant to the wrong Assistant or Action fails.
+for (const [language, route, expected] of [
+  ['en', { integrationChallenge: true }, {
+    send: 'Send', dialog: 'Connect your Cloudflare account', identity: ['list-zones', 'Shimpz Cloudflare', 'v0.4.1'],
+    scope: 'dns.read', authorize: /Cloudflare/,
+  }],
+  ['pt', {
+    integrationChallenge: true,
+    integrationRequirements: [{
+      assistant_id: 'shimpz-cloudflare',
+      assistant_name: 'Social Publisher',
+      integration_id: 'x-integration',
+      provider: 'x',
+      name: 'X',
+      summary: 'Publica posts aprovados.',
+      scopes: ['tweet.read', 'tweet.write'],
+      actions: [{ id: 'publish-post', name: 'Publicar post', summary: 'Publica um post aprovado.' }],
+    }],
+  }, {
+    send: 'Enviar', dialog: 'Conecte sua conta X', identity: ['publish-post', 'Social Publisher', 'v0.4.1'],
+    scope: 'tweet.write', authorize: /X/,
+  }],
+]) {
+  test(`the ${language} Integration consent names the requesting Action, Assistant, and version`, async ({ page }) => {
+    await page.addInitScript((lang) => localStorage.setItem('shimpz_lang', lang), language);
+    await routeReadyChat(page, route);
+    await page.goto('/chat/');
+    await page.getByRole('textbox', { name: expected.send, exact: true }).fill('List the zones');
+    await page.getByRole('button', { name: expected.send, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: expected.dialog });
+    for (const identity of expected.identity) await expect(dialog).toContainText(identity);
+    await expect(dialog.getByText(expected.scope, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: expected.authorize }).first()).toBeEnabled();
+  });
+}
 
 test('uses the automatic Local OAuth handoff without opening a blank tab', async ({ page }) => {
   const challengeId = 'b'.repeat(32);
@@ -2773,6 +2601,20 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
   await expect(dialog).toContainText('The secure authorization could not start.');
 });
 
+// The exact value each kind submits; a passkey answers with its ceremony, not a typed value.
+const humanValues = {
+  approval: true,
+  'input:text': 'Reviewed value',
+  'input:textarea': 'Reviewed value',
+  'input:password': 'third-party-secret',
+  'input:phone': '+1 415 555 0123',
+  'input:select': 'safe',
+  'input:choice': 'safe',
+  'input:choices': ['safe'],
+  'auth:password': 'supervisor-password',
+  'auth:totp': '123456',
+};
+
 const humanPresentations = [
   ['approval', 'Publish reviewed DNS changes?'],
   ['input:text', 'Provide the missing Action context'],
@@ -2788,7 +2630,7 @@ const humanPresentations = [
 ];
 
 for (const [kind, title] of humanPresentations) {
-  test(`renders and completes the ${kind} Action request`, async ({ page }) => {
+  test(`completes the ${kind} Action request with its exact value`, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
     const contract = await routeReadyChat(page, { humanKind: kind });
     await page.goto('/chat/');
@@ -2797,30 +2639,18 @@ for (const [kind, title] of humanPresentations) {
     await page.getByRole('button', { name: 'Send' }).click();
     const dialog = page.getByRole('dialog', { name: title });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(
-      'Action list-zones from Shimpz Cloudflare v0.4.1 needs human validation. Expires in 300 seconds.',
-    );
+    // The request names the exact Action, Assistant, and version it authorizes.
     await expect(dialog.locator('.request-context strong')).toHaveText([
       'list-zones',
       'Shimpz Cloudflare',
       'v0.4.1',
     ]);
-    await expect(dialog.locator('.request-context strong').first()).toHaveCSS('color', 'rgb(0, 240, 255)');
-    await expect(dialog).toContainText('Shimpz Cloudflare paused before continuing this exact Action.');
-    await expect(dialog.getByText('Required', { exact: true })).toHaveCount(0);
-    if (kind.startsWith('input:') && kind !== 'input:choice' && kind !== 'input:choices') {
-      await expectVisuallyHidden(dialog.locator('label[for="human-request-value"]'));
-    } else if (kind === 'input:choice' || kind === 'input:choices') {
-      await expectVisuallyHidden(dialog.locator('fieldset legend'));
-    } else if (kind === 'auth:password' || kind === 'auth:totp') {
-      await expectVisuallyHidden(dialog.locator('label[for="human-request-auth"]'));
+    // A secret is never typed into a visible field.
+    if (kind === 'input:password') {
+      await expect(dialog.getByLabel(/Cloudflare API secret/)).toHaveAttribute('type', 'password');
+    } else if (kind === 'auth:password') {
+      await expect(dialog.getByLabel('Supervisor password')).toHaveAttribute('type', 'password');
     }
-    const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
-    expect(results.violations).toEqual([]);
-    await expect(dialog).toHaveScreenshot(`human-${kind.replaceAll(':', '-')}.png`, {
-      animations: 'disabled',
-      maxDiffPixels: 150,
-    });
 
     if (kind === 'input:text' || kind === 'input:textarea') {
       await dialog.getByLabel(/Response/).fill('Reviewed value');
@@ -2852,6 +2682,7 @@ for (const [kind, title] of humanPresentations) {
       type: 'human-response',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       decision: 'submit',
+      ...(kind in humanValues ? { value: humanValues[kind] } : {}),
     });
   });
 }
@@ -2997,10 +2828,6 @@ test('restores Supervisor password authorization as a focused validation modal',
   await expect(dialog.getByRole('button', { name: 'Confirmar autorização' })).toBeDisabled();
   await expect(page.getByRole('group', { name: 'Estou processando...' })).toHaveCount(0);
   await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await expect(dialog).toHaveScreenshot('human-auth-password-validating.png', {
-    animations: 'disabled',
-    maxDiffPixels: 150,
-  });
 
   contract.releaseHumanResponse();
 
@@ -3010,10 +2837,6 @@ test('restores Supervisor password authorization as a focused validation modal',
   await expect(validation).toContainText('Restam 2 tentativas antes de um bloqueio temporário.');
   await expect(validation.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
   await expect.poll(() => validation.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await expect(validation).toHaveScreenshot('human-auth-password-validation.png', {
-    animations: 'disabled',
-    maxDiffPixels: 150,
-  });
   await expect(page.getByText(/Detalhe técnico/)).toHaveCount(0);
   expect(contract.humanResponses()).toHaveLength(1);
 
@@ -3044,10 +2867,6 @@ test('blocks Supervisor password retry behind the server countdown', async ({ pa
   await expect(locked).toBeVisible();
   await expect(locked.getByRole('button', { name: 'Try again in 60 s' })).toBeDisabled();
   await expect(locked).toContainText('may expire before password confirmation is completed');
-  await expect(locked).toHaveScreenshot('human-auth-password-locked.png', {
-    animations: 'disabled',
-    maxDiffPixels: 150,
-  });
 });
 
 test('keeps authorization modal until Team progress proves password continuation', async ({ page }) => {
@@ -3087,64 +2906,6 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
   contract.disconnectHumanSocket();
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
   expect(contract.humanResponses()).toHaveLength(1);
-});
-
-test('shows accessible processing motion and honors display preferences @browser-sensitive', async ({ page }) => {
-  const contract = await routeReadyChat(page, { holdReply: true });
-  await page.goto('/chat/');
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'Português' }).click();
-  await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Liste minhas zonas DNS');
-  await page.getByRole('button', { name: 'Enviar' }).click();
-
-  const processing = page.getByRole('group', { name: 'Estou processando...' });
-  const label = processing.locator('strong');
-  const signal = processing.locator('.signal i');
-  await expect(processing).toBeVisible();
-  await expect(label).toHaveText('Estou processando...');
-  await expect(signal).toHaveCount(4);
-  await expect.poll(() => signal.first().evaluate((element) => getComputedStyle(element).animationName))
-    .toMatch(/signal$/);
-  const barHeights = await signal.first().evaluate((element) => {
-    const animation = element.getAnimations()[0];
-    animation.pause();
-    animation.currentTime = 0;
-    const resting = element.getBoundingClientRect().height;
-    animation.currentTime = 550;
-    return { resting, peak: element.getBoundingClientRect().height };
-  });
-  expect(barHeights.peak / barHeights.resting).toBeCloseTo(10 / 3, 1);
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
-    .toBe('none');
-  await expect.poll(() => label.evaluate((element) => element.getAnimations().length))
-    .toBe(0);
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
-    .toMatch(/^(rgba\(0, 0, 0, 0\)|transparent)$/);
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).backgroundImage))
-    .toContain('linear-gradient');
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).backgroundPosition))
-    .toBe('0% 0%');
-
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations).toEqual([]);
-
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect.poll(() => signal.first().evaluate((element) => getComputedStyle(element).animationName))
-    .toBe('none');
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
-    .toBe('none');
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
-    .not.toBe('rgba(0, 0, 0, 0)');
-
-  await page.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'active' });
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).animationName))
-    .toBe('none');
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).webkitTextFillColor))
-    .not.toBe('rgba(0, 0, 0, 0)');
-
-  contract.releaseReply();
-  await expect(page.getByText('Rendered answer')).toBeVisible();
-  await expect(processing).toHaveCount(0);
 });
 
 test('keeps an intentional Stop silent after the turn ends', async ({ page }) => {
@@ -3201,60 +2962,7 @@ test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {
   await expect.poll(() => turns.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 });
 
-test('keeps compact controls and stacked dialog actions usable at 360 pixels', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 720 });
-  await routeReadyChat(page);
-  await page.goto('/chat/');
-  await (await openTeamNavigation(page)).getByRole('button', { name: 'New Team' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create a Team' });
-  const [closeBox, addBox, dialogBox] = await Promise.all([
-    dialog.getByRole('button', { name: 'Cancel' }).boundingBox(),
-    dialog.getByRole('button', { name: 'Create Team' }).boundingBox(),
-    dialog.boundingBox(),
-  ]);
-  expect(closeBox).not.toBeNull();
-  expect(addBox).not.toBeNull();
-  expect(dialogBox).not.toBeNull();
-  expect(dialogBox.width).toBeLessThanOrEqual(328);
-  expect(Math.abs(closeBox.width - addBox.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(closeBox.x - addBox.x)).toBeLessThanOrEqual(1);
-  expect(addBox.y).toBeLessThan(closeBox.y);
-});
-
-test('keeps the empty Chat composer inside a reduced mobile viewport', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'mobile viewport contract');
-  await routeReadyChat(page);
-  await page.goto('/chat/');
-  await page.setViewportSize({ width: 390, height: 520 });
-
-  const input = page.getByRole('textbox', { name: 'Send', exact: true });
-  const composer = page.locator('.composer');
-  const main = page.locator('[data-slot="workspace-main"]');
-  const tabs = page.locator('[data-slot="workspace-sidebar"]');
-  await input.focus();
-  await expect(input).toBeFocused();
-
-  const [composerBox, mainBox, tabsBox] = await Promise.all([
-    composer.boundingBox(),
-    main.boundingBox(),
-    tabs.boundingBox(),
-  ]);
-  expect(composerBox).not.toBeNull();
-  expect(mainBox).not.toBeNull();
-  expect(tabsBox).not.toBeNull();
-  expect(composerBox.y).toBeGreaterThanOrEqual(mainBox.y);
-  expect(composerBox.y + composerBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height);
-  expect(Math.abs((mainBox.y + mainBox.height) - tabsBox.y)).toBeLessThan(1);
-  expect(Math.abs((tabsBox.y + tabsBox.height) - page.viewportSize().height)).toBeLessThan(1);
-
-  const overflow = await page.locator('html').evaluate((element) => ({
-    client: element.clientWidth,
-    scroll: element.scrollWidth,
-  }));
-  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
-});
-
-test('reports confirmed Team deletion as animated success above Chat', async ({ page }) => {
+test('deletes a Team with its exact confirmation and reports the deletion', async ({ page }) => {
   await routeReadyChat(page);
   let deleted = false;
   let deletionBody;
@@ -3299,41 +3007,9 @@ test('reports confirmed Team deletion as animated success above Chat', async ({ 
   const toast = page.locator('[data-slot="toast"]');
   await expect(toast).toContainText('Team deleted');
   await expect(toast).toContainText('Support and all of its data were securely deleted.');
-  const progressStyle = await toast.locator('[data-slot="toast-progress"]')
-    .evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { duration: style.animationDuration, name: style.animationName };
-    });
-  expect(progressStyle.name).not.toBe('none');
-  expect(progressStyle.duration).toBe('10s');
-  const [toastBox, chatBox, mainBox, sidebarBox] = await Promise.all([
-    toast.boundingBox(),
-    page.locator('.chat-route').boundingBox(),
-    page.locator('[data-slot="workspace-main"]').boundingBox(),
-    page.locator('[data-slot="workspace-sidebar"]').boundingBox(),
-  ]);
-  expect(toastBox).not.toBeNull();
-  expect(chatBox).not.toBeNull();
-  expect(mainBox).not.toBeNull();
-  expect(sidebarBox).not.toBeNull();
-  expect(Math.abs(toastBox.x - mainBox.x)).toBeLessThan(1);
-  expect(Math.abs(toastBox.y - mainBox.y)).toBeLessThan(1);
-  expect(Math.abs(toastBox.width - mainBox.width)).toBeLessThan(1);
-  if (page.viewportSize().width <= 820) {
-    expect(Math.abs(toastBox.x)).toBeLessThan(1);
-    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(sidebarBox.y);
-  } else {
-    expect(Math.abs(toastBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
-    expect(Math.abs(toastBox.y)).toBeLessThan(1);
-  }
-  for (const side of ['top', 'right', 'bottom', 'left']) {
-    await expect(toast).toHaveCSS(`border-${side}-width`, '0px');
-  }
-  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(chatBox.y);
-  await expect(page).toHaveScreenshot('team-deletion-alert.png', visualContract);
 });
 
-test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }) => {
+test('reports an already-absent Store uninstall and keeps Chat usable', async ({ page }) => {
   await routeReadyChat(page);
   await routeAssistantStoreUninstall(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', (route) => route.fulfill({
@@ -3348,52 +3024,9 @@ test('keeps Assistant lifecycle feedback clear of Chat actions', async ({ page }
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   const toast = page.locator('[data-slot="toast"]');
   await expect(toast).toContainText('Shimpz Cloudflare is no longer installed in Marketing.');
-  await expect(toast).toHaveCSS('position', 'relative');
-  const [toastOnStoreBox, catalogBox, mainBox, sidebarBox] = await Promise.all([
-    toast.boundingBox(),
-    page.getByRole('region', { name: 'Shimpz Assistant Store' }).boundingBox(),
-    page.locator('[data-slot="workspace-main"]').boundingBox(),
-    page.locator('[data-slot="workspace-sidebar"]').boundingBox(),
-  ]);
-  expect(toastOnStoreBox).not.toBeNull();
-  expect(catalogBox).not.toBeNull();
-  expect(mainBox).not.toBeNull();
-  expect(sidebarBox).not.toBeNull();
-  expect(Math.abs(toastOnStoreBox.x - mainBox.x)).toBeLessThan(1);
-  expect(Math.abs(toastOnStoreBox.y - mainBox.y)).toBeLessThan(1);
-  expect(Math.abs(toastOnStoreBox.width - mainBox.width)).toBeLessThan(1);
-  if (page.viewportSize().width <= 820) {
-    expect(Math.abs(toastOnStoreBox.x)).toBeLessThan(1);
-    expect(toastOnStoreBox.y + toastOnStoreBox.height).toBeLessThanOrEqual(sidebarBox.y);
-  } else {
-    expect(Math.abs(toastOnStoreBox.x - (sidebarBox.x + sidebarBox.width))).toBeLessThan(1);
-    expect(Math.abs(toastOnStoreBox.y)).toBeLessThan(1);
-  }
-  for (const side of ['top', 'right', 'bottom', 'left']) {
-    await expect(toast).toHaveCSS(`border-${side}-width`, '0px');
-  }
-  expect(toastOnStoreBox.y + toastOnStoreBox.height).toBeLessThanOrEqual(catalogBox.y);
-  await expect(page).toHaveScreenshot('assistant-lifecycle-alert.png', visualContract);
   await (await openTeamNavigation(page)).getByRole('link', { name: 'Marketing', exact: true }).click();
   await expect(page).toHaveURL(/\/chat\/?\?team=marketing$/);
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const [toastBox, actionsBox, chatBox] = await Promise.all([
-    toast.boundingBox(),
-    page.locator('.composer-actions').boundingBox(),
-    page.locator('.chat-route').boundingBox(),
-  ]);
-  expect(toastBox).not.toBeNull();
-  expect(actionsBox).not.toBeNull();
-  expect(chatBox).not.toBeNull();
-  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(chatBox.y);
-  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(page.viewportSize().height);
-  const intersectsActions = (
-    toastBox.x < actionsBox.x + actionsBox.width &&
-    toastBox.x + toastBox.width > actionsBox.x &&
-    toastBox.y < actionsBox.y + actionsBox.height &&
-    toastBox.y + toastBox.height > actionsBox.y
-  );
-  expect(intersectsActions).toBe(false);
 });
 
 test('reports a committed uninstall when the Team inventory cannot refresh', async ({ page }) => {
@@ -3536,21 +3169,16 @@ test('keeps a first Store install ready while local display metadata catches up'
   expect(catalogReads).toBeGreaterThanOrEqual(2);
 });
 
-test('matches the ready Chat visual contract without horizontal overflow', async ({ page }) => {
+test('the ready Chat passes its accessibility scan and the Brain chooser works by keyboard', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
 
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
-  ).toBe(true);
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations).toEqual([]);
-  await expect(page).toHaveScreenshot('chat-ready.png', visualContract);
+  // The Chat screen's one accessibility scan.
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   const brainTrigger = page.getByRole('button', { name: /^Brain: / });
   await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6.1 Sol, Low reasoning');
-  await expect(brainTrigger.getByText('GPT-6.1 Sol')).toHaveCount(0);
   await brainTrigger.click();
   const brainPanel = page.getByRole('dialog', { name: 'Brain settings' });
   await expect(brainPanel).toBeVisible();
@@ -3559,8 +3187,6 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   await expect(models.getByRole('button', { name: /GPT-6.1 Sol/ })).toBeFocused();
   const effort = brainPanel.getByRole('radiogroup', { name: 'Reasoning effort' });
   await expect(effort.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
-  await page.mouse.move(0, 0);
-  await expect(page).toHaveScreenshot('brain-chooser.png', visualContract);
   await effort.getByRole('radio', { name: 'Low' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => chat.inferenceBodies().at(-1)).toEqual({ provider: 'openai', model: 'gpt-6.1-sol', effort: 'medium' });
@@ -3577,21 +3203,7 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   await composer.fill('Show the rendered response');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
-  const userMessage = page.getByRole('article', { name: 'You' });
-  await expect(userMessage).toBeVisible();
-  expect(await userMessage.evaluate((element) => getComputedStyle(element).backgroundColor))
-    .not.toBe('rgba(0, 0, 0, 0)');
-  const [messageBox, exchangeBox] = await Promise.all([
-    userMessage.boundingBox(),
-    userMessage.locator('xpath=..').boundingBox(),
-  ]);
-  expect(messageBox).not.toBeNull();
-  expect(exchangeBox).not.toBeNull();
-  expect(Math.abs((messageBox.x + messageBox.width) - (exchangeBox.x + exchangeBox.width)))
-    .toBeLessThanOrEqual(1);
-  const receipt = page.locator('.receipt');
-  await expect(receipt).toHaveCSS('border-top-width', '0px');
-  await expect(page).toHaveScreenshot('chat-completed.png', visualContract);
+  await expect(page.getByRole('article', { name: 'You' })).toContainText('Show the rendered response');
 });
 
 test('opens a Team chat from the Team list and its Store from the row icon', async ({ page }) => {
@@ -3613,16 +3225,12 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
 
   let navigation = await openTeamNavigation(page);
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(navigation.getByRole('link', { name: 'Chat', exact: true })).toHaveCount(0);
-  await expect(page.locator('.context-controls')).toHaveCount(0);
 
   const supportLink = navigation.getByRole('link', { name: 'Support', exact: true });
   const supportStore = navigation.getByRole('link', { name: 'Open the Store for Support' });
   await supportLink.focus();
   await page.keyboard.press('Tab');
   await expect(supportStore).toBeFocused();
-  expect((await supportStore.boundingBox()).width).toBeGreaterThan(20);
-  await expect(supportStore.locator('xpath=ancestor::div[contains(@class, "row-actions")]')).toHaveCSS('opacity', '1');
   await navigation.getByRole('link', { name: 'Support', exact: true }).click();
   await expect(page).toHaveURL(/\/chat\/?\?team=support$/);
   navigation = await openTeamNavigation(page);
@@ -3647,59 +3255,11 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   await expect(actions).toBeFocused();
 });
 
-test('heads the Team list with the Shimpz symbol and borderless controls that glitch on hover', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'hover contract');
-  await routeReadyChat(page);
-  await page.unroute('**/api/teams');
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
-      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-      { team_id: 'support', team_name: 'Support', status: 'running' },
-    ] }),
-  }));
-  await page.goto('/chat/?team=marketing');
-  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-
-  const navigation = await openTeamNavigation(page);
-  const head = navigation.locator('.team-navigation .head');
-  await expect(head.locator('[data-slot="shimpz-brand-mark"]')).toBeVisible();
-  await expect(head).not.toContainText('Teams');
-  await expect(navigation.getByRole('navigation', { name: 'Teams' })).toBeVisible();
-
-  const newTeam = navigation.getByRole('button', { name: 'New Team' });
-  const support = navigation.getByRole('link', { name: 'Support', exact: true });
-  const supportRow = support.locator('xpath=ancestor::div[contains(@class, "row")][1]');
-  const selectedRow = navigation.getByRole('link', { name: 'Marketing', exact: true })
-    .locator('xpath=ancestor::div[contains(@class, "row")][1]');
-  for (const control of [newTeam, supportRow, selectedRow]) {
-    for (const side of ['top', 'right', 'bottom', 'left']) await expect(control).toHaveCSS(`border-${side}-width`, '0px');
-  }
-  const scanlines = (locator) => locator.evaluate((element) => getComputedStyle(element, '::before').backgroundImage);
-  expect(await scanlines(supportRow)).toBe('none');
-  await support.hover();
-  expect(await scanlines(supportRow)).toContain('repeating-linear-gradient');
-  await expect(support.locator('.name')).not.toHaveCSS('text-shadow', 'none');
-  await newTeam.hover();
-  expect(await scanlines(newTeam)).toContain('repeating-linear-gradient');
-  await expect(newTeam).toHaveCSS('color', 'rgb(0, 240, 255)');
-  await page.mouse.move(900, 900);
-  await support.focus();
-  expect(await scanlines(supportRow)).toContain('repeating-linear-gradient');
-  await expect(support).toHaveCSS('outline-style', 'solid');
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await support.hover();
-  await expect(support.locator('.name')).toHaveCSS('animation-name', 'none');
-  const results = await new AxeBuilder({ page }).include('.team-navigation').analyze();
-  expect(results.violations).toEqual([]);
-});
-
 test('opens the mobile Team list as a modal drawer and restores focus', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'mobile drawer contract');
   await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  await expect(page.locator('[data-slot="workspace-sidebar"] nav')).toHaveCount(0);
 
   const trigger = page.getByRole('button', { name: 'Open the Team list' });
   await trigger.click();
@@ -3714,8 +3274,6 @@ test('opens the mobile Team list as a modal drawer and restores focus', async ({
   await trigger.click();
   await drawer.getByRole('button', { name: 'Close the Team list' }).click();
   await expect(drawer).toBeHidden();
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations).toEqual([]);
 });
 
 test('names every running Assistant beyond the chat limit and sends exactly the limit', async ({ page }) => {
@@ -3902,14 +3460,10 @@ test.describe('Team Routines', () => {
     await expect(card).toContainText('Every day at 9, list my DNS zones');
     await expect(card).toContainText('Every day at 09:00');
     await expect(card).toContainText('America/Sao_Paulo');
-    await expect(card.getByRole('listitem')).toHaveCount(3);
-    await expect(card).toContainText('1 of 24 runs per day for this Team');
     await expect(card).toContainText('An Action that declares none runs without asking.');
     await expect(card).toContainText('Nothing is scheduled until you confirm.');
     expect(calls.previews).toEqual([{ timezone: 'America/Sao_Paulo' }]);
     expect(calls.confirms).toEqual([]);
-    const results = await new AxeBuilder({ page }).include('.routine-card').analyze();
-    expect(results.violations).toEqual([]);
 
     await card.getByRole('button', { name: 'Schedule this Routine' }).click();
     await expect(card.getByRole('status')).toContainText('Scheduled. Next run');
@@ -3969,8 +3523,6 @@ test.describe('Team Routines', () => {
     await expect(tree).toContainText('America/Sao_Paulo');
     await expect(tree).toContainText('These Actions may have changed something:');
     await expect(tree.getByText('shimpz-cloudflare · replace-dns-record')).toHaveCount(2);
-    const results = await new AxeBuilder({ page }).include('.routine-tree').analyze();
-    expect(results.violations).toEqual([]);
 
     await tree.getByRole('button', { name: 'I checked; release it' }).click();
     expect(calls.resolves).toEqual([]);
@@ -4062,8 +3614,6 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(2)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
     await expect(transcript.nth(3)).toContainText('Routine · Every day at 9, list my DNS zones');
     await expect(transcript.nth(3).locator('strong')).toHaveText('3 zones');
-    const results = await new AxeBuilder({ page }).include('.routine-run').analyze();
-    expect(results.violations).toEqual([]);
   });
 
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {

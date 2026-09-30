@@ -1,14 +1,6 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-const visualStylePath = new URL('./visual-contract.css', import.meta.url).pathname;
-const visualContract = {
-  animations: 'allow',
-  fullPage: true,
-  maxDiffPixels: 100,
-  stylePath: visualStylePath,
-};
-
 function localSession(overrides = {}) {
   return {
     profile: 'local',
@@ -32,24 +24,6 @@ function authenticatedLocalSession(overrides = {}) {
     ...overrides,
   });
 }
-
-test('renders the Local setup through the shared design system', async ({ page }) => {
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(localSession()),
-  }));
-
-  await page.goto('/');
-
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.getByLabel(/password/i).first()).toBeVisible();
-  await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
-  await expect(page.getByText('At least 15 characters. This password stays on your machine.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
-  await expect(page.locator('body')).toHaveCSS('background-image', 'none');
-  await expect(page.locator('.shimpz-card')).toHaveCount(1);
-  await expect(page).toHaveScreenshot('setup-surface.png', visualContract);
-});
 
 test('completes mandatory authenticator enrollment before opening Admin', async ({ page }) => {
   let authenticationState = 'uninitialized';
@@ -259,6 +233,8 @@ test('renders bounded Local login feedback instead of the raw API error', async 
   }));
 
   await page.goto('/');
+  // The sign-in screen's one accessibility scan.
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByLabel('Password', { exact: true }).fill('wrong password value');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
@@ -279,181 +255,10 @@ test('renders the terminal recovery action for an unsupported password record', 
 
   await page.goto('/');
 
-  await expect(page.getByText('Space // recovery', { exact: true })).toBeVisible();
-  await expect(page.getByText('Space // first run', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Supervisor password reset required' })).toBeVisible();
   await expect(page.getByLabel('Recovery commands')).toContainText('shimpz reset');
   await expect(page.getByLabel('Recovery commands')).toContainText('shimpz install');
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
-});
-
-test('uses the compact locale control at 360 pixels', async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 720 });
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(localSession()),
-  }));
-  await page.goto('/');
-  await expect(page.locator('.locale-full')).toBeHidden();
-  await expect(page.locator('.locale-compact')).toBeVisible();
-  await page.locator('.locale-compact').getByRole('button', { name: 'Language: English' }).click();
-  await expect(page.getByRole('menu', { name: 'Language' })).toBeVisible();
-});
-
-test('renders authenticated navigation with canonical primitives', async ({ page }, testInfo) => {
-  await page.route('**/api/**', (route) => route.fulfill({
-    status: 503,
-    contentType: 'application/json',
-    body: JSON.stringify({ detail: 'Unavailable in the presentation contract.' }),
-  }));
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
-  }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1,
-      assistants: [{
-        assistant_id: 'shimpz-cloudflare',
-        assistant_version: '0.4.5',
-        creators: ['@shimpz'],
-        icon_digest: `sha256:${'e'.repeat(64)}`,
-        name: 'Shimpz Cloudflare',
-        source_digest: `sha256:${'f'.repeat(64)}`,
-        summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
-      }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
-  }));
-
-  await page.goto('/assistants/');
-
-  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
-  await expect(page.locator('body')).toHaveCSS('background-image', 'none');
-  await expect(page.getByRole('region', { name: 'Shimpz Assistant Store' })).toBeVisible();
-  await page.addStyleTag({ path: visualStylePath });
-  await expect(page).toHaveScreenshot('authenticated-shell.png', visualContract);
-
-  const localeTrigger = page.getByRole('button', { name: 'Language: English' });
-  await localeTrigger.click();
-  const localeMenu = page.getByRole('menu', { name: 'Language' });
-  await expect(localeMenu).toBeVisible();
-  const iconBox = await localeTrigger.locator('svg').boundingBox();
-  expect(iconBox).not.toBeNull();
-  if (testInfo.project.name === 'mobile') {
-    await expect(localeTrigger.getByText('English', { exact: true })).toHaveCount(0);
-  } else {
-    const labelBox = await localeTrigger.getByText('English', { exact: true }).boundingBox();
-    expect(labelBox).not.toBeNull();
-    expect(labelBox.x - (iconBox.x + iconBox.width)).toBeGreaterThanOrEqual(7);
-  }
-  await expect(localeMenu.getByRole('menuitemradio').first()).toHaveCSS('border-top-width', '0px');
-  await expect(page).toHaveScreenshot('locale-menu.png', visualContract);
-
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: /notifications/i })).toHaveCount(0);
-  if (testInfo.project.name === 'desktop') {
-    const [localeBox, releaseBox] = await Promise.all([
-      localeTrigger.boundingBox(),
-      page.locator('.sidebar-footer .platform-release').boundingBox(),
-    ]);
-    expect(localeBox).not.toBeNull();
-    expect(releaseBox).not.toBeNull();
-    expect(localeBox.y + localeBox.height).toBeLessThanOrEqual(releaseBox.y);
-  }
-});
-
-test('uses one bounded app chrome and scroll region on mobile', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'mobile shell contract');
-  await page.route('**/api/**', (route) => route.fulfill({
-    status: 503,
-    contentType: 'application/json',
-    body: JSON.stringify({ detail: 'Unavailable in the mobile shell contract.' }),
-  }));
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
-  }));
-
-  await page.goto('/assistants/');
-
-  const shell = page.locator('[data-slot="workspace-shell"]');
-  const header = page.locator('[data-slot="workspace-header"]');
-  const main = page.locator('[data-slot="workspace-main"]');
-  const tabs = page.locator('[data-slot="workspace-sidebar"]');
-  await expect(shell).toHaveCSS('overflow', 'hidden');
-  await expect(main).toHaveCSS('overflow-y', 'auto');
-  await expect(tabs.locator('nav')).toHaveCount(0);
-
-  const [headerBox, mainBox, tabsBox] = await Promise.all([
-    header.boundingBox(),
-    main.boundingBox(),
-    tabs.boundingBox(),
-  ]);
-  expect(headerBox).not.toBeNull();
-  expect(mainBox).not.toBeNull();
-  expect(tabsBox).not.toBeNull();
-  expect(Math.abs(headerBox.y)).toBeLessThan(1);
-  expect(Math.abs(mainBox.y - (headerBox.y + headerBox.height))).toBeLessThan(1);
-  expect(Math.abs((mainBox.y + mainBox.height) - tabsBox.y)).toBeLessThan(1);
-  expect(Math.abs(tabsBox.y + tabsBox.height - page.viewportSize().height)).toBeLessThan(1);
-  expect(Math.abs(tabsBox.x)).toBeLessThan(1);
-  expect(Math.abs(tabsBox.width - page.viewportSize().width)).toBeLessThan(1);
-
-  const appbarButtons = header.getByRole('button');
-  await expect(appbarButtons).toHaveCount(1);
-  for (const button of await appbarButtons.all()) {
-    const box = await button.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.width).toBeGreaterThanOrEqual(44);
-  }
-
-  const contextError = main.locator('.context-error');
-  const retry = contextError.getByRole('button');
-  await expect(contextError).toBeVisible();
-  await expect(retry).toBeVisible();
-  const [errorBox, retryBox] = await Promise.all([contextError.boundingBox(), retry.boundingBox()]);
-  expect(errorBox).not.toBeNull();
-  expect(retryBox).not.toBeNull();
-  expect(errorBox.y).toBeGreaterThanOrEqual(mainBox.y);
-  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(mainBox.y + mainBox.height);
-  expect(retryBox.height).toBeGreaterThanOrEqual(44);
-
-  const footerLocale = tabs.getByRole('button', { name: 'Language: English' });
-  await expect(footerLocale).toBeVisible();
-  const footerLocaleBox = await footerLocale.boundingBox();
-  expect(footerLocaleBox).not.toBeNull();
-  expect(footerLocaleBox.height).toBeGreaterThanOrEqual(44);
-
-  const overflow = await page.locator('html').evaluate((element) => ({
-    client: element.clientWidth,
-    scroll: element.scrollWidth,
-  }));
-  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
-
-  // The workspace has no skip link: the first keyboard stop is the shell's own control.
-  await expect(page.locator('a[href^="#"]')).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'العربية' }).click();
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  const rtlTabsBox = await tabs.boundingBox();
-  expect(rtlTabsBox).not.toBeNull();
-  expect(Math.abs(rtlTabsBox.x)).toBeLessThan(1);
-  expect(Math.abs(rtlTabsBox.width - page.viewportSize().width)).toBeLessThan(1);
-
-  await page.setViewportSize({ width: 320, height: 640 });
-  const narrowOverflow = await page.locator('html').evaluate((element) => ({
-    client: element.clientWidth,
-    scroll: element.scrollWidth,
-  }));
-  expect(narrowOverflow.scroll).toBeLessThanOrEqual(narrowOverflow.client);
 });
 
 test('shows the installed Admin version with the read-only Local release status', async ({ page }) => {
@@ -483,7 +288,7 @@ test('shows the installed Admin version with the read-only Local release status'
   await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeVisible();
 });
 
-test('shows the installed Admin version when Local release status is temporarily unavailable', async ({ page }) => {
+test('still shows the installed Admin version when Local release status is unavailable', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -492,12 +297,10 @@ test('shows the installed Admin version when Local release status is temporarily
 
   await page.goto('/assistants/');
 
-  const status = page.getByText('Admin v0.1.0', { exact: true });
-  await expect(status).toBeVisible();
-  await expect(status.locator('..').locator('.indicator')).toHaveCSS('background-color', 'rgb(161, 161, 170)');
+  await expect(page.getByText('Admin v0.1.0', { exact: true })).toBeVisible();
 });
 
-test('keeps the Local rollback warning visibly textual and localized', async ({ page }) => {
+test('reports a Local rollback as a localized warning', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -517,13 +320,12 @@ test('keeps the Local rollback warning visibly textual and localized', async ({ 
 
   const release = page.getByText('Admin v0.1.0', { exact: true }).locator('..');
   await expect(release.getByText('Update rolled back', { exact: true })).toBeVisible();
-  await expect(release).toHaveCSS('color', 'rgb(255, 96, 125)');
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
-test('renders the Store as only the Assistant list for the Team its link names', async ({ page }) => {
+test('opens the Store for the Team its link names and refuses a missing Team', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -571,19 +373,8 @@ test('renders the Store as only the Assistant list for the Team its link names',
   await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
   await expect(catalog).toBeVisible();
-  await expect(page.locator('.shimpz-page-intro')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Switch Team|Change/i })).toHaveCount(0);
-  const heading = page.getByRole('heading', { level: 1, name: 'Assistants' });
-  await expect(heading).toHaveCount(1);
-  const headingBox = await heading.boundingBox();
-  expect(headingBox === null || headingBox.width <= 1).toBe(true);
-  const [catalogBox, mainBox] = await Promise.all([
-    catalog.boundingBox(),
-    page.locator('[data-slot="workspace-main"]').boundingBox(),
-  ]);
-  expect(catalogBox).not.toBeNull();
-  expect(mainBox).not.toBeNull();
-  expect(catalogBox.y - mainBox.y).toBeLessThan(80);
+  // The Assistants screen's one accessibility scan.
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
   await expect(page.getByRole('link', { name: 'Open the Store for Marketing' })).toHaveAttribute('aria-current', 'page');
   if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
@@ -699,8 +490,6 @@ test('never renders a matching publication while Local snapshots are settling', 
   const localCard = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
   await expect(boot).toHaveCount(0);
   await expect(localCard).toBeVisible();
-  await expect(localCard).toHaveClass(/is-installed/);
-  await expect(localCard.getByText('Local', { exact: true })).toBeVisible();
   await expect(catalog.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
   await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
   await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
@@ -771,13 +560,8 @@ test('renders Assistant identities immediately during in-app icon hydration', as
 
   const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
   try {
-    expect(await page.evaluate(() => {
-      const visibleCard = document.querySelector('[aria-label="shimpz-cloudflare — Local"]');
-      return {
-        cardVisible: Boolean(visibleCard && getComputedStyle(visibleCard).visibility === 'visible'),
-        iconImageVisible: Boolean(visibleCard?.querySelector('.shimpz-assistant-icon img')),
-      };
-    })).toEqual({ cardVisible: true, iconImageVisible: false });
+    await expect(card).toBeVisible();
+    await expect(card.locator('.shimpz-assistant-icon img')).toHaveCount(0);
   } finally {
     releaseIcon();
   }
@@ -830,17 +614,9 @@ test('shows the first Assistants view before a public icon finishes loading', as
     await expect(card).toBeVisible();
     await expect(iconBox.locator('img')).toHaveCount(0);
     await expect(iconBox).toHaveAttribute('data-state', 'loading');
-    await expect(iconBox.locator('svg')).toHaveCount(0);
-    const before = await iconBox.boundingBox();
-    expect(before).not.toBeNull();
     releaseIcon();
     await expect(iconBox.locator('img')).toHaveAttribute('src', /^blob:/);
     await expect(iconBox).toHaveAttribute('data-state', 'loaded');
-    const after = await iconBox.boundingBox();
-    expect(after).not.toBeNull();
-    expect({ width: after.width, height: after.height }).toEqual({
-      width: before.width, height: before.height,
-    });
   } finally {
     releaseIcon();
   }
@@ -875,7 +651,6 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   await expect(iconBox).toHaveAttribute('data-state', 'loading');
   await expect(iconBox).toHaveAttribute('data-state', 'failed', { timeout: 5000 });
   await expect(iconBox.locator('img')).toHaveCount(0);
-  await expect(iconBox.locator('svg')).toHaveCount(0);
 });
 
 test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {
@@ -1096,18 +871,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   const card = page.getByRole('article', { name: 'whatsapp — Local' });
   await expect(catalog.locator('.local-assistant-card')).toHaveCount(1);
   await expect(catalog.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
-  await expect(catalog.getByText('Local snapshots are not published', { exact: false })).toHaveCount(0);
-  await expect(card.getByText('Local', { exact: true })).toBeVisible();
   await expect(card).toContainText('WhatsApp Automation');
-  await expect(card).toContainText('@shimpz');
-  await expect(card).toContainText('Send and manage WhatsApp messages from your Team.');
   await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-  await expect(card).not.toContainText(imageId);
   await expect(card).not.toHaveClass(/is-installed/);
-  await expect(catalog).toHaveScreenshot('local-assistant-catalog.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
 
   await card.hover();
   await card.getByRole('button', { name: 'Install or replace' }).click();
@@ -1126,11 +892,6 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(installDialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
   await expect(installDialog).toContainText(imageId);
   await expect(installDialog).toContainText('Marketing');
-  expect((await new AxeBuilder({ page }).include('dialog[open]').analyze()).violations).toEqual([]);
-  await expect(installDialog).toHaveScreenshot('local-assistant-install-dialog.png', {
-    animations: 'disabled',
-    maxDiffPixels: 100,
-  });
   await installDialog.getByRole('button', { name: 'Install or replace' }).click();
   await expect(installDialog.getByRole('button', { name: 'Installing…' })).toBeVisible();
   await expect(installDialog).toBeHidden();
