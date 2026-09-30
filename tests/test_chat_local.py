@@ -497,7 +497,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(
                     team,
                     "get_inference",
-                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-sol"}),
+                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
                 ),
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
                 mock.patch.object(team, "chat", return_value=controller),
@@ -596,8 +596,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         invalid = (
             {"provider": "openai", "model": "gpt-5.7"},
             {"provider": "openai", "model": "claude-sonnet-5-5"},
-            {"provider": "anthropic", "model": "gpt-6-sol"},
-            {"provider": "OpenAI", "model": "gpt-6-sol"},
+            {"provider": "anthropic", "model": "gpt-6.1-sol"},
+            {"provider": "OpenAI", "model": "gpt-6.1-sol"},
         )
         for body in invalid:
             with (

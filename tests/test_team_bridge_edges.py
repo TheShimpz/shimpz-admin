@@ -23,7 +23,7 @@ def _inference() -> bridge.TeamResponse:
         {
             "team_id": "team_1",
             "provider": "openai",
-            "model": "gpt-6-sol",
+            "model": "gpt-6.1-sol",
             "trace_id": "a" * 32,
         },
     )

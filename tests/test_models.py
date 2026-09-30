@@ -49,8 +49,8 @@ class ModelProviderTests(unittest.TestCase):
                         "default_model": "gpt-6-luna",
                         "models": [
                             {
-                                "id": "gpt-6-sol",
-                                "title": "GPT-6 Sol",
+                                "id": "gpt-6.1-sol",
+                                "title": "GPT-6.1 Sol",
                                 "input_usd_per_million_cents": 200,
                                 "output_usd_per_million_cents": 1_000,
                             },
@@ -89,7 +89,7 @@ class ModelProviderTests(unittest.TestCase):
             },
         )
         status["providers"][0]["models"][0]["id"] = "mutated"
-        self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-6-sol")
+        self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-6.1-sol")
 
     def test_provider_removal_preserves_other_keys(self) -> None:
         with mock.patch.object(models, "_validate_api_key"):
@@ -230,7 +230,7 @@ class ModelProviderTests(unittest.TestCase):
     def test_model_must_belong_to_its_provider(self) -> None:
         for provider, model in (
             ("openai", "claude-sonnet-5-5"),
-            ("anthropic", "gpt-6-sol"),
+            ("anthropic", "gpt-6.1-sol"),
             ("openai", "gpt-5.7"),
         ):
             with self.subTest(provider=provider, model=model), self.assertRaises(models.ModelProviderError):

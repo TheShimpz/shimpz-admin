@@ -439,7 +439,7 @@ async function routeReadyChat(page, {
     }
     return route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6-sol', effort: 'low' }),
+      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }),
     });
   });
   await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
@@ -1141,7 +1141,7 @@ test('discards an unsent provider key and never sends on the unsaved model', asy
   await chooseBrainModel(page, 'Claude Opus 5.5');
   await page.getByLabel('API key').fill('sk-ant-unsent-secret-1234567890');
   await expect(page.getByRole('button', { name: 'Send' })).toHaveCount(0);
-  await chooseBrainModel(page, 'GPT-6 Sol');
+  await chooseBrainModel(page, 'GPT-6.1 Sol');
   await expect(composer).toHaveValue('Keep this message');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
 
@@ -1149,7 +1149,7 @@ test('discards an unsent provider key and never sends on the unsaved model', asy
   await expect(page.getByLabel('API key')).toBeFocused();
   await expect(page.getByLabel('API key')).toHaveValue('');
   expect(chat.credentialBodies()).toEqual([]);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'low' }]);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }]);
   expect(chat.chatFrames()).toHaveLength(0);
 });
 
@@ -2322,7 +2322,7 @@ test('never falls back to the Store icon when model context leaves an uninstall 
     '/api/teams/marketing/assistants/shimpz-cloudflare/icon',
   );
 
-  await page.getByRole('button', { name: 'Brain: GPT-6 Sol, Low reasoning' }).click();
+  await page.getByRole('button', { name: 'Brain: GPT-6.1 Sol, Low reasoning' }).click();
   await page.getByRole('dialog', { name: 'Brain settings' }).getByRole('button', { name: /GPT-6 Luna/ }).click();
   await expect.poll(chat.inferenceWrites).toBe(1);
   await expect.poll(
@@ -3546,26 +3546,26 @@ test('matches the ready Chat visual contract without horizontal overflow', async
   await expect(page).toHaveScreenshot('chat-ready.png', visualContract);
 
   const brainTrigger = page.getByRole('button', { name: /^Brain: / });
-  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6 Sol, Low reasoning');
-  await expect(brainTrigger.getByText('GPT-6 Sol')).toHaveCount(0);
+  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6.1 Sol, Low reasoning');
+  await expect(brainTrigger.getByText('GPT-6.1 Sol')).toHaveCount(0);
   await brainTrigger.click();
   const brainPanel = page.getByRole('dialog', { name: 'Brain settings' });
   await expect(brainPanel).toBeVisible();
   const models = brainPanel.getByRole('group', { name: 'Model' });
-  await expect(models.getByRole('button', { name: /GPT-6 Sol/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(models.getByRole('button', { name: /GPT-6 Sol/ })).toBeFocused();
+  await expect(models.getByRole('button', { name: /GPT-6.1 Sol/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(models.getByRole('button', { name: /GPT-6.1 Sol/ })).toBeFocused();
   const effort = brainPanel.getByRole('radiogroup', { name: 'Reasoning effort' });
   await expect(effort.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
   await page.mouse.move(0, 0);
   await expect(page).toHaveScreenshot('brain-chooser.png', visualContract);
   await effort.getByRole('radio', { name: 'Low' }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect.poll(() => chat.inferenceBodies().at(-1)).toEqual({ provider: 'openai', model: 'gpt-6-sol', effort: 'medium' });
+  await expect.poll(() => chat.inferenceBodies().at(-1)).toEqual({ provider: 'openai', model: 'gpt-6.1-sol', effort: 'medium' });
   await expect(effort.getByRole('radio', { name: 'Medium' })).toHaveAttribute('aria-checked', 'true');
   await expect(effort.getByRole('radio', { name: 'Medium' })).toBeFocused();
   await page.keyboard.press('End');
   await expect.poll(() => chat.inferenceBodies().at(-1)?.effort).toBe('high');
-  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6 Sol, High reasoning');
+  await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6.1 Sol, High reasoning');
   await page.keyboard.press('Escape');
   await expect(brainPanel).toBeHidden();
   await expect(brainTrigger).toBeFocused();
@@ -3795,7 +3795,7 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
   await expect(composer).toBeFocused();
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'high' }]);
+  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'high' }]);
 });
 
 

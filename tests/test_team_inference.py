@@ -181,10 +181,10 @@ class TeamInferenceTests(unittest.TestCase):
             {"provider": "codex", "model": "gpt-6-luna", "effort": "low"},
             {"provider": "claude-code", "model": "claude-sonnet-5-5", "effort": "low"},
             {"provider": "anthropic", "model": "bad model", "effort": "low"},
-            {"provider": "anthropic", "model": "gpt-6-sol", "effort": "low"},
+            {"provider": "anthropic", "model": "gpt-6.1-sol", "effort": "low"},
             {"provider": "openai", "model": "claude-sonnet-5-5", "effort": "low"},
             {"provider": "openai", "model": "gpt-5.7", "effort": "low"},
-            {"provider": "OpenAI", "model": "gpt-6-sol", "effort": "low"},
+            {"provider": "OpenAI", "model": "gpt-6.1-sol", "effort": "low"},
         )
         with mock.patch.object(team, "_call") as call:
             for payload in payloads:
