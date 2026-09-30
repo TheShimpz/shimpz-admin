@@ -13,6 +13,8 @@ import progress
 import supervisor
 import websocket
 
+import routine
+
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "contract-files.sha256"
 ROW = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9._-]+)")
@@ -54,6 +56,22 @@ for case in supervisor_vectors.get("invalid", []):
     except supervisor.SupervisorAssertionError:
         continue
     fail("Team HTTP Local Supervisor negative vector differs")
+routine_vectors = vectors.get("local_routine", {})
+if not routine_vectors.get("valid") or not routine_vectors.get("invalid"):
+    fail("Team HTTP Local Routine vectors are missing")
+for case in routine_vectors["valid"]:
+    try:
+        admitted = supervisor.canonical_claims(case, audience=supervisor.ROUTINE_AUDIENCE)
+    except supervisor.SupervisorAssertionError:
+        admitted = None
+    if admitted != case:
+        fail("Team HTTP Local Routine positive vector differs")
+for case in routine_vectors["invalid"]:
+    try:
+        supervisor.canonical_claims(case, audience=supervisor.ROUTINE_AUDIENCE)
+    except supervisor.SupervisorAssertionError:
+        continue
+    fail("Team HTTP Local Routine negative vector differs")
 for case in vectors.get("frames", []):
     message = dict(case["message"])
     if "bytes_hex" in message:
@@ -188,5 +206,49 @@ if any(payload.canonical_action_label(value) != value for value in action_label_
     fail("Team HTTP Action-label label positive vector differs")
 if any(payload.canonical_action_label(value) is not None for value in action_label_text.get("invalid_labels", [])):
     fail("Team HTTP Action-label label negative vector differs")
+
+schedules = vectors.get("routine_schedule", {})
+if not schedules.get("valid") or not schedules.get("invalid") or not schedules.get("daily_rate"):
+    fail("routine schedule vectors are missing")
+if any(routine.canonical_schedule(value) != value for value in schedules["valid"]):
+    fail("a valid routine schedule vector was not admitted exactly")
+if any(routine.canonical_schedule(value) is not None for value in schedules["invalid"]):
+    fail("an invalid routine schedule vector was admitted")
+if any(str(routine.daily_rate(case["schedule"])) != case["rate"] for case in schedules["daily_rate"]):
+    fail("a routine daily rate vector differs")
+timezones = vectors.get("routine_timezone", {})
+if not timezones.get("valid") or not timezones.get("invalid"):
+    fail("routine timezone vectors are missing")
+if any(routine.canonical_timezone(value) != value for value in timezones["valid"]):
+    fail("a valid routine timezone vector was not admitted exactly")
+if any(routine.canonical_timezone(value) is not None for value in timezones["invalid"]):
+    fail("an invalid routine timezone vector was admitted")
+
+changes = vectors.get("routine_change", {})
+if not changes.get("valid") or not changes.get("invalid"):
+    fail("routine change vectors are missing")
+if any(routine.canonical_routine_change(value) != value for value in changes["valid"]):
+    fail("a valid routine change vector was not admitted exactly")
+if any(routine.canonical_routine_change(value) is not None for value in changes["invalid"]):
+    fail("an invalid routine change vector was admitted")
+
+views = vectors.get("routine_views", {})
+admit_view = {
+    "proposal": routine.canonical_proposal,
+    "preview": routine.canonical_preview,
+    "routine": routine.canonical_routine_view,
+    "run": routine.canonical_run_view,
+    "notice_batch": routine.canonical_notice_batch,
+    "claim": routine.canonical_claim,
+}
+if set(views) != set(admit_view) or any(
+    not views[kind].get("valid") or not views[kind].get("invalid") for kind in views
+):
+    fail("routine view vectors are missing")
+for kind, admit in admit_view.items():
+    if any(admit(value) != value for value in views[kind]["valid"]):
+        fail(f"a valid routine {kind} vector was not admitted exactly")
+    if any(admit(value) is not None for value in views[kind]["invalid"]):
+        fail(f"an invalid routine {kind} vector was admitted")
 
 print("Team HTTP protocol integrity and golden vectors are valid")
