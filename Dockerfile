@@ -68,6 +68,7 @@ COPY backend/history/context.py backend/history/delivery.py backend/history/http
     ./history/
 COPY backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
+COPY backend/routine/http.py backend/routine/manage.py ./routine/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py \
     backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py backend/protocol/http/v1/routine.py \

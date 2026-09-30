@@ -1,6 +1,8 @@
 // Team Routines (ADR-0086) as the browser admits them. Each parser mirrors Team's closed protocol view and throws on
 // any other shape; nothing here schedules or authorizes: a Routine exists only after a Supervisor confirms it.
 
+import { jsonObject, TEAM_ID_RE } from './validate.js';
+
 export const MAX_QUOTE_CHARS = 500;
 export const MAX_ASSISTANTS = 16;
 export const PROPOSAL_SECONDS = 900;
@@ -104,3 +106,298 @@ export function parseRoutineProposal(value) {
     expires_in: value.expires_in,
   };
 }
+
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+const RATE_RE = /^(?:0|[1-9][0-9]*)(?:\/[1-9][0-9]*)?$/;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+export const MAX_ROUTINES = 8;
+export const MAX_DAILY_RUNS = 24;
+
+/** A failed Routine request, named by the safe code Admin forwards. */
+export class RoutineError extends Error {
+  constructor(code, status = 0) {
+    super(code);
+    this.name = 'RoutineError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function isInstant(value) {
+  // Date.parse rolls impossible dates such as February 30 forward, so the instant must round-trip exactly.
+  if (typeof value !== 'string' || !INSTANT_RE.test(value)) return false;
+  const time = Date.parse(value);
+  return !Number.isNaN(time) && new Date(time).toISOString().replace('.000Z', 'Z') === value;
+}
+
+function view(value, keys, valid) {
+  if (!exact(value, keys) || !valid(value)) throw new RoutineError('routine-response-invalid');
+  return structuredClone(value);
+}
+
+/** Whether a live preview shows exactly the proposal a card saved; only then may the card confirm it. */
+export function previewMatches(proposal, preview) {
+  return (
+    preview.proposal_id === proposal.proposal_id &&
+    preview.op === proposal.op &&
+    preview.quote === proposal.quote &&
+    JSON.stringify(preview.schedule) === JSON.stringify(proposal.schedule) &&
+    preview.routine_id === proposal.routine_id &&
+    JSON.stringify(preview.assistant_ids) === JSON.stringify(proposal.assistant_ids) &&
+    (proposal.timezone === null || preview.timezone === proposal.timezone)
+  );
+}
+
+/** A proposal with its card's live facts: the timezone, the next runs, and the Team's daily run budget. */
+export function parseRoutinePreview(value) {
+  const facts = ['timezone', 'next_runs', 'daily_runs', 'max_daily_runs', 'fits'];
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !facts.every((key) => Object.hasOwn(value, key))) {
+    throw new RoutineError('routine-response-invalid');
+  }
+  const proposal = { ...value };
+  for (const key of facts) delete proposal[key];
+  let parsed;
+  try {
+    // The proposal's own keys are exact, so the preview holds exactly those and its facts.
+    parsed = parseRoutineProposal({ ...proposal, timezone: value.op === 'propose' ? null : value.timezone });
+  } catch {
+    throw new RoutineError('routine-response-invalid');
+  }
+  const runs = value.next_runs;
+  const valid = parsed.op === 'cancel'
+    ? value.timezone === null && Array.isArray(runs) && runs.length === 0 && value.daily_runs === null
+      && value.max_daily_runs === null && value.fits === true
+    : isTimezone(value.timezone) &&
+      Array.isArray(runs) &&
+      runs.length > 0 &&
+      runs.length <= 3 &&
+      runs.every(isInstant) &&
+      runs.every((item, index) => index === 0 || runs[index - 1] < item) &&
+      typeof value.daily_runs === 'string' &&
+      RATE_RE.test(value.daily_runs) &&
+      value.max_daily_runs === MAX_DAILY_RUNS &&
+      typeof value.fits === 'boolean';
+  if (!valid) throw new RoutineError('routine-response-invalid');
+  return {
+    ...parsed,
+    timezone: value.timezone,
+    next_runs: [...runs],
+    daily_runs: value.daily_runs,
+    max_daily_runs: value.max_daily_runs,
+    fits: value.fits,
+  };
+}
+
+/** One confirmed Routine as a Supervisor sees it. */
+export function parseRoutineView(value) {
+  const keys = ['routine_id', 'quote', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm', 'deleting'];
+  return view(value, keys, (item) =>
+    typeof item.routine_id === 'string' &&
+    ID_RE.test(item.routine_id) &&
+    isQuote(item.quote) &&
+    isSchedule(item.schedule) &&
+    isTimezone(item.timezone) &&
+    isAssistants(item.assistant_ids, 1) &&
+    isInstant(item.next_run_at) &&
+    typeof item.needs_reconfirm === 'boolean' &&
+    typeof item.deleting === 'boolean');
+}
+
+function isActions(value) {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_ASSISTANTS &&
+    value.every((pair) =>
+      Array.isArray(pair) &&
+      pair.length === 2 &&
+      typeof pair[0] === 'string' &&
+      ASSISTANT_ID_RE.test(pair[0]) &&
+      typeof pair[1] === 'string' &&
+      ACTION_ID_RE.test(pair[1]))
+  );
+}
+
+/** One live run: a frozen run names its request; an uncertain one its batch and the Actions it may have run. */
+export function parseRunView(value) {
+  const keys = [
+    'run_id', 'routine_id', 'status', 'scheduled_at', 'request_kind', 'assistant_id', 'action', 'batch_fingerprint', 'actions',
+  ];
+  return view(value, keys, (item) => {
+    const request = [item.request_kind, item.assistant_id, item.action];
+    const frozen =
+      ['human', 'integrations'].includes(item.request_kind) &&
+      typeof item.assistant_id === 'string' &&
+      ASSISTANT_ID_RE.test(item.assistant_id) &&
+      typeof item.action === 'string' &&
+      ACTION_ID_RE.test(item.action);
+    return (
+      typeof item.run_id === 'string' &&
+      ID_RE.test(item.run_id) &&
+      typeof item.routine_id === 'string' &&
+      ID_RE.test(item.routine_id) &&
+      isInstant(item.scheduled_at) &&
+      ['leased', 'frozen', 'uncertain'].includes(item.status) &&
+      (item.status === 'frozen' ? frozen : request.every((part) => part === null)) &&
+      (item.status === 'uncertain'
+        ? typeof item.batch_fingerprint === 'string' && HEX64_RE.test(item.batch_fingerprint)
+        : item.batch_fingerprint === null) &&
+      isActions(item.actions) &&
+      (item.status === 'uncertain' || item.actions.length === 0)
+    );
+  });
+}
+
+async function request(fetcher, path, init = {}) {
+  if (typeof fetcher !== 'function') throw new RoutineError('routine-request-invalid');
+  const response = await fetcher(path, {
+    cache: 'no-store',
+    ...init,
+    headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
+    throw new RoutineError(code, response.status);
+  }
+  return body;
+}
+
+function teamPath(teamId, suffix = '') {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) throw new RoutineError('routine-request-invalid');
+  return `/api/teams/${encodeURIComponent(teamId)}/routines${suffix}`;
+}
+
+function opaque(value) {
+  if (typeof value !== 'string' || !ID_RE.test(value)) throw new RoutineError('routine-request-invalid');
+  return value;
+}
+
+/** The browser's IANA timezone, used only when the user named none in the request. */
+export function browserTimezone() {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isTimezone(zone) ? zone : 'UTC';
+}
+
+export async function previewRoutine(fetcher, teamId, proposalId, timezone) {
+  const body = await request(fetcher, teamPath(teamId, `/proposals/${opaque(proposalId)}/preview`), {
+    method: 'POST',
+    body: JSON.stringify({ timezone }),
+  });
+  const preview = parseRoutinePreview(body);
+  // The card confirms exactly the proposal it previewed.
+  if (preview.proposal_id !== proposalId) throw new RoutineError('routine-response-invalid');
+  return preview;
+}
+
+/** Confirm a card: a proposal creates its Routine; a cancel card deletes one. */
+export async function confirmRoutine(fetcher, teamId, proposalId, timezone) {
+  const body = await request(fetcher, teamPath(teamId), {
+    method: 'POST',
+    body: JSON.stringify({ proposal_id: opaque(proposalId), timezone }),
+  });
+  if (exact(body, ['team_id', 'routine']) && body.team_id === teamId) {
+    return { routine: parseRoutineView(body.routine) };
+  }
+  return deleted(body, teamId);
+}
+
+function deleted(body, teamId, routineId = null) {
+  if (
+    !exact(body, ['team_id', 'routine_id', 'deleted']) ||
+    body.team_id !== teamId ||
+    typeof body.deleted !== 'boolean' ||
+    typeof body.routine_id !== 'string' ||
+    !ID_RE.test(body.routine_id) ||
+    (routineId !== null && body.routine_id !== routineId)
+  ) {
+    throw new RoutineError('routine-response-invalid');
+  }
+  return { deleted: body.deleted };
+}
+
+export async function listRoutines(fetcher, teamId) {
+  const body = await request(fetcher, teamPath(teamId));
+  if (
+    !exact(body, ['team_id', 'routines', 'runs']) ||
+    body.team_id !== teamId ||
+    !Array.isArray(body.routines) ||
+    !Array.isArray(body.runs) ||
+    body.routines.length > MAX_ROUTINES ||
+    body.runs.length > MAX_ROUTINES
+  ) throw new RoutineError('routine-response-invalid');
+  return { routines: body.routines.map(parseRoutineView), runs: body.runs.map(parseRunView) };
+}
+
+export async function deleteRoutine(fetcher, teamId, routineId) {
+  return deleted(
+    await request(fetcher, teamPath(teamId, `/${opaque(routineId)}`), { method: 'DELETE' }),
+    teamId,
+    routineId,
+  );
+}
+
+async function decideRun(fetcher, teamId, runId, action, payload, result) {
+  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/${action}`), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!exact(body, ['team_id', 'run_id', result]) || body.team_id !== teamId || body.run_id !== runId || typeof body[result] !== 'boolean') {
+    throw new RoutineError('routine-response-invalid');
+  }
+  return body[result];
+}
+
+export function stopRoutineRun(fetcher, teamId, runId) {
+  return decideRun(fetcher, teamId, runId, 'stop', {}, 'stopped');
+}
+
+export function resolveRoutineRun(fetcher, teamId, runId, batchFingerprint) {
+  if (typeof batchFingerprint !== 'string' || !HEX64_RE.test(batchFingerprint)) {
+    return Promise.reject(new RoutineError('routine-request-invalid'));
+  }
+  return decideRun(fetcher, teamId, runId, 'resolve', { batch_fingerprint: batchFingerprint }, 'resolved');
+}
+
+function fill(template, values) {
+  return template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? String(values[key]) : match));
+}
+
+/** A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. */
+export function scheduleWords(schedule, copy, locale) {
+  if (schedule.kind === 'hourly') {
+    return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
+  }
+  if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
+  if (schedule.kind === 'weekly') {
+    // 2024-01-01 was a Monday, weekday 0 in the Routine grammar.
+    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(2024, 0, 1 + schedule.weekday)),
+    );
+    return fill(copy.weekly, { weekday, time: schedule.time });
+  }
+  return fill(copy.monthly, { day: schedule.day, time: schedule.time });
+}
+
+/** A UTC instant shown in a Routine's timezone for the viewer's locale. */
+export function instantWords(value, locale, timeZone) {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
+}
+
+/** The localized message for a Routine failure code. */
+export function routineErrorMessage(error, copy) {
+  const code = error instanceof RoutineError ? error.code : '';
+  const byCode = {
+    'routine-proposal-unavailable': copy.gone,
+    'team-context-changed': copy.changed,
+    'routine-limit': copy.full,
+    'routine-rate-limit': copy.full,
+    'routine-run-uncertain': copy.uncertain,
+    'routine-run-not-found': copy.ended,
+    'routine-run-not-uncertain': copy.ended,
+    'routine-state-unavailable': copy.unavailable,
+  };
+  return byCode[code] ?? copy.generic;
+}
+
+export { fill as fillRoutineCopy };

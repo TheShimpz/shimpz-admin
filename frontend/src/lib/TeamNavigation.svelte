@@ -9,6 +9,7 @@
     active = '',
     oncreate = () => {},
     ondelete = () => {},
+    onroutines = null,
     onnavigate = () => {},
     createButton = $bindable(),
   } = $props();
@@ -84,6 +85,8 @@
                   label={$t('teamNavigation.actions', { team: team.name })}
                   deleteLabel={copy.deleteTeam}
                   ondelete={() => ondelete(team)}
+                  routinesLabel={$t('routine.list.open')}
+                  onroutines={onroutines ? () => onroutines(team) : null}
                 />
               </div>
             </div>

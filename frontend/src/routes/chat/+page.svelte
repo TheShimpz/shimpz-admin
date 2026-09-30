@@ -7,6 +7,7 @@
   import { listChatHistory } from '$lib/chatHistory.js';
   import BrainMenu from '$lib/BrainMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
+  import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -1762,6 +1763,13 @@
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
                     <Markdown markdown={assistantTurn.text} variant="chat" />
+                  {/if}
+                  {#if assistantTurn.routineProposal}
+                    <RoutineProposalCard
+                      teamId={selectedTeamId}
+                      proposal={assistantTurn.routineProposal}
+                      copy={$t('routine')}
+                    />
                   {/if}
                   {#if assistantTurn.installPlan}
                     <div

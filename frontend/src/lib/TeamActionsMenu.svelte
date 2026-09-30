@@ -1,13 +1,13 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  let { label, deleteLabel, ondelete } = $props();
+  let { label, deleteLabel, ondelete, routinesLabel = '', onroutines = null } = $props();
 
   let open = $state(false);
   let root = $state();
   let trigger = $state();
   let menu = $state();
-  let deleteItem = $state();
+  let firstItem = $state();
   const menuId = $props.id();
 
   function close(restore = false) {
@@ -39,13 +39,13 @@
     queueMicrotask(() => {
       menu?.showPopover();
       place();
-      deleteItem?.focus();
+      firstItem?.focus();
     });
   }
 
-  function choose() {
+  function choose(action) {
     close();
-    ondelete();
+    action();
   }
 
   function keydown(event) {
@@ -80,9 +80,18 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg>
   </Button>
   <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} popover="manual">
-    <Button bind:element={deleteItem} class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={choose}>
-      {deleteLabel}
-    </Button>
+    {#if onroutines}
+      <Button bind:element={firstItem} class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onroutines)}>
+        {routinesLabel}
+      </Button>
+      <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
+        {deleteLabel}
+      </Button>
+    {:else}
+      <Button bind:element={firstItem} class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
+        {deleteLabel}
+      </Button>
+    {/if}
   </div>
 </div>
 

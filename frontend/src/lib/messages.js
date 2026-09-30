@@ -1,4 +1,5 @@
 import { humanRequestMessages } from './humanRequestMessages.js';
+import { routineMessages } from './routineMessages.js';
 
 const mfaMessages = {
   en: {
@@ -314,6 +315,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.en,
+    routine: routineMessages.en,
     teamNavigation: {
       label: "Teams",
       newTeam: "New Team",
@@ -695,6 +697,7 @@ export const messages = {
       "technicalDetail": "Detalhe técnico"
     },
     humanRequest: humanRequestMessages.pt,
+    routine: routineMessages.pt,
     teamNavigation: {
       label: "Times",
       newTeam: "Novo Time",
@@ -1076,6 +1079,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.es,
+    routine: routineMessages.es,
     teamNavigation: {
       label: "Equipos",
       newTeam: "Nuevo Equipo",
@@ -1457,6 +1461,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.zh,
+    routine: routineMessages.zh,
     teamNavigation: {
       label: "团队",
       newTeam: "新建团队",
@@ -1838,6 +1843,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.fr,
+    routine: routineMessages.fr,
     teamNavigation: {
       label: "Équipes",
       newTeam: "Nouvelle Équipe",
@@ -2219,6 +2225,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.de,
+    routine: routineMessages.de,
     teamNavigation: {
       label: "Teams",
       newTeam: "Neues Team",
@@ -2600,6 +2607,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.ja,
+    routine: routineMessages.ja,
     teamNavigation: {
       label: "チーム",
       newTeam: "新しいチーム",
@@ -2981,6 +2989,7 @@ export const messages = {
       "technicalDetail": "Technical detail"
     },
     humanRequest: humanRequestMessages.ar,
+    routine: routineMessages.ar,
     teamNavigation: {
       label: "الفرق",
       newTeam: "فريق جديد",

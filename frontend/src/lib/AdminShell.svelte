@@ -7,6 +7,7 @@
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
   import TeamDialogs from '$lib/TeamDialogs.svelte';
   import TeamNavigation from '$lib/TeamNavigation.svelte';
+  import RoutinesDialog from '$lib/RoutinesDialog.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, profile = '', children } = $props();
@@ -15,6 +16,7 @@
     typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches,
   );
   let teamDialogs = $state();
+  let routinesDialog = $state();
   let teamDrawer = $state();
   let teamDrawerTrigger = $state();
   let createButton = $state();
@@ -31,6 +33,11 @@
   function deleteTeam(team) {
     closeTeamDrawer();
     teamDialogs?.openDelete(team);
+  }
+
+  function openRoutines(team) {
+    closeTeamDrawer();
+    routinesDialog?.open(team);
   }
 
   function restoreTeamFocus() {
@@ -55,7 +62,13 @@
   {:else}
     <div class="shell-sidebar">
       <div class="team-sidebar-region">
-        <TeamNavigation {active} bind:createButton oncreate={createTeam} ondelete={deleteTeam} />
+        <TeamNavigation
+          {active}
+          bind:createButton
+          oncreate={createTeam}
+          ondelete={deleteTeam}
+          onroutines={profile === 'local' ? openRoutines : null}
+        />
         <TeamSidebar {active} />
       </div>
       <div class="sidebar-footer">
@@ -105,6 +118,7 @@
 >
   {#if authenticated}
     <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
+    {#if profile === 'local'}<RoutinesDialog bind:this={routinesDialog} onsettled={restoreTeamFocus} />{/if}
     {#if mobile}
       <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
         <div class="team-drawer-head">
@@ -113,7 +127,13 @@
             <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </Button>
         </div>
-        <TeamNavigation {active} oncreate={createTeam} ondelete={deleteTeam} onnavigate={closeTeamDrawer} />
+        <TeamNavigation
+          {active}
+          oncreate={createTeam}
+          ondelete={deleteTeam}
+          onroutines={profile === 'local' ? openRoutines : null}
+          onnavigate={closeTeamDrawer}
+        />
       </Modal>
     {/if}
     <div class:chat-layout={chat} class="authenticated-content">

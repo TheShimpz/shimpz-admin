@@ -3636,7 +3636,9 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  // On Local the menu opens on its first item, the Team's Routines, before the destructive deletion.
+  await expect(page.getByRole('menuitem', { name: 'Routines' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeHidden();
   await expect(actions).toBeFocused();
@@ -3796,3 +3798,183 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
   expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-sol', effort: 'high' }]);
 });
 
+
+const ROUTINE_PROPOSAL = {
+  proposal_id: 'c'.repeat(32),
+  op: 'propose',
+  quote: 'Every day at 9, list my DNS zones',
+  schedule: { kind: 'daily', time: '09:00' },
+  timezone: null,
+  routine_id: null,
+  assistant_ids: ['shimpz-cloudflare'],
+  expires_in: 900,
+};
+const ROUTINE_PREVIEW = {
+  ...ROUTINE_PROPOSAL,
+  timezone: 'America/Sao_Paulo',
+  next_runs: ['2026-10-01T12:00:00Z', '2026-10-02T12:00:00Z', '2026-10-03T12:00:00Z'],
+  daily_runs: '1',
+  max_daily_runs: 24,
+  fits: true,
+};
+const ROUTINE_VIEW = {
+  routine_id: 'a'.repeat(32),
+  quote: ROUTINE_PROPOSAL.quote,
+  schedule: ROUTINE_PROPOSAL.schedule,
+  timezone: 'America/Sao_Paulo',
+  assistant_ids: ['shimpz-cloudflare'],
+  next_run_at: '2026-10-01T12:00:00Z',
+  needs_reconfirm: false,
+  deleting: false,
+};
+
+async function routeRoutines(page, { preview = ROUTINE_PREVIEW, previewStatus = 200 } = {}) {
+  const calls = { previews: [], confirms: [], deletes: [], stops: [], resolves: [] };
+  let routines = [ROUTINE_VIEW];
+  let runs = [
+    {
+      run_id: 'b'.repeat(32),
+      routine_id: ROUTINE_VIEW.routine_id,
+      status: 'uncertain',
+      scheduled_at: '2026-09-30T12:00:00Z',
+      request_kind: null,
+      assistant_id: null,
+      action: null,
+      batch_fingerprint: 'e'.repeat(64),
+      // A batch may run the same Action twice; each stays listed.
+      actions: [['shimpz-cloudflare', 'replace-dns-record'], ['shimpz-cloudflare', 'replace-dns-record']],
+    },
+  ];
+  await page.route('**/api/teams/marketing/routines/proposals/*/preview', async (route) => {
+    calls.previews.push(route.request().postDataJSON());
+    await route.fulfill(previewStatus === 200
+      ? { json: preview }
+      : { status: previewStatus, json: { code: 'routine-proposal-unavailable' } });
+  });
+  await page.route('**/api/teams/marketing/routines', async (route) => {
+    if (route.request().method() === 'POST') {
+      calls.confirms.push(route.request().postDataJSON());
+      await route.fulfill({ json: { team_id: 'marketing', routine: ROUTINE_VIEW } });
+      return;
+    }
+    await route.fulfill({ json: { team_id: 'marketing', routines, runs } });
+  });
+  await page.route(`**/api/teams/marketing/routines/${ROUTINE_VIEW.routine_id}`, async (route) => {
+    calls.deletes.push(route.request().method());
+    routines = [];
+    await route.fulfill({ json: { team_id: 'marketing', routine_id: ROUTINE_VIEW.routine_id, deleted: true } });
+  });
+  await page.route('**/api/teams/marketing/routines/runs/*/*', async (route) => {
+    const [, runId, action] = new URL(route.request().url()).pathname.match(/runs\/([0-9a-f]{32})\/(stop|resolve)$/);
+    calls[action === 'stop' ? 'stops' : 'resolves'].push(route.request().postDataJSON());
+    runs = runs.filter((item) => item.run_id !== runId);
+    await route.fulfill({
+      json: { team_id: 'marketing', run_id: runId, [action === 'stop' ? 'stopped' : 'resolved']: true },
+    });
+  });
+  return calls;
+}
+
+test.describe('Team Routines', () => {
+  test.use({ timezoneId: 'America/Sao_Paulo' });
+
+  test('a chat Routine proposal is scheduled only when its card is confirmed', async ({ page }) => {
+    await routeReadyChat(page, {
+      routineProposal: ROUTINE_PROPOSAL,
+      reply: 'I can run this every day at 09:00. Confirm it below to schedule it.',
+    });
+    const calls = await routeRoutines(page);
+    await page.goto('/chat/');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'Every day at 9, list my DNS zones');
+    await page.getByRole('button', { name: 'Send' }).click();
+
+    const card = page.getByRole('region', { name: 'Routine proposal' });
+    await expect(card).toContainText('Every day at 9, list my DNS zones');
+    await expect(card).toContainText('Every day at 09:00');
+    await expect(card).toContainText('America/Sao_Paulo');
+    await expect(card.getByRole('listitem')).toHaveCount(3);
+    await expect(card).toContainText('1 of 24 runs per day for this Team');
+    await expect(card).toContainText('An Action that declares none runs without asking.');
+    await expect(card).toContainText('Nothing is scheduled until you confirm.');
+    expect(calls.previews).toEqual([{ timezone: 'America/Sao_Paulo' }]);
+    expect(calls.confirms).toEqual([]);
+    const results = await new AxeBuilder({ page }).include('.routine-card').analyze();
+    expect(results.violations).toEqual([]);
+
+    await card.getByRole('button', { name: 'Schedule this Routine' }).click();
+    await expect(card.getByRole('status')).toContainText('Scheduled. Next run');
+    expect(calls.confirms).toEqual([{ proposal_id: ROUTINE_PROPOSAL.proposal_id, timezone: 'America/Sao_Paulo' }]);
+    await expect(card.getByRole('button')).toHaveCount(0);
+  });
+
+  test('a live preview of a different request offers no confirmation', async ({ page }) => {
+    await routeReadyChat(page, { routineProposal: ROUTINE_PROPOSAL, reply: 'Confirm it below to schedule it.' });
+    const calls = await routeRoutines(page, { preview: { ...ROUTINE_PREVIEW, quote: 'Every hour, delete my DNS zones' } });
+    await page.goto('/chat/');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'Every day at 9, list my DNS zones');
+    await page.getByRole('button', { name: 'Send' }).click();
+    const card = page.getByRole('region', { name: 'Routine proposal' });
+    await expect(card.getByRole('status')).toHaveText('The Routine request failed. Try again.');
+    await expect(card.getByRole('button')).toHaveCount(0);
+    expect(calls.confirms).toEqual([]);
+  });
+
+  test('an expired proposal offers no confirmation', async ({ page }) => {
+    await routeReadyChat(page, { routineProposal: ROUTINE_PROPOSAL, reply: 'Confirm it below to schedule it.' });
+    const calls = await routeRoutines(page, { previewStatus: 404 });
+    await page.goto('/chat/');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'Every day at 9, list my DNS zones');
+    await page.getByRole('button', { name: 'Send' }).click();
+    const card = page.getByRole('region', { name: 'Routine proposal' });
+    await expect(card.getByRole('status')).toHaveText(
+      'This proposal expired or was already used. Ask again in the chat to schedule it.',
+    );
+    await expect(card.getByRole('button')).toHaveCount(0);
+    expect(calls.confirms).toEqual([]);
+  });
+
+  test('a Supervisor deletes a Routine and releases an uncertain run only after confirming', async ({ page }) => {
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page);
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Routines of Marketing' });
+    await expect(dialog).toContainText('Every day at 09:00 · America/Sao_Paulo');
+    await expect(dialog).toContainText('Effects unknown');
+    await expect(dialog).toContainText('These Actions may have changed something:');
+    await expect(dialog.getByText('shimpz-cloudflare · replace-dns-record')).toHaveCount(2);
+    const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+    expect(results.violations).toEqual([]);
+
+    await dialog.getByRole('button', { name: 'I checked; release it' }).click();
+    expect(calls.resolves).toEqual([]);
+    await dialog.getByRole('button', { name: 'I checked; release it' }).click();
+    await expect(dialog).not.toContainText('Effects unknown');
+    expect(calls.resolves).toEqual([{ batch_fingerprint: 'e'.repeat(64) }]);
+
+    await dialog.getByRole('button', { name: 'Delete' }).click();
+    await expect(dialog).toContainText('Delete this Routine? A run in progress is stopped.');
+    expect(calls.deletes).toEqual([]);
+    await dialog.getByRole('button', { name: 'Delete' }).click();
+    await expect(dialog).toContainText('This Team has no Routines.');
+    expect(calls.deletes).toEqual(['DELETE']);
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('Hosted offers no Routines', async ({ page }) => {
+    await routeReadyChat(page, { hostedSession: true });
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
+  });
+});

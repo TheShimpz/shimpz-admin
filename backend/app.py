@@ -51,6 +51,7 @@ from integrations import account as account_identity
 from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
+from routine import http as routine_http
 
 log = logging.getLogger("shimpz-admin")
 chat_history = chat_history_http.store
@@ -134,6 +135,7 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
+routine_http.register(app, ADMIN_PROFILE)
 team_inference.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
