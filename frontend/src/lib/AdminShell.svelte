@@ -109,8 +109,6 @@
   class={['admin-workspace-shell', authenticated && 'authenticated', chat && 'chat-mode']}
   sidebar={authenticated ? sidebar : undefined}
   header={authenticated ? (mobile ? mobileHeader : undefined) : header}
-  skipLabel={$t('shell.skipContent')}
-  mainId="admin-content"
   content={authenticated ? 'full' : 'contained'}
   padding={authenticated ? 'none' : 'default'}
   fixed={authenticated}

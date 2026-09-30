@@ -437,16 +437,8 @@ test('uses one bounded app chrome and scroll region on mobile', async ({ page },
   }));
   expect(overflow.scroll).toBeLessThanOrEqual(overflow.client);
 
-  const skip = page.locator('a[href="#admin-content"]');
-  await skip.focus();
-  const [skipBox, skipZIndex, headerZIndex] = await Promise.all([
-    skip.boundingBox(),
-    skip.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
-    header.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
-  ]);
-  expect(skipBox).not.toBeNull();
-  expect(skipBox.y).toBeGreaterThanOrEqual(0);
-  expect(skipZIndex).toBeGreaterThan(headerZIndex);
+  // The workspace has no skip link: the first keyboard stop is the shell's own control.
+  await expect(page.locator('a[href^="#"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: 'العربية' }).click();

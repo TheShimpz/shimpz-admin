@@ -101,7 +101,6 @@ export const messages = {
       unreachable: 'Cannot reach the Admin API. Check the service and try again.',
     },
     shell: {
-      skipContent: 'Skip to content',
       adminHome: 'Shimpz Admin home',
       languageCurrent: 'Language: {name}',
       languageMenu: 'Language',
@@ -483,7 +482,6 @@ export const messages = {
       unreachable: 'Não foi possível acessar a API do Admin. Verifique o serviço e tente novamente.',
     },
     shell: {
-      skipContent: 'Pular para o conteúdo',
       adminHome: 'Início do Admin Shimpz',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
@@ -865,7 +863,6 @@ export const messages = {
       unreachable: 'No se puede acceder a la API del Admin. Comprueba el servicio e inténtalo de nuevo.',
     },
     shell: {
-      skipContent: 'Saltar al contenido',
       adminHome: 'Inicio del Admin de Shimpz',
       languageCurrent: 'Idioma: {name}',
       languageMenu: 'Idioma',
@@ -1247,7 +1244,6 @@ export const messages = {
       unreachable: '无法访问 Admin API。请检查服务后重试。',
     },
     shell: {
-      skipContent: '跳到内容',
       adminHome: 'Shimpz Admin 首页',
       languageCurrent: '语言：{name}',
       languageMenu: '语言',
@@ -1629,7 +1625,6 @@ export const messages = {
       unreachable: 'Impossible de joindre l’API Admin. Vérifiez le service puis réessayez.',
     },
     shell: {
-      skipContent: 'Aller au contenu',
       adminHome: 'Accueil de l’Admin Shimpz',
       languageCurrent: 'Langue : {name}',
       languageMenu: 'Langue',
@@ -2011,7 +2006,6 @@ export const messages = {
       unreachable: 'Die Admin-API ist nicht erreichbar. Prüfen Sie den Dienst und versuchen Sie es erneut.',
     },
     shell: {
-      skipContent: 'Zum Inhalt springen',
       adminHome: 'Startseite des Shimpz Admin',
       languageCurrent: 'Sprache: {name}',
       languageMenu: 'Sprache',
@@ -2393,7 +2387,6 @@ export const messages = {
       unreachable: 'Admin API に接続できません。サービスを確認して、もう一度お試しください。',
     },
     shell: {
-      skipContent: 'コンテンツへ移動',
       adminHome: 'Shimpz Admin ホーム',
       languageCurrent: '言語：{name}',
       languageMenu: '言語',
@@ -2775,7 +2768,6 @@ export const messages = {
       unreachable: 'تعذّر الوصول إلى Admin API. تحقّق من الخدمة ثم حاول مجددًا.',
     },
     shell: {
-      skipContent: 'الانتقال إلى المحتوى',
       adminHome: 'صفحة Shimpz Admin الرئيسية',
       languageCurrent: 'اللغة: {name}',
       languageMenu: 'اللغة',
