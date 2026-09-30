@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
+
+import { accessibilityViolations } from './axe.js';
 
 function localSession(overrides = {}) {
   return {
@@ -233,8 +234,9 @@ test('renders bounded Local login feedback instead of the raw API error', async 
   }));
 
   await page.goto('/');
+  await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
   // The sign-in screen's one accessibility scan.
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await accessibilityViolations(page)).toEqual([]);
   await page.getByLabel('Password', { exact: true }).fill('wrong password value');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
@@ -374,7 +376,7 @@ test('opens the Store for the Team its link names and refuses a missing Team', a
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
   await expect(catalog).toBeVisible();
   // The Assistants screen's one accessibility scan.
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await accessibilityViolations(page)).toEqual([]);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
   await expect(page.getByRole('link', { name: 'Open the Store for Marketing' })).toHaveAttribute('aria-current', 'page');
   if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');

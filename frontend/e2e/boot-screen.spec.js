@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+
+import { accessibilityViolations } from './axe.js';
 
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
@@ -107,7 +108,7 @@ test('holds the app inert behind the boot screen until the session resolves, the
   await expect(page.locator('.initial-content')).toHaveAttribute('inert', '');
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0);
   // The boot screen's one accessibility scan.
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await accessibilityViolations(page)).toEqual([]);
   sessionGate.resolve();
   await expect(boot).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
