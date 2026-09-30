@@ -40,7 +40,13 @@ class ChatInstallStateTests(ChatWebSocketCase):
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Olá.", "clarification": None},
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Olá.",
+                    "clarification": None,
+                    "routine_proposal": None,
+                },
             )
             with (
                 mock.patch.object(
@@ -111,7 +117,13 @@ class ChatInstallStateTests(ChatWebSocketCase):
             )
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Done.", "clarification": None},
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Done.",
+                    "clarification": None,
+                    "routine_proposal": None,
+                },
             )
             with (
                 mock.patch.object(

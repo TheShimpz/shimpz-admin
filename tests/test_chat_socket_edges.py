@@ -750,7 +750,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
             completed = local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Completed.", "clarification": None},
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Completed.",
+                    "clarification": None,
+                    "routine_proposal": None,
+                },
             )
             send_terminal.reset_mock()
             with (

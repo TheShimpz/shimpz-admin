@@ -61,6 +61,7 @@ class _ControllerHandler(BaseHTTPRequestHandler):
                     "team_name": "Marketing",
                     "reply": "Hello!",
                     "clarification": None,
+                    "routine_proposal": None,
                     "trace_id": TRACE_ID,
                 },
             },

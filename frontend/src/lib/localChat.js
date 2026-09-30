@@ -1,4 +1,5 @@
 import { parseClarification, renderClarification } from './clarification.js';
+import { parseRoutineProposal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -1043,8 +1044,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'done') {
     let clarification = null;
+    let routineProposal = null;
     try {
       clarification = parseClarification(value.clarification);
+      routineProposal = parseRoutineProposal(value.routine_proposal);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
     }
@@ -1052,7 +1055,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       throw new LocalApiError('The local chat response is invalid.');
     }
     if (
-      !exactKeys(value, ['type', 'team_id', 'team_name', 'reply', 'clarification']) ||
+      !exactKeys(value, ['type', 'team_id', 'team_name', 'reply', 'clarification', 'routine_proposal']) ||
       !TEAM_ID_RE.test(value.team_id) ||
       value.team_id !== expectedTeamId ||
       canonicalTeam(value.team_name) !== canonicalTeam(expectedTeamName) ||
@@ -1069,6 +1072,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       team_name: value.team_name,
       reply: value.reply,
       clarification,
+      routine_proposal: routineProposal,
     };
   }
   if (value.type === 'assistant-install-plan') {

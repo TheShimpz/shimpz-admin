@@ -26,6 +26,7 @@ from team import bridge as team
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -33,7 +34,9 @@ MAX_REPLY_CHARS = 60_000
 MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
+_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal", "trace_id"})
+# A done event's public fields; a chat reply may carry one Routine proposal for the confirmation card (ADR-0086).
+DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal"})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -225,7 +228,7 @@ class PublicResponse(team.TeamResponse):
         if body.get("team_id") != team_id:
             return None
         event = None
-        if set(body) == {"team_id", "team_name", "reply", "clarification"}:
+        if set(body) == DONE_FIELDS:
             event = {"type": "done", **body}
         return event
 
@@ -685,7 +688,13 @@ def _project_turn(
         clarification = team_contract.canonical_clarification(clarification)
         if clarification is None or reply != team_contract.render_clarification(clarification):
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    shown = f"{team_name} {reply} {_clarification_text(clarification)}"
+    proposal = response.body.get("routine_proposal")
+    if proposal is not None:
+        # Only a closed, one-use proposal reaches the card; the Team keeps its binding (ADR-0086).
+        proposal = routine_contract.canonical_proposal(proposal)
+        if proposal is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    shown = f"{team_name} {reply} {_clarification_text(clarification)} {proposal['quote'] if proposal else ''}"
     if (
         set(response.body) != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
@@ -700,7 +709,13 @@ def _project_turn(
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     return PublicResponse(
         response.status,
-        {"team_id": team_id, "team_name": team_name, "reply": reply, "clarification": clarification},
+        {
+            "team_id": team_id,
+            "team_name": team_name,
+            "reply": reply,
+            "clarification": clarification,
+            "routine_proposal": proposal,
+        },
     )
 
 

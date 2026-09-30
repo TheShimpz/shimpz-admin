@@ -58,7 +58,7 @@ test('an answer is combined with the original request without truncation', () =>
 test('done events and history replies carry the clarification only in its closed shape', async () => {
   const rendered = 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana';
   assert.equal(renderClarification(ASKED), rendered);
-  const done = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: rendered };
+  const done = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: rendered, routine_proposal: null };
   assert.throws(() => parseChatEvent({ ...done, reply: 'I deleted everything.', clarification: ASKED }, 'team_1', 'Marketing'));
   assert.deepEqual(
     parseChatEvent({ ...done, clarification: ASKED }, 'team_1', 'Marketing').clarification,

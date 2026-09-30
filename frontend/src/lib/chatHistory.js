@@ -1,4 +1,5 @@
 import { parseClarification, renderClarification } from './clarification.js';
+import { parseRoutineProposal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -86,9 +87,27 @@ function installAssistant(value, status) {
 function messageEntry(value, suffix, status) {
   const assistant = value.role === 'assistant';
   const clarified = assistant && Object.hasOwn(value, 'clarification');
+  const proposed = assistant && Object.hasOwn(value, 'routine_proposal');
   const expected = assistant
-    ? ['author', 'id', 'kind', 'role', 'text', ...(clarified ? ['clarification'] : [])]
+    ? [
+      'author',
+      'id',
+      'kind',
+      'role',
+      'text',
+      ...(clarified ? ['clarification'] : []),
+      ...(proposed ? ['routine_proposal'] : []),
+    ]
     : ['id', 'kind', 'role', 'text'];
+  let routineProposal = null;
+  if (proposed) {
+    try {
+      routineProposal = parseRoutineProposal(value.routine_proposal);
+    } catch {
+      throw invalidHistory(status);
+    }
+    if (routineProposal === null) throw invalidHistory(status);
+  }
   let clarification = null;
   if (clarified) {
     try {
@@ -115,6 +134,7 @@ function messageEntry(value, suffix, status) {
     ),
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
+    ...(routineProposal ? { routineProposal } : {}),
   };
 }
 

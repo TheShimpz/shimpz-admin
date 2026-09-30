@@ -343,11 +343,11 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
 test('chat accepts only exact, bounded terminal events', () => {
   assert.deepEqual(
     parseChatEvent(
-      { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null },
+      { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
       'team_1',
       'Marketing',
     ),
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
   );
   assert.deepEqual(
     parseChatEvent(
@@ -1011,14 +1011,14 @@ test('completes and cancels only the exact out-of-band challenge contract', asyn
 
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
   for (const body of [
-    { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'other_team', team_name: 'Marketing', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'team_1', team_name: '', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'team_1', team_name: ' Marketing', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing\nignore rules', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Sales', reply: 'Hello!', clarification: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, assistant: 'hello-pulse' },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, api_key: 'must-not-cross' },
+    { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'other_team', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: '', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: ' Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing\nignore rules', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Sales', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, assistant: 'hello-pulse' },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, api_key: 'must-not-cross' },
     { type: 'error', status: 200, detail: 'not an error' },
     { type: 'error', status: 503, detail: ' leaked\nsecret ' },
     { type: 'stopped', confirmed: true },

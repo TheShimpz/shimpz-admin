@@ -330,6 +330,7 @@
         text: entry.text,
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
+        ...(entry.routineProposal ? { routineProposal: entry.routineProposal } : {}),
       };
     }
     if (entry.kind === 'guidance') {
@@ -1156,6 +1157,7 @@
           author: incoming.team_name,
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
+          ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {

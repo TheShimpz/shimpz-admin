@@ -168,6 +168,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_name": "Marketing",
                 "reply": "Ready.",
                 "clarification": None,
+                "routine_proposal": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -405,6 +406,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_name": "Marketing",
                 "reply": "Authorized.",
                 "clarification": None,
+                "routine_proposal": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -475,7 +477,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "default_index": 0,
         }
 
-        def turn(clarification: object, reply: str = "Qual período?\n\n1. Hoje ✓\n2. Semana — Sete dias.") -> object:
+        def turn(
+            clarification: object,
+            reply: str = "Qual período?\n\n1. Hoje ✓\n2. Semana — Sete dias.",
+            proposal: object = None,
+        ) -> object:
             controller = team.TeamResponse(
                 200,
                 {
@@ -483,6 +489,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": reply,
                     "clarification": clarification,
+                    "routine_proposal": proposal,
                     "trace_id": TRACE_ID,
                 },
             )
@@ -498,6 +505,25 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 return local.turn("team_1", {"message": "Quais modelos?", "files": [], "assistant_ids": []}, ())
 
         self.assertEqual(turn(asked).body["clarification"], asked)
+        # A Routine proposal reaches the card only in its closed form, free of the model key (ADR-0086).
+        proposal = {
+            "proposal_id": "c" * 32,
+            "op": "propose",
+            "quote": "Todo dia às 9, liste as zonas",
+            "schedule": {"kind": "daily", "time": "09:00"},
+            "timezone": None,
+            "routine_id": None,
+            "assistant_ids": ["shimpz-cloudflare"],
+            "expires_in": 900,
+        }
+        self.assertEqual(turn(None, "Posso agendar isso.", proposal).body["routine_proposal"], proposal)
+        for invalid in (
+            {**proposal, "expires_in": 901},
+            {**proposal, "assistant_ids": []},
+            {**proposal, "quote": "Todo dia use sk-test-0123456789abcdef"},
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(turn(None, "Posso agendar isso.", invalid).body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(asked, "I deleted everything.").body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(asked).websocket_event("team_1")["clarification"], asked)
         for invalid in ({**asked, "default_index": 7}, {**asked, "question": "Linha\nDupla"}):
@@ -518,6 +544,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_name": "Marketing",
                 "reply": "Ready",
                 "clarification": None,
+                "routine_proposal": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -534,7 +561,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(
             response.body,
-            {"team_id": "team_1", "team_name": "Marketing", "reply": "Ready", "clarification": None},
+            {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Ready",
+                "clarification": None,
+                "routine_proposal": None,
+            },
         )
         call = chat.call_args
         self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": [], "conversation": []})
@@ -637,6 +670,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_name": "Marketing",
                 "reply": f"unexpected {api_key}",
                 "clarification": None,
+                "routine_proposal": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -663,6 +697,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "team_name": team_name,
                     "reply": "Ready",
                     "clarification": None,
+                    "routine_proposal": None,
                     "trace_id": TRACE_ID,
                 },
             )
@@ -683,6 +718,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "team_name": "Marketing",
             "reply": "Ready",
             "clarification": None,
+            "routine_proposal": None,
             "trace_id": TRACE_ID,
         }
         invalid = (
@@ -714,6 +750,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "team_name": f"Marketing {api_key}",
                 "reply": "Ready",
                 "clarification": None,
+                "routine_proposal": None,
                 "trace_id": TRACE_ID,
             },
         )
@@ -790,7 +827,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 local.canonical_public_progress(event)
 
         response = local.PublicResponse(
-            200, {"team_id": "team_1", "team_name": "Marketing", "reply": "Done", "clarification": None}
+            200,
+            {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Done",
+                "clarification": None,
+                "routine_proposal": None,
+            },
         )
         self.assertIsNone(response.websocket_event("team_2"))
 

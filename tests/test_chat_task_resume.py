@@ -74,7 +74,13 @@ class ChatTaskResumeTests(ChatWebSocketCase):
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             response = self.chat_socket.local.PublicResponse(
                 200,
-                {"team_id": "team_1", "team_name": "Marketing", "reply": "Task complete.", "clarification": None},
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Task complete.",
+                    "clarification": None,
+                    "routine_proposal": None,
+                },
             )
             with (
                 mock.patch.object(
@@ -195,7 +201,14 @@ class ChatConversationWindowTests(ChatWebSocketCase):
 
             def turn(_team_id, _payload, _conversation, _progress):
                 return self.chat_socket.local.PublicResponse(
-                    200, {"team_id": "team_1", "team_name": "Marketing", "reply": next(replies), "clarification": None}
+                    200,
+                    {
+                        "team_id": "team_1",
+                        "team_name": "Marketing",
+                        "reply": next(replies),
+                        "clarification": None,
+                        "routine_proposal": None,
+                    },
                 )
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as sent:

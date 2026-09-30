@@ -97,6 +97,7 @@ class ChatHistoryConversationTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Temos apenas Cloudflare/DNS.",
                     "clarification": None,
+                    "routine_proposal": None,
                 },
             )
         )
@@ -121,6 +122,7 @@ class ChatHistoryConversationTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Temos apenas Cloudflare/DNS.",
                     "clarification": None,
+                    "routine_proposal": None,
                 },
             )
         )
@@ -188,6 +190,7 @@ class ChatHistoryConversationTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": f"Resposta {index}",
                         "clarification": None,
+                        "routine_proposal": None,
                     },
                 )
             )
@@ -215,6 +218,7 @@ class ChatHistoryConversationTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": reply,
                     "clarification": None,
+                    "routine_proposal": None,
                 },
             )
         )

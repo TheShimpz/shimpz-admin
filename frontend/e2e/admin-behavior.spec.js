@@ -210,6 +210,7 @@ async function routeReadyChat(page, {
   olderHistory = null,
   rejectDecisionKey = false,
   clarification = null,
+  routineProposal = null,
   hostedSession = false,
   reply,
 } = {}) {
@@ -536,6 +537,7 @@ async function routeReadyChat(page, {
         team_name: 'Marketing',
         reply: 'The reviewed human response was accepted.',
         clarification: null,
+        routine_proposal: null,
       }));
     };
 
@@ -596,6 +598,7 @@ async function routeReadyChat(page, {
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
               clarification: null,
+              routine_proposal: null,
             }));
           }
           return;
@@ -658,6 +661,7 @@ async function routeReadyChat(page, {
                 team_name: 'Marketing',
                 reply: 'Continued task complete.',
                 clarification: null,
+                routine_proposal: null,
               }));
               return;
             }
@@ -679,6 +683,7 @@ async function routeReadyChat(page, {
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
               clarification: null,
+              routine_proposal: null,
             }));
           };
           if (!holdAssistantPlan) {
@@ -792,6 +797,7 @@ async function routeReadyChat(page, {
               team_name: 'Marketing',
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
               clarification: clarification ?? null,
+              routine_proposal: routineProposal ?? null,
             }));
         if (holdReply) releaseReply = completeReply;
         else completeReply();

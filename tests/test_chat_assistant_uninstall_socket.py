@@ -199,6 +199,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                             "team_name": "Marketing",
                             "reply": "Temos apenas Cloudflare/DNS.",
                             "clarification": None,
+                            "routine_proposal": None,
                         },
                     ),
                 ) as turn,
