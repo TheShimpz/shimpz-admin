@@ -10,6 +10,7 @@ import {
   loadTeamContext,
   MAX_CHAT_ASSISTANTS,
   refreshTeamInventory,
+  renameTeam,
   selectTeam,
   teamContext,
 } from '../src/lib/teamContext.js';
@@ -25,6 +26,7 @@ const LOCAL_TEAM_RESIDUES = [
   'integration_credentials',
   'publication_bindings',
   'runtime_state',
+  'team_names',
   'team_networks',
   'team_storage',
 ];
@@ -593,4 +595,122 @@ test('Assistant scope keeps the exact protocol limit and reports every omitted A
   const ids = installed.map((entry) => entry.assistant);
   assert.deepEqual(get(teamContext).activeAssistantIds, ids.slice(0, MAX_CHAT_ASSISTANTS));
   assert.deepEqual(get(teamContext).omittedAssistantIds, ids.slice(MAX_CHAT_ASSISTANTS));
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('a Team rename is sent by id and applied to the current context, and bad input or answers fail closed', async () => {
+  clearTeamContext();
+  const patches = [];
+  const fetcher = fixtureFetcher({
+    '/api/teams/marketing': async (options) => {
+      patches.push(JSON.parse(options.body));
+      return response(200, { team_id: 'marketing', team_name: 'Growth' });
+    },
+  });
+  await loadTeamContext(fetcher, 'marketing');
+  await assert.rejects(renameTeam(fetcher, 'marketing', '   '), /valid Team name/);
+  assert.equal((await renameTeam(fetcher, 'marketing', 'Marketing')).name, 'Marketing');
+  assert.deepEqual(patches, []);
+  await renameTeam(fetcher, 'marketing', ' Growth ');
+  assert.deepEqual(patches, [{ team_name: 'Growth' }]);
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Growth');
+  await assert.rejects(renameTeam(fetcher, 'unknown', 'Other'), /Invalid local Team request/);
+
+  const refused = fixtureFetcher({ '/api/teams/marketing': async () => response(409, { detail: 'Another Team already has this name.' }) });
+  await assert.rejects(renameTeam(refused, 'marketing', 'Support'), /Another Team already has this name/);
+  const forged = fixtureFetcher({ '/api/teams/marketing': async () => response(200, { team_id: 'marketing', team_name: 'Other' }) });
+  await assert.rejects(renameTeam(forged, 'marketing', 'Sales'), /invalid response/);
+});
+
+test('a rename confirmed while a selection or a Team list read is pending keeps its new name', async () => {
+  clearTeamContext();
+  const inventory = deferred();
+  const listRead = deferred();
+  let holdInventory = false;
+  let holdList = false;
+  const base = fixtureFetcher({
+    '/api/teams/marketing': async () => response(200, { team_id: 'marketing', team_name: 'Growth' }),
+  });
+  const fetcher = async (url, options = {}) => {
+    if (holdInventory && url === '/api/teams/support/assistants') await inventory.promise;
+    if (url === '/api/teams' && options.method === 'POST') {
+      return response(200, { created: true, status: 'running', team_id: 'research', team_name: 'Research' });
+    }
+    if (holdList && url === '/api/teams') {
+      const answer = await base(url, options);
+      await listRead.promise;
+      return answer;
+    }
+    return base(url, options);
+  };
+  await loadTeamContext(fetcher, 'marketing');
+
+  holdInventory = true;
+  const selection = selectTeam(fetcher, 'support');
+  // A selection is loading; the rename still reaches Team and its confirmed name survives the selection's answer.
+  teamContext.update((state) => ({ ...state, phase: 'ready' }));
+  await renameTeam(fetcher, 'marketing', 'Growth');
+  inventory.resolve();
+  await selection;
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Growth');
+
+  holdInventory = false;
+  // A rename is pending when a Team is created; the creation's list read and then its inventory load complete around
+  // the rename's confirmation, and the confirmed name must survive both.
+  const patch = deferred();
+  const researchInventory = deferred();
+  const inventoryRequested = deferred();
+  const racing = async (url, options = {}) => {
+    if (url === '/api/teams/marketing' && options.method === 'PATCH') {
+      await patch.promise;
+      return response(200, { team_id: 'marketing', team_name: 'Growth 2' });
+    }
+    if (url === '/api/teams/research/assistants') {
+      inventoryRequested.resolve();
+      await researchInventory.promise;
+      return response(200, { assistants: [] });
+    }
+    if (url === '/api/teams' && options.method !== 'POST') {
+      await listRead.promise;
+      return response(200, {
+        teams: [
+          { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+          { team_id: 'research', team_name: 'Research', status: 'running' },
+        ],
+      });
+    }
+    return fetcher(url, options);
+  };
+  const renaming = renameTeam(racing, 'marketing', 'Growth 2');
+  const creating = createTeam(racing, 'Research');
+  listRead.resolve();
+  await inventoryRequested.promise;
+  patch.resolve();
+  await renaming;
+  researchInventory.resolve();
+  await creating;
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.equal(get(teamContext).selectedTeamId, 'research');
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Growth 2');
+});
+
+test('Team names are sent and compared in NFC, as Team admits them', async () => {
+  clearTeamContext();
+  const posted = [];
+  const fetcher = fixtureFetcher({
+    '/api/teams': async (options) => {
+      if (options.method !== 'POST') return response(200, { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] });
+      posted.push(JSON.parse(options.body));
+      return response(200, { created: true, status: 'running', team_id: 'cafe', team_name: 'Café' });
+    },
+  });
+  await loadTeamContext(fetcher, 'marketing');
+  const created = await createTeam(fetcher, ' Café ');
+  assert.deepEqual(posted, [{ team_name: 'Café' }]);
+  assert.equal(created.name, 'Café');
 });

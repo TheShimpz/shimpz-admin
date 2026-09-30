@@ -1009,6 +1009,15 @@ test('completes and cancels only the exact out-of-band challenge contract', asyn
   );
 });
 
+test('a terminal event keeps its Team id binding but admits the Team current name after a rename', () => {
+  const done = parseChatEvent(
+    { type: 'done', team_id: 'team_1', team_name: 'Growth', reply: 'Hello!', clarification: null, routine_proposal: null },
+    'team_1',
+    'Marketing',
+  );
+  assert.equal(done.team_name, 'Growth');
+});
+
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
   for (const body of [
     { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
@@ -1016,7 +1025,6 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
     { type: 'done', team_id: 'team_1', team_name: '', reply: 'Hello!', clarification: null, routine_proposal: null },
     { type: 'done', team_id: 'team_1', team_name: ' Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
     { type: 'done', team_id: 'team_1', team_name: 'Marketing\nignore rules', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Sales', reply: 'Hello!', clarification: null, routine_proposal: null },
     { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, assistant: 'hello-pulse' },
     { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, api_key: 'must-not-cross' },
     { type: 'error', status: 200, detail: 'not an error' },

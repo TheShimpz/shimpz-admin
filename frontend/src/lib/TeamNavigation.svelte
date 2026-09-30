@@ -1,17 +1,20 @@
 <script>
-  import { ActionLink, Button, ShimpzBrand } from '@shimpz/frontend';
+  import { tick } from 'svelte';
+  import { ActionLink, Button, ShimpzBrand, TextField } from '@shimpz/frontend';
+
+  import { showAdminNotice } from '$lib/adminNotice.js';
 
   import { t } from '$lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '$lib/routineContext.js';
   import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
-  import { teamContext } from '$lib/teamContext.js';
+  import { renameTeam, teamContext } from '$lib/teamContext.js';
   import TeamRoutineTree from '$lib/TeamRoutineTree.svelte';
 
   let {
     active = '',
     oncreate = () => {},
     ondelete = () => {},
-    // Local Teams have Routines (ADR-0086); Hosted has none yet.
+    // Local Teams have Routines (ADR-0086) and can be renamed (ADR-0088); Hosted has neither yet.
     routines = false,
     onnavigate = () => {},
     createButton = $bindable(),
@@ -41,6 +44,70 @@
     const next = new Set(treeOpen);
     if (!next.delete(teamId)) next.add(teamId);
     treeOpen = next;
+  }
+
+  // Renaming edits the name in place: Enter or leaving the field saves it, Escape keeps the current name. One save runs
+  // at a time; Enter and Escape return focus to the Team link, while leaving the field keeps focus where the user put it.
+  let renaming = $state('');
+  let renameDraft = $state('');
+  let renameSaving = $state(false);
+
+  function renameFieldId(teamId) {
+    return `team-rename-${teamId}`;
+  }
+
+  async function focusTeamLink(teamId) {
+    await tick();
+    document.querySelector(`[data-team-link="${teamId}"]`)?.focus();
+  }
+
+  async function startRename(team) {
+    if (renameSaving) return;
+    renaming = team.id;
+    renameDraft = team.name;
+    await tick();
+    const field = document.getElementById(renameFieldId(team.id));
+    field?.focus();
+    field?.select();
+  }
+
+  async function commitRename(team, restoreFocus) {
+    if (renaming !== team.id || renameSaving) return;
+    const name = renameDraft.trim();
+    if (!name || name === team.name) {
+      renaming = '';
+      if (restoreFocus) await focusTeamLink(team.id);
+      return;
+    }
+    renameSaving = true;
+    // Focus returns only if the user left it in the field while the name was saving.
+    const stillHere = () => {
+      const active = document.activeElement;
+      return restoreFocus && (!active || active === document.body || active.id === renameFieldId(team.id));
+    };
+    try {
+      await renameTeam(fetch, team.id, name);
+      const restore = stillHere();
+      if (renaming === team.id) renaming = '';
+      if (restore) await focusTeamLink(team.id);
+    } catch (error) {
+      showAdminNotice({ tone: 'error', label: copy.rename, message: error?.message || copy.renameFailed });
+      if (stillHere()) document.getElementById(renameFieldId(team.id))?.focus();
+    } finally {
+      renameSaving = false;
+    }
+  }
+
+  function renameKeydown(event, team) {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      void commitRename(team, true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      renaming = '';
+      void focusTeamLink(team.id);
+    }
   }
 
   function teamRoutines(teamId) {
@@ -81,9 +148,28 @@
         {#each $teamContext.teams as team (team.id)}
           {@const selected = team.id === $teamContext.selectedTeamId}
           <li class={['team', selected && 'is-selected']}>
-            <div class="row">
+            <div class={['row', renaming === team.id && 'is-renaming']}>
+              {#if renaming === team.id}
+                <div class="team-rename">
+                  <span class="monogram" aria-hidden="true">{monogram(renameDraft.trim() || team.name)}</span>
+                  <TextField
+                    id={renameFieldId(team.id)}
+                    class="rename-field"
+                    label={$t('teamNavigation.renameLabel', { team: team.name })}
+                    visuallyHiddenLabel
+                    bind:value={renameDraft}
+                    maxlength="80"
+                    autocomplete="off"
+                    spellcheck="false"
+                    onkeydown={(event) => renameKeydown(event, team)}
+                    readonly={renameSaving}
+                    onblur={() => commitRename(team, false)}
+                  />
+                </div>
+              {:else}
               <ActionLink
                 class="team-link"
+                data-team-link={team.id}
                 variant="ghost"
                 href={chatHref(team)}
                 aria-current={selected && active === 'chat' ? 'page' : undefined}
@@ -92,6 +178,7 @@
                 <span class="monogram" aria-hidden="true">{monogram(team.name)}</span>
                 <span class="name">{team.name}</span>
               </ActionLink>
+              {/if}
               <div class="row-actions">
                 <ActionLink
                   class={['row-action', selected && active === 'assistants' && 'is-here']}
@@ -109,6 +196,8 @@
                 <TeamActionsMenu
                   label={$t('teamNavigation.actions', { team: team.name })}
                   deleteLabel={copy.deleteTeam}
+                  renameLabel={copy.rename}
+                  onrename={routines ? () => startRename(team) : null}
                   ondelete={() => ondelete(team)}
                   routinesLabel={$t('routine.list.open')}
                   onroutines={routines && teamRoutines(team.id).routines.length > 0
@@ -134,15 +223,31 @@
 <style>
   /* Team rows are full bleed across the sidebar; only the header keeps the sidebar's inset. */
   .team-navigation { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block: var(--shimpz-space-4); }
-  .head { display: flex; min-height: 2.25rem; align-items: center; justify-content: space-between; padding-inline: calc(var(--shimpz-space-3) + var(--shimpz-space-2)) var(--shimpz-space-3); }
-  .head :global(.head-mark img) { width: 1.75rem; height: 1.75rem; }
+  /* The header is a faint cyberpunk plate: a cyan glow behind the mark, soft scanlines, and a base hairline that fades
+     from cyan through magenta. It runs edge to edge, up to the top of the sidebar. */
+  .head {
+    position: relative; display: flex; min-height: 2.45rem; align-items: center; justify-content: space-between;
+    margin-block-start: calc(-1 * var(--shimpz-space-4)); padding: var(--shimpz-space-4) var(--shimpz-space-3) var(--shimpz-space-3);
+    background:
+      repeating-linear-gradient(0deg, rgb(0 240 255 / 3%) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 160% at 0% 0%, rgb(0 240 255 / 11%), transparent 62%),
+      linear-gradient(180deg, color-mix(in srgb, var(--shimpz-color-cyan) 3%, var(--shimpz-color-bg)), var(--shimpz-color-bg));
+  }
+  .head::after {
+    position: absolute; inset-inline: 0; inset-block-end: 0; height: 1px; content: "";
+    background: linear-gradient(90deg, rgb(0 240 255 / 45%), rgb(255 42 109 / 25%) 55%, transparent);
+  }
+  /* The symbol artwork sits inside ~29% transparent margin; crop the frame to the drawn mark (137–1029 × 151–1025 of
+     its 1254 canvas) so the mark keeps its size while the box hugs it and lines up with the Team rows. */
+  .head :global(.head-mark) { width: 2.45rem; height: 2.45rem; overflow: hidden; }
+  .head :global(.head-mark img) { width: 2.45rem; height: 2.45rem; transform: scale(1.4) translate(3.5%, 3.1%); }
   /* Borderless controls; hover and focus answer with the cyberpunk treatment: a chamfered cyan scanline tint and a
      short chromatic glitch on entry. The chamfered fill is a layer, never a clip on the control, so a keyboard focus ring is never cut. */
   .head :global(.new-team) { position: relative; isolation: isolate; width: 2.25rem; height: 2.25rem; min-height: 0; padding: 0; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
   .head :global(.new-team::before), .row::before { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   .head :global(.new-team:hover:not(:disabled)), .head :global(.new-team:focus-visible) { color: var(--shimpz-color-cyan); background: transparent; border: 0; box-shadow: none; }
   .head :global(.new-team:hover:not(:disabled)::before), .head :global(.new-team:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
-  .head :global(.new-team:hover:not(:disabled) svg), .head :global(.new-team:focus-visible svg) { filter: var(--team-split-icon); animation: team-glitch-icon 280ms steps(1, end); }
+  .head :global(.new-team:hover:not(:disabled) svg), .head :global(.new-team:focus-visible svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   .head svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   .team-navigation {
     --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
@@ -150,8 +255,6 @@
     --routine-indent: calc(var(--shimpz-space-3) + 2.6rem);
     --routine-guide: calc(var(--shimpz-space-3) + 0.95rem);
     --team-scanlines: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent) 2px 3px);
-    --team-split-text: -1px 0 color-mix(in srgb, var(--shimpz-color-magenta) 70%, transparent), 1px 0 color-mix(in srgb, var(--shimpz-color-cyan) 70%, transparent);
-    --team-split-icon: drop-shadow(-1px 0 var(--shimpz-color-magenta)) drop-shadow(1px 0 var(--shimpz-color-cyan));
   }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
   .teams { gap: 2px; }
@@ -160,13 +263,18 @@
   /* The selected Team keeps the hover treatment: the same tint and scanlines. */
   .row:hover, .row:focus-within, .is-selected > .row { --row-bg: var(--team-hover-bg); }
   .row:hover::before, .row:focus-within::before, .is-selected > .row::before { background-image: var(--team-scanlines); }
-  .row:hover .name, .row:focus-within .name { text-shadow: var(--team-split-text); animation: team-glitch-text 280ms steps(1, end); }
-  .row:hover .monogram { animation: team-glitch-icon 280ms steps(1, end); }
+  .row:hover .name, .row:focus-within .name { text-shadow: var(--glitch-split-text); animation: admin-glitch-text 280ms steps(1, end); }
+  .row:hover .monogram { animation: admin-glitch-icon 280ms steps(1, end); }
   /* Row actions overlay the end of the name so collapsed Teams keep their full width until hover or focus. */
   .row-actions { position: absolute; inset-block: 0; inset-inline-end: 0; display: flex; align-items: center; padding-inline: 1.5rem var(--shimpz-space-2); background: linear-gradient(to right, transparent, var(--row-bg) 1.5rem); opacity: 0; transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease); }
   :global([dir="rtl"]) .row-actions { background: linear-gradient(to left, transparent, var(--row-bg) 1.5rem); }
   .row:hover .row-actions, .row:focus-within .row-actions, .is-selected > .row .row-actions { opacity: 1; }
   .row :global(.team-link) { min-width: 0; height: auto; min-height: 2.75rem; justify-content: flex-start; padding: 0.4rem var(--shimpz-space-3); border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
+  .team-rename { display: flex; min-width: 0; overflow: hidden; min-height: 2.75rem; align-items: center; gap: 0.7rem; padding: 0.4rem var(--shimpz-space-3); }
+  .team-rename :global(.rename-field) { display: block; flex: 1 1 0; width: auto; min-width: 0; }
+  .team-rename :global(.rename-field input) { width: 100%; min-width: 0; height: 1.9rem; min-height: 0; padding: 0 0.35rem; color: var(--shimpz-color-text); font: 500 0.95rem/1 var(--shimpz-font-sans); background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, var(--shimpz-color-bg)); border: 0; border-block-end: 1px solid var(--shimpz-color-cyan); clip-path: none; box-shadow: none; }
+  .team-rename :global(.rename-field input:focus) { outline: none; box-shadow: 0 1px 0 0 var(--shimpz-color-cyan); }
+  .row.is-renaming .row-actions { display: none; }
   .row :global(.team-link .action-link-content) { display: flex; min-width: 0; align-items: center; gap: 0.7rem; }
   .row :global(.team-link:hover), .is-selected > .row :global(.team-link) { color: var(--shimpz-color-text); }
   .monogram { display: grid; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; place-items: center; color: var(--shimpz-color-text-dim); background: var(--shimpz-color-bg); border: 1px solid var(--shimpz-color-border); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.04em; }
@@ -175,18 +283,7 @@
   .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.25rem; height: 2.25rem; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-dim); }
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
-  .row :global(.row-action:hover svg), .row :global(.team-actions > .shimpz-button:hover svg) { filter: var(--team-split-icon); animation: team-glitch-icon 280ms steps(1, end); }
-  @keyframes team-glitch-text {
-    0% { transform: translateX(1px); text-shadow: -2px 0 var(--shimpz-color-magenta), 2px 0 var(--shimpz-color-cyan); }
-    30% { transform: translateX(-1px); text-shadow: 2px 0 var(--shimpz-color-magenta), -2px 0 var(--shimpz-color-cyan); }
-    60% { transform: translateX(0); clip-path: inset(0 0 45% 0); }
-    80%, 100% { transform: none; clip-path: none; }
-  }
-  @keyframes team-glitch-icon {
-    0% { transform: translateX(-1px); filter: drop-shadow(-2px 0 var(--shimpz-color-magenta)) drop-shadow(2px 0 var(--shimpz-color-cyan)); }
-    35% { transform: translateX(1px); filter: drop-shadow(2px 0 var(--shimpz-color-magenta)) drop-shadow(-2px 0 var(--shimpz-color-cyan)); }
-    70%, 100% { transform: none; }
-  }
+  .row :global(.row-action:hover svg), .row :global(.team-actions > .shimpz-button:hover svg) { filter: var(--glitch-split-icon); animation: admin-glitch-icon 280ms steps(1, end); }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
   @media (pointer: coarse) {
     .row { grid-template-columns: minmax(0, 1fr) auto; }

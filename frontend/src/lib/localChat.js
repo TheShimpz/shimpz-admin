@@ -1058,7 +1058,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !exactKeys(value, ['type', 'team_id', 'team_name', 'reply', 'clarification', 'routine_proposal']) ||
       !TEAM_ID_RE.test(value.team_id) ||
       value.team_id !== expectedTeamId ||
-      canonicalTeam(value.team_name) !== canonicalTeam(expectedTeamName) ||
+      // The Team id binds the turn; its display name may have changed by a rename (ADR-0088) and is only checked.
+      !canonicalTeam(value.team_name) ||
       typeof value.reply !== 'string' ||
       !value.reply.trim() ||
       value.reply.length > MAX_REPLY_CHARS ||

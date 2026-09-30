@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+
+import { accessibilityViolations } from './axe.js';
 
 import { routeScenario } from './scenarioRoutes.js';
 import { ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
@@ -49,6 +50,7 @@ const localTeamResidues = [
   'integration_credentials',
   'publication_bindings',
   'runtime_state',
+  'team_names',
   'team_networks',
   'team_storage',
 ];
@@ -838,9 +840,10 @@ async function routeReadyChat(page, {
 test('the setup screen passes its accessibility scan and requires a 15-character password', async ({ page }) => {
   await routeSetup(page);
   await page.goto('/');
+  await expect(page.locator('input[type="password"]').first()).toBeVisible();
 
   // The setup screen's one accessibility scan.
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await accessibilityViolations(page)).toEqual([]);
   await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
 });
 
@@ -936,16 +939,19 @@ test('asks for a missing provider key in the composer without leaving the conver
   expect(JSON.stringify(chat.chatFrames())).not.toContain(secret);
 });
 
+async function openFastRouting(page) {
+  const trigger = page.getByRole('button', { name: /^Fast routing \(Jev\)/ });
+  await trigger.click();
+  return { trigger, fast: page.getByRole('dialog', { name: 'Fast routing (Jev)' }) };
+}
+
 test('the Supervisor adds and removes the Jev key after reading what goes to TypeSafe', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: /^Brain: / }).click();
-  const panel = page.getByRole('dialog', { name: 'Brain settings' });
-  const fast = panel.getByRole('region', { name: 'Fast routing (Jev)' });
-  await expect(fast).toContainText('Off. The model routes every message.');
-
-  await fast.getByRole('button', { name: 'Add key' }).click();
+  const { fast } = await openFastRouting(page);
+  await expect(fast.getByRole('link', { name: /console\.typesafe\.ai\/keys/ }))
+    .toHaveAttribute('href', 'https://console.typesafe.ai/keys');
   const key = fast.getByLabel('TypeSafe API key');
   await expect(key).toBeFocused();
   await expect(key).toHaveAttribute('type', 'password');
@@ -963,9 +969,9 @@ test('the Supervisor adds and removes the Jev key after reading what goes to Typ
   await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
 
   await fast.getByRole('button', { name: 'Remove' }).click();
-  await expect(fast).toContainText('Off. The model routes every message.');
-  await expect(fast.getByRole('button', { name: 'Add key' })).toBeFocused();
+  await expect(fast.getByLabel('TypeSafe API key')).toBeFocused();
   expect(chat.decisionRequests()).toEqual([
+    { method: 'GET', body: null },
     { method: 'GET', body: null },
     { method: 'PUT', body: { api_key: secret } },
     { method: 'DELETE', body: null },
@@ -977,48 +983,40 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   const chat = await routeReadyChat(page, { rejectDecisionKey: true });
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const trigger = page.getByRole('button', { name: /^Brain: / });
-  await trigger.click();
-  const fast = page.getByRole('dialog', { name: 'Brain settings' }).getByRole('region', { name: 'Fast routing (Jev)' });
-  await fast.getByRole('button', { name: 'Add key' }).click();
+  const { trigger, fast } = await openFastRouting(page);
   await fast.getByLabel('TypeSafe API key').fill('tsk-rejected-contract-0123456789');
   await fast.getByRole('button', { name: 'Save key' }).click();
   await expect(fast.getByRole('alert')).toHaveText('TypeSafe rejected this key.');
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('tsk-rejected-contract-0123456789');
 
   await page.keyboard.press('Escape');
+  await expect(page.getByLabel('TypeSafe API key')).toHaveCount(0);
   await trigger.click();
-  await expect(fast.getByLabel('TypeSafe API key')).toHaveCount(0);
   await expect(fast.getByRole('alert')).toHaveCount(0);
-  await fast.getByRole('button', { name: 'Add key' }).click();
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'PUT', 'GET']);
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'GET']);
 });
 
-test('reopening the Brain menu re-reads a Jev key another session changed', async ({ page }) => {
+test('reopening fast routing re-reads a Jev key another session changed', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const trigger = page.getByRole('button', { name: /^Brain: / });
-  await trigger.click();
-  const fast = page.getByRole('dialog', { name: 'Brain settings' }).getByRole('region', { name: 'Fast routing (Jev)' });
-  await expect(fast).toContainText('Off. The model routes every message.');
+  const { trigger, fast } = await openFastRouting(page);
+  await expect(fast.getByLabel('TypeSafe API key')).toBeVisible();
   await page.keyboard.press('Escape');
 
   chat.configureDecisionElsewhere('••••abcd');
   await trigger.click();
   await expect(fast).toContainText('On · key ••••abcd');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET']);
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'GET']);
 });
 
-test('Hosted Brain settings never offer or request a Jev key', async ({ page }) => {
+test('Hosted chat never offers or requests a Jev key', async ({ page }) => {
   const chat = await routeReadyChat(page, { hostedSession: true });
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: /^Brain: / }).click();
-  const panel = page.getByRole('dialog', { name: 'Brain settings' });
-  await expect(panel.getByRole('radiogroup', { name: 'Reasoning effort' })).toBeVisible();
-  await expect(panel.getByRole('region', { name: 'Fast routing (Jev)' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Reasoning effort/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Fast routing/ })).toHaveCount(0);
   expect(chat.decisionRequests()).toEqual([]);
 });
 
@@ -1863,7 +1861,7 @@ test('reports a repeated exact Assistant install from authoritative current stat
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('instala o cloudflare');
+  await fillWhenReady(page, composer, 'instala o cloudflare');
   await composer.press('Enter');
 
   const task = page.locator('.assistant-install-plan [data-slot="chat-task"]');
@@ -2130,7 +2128,7 @@ test('keeps target-required guidance valid when Stop races its response', async 
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await composer.fill('desinstale');
+  await fillWhenReady(page, composer, 'desinstale');
   await composer.press('Enter');
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
 
@@ -3175,7 +3173,7 @@ test('the ready Chat passes its accessibility scan and the Brain chooser works b
 
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
   // The Chat screen's one accessibility scan.
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await accessibilityViolations(page)).toEqual([]);
 
   const brainTrigger = page.getByRole('button', { name: /^Brain: / });
   await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6.1 Sol, Low reasoning');
@@ -3185,9 +3183,17 @@ test('the ready Chat passes its accessibility scan and the Brain chooser works b
   const models = brainPanel.getByRole('group', { name: 'Model' });
   await expect(models.getByRole('button', { name: /GPT-6.1 Sol/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(models.getByRole('button', { name: /GPT-6.1 Sol/ })).toBeFocused();
-  const effort = brainPanel.getByRole('radiogroup', { name: 'Reasoning effort' });
+  await page.keyboard.press('Escape');
+  await expect(brainPanel).toBeHidden();
+  await expect(brainTrigger).toBeFocused();
+
+  const effortTrigger = page.getByRole('button', { name: /^Reasoning effort/ });
+  await expect(effortTrigger).toHaveAccessibleName('Reasoning effort: Low');
+  await effortTrigger.click();
+  const effortPanel = page.getByRole('dialog', { name: 'Reasoning effort' });
+  const effort = effortPanel.getByRole('radiogroup', { name: 'Reasoning effort' });
   await expect(effort.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
-  await effort.getByRole('radio', { name: 'Low' }).focus();
+  await expect(effort.getByRole('radio', { name: 'Low' })).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => chat.inferenceBodies().at(-1)).toEqual({ provider: 'openai', model: 'gpt-6.1-sol', effort: 'medium' });
   await expect(effort.getByRole('radio', { name: 'Medium' })).toHaveAttribute('aria-checked', 'true');
@@ -3195,9 +3201,10 @@ test('the ready Chat passes its accessibility scan and the Brain chooser works b
   await page.keyboard.press('End');
   await expect.poll(() => chat.inferenceBodies().at(-1)?.effort).toBe('high');
   await expect(brainTrigger).toHaveAccessibleName('Brain: GPT-6.1 Sol, High reasoning');
+  await expect(effortTrigger).toHaveAccessibleName('Reasoning effort: High');
   await page.keyboard.press('Escape');
-  await expect(brainPanel).toBeHidden();
-  await expect(brainTrigger).toBeFocused();
+  await expect(effortPanel).toBeHidden();
+  await expect(effortTrigger).toBeFocused();
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('Show the rendered response');
@@ -3247,8 +3254,13 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
-  // A Team without Routines offers no Routines item.
+  // A Local Team menu opens on Rename; a Team without Routines offers no Routines item.
+  await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+  await page.keyboard.press('End');
   await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeHidden();
@@ -3310,19 +3322,16 @@ test('names every running Assistant beyond the chat limit and sends exactly the 
   expect(chat.chatFrames()[0].assistant_ids).toEqual(ids.slice(0, 16));
 });
 
-test('Escape during a Brain save returns focus to the trigger once it is enabled again', async ({ page }) => {
+test('Escape during an effort save returns focus to the trigger once it is enabled again', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdInferenceWrite: true });
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const trigger = page.getByRole('button', { name: /^Brain: / });
+  const trigger = page.getByRole('button', { name: /^Reasoning effort/ });
   await trigger.click();
-  await page.getByRole('dialog', { name: 'Brain settings' })
-    .getByRole('radiogroup', { name: 'Reasoning effort' })
-    .getByRole('radio', { name: 'High' })
-    .click();
+  await page.getByRole('dialog', { name: 'Reasoning effort' }).getByRole('radio', { name: 'High' }).click();
   await expect.poll(chat.inferenceWrites).toBe(1);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Brain settings' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Reasoning effort' })).toBeHidden();
   await expect(trigger).toBeDisabled();
 
   chat.releaseInferenceWrite();
@@ -3338,11 +3347,8 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
   const send = page.getByRole('button', { name: 'Send' });
   await expect(send).toBeEnabled();
 
-  await page.getByRole('button', { name: /^Brain: / }).click();
-  await page.getByRole('dialog', { name: 'Brain settings' })
-    .getByRole('radiogroup', { name: 'Reasoning effort' })
-    .getByRole('radio', { name: 'High' })
-    .click();
+  await page.getByRole('button', { name: /^Reasoning effort/ }).click();
+  await page.getByRole('dialog', { name: 'Reasoning effort' }).getByRole('radio', { name: 'High' }).click();
   await expect.poll(chat.inferenceWrites).toBe(1);
   await expect(send).toBeDisabled();
   await expect(composer).toBeEnabled();
@@ -3426,6 +3432,60 @@ async function routeRoutines(
   });
   return calls;
 }
+
+test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name, a refusal keeps editing', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const renames = [];
+  let refuse = false;
+  await page.route('**/api/teams/marketing', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    renames.push(route.request().postDataJSON());
+    if (refuse) return route.fulfill({ status: 409, json: { detail: 'Another Team already has this name.' } });
+    return route.fulfill({ json: { team_id: 'marketing', team_name: route.request().postDataJSON().team_name } });
+  });
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const navigation = await openTeamNavigation(page);
+
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const field = navigation.getByRole('textbox', { name: 'Name for Marketing' });
+  await expect(field).toBeFocused();
+  await field.fill('Growth');
+  await page.keyboard.press('Escape');
+  await expect(field).toHaveCount(0);
+  await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeFocused();
+  expect(renames).toEqual([]);
+
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await field.fill('  Growth Marketing  ');
+  await page.keyboard.press('Enter');
+  const renamed = navigation.getByRole('link', { name: 'Growth Marketing', exact: true });
+  await expect(renamed).toBeFocused();
+  expect(renames).toEqual([{ team_name: 'Growth Marketing' }]);
+
+  refuse = true;
+  let releaseRefusal;
+  const refusalHeld = new Promise((resolve) => { releaseRefusal = resolve; });
+  await page.route('**/api/teams/marketing', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    await refusalHeld;
+    return route.fallback();
+  });
+  await navigation.getByRole('button', { name: 'Actions for Growth Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const again = navigation.getByRole('textbox', { name: 'Name for Growth Marketing' });
+  await again.fill('Sales');
+  await page.keyboard.press('Enter');
+  // While the name is saving, the field keeps focus but cannot be edited, so no later draft is silently lost.
+  await expect(again).toHaveAttribute('readonly', '');
+  releaseRefusal();
+  await expect(page.getByText('Another Team already has this name.')).toBeVisible();
+  await expect(again).not.toHaveAttribute('readonly', '');
+  await expect(again).toBeFocused();
+  await expect(again).toHaveValue('Sales');
+});
 
 test.describe('Team Routines', () => {
   test.use({ timezoneId: 'America/Sao_Paulo' });

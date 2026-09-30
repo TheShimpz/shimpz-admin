@@ -174,7 +174,7 @@ function chatReply(state, frame) {
   return {
     type: 'done',
     team_id: 'marketing',
-    team_name: 'Marketing',
+    team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
     reply: recurring
       ? 'I can run this on a schedule. Confirm it below to schedule it.'
       : `Preview reply to: ${message}`,
@@ -198,6 +198,12 @@ export function createScenario(name = 'ready') {
       if (path === '/api/model-providers' && method === 'GET') return ok({ providers: providers() });
       if (path === '/api/decision-provider' && method === 'GET') {
         return ok({ provider: 'typesafe', configured: false, masked: null });
+      }
+      if (path === '/api/teams/marketing' && method === 'PATCH' && state.teams.length) {
+        const name = typeof body?.team_name === 'string' ? body.team_name.trim() : '';
+        if (!name || name.length > 80) return { status: 400, json: { detail: 'Enter a valid Team name.' } };
+        state.teams = state.teams.map((team) => (team.team_id === 'marketing' ? { ...team, team_name: name } : team));
+        return ok({ team_id: 'marketing', team_name: name });
       }
       if (!state.teams.length || !path.startsWith('/api/teams/marketing/')) return null;
       if (path === '/api/teams/marketing/assistants' && method === 'GET') {

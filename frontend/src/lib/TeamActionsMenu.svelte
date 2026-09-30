@@ -1,13 +1,12 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  let { label, deleteLabel, ondelete, routinesLabel = '', onroutines = null } = $props();
+  let { label, deleteLabel, ondelete, renameLabel = '', onrename = null, routinesLabel = '', onroutines = null } = $props();
 
   let open = $state(false);
   let root = $state();
   let trigger = $state();
   let menu = $state();
-  let firstItem = $state();
   const menuId = $props.id();
 
   function close(restore = false) {
@@ -39,7 +38,7 @@
     queueMicrotask(() => {
       menu?.showPopover();
       place();
-      firstItem?.focus();
+      menu?.querySelector('[role="menuitem"]')?.focus();
     });
   }
 
@@ -53,6 +52,22 @@
     // Escape closes only this menu, never an enclosing dialog such as the mobile Team drawer.
     if (event.key === 'Escape') event.preventDefault();
     close(event.key === 'Escape');
+  }
+
+  // Arrow keys, Home, and End move between the menu items, so every item is reachable from the keyboard.
+  function menuKeydown(event) {
+    const items = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])];
+    const index = items.indexOf(document.activeElement);
+    const last = items.length - 1;
+    const next = {
+      ArrowDown: index < last ? index + 1 : 0,
+      ArrowUp: index > 0 ? index - 1 : last,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (next === undefined || last < 0) return;
+    event.preventDefault();
+    items[next].focus();
   }
 
   function outsidePointerdown(event) {
@@ -79,19 +94,20 @@
   >
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg>
   </Button>
-  <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} popover="manual">
-    {#if onroutines}
-      <Button bind:element={firstItem} class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onroutines)}>
-        {routinesLabel}
-      </Button>
-      <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
-        {deleteLabel}
-      </Button>
-    {:else}
-      <Button bind:element={firstItem} class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
-        {deleteLabel}
+  <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} tabindex="-1" popover="manual" onkeydown={menuKeydown}>
+    {#if onrename}
+      <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onrename)}>
+        {renameLabel}
       </Button>
     {/if}
+    {#if onroutines}
+      <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onroutines)}>
+        {routinesLabel}
+      </Button>
+    {/if}
+    <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
+      {deleteLabel}
+    </Button>
   </div>
 </div>
 

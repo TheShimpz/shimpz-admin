@@ -142,11 +142,24 @@ function markFailure(attempt, error, fallback, clearAuthority) {
   return safe;
 }
 
+// A rename confirmed after a Team list read started wins over that read's older name.
+let renameClock = 0;
+const renamedAt = new Map();
+
+function withRenames(teams, since) {
+  return teams.map((team) => {
+    const renamed = renamedAt.get(team.id);
+    return renamed && renamed.clock > since ? { ...team, name: renamed.name } : team;
+  });
+}
+
 async function hydrate(fetcher, preferredId, attempt, previousId = '') {
-  const [teams, catalog] = await Promise.all([
+  const since = renameClock;
+  const [listed, catalog] = await Promise.all([
     listTeams(fetcher),
     listAssistantCatalog(fetcher),
   ]);
+  const teams = withRenames(listed, since);
   const selectedTeamId = selectAvailableTeam(teams, preferredId, previousId);
   if (!selectedTeamId) {
     const snapshot = {
@@ -169,10 +182,12 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
 
   const inventory = await inventorySnapshot(fetcher, selectedTeamId);
   const scope = chatScope(inventory.installedAssistants);
+  // Re-apply renames at publication: one may have been confirmed while the inventory was loading.
+  const published = withRenames(listed, since);
   if (attempt === generation) {
     teamContext.set({
       phase: 'ready',
-      teams,
+      teams: published,
       selectedTeamId,
       catalog,
       ...inventory,
@@ -180,7 +195,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       error: '',
     });
   }
-  return { teams, selectedTeamId, catalog, ...inventory, ...scope };
+  return { teams: published, selectedTeamId, catalog, ...inventory, ...scope };
 }
 
 export async function loadTeamContext(fetcher, preferredId = '') {
@@ -222,6 +237,8 @@ export async function selectTeam(fetcher, id) {
     if (attempt === generation) {
       teamContext.set({
         ...current,
+        // A rename that finished during this selection already updated the list; keep it.
+        teams: get(teamContext).teams,
         phase: 'ready',
         selectedTeamId: canonicalId,
         catalog,
@@ -236,6 +253,7 @@ export async function selectTeam(fetcher, id) {
     if (attempt === generation) {
       teamContext.set({
         ...current,
+        teams: get(teamContext).teams,
         phase: 'error',
         installedAssistants: [],
         activeAssistantIds: [],
@@ -283,6 +301,8 @@ export async function refreshTeamInventory(fetcher) {
     if (attempt === generation) {
       teamContext.set({
         ...current,
+        // A rename that finished during this refresh already updated the list; keep it.
+        teams: get(teamContext).teams,
         phase: 'ready',
         catalog,
         ...inventory,
@@ -298,12 +318,14 @@ export async function refreshTeamInventory(fetcher) {
 
 export function clearTeamContext() {
   generation += 1;
+  renamedAt.clear();
   teamContext.set(emptyContext());
 }
 
 export async function createTeam(fetcher, name) {
   requireFetcher(fetcher);
-  const canonicalName = typeof name === 'string' ? name.trim() : name;
+  // Team admits names in NFC; normalize before sending and before comparing its answer (ADR-0088).
+  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
   canonicalTeamName(canonicalName, 'Enter a valid Team name.');
 
   const attempt = ++generation;
@@ -348,6 +370,46 @@ export async function createTeam(fetcher, name) {
     markFailure(attempt, error, 'The Team was created, but its local context could not be refreshed.', false);
   }
   return created;
+}
+
+/**
+ * Rename a Team (ADR-0088): only its display name changes; its id and every Team-scoped state stay as they are. The
+ * confirmed name is applied by id to whatever context is current, so a newer context keeps it and a cleared one ignores
+ * it; inventory refreshes keep the latest Team list rather than the one they started from.
+ */
+export async function renameTeam(fetcher, id, name) {
+  requireFetcher(fetcher);
+  const canonicalId = preferredTeamId(id);
+  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
+  canonicalTeamName(canonicalName, 'Enter a valid Team name.');
+  const current = get(teamContext);
+  const target = current.teams.find((team) => team.id === canonicalId);
+  if (!target || current.phase !== 'ready') throw new LocalApiError('Invalid local Team request.');
+  if (target.name === canonicalName) return target;
+  const response = await fetcher(`/api/teams/${encodeURIComponent(canonicalId)}`, {
+    method: 'PATCH',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ team_name: canonicalName }),
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'The Team could not be renamed.'), response.status);
+  }
+  if (
+    !hasExactEnvelopeKeys(body, ['team_id', 'team_name']) ||
+    body.team_id !== canonicalId ||
+    body.team_name !== canonicalName
+  ) {
+    throw new LocalApiError('The Team rename returned an invalid response.', response.status);
+  }
+  const renamed = { ...target, name: body.team_name };
+  renameClock += 1;
+  renamedAt.set(canonicalId, { clock: renameClock, name: body.team_name });
+  teamContext.update((state) => ({
+    ...state,
+    teams: state.teams.map((team) => (team.id === canonicalId ? { ...team, name: body.team_name } : team)),
+  }));
+  return renamed;
 }
 
 export async function deleteTeam(fetcher, id, name, password) {
