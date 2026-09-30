@@ -41,6 +41,7 @@ from team import bridge as team
 from team import files as team_files
 from team import http as team_http
 from team import inference as team_inference
+from team import names as team_names
 
 import browser
 from action import stored_input as action_stored_input
@@ -579,8 +580,14 @@ def teams_list():
     return _team_response(team.list_teams)
 
 
+if ADMIN_PROFILE == "local":
+    team_names.register(app, _allowed_browser_origins)
+
+
 @app.post("/api/teams")
 def teams_create(payload: dict):
+    if ADMIN_PROFILE == "local":
+        return team_names.create(payload)
     if set(payload) != {"team_name"}:
         raise HTTPException(status_code=400, detail="request body must contain only team_name")
     if not isinstance(payload["team_name"], str):
@@ -592,8 +599,6 @@ def teams_create(payload: dict):
     if not team_id:
         raise HTTPException(status_code=400, detail="team name has no usable characters")
     result = team.create(team_id, team_name)
-    if ADMIN_PROFILE == "local":
-        result = chat_history_http.team_created(team_id, result)
     response = _team_response(lambda: result)
     if 200 <= response.status_code < 300:
         log.info("team created: %s", team_id)
@@ -641,7 +646,9 @@ async def teams_destroy(team_id: str, request: Request):
 
     return await run_in_threadpool(
         _team_response,
-        lambda: _team_delete_with_history(team_id, lambda: team.destroy(team_id, team_name)),
+        lambda: _team_delete_with_history(
+            team_id, lambda: (team.destroy_confirmed if ADMIN_PROFILE == "local" else team.destroy)(team_id, team_name)
+        ),
     )
 
 

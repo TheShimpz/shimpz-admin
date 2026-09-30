@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import unittest
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -45,6 +46,8 @@ class _TeamHandler(BaseHTTPRequestHandler):
     response_body = b'{"ok":true}'
     response_headers: ClassVar[dict[str, str]] = {"Content-Type": "application/json"}
     response_delay_seconds = 0.0
+    # A Team that answers by request body, e.g. one that confirms a deletion's name.
+    responder: ClassVar[Callable[[str, str, bytes], tuple[int, bytes]] | None] = None
 
     def log_message(self, *_args):
         pass
@@ -66,6 +69,8 @@ class _TeamHandler(BaseHTTPRequestHandler):
             (self.command, self.path),
             (self.__class__.response_status, self.__class__.response_body),
         )
+        if self.__class__.responder is not None:
+            status, response_body = self.__class__.responder(self.command, self.path, body)
         self.send_response(status)
         headers = dict(self.__class__.response_headers)
         headers.setdefault("Content-Length", str(len(response_body)))
@@ -78,6 +83,7 @@ class _TeamHandler(BaseHTTPRequestHandler):
     do_GET = _handle
     do_POST = _handle
     do_DELETE = _handle
+    do_PATCH = _handle
 
 
 class _LiveTeamCase(unittest.TestCase):
@@ -90,6 +96,7 @@ class _LiveTeamCase(unittest.TestCase):
         _TeamHandler.response_body = b'{"ok":true}'
         _TeamHandler.response_headers = {"Content-Type": "application/json"}
         _TeamHandler.response_delay_seconds = 0.0
+        _TeamHandler.responder = None
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), _TeamHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
@@ -107,7 +114,7 @@ class _LiveTeamCase(unittest.TestCase):
         self.server.server_close()
         self.thread.join(timeout=2)
 
-    def _run_asgi_probe(self, scenario: str) -> dict[str, object]:
+    def _run_asgi_probe(self, scenario: str, script: Path | None = None) -> dict[str, object]:
         env = os.environ.copy()
         env.update(
             {
@@ -120,7 +127,7 @@ class _LiveTeamCase(unittest.TestCase):
             }
         )
         result = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve()), "--asgi-probe", scenario],
+            [sys.executable, str(script or Path(__file__).resolve()), "--asgi-probe", scenario],
             cwd=ROOT,
             env=env,
             capture_output=True,
@@ -554,30 +561,23 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         self.assertEqual(json.loads(request["body"]), {"team_name": "Marketing"})
         self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
-    def test_destroy_route_requires_name_and_password_without_forwarding_either(self):
-        _TeamHandler.response_by_route = {
-            (
-                "GET",
-                "/v1/teams",
-            ): (200, b'{"teams":[{"team_id":"team_1","team_name":"Marketing","status":"running"}]}'),
-            (
-                "DELETE",
-                "/v1/teams/team_1",
-            ): (
-                200,
-                json.dumps(
-                    {
-                        "team_id": "team_1",
-                        "destroyed": True,
-                        "assistants_removed": 1,
-                        "residue_absent": LOCAL_TEAM_RESIDUES,
-                        "storage_removed": True,
-                    },
-                    separators=(",", ":"),
-                ).encode(),
-            ),
+    def test_destroy_route_requires_the_password_and_lets_team_confirm_the_name(self):
+        destroyed = {
+            "team_id": "team_1",
+            "destroyed": True,
+            "assistants_removed": 1,
+            "residue_absent": LOCAL_TEAM_RESIDUES,
+            "storage_removed": True,
         }
 
+        def team(_method: str, _path: str, body: bytes) -> tuple[int, bytes]:
+            # Team confirms the current name inside its lifecycle before any side effect (ADR-0088).
+            if json.loads(body) == {"team_name": "Marketing"}:
+                return 200, json.dumps(destroyed).encode()
+            mismatch = {"detail": "Team name confirmation does not match", "code": "team-name-mismatch"}
+            return 409, json.dumps(mismatch).encode()
+
+        _TeamHandler.responder = staticmethod(team)
         document = self._run_asgi_probe("team-delete")
 
         self.assertEqual(
@@ -589,23 +589,17 @@ class TeamAssistantRouteTest(_LiveTeamCase):
             {"status": 403, "body": {"detail": "Supervisor password is incorrect"}},
         )
         self.assertEqual(
-            document["wrong_name"], {"status": 400, "body": {"detail": "Team name confirmation does not match"}}
+            document["wrong_name"],
+            {"status": 409, "body": {"detail": "Team name confirmation does not match", "code": "team-name-mismatch"}},
         )
         self.assertEqual(document["valid"]["status"], 200)
         self.assertEqual(
             [(request["method"], request["path"]) for request in _TeamHandler.requests],
-            [
-                ("GET", "/v1/teams"),
-                ("GET", "/v1/teams"),
-                ("DELETE", "/v1/teams/team_1"),
-            ],
+            [("DELETE", "/v1/teams/team_1"), ("DELETE", "/v1/teams/team_1")],
         )
-        delete_request = _TeamHandler.requests[-1]
-        self.assertEqual(delete_request["body"], b"")
-        self.assertNotIn("content-type", delete_request["headers"])
+        self.assertEqual(json.loads(_TeamHandler.requests[-1]["body"]), {"team_name": "Marketing"})
         forwarded = b"".join(request["body"] for request in _TeamHandler.requests)
         self.assertNotIn(b"test-admin-password", forwarded)
-        self.assertNotIn(b"Marketing", forwarded)
 
     def test_multipart_upload_is_bounded_and_forwarded_as_raw_bytes_without_a_path(self):
         content = b"Team private data"
@@ -672,16 +666,15 @@ async def _asgi_request(
     body: bytes = b"",
     *,
     token: str = "",
-    content_type: str | None = None,
     content_length: int | None = None,
+    headers: dict[str, str] | None = None,
 ):
     """Drive the real FastAPI ASGI stack without an in-process route substitute."""
     declared_length = len(body) if content_length is None else content_length
+    extra = {"content-type": "application/json"} if body else {}
+    extra.update(headers or {})
     headers = [(b"accept", b"application/json"), (b"content-length", str(declared_length).encode())]
-    if content_type is not None:
-        headers.append((b"content-type", content_type.encode()))
-    elif body:
-        headers.append((b"content-type", b"application/json"))
+    headers.extend((name.encode(), value.encode()) for name, value in extra.items())
     if token:
         headers.append((b"cookie", f"{admin_app.COOKIE}={token}".encode()))
     scope = {
@@ -867,7 +860,7 @@ def _run_asgi_probe(scenario: str) -> None:
                 "/api/teams/team_1/files",
                 payload,
                 token=token,
-                content_type=f"multipart/form-data; boundary={boundary}",
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
             )
         )
         output = {"status": status, "body": body}
@@ -881,7 +874,7 @@ def _run_asgi_probe(scenario: str) -> None:
                 "/api/teams/team_1/files",
                 payload,
                 token=token,
-                content_type=f"multipart/form-data; boundary={boundary}",
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
                 content_length=admin_app.team_files.MAX_MULTIPART_BODY_BYTES + 1,
             )
         )

@@ -267,12 +267,23 @@ class AppRouteEdgeTests(unittest.TestCase):
             mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value=True)),
             mock.patch.object(
                 self.admin_app.team,
-                "destroy",
+                "destroy_confirmed",
                 return_value=self.admin_app.team.TeamResponse(200, {"deleted": True}),
-            ),
+            ) as confirmed,
         ):
             response = asyncio.run(self.admin_app.teams_destroy("team_1", request))
         self.assertEqual(response.status_code, 200)
+        # Local Team confirms the current name itself (ADR-0088); Admin forwards the typed name.
+        confirmed.assert_called_once_with("team_1", payload["team_name"])
+
+    def test_hosted_team_creation_keeps_its_own_validation(self) -> None:
+        with mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"):
+            for payload in ({"name": "x"}, {"team_name": 1}, {"team_name": "  "}, {"team_name": "!!!"}):
+                with self.subTest(payload=payload):
+                    self.assert_sync_status(400, lambda payload=payload: self.admin_app.teams_create(payload))
+            conflict = self.admin_app.team.TeamResponse(409, {"detail": "exists"})
+            with mock.patch.object(self.admin_app.team, "create", return_value=conflict):
+                self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 409)
 
     def test_chat_history_is_team_gated_and_never_cached(self) -> None:
         page = {

@@ -70,6 +70,14 @@ def canonical_team_name(value: object) -> str:
     return canonical
 
 
+def canonical_local_team_name(value: object) -> str:
+    """A Local Team display name exactly as Team admits it: trimmed, bounded, and NFC (ADR-0088)."""
+    canonical = team_contract.canonical_local_team_name(value)
+    if canonical is None:
+        raise TeamRequestError("team name must contain 1 to 80 trimmed characters")
+    return canonical
+
+
 canonical_assistant_id = payloads.canonical_assistant_id
 _SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -205,6 +213,32 @@ def destroy(team_id: object, expected_team_name: object) -> TeamResponse:
     if authoritative != expected_name:
         raise TeamRequestError("Team name confirmation does not match")
     return _call("DELETE", f"/v1/teams/{canonical_id}")
+
+
+def destroy_confirmed(team_id: object, expected_team_name: object) -> TeamResponse:
+    """Delete a Local Team; Team confirms its current name before any side effect (ADR-0088)."""
+    canonical_id = canonical_team_id(team_id)
+    return _call("DELETE", f"/v1/teams/{canonical_id}", {"team_name": canonical_local_team_name(expected_team_name)})
+
+
+def rename(team_id: object, team_name: object) -> TeamResponse:
+    """Rename a Local Team; only its display name changes, never its id (ADR-0088)."""
+    canonical_id = canonical_team_id(team_id)
+    name = canonical_local_team_name(team_name)
+    response = _call("PATCH", f"/v1/teams/{canonical_id}", {"team_name": name})
+    if not 200 <= response.status < 300:
+        return response
+    body = response.body
+    trace_id = body.get("trace_id")
+    if (
+        set(body) - {"trace_id"} != {"team_id", "team_name"}
+        or body["team_id"] != canonical_id
+        or body["team_name"] != name
+        or ("trace_id" in body and not (isinstance(trace_id, str) and chat_ws_common.HEX_ID_RE.fullmatch(trace_id)))
+    ):
+        log.warning("team returned an invalid rename response")
+        return TeamResponse(502, {"detail": "Team rename response is invalid."})
+    return TeamResponse(response.status, {"team_id": canonical_id, "team_name": name})
 
 
 # The closed chat reasoning efforts a Team configuration carries next to its model (ADR-0074).
