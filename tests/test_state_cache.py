@@ -129,7 +129,6 @@ class AdminStoreCacheTests(unittest.TestCase):
     def test_pending_totp_projection_resumes_and_closes_after_activation(self) -> None:
         enrollment = state.begin_supervisor_setup("violet otter lantern quartz 92", now=NOW)
 
-        self.assertEqual(state.totp_enrollment(), enrollment)
         resumed = state.resume_totp_enrollment(now=NOW + 1)
         self.assertEqual((resumed.secret, resumed.uri), (enrollment.secret, enrollment.uri))
         self.assertRegex(state.webauthn_user_id(), r"^[0-9a-f]{64}$")
@@ -138,8 +137,6 @@ class AdminStoreCacheTests(unittest.TestCase):
 
         result = state.verify_totp(code(enrollment.secret, NOW + 1), enrollment=True, now=NOW + 1)
         self.assertIs(result, state.totp.Verification.ACCEPTED)
-        with self.assertRaises(state.totp.TotpStateError):
-            state.totp_enrollment()
         with self.assertRaises(state.totp.TotpStateError):
             state.resume_totp_enrollment(now=NOW + 2)
         with self.assertRaises(state.totp.TotpStateError):

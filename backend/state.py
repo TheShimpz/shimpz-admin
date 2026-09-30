@@ -301,14 +301,6 @@ def begin_supervisor_setup(password: str, *, now: int | None = None) -> totp.Enr
     return cast(totp.Enrollment, _mutate(begin))
 
 
-def totp_enrollment() -> totp.Enrollment:
-    """Return only the current pending TOTP enrollment projection."""
-    data = _read()
-    if _authentication_state(data) != auth.RECORD_STATE_ENROLLMENT_REQUIRED:
-        raise totp.TotpStateError("TOTP enrollment is unavailable")
-    return totp.enrollment(data["totp"])
-
-
 def resume_totp_enrollment(*, now: int | None = None) -> totp.Enrollment:
     """Resume the same pending secret after bounded password verification."""
 
