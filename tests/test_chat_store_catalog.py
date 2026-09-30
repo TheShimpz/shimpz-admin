@@ -508,54 +508,67 @@ class StoreCatalogTests(unittest.TestCase):
 
     def test_cache_does_not_hold_its_state_lock_during_fetch(self) -> None:
         assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
-        calls_lock = threading.Lock()
-        both_started = threading.Event()
+        started = threading.Event()
         release = threading.Event()
-        calls = 0
 
         def loader():
-            nonlocal calls
-            with calls_lock:
-                calls += 1
-                if calls == 2:
-                    both_started.set()
+            started.set()
             self.assertTrue(release.wait(timeout=10))
             return assistant
 
         catalog = store_catalog.StoreCatalog(loader=loader)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            first = executor.submit(catalog.get)
-            second = executor.submit(catalog.get)
-            self.assertTrue(both_started.wait(timeout=10))
+            refresh = executor.submit(catalog.get)
+            self.assertTrue(started.wait(timeout=10))
+            # The cache state stays readable while the refresh is in flight.
+            self.assertIsNone(executor.submit(catalog._cached).result(timeout=5))
             release.set()
-            self.assertIs(first.result(timeout=10), assistant)
-            self.assertIs(second.result(timeout=10), assistant)
+            self.assertIs(refresh.result(timeout=10), assistant)
 
-    def test_concurrent_success_can_satisfy_an_older_failed_refresh(self) -> None:
-        assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
-        first_started = threading.Event()
-        release_failure = threading.Event()
-        calls_lock = threading.Lock()
-        calls = 0
+    def test_concurrent_cold_reads_share_one_upstream_load(self) -> None:
+        assistants = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        loads = 0
+        entered = threading.Event()
+        release = threading.Event()
+
+        def loader() -> tuple[store_catalog.CatalogAssistant, ...]:
+            nonlocal loads
+            loads += 1
+            entered.set()
+            self.assertTrue(release.wait(timeout=10))
+            return assistants
+
+        catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 100.0)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(catalog.get)
+            self.assertTrue(entered.wait(timeout=10))
+            second = pool.submit(catalog.get)
+            release.set()
+            self.assertEqual((first.result(timeout=10), second.result(timeout=10)), (assistants, assistants))
+        self.assertEqual(loads, 1)
+
+    def test_a_reader_behind_a_failed_refresh_shares_its_unavailability_without_loading_again(self) -> None:
+        loads = 0
+        entered = threading.Event()
+        release = threading.Event()
 
         def loader():
-            nonlocal calls
-            with calls_lock:
-                calls += 1
-                call = calls
-            if call == 1:
-                first_started.set()
-                self.assertTrue(release_failure.wait(timeout=10))
-                raise store_catalog.CatalogUnavailableError("unavailable")
-            return assistant
+            nonlocal loads
+            loads += 1
+            entered.set()
+            self.assertTrue(release.wait(timeout=10))
+            raise store_catalog.CatalogUnavailableError("unavailable")
 
         catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 10.0)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            failed_refresh = executor.submit(catalog.get)
-            self.assertTrue(first_started.wait(timeout=10))
-            self.assertIs(catalog.get(), assistant)
-            release_failure.set()
-            self.assertIs(failed_refresh.result(timeout=10), assistant)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(catalog.get)
+            self.assertTrue(entered.wait(timeout=10))
+            second = pool.submit(catalog.get)
+            release.set()
+            for reader in (first, second):
+                with self.assertRaises(store_catalog.CatalogUnavailableError):
+                    reader.result(timeout=10)
+        self.assertEqual(loads, 1)
 
 
 if __name__ == "__main__":
