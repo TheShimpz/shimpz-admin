@@ -61,6 +61,13 @@ class ChatHistoryTests(unittest.TestCase):
         self.path_patch.start()
         self.addCleanup(self.path_patch.stop)
 
+    @staticmethod
+    def _admitted(team_id: str = "marketing") -> str:
+        # Every turn event follows its admitted user row, as chat delivery writes it.
+        turn = history.new_turn_id()
+        history.append_user(team_id, turn, "Request")
+        return turn
+
     def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
         asked = {
             "question": "Qual período?",
@@ -337,8 +344,8 @@ class ChatHistoryTests(unittest.TestCase):
             "summary": "Manage DNS records.",
             "version": "0.4.5",
         }
-        guidance = history.new_turn_id()
-        removed = history.new_turn_id()
+        guidance = self._admitted()
+        removed = self._admitted()
         self.assertTrue(
             history.append_guidance(
                 "marketing",
@@ -363,12 +370,13 @@ class ChatHistoryTests(unittest.TestCase):
             )
         )
         page = history.page("marketing")
-        self.assertEqual(page["entries"][0]["code"], "assistant-uninstall-target-required")
+        entries = [entry for entry in page["entries"] if entry["kind"] != "message"]
+        self.assertEqual(entries[0]["code"], "assistant-uninstall-target-required")
         self.assertEqual(
-            page["entries"][0]["reply"],
+            entries[0]["reply"],
             "Qual Assistant instalado você quer desinstalar?",
         )
-        uninstall = page["entries"][1]
+        uninstall = entries[1]
         self.assertEqual(uninstall["kind"], "assistant-uninstall")
         self.assertEqual(uninstall["assistant"], assistant)
         self.assertNotIn("proposal_id", uninstall)
@@ -385,6 +393,27 @@ class ChatHistoryTests(unittest.TestCase):
                     "assistant_id": "shimpz-cloudflare",
                 },
             )
+
+    def test_a_turn_event_after_its_team_history_was_cleared_is_never_recorded(self) -> None:
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "Two zones are active.",
+            "clarification": None,
+            "routine_proposal": None,
+        }
+        for clear in (lambda: history.clear_team("marketing"), history.clear_all):
+            with self.subTest(clear=clear):
+                turn = history.new_turn_id()
+                self.assertTrue(history.append_user("marketing", turn, "List my DNS zones"))
+                clear()
+                # A delayed reply, install, guidance, or uninstall must not recreate the deleted Team's history.
+                self.assertFalse(history.append_reply("marketing", turn, done))
+                self.assertFalse(history.append_install("marketing", turn, _installed_event()))
+                guidance = ("assistant-install-target-required", "Name it.")
+                self.assertFalse(history.append_guidance("marketing", turn, *guidance))
+                self.assertEqual(history.page("marketing")["entries"], [])
 
     def test_team_and_space_cleanup_are_idempotent(self) -> None:
         self.assertEqual(history.clear_team("marketing"), 0)
@@ -585,7 +614,7 @@ class ChatHistoryTests(unittest.TestCase):
                 "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
                 **fields,
             }
-            self.assertTrue(history.append_install("marketing", history.new_turn_id(), event))
+            self.assertTrue(history.append_install("marketing", self._admitted(), event))
 
         invalid_failed = {
             "type": "assistant-install-plan",
@@ -737,7 +766,7 @@ class ChatHistoryTests(unittest.TestCase):
             ("uninstalled", {"team_id": "marketing", "uninstalled": False}),
         ):
             event = {**base_event, "state": state, **fields}
-            self.assertTrue(history.append_uninstall("marketing", history.new_turn_id(), assistant, event))
+            self.assertTrue(history.append_uninstall("marketing", self._admitted(), assistant, event))
 
         history._validate_stored_install(
             {

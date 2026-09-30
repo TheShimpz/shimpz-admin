@@ -157,10 +157,21 @@ def _append(
     event_key: str,
     payload: Mapping[str, object],
     *,
+    anchor_turn: str | None = None,
     finish_turn: str | None = None,
 ) -> bool:
     encoded = _encoded(payload)
     with _database() as database:
+        # A turn's later event needs its user row in the same transaction: after Team deletion or Space reset cleared
+        # the transcript, a delayed reply or outcome must not recreate that history.
+        if anchor_turn is not None and (
+            database.execute(
+                "SELECT 1 FROM transcript WHERE team_id = ? AND event_key = ?",
+                (team_id, f"{anchor_turn}:user"),
+            ).fetchone()
+            is None
+        ):
+            return False
         cursor = database.execute(
             "INSERT OR IGNORE INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
             (team_id, event_key, encoded),
@@ -251,7 +262,9 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload restores the confirmation card; the Team decides whether it is still live.
         entry["routine_proposal"] = proposal
-    return _append(canonical_team, f"{canonical_turn}:reply", entry, finish_turn=canonical_turn)
+    return _append(
+        canonical_team, f"{canonical_turn}:reply", entry, anchor_turn=canonical_turn, finish_turn=canonical_turn
+    )
 
 
 def _install_assistant(value: object) -> dict[str, object]:
@@ -340,6 +353,7 @@ def append_install(team_id: object, turn_id: object, event: object) -> bool:
         canonical_team,
         f"{canonical_turn}:install",
         payload,
+        anchor_turn=canonical_turn,
         finish_turn=canonical_turn if finished else None,
     )
 
@@ -354,6 +368,7 @@ def append_guidance(team_id: object, turn_id: object, code: object, reply: objec
         canonical_team,
         f"{canonical_turn}:guidance",
         {"kind": "guidance", "code": code, "reply": text},
+        anchor_turn=canonical_turn,
         finish_turn=canonical_turn,
     )
 
@@ -422,6 +437,7 @@ def append_uninstall(
         canonical_team,
         f"{canonical_turn}:uninstall",
         _uninstall_payload(event, canonical_team, assistant),
+        anchor_turn=canonical_turn,
         finish_turn=canonical_turn,
     )
 
