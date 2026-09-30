@@ -44,7 +44,7 @@ def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = N
             path = Path(value)
             return mirror / source.name if path.resolve() == source.resolve() else path
 
-        module_names = ("payload", "progress", "supervisor", "websocket")
+        module_names = ("payload", "progress", "routine", "supervisor", "websocket")
         with (
             _fresh_modules(*module_names),
             mock.patch.object(sys, "path", [str(mirror), *sys.path]),
@@ -243,6 +243,83 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                 _execute(
                     HTTP / "verify.py",
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
+    def test_rejects_missing_or_drifted_routine_vectors(self) -> None:
+        def missing_schedules(value: dict[str, object]) -> None:
+            value["routine_schedule"]["daily_rate"] = []
+
+        def rejected_schedule(value: dict[str, object]) -> None:
+            value["routine_schedule"]["valid"] = [{"kind": "daily", "time": "25:00"}]
+
+        def accepted_schedule(value: dict[str, object]) -> None:
+            value["routine_schedule"]["invalid"] = [{"kind": "daily", "time": "09:00"}]
+
+        def drifted_rate(value: dict[str, object]) -> None:
+            value["routine_schedule"]["daily_rate"][0]["rate"] = "5"
+
+        def missing_timezones(value: dict[str, object]) -> None:
+            value["routine_timezone"]["valid"] = []
+
+        def rejected_timezone(value: dict[str, object]) -> None:
+            value["routine_timezone"]["valid"] = ["../UTC"]
+
+        def accepted_timezone(value: dict[str, object]) -> None:
+            value["routine_timezone"]["invalid"] = ["UTC"]
+
+        def missing_changes(value: dict[str, object]) -> None:
+            value["routine_change"]["valid"] = []
+
+        def rejected_change(value: dict[str, object]) -> None:
+            value["routine_change"]["valid"] = [{**value["routine_change"]["valid"][0], "extra": 1}]
+
+        def accepted_change(value: dict[str, object]) -> None:
+            value["routine_change"]["invalid"] = [value["routine_change"]["valid"][0]]
+
+        def missing_routine_assertions(value: dict[str, object]) -> None:
+            value["local_routine"]["invalid"] = []
+
+        def rejected_routine_assertion(value: dict[str, object]) -> None:
+            value["local_routine"]["valid"] = [{**value["local_routine"]["valid"][0], "authority": "session"}]
+
+        def accepted_routine_assertion(value: dict[str, object]) -> None:
+            value["local_routine"]["invalid"] = [value["local_routine"]["valid"][0]]
+
+        mutations = (
+            missing_routine_assertions,
+            rejected_routine_assertion,
+            accepted_routine_assertion,
+            missing_schedules,
+            rejected_schedule,
+            accepted_schedule,
+            drifted_rate,
+            missing_timezones,
+            rejected_timezone,
+            accepted_timezone,
+            missing_changes,
+            rejected_change,
+            accepted_change,
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
+                )
+
+    def test_rejects_missing_or_drifted_routine_view_vectors(self) -> None:
+        def missing_views(value: dict[str, object]) -> None:
+            value["routine_views"].pop("claim")
+
+        def rejected_view(value: dict[str, object]) -> None:
+            value["routine_views"]["claim"]["valid"] = [{"run": None, "extra": 1}]
+
+        def accepted_view(value: dict[str, object]) -> None:
+            value["routine_views"]["claim"]["invalid"] = [{"run": None}]
+
+        for mutate in (missing_views, rejected_view, accepted_view):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
                 )
 
     def test_rejects_supervisor_and_identifier_vector_drift(self) -> None:
