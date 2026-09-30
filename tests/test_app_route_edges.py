@@ -116,11 +116,14 @@ class AppRouteEdgeTests(unittest.TestCase):
         status = {
             "release": f"ghcr.io/theshimpz/shimpz-local-release@sha256:{'a' * 64}",
             "ordinal": 42,
-            "checked_at": "2026-08-08T22:52:21Z",
+            "checked_at": 1_786_229_541,
             "outcome": "current",
         }
         with mock.patch.object(self.admin_app.platform_release, "read_status", return_value=status):
-            self.assertEqual(self.admin_app.platform_release.status_response(), status)
+            self.assertEqual(
+                self.admin_app.platform_release.status_response(),
+                {**status, "checked_at": "2026-08-08T22:52:21Z"},
+            )
         with mock.patch.object(
             self.admin_app.platform_release,
             "read_status",

@@ -12,7 +12,8 @@ from fastapi import FastAPI, HTTPException
 STATUS_PATH = Path("/run/shimpz-local-release/status.json")
 MAX_STATUS_BYTES = 1024
 RELEASE = re.compile(r"ghcr\.io/theshimpz/shimpz-local-release@sha256:[0-9a-f]{64}")
-TIMESTAMP = re.compile(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+# 9999-12-31T23:59:59Z keeps every accepted Unix second inside the datetime range.
+MAX_CHECKED_AT = 253_402_300_799
 OUTCOMES = frozenset({"current", "updated", "rollback-needed"})
 FIELDS = frozenset({"release", "ordinal", "checked_at", "outcome"})
 
@@ -46,12 +47,7 @@ def _read_bounded(path: Path) -> bytes:
 
 
 def _valid_timestamp(value: object) -> bool:
-    if not isinstance(value, str) or TIMESTAMP.fullmatch(value) is None:
-        return False
-    try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).isoformat() != ""
-    except ValueError:
-        return False
+    return isinstance(value, int) and not isinstance(value, bool) and 0 < value <= MAX_CHECKED_AT
 
 
 def read_status(path: Path = STATUS_PATH) -> dict[str, object]:
@@ -79,9 +75,11 @@ def read_status(path: Path = STATUS_PATH) -> dict[str, object]:
 
 def status_response() -> dict[str, object]:
     try:
-        return read_status()
+        document = read_status()
     except PlatformReleaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Local platform release status is unavailable") from exc
+    checked_at = datetime.fromtimestamp(document["checked_at"], UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {**document, "checked_at": checked_at}
 
 
 def register(application: FastAPI, profile: str) -> None:

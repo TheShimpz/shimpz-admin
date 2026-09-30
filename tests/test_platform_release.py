@@ -13,7 +13,7 @@ class PlatformReleaseStatusTests(unittest.TestCase):
         document = {
             "release": f"ghcr.io/theshimpz/shimpz-local-release@sha256:{'a' * 64}",
             "ordinal": 42,
-            "checked_at": "2026-08-08T22:52:21Z",
+            "checked_at": 1_786_229_541,
             "outcome": "updated",
         }
         if mutate is not None:
@@ -33,14 +33,41 @@ class PlatformReleaseStatusTests(unittest.TestCase):
         path = self._status()
         self.assertEqual(platform_release.read_status(path)["ordinal"], 42)
 
+    def test_projects_the_producer_status_file_with_an_iso_timestamp(self) -> None:
+        path = self._status()
+        read_status = platform_release.read_status
+        with mock.patch.object(platform_release, "read_status", side_effect=lambda: read_status(path)):
+            self.assertEqual(
+                platform_release.status_response(),
+                {
+                    "release": f"ghcr.io/theshimpz/shimpz-local-release@sha256:{'a' * 64}",
+                    "ordinal": 42,
+                    "checked_at": "2026-08-08T22:52:21Z",
+                    "outcome": "updated",
+                },
+            )
+
+    def test_accepts_the_producer_unix_second_bounds(self) -> None:
+        for checked_at in (1, platform_release.MAX_CHECKED_AT):
+            with self.subTest(checked_at=checked_at):
+                path = self._status(lambda value, checked_at=checked_at: value.update({"checked_at": checked_at}))
+                self.assertEqual(platform_release.read_status(path)["checked_at"], checked_at)
+
     def test_rejects_malformed_or_widened_status(self) -> None:
         mutations = (
             lambda value: value.update({"token": "secret"}),
             lambda value: value.update({"release": "ghcr.io/example/release@sha256:" + "a" * 64}),
             lambda value: value.update({"ordinal": True}),
             lambda value: value.update({"ordinal": 0}),
-            lambda value: value.update({"checked_at": "tomorrow"}),
-            lambda value: value.update({"checked_at": "2026-13-08T22:52:21Z"}),
+            lambda value: value.update({"checked_at": "2026-08-08T22:52:21Z"}),
+            lambda value: value.update({"checked_at": "1786229541"}),
+            lambda value: value.update({"checked_at": True}),
+            lambda value: value.update({"checked_at": 0}),
+            lambda value: value.update({"checked_at": -1}),
+            lambda value: value.update({"checked_at": 1_786_229_541.5}),
+            lambda value: value.update({"checked_at": platform_release.MAX_CHECKED_AT + 1}),
+            lambda value: value.update({"checked_at": 2**63}),
+            lambda value: value.update({"checked_at": None}),
             lambda value: value.update({"outcome": "installing"}),
         )
         for mutate in mutations:
