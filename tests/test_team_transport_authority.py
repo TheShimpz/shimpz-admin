@@ -19,6 +19,10 @@ from team import transport
 
 from protocol.http.v1 import supervisor as contract
 
+# SHA-256 of the fixture model key "sk-test-0123456789", written out so the test checks the fingerprint
+# the boundary emits instead of recomputing it from the key.
+API_KEY_SHA256 = "0d3b560722915d2f931a4c4100a00ecbce063d121e577e6b93bbbe7c05f23ad6"
+
 
 def _claims(request: dict[str, object]) -> dict[str, object]:
     headers = request["headers"]
@@ -162,7 +166,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             claims["model"],
             {
                 "provider": "openai",
-                "key_sha256": hashlib.sha256(api_key.encode()).hexdigest(),
+                "key_sha256": API_KEY_SHA256,
             },
         )
         self.assertEqual(claims["authority"], "session")
