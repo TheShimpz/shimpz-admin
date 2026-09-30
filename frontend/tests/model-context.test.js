@@ -347,3 +347,29 @@ test('a new Team starts with low reasoning effort and rejects an unknown effort 
   );
 });
 
+
+test('a key save that finishes after the session cleared never repopulates the provider cache', async () => {
+  let releasePut;
+  const putHeld = new Promise((resolve) => { releasePut = resolve; });
+  let providerRequests = 0;
+  const base = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
+  const fetcher = async (url, options = {}) => {
+    if (url === '/api/model-providers') providerRequests += 1;
+    if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
+      await putHeld;
+      return response(200, { ...providers[1], configured: true, masked: '••••late' });
+    }
+    return base(url, options);
+  };
+  await loadModelContext(fetcher, 'marketing');
+  assert.equal(providerRequests, 1);
+  const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-late-0123456789');
+  clearModelContext();
+  releasePut();
+  await saving;
+
+  // The next session loads provider state afresh instead of the late save's credential metadata.
+  await loadModelContext(fetcher, 'marketing');
+  assert.equal(providerRequests, 2);
+  assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').masked, null);
+});

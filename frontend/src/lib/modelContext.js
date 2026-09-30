@@ -148,6 +148,7 @@ async function persist(fetcher, teamId, apiKey = '') {
       current.providers,
     );
     const providers = withProviderState(current.providers, result.providerState);
+    publishProviders(attempt, providers);
     const snapshot = {
       ...saving,
       phase: 'ready',
@@ -162,14 +163,19 @@ async function persist(fetcher, teamId, apiKey = '') {
     return snapshot;
   } catch (error) {
     const saved = error?.providerState;
-    throw fail(attempt, error, saved ? { ...saving, providers: withProviderState(saving.providers, saved) } : saving);
+    const providers = saved ? withProviderState(saving.providers, saved) : saving.providers;
+    if (saved) publishProviders(attempt, providers);
+    throw fail(attempt, error, { ...saving, providers });
   }
 }
 
 function withProviderState(providers, providerState) {
-  const next = providers.map((entry) => (entry.id === providerState.id ? providerState : entry));
-  providerCatalogCache = next;
-  return next;
+  return providers.map((entry) => (entry.id === providerState.id ? providerState : entry));
+}
+
+// A save that finished after a newer save or a session clear never publishes into the shared provider cache.
+function publishProviders(attempt, providers) {
+  if (attempt === generation) providerCatalogCache = providers;
 }
 
 export async function configureModelContext(fetcher, teamId, apiKey = '') {
