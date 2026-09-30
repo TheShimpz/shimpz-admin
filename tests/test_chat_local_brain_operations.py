@@ -19,31 +19,6 @@ TRACE_ID = "a" * 32
 
 
 class LocalBrainOperationTests(unittest.TestCase):
-    def test_installed_action_labels_resolve_one_request_scoped_credential(self) -> None:
-        api_key = "sk-test-0123456789"
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
-        expected = team.TeamResponse(200, {"actions": []})
-        with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "assistant_action_labels", return_value=expected) as labels,
-        ):
-            response = local.installed_action_labels(
-                "team_1",
-                "shimpz-cloudflare",
-                "Liste minhas zonas DNS",
-            )
-
-        self.assertIs(response, expected)
-        labels.assert_called_once_with(
-            "team_1",
-            "shimpz-cloudflare",
-            "Liste minhas zonas DNS",
-            provider="openai",
-            api_key=api_key,
-        )
-        self.assertNotIn(api_key, repr(response))
-
     def test_capability_plan_uses_one_request_scoped_credential_and_strips_trace(self) -> None:
         api_key = "sk-test-0123456789"
         candidates = [

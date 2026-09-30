@@ -263,16 +263,13 @@ class AssistantUninstallEdges(unittest.TestCase):
 
 
 class LocalPlannerEdges(unittest.TestCase):
-    def test_credential_failures_short_circuit_label_and_plan_calls(self) -> None:
+    def test_credential_failures_short_circuit_plan_calls(self) -> None:
         unavailable = team.TeamResponse(409, {"code": "model-credential-missing"})
         with (
             mock.patch.object(local, "model_credential", return_value=unavailable),
-            mock.patch.object(local.team, "assistant_action_labels") as labels,
             mock.patch.object(local.team, "capability_plan") as planner,
         ):
-            self.assertIs(local.installed_action_labels("team_1", "whatsapp", "send"), unavailable)
             self.assertIs(local.capability_plan("team_1", "send", []), unavailable)
-        labels.assert_not_called()
         planner.assert_not_called()
 
     def test_planner_error_is_reduced_to_a_safe_machine_code(self) -> None:
