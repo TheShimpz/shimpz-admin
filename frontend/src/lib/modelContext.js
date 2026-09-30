@@ -26,6 +26,8 @@ function emptyContext() {
 export const modelContext = writable(emptyContext());
 
 let generation = 0;
+// Bumped only when the session clears: Team views change `generation`, but a saved key belongs to the session.
+let sessionEpoch = 0;
 let providerCatalogCache = null;
 let providerCatalogRequest = null;
 
@@ -68,6 +70,7 @@ function fail(attempt, error, state) {
 
 export function clearModelContext() {
   generation += 1;
+  sessionEpoch += 1;
   providerCatalogCache = null;
   providerCatalogRequest = null;
   modelContext.set(emptyContext());
@@ -137,6 +140,7 @@ async function persist(fetcher, teamId, apiKey = '') {
   }
 
   const attempt = ++generation;
+  const epoch = sessionEpoch;
   // Switching between configured selections keeps the chat open; only a new credential gates it.
   const saving = { ...current, phase: 'saving', ready: current.ready && !apiKey, error: '' };
   modelContext.set(saving);
@@ -148,7 +152,7 @@ async function persist(fetcher, teamId, apiKey = '') {
       current.providers,
     );
     const providers = withProviderState(current.providers, result.providerState);
-    publishProviders(attempt, providers);
+    publishProviderState(epoch, result.providerState);
     const snapshot = {
       ...saving,
       phase: 'ready',
@@ -164,7 +168,7 @@ async function persist(fetcher, teamId, apiKey = '') {
   } catch (error) {
     const saved = error?.providerState;
     const providers = saved ? withProviderState(saving.providers, saved) : saving.providers;
-    if (saved) publishProviders(attempt, providers);
+    if (saved) publishProviderState(epoch, saved);
     throw fail(attempt, error, { ...saving, providers });
   }
 }
@@ -173,9 +177,12 @@ function withProviderState(providers, providerState) {
   return providers.map((entry) => (entry.id === providerState.id ? providerState : entry));
 }
 
-// A save that finished after a newer save or a session clear never publishes into the shared provider cache.
-function publishProviders(attempt, providers) {
-  if (attempt === generation) providerCatalogCache = providers;
+// A saved provider state enters the shared cache only within the session that saved it; it merges into the cache
+// so a Team switch or another provider's save in between is kept.
+function publishProviderState(epoch, providerState) {
+  if (epoch === sessionEpoch && providerCatalogCache) {
+    providerCatalogCache = withProviderState(providerCatalogCache, providerState);
+  }
 }
 
 export async function configureModelContext(fetcher, teamId, apiKey = '') {

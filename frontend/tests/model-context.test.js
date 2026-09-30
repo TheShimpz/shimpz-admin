@@ -365,11 +365,38 @@ test('a key save that finishes after the session cleared never repopulates the p
   assert.equal(providerRequests, 1);
   const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-late-0123456789');
   clearModelContext();
+  // The next session loads provider state afresh, then the previous session's save finishes late.
+  await loadModelContext(fetcher, 'marketing');
+  assert.equal(providerRequests, 2);
   releasePut();
-  await saving;
+  await saving.catch(() => {});
 
-  // The next session loads provider state afresh instead of the late save's credential metadata.
   await loadModelContext(fetcher, 'marketing');
   assert.equal(providerRequests, 2);
   assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').masked, null);
+});
+
+test('a key saved while switching Teams stays in the provider cache for the next load', async () => {
+  let releasePut;
+  const putHeld = new Promise((resolve) => { releasePut = resolve; });
+  let providerRequests = 0;
+  const marketing = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
+  const support = fixtureFetcher('support', { provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
+  const fetcher = async (url, options = {}) => {
+    if (url === '/api/model-providers') providerRequests += 1;
+    if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
+      await putHeld;
+      return response(200, { ...providers[1], configured: true, masked: '••••kept' });
+    }
+    return url.startsWith('/api/teams/support') ? support(url, options) : marketing(url, options);
+  };
+  await loadModelContext(fetcher, 'marketing');
+  const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-kept-0123456789');
+  // Switching Teams is a new Team view, not a new session: the saved key must still reach the shared cache.
+  await loadModelContext(fetcher, 'support');
+  releasePut();
+  await saving.catch(() => {});
+  await loadModelContext(fetcher, 'marketing');
+  assert.equal(providerRequests, 1);
+  assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').masked, '••••kept');
 });
