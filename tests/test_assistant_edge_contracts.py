@@ -140,6 +140,19 @@ class AssistantInventoryEdges(unittest.TestCase):
 
         self.assertEqual(installed["valid"].provenance, "local")
 
+    def test_registry_admits_the_producer_action_count_and_no_more(self) -> None:
+        # Developers' install protocol and Team admit up to 128 Actions per Assistant.
+        def response(count: int) -> team.TeamResponse:
+            actions = [f"action-{index:03d}" for index in range(count)]
+            return team.TeamResponse(
+                200,
+                {"assistants": [{"id": "valid", "title": "Title", "summary": "Summary", "actions": actions}]},
+            )
+
+        self.assertEqual(len(assistant_inventory.registry(response(128))["valid"].actions), 128)
+        with self.assertRaisesRegex(ValueError, "Assistant catalog identity is invalid"):
+            assistant_inventory.registry(response(129))
+
     def test_registry_rejects_each_closed_shape_and_text(self) -> None:
         responses = (
             team.TeamResponse(200, {"assistants": None}),

@@ -107,6 +107,19 @@ class StoreCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog size is invalid"):
             store_catalog.validate_catalog(catalog(1001))
 
+    def test_admits_the_producer_action_count_and_no_more(self) -> None:
+        # Developers' install protocol admits up to 128 Actions per Assistant.
+        def catalog(count: int) -> dict[str, object]:
+            actions = [
+                {"id": f"action-{index:03d}", "integrations": [], "human_requests": []} for index in range(count)
+            ]
+            return {"version": 1, "assistants": [_assistant(actions=actions)]}
+
+        (assistant,) = store_catalog.validate_catalog(catalog(128))
+        self.assertEqual(len(assistant.actions), 128)
+        with self.assertRaisesRegex(ValueError, "catalog Actions are invalid"):
+            store_catalog.validate_catalog(catalog(129))
+
     def test_rejects_malformed_or_ambiguous_catalogs(self) -> None:
         mutations = (
             lambda value: value.update(extra=True),

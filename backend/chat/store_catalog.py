@@ -21,6 +21,8 @@ CATALOG_TTL_SECONDS = 60
 MAX_CATALOG_BYTES = 4 * 1024 * 1024
 MAX_ICON_BYTES = 1024 * 1024
 MAX_ASSISTANTS = 1000
+# The producer contract: Developers' install protocol admits up to 128 Actions per Assistant.
+MAX_ACTIONS = 128
 # Icons stay a bounded process-memory cache, independent of the catalog size.
 MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
@@ -135,7 +137,7 @@ def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
 
 
 def _actions(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list) or not 1 <= len(value) <= 64:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_ACTIONS:
         raise ValueError("catalog Actions are invalid")
     output: list[str] = []
     for item in value:

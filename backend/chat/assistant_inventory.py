@@ -11,6 +11,8 @@ from chat import assistant_proposal
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 128
+# Team admits the Developers install protocol's 128 Actions per Assistant.
+MAX_ACTIONS_PER_ASSISTANT = 128
 SEMANTIC_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _RUNTIME_STATUS = re.compile(r"^[a-z]{2,24}$")
 _PROVENANCES = frozenset({"local", "published"})
@@ -99,7 +101,7 @@ def registry(response: object) -> dict[str, assistant_proposal.Capability]:
         if (
             assistant_id != item["id"]
             or not isinstance(actions, list)
-            or not 1 <= len(actions) <= 64
+            or not 1 <= len(actions) <= MAX_ACTIONS_PER_ASSISTANT
             or any(not isinstance(action, str) or team.canonical_assistant_id(action) != action for action in actions)
             or len(set(actions)) != len(actions)
             or assistant_id in capabilities
