@@ -79,6 +79,19 @@ class AdminStoreCacheTests(unittest.TestCase):
         state._write({"session_secret": "next"})
         self.assertEqual(state.get(), {"session_secret": "next"})
 
+    def test_a_temporary_file_left_by_a_killed_process_does_not_block_writes(self) -> None:
+        leftover = state.STORE_PATH.with_name(f".{state.STORE_PATH.name}.{state.os.getpid()}.tmp")
+        leftover.write_bytes(b"partial")
+
+        state._write({"session_secret": "after-restart"})
+        state._write({"session_secret": "again"})
+
+        with state._STORE_LOCK:
+            state._store_cache = None
+        self.assertEqual(state.get(), {"session_secret": "again"})
+        self.assertEqual(state.STORE_PATH.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(sorted(path.name for path in state.STORE_PATH.parent.iterdir()), [leftover.name, "admin.json"])
+
     def test_password_initialization_creates_one_persistent_local_supervisor(self) -> None:
         configure_supervisor(state, "violet otter lantern quartz 92")
         first = state.local_supervisor()

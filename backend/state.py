@@ -12,6 +12,7 @@ password. (Contrast with shimpzipc's quarantine-and-continue; here "continue" is
 import copy
 import json
 import os
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -78,15 +79,19 @@ def _read():
 
 
 def _write(data):
-    """Atomically write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs)."""
+    """Atomically write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs).
+
+    The temporary name is random and exclusively created, so a leftover from a killed process (the
+    container restarts as the same PID) can never block a later write.
+    """
     global _store_cache
     with _STORE_LOCK:
         if not isinstance(data, dict):
             raise RuntimeError(f"admin store {STORE_PATH} is not a JSON object")
         payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
         STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = STORE_PATH.with_name(f".{STORE_PATH.name}.{os.getpid()}.tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_TRUNC, 0o600)
+        fd, name = tempfile.mkstemp(prefix=f".{STORE_PATH.name}.", suffix=".tmp", dir=STORE_PATH.parent)
+        tmp = Path(name)
         try:
             try:
                 # os.write may write fewer bytes than asked; only a complete payload may replace the store.
