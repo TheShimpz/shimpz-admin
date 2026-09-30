@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "scenarios": "vite dev --mode scenarios",
     "build": "vite build",
     "preview": "vite preview",
     "measure:assistants": "npm run build && node perf/assistant-catalog.mjs",

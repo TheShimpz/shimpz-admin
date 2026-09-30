@@ -4,6 +4,9 @@ import { createServer } from 'node:http';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+import { routeScenario } from './scenarioRoutes.js';
+import { ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
+
 // The page-level WebSocket transport mock is stateful. Keep this file ordered while
 // the independent shell and boot contracts continue using the full worker pool.
 test.describe.configure({ mode: 'default' });
@@ -3799,16 +3802,6 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 });
 
 
-const ROUTINE_PROPOSAL = {
-  proposal_id: 'c'.repeat(32),
-  op: 'propose',
-  quote: 'Every day at 9, list my DNS zones',
-  schedule: { kind: 'daily', time: '09:00' },
-  timezone: null,
-  routine_id: null,
-  assistant_ids: ['shimpz-cloudflare'],
-  expires_in: 900,
-};
 const ROUTINE_PREVIEW = {
   ...ROUTINE_PROPOSAL,
   timezone: 'America/Sao_Paulo',
@@ -3816,16 +3809,6 @@ const ROUTINE_PREVIEW = {
   daily_runs: '1',
   max_daily_runs: 24,
   fits: true,
-};
-const ROUTINE_VIEW = {
-  routine_id: 'a'.repeat(32),
-  quote: ROUTINE_PROPOSAL.quote,
-  schedule: ROUTINE_PROPOSAL.schedule,
-  timezone: 'America/Sao_Paulo',
-  assistant_ids: ['shimpz-cloudflare'],
-  next_run_at: '2026-10-01T12:00:00Z',
-  needs_reconfirm: false,
-  deleting: false,
 };
 
 async function routeRoutines(
@@ -3888,6 +3871,21 @@ async function routeRoutines(
 
 test.describe('Team Routines', () => {
   test.use({ timezoneId: 'America/Sao_Paulo' });
+
+  test('a Routine asked for in chat and confirmed joins the Team tree', async ({ page }) => {
+    await routeScenario(page, 'ready');
+    await page.goto('/chat/?team=marketing');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'Every day at 9, list my DNS zones');
+    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Schedule this Routine' }).click();
+
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+    await expect(navigation.getByRole('group', { name: 'Routines' })
+      .getByRole('button', { name: /Every day at 9, list my DNS zones/ })).toHaveCount(1);
+  });
 
   test('a chat Routine proposal is scheduled only when its card is confirmed', async ({ page }) => {
     await routeReadyChat(page, {
