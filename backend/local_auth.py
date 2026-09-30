@@ -13,6 +13,7 @@ import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from mfa import passkeys, tickets, totp
+from team import http as team_http
 
 from chat import socket as chat_socket
 from protocol.http.v1.websocket import canonical_origin
@@ -39,26 +40,7 @@ class Context:
 
 
 async def _json_object(request: Request) -> dict:
-    content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
-    if content_type != "application/json":
-        raise HTTPException(status_code=415, detail="content type must be application/json")
-    length = request.headers.get("content-length")
-    if length is not None:
-        try:
-            if int(length) > MAX_BODY_BYTES:
-                raise HTTPException(status_code=413, detail="request body is too large")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="invalid content length") from None
-    body = await request.body()
-    if not body or len(body) > MAX_BODY_BYTES:
-        raise HTTPException(status_code=400 if not body else 413, detail="invalid request body")
-    try:
-        payload = await request.json()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid JSON body") from None
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="request body must be an object")
-    return payload
+    return await team_http.bounded_json_object(request, MAX_BODY_BYTES)
 
 
 def _request_origin(request: Request) -> str | None:

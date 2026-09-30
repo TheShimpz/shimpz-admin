@@ -83,6 +83,22 @@ class LocalAuthEdgeTests(unittest.TestCase):
         accepted = asyncio.run(local_auth._json_object(_request({"ok": True}, include_length=False)))
         self.assertEqual(accepted, {"ok": True})
 
+    def test_json_body_without_length_stops_reading_at_the_authentication_limit(self) -> None:
+        chunk = b"x" * 1024
+        consumed = 0
+
+        async def receive():
+            nonlocal consumed
+            consumed += len(chunk)
+            return {"type": "http.request", "body": chunk, "more_body": consumed < 80 * 1024}
+
+        request = _request(include_length=False)
+        chunked = Request(request.scope, receive)
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(local_auth._json_object(chunked))
+        self.assertEqual(raised.exception.status_code, 413)
+        self.assertLessEqual(consumed, local_auth.MAX_BODY_BYTES + len(chunk))
+
     def test_password_ticket_and_totp_failures_map_to_closed_http_outcomes(self) -> None:
         context = local_auth.Context()
         with self.assertRaises(HTTPException) as malformed:
