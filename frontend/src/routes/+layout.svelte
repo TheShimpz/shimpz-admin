@@ -13,6 +13,7 @@
   import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
   import { clearModelContext, modelContext } from '$lib/modelContext.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '$lib/passkey.js';
+  import { clearTeamRoutines } from '$lib/routineContext.js';
   import { clearSessionContext, setSessionContext } from '$lib/sessionContext.js';
   import { clearTeamContext, teamContext } from '$lib/teamContext.js';
 
@@ -95,6 +96,7 @@
     clearModelContext();
     clearSessionContext();
     clearTeamContext();
+    clearTeamRoutines();
     phase = 'checking';
     error = '';
 

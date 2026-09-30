@@ -14,6 +14,7 @@
     routineErrorMessage,
     scheduleWords,
   } from '$lib/routine.js';
+  import { loadTeamRoutines } from '$lib/routineContext.js';
 
   // A chat turn's one-use Routine proposal (ADR-0086). Nothing is scheduled until the Supervisor confirms here; the
   // card first asks Team whether the offer is still live, since a stored card may have expired or been used.
@@ -51,6 +52,8 @@
     phase = 'working';
     try {
       const result = await confirmRoutine(fetch, teamId, proposal.proposal_id, timezone);
+      // The sidebar's Routine tree reflects the change at once.
+      loadTeamRoutines(fetch, teamId).catch(() => {});
       if (result.routine) {
         const next = instantWords(result.routine.next_run_at, $locale, result.routine.timezone);
         message = fillRoutineCopy(copy.card.confirmed, { next });

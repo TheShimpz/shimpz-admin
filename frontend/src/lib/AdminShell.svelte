@@ -7,7 +7,6 @@
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
   import TeamDialogs from '$lib/TeamDialogs.svelte';
   import TeamNavigation from '$lib/TeamNavigation.svelte';
-  import RoutinesDialog from '$lib/RoutinesDialog.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, profile = '', children } = $props();
@@ -16,7 +15,6 @@
     typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches,
   );
   let teamDialogs = $state();
-  let routinesDialog = $state();
   let teamDrawer = $state();
   let teamDrawerTrigger = $state();
   let createButton = $state();
@@ -33,11 +31,6 @@
   function deleteTeam(team) {
     closeTeamDrawer();
     teamDialogs?.openDelete(team);
-  }
-
-  function openRoutines(team) {
-    closeTeamDrawer();
-    routinesDialog?.open(team);
   }
 
   function restoreTeamFocus() {
@@ -67,7 +60,7 @@
           bind:createButton
           oncreate={createTeam}
           ondelete={deleteTeam}
-          onroutines={profile === 'local' ? openRoutines : null}
+          routines={profile === 'local'}
         />
         <TeamSidebar {active} />
       </div>
@@ -116,7 +109,6 @@
 >
   {#if authenticated}
     <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
-    {#if profile === 'local'}<RoutinesDialog bind:this={routinesDialog} onsettled={restoreTeamFocus} />{/if}
     {#if mobile}
       <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
         <div class="team-drawer-head">
@@ -129,7 +121,7 @@
           {active}
           oncreate={createTeam}
           ondelete={deleteTeam}
-          onroutines={profile === 'local' ? openRoutines : null}
+          routines={profile === 'local'}
           onnavigate={closeTeamDrawer}
         />
       </Modal>

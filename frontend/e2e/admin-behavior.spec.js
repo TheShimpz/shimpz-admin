@@ -3636,9 +3636,9 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
-  // On Local the menu opens on its first item, the Team's Routines, before the destructive deletion.
-  await expect(page.getByRole('menuitem', { name: 'Routines' })).toBeFocused();
-  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
+  // A Team without Routines offers no Routines item.
+  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeHidden();
   await expect(actions).toBeFocused();
@@ -3828,9 +3828,12 @@ const ROUTINE_VIEW = {
   deleting: false,
 };
 
-async function routeRoutines(page, { preview = ROUTINE_PREVIEW, previewStatus = 200 } = {}) {
+async function routeRoutines(
+  page,
+  { preview = ROUTINE_PREVIEW, previewStatus = 200, others = [], listFailsAfterDelete = false, runEnding = false } = {},
+) {
   const calls = { previews: [], confirms: [], deletes: [], stops: [], resolves: [] };
-  let routines = [ROUTINE_VIEW];
+  let routines = [ROUTINE_VIEW, ...others];
   let runs = [
     {
       run_id: 'b'.repeat(32),
@@ -3857,12 +3860,20 @@ async function routeRoutines(page, { preview = ROUTINE_PREVIEW, previewStatus = 
       await route.fulfill({ json: { team_id: 'marketing', routine: ROUTINE_VIEW } });
       return;
     }
+    if (listFailsAfterDelete && calls.deletes.length > 0) {
+      await route.fulfill({ status: 503, json: { code: 'team-unavailable' } });
+      return;
+    }
     await route.fulfill({ json: { team_id: 'marketing', routines, runs } });
   });
-  await page.route(`**/api/teams/marketing/routines/${ROUTINE_VIEW.routine_id}`, async (route) => {
+  await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
+    const routineId = new URL(route.request().url()).pathname.split('/').at(-1);
     calls.deletes.push(route.request().method());
-    routines = [];
-    await route.fulfill({ json: { team_id: 'marketing', routine_id: ROUTINE_VIEW.routine_id, deleted: true } });
+    // While a run is still ending, Team keeps the Routine as deleting and answers false.
+    routines = runEnding
+      ? routines.map((routine) => (routine.routine_id === routineId ? { ...routine, deleting: true } : routine))
+      : routines.filter((routine) => routine.routine_id !== routineId);
+    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, deleted: !runEnding } });
   });
   await page.route('**/api/teams/marketing/routines/runs/*/*', async (route) => {
     const [, runId, action] = new URL(route.request().url()).pathname.match(/runs\/([0-9a-f]{32})\/(stop|resolve)$/);
@@ -3936,37 +3947,87 @@ test.describe('Team Routines', () => {
     expect(calls.confirms).toEqual([]);
   });
 
-  test('a Supervisor deletes a Routine and releases an uncertain run only after confirming', async ({ page }) => {
+  test('a Team\'s Routines open as a tree under it, with deletion and release confirmed in place', async ({ page }) => {
     await routeReadyChat(page);
-    const calls = await routeRoutines(page);
+    // The refresh after the deletion fails; the confirmed deletion must still leave the tree.
+    const calls = await routeRoutines(page, { listFailsAfterDelete: true });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
 
-    const dialog = page.getByRole('dialog', { name: 'Routines of Marketing' });
-    await expect(dialog).toContainText('Every day at 09:00 · America/Sao_Paulo');
-    await expect(dialog).toContainText('Effects unknown');
-    await expect(dialog).toContainText('These Actions may have changed something:');
-    await expect(dialog.getByText('shimpz-cloudflare · replace-dns-record')).toHaveCount(2);
-    const results = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+    const tree = navigation.getByRole('group', { name: 'Routines' });
+    await expect(tree).toBeVisible();
+    const node = tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ });
+    await expect(node).toContainText('Every day at 09:00');
+    await expect(node).toContainText('Effects unknown');
+    await expect(node).toHaveAttribute('aria-expanded', 'false');
+    const detail = page.locator(`#${await node.getAttribute('aria-controls')}`);
+    await expect(detail).toHaveCount(1);
+    await expect(detail).toBeHidden();
+    await node.click();
+    await expect(node).toHaveAttribute('aria-expanded', 'true');
+    await expect(tree).toContainText('America/Sao_Paulo');
+    await expect(tree).toContainText('These Actions may have changed something:');
+    await expect(tree.getByText('shimpz-cloudflare · replace-dns-record')).toHaveCount(2);
+    const results = await new AxeBuilder({ page }).include('.routine-tree').analyze();
     expect(results.violations).toEqual([]);
 
-    await dialog.getByRole('button', { name: 'I checked; release it' }).click();
+    await tree.getByRole('button', { name: 'I checked; release it' }).click();
     expect(calls.resolves).toEqual([]);
-    await dialog.getByRole('button', { name: 'I checked; release it' }).click();
-    await expect(dialog).not.toContainText('Effects unknown');
+    await tree.getByRole('button', { name: 'I checked; release it' }).click();
+    await expect(node).not.toContainText('Effects unknown');
     expect(calls.resolves).toEqual([{ batch_fingerprint: 'e'.repeat(64) }]);
 
-    await dialog.getByRole('button', { name: 'Delete' }).click();
-    await expect(dialog).toContainText('Delete this Routine? A run in progress is stopped.');
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    await expect(tree).toContainText('Delete this Routine? A run in progress is stopped.');
     expect(calls.deletes).toEqual([]);
-    await dialog.getByRole('button', { name: 'Delete' }).click();
-    await expect(dialog).toContainText('This Team has no Routines.');
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    // With no Routines left, the tree and its menu item disappear and focus returns to the Team's actions.
+    await expect(tree).toHaveCount(0);
     expect(calls.deletes).toEqual(['DELETE']);
-    await dialog.getByRole('button', { name: 'Close' }).click();
-    await expect(dialog).toBeHidden();
+    await expect(navigation.getByRole('button', { name: 'Actions for Marketing' })).toBeFocused();
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
+  });
+
+  test('a Routine whose run is still ending stays listed as being deleted', async ({ page }) => {
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page, { runEnding: true });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+
+    const tree = navigation.getByRole('group', { name: 'Routines' });
+    const node = tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ });
+    await node.click();
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    await expect(tree).toContainText('Being deleted');
+    await expect(tree.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    await expect(node).toBeFocused();
+    expect(calls.deletes).toEqual(['DELETE']);
+  });
+
+  test('deleting one of several Routines moves focus to the node that takes its place', async ({ page }) => {
+    await routeReadyChat(page);
+    const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), quote: 'Every Monday, check my certificates' };
+    await routeRoutines(page, { others: [weekly] });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+
+    const tree = navigation.getByRole('group', { name: 'Routines' });
+    await tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ }).click();
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    await tree.getByRole('button', { name: 'Delete' }).click();
+    await expect(tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ })).toHaveCount(0);
+    await expect(tree.getByRole('button', { name: /Every Monday, check my certificates/ })).toBeFocused();
   });
 
   test('Routine outcomes appear in the transcript, apart from the conversation', async ({ page }) => {
@@ -4090,6 +4151,8 @@ test.describe('Team Routines', () => {
 
   test('Hosted offers no Routines', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
+    // Even with Routines available to fetch, Hosted never asks for them.
+    await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
