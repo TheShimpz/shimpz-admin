@@ -158,7 +158,6 @@
                     label={$t('teamNavigation.renameLabel', { team: team.name })}
                     visuallyHiddenLabel
                     bind:value={renameDraft}
-                    maxlength="80"
                     autocomplete="off"
                     spellcheck="false"
                     onkeydown={(event) => renameKeydown(event, team)}

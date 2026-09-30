@@ -3007,6 +3007,60 @@ test('deletes a Team with its exact confirmation and reports the deletion', asyn
   await expect(toast).toContainText('Support and all of its data were securely deleted.');
 });
 
+test('a Team name of 80 emoji can be typed to rename and to confirm its deletion', async ({ page }) => {
+  // Team bounds names by Unicode code points; each emoji is two UTF-16 units, so 80 of them fill 160 units.
+  const longest = '😀'.repeat(80);
+  await routeReadyChat(page);
+  let deleted = false;
+  const renames = [];
+  let deletionBody;
+  await page.unroute('**/api/teams');
+  await page.route('**/api/teams', (route) => route.fulfill({
+    json: {
+      teams: [
+        { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+        ...(deleted ? [] : [{ team_id: 'support', team_name: renames.length ? longest : 'Support', status: 'running' }]),
+      ],
+    },
+  }));
+  await page.route('**/api/teams/support', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      renames.push(route.request().postDataJSON());
+      return route.fulfill({ json: { team_id: 'support', team_name: route.request().postDataJSON().team_name } });
+    }
+    deletionBody = route.request().postDataJSON();
+    deleted = true;
+    return route.fulfill({
+      json: {
+        team_id: 'support',
+        destroyed: true,
+        assistants_removed: 0,
+        residue_absent: localTeamResidues,
+        storage_removed: true,
+      },
+    });
+  });
+
+  await page.goto('/chat/');
+  const navigation = await openTeamNavigation(page);
+  await navigation.getByRole('button', { name: 'Actions for Support' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await navigation.getByRole('textbox', { name: 'Name for Support' }).fill(longest);
+  await page.keyboard.press('Enter');
+  await expect(navigation.getByRole('link', { name: longest, exact: true })).toBeFocused();
+  expect(renames).toEqual([{ team_name: longest }]);
+
+  await navigation.getByRole('button', { name: `Actions for ${longest}` }).click();
+  await page.getByRole('menuitem', { name: 'Delete Team' }).click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete Team' });
+  await deleteDialog.getByLabel('Confirm Team name').fill(longest);
+  await deleteDialog.getByLabel('Supervisor password').fill('private-password');
+  await deleteDialog.getByRole('button', { name: 'Delete Team' }).click();
+
+  await expect(deleteDialog).toBeHidden();
+  expect(deletionBody).toEqual({ team_name: longest, password: 'private-password' });
+});
+
 test('reports an already-absent Store uninstall and keeps Chat usable', async ({ page }) => {
   await routeReadyChat(page);
   await routeAssistantStoreUninstall(page);

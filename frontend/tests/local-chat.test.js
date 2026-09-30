@@ -1018,6 +1018,17 @@ test('a terminal event keeps its Team id binding but admits the Team current nam
   assert.equal(done.team_name, 'Growth');
 });
 
+test('a terminal event admits a Team name of 80 code points and refuses 81', () => {
+  for (const character of ['界', '😀']) {
+    const event = (teamName) => ({
+      type: 'done', team_id: 'team_1', team_name: teamName, reply: 'Hello!', clarification: null, routine_proposal: null,
+    });
+    const longest = character.repeat(80);
+    assert.equal(parseChatEvent(event(longest), 'team_1', longest).team_name, longest);
+    assert.throws(() => parseChatEvent(event(character.repeat(81)), 'team_1', longest), /response is invalid/);
+  }
+});
+
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
   for (const body of [
     { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },

@@ -160,7 +160,6 @@
         type="text"
         bind:value={deleteName}
         placeholder={$t('chatContext.deleteNamePlaceholder', { name: deletingTeam?.name ?? '' })}
-        maxlength="80"
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
@@ -206,7 +205,6 @@
         type="text"
         bind:value={teamName}
         placeholder={copy.teamPlaceholder}
-        maxlength="80"
         autocomplete="off"
         autocapitalize="words"
         spellcheck="false"

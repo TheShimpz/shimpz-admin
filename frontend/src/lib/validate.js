@@ -6,6 +6,11 @@ export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
 const MAX_TEAM_NAME_CHARS = 80;
 
+/** Producers bound text in Unicode code points (Python len(), JSON Schema maxLength), not UTF-16 code units. */
+export function codePointLength(value) {
+  return [...value].length;
+}
+
 export class LocalApiError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -38,7 +43,7 @@ export function canonicalTeamName(value, message = 'The local Team inventory is 
     typeof value !== 'string' ||
     !value ||
     value !== value.trim() ||
-    value.length > MAX_TEAM_NAME_CHARS ||
+    codePointLength(value) > MAX_TEAM_NAME_CHARS ||
     CONTROL_RE.test(value)
   ) {
     throw new LocalApiError(message);

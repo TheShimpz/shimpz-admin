@@ -3,6 +3,7 @@ import { parseRoutineProposal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
+  codePointLength,
   CONTROL_RE,
   exactKeys,
   jsonObject,
@@ -107,7 +108,7 @@ function canonicalTeam(value) {
     typeof value !== 'string' ||
     !value ||
     value !== value.trim() ||
-    value.length > MAX_TEAM_NAME_CHARS ||
+    codePointLength(value) > MAX_TEAM_NAME_CHARS ||
     SECRET_CONTROL_RE.test(value)
   ) {
     throw new LocalApiError('The local chat response is invalid.');

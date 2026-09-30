@@ -84,6 +84,18 @@ test('loads older Team chat history with only an opaque cursor', async () => {
   }
 });
 
+test('bounds history text by Unicode code points, as the Admin history counts it', async () => {
+  const reply = (author, text = 'Done.') => ({ id: `${TURN_B}:reply`, kind: 'message', role: 'assistant', text, author });
+  const load = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+  for (const character of ['界', '😀']) {
+    const entry = reply(character.repeat(80), character.repeat(60_000));
+    assert.deepEqual((await load(entry)).entries, [entry]);
+    for (const invalid of [reply(character.repeat(81)), reply('Marketing', character.repeat(60_001))]) {
+      await assert.rejects(load(invalid), (error) => error instanceof LocalApiError);
+    }
+  }
+});
+
 test('loads the exact already-installed terminal outcome', async () => {
   const entry = { ...installedEntry(), outcome: 'already-installed' };
   const result = await listChatHistory(

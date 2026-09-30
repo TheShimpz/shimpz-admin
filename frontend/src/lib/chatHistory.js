@@ -3,6 +3,7 @@ import { parseRoutineProposal, parseRoutineRunEntry } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
+  codePointLength,
   exactKeys,
   jsonObject,
   TEAM_ID_RE,
@@ -30,7 +31,7 @@ function boundedText(value, maximum, controls, status) {
     typeof value !== 'string' ||
     !value ||
     value !== value.trim() ||
-    value.length > maximum ||
+    codePointLength(value) > maximum ||
     controls.test(value)
   ) throw invalidHistory(status);
   return value;

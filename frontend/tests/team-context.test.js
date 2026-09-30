@@ -715,6 +715,41 @@ test('Team names are sent and compared in NFC, as Team admits them', async () =>
   assert.equal(created.name, 'Café');
 });
 
+test('Team names are bounded by Unicode code points, as Team counts them', async () => {
+  for (const character of ['界', '😀']) {
+    clearTeamContext();
+    const longest = character.repeat(80);
+    const patches = [];
+    const fetcher = fixtureFetcher({
+      '/api/teams': async () => response(200, {
+        teams: [{ team_id: 'marketing', team_name: longest, status: 'running' }],
+      }),
+      '/api/teams/marketing': async (options) => {
+        patches.push(JSON.parse(options.body));
+        return response(200, { team_id: 'marketing', team_name: JSON.parse(options.body).team_name });
+      },
+    });
+    await loadTeamContext(fetcher, 'marketing');
+    assert.equal(get(teamContext).phase, 'ready');
+    assert.equal(get(teamContext).teams[0].name, longest);
+
+    const renamed = `${character.repeat(79)}X`;
+    assert.equal((await renameTeam(fetcher, 'marketing', renamed)).name, renamed);
+    await assert.rejects(renameTeam(fetcher, 'marketing', character.repeat(81)), /valid Team name/);
+    assert.deepEqual(patches, [{ team_name: renamed }]);
+
+    clearTeamContext();
+    await assert.rejects(
+      loadTeamContext(fixtureFetcher({
+        '/api/teams': async () => response(200, {
+          teams: [{ team_id: 'marketing', team_name: character.repeat(81), status: 'running' }],
+        }),
+      }), 'marketing'),
+      (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
+    );
+  }
+});
+
 test('a rename answered after the context cleared never publishes over the next context', async () => {
   clearTeamContext();
   const patch = deferred();
