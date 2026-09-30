@@ -142,8 +142,10 @@ function markFailure(attempt, error, fallback, clearAuthority) {
   return safe;
 }
 
-// A rename confirmed after a Team list read started wins over that read's older name.
+// A rename confirmed after a Team list read started wins over that read's older name. A rename answered after the
+// context was cleared belongs to an earlier session and never publishes.
 let renameClock = 0;
+let contextEpoch = 0;
 const renamedAt = new Map();
 
 function withRenames(teams, since) {
@@ -318,6 +320,7 @@ export async function refreshTeamInventory(fetcher) {
 
 export function clearTeamContext() {
   generation += 1;
+  contextEpoch += 1;
   renamedAt.clear();
   teamContext.set(emptyContext());
 }
@@ -386,6 +389,7 @@ export async function renameTeam(fetcher, id, name) {
   const target = current.teams.find((team) => team.id === canonicalId);
   if (!target || current.phase !== 'ready') throw new LocalApiError('Invalid local Team request.');
   if (target.name === canonicalName) return target;
+  const epoch = contextEpoch;
   const response = await fetcher(`/api/teams/${encodeURIComponent(canonicalId)}`, {
     method: 'PATCH',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -403,6 +407,7 @@ export async function renameTeam(fetcher, id, name) {
     throw new LocalApiError('The Team rename returned an invalid response.', response.status);
   }
   const renamed = { ...target, name: body.team_name };
+  if (epoch !== contextEpoch) return renamed;
   renameClock += 1;
   renamedAt.set(canonicalId, { clock: renameClock, name: body.team_name });
   teamContext.update((state) => ({

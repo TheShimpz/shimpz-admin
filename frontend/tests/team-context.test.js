@@ -714,3 +714,35 @@ test('Team names are sent and compared in NFC, as Team admits them', async () =>
   assert.deepEqual(posted, [{ team_name: 'Café' }]);
   assert.equal(created.name, 'Café');
 });
+
+test('a rename answered after the context cleared never publishes over the next context', async () => {
+  clearTeamContext();
+  const patch = deferred();
+  const fetcher = fixtureFetcher({
+    '/api/teams/marketing': async () => {
+      await patch.promise;
+      return response(200, { team_id: 'marketing', team_name: 'Growth' });
+    },
+  });
+  await loadTeamContext(fetcher, 'marketing');
+  const renaming = renameTeam(fetcher, 'marketing', 'Growth');
+  clearTeamContext();
+  await loadTeamContext(fetcher, 'marketing');
+  patch.resolve();
+  await renaming;
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Marketing');
+
+  // A later list read in the new context is not overlaid with the stale rename either.
+  await createTeam(fixtureFetcher({
+    '/api/teams': async (options) => (options.method === 'POST'
+      ? response(200, { created: true, status: 'running', team_id: 'research', team_name: 'Research' })
+      : response(200, {
+        teams: [
+          { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+          { team_id: 'research', team_name: 'Research', status: 'running' },
+        ],
+      })),
+    '/api/teams/research/assistants': async () => response(200, { assistants: [] }),
+  }), 'Research');
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Marketing');
+});
