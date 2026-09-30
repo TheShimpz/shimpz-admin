@@ -16,6 +16,7 @@ import {
   parseRoutinePreview,
   previewMatches,
   parseRoutineProposal,
+  parseRoutineRunEntry,
   parseRoutineView,
   parseRunView,
   previewRoutine,
@@ -323,4 +324,68 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   assert.equal(isTimezone(browserTimezone()), true);
+});
+
+const RUN_ENTRY = {
+  id: `${'b'.repeat(32)}:routine`,
+  kind: 'routine-run',
+  notice_id: 'b'.repeat(32),
+  routine_id: 'a'.repeat(32),
+  quote: 'Toda segunda às 9h, confira o DNS',
+  run_id: 'b'.repeat(32),
+  outcome: 'done',
+  created_at: '2026-10-05T12:01:07Z',
+  detail: { reply: 'Nenhuma mudança de DNS.' },
+  version: 2,
+};
+
+test('a Routine transcript row is admitted only in its closed form', async () => {
+  assert.deepEqual(parseRoutineRunEntry(RUN_ENTRY), {
+    id: RUN_ENTRY.id,
+    kind: 'routine-run',
+    runId: RUN_ENTRY.run_id,
+    routineId: RUN_ENTRY.routine_id,
+    quote: RUN_ENTRY.quote,
+    outcome: 'done',
+    createdAt: RUN_ENTRY.created_at,
+    detail: RUN_ENTRY.detail,
+  });
+  const valid = [
+    { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
+    { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
+    { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
+    { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
+    { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
+    { ...RUN_ENTRY, outcome: 'uncertain', detail: { actions: [] } },
+  ];
+  for (const entry of valid) assert.equal(parseRoutineRunEntry(entry).outcome, entry.outcome);
+  for (const invalid of [
+    null,
+    { ...RUN_ENTRY, extra: 1 },
+    { ...RUN_ENTRY, kind: 'message' },
+    { ...RUN_ENTRY, outcome: 'run' },
+    { ...RUN_ENTRY, id: `${'c'.repeat(32)}:routine` },
+    { ...RUN_ENTRY, run_id: 'c'.repeat(32) },
+    { ...RUN_ENTRY, run_id: null },
+    { ...RUN_ENTRY, routine_id: 'x' },
+    { ...RUN_ENTRY, notice_id: 'x' },
+    { ...RUN_ENTRY, quote: ' padded ' },
+    { ...RUN_ENTRY, created_at: '2026-02-30T12:00:00Z' },
+    { ...RUN_ENTRY, version: 0 },
+    { ...RUN_ENTRY, detail: { reply: '' } },
+    { ...RUN_ENTRY, detail: { reply: 'x', result: { ip: '1.2.3.4' } } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', assistant_id: 'x', action: 'y' } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [] } },
+    { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },
+    { ...RUN_ENTRY, outcome: 'skipped', run_id: null, detail: { missed: 0 } },
+  ]) {
+    assert.throws(() => parseRoutineRunEntry(invalid), RoutineError);
+  }
+  const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
+  const history = await listChatHistory(page([RUN_ENTRY]), 'marketing');
+  assert.equal(history.entries[0].kind, 'routine-run');
+  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, outcome: 'run' }]), 'marketing'));
+  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing'));
 });

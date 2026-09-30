@@ -3969,6 +3969,44 @@ test.describe('Team Routines', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('Routine outcomes appear in the transcript, apart from the conversation', async ({ page }) => {
+    const run = 'b'.repeat(32);
+    const entry = (id, outcome, detail, runId = id) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: 'a'.repeat(32),
+      quote: 'Every day at 9, list my DNS zones',
+      run_id: runId,
+      outcome,
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version: 1,
+    });
+    await routeReadyChat(page, {
+      history: {
+        entries: [
+          entry('f'.repeat(32), 'skipped', { missed: 2 }, null),
+          entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] }),
+          entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }),
+          entry(run, 'done', { reply: '**3 zones**, no changes.' }),
+        ],
+        before: null,
+      },
+    });
+    await page.goto('/chat/?team=marketing');
+    const transcript = page.locator('.routine-run');
+    await expect(transcript).toHaveCount(4);
+    await expect(transcript.nth(0)).toContainText('2 scheduled runs were skipped.');
+    await expect(transcript.nth(1)).toContainText('Failed (assistant-rpc-failed)');
+    await expect(transcript.nth(1)).toContainText('Actions: shimpz-cloudflare · list-zones');
+    await expect(transcript.nth(2)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
+    await expect(transcript.nth(3)).toContainText('Routine · Every day at 9, list my DNS zones');
+    await expect(transcript.nth(3).locator('strong')).toHaveText('3 zones');
+    const results = await new AxeBuilder({ page }).include('.routine-run').analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test('Hosted offers no Routines', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
     await page.goto('/chat/?team=marketing');

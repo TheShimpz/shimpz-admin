@@ -1,0 +1,422 @@
+"""Admin runs Team Routines as its own machine identity and delivers their outcomes (ADR-0086)."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import threading
+import time
+import types
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend"))
+
+import models
+import state
+import supervisor
+from history import store as history
+from team import bridge as team_bridge
+from team import transport
+
+from protocol.http.v1 import supervisor as contract
+from routine import delivery, scheduler, team
+
+VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
+BATCH = VECTORS["notice_batch"]["valid"][0]
+CLAIM = VECTORS["claim"]["valid"][1]["run"]
+TRACE = "a" * 32
+
+
+def _decode(encoded: str) -> bytes:
+    return base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+
+
+def answer(body: dict[str, object], status: int = 200) -> team_bridge.TeamResponse:
+    return team_bridge.TeamResponse(status, {**body, "trace_id": TRACE})
+
+
+class RoutineIdentityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        keys = Path(temporary.name) / "keys"
+        keys.mkdir(mode=0o2770)
+        keys.chmod(0o2770)
+        self.routine_key = keys / "routine.pem"
+        for patch in (
+            mock.patch.object(supervisor, "PUBLIC_KEY_FILE", keys / "public.pem"),
+            mock.patch.object(supervisor, "ROUTINE_PUBLIC_KEY_FILE", self.routine_key),
+            mock.patch.object(supervisor.grp, "getgrnam", return_value=types.SimpleNamespace(gr_gid=os.getgid())),
+            mock.patch.object(state, "STORE_PATH", Path(temporary.name) / "admin.json"),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_the_routine_identity_exists_only_beside_the_supervisor_and_stays_stable(self) -> None:
+        with self.assertRaises(supervisor.SupervisorAuthorityError):
+            state.local_routine_identity()
+        identity = supervisor.new_identity()
+        state._write({"supervisor_id": identity.supervisor_id, "supervisor_signing_key": identity.private_key_hex})
+        routine = state.local_routine_identity()
+        self.assertNotEqual(routine.private_key_hex, identity.private_key_hex)
+        self.assertEqual(state.local_routine_identity(), routine)
+        self.assertEqual(state.local_supervisor(), identity)
+        supervisor.materialize_routine_key(routine)
+        self.assertEqual(self.routine_key.stat().st_mode & 0o777, 0o440)
+        self.assertNotIn(routine.private_key_hex.encode(), self.routine_key.read_bytes())
+        self.assertFalse((self.routine_key.parent / "public.pem").exists())
+
+    def test_a_routine_assertion_is_bound_to_its_lease_and_request_and_never_to_a_person(self) -> None:
+        identity = supervisor.new_identity()
+        request = supervisor.RequestBinding(
+            method="POST",
+            path="/v1/teams/team_1/routines/runs/" + "b" * 32 + "/segment",
+            body=supervisor.json_body(b"{}"),
+            model=supervisor.model_binding(("openai", "sk-test-0123456789")),
+        )
+        token = supervisor.sign_routine_request(identity, "lease-token", request=request, now=2_200_000_000)
+        header, payload, signature = token.split(".")
+        self.assertEqual(json.loads(_decode(header)), contract.ROUTINE_JWT_HEADER)
+        claims = json.loads(_decode(payload))
+        self.assertEqual(contract.canonical_claims(claims, audience=contract.ROUTINE_AUDIENCE), claims)
+        self.assertEqual((claims["aud"], claims["authority"]), (contract.ROUTINE_AUDIENCE, contract.ROUTINE_AUTHORITY))
+        self.assertEqual(claims["authority_sha256"], __import__("hashlib").sha256(b"lease-token").hexdigest())
+        public = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(identity.private_key_hex)).public_key()
+        public.verify(_decode(signature), f"{header}.{payload}".encode("ascii"))
+        with self.assertRaises(supervisor.SupervisorAuthorityError):
+            supervisor.sign_routine_request(
+                identity,
+                "lease-token",
+                request=supervisor.RequestBinding(
+                    "POST", "/x", supervisor.empty_body(), None, {"kind": "auth:password"}
+                ),
+            )
+
+    def test_the_run_segment_carries_only_the_routine_assertion_even_inside_a_session(self) -> None:
+        identity = supervisor.new_identity()
+        session = "v1:9999999999:0123456789abcdef:" + "a" * 64
+        bindings = transport._RequestBindings(
+            model_credential=("openai", "sk-test-0123456789"), routine=(supervisor.new_identity(), "lease-token")
+        )
+        with (
+            mock.patch.object(transport, "_team_token", return_value="machine-bearer"),
+            transport.supervisor_session(session, account=False, local_identity=identity),
+        ):
+            headers = transport._request_headers(
+                "POST",
+                "/v1/x",
+                b"{}",
+                accept="application/x-ndjson",
+                content_type="application/json",
+                filename=None,
+                bindings=bindings,
+            )
+            plain = transport._request_headers(
+                "POST",
+                "/v1/x",
+                b"{}",
+                accept="application/json",
+                content_type="application/json",
+                filename=None,
+                bindings=transport._NO_BINDINGS,
+            )
+        self.assertIn(contract.ROUTINE_ASSERTION_HEADER, headers)
+        self.assertNotIn(contract.ASSERTION_HEADER, headers)
+        self.assertIn(contract.ASSERTION_HEADER, plain)
+        self.assertNotIn(contract.ROUTINE_ASSERTION_HEADER, plain)
+        claims = json.loads(_decode(headers[contract.ROUTINE_ASSERTION_HEADER].split(".")[1]))
+        self.assertEqual(claims["model"]["provider"], "openai")
+
+
+class RoutineHistoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.path = Path(temporary.name) / "chat-history.sqlite3"
+        patch = mock.patch.object(history, "STORE_PATH", self.path)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_one_row_per_run_that_a_newer_version_replaces_at_the_end(self) -> None:
+        done, skipped, frozen = BATCH["notices"]
+        self.assertTrue(
+            history.append_routine_notice(
+                {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
+            )
+        )
+        self.assertTrue(history.append_routine_notice(skipped))
+        self.assertTrue(history.append_routine_notice(done))
+        # An equal version is idempotent; an older one is already superseded; a conflicting equal one is refused.
+        self.assertTrue(history.append_routine_notice(done))
+        self.assertTrue(
+            history.append_routine_notice(
+                {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
+            )
+        )
+        self.assertFalse(history.append_routine_notice({**done, "detail": {"reply": "Another reply."}}))
+        entries = history.page("team_1")["entries"]
+        self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
+        self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
+        self.assertEqual(entries[-1]["quote"], done["quote"])
+        turn = history.new_turn_id()
+        self.assertTrue(history.append_user("team_1", turn, "Hello"))
+        self.assertEqual(history.conversation("team_1", turn), ())
+        with self.assertRaises(ValueError):
+            history.append_routine_notice({**done, "outcome": "run"})
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (
+                    json.dumps({"kind": "routine-run", **{k: done[k] for k in history._NOTICE_FIELDS}, "extra": 1}),
+                    f"{done['notice_id']}:routine",
+                ),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("team_1")
+        with sqlite3.connect(self.path) as database:
+            stored = {"kind": "routine-run", **{name: done[name] for name in history._NOTICE_FIELDS}, "outcome": "run"}
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (json.dumps(stored), f"{done['notice_id']}:routine"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("team_1")
+
+
+class RoutineTeamCallTests(unittest.TestCase):
+    def test_calls_admit_only_closed_answers(self) -> None:
+        with mock.patch.object(
+            models, "resolve_api_key", side_effect=lambda provider: "k" * 20 if provider == "openai" else None
+        ):
+            self.assertEqual(team.providers(), ("openai",))
+        with mock.patch.object(transport, "_call", return_value=answer({"run": CLAIM})) as call:
+            self.assertEqual(team.claim(("openai",)), CLAIM)
+        call.assert_called_once_with("POST", "/v1/routines/claim", {"providers": ["openai"]})
+        with mock.patch.object(transport, "_call", return_value=answer({"run": None})):
+            self.assertIsNone(team.claim(("openai",)))
+        with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
+            self.assertEqual(team.notices(), BATCH)
+        with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
+            team.acknowledge(BATCH["notices"])
+        self.assertEqual(
+            call.call_args.args[2]["deliveries"][0],
+            {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
+        )
+        for response, action in (
+            (answer({"run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
+            (answer({"notices": [], "more": True}), team.notices),
+            (answer({"acknowledged": False}), lambda: team.acknowledge([])),
+            (team_bridge.TeamResponse(200, {"run": None}), lambda: team.claim(("openai",))),
+            (answer({"code": "x"}, 503), team.notices),
+            (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
+        ):
+            with (
+                self.subTest(response=response),
+                mock.patch.object(transport, "_call", return_value=response),
+                self.assertRaises(team.RoutineTeamError),
+            ):
+                action()
+
+    def test_a_run_segment_is_signed_for_its_own_lease_and_answers_its_own_run(self) -> None:
+        identity = supervisor.new_identity()
+        done = answer({"team_id": CLAIM["team_id"], "run_id": CLAIM["run_id"], "status": "done"})
+        with (
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(transport, "_call_stream", return_value=done) as stream,
+        ):
+            self.assertEqual(team.run(CLAIM, identity), "done")
+        bindings = stream.call_args.kwargs["bindings"]
+        self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
+        self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
+        self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
+        stream.call_args.kwargs["progress"]({"type": "progress"})
+        for key, response in (
+            (None, done),
+            ("sk-test-0123456789", answer({"team_id": "team_2", "run_id": CLAIM["run_id"], "status": "done"})),
+            ("sk-test-0123456789", answer({"team_id": "team_1", "run_id": CLAIM["run_id"], "status": "running"})),
+        ):
+            with (
+                self.subTest(response=response),
+                mock.patch.object(models, "resolve_api_key", return_value=key),
+                mock.patch.object(transport, "_call_stream", return_value=response),
+                self.assertRaises(team.RoutineTeamError),
+            ):
+                team.run(CLAIM, identity)
+
+
+class RoutineDeliveryTests(unittest.TestCase):
+    def test_every_batch_is_written_before_it_is_acknowledged(self) -> None:
+        events: list[str] = []
+        batches = [{"notices": BATCH["notices"][:1], "more": True}, {"notices": BATCH["notices"][1:], "more": False}]
+        with (
+            mock.patch.object(team, "notices", side_effect=batches),
+            mock.patch.object(
+                history, "append_routine_notice", side_effect=lambda notice: events.append("write") or True
+            ),
+            mock.patch.object(team, "acknowledge", side_effect=lambda items: events.append(f"ack{len(items)}")),
+        ):
+            self.assertEqual(delivery.deliver(), 3)
+        self.assertEqual(events, ["write", "ack1", "write", "write", "ack2"])
+        with mock.patch.object(team, "notices", return_value={"notices": [], "more": False}):
+            self.assertEqual(delivery.deliver(), 0)
+        with (
+            mock.patch.object(team, "notices", return_value={"notices": BATCH["notices"][:1], "more": True}),
+            mock.patch.object(history, "append_routine_notice", return_value=True),
+            mock.patch.object(team, "acknowledge") as acknowledge,
+        ):
+            self.assertEqual(delivery.deliver(), delivery.MAX_BATCHES)
+        self.assertEqual(acknowledge.call_count, delivery.MAX_BATCHES)
+        with (
+            mock.patch.object(team, "notices", return_value=BATCH),
+            mock.patch.object(history, "append_routine_notice", return_value=False),
+            mock.patch.object(team, "acknowledge") as acknowledge,
+            self.assertRaises(history.HistoryUnavailableError),
+        ):
+            delivery.deliver()
+        acknowledge.assert_not_called()
+
+
+class RoutineLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        patch = mock.patch.object(history, "STORE_PATH", Path(temporary.name) / "chat-history.sqlite3")
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_notice_read_before_a_team_is_deleted_never_outlives_its_history(self) -> None:
+        from history import http as history_http
+
+        deleting = threading.Event()
+        deleted = threading.Event()
+        done = BATCH["notices"][0]
+
+        def destroy():
+            deleting.set()
+            # Team removes the Team's notices with the Team, so a later read returns none.
+            deleted.wait(5)
+            return team_bridge.TeamResponse(200, {"deleted": True})
+
+        def notices():
+            return {"notices": [] if deleted.is_set() else [done], "more": False}
+
+        worker = threading.Thread(target=history_http.team_delete, args=("team_1", destroy))
+        with mock.patch.object(team, "notices", side_effect=notices), mock.patch.object(team, "acknowledge"):
+            worker.start()
+            self.assertTrue(deleting.wait(5))
+            delivered: list[int] = []
+            deliverer = threading.Thread(target=lambda: delivered.append(delivery.deliver()))
+            deliverer.start()
+            deliverer.join(0.2)
+            # Delivery waits for the deletion and its transcript cleanup to finish.
+            self.assertTrue(deliverer.is_alive())
+            deleted.set()
+            worker.join(5)
+            deliverer.join(5)
+        self.assertEqual(delivered, [0])
+        self.assertEqual(history.page("team_1")["entries"], [])
+
+
+class RoutineSchedulerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.identity = supervisor.new_identity()
+        for patch in (
+            mock.patch.object(state, "local_routine_identity", return_value=self.identity),
+            mock.patch.object(supervisor, "materialize_routine_key"),
+            mock.patch.object(delivery, "deliver", return_value=0),
+            mock.patch.object(team, "providers", return_value=("openai",)),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_a_lane_slot_is_reserved_before_a_claim_and_freed_when_the_run_ends(self) -> None:
+        release = threading.Event()
+        ran: list[dict[str, object]] = []
+
+        def run(claimed, identity):
+            ran.append(claimed)
+            self.assertIs(identity, self.identity)
+            release.wait(5)
+            return "done"
+
+        runner = scheduler.RoutineScheduler(workers=1)
+        self.addCleanup(runner.close)
+        with (
+            mock.patch.object(team, "claim", return_value=CLAIM) as claim,
+            mock.patch.object(team, "run", side_effect=run),
+        ):
+            runner.tick()
+            runner.tick()
+            # The only slot is busy, so the second tick claims nothing.
+            self.assertEqual(claim.call_count, 1)
+            release.set()
+            deadline = time.monotonic() + 5
+            while not runner._slots.acquire(blocking=False):
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            runner._slots.release()
+        self.assertEqual(ran, [CLAIM])
+
+    def test_failures_wait_for_the_next_tick_and_never_hold_a_slot(self) -> None:
+        runner = scheduler.RoutineScheduler(workers=1)
+        self.addCleanup(runner.close)
+        with (
+            mock.patch.object(delivery, "deliver", side_effect=history.HistoryUnavailableError("down")),
+            mock.patch.object(team, "claim", side_effect=team.RoutineTeamError("down")),
+            self.assertLogs("shimpz.admin.routine", level="WARNING") as logged,
+        ):
+            runner.tick()
+        self.assertEqual(len(logged.output), 2)
+        with mock.patch.object(team, "claim", return_value=None):
+            runner.tick()
+        with mock.patch.object(team, "providers", return_value=()), mock.patch.object(team, "claim") as claim:
+            runner.tick()
+        claim.assert_not_called()
+        failed = threading.Event()
+        with (
+            mock.patch.object(team, "claim", return_value=CLAIM),
+            mock.patch.object(
+                team,
+                "run",
+                side_effect=lambda *_args: failed.set() or (_ for _ in ()).throw(team.RoutineTeamError("x")),
+            ),
+        ):
+            runner.tick()
+            self.assertTrue(failed.wait(5))
+        deadline = time.monotonic() + 5
+        while not runner._slots.acquire(blocking=False):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+
+    def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
+        runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)
+        ticks: list[int] = []
+        again = threading.Event()
+
+        def tick():
+            ticks.append(1)
+            if len(ticks) == 1:
+                raise RuntimeError("the credential store is unreadable")
+            again.set()
+
+        with (
+            mock.patch.object(runner, "tick", side_effect=tick),
+            self.assertLogs("shimpz.admin.routine", level="ERROR"),
+        ):
+            runner.start()
+            self.assertTrue(again.wait(5))
+            runner.close()
+        self.assertFalse(runner._thread.is_alive())
+
+
+if __name__ == "__main__":
+    unittest.main()

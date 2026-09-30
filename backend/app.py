@@ -52,6 +52,7 @@ from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import http as routine_http
+from routine import scheduler as routine_scheduler
 
 log = logging.getLogger("shimpz-admin")
 chat_history = chat_history_http.store
@@ -130,7 +131,14 @@ async def _lifespan(_application: FastAPI):
         else:
             if initialized:
                 await asyncio.to_thread(_materialize_local_supervisor)
-    yield
+    scheduler = routine_scheduler.RoutineScheduler() if ADMIN_PROFILE == "local" else None
+    if scheduler is not None:
+        scheduler.start()
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.close()
 
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)

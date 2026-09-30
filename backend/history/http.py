@@ -35,14 +35,16 @@ def team_created(team_id: str, response: team.TeamResponse) -> team.TeamResponse
 
 
 def team_delete(team_id: str, action: Callable[[], team.TeamResponse]) -> team.TeamResponse:
-    response = action()
-    if response == team.TeamResponse(404, {"detail": "Team not found"}):
-        response = team.TeamResponse(200, {"deleted": False})
-    return cleanup(response, lambda: store.clear_team(team_id))
+    with store.LIFECYCLE_LOCK:
+        response = action()
+        if response == team.TeamResponse(404, {"detail": "Team not found"}):
+            response = team.TeamResponse(200, {"deleted": False})
+        return cleanup(response, lambda: store.clear_team(team_id))
 
 
 def space_reset(action: Callable[[], team.TeamResponse]) -> team.TeamResponse:
-    return cleanup(action(), store.clear_all)
+    with store.LIFECYCLE_LOCK:
+        return cleanup(action(), store.clear_all)
 
 
 def page(team_id: str, before: str | None = None) -> JSONResponse:

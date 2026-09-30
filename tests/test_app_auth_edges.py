@@ -114,29 +114,38 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     self.fail("profile drift reached the application lifespan")
 
+        scheduler = mock.patch.object(self.admin_app.routine_scheduler, "RoutineScheduler")
+
         async def initialized() -> None:
             with (
                 mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=True),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
+                scheduler as routines,
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
-                    pass
+                    # Local runs its Routine scheduler for exactly the application's lifetime.
+                    routines.return_value.start.assert_called_once_with()
+                    routines.return_value.close.assert_not_called()
             to_thread.assert_awaited_once_with(self.admin_app._materialize_local_supervisor)
+            routines.return_value.close.assert_called_once_with()
 
         async def hosted() -> None:
             with (
                 mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
                 mock.patch.object(self.admin_app.profile, "require", return_value="hosted"),
+                scheduler as routines,
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     pass
+            routines.assert_not_called()
 
         async def uninitialized() -> None:
             with (
                 mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=False),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
+                scheduler,
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     pass
@@ -148,6 +157,7 @@ class AppAuthenticationEdgeTests(unittest.TestCase):
                 mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", side_effect=error),
                 self.assertLogs("shimpz-admin", level="ERROR") as captured,
+                scheduler,
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
                     pass

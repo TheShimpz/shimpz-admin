@@ -1,5 +1,5 @@
 import { parseClarification, renderClarification } from './clarification.js';
-import { parseRoutineProposal } from './routine.js';
+import { parseRoutineProposal, parseRoutineRunEntry } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -10,7 +10,7 @@ import {
 
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
-const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance)$/;
+const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_PAGE_ENTRIES = 64;
@@ -220,6 +220,13 @@ function historyEntry(value, status) {
   if (value.kind === 'assistant-install') return installEntry(value, match[2], status);
   if (value.kind === 'assistant-uninstall') return uninstallEntry(value, match[2], status);
   if (value.kind === 'guidance') return guidanceEntry(value, match[2], status);
+  if (value.kind === 'routine-run' && match[2] === 'routine') {
+    try {
+      return parseRoutineRunEntry(value);
+    } catch {
+      throw invalidHistory(status);
+    }
+  }
   throw invalidHistory(status);
 }
 

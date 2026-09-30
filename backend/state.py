@@ -485,6 +485,31 @@ def local_supervisor() -> supervisor.LocalIdentity:
     return supervisor.identity_from_record(_read())
 
 
+_ROUTINE_FIELDS = {"id_field": "routine_subject", "key_field": "routine_signing_key"}
+
+
+def local_routine_identity() -> supervisor.LocalIdentity:
+    """Admin's machine identity for Routine runs (ADR-0086), created with the Space's first need for it.
+
+    It exists only beside an established Supervisor identity, and a Space reset, which removes this record, replaces
+    it, so every lease claimed under the old key ends.
+    """
+
+    def ensure(data: dict) -> supervisor.LocalIdentity:
+        supervisor.identity_from_record(data)
+        if "routine_subject" not in data and "routine_signing_key" not in data:
+            identity = supervisor.new_identity()
+            data["routine_subject"] = identity.supervisor_id
+            data["routine_signing_key"] = identity.private_key_hex
+        return supervisor.identity_from_record(data, **_ROUTINE_FIELDS)
+
+    def created(_identity: object) -> bool:
+        current = _read()
+        return "routine_subject" not in current
+
+    return cast(supervisor.LocalIdentity, _mutate(ensure, created))
+
+
 def model_credentials():
     """Return the private model-credential records for trusted backend callers only.
 

@@ -401,3 +401,77 @@ export function routineErrorMessage(error, copy) {
 }
 
 export { fill as fillRoutineCopy };
+
+const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
+const MAX_NOTICE_REPLY_CHARS = 16000;
+const MAX_NOTICE_QUESTION_CHARS = 240;
+
+function closedText(value, maximum) {
+  return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
+}
+
+const NOTICE_DETAILS = {
+  done: [['reply'], (detail) => closedText(detail.reply, MAX_NOTICE_REPLY_CHARS)],
+  'needs-input': [['question'], (detail) => closedText(detail.question, MAX_NOTICE_QUESTION_CHARS)],
+  skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
+  'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],
+  frozen: [
+    ['request_kind', 'assistant_id', 'action'],
+    (detail) =>
+      ['human', 'integrations'].includes(detail.request_kind) &&
+      typeof detail.assistant_id === 'string' &&
+      ASSISTANT_ID_RE.test(detail.assistant_id) &&
+      typeof detail.action === 'string' &&
+      ACTION_ID_RE.test(detail.action),
+  ],
+  failed: [
+    ['code', 'actions'],
+    (detail) => typeof detail.code === 'string' && ERROR_CODE_RE.test(detail.code) && isActions(detail.actions),
+  ],
+  denied: [['actions'], (detail) => isActions(detail.actions)],
+  stopped: [['actions'], (detail) => isActions(detail.actions)],
+  uncertain: [['actions'], (detail) => isActions(detail.actions)],
+};
+
+function isAssistantList(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= MAX_ASSISTANTS &&
+    value.every((item) => typeof item === 'string' && ASSISTANT_ID_RE.test(item))
+  );
+}
+
+/** One Routine outcome row of a Team's transcript (ADR-0086); a run's row is keyed by its run id. */
+export function parseRoutineRunEntry(value) {
+  const keys = ['id', 'kind', 'notice_id', 'routine_id', 'quote', 'run_id', 'outcome', 'created_at', 'detail', 'version'];
+  const rule = value && typeof value === 'object' ? NOTICE_DETAILS[value.outcome] : undefined;
+  if (
+    !exact(value, keys) ||
+    value.kind !== 'routine-run' ||
+    !rule ||
+    typeof value.notice_id !== 'string' ||
+    !ID_RE.test(value.notice_id) ||
+    value.id !== `${value.notice_id}:routine` ||
+    typeof value.routine_id !== 'string' ||
+    !ID_RE.test(value.routine_id) ||
+    !isQuote(value.quote) ||
+    (value.run_id !== null && value.run_id !== value.notice_id) ||
+    (value.run_id === null) !== ['skipped', 'scope-changed'].includes(value.outcome) ||
+    !isInstant(value.created_at) ||
+    !Number.isInteger(value.version) ||
+    value.version < 1 ||
+    !exact(value.detail, rule[0]) ||
+    !rule[1](value.detail)
+  ) throw new RoutineError('routine-entry-invalid');
+  return {
+    id: value.id,
+    kind: 'routine-run',
+    runId: value.run_id,
+    routineId: value.routine_id,
+    quote: value.quote,
+    outcome: value.outcome,
+    createdAt: value.created_at,
+    detail: structuredClone(value.detail),
+  };
+}

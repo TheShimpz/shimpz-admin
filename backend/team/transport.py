@@ -49,6 +49,8 @@ class _RequestBindings:
     human_assurance: dict[str, str] | None = None
     # The Supervisor's TypeSafe key, sent only with intent classification (ADR-0077).
     decision_key: str | None = None
+    # Admin's Routine identity and the run's lease token: the run segment is signed by it, never by a session.
+    routine: tuple[local_supervisor.LocalIdentity, str] | None = None
 
 
 _NO_BINDINGS = _RequestBindings()
@@ -150,6 +152,23 @@ def _local_assertion(
         return ""
     if binding.local_identity is None:
         raise local_supervisor.SupervisorAuthorityError("Local Supervisor identity is unavailable")
+    return local_supervisor.sign_request(
+        binding.local_identity,
+        binding.value,
+        request=_request_binding(method, path, body, content_type=content_type, filename=filename, bindings=bindings),
+        authority_kind=binding.authority_kind,
+    )
+
+
+def _request_binding(
+    method: str,
+    path: str,
+    body: bytes | None,
+    *,
+    content_type: str | None,
+    filename: str | None,
+    bindings: _RequestBindings,
+) -> local_supervisor.RequestBinding:
     if filename is not None:
         if body is None or content_type is None:
             raise local_supervisor.SupervisorAuthorityError("Local Supervisor file binding is invalid")
@@ -158,18 +177,13 @@ def _local_assertion(
         body_binding = local_supervisor.json_body(body)
     else:
         body_binding = local_supervisor.empty_body()
-    return local_supervisor.sign_request(
-        binding.local_identity,
-        binding.value,
-        request=local_supervisor.RequestBinding(
-            method=method,
-            path=path,
-            body=body_binding,
-            model=local_supervisor.model_binding(bindings.model_credential),
-            decision=local_supervisor.decision_binding(bindings.decision_key),
-            assurance=bindings.human_assurance,
-        ),
-        authority_kind=binding.authority_kind,
+    return local_supervisor.RequestBinding(
+        method=method,
+        path=path,
+        body=body_binding,
+        model=local_supervisor.model_binding(bindings.model_credential),
+        decision=local_supervisor.decision_binding(bindings.decision_key),
+        assurance=bindings.human_assurance,
     )
 
 
@@ -308,6 +322,12 @@ def _request_headers(
         headers["X-Shimpz-Decision-Api-Key"] = _private_key(
             bindings.decision_key, "invalid private decision credential"
         )
+    if bindings.routine is not None:
+        identity, lease_token = bindings.routine
+        request = _request_binding(method, path, body, content_type=content_type, filename=filename, bindings=bindings)
+        routine_assertion = local_supervisor.sign_routine_request(identity, lease_token, request=request)
+        headers[supervisor_contract.ROUTINE_ASSERTION_HEADER] = f"Bearer {routine_assertion}"
+        return headers
     assertion = _local_assertion(
         method,
         path,

@@ -29,6 +29,8 @@ PUBLIC_KEY_FILE = Path(
         "/run/shimpz-local-supervisor/public.pem",
     )
 )
+# Admin's separate Routine identity publishes its key beside the Supervisor's, where Team reads it (ADR-0086).
+ROUTINE_PUBLIC_KEY_FILE = PUBLIC_KEY_FILE.with_name("routine.pem")
 PUBLIC_KEY_GROUP = os.environ.get(
     "SHIMPZ_LOCAL_SUPERVISOR_KEY_GROUP",
     "shimpzsupervisor-key",
@@ -66,12 +68,14 @@ def new_identity() -> LocalIdentity:
     return LocalIdentity(secrets.token_hex(16), private_raw.hex())
 
 
-def identity_from_record(record: object) -> LocalIdentity:
+def identity_from_record(
+    record: object, *, id_field: str = "supervisor_id", key_field: str = "supervisor_signing_key"
+) -> LocalIdentity:
     """Load the exact current Local identity from the private Admin record."""
     if not isinstance(record, dict):
         raise SupervisorAuthorityError("Local Supervisor identity is unavailable")
-    supervisor_id = record.get("supervisor_id")
-    private_key_hex = record.get("supervisor_signing_key")
+    supervisor_id = record.get(id_field)
+    private_key_hex = record.get(key_field)
     if (
         not isinstance(supervisor_id, str)
         or _HEX_32.fullmatch(supervisor_id) is None
@@ -143,10 +147,19 @@ def _write_all(descriptor: int, raw: bytes) -> None:
 
 
 def materialize_public_key(identity: LocalIdentity) -> None:
-    """Atomically publish only the verification key into the shared runtime volume."""
+    """Atomically publish only the Supervisor's verification key into the shared runtime volume."""
+    _materialize(PUBLIC_KEY_FILE, identity)
+
+
+def materialize_routine_key(identity: LocalIdentity) -> None:
+    """Atomically publish only the Routine identity's verification key beside the Supervisor's."""
+    _materialize(ROUTINE_PUBLIC_KEY_FILE, identity)
+
+
+def _materialize(path: Path, identity: LocalIdentity) -> None:
     try:
         expected_gid = grp.getgrnam(PUBLIC_KEY_GROUP).gr_gid
-        parent = PUBLIC_KEY_FILE.parent
+        parent = path.parent
         parent_metadata = parent.lstat()
     except (FileNotFoundError, KeyError, OSError) as exc:
         raise SupervisorAuthorityError("Local Supervisor key volume is unavailable") from exc
@@ -157,7 +170,7 @@ def materialize_public_key(identity: LocalIdentity) -> None:
     ):
         raise SupervisorAuthorityError("Local Supervisor key volume has unsafe metadata")
     expected = _public_bytes(identity)
-    if _safe_public_file(PUBLIC_KEY_FILE, expected_gid) == expected:
+    if _safe_public_file(path, expected_gid) == expected:
         return
 
     temporary = parent / f".public.{os.getpid()}.{secrets.token_hex(8)}.tmp"
@@ -176,8 +189,8 @@ def materialize_public_key(identity: LocalIdentity) -> None:
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = None
-        temporary.replace(PUBLIC_KEY_FILE)
-        if _safe_public_file(PUBLIC_KEY_FILE, expected_gid) != expected:
+        temporary.replace(path)
+        if _safe_public_file(path, expected_gid) != expected:
             raise SupervisorAuthorityError("Local Supervisor public key could not be verified")
         directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
         try:
@@ -243,10 +256,52 @@ def sign_request(
     now: int | None = None,
 ) -> str:
     """Sign one canonical, short-lived assertion for one exact Team request."""
+    return _sign(
+        identity,
+        authority_secret,
+        request=request,
+        authority_kind=authority_kind,
+        audience=contract.ASSERTION_AUDIENCE,
+        jwt_header=contract.JWT_HEADER,
+        now=now,
+    )
+
+
+def sign_routine_request(
+    identity: LocalIdentity,
+    lease_token: str,
+    *,
+    request: RequestBinding,
+    now: int | None = None,
+) -> str:
+    """Sign one Routine assertion: Admin's routine identity drives the run whose lease token it holds (ADR-0086)."""
+    if request.decision is not None or request.assurance is not None:
+        raise SupervisorAuthorityError("a Routine assertion binds no human decision or assurance")
+    return _sign(
+        identity,
+        lease_token,
+        request=request,
+        authority_kind=contract.ROUTINE_AUTHORITY,
+        audience=contract.ROUTINE_AUDIENCE,
+        jwt_header=contract.ROUTINE_JWT_HEADER,
+        now=now,
+    )
+
+
+def _sign(
+    identity: LocalIdentity,
+    authority_secret: str,
+    *,
+    request: RequestBinding,
+    authority_kind: str,
+    audience: str,
+    jwt_header: dict[str, str],
+    now: int | None,
+) -> str:
     issued_at = int(time.time()) if now is None else now
     claims: dict[str, object] = {
         "v": 1,
-        "aud": contract.ASSERTION_AUDIENCE,
+        "aud": audience,
         "sub": identity.supervisor_id,
         "authority": authority_kind,
         "authority_sha256": hashlib.sha256(authority_secret.encode("ascii")).hexdigest(),
@@ -263,8 +318,8 @@ def sign_request(
         claims["decision"] = request.decision
     if request.assurance is not None:
         claims["assurance"] = request.assurance
-    header = _segment(contract.canonical_json(contract.JWT_HEADER))
-    payload = _segment(contract.claims_json(claims))
+    header = _segment(contract.canonical_json(jwt_header))
+    payload = _segment(contract.claims_json(claims, audience=audience))
     signing_input = f"{header}.{payload}".encode("ascii")
     signature = _segment(_private_key(identity).sign(signing_input))
     return f"{header}.{payload}.{signature}"

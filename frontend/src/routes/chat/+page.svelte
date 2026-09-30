@@ -8,6 +8,7 @@
   import BrainMenu from '$lib/BrainMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
+  import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -362,6 +363,9 @@
           ...(entry.status ? { status: entry.status } : {}),
         },
       };
+    }
+    if (entry.kind === 'routine-run') {
+      return { renderKey, historyId: entry.id, role: 'assistant', text: '', author, routineRun: entry };
     }
     return {
       renderKey,
@@ -1759,6 +1763,8 @@
                       disabled={composerBusy}
                       onuse={useClarifiedRequest}
                     />
+                  {:else if assistantTurn.routineRun}
+                    <RoutineRunEntry entry={assistantTurn.routineRun} copy={$t('routine')} />
                   {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}

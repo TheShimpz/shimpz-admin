@@ -180,6 +180,43 @@ def _append(
         return committed
 
 
+# Serializes Routine notice delivery with Team deletion and Space reset, including their transcript cleanup, so a
+# notice read before a Team is deleted is never written into the history after that Team's rows are removed.
+LIFECYCLE_LOCK = threading.Lock()
+_NOTICE_FIELDS = ("notice_id", "routine_id", "quote", "run_id", "outcome", "created_at", "detail", "version")
+
+
+def append_routine_notice(notice: object) -> bool:
+    """Write one Routine notice to its Team's transcript (ADR-0086); it never enters the Brain window.
+
+    A run keeps one row, keyed by its notice id. A newer version replaces the row and moves it to the end, so an
+    outcome that arrives long after the run froze is where the Supervisor looks; an older or equal version is already
+    delivered and changes nothing.
+    """
+    admitted = routine_contract.canonical_notice(notice)
+    if admitted is None:
+        raise ValueError("Routine notice is invalid")
+    team_id = _team_id(admitted["team_id"])
+    event_key = f"{admitted['notice_id']}:routine"
+    payload = {"kind": "routine-run", **{name: admitted[name] for name in _NOTICE_FIELDS}}
+    encoded = _encoded(payload)
+    with _database() as database:
+        existing = database.execute(
+            "SELECT payload FROM transcript WHERE team_id = ? AND event_key = ?", (team_id, event_key)
+        ).fetchone()
+        if existing is not None:
+            stored = _decoded(existing[0])
+            if stored["version"] > payload["version"]:
+                return True
+            if stored["version"] == payload["version"]:
+                return existing[0] == encoded
+            database.execute("DELETE FROM transcript WHERE team_id = ? AND event_key = ?", (team_id, event_key))
+        database.execute(
+            "INSERT INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)", (team_id, event_key, encoded)
+        )
+    return True
+
+
 def append_user(team_id: object, turn_id: object, message: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
@@ -421,6 +458,7 @@ def _decoded(raw: object) -> dict[str, object]:
         "assistant-install",
         "assistant-uninstall",
         "guidance",
+        "routine-run",
     }:
         raise HistoryUnavailableError("chat history entry is invalid")
     try:
@@ -508,8 +546,18 @@ def _validate_stored_uninstall(payload: dict[str, object]) -> None:
             raise ValueError("invalid stored uninstall")
 
 
+def _validate_stored_routine(payload: dict[str, object]) -> None:
+    if set(payload) != {"kind", *_NOTICE_FIELDS}:
+        raise ValueError("invalid stored Routine notice")
+    fields = {name: payload[name] for name in _NOTICE_FIELDS}
+    # The Team is the row's own; any valid id stands in for it while the notice's closed shape is checked.
+    if routine_contract.canonical_notice({**fields, "team_id": "stored"}) != {**fields, "team_id": "stored"}:
+        raise ValueError("invalid stored Routine notice")
+
+
 def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators = {
+        "routine-run": _validate_stored_routine,
         "message": _validate_stored_message,
         "assistant-install": _validate_stored_install,
         "assistant-uninstall": _validate_stored_uninstall,
