@@ -17,7 +17,6 @@ from history import store as history
 from team import bridge as team
 
 from chat import assistant_proposal, lifecycle
-from protocol.http.v1 import payload as team_contract
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 ErrorTerminal = Callable[[object, str], dict[str, object]]
@@ -38,6 +37,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         "files",
         "assistant_ids",
         "objective_assistant_ids",
+        "locale",
     }:
         raise team.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
@@ -45,6 +45,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "message": frame["message"],
             "files": frame["files"],
             "assistant_ids": frame["assistant_ids"],
+            "locale": frame["locale"],
         }
     )
     objective = team.canonical_chat_payload(
@@ -52,6 +53,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "message": frame["objective"],
             "files": [],
             "assistant_ids": frame["objective_assistant_ids"],
+            "locale": frame["locale"],
         }
     )
     if (
@@ -112,11 +114,10 @@ async def dispatch(
     except ExecutorSaturatedError:
         await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
         return
-    language_exemplar = team_contract.canonical_language_exemplar(objective["message"])
     turn = Turn(
         future=preparation,
         operation="assistant-route",
-        language_exemplar=language_exemplar,
+        locale=objective["locale"],
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
         conversation=conversation,

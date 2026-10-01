@@ -27,7 +27,7 @@ DIGEST = "sha256:" + ("a" * 64)
 
 
 def payload(message: str) -> dict[str, object]:
-    return {"message": message, "files": [], "assistant_ids": []}
+    return {"message": message, "files": [], "assistant_ids": [], "locale": "en"}
 
 
 def response(
@@ -196,7 +196,7 @@ class AssistantRouteTests(unittest.TestCase):
             "liste minhas zonas",
             None,
             [],
-            local.IntentRouteContext(),
+            local.IntentRouteContext(locale="en"),
         )
         gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
 
@@ -316,7 +316,7 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertEqual(route.call_args_list[1].args[2], "assistant-install")
         self.assertEqual(
             route.call_args_list[1].args[4],
-            local.IntentRouteContext(language_exemplar="instale o cloudflare"),
+            local.IntentRouteContext(locale="en"),
         )
 
     def test_repeated_install_returns_the_current_state_without_install_work(self) -> None:
@@ -437,7 +437,6 @@ class AssistantRouteTests(unittest.TestCase):
                 conversation_context.Entry("user", "quais temos?", False),
                 conversation_context.Entry("assistant", "Temos apenas Cloudflare/DNS.", False),
             ),
-            selection_language_exemplar="quais temos?",
         )
         with (
             mock.patch.object(
@@ -461,11 +460,11 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertEqual(result.uninstall, candidate)
         self.assertEqual(route.call_args_list[0].args[1], "desinstala esse então")
         self.assertEqual(route.call_args_list[0].args[4].conversation, context.conversation)
-        self.assertIsNone(route.call_args_list[0].args[4].language_exemplar)
+        self.assertEqual(route.call_args_list[0].args[4].locale, "en")
         self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
         self.assertNotEqual(route.call_args_list[1].args[1], "desinstala esse então")
         self.assertEqual(route.call_args_list[1].args[4].conversation, ())
-        self.assertEqual(route.call_args_list[1].args[4].language_exemplar, "quais temos?")
+        self.assertEqual(route.call_args_list[1].args[4].locale, "en")
 
     def test_uninstall_missing_unknown_or_unresolved_target_returns_guidance(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
@@ -600,11 +599,7 @@ class AssistantRouteTests(unittest.TestCase):
         self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
         self.assertEqual(
             route.call_args_list[1].args[4],
-            local.IntentRouteContext(
-                language_exemplar=assistant_route.team_contract.canonical_language_exemplar(
-                    long_install_message[: assistant_route.team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS]
-                )
-            ),
+            local.IntentRouteContext(locale="en"),
         )
 
 

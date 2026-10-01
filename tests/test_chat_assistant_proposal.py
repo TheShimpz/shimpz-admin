@@ -296,7 +296,7 @@ class AssistantProposalTests(unittest.TestCase):
         proposal = assistant_proposal.create_uninstall_proposal(
             "team_1",
             candidate,
-            language_exemplar="Desinstale o Assistant do Cloudflare",
+            locale="pt",
             now=10.0,
             proposal_id_factory=lambda: "c" * 32,
         )
@@ -304,7 +304,15 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertEqual(proposal.assistant_version, "0.4.4")
         self.assertTrue(proposal.valid_for("team_1", 129.999))
         self.assertFalse(proposal.valid_for("team_1", 130.0))
-        self.assertNotIn("Desinstale", repr(proposal))
+        self.assertEqual(proposal.locale, "pt")
+        retired = assistant_proposal.create_uninstall_proposal(
+            "team_1",
+            candidate,
+            locale="Desinstale o Assistant",
+            now=10.0,
+            proposal_id_factory=lambda: "c" * 32,
+        )
+        self.assertIsNone(retired.locale)
 
     def test_uninstall_proposal_rejects_invalid_authority(self) -> None:
         candidate = assistant_proposal.UninstallCandidate(
@@ -320,7 +328,7 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.create_uninstall_proposal(
                 "Bad",
                 candidate,
-                language_exemplar="Desinstale o Assistant",
+                locale="pt",
                 now=10.0,
                 proposal_id_factory=lambda: "b" * 32,
             )

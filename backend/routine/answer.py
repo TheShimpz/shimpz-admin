@@ -77,7 +77,11 @@ def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
     _remember((canonical, run, projected["challenge_id"]), deadline, projected["request"])
     challenge = {
         "type": "human-required",
-        **{name: projected[name] for name in ("challenge_id", "expires_in", "assistant", "action", "request")},
+        **{
+            name: projected[name]
+            for name in ("challenge_id", "expires_in", "assistant", "action", "request", "purpose", "help_url")
+            if name in projected
+        },
     }
     return team.TeamResponse(
         HTTPStatus.OK, {"team_id": canonical, "run_id": run, "status": "human-required", "challenge": challenge}

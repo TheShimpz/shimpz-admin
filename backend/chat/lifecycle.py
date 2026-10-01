@@ -130,13 +130,13 @@ def submit_route(
 def create_proposal(
     team_id: str,
     candidate: assistant_proposal.UninstallCandidate,
-    language_exemplar: object,
+    locale: object,
 ) -> tuple[assistant_proposal.UninstallProposal, dict[str, object]]:
     """Create one socket-bound proposal and its deterministic public event."""
     proposal = assistant_proposal.create_uninstall_proposal(
         team_id,
         candidate,
-        language_exemplar=language_exemplar,
+        locale=locale,
         now=monotonic(),
     )
     return proposal, _proposal_event(proposal)

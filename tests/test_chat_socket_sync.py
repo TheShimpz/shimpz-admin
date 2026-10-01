@@ -178,7 +178,9 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 await websocket.send_json({"type": "sync"})
                 self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
-                await websocket.send_json({"type": "chat", "message": "Retry", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "Retry", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -431,7 +433,9 @@ class ChatWebSocketSyncTests(unittest.TestCase):
             with mock.patch.object(self.chat_socket.local, "turn", return_value=team_response):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "chat", "message": "hello", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "hello", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 event = await websocket.next_json()
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)

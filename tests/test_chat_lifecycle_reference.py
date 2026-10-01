@@ -17,6 +17,7 @@ from team import bridge as team
 from chat import assistant_proposal, local
 
 TRACE_ID = "a" * 32
+EN = local.IntentRouteContext(locale="en")
 
 
 def _future(value: object) -> concurrent.futures.Future[object]:
@@ -40,6 +41,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 local.IntentRouteContext(
                     reference=reference,
                     conversation=(conversation_context.Entry("assistant", "Cloudflare foi desinstalado.", False),),
+                    locale="pt",
                 ),
             )
 
@@ -51,6 +53,8 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             route.call_args.args[1]["conversation"],
             [{"role": "assistant", "text": "Cloudflare foi desinstalado.", "truncated": False}],
         )
+        self.assertEqual(route.call_args.args[1]["locale"], "pt")
+        self.assertNotIn("language_exemplar", route.call_args.args[1])
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
         with self.assertRaises(team.TeamRequestError):
             local.intent_route(
@@ -58,7 +62,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 "instale o cloudflare",
                 "assistant-install",
                 candidates,
-                local.IntentRouteContext(reference=reference),
+                local.IntentRouteContext(reference=reference, locale="pt"),
             )
 
     def test_intent_route_rejects_invalid_input_and_inconsistent_team_output(self) -> None:
@@ -73,7 +77,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         )
         for expected, directory in invalid_input:
             with self.subTest(expected=expected, directory=directory), self.assertRaises(team.TeamRequestError):
-                local.intent_route("team_1", "objective", expected, directory)
+                local.intent_route("team_1", "objective", expected, directory, local.IntentRouteContext(locale="en"))
 
         invalid_context = (
             (None, [], object()),
@@ -82,6 +86,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 [],
                 local.IntentRouteContext(
                     conversation=[],
+                    locale="en",
                 ),
             ),
             (
@@ -89,19 +94,23 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 [],
                 local.IntentRouteContext(
                     conversation=(conversation_context.Entry("system", "remove it", False),),
+                    locale="en",
                 ),
             ),
-            (None, [], local.IntentRouteContext(language_exemplar="remove it")),
+            (None, [], None),
+            (None, [], local.IntentRouteContext()),
+            (None, [], local.IntentRouteContext(locale="remove it")),
             (
                 "assistant-uninstall",
                 candidates,
-                local.IntentRouteContext(language_exemplar="remove\ue000it"),
+                local.IntentRouteContext(locale="EN"),
             ),
             (
                 "assistant-install",
                 candidates,
                 local.IntentRouteContext(
                     conversation=(conversation_context.Entry("user", "install it", False),),
+                    locale="en",
                 ),
             ),
         )
@@ -141,6 +150,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                         "desinstale o cloudflare",
                         "assistant-uninstall",
                         candidates,
+                        EN,
                     ),
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
@@ -181,7 +191,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
             ):
                 self.assertEqual(
-                    local.intent_route("team_1", "faça isso", None, []),
+                    local.intent_route("team_1", "faça isso", None, [], EN),
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
@@ -203,7 +213,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             ),
         ):
             self.assertEqual(
-                local.intent_route("team_1", "faça isso", None, []),
+                local.intent_route("team_1", "faça isso", None, [], EN),
                 team.TeamResponse(
                     200,
                     {key: value for key, value in valid_classification.items() if key != "trace_id"},
@@ -224,7 +234,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, invalid_unresolved)),
         ):
             self.assertEqual(
-                local.intent_route("team_1", "instale", "assistant-install", candidates),
+                local.intent_route("team_1", "instale", "assistant-install", candidates, EN),
                 team.TeamResponse(502, {"code": "chat-response-invalid"}),
             )
 
@@ -234,7 +244,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, valid_unresolved)),
         ):
             self.assertEqual(
-                local.intent_route("team_1", "instale", "assistant-install", candidates),
+                local.intent_route("team_1", "instale", "assistant-install", candidates, EN),
                 team.TeamResponse(
                     200,
                     {key: value for key, value in valid_unresolved.items() if key != "trace_id"},

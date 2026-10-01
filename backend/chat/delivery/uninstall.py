@@ -20,7 +20,7 @@ def _matched_event(
         proposal, event = lifecycle.create_proposal(
             team_id,
             candidate,
-            turn.language_exemplar,
+            turn.locale,
         )
     except ValueError:
         return error_terminal(503, "Assistant inventory is unavailable")

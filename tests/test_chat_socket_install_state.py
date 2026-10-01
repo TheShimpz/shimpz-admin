@@ -72,6 +72,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "message": message,
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
 
@@ -82,7 +83,9 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 self.assertEqual((completed["state"], completed["continuation"]), ("installed", "none"))
                 turn.assert_not_called()
 
-                await websocket.send_json({"type": "chat", "message": "Olá", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "Olá", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
@@ -142,6 +145,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "message": "instala o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
 
@@ -153,7 +157,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 turn.assert_not_called()
 
                 await websocket.send_json(
-                    {"type": "chat", "message": "liste as zonas", "files": [], "assistant_ids": []}
+                    {"type": "chat", "message": "liste as zonas", "files": [], "assistant_ids": [], "locale": "en"}
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
@@ -198,6 +202,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "message": "instale o cloudflare e o whatsapp",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
 

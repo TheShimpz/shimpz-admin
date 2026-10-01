@@ -67,7 +67,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "uninstall", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "uninstall", "files": [], "assistant_ids": [], "locale": "en"},
                 )
                 delivery = connection.active.delivery
                 await delivery
@@ -111,6 +111,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "message": "desinstale o GitHub",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     },
                 )
                 delivery = connection.active.delivery
@@ -145,7 +146,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
                 )
                 delivery = connection.active.delivery
                 await delivery
@@ -156,7 +157,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "olá", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "olá", "files": [], "assistant_ids": [], "locale": "en"},
                     mock.AsyncMock(),
                 )
             self.assertFalse(connection.ignore_idle_stop_once)
@@ -167,7 +168,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_guidance_without_a_canonical_exemplar_remains_a_normal_question(self) -> None:
+    def test_guidance_for_a_noncanonical_message_remains_a_normal_question(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
@@ -192,6 +193,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "message": "desinstale\ue000",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     },
                 )
                 await connection.active.delivery
@@ -218,7 +220,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
                 )
 
             self.assertEqual(send.await_args.args[-1]["status"], 503)
@@ -244,7 +246,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": [], "locale": "en"},
                 )
 
             self.assertIs(connection.assistant_reference, reference)
@@ -252,13 +254,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_turn_keeps_only_a_repr_hidden_bounded_language_exemplar(self) -> None:
-        turn = socket._Turn(None, "chat", language_exemplar="Liste minhas zonas DNS")
-
-        self.assertEqual(turn.language_exemplar, "Liste minhas zonas DNS")
-        self.assertNotIn("Liste minhas zonas DNS", repr(turn))
-
-    def test_chat_dispatch_omits_an_overlong_language_exemplar(self) -> None:
+    def test_chat_dispatch_carries_the_frame_locale_and_never_the_message_in_the_turn(self) -> None:
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(
@@ -281,17 +277,46 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": message, "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": message, "files": [], "assistant_ids": [], "locale": "ja"},
                 )
 
             turn = connection.active
             self.assertIsNotNone(turn)
-            self.assertIsNone(turn.language_exemplar)
+            self.assertEqual(turn.locale, "ja")
             self.assertNotIn(message, repr(turn))
             await turn.delivery
 
         asyncio.run(scenario())
 
+    def test_a_chat_frame_without_one_interface_locale_fails_closed(self) -> None:
+        async def scenario() -> None:
+            frames = (
+                {"type": "chat", "message": "oi", "files": [], "assistant_ids": []},
+                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "locale": None},
+                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "locale": "pt-BR"},
+                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "language_exemplar": "oi"},
+                {
+                    "type": "chat",
+                    "message": "oi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "pt",
+                    "language_exemplar": "oi",
+                },
+            )
+            for frame in frames:
+                with (
+                    self.subTest(frame=frame),
+                    mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
+                    mock.patch.object(socket.lifecycle, "submit_route") as route,
+                ):
+                    connection = socket._Connection()
+                    await socket._dispatch_chat(mock.AsyncMock(), connection, "team_1", frame)
+                    self.assertEqual(send.await_args.args[-1]["status"], 400)
+                    self.assertIsNone(connection.active)
+                    route.assert_not_called()
+
+        asyncio.run(scenario())
 
 if __name__ == "__main__":
     unittest.main()

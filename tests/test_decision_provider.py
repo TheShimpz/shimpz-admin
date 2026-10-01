@@ -154,13 +154,14 @@ class DecisionHandOffTests(unittest.TestCase):
             mock.patch.object(local.decision, "resolve", return_value=KEY),
             mock.patch.object(team, "intent_route", return_value=ordinary) as route,
         ):
-            local.intent_route("team_1", "oi", None, [])
+            local.intent_route("team_1", "oi", None, [], local.IntentRouteContext(locale="pt"))
             self.assertEqual(route.call_args.kwargs["decision_key"], KEY)
             local.intent_route(
                 "team_1",
                 "cloudflare",
                 "assistant-uninstall",
                 [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}],
+                local.IntentRouteContext(locale="pt"),
             )
             self.assertIsNone(route.call_args.kwargs["decision_key"])
 

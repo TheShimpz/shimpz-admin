@@ -245,6 +245,31 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_presentation_vectors(self) -> None:
+        mutations = []
+        for family, admitted, refused in (
+            ("chat_locale", "pt", "EN"),
+            ("help_url", "https://dashboard.exa.ai/api-keys", "https://example.com"),
+            ("purpose", "Para pesquisar, preciso do Exa.", "a — b"),
+        ):
+
+            def missing(value: dict[str, object], family: str = family) -> None:
+                value.pop(family)
+
+            def admitted_as_invalid(value: dict[str, object], family: str = family, item: str = admitted) -> None:
+                value[family]["invalid"] = [item]
+
+            def refused_as_valid(value: dict[str, object], family: str = family, item: str = refused) -> None:
+                value[family]["valid"] = [item]
+
+            mutations.extend((missing, admitted_as_invalid, refused_as_valid))
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_routine_vectors(self) -> None:
         def missing_schedules(value: dict[str, object]) -> None:
             value["routine_schedule"]["daily_rate"] = []
@@ -358,12 +383,15 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             fake.__dict__.update(overrides)
             return fake
 
-        exemplar = payload.canonical_language_exemplar
         label = payload.canonical_action_label
         modules = (
-            fake_payload(canonical_language_exemplar=lambda _value: None),
-            fake_payload(
-                canonical_language_exemplar=lambda value: exemplar(value) if exemplar(value) is not None else "accepted"
+            *(
+                fake_payload(**{name: lambda _value: None})
+                for name in ("canonical_locale", "canonical_help_url", "canonical_purpose")
+            ),
+            *(
+                fake_payload(**{name: lambda value: "accepted" if value is None or isinstance(value, int) else value})
+                for name in ("canonical_locale", "canonical_help_url", "canonical_purpose")
             ),
             fake_payload(canonical_action_label=lambda _value: None),
             fake_payload(canonical_action_label=lambda value: label(value) if label(value) is not None else "accepted"),

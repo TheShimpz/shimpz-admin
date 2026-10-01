@@ -90,7 +90,9 @@ class ChatWebSocketHumanTests(unittest.TestCase):
     async def _open_challenge(self, kind: str) -> _Socket:
         websocket = _Socket(self.admin_app.app, token=self.token)
         self.assertTrue(self._accepted(await websocket.start()))
-        await websocket.send_json({"type": "chat", "message": "Continue", "files": [], "assistant_ids": []})
+        await websocket.send_json(
+            {"type": "chat", "message": "Continue", "files": [], "assistant_ids": [], "locale": "en"}
+        )
         challenge = await websocket.next_json()
         self.assertEqual(challenge["type"], "human-required")
         self.assertEqual(challenge["request"]["kind"], kind)
@@ -360,7 +362,9 @@ class ChatWebSocketHumanTests(unittest.TestCase):
             with mock.patch.object(self.chat_socket.local, "turn", return_value=invalid):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "chat", "message": "Continue", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "Continue", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 self.assertEqual(
                     await websocket.next_json(),
                     {

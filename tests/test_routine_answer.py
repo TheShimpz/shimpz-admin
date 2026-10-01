@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
 from team import transport
-from test_chat_human_projection import _request, _response
+from test_chat_human_projection import _fingerprinted, _request, _response
 
 from chat import human
 from chat import local as chat_local
@@ -88,6 +88,18 @@ class RoutineAnswerTests(unittest.TestCase):
         again, stream = self.respond(frame)
         self.assertEqual((again.status, again.body["code"]), (409, "human-request-expired"))
         stream.assert_not_called()
+
+    def test_an_opened_challenge_forwards_its_purpose_and_key_page(self) -> None:
+        request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
+        stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
+        purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
+        help_url = "https://dashboard.exa.ai/api-keys"
+        body = {**_response(stored, purpose=purpose, help_url=help_url), "run_id": RUN}
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
+            response = answer.open_challenge("team_1", RUN)
+        challenge = response.body["challenge"]
+        self.assertEqual((challenge["purpose"], challenge["help_url"]), (purpose, help_url))
+        self.assertEqual(challenge["request"], stored)
 
     def test_a_denial_ends_the_run_and_a_password_is_verified_here(self) -> None:
         self.open()

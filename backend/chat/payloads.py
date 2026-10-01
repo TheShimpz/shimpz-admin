@@ -17,6 +17,8 @@ MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
 MAX_HUMAN_TEXT_CHARS = 16_000
 MAX_HUMAN_CHOICES = 32
 MAX_HUMAN_CHOICE_CHARS = 128
+# The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090).
+CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale"})
 
 
 def canonical_assistant_id(value: object) -> str:
@@ -33,21 +35,24 @@ def canonical_challenge_id(value: object) -> str:
 
 
 def canonical_team_chat_body(payload: object) -> dict[str, object]:
-    """Validate the Team chat body: the browser's three fields plus Admin's server-derived conversation window."""
+    """Validate the Team chat body: the browser's chat fields plus Admin's server-derived conversation window."""
     if not isinstance(payload, dict) or set(payload) != team_contract.CHAT_BODY_FIELDS:
-        raise TeamRequestError("Team chat requires message, files, assistant_ids, and conversation")
+        raise TeamRequestError("Team chat requires message, files, assistant_ids, conversation, and locale")
     conversation = team_contract.canonical_conversation(payload["conversation"])
     if conversation is None:
         raise TeamRequestError("conversation window is invalid")
-    body = canonical_chat_payload({key: payload[key] for key in ("message", "files", "assistant_ids")})
+    body = canonical_chat_payload({key: payload[key] for key in CHAT_PAYLOAD_FIELDS})
     body["conversation"] = conversation
     return body
 
 
 def canonical_chat_payload(payload: object) -> dict[str, object]:
-    """Validate one explicit Assistant scope without treating an empty scope as all."""
-    if not isinstance(payload, dict) or set(payload) != {"message", "files", "assistant_ids"}:
-        raise TeamRequestError("chat requires message, files, and assistant_ids")
+    """Validate one explicit Assistant scope without treating an empty scope as all, in one interface language."""
+    if not isinstance(payload, dict) or set(payload) != CHAT_PAYLOAD_FIELDS:
+        raise TeamRequestError("chat requires message, files, assistant_ids, and locale")
+    locale = team_contract.canonical_locale(payload["locale"])
+    if locale is None:
+        raise TeamRequestError("locale must be one interface language")
     message = payload["message"]
     if not isinstance(message, str) or not (message := message.strip()):
         raise TeamRequestError("message must be non-empty")
@@ -69,6 +74,7 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
         "message": message,
         "files": canonical_files,
         "assistant_ids": canonical_assistant_ids,
+        "locale": locale,
     }
 
 

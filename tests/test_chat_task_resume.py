@@ -42,11 +42,14 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "objective_assistant_ids": [],
+                        "locale": "en",
                     }
                 )
 
                 self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
-                await websocket.send_json({"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
                 context = route.call_args.args[2]
                 self.assertEqual(
@@ -56,7 +59,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         ("assistant", "Qual Assistant você quer instalar?"),
                     ],
                 )
-                self.assertEqual(context.selection_language_exemplar, "Você mesmo consegue habilitar?")
+                self.assertEqual(route.call_args.args[1]["locale"], "en")
                 await websocket.disconnect()
 
         asyncio.run(scenario())
@@ -111,6 +114,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "objective_assistant_ids": ["already-enabled"],
+                        "locale": "en",
                     }
                 )
 
@@ -123,6 +127,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "message": "Lista minhas zonas DNS no Cloudflare",
                         "files": [],
                         "assistant_ids": ["already-enabled"],
+                        "locale": "en",
                     },
                 )
                 turn.assert_called_once()
@@ -132,6 +137,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "message": "Lista minhas zonas DNS no Cloudflare",
                         "files": [],
                         "assistant_ids": ["already-enabled", "shimpz-cloudflare", "whatsapp"],
+                        "locale": "en",
                     },
                 )
                 self.assertEqual(turn.call_args.args[2], window)
@@ -179,6 +185,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "objective_assistant_ids": [],
+                        "locale": "en",
                     }
                 )
 
@@ -215,11 +222,11 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                 websocket = Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "List my zones", "files": [], "assistant_ids": []}
+                    {"type": "chat", "message": "List my zones", "files": [], "assistant_ids": [], "locale": "en"}
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.send_json(
-                    {"type": "chat", "message": "And the first one?", "files": [], "assistant_ids": []}
+                    {"type": "chat", "message": "And the first one?", "files": [], "assistant_ids": [], "locale": "en"}
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.disconnect()

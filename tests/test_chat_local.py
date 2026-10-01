@@ -151,7 +151,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-cloudflare"]},
+                {"message": "Post an update", "files": [], "assistant_ids": ["shimpz-cloudflare"], "locale": "en"},
                 (),
             )
 
@@ -216,7 +216,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hello", "files": [], "assistant_ids": []},
+                {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en"},
                 (),
                 events.append,
             )
@@ -450,18 +450,20 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"message": "Hi", "files": [], "assistant_ids": [], "assistant": "hello-pulse"},
             {"message": "Hi", "files": [], "assistant_ids": [], "provider": "openai"},
             {"message": "Hi", "files": [], "assistant_ids": [], "api_key": "must-not-cross"},
-            {"message": "Hi", "files": ["../escape"], "assistant_ids": []},
+            {"message": "Hi", "files": ["../escape"], "assistant_ids": [], "locale": "en"},
             {"message": "Hi", "files": []},
-            {"message": "Hi", "files": [], "assistant_ids": ["Shimpz-Assistant"]},
+            {"message": "Hi", "files": [], "assistant_ids": ["Shimpz-Assistant"], "locale": "en"},
             {
                 "message": "Hi",
                 "files": [],
                 "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
+                "locale": "en",
             },
             {
                 "message": "Hi",
                 "files": [],
                 "assistant_ids": [f"assistant-{index}" for index in range(17)],
+                "locale": "en",
             },
         )
         with mock.patch.object(team, "get_inference") as inference:
@@ -502,7 +504,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
                 mock.patch.object(team, "chat", return_value=controller),
             ):
-                return local.turn("team_1", {"message": "Quais modelos?", "files": [], "assistant_ids": []}, ())
+                return local.turn(
+                    "team_1", {"message": "Quais modelos?", "files": [], "assistant_ids": [], "locale": "en"}, ()
+                )
 
         self.assertEqual(turn(asked).body["clarification"], asked)
         # A Routine proposal reaches the card only in its closed form, free of the model key (ADR-0086).
@@ -555,7 +559,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hi", "files": [], "assistant_ids": []},
+                {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"},
                 (),
             )
 
@@ -570,7 +574,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             },
         )
         call = chat.call_args
-        self.assertEqual(call.args[1], {"message": "Hi", "files": [], "assistant_ids": [], "conversation": []})
+        self.assertEqual(
+            call.args[1], {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en", "conversation": []}
+        )
         self.assertEqual(call.kwargs["provider"], "anthropic")
         self.assertEqual(call.kwargs["api_key"], "sk-ant-0123456789")
         self.assertTrue(callable(call.kwargs["progress"]))
@@ -584,7 +590,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hi", "files": [], "assistant_ids": []},
+                {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"},
                 (),
             )
         self.assertEqual(response.status, 503)
@@ -606,7 +612,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key") as resolve_key,
                 mock.patch.object(team, "chat") as chat,
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ())
             self.assertEqual(
                 response,
                 team.TeamResponse(502, {"code": "inference-response-invalid"}),
@@ -621,7 +627,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value=None),
             mock.patch.object(team, "chat") as chat,
         ):
-            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
+            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ())
 
         self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
@@ -633,7 +639,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value=None),
             mock.patch.object(team, "intent_route") as route,
         ):
-            response = local.intent_route("team_1", "Pesquise notícias", None, [])
+            context = local.IntentRouteContext(locale="pt")
+            response = local.intent_route("team_1", "Pesquise notícias", None, [], context)
 
         self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
         route.assert_not_called()
@@ -656,7 +663,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hi", "files": [], "assistant_ids": []},
+                {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"},
                 (),
             )
         self.assertEqual(response.status, 502)
@@ -681,7 +688,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hi", "files": [], "assistant_ids": []},
+                {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"},
                 (),
             )
         self.assertEqual(response.status, 502)
@@ -707,7 +714,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(team, "chat", return_value=controller),
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ())
             self.assertEqual(response.status, 502)
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
@@ -737,7 +744,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(team, "chat", return_value=team.TeamResponse(200, controller_body)),
             ):
-                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
+                response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ())
             self.assertEqual(response, team.TeamResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
@@ -759,7 +766,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value=api_key),
             mock.patch.object(team, "chat", return_value=controller),
         ):
-            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ())
+            response = local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ())
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
 
@@ -899,7 +906,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
             mock.patch.object(team, "chat", return_value=team.TeamResponse(404, {})),
         ):
-            self.assertEqual(local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": []}, ()).status, 503)
+            self.assertEqual(
+                local.turn("team_1", {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en"}, ()).status,
+                503,
+            )
 
         with (
             mock.patch.object(team, "get_inference", return_value=inference),

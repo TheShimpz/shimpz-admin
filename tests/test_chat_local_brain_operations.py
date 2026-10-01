@@ -124,6 +124,7 @@ class LocalBrainOperationTests(unittest.TestCase):
                 "desinstale o cloudflare",
                 "assistant-uninstall",
                 candidates,
+                local.IntentRouteContext(locale="pt"),
             )
 
         self.assertEqual(
@@ -148,7 +149,7 @@ class LocalBrainOperationTests(unittest.TestCase):
                 "candidates": candidates,
                 "lifecycle_reference": None,
                 "conversation": [],
-                "language_exemplar": None,
+                "locale": "pt",
             },
             provider="openai",
             api_key=api_key,

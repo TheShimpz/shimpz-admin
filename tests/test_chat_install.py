@@ -38,7 +38,7 @@ def _proposal() -> assistant_proposal.UninstallProposal:
     return assistant_proposal.create_uninstall_proposal(
         "team_1",
         candidate,
-        language_exemplar="Desinstale o Assistant do Cloudflare",
+        locale="pt",
         now=1.0,
         proposal_id_factory=lambda: "c" * 32,
     )

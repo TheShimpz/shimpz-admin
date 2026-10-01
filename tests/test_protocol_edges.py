@@ -44,8 +44,13 @@ def _claims() -> dict[str, object]:
 
 class PayloadEdges(unittest.TestCase):
     def test_action_presentation_text_rejects_noncanonical_values(self) -> None:
-        for value in (object(), "bad\x00value"):
-            self.assertIsNone(payload.canonical_language_exemplar(value))
+        for value in (object(), "EN", "pt-BR", None):
+            self.assertIsNone(payload.canonical_locale(value))
+        self.assertEqual(payload.canonical_locale("ar"), "ar")
+        for value in (object(), "https://example.com", "https://example.com/" + "a" * 2_048):
+            self.assertIsNone(payload.canonical_help_url(value))
+        for value in (object(), "a — b", "see https://example.com", "x" * 281):
+            self.assertIsNone(payload.canonical_purpose(value))
         for value in (object(), "e\u0301", " label ", "bad\x00label"):
             self.assertIsNone(payload.canonical_action_label(value))
         self.assertEqual(payload.canonical_action_label("List zones"), "List zones")

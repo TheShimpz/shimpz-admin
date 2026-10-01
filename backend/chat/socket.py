@@ -38,7 +38,6 @@ from chat import (
     socket_boundary,
     task_resume,
 )
-from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v7"
@@ -574,10 +573,10 @@ async def _admit_chat_payload(
     team_id: str,
     frame: dict[str, object],
 ) -> dict[str, object] | None:
-    if set(frame) != {"type", "message", "files", "assistant_ids"}:
+    if set(frame) != {"type", *team.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            _error_terminal(400, "chat frame requires message, files, and assistant_ids"),
+            _error_terminal(400, "chat frame requires message, files, assistant_ids, and locale"),
         )
         return None
     try:
@@ -625,20 +624,6 @@ def _take_history_id(connection: _Connection) -> str | None:
     return history_id
 
 
-def _bounded_language_exemplar(message: object) -> str | None:
-    exemplar = team_contract.canonical_language_exemplar(message)
-    if exemplar is not None or not isinstance(message, str):
-        return exemplar
-    return team_contract.canonical_language_exemplar(message[: team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS])
-
-
-def _selection_language_exemplar(conversation: tuple[history_context.Entry, ...], message: object) -> str | None:
-    for entry in reversed(conversation):
-        if entry.role == "user":
-            return _bounded_language_exemplar(entry.text)
-    return _bounded_language_exemplar(message)
-
-
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -650,7 +635,6 @@ async def _dispatch_chat(
         return
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
-    language_exemplar = team_contract.canonical_language_exemplar(payload["message"])
     try:
         conversation = await history_delivery.conversation(team_id, connection.admitted_history_id)
     except history.HistoryUnavailableError, ValueError:
@@ -660,7 +644,6 @@ async def _dispatch_chat(
     route_context = assistant_route.Context(
         reference=connection.assistant_reference,
         conversation=conversation,
-        selection_language_exemplar=_selection_language_exemplar(conversation, payload["message"]),
     )
     try:
         preparation = lifecycle.submit_route(team_id, payload, route_context)
@@ -671,7 +654,7 @@ async def _dispatch_chat(
     turn = _Turn(
         future=preparation,
         operation="assistant-route",
-        language_exemplar=language_exemplar,
+        locale=payload["locale"],
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
         conversation=conversation,

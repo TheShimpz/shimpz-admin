@@ -322,6 +322,7 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
 
 
 canonical_chat_payload = payloads.canonical_chat_payload
+CHAT_PAYLOAD_FIELDS = payloads.CHAT_PAYLOAD_FIELDS
 canonical_team_chat_body = payloads.canonical_team_chat_body
 canonical_integration_resume = payloads.canonical_integration_resume
 canonical_human_resume = payloads.canonical_human_resume
@@ -386,7 +387,7 @@ def intent_route(
         "candidates",
         "lifecycle_reference",
         "conversation",
-        "language_exemplar",
+        "locale",
     }:
         raise TeamRequestError("intent route requires objective, expected_intent, candidates, and lifecycle context")
     return _call(

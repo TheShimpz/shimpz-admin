@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import auth
 from team import bridge as team
 
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_TTL_SECONDS = 300
@@ -51,6 +52,8 @@ RESPONSE_FIELDS = frozenset(
         "trace_id",
     }
 )
+# Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090).
+PRESENTATION_FIELDS = frozenset({"purpose", "help_url"})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # Team names a persistent password Stored Input with this exact identifier grammar (ADR-0059).
 _STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -210,7 +213,7 @@ async def authenticate_local(
 
 def project(body: object, team_id: str) -> dict[str, object]:
     """Return one immutable-ready public challenge or fail without reflecting input."""
-    if not isinstance(body, dict) or set(body) != RESPONSE_FIELDS:
+    if not isinstance(body, dict) or set(body) - PRESENTATION_FIELDS != RESPONSE_FIELDS:
         raise HumanChallengeError("invalid human challenge envelope")
     if body["team_id"] != team_id or body["status"] != "human-required":
         raise HumanChallengeError("invalid human challenge identity")
@@ -233,7 +236,24 @@ def project(body: object, team_id: str) -> dict[str, object]:
         "assistant": assistant,
         "action": action,
         "request": request,
+        **_presentation(body, request),
     }
+
+
+def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, str]:
+    """The optional Brain-written purpose and the reviewed key page of a Stored Input request (ADR-0090)."""
+    presentation: dict[str, str] = {}
+    if "purpose" in body:
+        purpose = team_contract.canonical_purpose(body["purpose"])
+        if purpose is None:
+            raise HumanChallengeError("invalid human challenge purpose")
+        presentation["purpose"] = purpose
+    if "help_url" in body:
+        help_url = team_contract.canonical_help_url(body["help_url"])
+        if help_url is None or request["kind"] != "input:password" or "stored_input" not in request:
+            raise HumanChallengeError("invalid human challenge help URL")
+        presentation["help_url"] = help_url
+    return presentation
 
 
 def _assistant(value: object) -> dict[str, str]:

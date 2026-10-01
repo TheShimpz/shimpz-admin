@@ -113,6 +113,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "Desinstala o Cloudflare",
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
+                        "locale": "en",
                     }
                 )
                 await asyncio.sleep(0.3)
@@ -144,6 +145,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "Pode desinstalar!",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 self.assertEqual(
@@ -168,10 +170,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 )
                 proposal = uninstall.call_args.args[0]
                 self.assertEqual(proposal.assistant_version, "0.4.4")
-                self.assertEqual(
-                    proposal.language_exemplar,
-                    "Desinstala o Cloudflare",
-                )
+                self.assertEqual(proposal.locale, "en")
                 turn.assert_not_called()
                 await websocket.disconnect()
 
@@ -235,12 +234,14 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "desinstala ele", "files": [], "assistant_ids": []}
+                    {"type": "chat", "message": "desinstala ele", "files": [], "assistant_ids": [], "locale": "en"}
                 )
                 guidance = await websocket.next_json()
                 self.assertEqual(guidance["reply"], reply)
 
-                await websocket.send_json({"type": "chat", "message": "quais temos?", "files": [], "assistant_ids": []})
+                await websocket.send_json(
+                    {"type": "chat", "message": "quais temos?", "files": [], "assistant_ids": [], "locale": "en"}
+                )
                 inventory = await websocket.next_json()
                 self.assertEqual(inventory["reply"], "Temos apenas Cloudflare/DNS.")
                 await websocket.disconnect()
@@ -248,7 +249,13 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 resumed = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await resumed.start()))
                 await resumed.send_json(
-                    {"type": "chat", "message": "desinstala esse então", "files": [], "assistant_ids": []}
+                    {
+                        "type": "chat",
+                        "message": "desinstala esse então",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                    }
                 )
                 proposed = await resumed.next_json()
                 self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
@@ -265,7 +272,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         ("assistant", "Temos apenas Cloudflare/DNS."),
                     ],
                 )
-                self.assertEqual(third_context.selection_language_exemplar, "quais temos?")
+                self.assertEqual(route.call_args_list[2].args[1]["locale"], "en")
                 turn.assert_called_once()
                 await resumed.disconnect()
 
@@ -331,6 +338,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 proposed = await websocket.next_json()
@@ -342,6 +350,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "sim",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "uninstalling")
@@ -354,6 +363,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "instale ele de novo",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -399,6 +409,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
+                        "locale": "en",
                     }
                 )
                 proposed = await websocket.next_json()
@@ -410,6 +421,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 reproposed = await websocket.next_json()
@@ -451,6 +463,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 event = await websocket.next_json()
@@ -484,6 +497,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 event = await websocket.next_json()
@@ -515,6 +529,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "desinstale o cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 await websocket.send_json({"type": "stop"})
@@ -542,6 +557,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "Desinstala o Cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 await websocket.send_json(
@@ -550,6 +566,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "continue",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 self.assertEqual((await websocket.next_json())["status"], 409)
@@ -587,6 +604,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "message": "Desinstala o Cloudflare",
                         "files": [],
                         "assistant_ids": [],
+                        "locale": "en",
                     }
                 )
                 await websocket.disconnect()

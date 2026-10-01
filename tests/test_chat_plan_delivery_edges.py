@@ -89,7 +89,12 @@ class PlanDeliveryEdges(unittest.TestCase):
                 ),
                 dispatch_ids=("shimpz-cloudflare", "shimpz-exa"),
             )
-            payload = {"message": "Install Exa and search today's AI news", "files": [], "assistant_ids": []}
+            payload = {
+                "message": "Install Exa and search today's AI news",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+            }
             operations = _operations()
             connection = Connection()
             turn = Turn(None, "capability-plan", history_id="b" * 32)
@@ -141,7 +146,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     Connection(),
                     Turn(None, "capability-plan", history_id="b" * 32),
                     "team_1",
-                    {"message": "Install Cloudflare", "files": [], "assistant_ids": []},
+                    {"message": "Install Cloudflare", "files": [], "assistant_ids": [], "locale": "en"},
                     result,
                     operations,
                 )
@@ -234,7 +239,7 @@ class PlanDeliveryEdges(unittest.TestCase):
 
     def test_route_resume_continues_only_an_empty_capability_preparation(self) -> None:
         async def scenario() -> None:
-            fallback = {"message": "continue", "files": [], "assistant_ids": []}
+            fallback = {"message": "continue", "files": [], "assistant_ids": [], "locale": "en"}
             preparation = assistant_plan.Preparation()
             result = assistant_route.Result("ordinary-task", preparation=preparation)
             operations = _route_operations()
@@ -314,7 +319,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     Connection(),
                     turn,
                     "team_1",
-                    {"message": "do the task", "files": [], "assistant_ids": []},
+                    {"message": "do the task", "files": [], "assistant_ids": [], "locale": "en"},
                     plan,
                     operations,
                 )
@@ -339,7 +344,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     Connection(),
                     turn,
                     "team_1",
-                    {"message": "do the task", "files": [], "assistant_ids": []},
+                    {"message": "do the task", "files": [], "assistant_ids": [], "locale": "en"},
                     plan,
                     operations,
                 )
@@ -477,7 +482,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     Connection(),
                     Turn(None, "assistant-plan"),
                     "team_1",
-                    {"message": "send", "files": [], "assistant_ids": []},
+                    {"message": "send", "files": [], "assistant_ids": [], "locale": "en"},
                     _plan(),
                     operations,
                 )
@@ -493,7 +498,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     connection,
                     Turn(None, "assistant-plan"),
                     "team_1",
-                    {"message": "send", "files": [], "assistant_ids": []},
+                    {"message": "send", "files": [], "assistant_ids": [], "locale": "en"},
                     _plan(),
                     operations,
                 )
@@ -515,7 +520,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 Connection(),
                 turn,
                 "team_1",
-                {"message": "send", "files": [], "assistant_ids": []},
+                {"message": "send", "files": [], "assistant_ids": [], "locale": "en"},
                 preparation,
                 operations,
             )
@@ -528,7 +533,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 mock.ANY,
                 mock.ANY,
                 "team_1",
-                {"message": "send", "files": [], "assistant_ids": []},
+                {"message": "send", "files": [], "assistant_ids": [], "locale": "en"},
             )
 
             error = await deliver(assistant_plan.Preparation(error_status=503))
@@ -545,7 +550,7 @@ class PlanDeliveryEdges(unittest.TestCase):
 
             operations = _operations()
             plan = _plan()
-            objective = {"message": "send", "files": [], "assistant_ids": []}
+            objective = {"message": "send", "files": [], "assistant_ids": [], "locale": "en"}
             with mock.patch.object(
                 plan_delivery,
                 "_deliver_admitted",

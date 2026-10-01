@@ -83,7 +83,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": []},
+                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
                 )
                 delivery = connection.active.delivery
                 await delivery
@@ -153,6 +153,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 "files": [],
                 "assistant_ids": [],
                 "objective_assistant_ids": [],
+                "locale": "en",
             }
             websocket = mock.AsyncMock()
             with (

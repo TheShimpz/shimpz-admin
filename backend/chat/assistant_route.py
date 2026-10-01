@@ -19,7 +19,6 @@ from chat import (
     local,
     store_catalog,
 )
-from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
@@ -42,7 +41,6 @@ GuidanceCode = Literal[
 class Context:
     reference: assistant_proposal.AssistantReference | None = None
     conversation: tuple[conversation_context.Entry, ...] = ()
-    selection_language_exemplar: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,13 +82,6 @@ def _valid_guidance_reply(value: str) -> bool:
 
 def _safe_status(response: object) -> int:
     return response.status if isinstance(response, team.TeamResponse) and 400 <= response.status <= 599 else 502
-
-
-def _bounded_language_exemplar(message: object) -> str | None:
-    exemplar = team_contract.canonical_language_exemplar(message)
-    if exemplar is not None or not isinstance(message, str):
-        return exemplar
-    return team_contract.canonical_language_exemplar(message[: team_contract.MAX_LANGUAGE_EXEMPLAR_CHARS])
 
 
 def _route(
@@ -180,7 +171,7 @@ def _prepare_install(
     query: str,
     catalog: store_catalog.StoreCatalog,
     include_local: bool,
-    language_exemplar: str | None,
+    locale: str,
     task_follows: bool = False,
 ) -> Result:
     installed, available = _catalog_state(team_id, catalog, include_local)
@@ -190,7 +181,7 @@ def _prepare_install(
         query,
         "assistant-install",
         [_directory_candidate(assistant) for assistant in shortlist],
-        local.IntentRouteContext(language_exemplar=language_exemplar),
+        local.IntentRouteContext(locale=locale),
     )
     if selection.intent == "unresolved":
         return Result("assistant-install", guidance=_guidance("assistant-install", selection.reply))
@@ -209,7 +200,7 @@ def _prepare_uninstall(
     team_id: str,
     payload: dict[str, object],
     query: str,
-    language_exemplar: str | None,
+    locale: str,
 ) -> Result:
     shortlist = assistant_proposal.uninstall_shortlist(query, assistant_uninstall.candidates(team_id))
     selection = _route(
@@ -217,7 +208,7 @@ def _prepare_uninstall(
         query,
         "assistant-uninstall",
         [_uninstall_candidate(candidate) for candidate in shortlist],
-        local.IntentRouteContext(language_exemplar=language_exemplar),
+        local.IntentRouteContext(locale=locale),
     )
     if selection.intent == "unresolved":
         return Result("assistant-uninstall", guidance=_guidance("assistant-uninstall", selection.reply))
@@ -233,7 +224,7 @@ def _classified_install(
     classification: Route,
     catalog: store_catalog.StoreCatalog,
     include_local: bool,
-    language_exemplar: str | None,
+    locale: str,
 ) -> Result:
     if not classification.query:
         return Result(
@@ -246,7 +237,7 @@ def _classified_install(
         classification.query,
         catalog,
         include_local,
-        language_exemplar,
+        locale,
         classification.task_follows,
     )
 
@@ -255,7 +246,7 @@ def _classified_uninstall(
     team_id: str,
     payload: dict[str, object],
     classification: Route,
-    language_exemplar: str | None,
+    locale: str,
     *,
     allow_uninstall: bool,
 ) -> Result:
@@ -270,7 +261,7 @@ def _classified_uninstall(
         team_id,
         payload,
         classification.query,
-        language_exemplar,
+        locale,
     )
 
 
@@ -286,7 +277,7 @@ def _lifecycle_result(
 ) -> Result:
     if payload["files"]:
         return Result("unresolved", error_status=422)
-    language_exemplar = route_context.selection_language_exemplar or _bounded_language_exemplar(payload["message"])
+    locale = payload["locale"]
     if classification.intent == "unresolved":
         return Result("unresolved", guidance=Guidance("assistant-lifecycle-ambiguous", classification.reply))
     if classification.intent == "assistant-install":
@@ -296,13 +287,13 @@ def _lifecycle_result(
             classification,
             catalog,
             include_local,
-            language_exemplar,
+            locale,
         )
     return _classified_uninstall(
         team_id,
         payload,
         classification,
-        language_exemplar,
+        locale,
         allow_uninstall=allow_uninstall,
     )
 
@@ -339,6 +330,7 @@ def _prepare(
             local.IntentRouteContext(
                 reference=route_context.reference,
                 conversation=route_context.conversation,
+                locale=payload["locale"],
             ),
         )
     except BaseException:

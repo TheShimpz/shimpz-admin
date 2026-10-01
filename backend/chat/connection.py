@@ -22,7 +22,8 @@ class Turn:
     stop_task: asyncio.Task | None = None
     stop_requested: bool = False
     terminal_sent: bool = False
-    language_exemplar: str | None = field(default=None, repr=False)
+    # The interface language of the turn's lifecycle guidance and proposals (ADR-0090).
+    locale: str | None = None
     lifecycle_stop: threading.Event | None = field(default=None, repr=False)
     history_id: str | None = field(default=None, repr=False)
     # Committed presentation history before this turn's user row, captured once and sent with its Team turn start.

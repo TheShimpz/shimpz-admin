@@ -108,7 +108,13 @@ class PrivateChatTransportTests(unittest.TestCase):
         progress: list[dict[str, object]] = []
         team.chat(
             "team_1",
-            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-cloudflare"], "conversation": []},
+            {
+                "message": "Hello",
+                "files": [],
+                "assistant_ids": ["shimpz-cloudflare"],
+                "locale": "en",
+                "conversation": [],
+            },
             provider="openai",
             api_key=api_key,
             progress=progress.append,
@@ -118,7 +124,13 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["path"], "/v1/teams/team_1/chat")
         self.assertEqual(
             json.loads(request["body"]),
-            {"message": "Hello", "files": [], "assistant_ids": ["shimpz-cloudflare"], "conversation": []},
+            {
+                "message": "Hello",
+                "files": [],
+                "assistant_ids": ["shimpz-cloudflare"],
+                "locale": "en",
+                "conversation": [],
+            },
         )
         self.assertEqual(request["headers"]["x-shimpz-model-provider"], "openai")
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
@@ -150,7 +162,13 @@ class PrivateChatTransportTests(unittest.TestCase):
         with team.supervisor_session(session, account=False, local_identity=identity):
             team.chat(
                 "team_1",
-                {"message": message, "files": files, "assistant_ids": assistant_ids, "conversation": []},
+                {
+                    "message": message,
+                    "files": files,
+                    "assistant_ids": assistant_ids,
+                    "locale": "en",
+                    "conversation": [],
+                },
                 provider="openai",
                 api_key="sk-test-0123456789",
                 progress=lambda _event: None,
@@ -185,7 +203,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                 events: list[dict[str, object]] = []
                 response = team.chat(
                     "team_1",
-                    {"message": "Hello", "files": [], "assistant_ids": [], "conversation": []},
+                    {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "conversation": []},
                     provider="openai",
                     api_key="sk-test-0123456789",
                     progress=events.append,

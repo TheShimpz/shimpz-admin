@@ -6,7 +6,7 @@ import re
 import secrets
 import unicodedata
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from chat import local_catalog, store_catalog
@@ -147,7 +147,7 @@ class UninstallProposal:
     team_id: str
     assistant: Capability
     assistant_version: str
-    language_exemplar: str | None = field(repr=False)
+    locale: str | None
     expires_at: float
 
     def valid_for(self, team_id: str, now: float) -> bool:
@@ -381,7 +381,7 @@ def create_uninstall_proposal(
     team_id: str,
     candidate: UninstallCandidate,
     *,
-    language_exemplar: object,
+    locale: object,
     now: float,
     proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
 ) -> UninstallProposal:
@@ -391,6 +391,6 @@ def create_uninstall_proposal(
         team_id=team_id,
         assistant=candidate.assistant,
         assistant_version=candidate.version,
-        language_exemplar=team_contract.canonical_language_exemplar(language_exemplar),
+        locale=team_contract.canonical_locale(locale),
         expires_at=now + UNINSTALL_PROPOSAL_TTL_SECONDS,
     )

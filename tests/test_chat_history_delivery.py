@@ -41,13 +41,13 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
-            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": []}
+            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": [], "locale": "en"}
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
                 mock.patch.object(socket.history, "append_user", return_value=True) as append,
             ):
                 payload = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
-            self.assertEqual(payload, {"message": "Hello", "files": [], "assistant_ids": []})
+            self.assertEqual(payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en"})
             self.assertEqual(connection.admitted_history_id, "a" * 32)
             append.assert_called_once_with("team_1", "a" * 32, "Hello")
 
