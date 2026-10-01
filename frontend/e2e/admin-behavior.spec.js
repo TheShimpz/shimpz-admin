@@ -4200,3 +4200,120 @@ test('every chat frame carries the interface language selected when it is sent',
   await expect.poll(() => chat.chatFrames().length).toBe(2);
   expect(chat.chatFrames().map((frame) => [frame.type, frame.locale])).toEqual([['chat', 'en'], ['chat', 'pt']]);
 });
+
+// ADR-0091: Team renders the Assistant's English catalog copy in the turn's interface language. The dialog shows only
+// that rendered copy, while the answer is always the canonical option value Team fingerprinted.
+for (const [language, shown] of [
+  ['en', {
+    send: 'Send', title: 'DNS changes to publish: 3. Zone: example.com.', submit: 'Send',
+    scope: 'Choose how Shimpz Cloudflare publishes the reviewed records for example.com.',
+    options: ['Proxied', 'DNS only'], hint: 'Route traffic through Cloudflare.',
+  }],
+  ['pt', {
+    send: 'Enviar', title: 'Alterações de DNS a publicar: 3. Zona: example.com.', submit: 'Enviar',
+    scope: 'Escolha como o Shimpz Cloudflare publica os registros revisados de example.com.',
+    options: ['Com proxy', 'Somente DNS'], hint: 'Encaminhar o tráfego pela Cloudflare.',
+  }],
+]) {
+  test(`an Action approval in ${language} shows its rendered copy and submits the canonical option value`, async ({ page }) => {
+    await page.addInitScript((lang) => localStorage.setItem('shimpz_lang', lang), language);
+    const scenario = await routeScenario(page, 'human-approval');
+    await page.goto('/chat/?team=marketing');
+    const composer = page.getByRole('textbox', { name: shown.send, exact: true });
+    const send = page.getByRole('button', { name: shown.send, exact: true });
+    await expect(async () => {
+      await composer.fill('Publish my DNS changes');
+      await expect(send).toBeEnabled({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await send.click();
+
+    const dialog = page.getByRole('dialog', { name: shown.title });
+    await expect(dialog).toContainText(shown.scope);
+    await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
+    await expect(dialog.getByRole('radio', { name: shown.options[0] })).toBeVisible();
+    await expect(dialog).toContainText(shown.hint);
+    if (language !== 'en') {
+      // No Assistant-authored English reaches a localized dialog.
+      for (const english of ['DNS changes to publish', 'Proxied', 'DNS only', 'Route traffic through Cloudflare.']) {
+        await expect(dialog).not.toContainText(english);
+      }
+    }
+    await dialog.getByRole('radio', { name: shown.options[1] }).check();
+    await dialog.getByRole('button', { name: shown.submit, exact: true }).click();
+
+    await expect(page.getByText('Done — published with dns-only.')).toBeVisible();
+    const frames = scenario.chatFrames();
+    expect(frames.filter((frame) => frame.type === 'chat').map((frame) => frame.locale)).toEqual([language]);
+    expect(frames.filter((frame) => frame.type === 'human-response')).toEqual([{
+      type: 'human-response',
+      challenge_id: 'b'.repeat(32),
+      decision: 'submit',
+      value: 'dns-only',
+    }]);
+  });
+}
+
+test('a frozen Routine run opens in the interface language and answers with the canonical response', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
+  const run = 'd'.repeat(32);
+  await routeReadyChat(page, {
+    history: {
+      entries: [{
+        id: `${run}:routine`,
+        kind: 'routine-run',
+        notice_id: run,
+        routine_id: 'a'.repeat(32),
+        quote: 'Every day at 9, list my DNS zones',
+        run_id: run,
+        outcome: 'frozen',
+        created_at: '2026-10-01T12:01:07Z',
+        detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+        version: 1,
+      }],
+      before: null,
+    },
+  });
+  const openings = [];
+  const answers = [];
+  await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, async (route) => {
+    const opening = route.request().postDataJSON();
+    openings.push(opening);
+    await route.fulfill({
+      json: {
+        team_id: 'marketing',
+        run_id: run,
+        status: 'human-required',
+        challenge: {
+          type: 'human-required',
+          challenge_id: 'b'.repeat(32),
+          expires_in: 300,
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+          // A Routine challenge carries no purpose: Team renders its request copy in the opening's language.
+          ...localizedChallenge(humanRequest('approval'), {
+            locale: opening.locale,
+            shown: {
+              title: 'Publicar as alterações de DNS revisadas?',
+              description: 'O Shimpz Cloudflare pausou antes de continuar esta Ação exata.',
+            },
+          }),
+        },
+      },
+    });
+  });
+  await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+  });
+  await page.goto('/chat/?team=marketing');
+  const row = page.locator('.routine-run');
+  await row.getByRole('button', { name: 'Revisar' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Publicar as alterações de DNS revisadas?' });
+  await expect(dialog).toContainText('O Shimpz Cloudflare pausou antes de continuar esta Ação exata.');
+  await expect(dialog).not.toContainText('Publish reviewed DNS changes?');
+  expect(openings).toEqual([{ locale: 'pt' }]);
+  await dialog.getByRole('button', { name: 'Aprovar ação' }).click();
+  await expect(dialog).toBeHidden();
+  expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+});
