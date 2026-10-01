@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from backend.protocol.http.v1 import payload, progress, supervisor, websocket
@@ -43,6 +45,13 @@ def _claims() -> dict[str, object]:
 
 
 class PayloadEdges(unittest.TestCase):
+    def test_turn_usage_golden_vectors_admit_only_the_closed_shape(self) -> None:
+        vectors = json.loads(Path(payload.__file__).with_name("vectors.json").read_text(encoding="utf-8"))
+        for value in vectors["turn_usage"]["valid"]:
+            self.assertEqual(payload.canonical_turn_usage(value), value)
+        for value in vectors["turn_usage"]["invalid"]:
+            self.assertIsNone(payload.canonical_turn_usage(value))
+
     def test_action_presentation_text_rejects_noncanonical_values(self) -> None:
         for value in (object(), "EN", "pt-BR", None):
             self.assertIsNone(payload.canonical_locale(value))
