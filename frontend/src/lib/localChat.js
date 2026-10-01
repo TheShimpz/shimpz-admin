@@ -187,15 +187,11 @@ function canonicalIntegrationAction(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'summary'])
+    !exactKeys(value, ['id'])
   ) {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  return {
-    id: canonicalId(value.id),
-    name: canonicalPublicText(value.name, 80),
-    summary: canonicalPublicText(value.summary, 160),
-  };
+  return { id: canonicalId(value.id) };
 }
 
 function canonicalIntegrationActions(values) {

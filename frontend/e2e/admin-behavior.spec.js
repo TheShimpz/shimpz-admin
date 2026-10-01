@@ -768,7 +768,7 @@ async function routeReadyChat(page, {
               provider: 'cloudflare',
               name: 'Cloudflare',
               scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
-              actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+              actions: [{ id: 'list-zones' }],
             }],
           }));
           return;
@@ -2719,7 +2719,7 @@ test('presents individual authorization controls for every pending Integration',
         provider: 'cloudflare',
         name: 'Cloudflare zones',
         scopes: ['zone.read'],
-        actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+        actions: [{ id: 'list-zones' }],
       },
       {
         assistant_id: 'whatsapp',
@@ -2728,7 +2728,7 @@ test('presents individual authorization controls for every pending Integration',
         provider: 'whatsapp',
         name: 'WhatsApp messages',
         scopes: ['messages.write'],
-        actions: [{ id: 'send-message', name: 'Send message', summary: 'Sends one reviewed message.' }],
+        actions: [{ id: 'send-message' }],
       },
     ],
   });
@@ -2789,7 +2789,7 @@ for (const [language, send, title, copy] of [
           provider: 'cloudflare',
           name: 'Cloudflare zones',
           scopes: ['zone.read'],
-          actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+          actions: [{ id: 'list-zones' }],
         },
         {
           assistant_id: 'whatsapp',
@@ -2798,7 +2798,7 @@ for (const [language, send, title, copy] of [
           provider: 'whatsapp',
           name: 'WhatsApp messages',
           scopes: ['messages.write'],
-          actions: [{ id: 'send-message', name: 'Send message', summary: 'Sends one reviewed message.' }],
+          actions: [{ id: 'send-message' }],
         },
       ],
     });
@@ -2827,7 +2827,7 @@ for (const [language, route, expected] of [
       provider: 'x',
       name: 'X',
       scopes: ['tweet.read', 'tweet.write'],
-      actions: [{ id: 'publish-post', name: 'Publicar post', summary: 'Publica um post aprovado.' }],
+      actions: [{ id: 'publish-post' }],
     }],
   }, {
     send: 'Enviar', dialog: 'Conecte sua conta X', identity: ['publish-post', 'Social Publisher', 'v0.4.1'],

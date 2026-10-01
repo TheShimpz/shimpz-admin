@@ -46,9 +46,7 @@ function integrationRequirement() {
     provider: 'x',
     name: 'X integration',
     scopes: ['tweet.read', 'tweet.write', 'users.read'],
-    actions: [
-      { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
-    ],
+    actions: [{ id: 'publish-post' }],
   };
 }
 
@@ -739,6 +737,11 @@ test('chat rejects augmented, duplicated, and sensitive integration requirements
         actions: [{ ...integrationRequirement().actions[0], token: 'must-not-cross' }],
       }],
     },
+    // An Action's Creator English name and summary never reach the browser, which shows only the Action id.
+    ...[{ name: 'Publish post' }, { summary: 'Publishes one approved post on X.' }].map((copy) => ({
+      ...base,
+      requirements: [{ ...integrationRequirement(), actions: [{ id: 'publish-post', ...copy }] }],
+    })),
   ]) {
     assert.throws(
       () => parseChatEvent(invalid, 'team_1', 'Marketing'),

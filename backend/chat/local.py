@@ -584,13 +584,10 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                 if action_id in seen_actions:
                     raise ValueError("duplicate integration Action")
                 seen_actions.add(action_id)
-                actions.append(
-                    {
-                        "id": action_id,
-                        "name": chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
-                    }
-                )
+                # The Action's name and summary are its Creator's English catalog text; the browser shows only its id.
+                chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS)
+                chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
+                actions.append({"id": action_id})
             # Team's provider summary is English platform text; the browser words each provider per language.
             chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
             requirements.append(

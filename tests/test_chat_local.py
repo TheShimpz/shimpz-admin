@@ -62,6 +62,12 @@ def integration_requirement() -> dict[str, object]:
     }
 
 
+def browser_integration_requirement() -> dict[str, object]:
+    """The requirement the browser receives: without Team's or the Creator's English text."""
+    requirement = {key: value for key, value in integration_requirement().items() if key != "summary"}
+    return {**requirement, "actions": [{"id": action["id"]} for action in integration_requirement()["actions"]]}
+
+
 def input_request(request_type: str, options: list[str] | None = None) -> dict[str, object]:
     return {
         "type": request_type,
@@ -86,19 +92,23 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         response = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
 
-        # Team's English provider summary is validated but never reaches the browser, which words it per language.
-        browser_requirement = {key: value for key, value in integration_requirement().items() if key != "summary"}
+        # Team's English provider summary and each Action's Creator name and summary are validated but never reach the
+        # browser, which words the provider per language and shows only each Action id.
         self.assertEqual(
             response,
             team.TeamResponse(
                 428,
                 {
                     **{key: value for key, value in body.items() if key != "trace_id"},
-                    "requirements": [browser_requirement],
+                    "requirements": [browser_integration_requirement()],
                 },
             ),
         )
-        self.assertNotIn(integration_requirement()["summary"], json.dumps(response.body))
+        for text in (
+            integration_requirement()["summary"],
+            *(action[field] for action in integration_requirement()["actions"] for field in ("name", "summary")),
+        ):
+            self.assertNotIn(text, json.dumps(response.body))
         self.assertNotIn("token", json.dumps(response.body).lower())
         self.assertNotIn("client_secret", json.dumps(response.body).lower())
 
@@ -128,6 +138,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             },
             {**valid, "requirements": [{**requirement, "client_secret": "must-not-cross"}]},
             {**valid, "requirements": [{**requirement, "summary": " untrimmed"}]},
+            *(
+                {**valid, "requirements": [{**requirement, "actions": [{**requirement["actions"][0], field: " x"}]}]}
+                for field in ("name", "summary")
+            ),
         )
         for body in invalid:
             with self.subTest(body=body):
@@ -166,7 +180,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(response.body["status"], "integrations-required")
         self.assertEqual(
             response.body["requirements"],
-            [{key: value for key, value in integration_requirement().items() if key != "summary"}],
+            [browser_integration_requirement()],
         )
 
     def test_turn_reports_measured_admin_and_team_execution_events(self) -> None:

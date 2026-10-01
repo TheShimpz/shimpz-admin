@@ -130,10 +130,7 @@ def integration_requirements() -> list[dict[str, object]]:
             "provider": "x",
             "name": "X integration",
             "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
-            "actions": [
-                {"id": "profile-me", "name": "Read profile", "summary": "Read the connected X profile."},
-                {"id": "create-post", "name": "Create post", "summary": "Publish a post on X."},
-            ],
+            "actions": [{"id": "profile-me"}, {"id": "create-post"}],
         }
     ]
 
