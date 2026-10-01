@@ -8,6 +8,7 @@ import {
   TEAM_ID_RE,
   TRACE_ID_RE,
 } from './validate.js';
+import { isLocale } from './locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
@@ -73,12 +74,17 @@ export async function listAssistantCatalog(fetcher) {
   });
 }
 
-/** Read the exact bounded public Store projection used by the native Admin catalog. */
-export async function listPublicAssistantCatalog(fetcher, signal) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant catalog request.');
+/**
+ * Read the exact bounded public Store projection used by the native Admin catalog in one interface language. Only
+ * each summary is localized, from the publication's own language pack; a catalog in any other language is refused.
+ */
+export async function listPublicAssistantCatalog(fetcher, locale, signal) {
+  if (typeof fetcher !== 'function' || !isLocale(locale)) {
+    throw new LocalApiError('Invalid Assistant catalog request.');
+  }
   const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
   if (signal) options.signal = signal;
-  const response = await fetcher('/api/assistant-catalog', options);
+  const response = await fetcher(`/api/assistant-catalog?locale=${locale}`, options);
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -87,8 +93,9 @@ export async function listPublicAssistantCatalog(fetcher, signal) {
     );
   }
   if (
-    !exactKeys(body, ['assistants', 'version']) ||
+    !exactKeys(body, ['assistants', 'locale', 'version']) ||
     body.version !== 1 ||
+    body.locale !== locale ||
     !Array.isArray(body.assistants) ||
     body.assistants.length > MAX_PUBLIC_ASSISTANTS
   ) {

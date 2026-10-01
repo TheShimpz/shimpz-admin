@@ -346,16 +346,38 @@ test('projects the strict public Assistant catalog used by native cards', async 
     summary: 'Manage Cloudflare DNS.',
   };
   const fetcher = async (url, options) => {
-    assert.equal(url, '/api/assistant-catalog');
+    assert.equal(url, '/api/assistant-catalog?locale=pt');
     assert.deepEqual(options, {
       cache: 'no-store',
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
-    return response(200, { version: 1, assistants: [assistant] });
+    return response(200, { version: 1, locale: 'pt', assistants: [assistant] });
   };
 
-  assert.deepEqual(await listPublicAssistantCatalog(fetcher, controller.signal), [assistant]);
+  assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'pt', controller.signal), [assistant]);
+});
+
+test('reads the public Assistant catalog only in exactly the requested interface language', async () => {
+  const invalid = (error) => error instanceof LocalApiError;
+  const requested = [];
+  const fetcher = async (url) => {
+    requested.push(url);
+    return response(200, { version: 1, locale: 'en', assistants: [] });
+  };
+  assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'en'), []);
+  await assert.rejects(listPublicAssistantCatalog(fetcher, 'ja'), invalid);
+  for (const locale of ['', 'EN', 'pt-BR', 'it', undefined]) {
+    await assert.rejects(listPublicAssistantCatalog(fetcher, locale), invalid);
+  }
+  assert.deepEqual(requested, ['/api/assistant-catalog?locale=en', '/api/assistant-catalog?locale=ja']);
+});
+
+test('reports an unavailable public Assistant catalog with its bounded reason', async () => {
+  await assert.rejects(
+    listPublicAssistantCatalog(async () => response(502, { detail: 'Assistant catalog is unavailable' }), 'pt'),
+    (error) => error instanceof LocalApiError && error.status === 502 && error.message === 'Assistant catalog is unavailable',
+  );
 });
 
 test('bounds Assistant catalog names and summaries by Unicode code points, as their producers count them', async () => {
@@ -367,6 +389,7 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
     }));
     const published = (name, summary) => listPublicAssistantCatalog(async () => response(200, {
       version: 1,
+      locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.5',
@@ -376,7 +399,7 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
         source_digest: SOURCE_DIGEST,
         summary,
       }],
-    }));
+    }), 'en');
     const snapshots = (name, summary) => listLocalAssistantSnapshots(async () => response(200, {
       assistants: [{
         assistant_id: 'hello-pulse',
@@ -413,9 +436,10 @@ test('admits the producer public catalog size and no more', async () => {
     source_digest: SOURCE_DIGEST,
     summary: 'A reviewed Assistant.',
   }));
-  assert.equal((await listPublicAssistantCatalog(async () => response(200, { version: 1, assistants: entries(1000) }))).length, 1000);
+  const catalog = (count) => async () => response(200, { version: 1, locale: 'en', assistants: entries(count) });
+  assert.equal((await listPublicAssistantCatalog(catalog(1000), 'en')).length, 1000);
   await assert.rejects(
-    listPublicAssistantCatalog(async () => response(200, { version: 1, assistants: entries(1001) })),
+    listPublicAssistantCatalog(catalog(1001), 'en'),
     (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
   );
 });
@@ -431,14 +455,15 @@ test('rejects malformed public Assistant catalog projections', async () => {
     summary: 'Manage Cloudflare DNS.',
   };
   for (const body of [
-    { version: 2, assistants: [] },
-    { version: 1, assistants: [{ ...valid, extra: true }] },
-    { version: 1, assistants: [{ ...valid, creators: [] }] },
-    { version: 1, assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
-    { version: 1, assistants: [valid, valid] },
+    { version: 2, locale: 'en', assistants: [] },
+    { version: 1, assistants: [] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, extra: true }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, creators: [] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
+    { version: 1, locale: 'en', assistants: [valid, valid] },
   ]) {
     await assert.rejects(
-      listPublicAssistantCatalog(async () => response(200, body)),
+      listPublicAssistantCatalog(async () => response(200, body), 'en'),
       (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
     );
   }

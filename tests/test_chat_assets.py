@@ -38,20 +38,28 @@ class ChatAssetTests(unittest.TestCase):
             creators=("@shimpz",),
         )
         with mock.patch.object(assets, "submit_in_context", return_value=_future(result=(assistant,))) as submit:
-            response = asyncio.run(assets.assistant_catalog())
+            response = asyncio.run(assets.assistant_catalog("pt"))
 
-        submit.assert_called_once_with(assets._CATALOG_EXECUTOR, store_catalog.CATALOG.get)
+        submit.assert_called_once_with(assets._CATALOG_EXECUTOR, store_catalog.CATALOG.get, "pt")
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(
             response.body,
             (
-                b'{"version":1,"assistants":[{"assistant_id":"shimpz-cloudflare",'
+                b'{"version":1,"locale":"pt","assistants":[{"assistant_id":"shimpz-cloudflare",'
                 b'"name":"Shimpz Cloudflare","summary":"Manage Cloudflare DNS.",'
                 b'"assistant_version":"0.4.5","creators":["@shimpz"],'
                 b'"source_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
                 b'"icon_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'
             ),
         )
+
+    def test_refuses_a_catalog_locale_outside_the_closed_set_before_any_work(self) -> None:
+        with mock.patch.object(assets, "submit_in_context") as submit:
+            for locale in ("", "it", "PT", "pt-BR"):
+                with self.subTest(locale=locale), self.assertRaises(assets.HTTPException) as caught:
+                    asyncio.run(assets.assistant_catalog(locale))
+                self.assertEqual(caught.exception.status_code, 422)
+        submit.assert_not_called()
 
     def test_projects_one_verified_png_with_closed_browser_headers(self) -> None:
         with mock.patch.object(assets, "submit_in_context", return_value=_future(result=b"png")) as submit:
@@ -96,7 +104,7 @@ class ChatAssetTests(unittest.TestCase):
                 else mock.patch.object(assets, "submit_in_context", return_value=_future(error=error))
             )
             with replacement, self.assertRaises(assets.HTTPException) as caught:
-                asyncio.run(assets.assistant_catalog())
+                asyncio.run(assets.assistant_catalog("en"))
             self.assertEqual(caught.exception.status_code, status)
             self.assertEqual(caught.exception.detail, "Assistant catalog is unavailable")
 

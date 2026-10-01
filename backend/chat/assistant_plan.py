@@ -169,10 +169,10 @@ def planning_catalog(
     if include_local:
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-catalog") as executor:
             local_future = submit_in_context(executor, team.list_local_assistants)
-            public = catalog.get()
+            public = catalog.get(store_catalog.PLANNING_LOCALE)
             local_assistants = local_catalog.primary(local_future.result())
     else:
-        public = catalog.get()
+        public = catalog.get(store_catalog.PLANNING_LOCALE)
         local_assistants = ()
     local_ids = {assistant.assistant_id for assistant in local_assistants}
     combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))

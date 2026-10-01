@@ -52,7 +52,7 @@ function fixture(path) {
     release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
     ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
   };
-  if (path === '/api/assistant-catalog') return { version: 1, assistants: [] };
+  if (path === '/api/assistant-catalog') return { version: 1, locale: 'en', assistants: [] };
   if (path === '/api/local-assistants') return { assistants: [], trace_id: 'c'.repeat(32) };
   if (path === '/api/teams/perf_team/assistants') return { assistants: [] };
   if (path === '/api/teams/perf_team/chat/history') return { entries: [], before: null };

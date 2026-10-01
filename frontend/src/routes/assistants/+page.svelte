@@ -1,6 +1,6 @@
 <script>
   import { page } from '$app/state';
-  import { getContext, onMount, tick } from 'svelte';
+  import { getContext, onMount, tick, untrack } from 'svelte';
   import { AssistantCard, Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
@@ -14,7 +14,7 @@
     safeApiError,
     uninstallAssistant,
   } from '$lib/localApi.js';
-  import { t } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
@@ -394,6 +394,7 @@
 
   async function loadCatalogPresentation() {
     const request = ++catalogPresentationRequest;
+    const language = $locale;
     catalogPresentationController?.abort();
     const controller = new AbortController();
     catalogPresentationController = controller;
@@ -407,7 +408,7 @@
 
     try {
       const [publicResult, localResult] = await Promise.allSettled([
-        listPublicAssistantCatalog(fetch, controller.signal),
+        listPublicAssistantCatalog(fetch, language, controller.signal),
         localProfile
           ? listLocalAssistantSnapshots(fetch, controller.signal)
           : Promise.resolve(localSnapshots),
@@ -553,8 +554,13 @@
     }
   }
 
+  // The catalog follows the interface language and reloads when it changes.
+  $effect(() => {
+    void $locale;
+    untrack(() => { void loadCatalogPresentation(); });
+  });
+
   onMount(() => {
-    void loadCatalogPresentation();
     return () => {
       catalogPresentationRequest += 1;
       catalogPresentationController?.abort();

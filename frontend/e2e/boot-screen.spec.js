@@ -235,10 +235,10 @@ test('releases the Assistants route when initial catalog hydration does not sett
   }));
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
   await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/assistant-catalog', async (route) => {
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, async (route) => {
     catalogRequested.resolve();
     await catalogGate.promise;
-    await json(route, { version: 1, assistants: [] });
+    await json(route, { version: 1, locale: 'en', assistants: [] });
   });
   await page.route('**/api/local-assistants', (route) => json(route, {
     assistants: [],

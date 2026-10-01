@@ -290,7 +290,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         installed.assert_called_once_with("team_1")
         registry.assert_not_called()
         local_snapshots.assert_called_once_with()
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
 
     def test_empty_scope_rejects_invalid_installed_inventory_before_catalog(self) -> None:
         store = mock.Mock()
@@ -369,7 +369,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             )
 
         self.assertEqual(result, assistant_plan.Preparation())
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
         local_call.assert_called_once_with()
 
     def test_invalid_local_inventory_never_falls_back_to_publication(self) -> None:
@@ -462,7 +462,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertIsNotNone(result.plan)
         assert result.plan is not None
         self.assertEqual(result.plan.dispatch_ids, ("enabled", "whatsapp"))
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
         local_call.assert_called_once_with()
         planner.assert_called_once()
 

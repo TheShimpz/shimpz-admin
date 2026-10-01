@@ -64,10 +64,10 @@ async function routeSetup(page) {
 }
 
 async function routeAssistantStoreUninstall(page) {
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.1',
@@ -3474,10 +3474,10 @@ test('keeps a first Store install ready while local display metadata catches up'
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.1.0',

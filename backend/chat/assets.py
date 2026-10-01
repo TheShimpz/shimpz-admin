@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse, Response
 
 from chat import store_catalog
+from protocol.http.v1 import payload as team_contract
 
 _ICON_EXECUTOR = BoundedThreadPoolExecutor(
     max_workers=2,
@@ -22,10 +23,13 @@ _CATALOG_EXECUTOR = BoundedThreadPoolExecutor(
 )
 
 
-async def assistant_catalog() -> JSONResponse:
-    """Return the bounded Store projection needed by the authenticated Admin catalog."""
+async def assistant_catalog(locale: str = "") -> JSONResponse:
+    """Return the bounded Store projection needed by the authenticated Admin catalog in one interface language."""
+    canonical = team_contract.canonical_locale(locale)
+    if canonical is None:
+        raise HTTPException(status_code=422, detail="Assistant catalog locale is invalid")
     try:
-        future = submit_in_context(_CATALOG_EXECUTOR, store_catalog.CATALOG.get)
+        future = submit_in_context(_CATALOG_EXECUTOR, store_catalog.CATALOG.get, canonical)
     except ExecutorSaturatedError:
         raise HTTPException(status_code=503, detail="Assistant catalog is unavailable") from None
     try:
@@ -35,6 +39,7 @@ async def assistant_catalog() -> JSONResponse:
     return JSONResponse(
         content={
             "version": 1,
+            "locale": canonical,
             "assistants": [
                 {
                     "assistant_id": assistant.assistant_id,

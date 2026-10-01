@@ -1,4 +1,8 @@
-"""Bounded Local chat discovery from the fixed public Store catalog."""
+"""Bounded Local discovery from the fixed public Store catalog, fetched and cached per interface language.
+
+Only each summary is localized, from the publication's own pack (ADR-0091); everything else is canonical, so chat
+planning reads the canonical English catalog while the Assistants page reads the Supervisor's interface language.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +17,12 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from protocol.http.v1 import payload as team_contract
+
 CATALOG_HOST = "shimpz.com"
 CATALOG_PATH = "/api/assistants"
+# Chat planning and icon resolution use the canonical English catalog; summaries are its only localized field.
+PLANNING_LOCALE = "en"
 CATALOG_TIMEOUT_SECONDS = 5
 CATALOG_TTL_SECONDS = 60
 # The producer contract: Store and Developers admit up to 1,000 Assistants and Store reads at most 4 MiB of them.
@@ -194,9 +202,15 @@ def _assistant(value: object) -> CatalogAssistant:
     )
 
 
-def validate_catalog(value: object) -> tuple[CatalogAssistant, ...]:
-    """Return the exact bounded Store projection or reject the whole snapshot."""
-    if not isinstance(value, dict) or set(value) != {"version", "assistants"} or value["version"] != 1:
+def validate_catalog(value: object, locale: str) -> tuple[CatalogAssistant, ...]:
+    """Return the exact bounded Store projection in exactly the requested locale or reject the whole snapshot."""
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"version", "locale", "assistants"}
+        or value["version"] != 1
+        or team_contract.canonical_locale(locale) is None
+        or value["locale"] != locale
+    ):
         raise ValueError("catalog envelope is invalid")
     raw = value["assistants"]
     if not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
@@ -221,13 +235,16 @@ def _content_length(response: http.client.HTTPResponse) -> None:
 
 
 def fetch_catalog(
+    locale: str,
     connection_factory: Callable[..., http.client.HTTPSConnection] = http.client.HTTPSConnection,
 ) -> tuple[CatalogAssistant, ...]:
-    """Fetch one host-pinned Store snapshot without redirects or stale fallback."""
+    """Fetch one host-pinned Store snapshot in one interface language without redirects or stale fallback."""
+    if team_contract.canonical_locale(locale) is None:
+        raise CatalogUnavailableError("Store catalog locale is invalid")
     connection = None
     try:
         connection = connection_factory(CATALOG_HOST, 443, timeout=CATALOG_TIMEOUT_SECONDS)
-        connection.request("GET", CATALOG_PATH, headers={"Accept": "application/json"})
+        connection.request("GET", f"{CATALOG_PATH}?locale={locale}", headers={"Accept": "application/json"})
         response = connection.getresponse()
         if response.status != 200:
             raise CatalogUnavailableError("Store catalog is unavailable")
@@ -238,7 +255,7 @@ def fetch_catalog(
         raw = response.read(MAX_CATALOG_BYTES + 1)
         if not raw or len(raw) > MAX_CATALOG_BYTES:
             raise CatalogUnavailableError("invalid Store catalog length")
-        return validate_catalog(json.loads(raw))
+        return validate_catalog(json.loads(raw), locale)
     except (OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeError, TypeError, ValueError) as exc:
         if isinstance(exc, CatalogUnavailableError):
             raise
@@ -249,13 +266,20 @@ def fetch_catalog(
                 connection.close()
 
 
+@dataclass(slots=True)
+class _CatalogEntry:
+    expires_at: float = 0.0
+    assistants: tuple[CatalogAssistant, ...] = ()
+    failed: bool = False
+
+
 class StoreCatalog:
-    """Serialize optional discovery refreshes and retain only a short valid snapshot."""
+    """Serialize optional discovery refreshes and retain only a short valid snapshot per interface language."""
 
     def __init__(
         self,
         *,
-        loader: Callable[[], tuple[CatalogAssistant, ...]] = fetch_catalog,
+        loader: Callable[[str], tuple[CatalogAssistant, ...]] = fetch_catalog,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._loader = loader
@@ -263,38 +287,36 @@ class StoreCatalog:
         self._lock = threading.Lock()
         # One refresh at a time: a reader that waited behind a refresh reuses its result instead of loading again.
         self._refresh = threading.Lock()
-        self._expires_at = 0.0
-        self._assistants: tuple[CatalogAssistant, ...] = ()
-        self._failed = False
+        # Keyed by the closed locale set, so at most one bounded snapshot per interface language.
+        self._entries: dict[str, _CatalogEntry] = {}
 
-    def _cached(self) -> tuple[CatalogAssistant, ...] | None:
+    def _cached(self, locale: str) -> tuple[CatalogAssistant, ...] | None:
         with self._lock:
-            if self._expires_at <= self._clock():
+            entry = self._entries.get(locale)
+            if entry is None or entry.expires_at <= self._clock():
                 return None
-            if self._failed:
+            if entry.failed:
                 raise CatalogUnavailableError("Store catalog is unavailable")
-            return self._assistants
+            return entry.assistants
 
-    def get(self) -> tuple[CatalogAssistant, ...]:
-        cached = self._cached()
+    def get(self, locale: str) -> tuple[CatalogAssistant, ...]:
+        if team_contract.canonical_locale(locale) is None:
+            raise CatalogUnavailableError("Store catalog locale is invalid")
+        cached = self._cached(locale)
         if cached is not None:
             return cached
         with self._refresh:
-            cached = self._cached()
+            cached = self._cached(locale)
             if cached is not None:
                 return cached
             try:
-                assistants = self._loader()
+                assistants = self._loader(locale)
             except CatalogUnavailableError:
                 with self._lock:
-                    self._assistants = ()
-                    self._failed = True
-                    self._expires_at = self._clock() + CATALOG_TTL_SECONDS
+                    self._entries[locale] = _CatalogEntry(self._clock() + CATALOG_TTL_SECONDS, (), True)
                 raise
             with self._lock:
-                self._assistants = assistants
-                self._failed = False
-                self._expires_at = self._clock() + CATALOG_TTL_SECONDS
+                self._entries[locale] = _CatalogEntry(self._clock() + CATALOG_TTL_SECONDS, assistants, False)
                 return assistants
 
 
@@ -347,7 +369,7 @@ def fetch_assistant_icon(
     """Fetch one current public Assistant icon without accepting browser-supplied digests."""
     if _ASSISTANT_ID.fullmatch(assistant_id) is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
-    assistants = (CATALOG if catalog is None else catalog).get()
+    assistants = (CATALOG if catalog is None else catalog).get(PLANNING_LOCALE)
     assistant = next((item for item in assistants if item.assistant_id == assistant_id), None)
     if assistant is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")

@@ -344,10 +344,10 @@ test('opens the Store for the Team its link names and refuses a missing Team', a
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.5',
@@ -420,10 +420,10 @@ test('never renders a matching publication while Local snapshots are settling', 
       provenance: 'local',
     }] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [
         {
           assistant_id: 'another-assistant',
@@ -524,9 +524,9 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ version: 1, assistants: [] }),
+    body: JSON.stringify({ version: 1, locale: 'en', assistants: [] }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
@@ -592,7 +592,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
       '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: [] },
-      '/api/assistant-catalog': { version: 1, assistants: [{
+      '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
@@ -634,7 +634,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
       '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: [] },
-      '/api/assistant-catalog': { version: 1, assistants: [{
+      '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
@@ -670,9 +670,9 @@ test('renders public Assistants directly in Hosted without Local enumeration', a
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ version: 1, assistants: [{
+    body: JSON.stringify({ version: 1, locale: 'en', assistants: [{
       assistant_id: 'published-helper',
       assistant_version: '1.0.0',
       creators: ['@creator'],
@@ -709,9 +709,9 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ version: 1, assistants: [{
+    body: JSON.stringify({ version: 1, locale: 'en', assistants: [{
       assistant_id: 'published-helper',
       assistant_version: '1.0.0',
       creators: ['@creator'],
@@ -776,10 +776,10 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [{
         assistant_id: 'whatsapp',
         assistant_version: '0.2.0',
@@ -936,10 +936,10 @@ test('lets an explicit Local install replace the matching publication', async ({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      version: 1,
+      version: 1, locale: 'en',
       assistants: [{
         assistant_id: 'whatsapp',
         assistant_version: '0.2.0',
@@ -1028,9 +1028,9 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
   }));
-  await page.route('**/api/assistant-catalog', (route) => route.fulfill({
+  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ version: 1, assistants: [] }),
+    body: JSON.stringify({ version: 1, locale: 'en', assistants: [] }),
   }));
 
   await page.goto('/assistants/');
