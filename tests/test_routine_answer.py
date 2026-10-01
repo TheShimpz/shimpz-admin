@@ -22,7 +22,7 @@ from tests.localized_request import localization
 
 from chat import human
 from chat import local as chat_local
-from routine import answer
+from routine import answer, manage
 from routine import http as routine_http
 
 RUN = "d" * 32
@@ -126,6 +126,11 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(challenge["request"], stored)
         self.assertEqual((challenge["rendered"], challenge["locale"]), (rendered, "pt"))
         self.assertEqual(challenge["pack_digest"], body["pack_digest"])
+
+        # A challenge rendered in another language than the opening named is refused and never remembered.
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
+            refused = answer.open_challenge("team_1", RUN, {"locale": "de"})
+        self.assertEqual(refused, manage._INVALID)
 
     def test_a_denial_ends_the_run_and_a_password_is_verified_here(self) -> None:
         self.open()

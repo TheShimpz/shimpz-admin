@@ -80,6 +80,9 @@ def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamRe
         projected = human.project(body, canonical)
     except human.HumanChallengeError:
         return manage._INVALID
+    if projected["locale"] != opening["locale"]:
+        # Team renders the opening in exactly the language it names (ADR-0091); any other copy is not this opening.
+        return manage._INVALID
     deadline = time.monotonic() + projected["expires_in"]
     _remember((canonical, run, projected["challenge_id"]), deadline, projected["request"])
     challenge = {
