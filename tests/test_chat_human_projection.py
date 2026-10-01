@@ -288,6 +288,22 @@ class HumanChallengeProjectionTests(unittest.TestCase):
 
         self.assertFalse(human._fingerprint({"bad": object()}, "a" * 64))
 
+    def test_non_hex_fingerprints_are_refused_as_an_invalid_challenge(self) -> None:
+        request = {key: value for key, value in _request("approval").items() if key != "fingerprint"}
+        canonical = _fingerprinted(request)["fingerprint"]
+        for fingerprint in ("\u00e9" * 64, canonical[:-1] + "\u00e9", "\uff10" * 64, canonical.upper()):
+            with self.subTest(fingerprint=fingerprint):
+                self.assertFalse(human._fingerprint(request, fingerprint))
+                with self.assertRaisesRegex(human.HumanChallengeError, "^invalid human request fingerprint$"):
+                    human.project(_response({**request, "fingerprint": fingerprint}), "team_1")
+                self.assertEqual(
+                    local._project_pending_challenge(
+                        team.TeamResponse(428, _response({**request, "fingerprint": fingerprint})), "team_1"
+                    ),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+        self.assertTrue(human._fingerprint(request, canonical))
+
     def test_browser_values_follow_each_projected_request_kind(self) -> None:
         self.assertTrue(human.browser_value(_request("input:select"), "one"))
         self.assertFalse(human.browser_value(_request("input:select"), "missing"))

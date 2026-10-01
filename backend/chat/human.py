@@ -57,6 +57,8 @@ PRESENTATION_FIELDS = frozenset({"purpose", "help_url"})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # Team names a persistent password Stored Input with this exact identifier grammar (ADR-0059).
 _STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
+# Exactly the lowercase ASCII hex SHA-256 of the canonical request; anything else never reaches compare_digest.
+_FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
 log = logging.getLogger("shimpz-admin")
 
 
@@ -380,6 +382,8 @@ def _text(value: object, maximum: int) -> bool:
 
 
 def _fingerprint(request: dict[str, object], supplied: str) -> bool:
+    if _FINGERPRINT.fullmatch(supplied) is None:
+        return False
     try:
         canonical = json.dumps(
             request,

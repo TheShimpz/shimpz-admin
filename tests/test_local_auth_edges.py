@@ -334,6 +334,20 @@ class LocalAuthEdgeTests(unittest.TestCase):
             )
         self.assertEqual(json.loads(response.body), {"options": {"challenge": "exact"}})
 
+    def test_non_ascii_session_cookie_is_refused_as_stale_authentication(self) -> None:
+        secret = auth.new_secret()
+        body = auth.issue_session(secret, "totp").rpartition(":")[0]
+        # The cookie travels as UTF-8 bytes and Starlette decodes it as Latin-1 text the signature check must refuse.
+        forged = _request({}, cookies={local_auth.SESSION_COOKIE: f"{body}:{'\u00e9' * 64}"})
+        self.assertFalse(forged.cookies[local_auth.SESSION_COOKIE].isascii())
+        with (
+            mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
+            mock.patch.object(local_auth.state, "get", return_value={"session_secret": secret}),
+            self.assertRaises(HTTPException) as refused,
+        ):
+            asyncio.run(local_auth.begin_passkey_registration(forged, local_auth.Context()))
+        self.assertEqual(refused.exception.status_code, 401)
+
     def test_passkey_registration_completion_rotates_sessions_and_maps_failures(self) -> None:
         with self.assertRaises(HTTPException) as shape:
             asyncio.run(local_auth.complete_passkey_registration(_request({"extra": True}), local_auth.Context()))
