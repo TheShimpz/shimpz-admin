@@ -114,3 +114,12 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
     assert.equal(parseChatEvent(done, 'marketing', 'Marketing').type, 'done');
   }
 });
+
+test('a human request names an Assistant its Team inventory lists, so Admin opens it', () => {
+  const scenario = createScenario('human-request');
+  const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [] });
+  const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+  assert.equal(parsed.type, 'human-required');
+  assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
+});

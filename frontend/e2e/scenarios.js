@@ -299,6 +299,10 @@ export function createScenario(name = 'ready') {
         return ok({
           assistants: [
             { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' },
+            // A human request names an installed Assistant; Admin refuses one the Team inventory does not list.
+            ...(state.human
+              ? [{ assistant: 'shimpz-exa', assistant_version: '0.1.1', status: 'running', provenance: 'published' }]
+              : []),
           ],
         });
       }
