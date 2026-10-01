@@ -42,6 +42,7 @@ from team import files as team_files
 from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
+from team import order as team_order
 
 import browser
 from action import stored_input as action_stored_input
@@ -491,13 +492,16 @@ async def _host_reset_password(password: object) -> None:
 
 def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
     if ADMIN_PROFILE == "local":
-        return chat_history_http.team_delete(team_id, action)
+        with team_order.LOCK:
+            return team_order.team_deleted(team_id, chat_history_http.team_delete(team_id, action))
     response = action()
     return team.TeamResponse(200, {"deleted": False}) if response.status == 404 else response
 
 
 def _space_reset_with_history(action) -> team.TeamResponse:
-    return chat_history_http.space_reset(action)
+    # Space reset exists only in the Local profile, where Admin also owns the saved Team order.
+    with team_order.LOCK:
+        return team_order.space_reset(chat_history_http.space_reset(action))
 
 
 def _space_reset_response(action) -> JSONResponse:
@@ -577,11 +581,14 @@ if ADMIN_PROFILE == "local":
 
 @app.get("/api/teams")
 def teams_list():
+    if ADMIN_PROFILE == "local":
+        return team_order.listing()
     return _team_response(team.list_teams)
 
 
 if ADMIN_PROFILE == "local":
     team_names.register(app, _allowed_browser_origins)
+    team_order.register(app, _allowed_browser_origins)
 
 
 @app.post("/api/teams")

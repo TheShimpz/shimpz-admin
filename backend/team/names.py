@@ -15,6 +15,7 @@ from history import http as chat_history_http
 from starlette.concurrency import run_in_threadpool
 from team import bridge
 from team import http as team_http
+from team import order as team_order
 
 MAX_TEAM_RENAME_BODY_BYTES = 1024
 # A recreated name whose id a renamed Team still holds gets the next free suffix: marketing, marketing_2 ... _9.
@@ -43,12 +44,16 @@ def _candidate_ids(team_name: str) -> list[str]:
 
 
 def _create(team_name: str) -> tuple[str, bridge.TeamResponse]:
-    """Try the name's id, then its suffixes, only while each is held by a Team with another current name."""
-    for team_id in _candidate_ids(team_name):
-        response = bridge.create(team_id, team_name)
-        if response.status != 409 or response.body.get("code") != "team-name-conflict":
-            return team_id, response
-    return team_id, response
+    """Try the name's id, then its suffixes, only while each is held by a Team with another current name.
+
+    Creation holds the Team order lock, and an id that no Team holds first loses any position it kept saved.
+    """
+    with team_order.LOCK:
+        for team_id in _candidate_ids(team_name):
+            response = team_order.release_for_create(team_id) or bridge.create(team_id, team_name)
+            if response.status != 409 or response.body.get("code") != "team-name-conflict":
+                return team_id, response
+        return team_id, response
 
 
 def create(payload: dict) -> JSONResponse:

@@ -382,7 +382,6 @@ class AppRouteEdgeTests(unittest.TestCase):
     def test_thin_team_assistant_and_file_routes_preserve_the_team_response(self) -> None:
         response = self.admin_app.team.TeamResponse(200, {"ok": True})
         synchronous = (
-            (self.admin_app.teams_list, self.admin_app.team, "list_teams", ()),
             (self.admin_app.team_inference.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
             (self.admin_app.assistants_list, self.admin_app.team, "list_assistants", ()),
             (self.admin_app.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
