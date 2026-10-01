@@ -26,6 +26,8 @@ from routine import team as routine_team
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 MAX_OPEN_CHALLENGES = 64
 _CHALLENGES: dict[tuple[str, str, str], tuple[float, dict[str, object]]] = {}
+# How many challenges each Team has opened; a rejected answer restores its challenge only if no newer one opened since.
+_GENERATIONS: dict[str, int] = {}
 _CHALLENGES_LOCK = threading.Lock()
 Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
@@ -37,23 +39,37 @@ def _run(team_id: object, run_id: object) -> tuple[str, str]:
     return canonical, run_id
 
 
-def _remember(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
+def _store(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
     now = time.monotonic()
+    for stale in [item for item, (deadline, _request) in _CHALLENGES.items() if deadline <= now]:
+        del _CHALLENGES[stale]
+    # One Routine challenge per Team at a time, as Team keeps it; the newest replaces the Team's earlier one.
+    for earlier in [item for item in _CHALLENGES if item[0] == key[0]]:
+        del _CHALLENGES[earlier]
+    if len(_CHALLENGES) >= MAX_OPEN_CHALLENGES:
+        _CHALLENGES.pop(next(iter(_CHALLENGES)))
+    _CHALLENGES[key] = (deadline, request)
+
+
+def _remember(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
+    """Keep a challenge Team just opened; Team cancelled that Team's earlier one."""
     with _CHALLENGES_LOCK:
-        for stale in [item for item, (deadline, _request) in _CHALLENGES.items() if deadline <= now]:
-            del _CHALLENGES[stale]
-        # One Routine challenge per Team at a time, as Team keeps it; the newest replaces the Team's earlier one.
-        for earlier in [item for item in _CHALLENGES if item[0] == key[0]]:
-            del _CHALLENGES[earlier]
-        if len(_CHALLENGES) >= MAX_OPEN_CHALLENGES:
-            _CHALLENGES.pop(next(iter(_CHALLENGES)))
-        _CHALLENGES[key] = (deadline, request)
+        _GENERATIONS[key[0]] = _GENERATIONS.get(key[0], 0) + 1
+        _store(key, deadline, request)
 
 
-def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object]] | None:
+def _restore(key: tuple[str, str, str], deadline: float, request: dict[str, object], generation: int) -> None:
+    """Reopen a challenge after a rejected answer, unless the Team opened a newer one that cancelled it meanwhile."""
+    with _CHALLENGES_LOCK:
+        if _GENERATIONS.get(key[0], 0) == generation:
+            _store(key, deadline, request)
+
+
+def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object], int] | None:
     with _CHALLENGES_LOCK:
         entry = _CHALLENGES.pop(key, None)
-    return entry if entry is not None and entry[0] > time.monotonic() else None
+        generation = _GENERATIONS.get(key[0], 0)
+    return (*entry, generation) if entry is not None and entry[0] > time.monotonic() else None
 
 
 def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
@@ -123,11 +139,11 @@ async def answer(team_id: object, run_id: object, frame: object, authenticate: A
     opened = _take(key)
     if opened is None:
         return team.TeamResponse(HTTPStatus.CONFLICT, {"code": "human-request-expired"})
-    deadline, request = opened
+    deadline, request, generation = opened
     payload, assurance, rejection, failure = await human.response_payload(dict(frame), request, authenticate)
     if rejection is not None:
         # A wrong password keeps the challenge open until its own expiry for another attempt, as in chat.
-        _remember(key, deadline, request)
+        _restore(key, deadline, request, generation)
         return team.TeamResponse(HTTPStatus.CONFLICT, {"code": rejection["reason"], **rejection})
     # The run replays for up to its active time; the Supervisor's session binding travels with the worker thread.
     result = await asyncio.to_thread(_resume, canonical, run, "human", payload, assurance)

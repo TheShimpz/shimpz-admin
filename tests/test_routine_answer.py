@@ -55,7 +55,9 @@ def body_request(payload: object) -> Request:
 class RoutineAnswerTests(unittest.TestCase):
     def setUp(self) -> None:
         answer._CHALLENGES.clear()
+        answer._GENERATIONS.clear()
         self.addCleanup(answer._CHALLENGES.clear)
+        self.addCleanup(answer._GENERATIONS.clear)
         for patch in (mock.patch.object(chat_local, "model_credential", return_value=CREDENTIAL),):
             patch.start()
             self.addCleanup(patch.stop)
@@ -129,6 +131,45 @@ class RoutineAnswerTests(unittest.TestCase):
         result, stream = self.respond(dict(password), down, resume=resumed("denied"))
         self.assertEqual((result.status, result.body["code"]), (503, "human-authentication-unavailable"))
         self.assertEqual(stream.call_args.args[2]["decision"], "deny")
+
+    def test_a_rejection_never_restores_a_challenge_that_another_tab_replaced(self) -> None:
+        self.open("auth:password")
+        newer = "c" * 32
+        password = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": "hunter2"}
+
+        async def other_tab_opens_meanwhile(*_args):
+            # While A awaits authentication, another tab opens B, which cancels A at Team.
+            replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
+            with mock.patch.object(transport, "_call", return_value=replaced):
+                self.assertEqual(answer.open_challenge("team_1", RUN).body["challenge"]["challenge_id"], newer)
+            return human.AuthenticationResult("denied", attempts_remaining=2)
+
+        rejected, stream = self.respond(dict(password), mock.AsyncMock(side_effect=other_tab_opens_meanwhile))
+        self.assertEqual((rejected.status, rejected.body["code"]), (409, "authentication-denied"))
+        stream.assert_not_called()
+        self.assertEqual(list(answer._CHALLENGES), [("team_1", RUN, newer)])
+        # B stays answerable, and the obsolete A is not reopened.
+        right = mock.AsyncMock(return_value=human.AuthenticationResult("verified"))
+        result, stream = self.respond({**password, "challenge_id": newer}, right)
+        self.assertEqual(result.status, 200)
+        self.assertEqual(stream.call_args.args[2]["challenge_id"], newer)
+        stale, stream = self.respond(dict(password), right)
+        self.assertEqual((stale.status, stale.body["code"]), (409, "human-request-expired"))
+        stream.assert_not_called()
+
+        # B answered and gone also leaves the cache empty: A's late rejection still must not come back.
+        self.open("auth:password")
+
+        async def other_tab_opens_and_answers(*_args):
+            replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
+            with mock.patch.object(transport, "_call", return_value=replaced):
+                answer.open_challenge("team_1", RUN)
+            self.assertIsNotNone(answer._take(("team_1", RUN, newer)))
+            return human.AuthenticationResult("denied", attempts_remaining=1)
+
+        rejected, _stream = self.respond(dict(password), mock.AsyncMock(side_effect=other_tab_opens_and_answers))
+        self.assertEqual(rejected.status, 409)
+        self.assertEqual(answer._CHALLENGES, {})
 
     def test_every_other_answer_is_refused_without_a_resume(self) -> None:
         for response in (
