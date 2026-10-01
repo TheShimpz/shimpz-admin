@@ -7,7 +7,7 @@ import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
 import { routeScenario } from './scenarioRoutes.js';
-import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
+import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PROPOSAL, ROUTINE_VIEW, TEAMS } from './scenarios.js';
 
 // The page-level WebSocket transport mock is stateful. Keep this file ordered while
 // the independent shell and boot contracts continue using the full worker pool.
@@ -203,6 +203,7 @@ async function routeReadyChat(page, {
   routineProposal = null,
   hostedSession = false,
   reply,
+  usage,
 } = {}) {
   let inferenceWrites = 0;
   const decisionRequests = [];
@@ -803,6 +804,7 @@ async function routeReadyChat(page, {
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
               clarification: clarification ?? null,
               routine_proposal: routineProposal ?? null,
+              ...(usage === undefined ? {} : { usage }),
             }));
         if (holdReply) releaseReply = completeReply;
         else completeReply();
@@ -1130,45 +1132,73 @@ test('answering a question sends the request with the answer at once and the Tea
   expect(sentMessages(scenario.chatFrames())).toHaveLength(2);
 });
 
-test('answering the newer of two identical questions closes that question and keeps the older one open', async ({ page }) => {
+test('the composer waits while the latest question is open and the card\'s answer unlocks it', async ({ page }) => {
   const scenario = await routeScenario(page, 'clarify');
-  const { composer } = await askVoiceQuestion(page, scenario);
-  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
-  await fillWhenReady(page, composer, VOICE_REQUEST);
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(cards).toHaveCount(2);
+  const { composer, card } = await askVoiceQuestion(page, scenario);
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveAttribute('placeholder', 'Answer the question above to continue.');
+  await expect(send).toBeDisabled();
 
-  await cards.last().getByRole('button', { name: 'Answer' }).click();
+  await card.getByRole('button', { name: 'Answer' }).click();
   const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
   await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
-  await expect(cards).toHaveCount(1);
-  const replies = page.getByRole('article', { name: 'Marketing' });
-  await expect(replies.first().getByRole('form')).toHaveCount(1);
-  await expect(replies.nth(1).getByRole('form')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await composer.fill('Thanks');
+  await expect(send).toBeEnabled();
   expect(sentMessages(scenario.chatFrames())).toEqual([
-    VOICE_REQUEST,
     VOICE_REQUEST,
     composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
   ]);
 });
 
+// Two open questions come back from the history: the composer waits for the latest, and either card answers.
+function twoOpenQuestions(firstRequest, secondRequest) {
+  return [['a'.repeat(32), firstRequest], ['b'.repeat(32), secondRequest]].flatMap(([turn, text]) => [
+    { id: `${turn}:user`, kind: 'message', role: 'user', text },
+    {
+      id: `${turn}:reply`,
+      kind: 'message',
+      role: 'assistant',
+      text: CLARIFICATION_REPLY,
+      author: 'Marketing',
+      clarification: CLARIFICATION,
+    },
+  ]);
+}
+
+test('answering the newer of two identical questions closes that question and keeps the older one open', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    history: { entries: twoOpenQuestions(VOICE_REQUEST, VOICE_REQUEST), before: null },
+  });
+  await page.goto('/chat/');
+  const cards = page.getByRole('form', { name: CLARIFICATION.question });
+  await expect(cards).toHaveCount(2);
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeDisabled();
+
+  await cards.last().getByRole('button', { name: 'Answer' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  await expect(cards).toHaveCount(1);
+  const replies = page.getByRole('article', { name: 'Marketing' });
+  await expect(replies.first().getByRole('form')).toHaveCount(1);
+  await expect(replies.nth(1).getByRole('form')).toHaveCount(0);
+  expect(sentMessages(chat.chatFrames())).toEqual([composedAnswer(VOICE_REQUEST, CLARIFICATION.question, 'Today')]);
+});
+
 test('an older question answered after another request closes once its answer is sent', async ({ page }) => {
-  const scenario = await routeScenario(page, 'clarify');
-  const { composer } = await askVoiceQuestion(page, scenario);
-  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
-  await fillWhenReady(page, composer, 'Compare every video API too');
-  await page.getByRole('button', { name: 'Send' }).click();
+  const chat = await routeReadyChat(page, {
+    history: { entries: twoOpenQuestions(VOICE_REQUEST, 'Compare every video API too'), before: null },
+  });
+  await page.goto('/chat/');
+  const cards = page.getByRole('form', { name: CLARIFICATION.question });
   await expect(cards).toHaveCount(2);
 
   await cards.first().getByRole('button', { name: 'Answer' }).click();
-  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
-  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(cards).toHaveCount(1);
-  expect(sentMessages(scenario.chatFrames())).toEqual([
-    VOICE_REQUEST,
-    'Compare every video API too',
-    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
-  ]);
+  expect(sentMessages(chat.chatFrames())).toEqual([composedAnswer(VOICE_REQUEST, CLARIFICATION.question, 'Today')]);
+  // The latest reply asks nothing, so the composer is free again although the newer question stays open.
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
 });
 
 test('a custom answer takes focus and can be sent only once it has text', async ({ page }) => {
@@ -2772,7 +2802,7 @@ for (const [language, send, title, copy] of [
   ['pt', 'Enviar', 'Conecte uma conta necessária', (provider) => (
     `Conecte sua conta ${provider} para que este assistente use apenas as permissões revisadas do ${provider}.`
   )],
-  ['ar', 'Send', 'اربط حسابًا مطلوبًا', (provider) => (
+  ['ar', 'إرسال', 'اربط حسابًا مطلوبًا', (provider) => (
     `اربط حسابك على ${provider} ليستخدم هذا المساعد صلاحيات ${provider} المراجعة فقط.`
   )],
 ]) {
@@ -3327,6 +3357,92 @@ test('keeps an intentional Stop silent after the turn ends', async ({ page }) =>
   await expect(composer).toBeFocused();
 });
 
+test('Send becomes Stop in place while a turn runs and is Send again once the reply arrives', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  const stop = page.getByRole('button', { name: 'Stop', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await expect(stop).toHaveCount(0);
+  await send.click();
+
+  await expect(stop).toBeEnabled();
+  await expect(send).toHaveCount(0);
+  chat.releaseReply();
+
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(send).toBeVisible();
+  await composer.fill('And the records?');
+  await expect(send).toBeEnabled();
+});
+
+test('a reply shows what its task used only when its done frame reports usage', async ({ page }) => {
+  const usage = {
+    duration_ms: 6240,
+    models: [
+      { provider: 'anthropic', model: 'claude-opus-5-5', input_tokens: 1000, output_tokens: 200 },
+      { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 },
+    ],
+  };
+  await routeReadyChat(page, { usage });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toContainText('Rendered answer');
+  await expect(reply).toContainText('$0.0095');
+  await expect(reply).toContainText('13,680 tokens');
+  await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+});
+
+test('a reply whose done frame reports no usage shows no usage line', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toContainText('Rendered answer');
+  await expect(reply).not.toContainText('tokens');
+});
+
+test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {
+  const [first, second] = ['d'.repeat(32), 'e'.repeat(32)];
+  const usage = {
+    duration_ms: 6240,
+    models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 }],
+  };
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${first}:user`, kind: 'message', role: 'user', text: 'List my DNS zones' },
+        { id: `${first}:reply`, kind: 'message', role: 'assistant', text: 'Two zones.', author: 'Marketing', usage },
+        { id: `${second}:user`, kind: 'message', role: 'user', text: 'And the records?' },
+        { id: `${second}:reply`, kind: 'message', role: 'assistant', text: 'Four records.', author: 'Marketing' },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+  const replies = page.getByRole('article', { name: 'Marketing' });
+  await expect(replies).toHaveCount(2);
+  await expect(replies.first()).toContainText('Two zones.');
+  await expect(replies.first()).toContainText('12,480 tokens');
+  await expect(replies.first().getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+  await expect(replies.nth(1)).toContainText('Four records.');
+  await expect(replies.nth(1)).not.toContainText('tokens');
+});
+
+test('a done frame with malformed usage is refused and shows no reply', async ({ page }) => {
+  await routeReadyChat(page, { usage: { duration_ms: 1, models: [] } });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
+});
+
 test('keeps an unexpected terminal error visible after silent Stop handling', async ({ page }) => {
   await routeReadyChat(page, { terminalError: true });
   await page.goto('/chat/');
@@ -3710,8 +3826,12 @@ test('opens a Team chat from the Team list and its Store from the row icon', asy
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
-  // A Local Team menu opens on Rename; a Team without Routines offers no Routines item.
+  // A Local Team menu opens on Rename; a Team without Routines offers no Routines item, and the last Team's disabled
+  // Move down is skipped.
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -3941,6 +4061,192 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await expect(again).not.toHaveAttribute('readonly', '');
   await expect(again).toBeFocused();
   await expect(again).toHaveValue('Sales');
+});
+
+test.describe('Team order', () => {
+  const READY_ORDER = ['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'];
+  const ID = (name) => name.toLowerCase();
+
+  function teamNames(navigation) {
+    return navigation.getByRole('navigation', { name: 'Teams' }).locator('[data-team-link] .name').allTextContents();
+  }
+
+  async function openOrder(page, scenario = 'ready', team = 'marketing') {
+    await routeScenario(page, scenario);
+    const orders = [];
+    await page.route('**/api/teams/order', (route) => {
+      orders.push(route.request().postDataJSON());
+      return route.fallback();
+    });
+    await page.goto(`/chat/?team=${team}`);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+    const navigation = await openTeamNavigation(page);
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    return { navigation, orders };
+  }
+
+  // Presses the handle, moves past the drag threshold onto the target row's upper half, and optionally cancels.
+  async function mouseDrag(page, navigation, name, target, { escape = false } = {}) {
+    await navigation.getByRole('link', { name, exact: true }).hover();
+    const handle = (await navigation.getByTitle(`Drag to reorder ${name}`).boundingBox());
+    const goal = await navigation.getByRole('link', { name: target, exact: true }).boundingBox();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, goal.y + 4, { steps: 8 });
+    if (escape) await page.keyboard.press('Escape');
+    await page.mouse.up();
+  }
+
+  test('dragging a Team by its handle reorders it, saves the exact order, and keeps it across a reload', async ({ page }) => {
+    const { navigation, orders } = await openOrder(page);
+    // A press on the handle that never moves is not a drag.
+    const handle = navigation.getByTitle('Drag to reorder Neo');
+    await navigation.getByRole('link', { name: 'Neo', exact: true }).hover();
+    const box = await handle.boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    expect(orders).toEqual([]);
+
+    await mouseDrag(page, navigation, 'Smith', 'Trinity');
+    const moved = ['Marketing', 'Smith', 'Trinity', 'Cypher', 'Morpheus', 'Neo'];
+    await expect.poll(() => teamNames(navigation)).toEqual(moved);
+    await expect.poll(() => orders).toEqual([{ team_ids: moved.map(ID) }]);
+    // The drop never doubles as a click: the selected Team and page stay the same.
+    await expect(page).toHaveURL(/\/chat\/?\?team=marketing$/);
+
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+    await expect.poll(async () => teamNames(await openTeamNavigation(page))).toEqual(moved);
+  });
+
+  test('a touch drag on the handle reorders, while Escape cancels a drag without saving', async ({ page }) => {
+    const { navigation, orders } = await openOrder(page);
+    await mouseDrag(page, navigation, 'Neo', 'Trinity', { escape: true });
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    // Escape ended only the drag; on a phone the Team drawer stays open.
+    await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toBeVisible();
+    expect(orders).toEqual([]);
+
+    const cdp = await page.context().newCDPSession(page);
+    const handle = await navigation.getByTitle('Drag to reorder Cypher').boundingBox();
+    const goal = await navigation.getByRole('link', { name: 'Trinity', exact: true }).boundingBox();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step += 1) {
+      const point = { x, y: y + (goal.y + 4 - y) * (step / 8) };
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const moved = ['Marketing', 'Cypher', 'Trinity', 'Morpheus', 'Neo', 'Smith'];
+    await expect.poll(() => teamNames(navigation)).toEqual(moved);
+    await expect.poll(() => orders).toEqual([{ team_ids: moved.map(ID) }]);
+  });
+
+  test('Move up and Move down reorder from the keyboard, announce the place, and keep focus on the Team', async ({ page }) => {
+    const { navigation, orders } = await openOrder(page);
+    const actions = navigation.getByRole('button', { name: 'Actions for Neo' });
+    await actions.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const moved = ['Marketing', 'Trinity', 'Cypher', 'Neo', 'Morpheus', 'Smith'];
+    await expect.poll(() => teamNames(navigation)).toEqual(moved);
+    await expect(actions).toBeFocused();
+    await expect(page.getByRole('status').filter({ hasText: 'Neo moved to position 4 of 6' })).toHaveCount(1);
+    await expect.poll(() => orders).toEqual([{ team_ids: moved.map(ID) }]);
+
+    await page.keyboard.press('Enter');
+    await page.getByRole('menuitem', { name: 'Move down' }).click();
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    await expect(actions).toBeFocused();
+    await expect.poll(() => orders.length).toBe(2);
+
+    // The boundaries cannot move further.
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeDisabled();
+    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    expect(orders).toHaveLength(2);
+  });
+
+  test('a refused save restores only the order and keeps the selected Team', async ({ page }) => {
+    const { navigation, orders } = await openOrder(page, 'reorder-unavailable', 'neo');
+    await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
+    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
+    await page.getByRole('menuitem', { name: 'Move up' }).click();
+
+    await expect(page.getByText('The Team order could not be saved. The previous order is back.')).toBeVisible();
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    expect(orders).toEqual([{ team_ids: ['marketing', 'trinity', 'cypher', 'morpheus', 'smith', 'neo'] }]);
+    await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
+
+    // The next save goes through.
+    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
+    await page.getByRole('menuitem', { name: 'Move up' }).click();
+    await expect.poll(() => orders.length).toBe(2);
+    await expect.poll(() => teamNames(navigation)).toEqual(['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Smith', 'Neo']);
+  });
+
+  test('a save refused because the Teams changed reloads the list', async ({ page }) => {
+    const { navigation, orders } = await openOrder(page, 'reorder-conflict');
+    await mouseDrag(page, navigation, 'Smith', 'Trinity');
+    await expect(page.getByText('The Teams changed while you were reordering. The list was reloaded; try again.')).toBeVisible();
+    await expect.poll(() => teamNames(navigation)).toEqual(['Oracle', ...READY_ORDER]);
+    expect(orders).toHaveLength(1);
+    await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('a drag whose navigation is swapped out by a layout change ends and saves nothing', async ({ page }) => {
+    test.skip(page.viewportSize().width <= 820, 'starts from the desktop sidebar');
+    // Counts animation frames requested by the page, so a drag loop left running is observable.
+    await page.addInitScript(() => {
+      const request = window.requestAnimationFrame.bind(window);
+      window.__frames = 0;
+      window.requestAnimationFrame = (callback) => {
+        window.__frames += 1;
+        return request(callback);
+      };
+    });
+    const { navigation, orders } = await openOrder(page);
+    await navigation.getByRole('link', { name: 'Neo', exact: true }).hover();
+    const handle = await navigation.getByTitle('Drag to reorder Neo').boundingBox();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 20, { steps: 4 });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('button', { name: 'Open the Team list' })).toBeVisible();
+    await page.waitForTimeout(300);
+    const frames = await page.evaluate(() => window.__frames);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__frames)).toBe(frames);
+    await page.mouse.up();
+    expect(orders).toEqual([]);
+  });
+
+  test('Hosted offers no reordering', async ({ page }) => {
+    await routeReadyChat(page, { hostedSession: true });
+    await page.route('**/api/teams', (route) => route.fulfill({
+      json: { teams: [TEAMS[0], TEAMS[1]] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await expect(navigation.getByRole('link', { name: 'Trinity', exact: true })).toBeVisible();
+    await expect(navigation.getByTitle(/^Drag to reorder/)).toHaveCount(0);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
+  });
 });
 
 test.describe('Team Routines', () => {
@@ -4215,6 +4521,97 @@ test.describe('Team Routines', () => {
     expect(resumes).toEqual(['POST']);
     // Every opening names the interface language the request copy is rendered in (ADR-0091).
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
+  });
+
+  test('a Routine notice delivered after the chat opened becomes reviewable without a reload', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+    const run = 'd'.repeat(32);
+    const row = (id, outcome, detail, version) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: ROUTINE_VIEW.routine_id,
+      quote: ROUTINE_VIEW.quote,
+      run_id: id,
+      outcome,
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version,
+    });
+    const earlier = row('c'.repeat(32), 'done', { reply: 'No DNS changes.' }, 1);
+    const frozen = row(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, 1);
+    let history = { entries: [earlier], before: null };
+    let runs = [];
+    await routeReadyChat(page, { history });
+    // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far.
+    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({ json: history }));
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs },
+    }));
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        run_id: run,
+        status: 'human-required',
+        challenge: {
+          type: 'human-required',
+          challenge_id: 'b'.repeat(32),
+          expires_in: 300,
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+          ...localizedChallenge(humanRequest('approval')),
+        },
+      },
+    }));
+    const answers = [];
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+      answers.push(route.request().postDataJSON());
+      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    await expect(rows).toHaveCount(1);
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'A draft that must survive');
+
+    // The scheduler delivers a frozen run while the conversation is open.
+    history = { entries: [earlier, frozen], before: null };
+    runs = [{
+      run_id: run,
+      routine_id: ROUTINE_VIEW.routine_id,
+      status: 'frozen',
+      scheduled_at: '2026-10-01T12:00:00Z',
+      request_kind: 'human',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+      batch_fingerprint: null,
+      actions: [],
+    }];
+    await page.clock.fastForward(15_000);
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
+    await expect(rows.nth(0)).toContainText('No DNS changes.');
+    await expect(composer).toHaveValue('A draft that must survive');
+    // The Team's Routine tree shows the same run waiting.
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+    await expect(navigation.getByRole('group', { name: 'Routines' })).toContainText('Waiting for an approval');
+    if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
+
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+    await dialog.getByRole('button', { name: 'Approve action' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: Done');
+    expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+
+    // The run's newer version replaces its row instead of adding another; the draft is still there.
+    history = { entries: [earlier, { ...frozen, outcome: 'done', detail: { reply: 'Published the record.' }, version: 2 }], before: null };
+    runs = [];
+    await page.clock.fastForward(15_000);
+    await expect(rows.nth(1)).toContainText('Published the record.');
+    await expect(rows).toHaveCount(2);
+    await expect(composer).toHaveValue('A draft that must survive');
   });
 
   test('Hosted offers no Routines', async ({ page }) => {

@@ -128,7 +128,7 @@
 <div bind:this={root} class="fast-menu">
   <Button
     bind:element={trigger}
-    class={['fast-trigger', 'glitch-host', fast.configured && 'is-on']}
+    class={['fast-trigger', fast.configured && 'is-on']}
     variant="ghost"
     size="sm"
     iconOnly
@@ -141,7 +141,7 @@
     disabled={disabled && !open}
     onclick={toggle}
   >
-    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.8 5.3 13.1a.5.5 0 0 0 .4.8h5.1l-1 7.3 7.9-10.3a.5.5 0 0 0-.4-.8h-5.1z"></path></svg>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.8 5.3 13.1a.5.5 0 0 0 .4.8h5.1l-1 7.3 7.9-10.3a.5.5 0 0 0-.4-.8h-5.1z"></path></svg>
   </Button>
   <div
     bind:this={panel}
@@ -200,8 +200,8 @@
           disabled={saving}
         />
         <div class="actions">
-          <Button class="glitch-host" type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
-            <span class="glitch-text">{saving ? copy.validating : copy.save}</span>
+          <Button type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
+            {saving ? copy.validating : copy.save}
           </Button>
         </div>
       </form>

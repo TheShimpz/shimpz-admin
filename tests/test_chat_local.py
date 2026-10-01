@@ -496,6 +496,55 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     local.turn("team_1", payload, ())
         inference.assert_not_called()
 
+    def test_relays_only_a_closed_turn_usage_free_of_forbidden_values(self) -> None:
+        usage = {
+            "duration_ms": 6200,
+            "models": [{"provider": "openai", "model": "gpt-6.1-sol", "input_tokens": 12000, "output_tokens": 480}],
+        }
+
+        def turn(**extra: object) -> object:
+            controller = team.TeamResponse(
+                200,
+                {
+                    "team_id": "team_1",
+                    "team_name": "Marketing",
+                    "reply": "Two zones are active.",
+                    "clarification": None,
+                    "routine_proposal": None,
+                    "trace_id": TRACE_ID,
+                    **extra,
+                },
+            )
+            with (
+                mock.patch.object(
+                    team,
+                    "get_inference",
+                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
+                ),
+                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
+                mock.patch.object(team, "chat", return_value=controller),
+            ):
+                return local.turn(
+                    "team_1", {"message": "List zones", "files": [], "assistant_ids": [], "locale": "en"}, ()
+                )
+
+        relayed = turn(usage=usage)
+        self.assertEqual(relayed.body["usage"], usage)
+        self.assertEqual(relayed.websocket_event("team_1"), {"type": "done", **relayed.body})
+        self.assertNotIn("usage", turn().body)
+        self.assertNotIn("usage", turn().websocket_event("team_1"))
+        leaked_model = {**usage["models"][0], "model": "sk-test-0123456789abcdef"}
+        for invalid in (
+            None,
+            {**usage, "duration_ms": -1},
+            {**usage, "usd": 0.0015},
+            {**usage, "models": []},
+            {**usage, "models": [leaked_model]},
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(turn(usage=invalid).body, {"code": "chat-response-invalid"})
+        self.assertEqual(turn(usage=usage, cost=1).body, {"code": "chat-response-invalid"})
+
     def test_projects_only_a_closed_clarification_free_of_forbidden_values(self) -> None:
         asked = {
             "question": "Qual período?",

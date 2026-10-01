@@ -42,13 +42,13 @@ from team import files as team_files
 from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
+from team import order as team_order
 from team import snapshots as team_snapshots
 from team import summary as team_summary
 
 import browser
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
-from chat import assistant_inventory
 from chat import human as chat_human
 from chat import socket as chat_socket
 from integrations import account as account_identity
@@ -303,6 +303,12 @@ def _secure_response(response: Response) -> Response:
     return response
 
 
+def _refused(response: Response) -> Response:
+    """A Supervisor gate refusal is never cached, whichever API route it stands in for."""
+    response.headers["Cache-Control"] = "no-store"
+    return _secure_response(response)
+
+
 @app.middleware("http")
 async def _gate(request: Request, call_next):
     """Keep static/auth routes open and validate the profile's current Supervisor on every API call."""
@@ -321,12 +327,12 @@ async def _gate(request: Request, call_next):
         evidence = await _session_evidence(request.cookies)
     except SessionEvidenceUnavailableError:
         response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
-        return _secure_response(response)
+        return _refused(response)
     except auth.PasswordRecordError:
-        return _secure_response(_password_recovery_response())
+        return _refused(_password_recovery_response())
     if evidence is None:
         response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
-        return _secure_response(response)
+        return _refused(response)
     request.state.supervisor = evidence
     try:
         with _team_session_scope(request.cookies):
@@ -334,7 +340,7 @@ async def _gate(request: Request, call_next):
             return _secure_response(response)
     except supervisor.SupervisorAuthorityError, team.TeamRequestError:
         response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
-        return _secure_response(response)
+        return _refused(response)
 
 
 @app.post("/api/session")
@@ -491,13 +497,16 @@ async def _host_reset_password(password: object) -> None:
 
 def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
     if ADMIN_PROFILE == "local":
-        return chat_history_http.team_delete(team_id, action)
+        with team_order.LOCK:
+            return team_order.team_deleted(team_id, chat_history_http.team_delete(team_id, action))
     response = action()
     return team.TeamResponse(200, {"deleted": False}) if response.status == 404 else response
 
 
 def _space_reset_with_history(action) -> team.TeamResponse:
-    return chat_history_http.space_reset(action)
+    # Space reset exists only in the Local profile, where Admin also owns the saved Team order.
+    with team_order.LOCK:
+        return team_order.space_reset(chat_history_http.space_reset(action))
 
 
 def _space_reset_response(action) -> JSONResponse:
@@ -577,11 +586,14 @@ if ADMIN_PROFILE == "local":
 
 @app.get("/api/teams")
 def teams_list():
+    if ADMIN_PROFILE == "local":
+        return team_order.listing()
     return _team_response(team.list_teams)
 
 
 if ADMIN_PROFILE == "local":
     team_names.register(app, _allowed_browser_origins)
+    team_order.register(app, _allowed_browser_origins)
 
 
 @app.post("/api/teams")
@@ -898,29 +910,6 @@ async def oauth_cloudflare_callback(request: Request):
         log.info("OAuth callback rejected (HTTP %s)", result.status)
         return _OAUTH_CHAT_REDIRECT("callback-failed")
     return _OAUTH_CHAT_REDIRECT()
-
-
-@app.get("/api/assistants")
-def assistants_list():
-    """The registry names the interface shows, without Team's canonical English summaries (ADR-0091).
-
-    Team's registry summary is the English catalog text it plans with; the interface never shows it, so only each
-    identity and name reach the browser.
-    """
-    return _team_response(_interface_registry)
-
-
-def _interface_registry() -> team.TeamResponse:
-    response = team.list_assistants()
-    if not 200 <= response.status < 300:
-        return response
-    try:
-        registry = assistant_inventory.registry(response)
-    except ValueError:
-        raise HTTPException(status_code=502, detail="Team Assistant registry is invalid") from None
-    return team.TeamResponse(
-        200, {"assistants": [{"id": item.assistant_id, "title": item.name} for item in registry.values()]}
-    )
 
 
 @app.get("/api/teams/{team_id}/assistants")

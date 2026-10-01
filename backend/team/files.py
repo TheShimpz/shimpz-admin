@@ -1,7 +1,7 @@
-"""Same-origin Team file routes and their bounded browser file ingress at the Admin-to-Team boundary."""
+"""Admin routes for a Team's files and their bounded browser file ingress at the Admin-to-Team boundary."""
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from python_multipart.exceptions import ParseError
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
@@ -14,29 +14,6 @@ MAX_MULTIPART_BODY_BYTES = team.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_B
 
 class _MultipartBodyTooLargeError(OSError):
     pass
-
-
-def register(app: FastAPI) -> None:
-    """A Team's files are listed, uploaded, and deleted in both profiles."""
-    app.add_api_route("/api/teams/{team_id}/files", files_list, methods=["GET"])
-    app.add_api_route("/api/teams/{team_id}/files", file_upload, methods=["POST"])
-    app.add_api_route("/api/teams/{team_id}/files/{file_id}", file_delete, methods=["DELETE"])
-
-
-def files_list(team_id: str) -> JSONResponse:
-    return team_http.response(lambda: team.list_files(team_id))
-
-
-async def file_upload(team_id: str, request: Request) -> JSONResponse:
-    filename, media_type, content = await bounded_multipart_file(request)
-    return await run_in_threadpool(
-        team_http.response,
-        lambda: team.upload_file(team_id, filename, media_type, content),
-    )
-
-
-def file_delete(team_id: str, file_id: str) -> JSONResponse:
-    return team_http.response(lambda: team.delete_file(team_id, file_id))
 
 
 async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
@@ -73,7 +50,7 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
         ).parse()
     except _MultipartBodyTooLargeError:
         raise HTTPException(status_code=413, detail="file upload too large") from None
-    except MultiPartException:
+    except MultiPartException, ParseError:
         raise HTTPException(status_code=400, detail="invalid multipart body") from None
 
     try:
@@ -94,3 +71,22 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
         return filename, media_type, content
     finally:
         await form.close()
+
+
+def register(app: FastAPI) -> None:
+    app.add_api_route("/api/teams/{team_id}/files", team_files_list, methods=["GET"])
+    app.add_api_route("/api/teams/{team_id}/files", team_file_upload, methods=["POST"])
+    app.add_api_route("/api/teams/{team_id}/files/{file_id}", team_file_delete, methods=["DELETE"])
+
+
+def team_files_list(team_id: str):
+    return team_http.response(lambda: team.list_files(team_id))
+
+
+async def team_file_upload(team_id: str, request: Request):
+    filename, media_type, content = await bounded_multipart_file(request)
+    return await run_in_threadpool(team_http.response, lambda: team.upload_file(team_id, filename, media_type, content))
+
+
+def team_file_delete(team_id: str, file_id: str):
+    return team_http.response(lambda: team.delete_file(team_id, file_id))

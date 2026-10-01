@@ -59,6 +59,7 @@ LOGIN_LOCK_SECONDS = 60
 
 TTL = 7 * 24 * 3600
 _SESSION_SCHEME = "v2"
+_SESSION_SIGNATURE = re.compile(r"[0-9a-f]{64}\Z")
 _SESSION_METHODS = frozenset({"totp", "webauthn"})
 
 
@@ -245,7 +246,13 @@ def issue_session(secret_hex: str, method: str, ttl: int = TTL) -> str:
 
 def _session_parts(token: str) -> tuple[list[str], str] | None:
     parts = token.split(":")
-    if len(parts) != 5 or parts[0] != _SESSION_SCHEME or not parts[3].startswith("pwd+"):
+    # A cookie is attacker text that may decode to non-ASCII, which compare_digest raises on instead of refusing.
+    if (
+        len(parts) != 5
+        or parts[0] != _SESSION_SCHEME
+        or not parts[3].startswith("pwd+")
+        or _SESSION_SIGNATURE.fullmatch(parts[4]) is None
+    ):
         return None
     method = parts[3].removeprefix("pwd+")
     return (parts, method) if method in _SESSION_METHODS else None

@@ -118,14 +118,99 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
 });
 
 test('a human request names an Assistant its Team inventory lists, so Admin opens it', () => {
-  const scenario = createScenario('human-request');
-  const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });
-  const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
-  // The purpose was written in Portuguese, so an English challenge carries none.
-  assert.equal(parsed.purpose, undefined);
-  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
-  assert.equal(parsed.type, 'human-required');
-  assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
+  for (const [name, kind] of [
+    ['human-request', 'input:password'],
+    ['human-approval', 'input:choice'],
+    ['human-confirm', 'approval'],
+  ]) {
+    const scenario = createScenario(name);
+    const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });
+    const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+    const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+    assert.equal(parsed.type, 'human-required', name);
+    assert.equal(parsed.request.kind, kind, name);
+    assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id), name);
+  }
+  // The Stored Input purpose was written in Portuguese, so an English challenge carries none.
+  const [stored] = createScenario('human-request').chat.message({
+    type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en',
+  });
+  assert.equal(parseChatEvent(stored, 'marketing', 'Marketing').purpose, undefined);
+});
+
+test('the Team order is saved only as an exact permutation of the listed Teams', () => {
+  const scenario = createScenario('ready');
+  const ids = () => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const put = (body) => scenario.respond({ method: 'PUT', path: '/api/teams/order', body });
+  const listed = ids();
+  assert.deepEqual(listed, ['marketing', 'trinity', 'cypher', 'morpheus', 'neo', 'smith']);
+
+  for (const body of [
+    null,
+    [],
+    { team_ids: 'marketing' },
+    { team_ids: listed, extra: true },
+    { team_ids: [...listed, 'marketing'] },
+    { team_ids: ['Marketing', ...listed.slice(1)] },
+    { team_ids: Array.from({ length: 129 }, (_, index) => `t${index}`) },
+  ]) {
+    assert.equal(put(body).status, 400);
+  }
+  assert.equal(put({ team_ids: listed.slice(1) }).status, 409);
+  assert.equal(put({ team_ids: [...listed.slice(1), 'oracle'] }).status, 409);
+  assert.deepEqual(ids(), listed);
+
+  const reordered = [...listed].reverse();
+  assert.deepEqual(put({ team_ids: reordered }).json.teams.map((team) => team.team_id), reordered);
+  assert.deepEqual(ids(), reordered);
+});
+
+test('the reorder failure scenarios fail one save, then save normally', () => {
+  const unavailable = createScenario('reorder-unavailable');
+  const order = (scenario) => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const reversed = order(unavailable).reverse();
+  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 503);
+  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 200);
+
+  const conflict = createScenario('reorder-conflict');
+  const before = order(conflict);
+  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: before } }).status, 409);
+  assert.deepEqual(order(conflict), ['oracle', ...before]);
+  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: order(conflict) } }).status, 200);
+});
+
+test('every listed Team answers its read-only views, and an unlisted one fails closed', () => {
+  const scenario = createScenario('ready');
+  for (const view of ['assistants', 'files', 'chat/history', 'inference', 'assistant-integrations', 'assistant-stored-inputs', 'routines']) {
+    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/neo/${view}` }).status, 200, view);
+    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/oracle/${view}` }), null, view);
+  }
+  assert.equal(scenario.respond({ method: 'GET', path: '/api/teams/neo/unknown' }), null);
+  assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/neo/routines', body: {} }), null);
+});
+
+test('every listed Team answers its chat with a reply the parser admits, and an unlisted one has no socket', () => {
+  const scenario = createScenario('ready');
+  assert.equal(scenario.chat.team('/api/teams/neo/chat/ws'), 'neo');
+  assert.equal(scenario.chat.team('/api/teams/marketing/chat/ws'), 'marketing');
+  assert.equal(scenario.chat.team('/api/teams/oracle/chat/ws'), null);
+  assert.equal(scenario.chat.team('/api/teams/neo/chat'), null);
+  const [done] = scenario.chat.message({ type: 'chat', message: 'Hello', files: [], assistant_ids: [] }, 'neo');
+  const parsed = parseChatEvent(done, 'neo', 'Neo');
+  assert.equal(parsed.team_name, 'Neo');
+  assert.equal(parsed.reply, 'Preview reply to: Hello');
+  assert.deepEqual(scenario.chat.message({ type: 'sync' }, 'neo'), [{ type: 'sync-empty' }]);
+  assert.deepEqual(scenario.chat.message({ type: 'stop' }, 'neo'), []);
+});
+
+test('every preview reply reports usage in the exact done-frame shape', () => {
+  const scenario = createScenario('ready');
+  for (const teamId of ['marketing', 'neo']) {
+    const [done] = scenario.chat.message({ type: 'chat', message: 'Hello', files: [], assistant_ids: [] }, teamId);
+    const parsed = parseChatEvent(done, teamId, done.team_name);
+    assert.equal(parsed.usage.models.length, 1, teamId);
+    assert.equal(parsed.usage.duration_ms, 6240, teamId);
+  }
 });
 
 test('the human-approval scenario renders its copy in the turn language and keeps canonical option values', () => {

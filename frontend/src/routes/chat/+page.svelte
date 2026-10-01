@@ -2,6 +2,7 @@
   import { flushSync, onMount, tick } from 'svelte';
   import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import { listChatHistory } from '$lib/chatHistory.js';
@@ -10,8 +11,11 @@
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarificationAnswer } from '$lib/clarification.js';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
+  import { newerRoutineEntries } from '$lib/routine.js';
+  import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -283,6 +287,12 @@
     return { given, sent };
   });
 
+  // While the latest reply asks a question nobody answered, the composer waits for that answer; the card sends it.
+  let questionOpen = $derived.by(() => {
+    const last = exchanges.length - 1;
+    return last >= 0 && clarifiedRequest(exchanges[last]) !== null && !clarificationAnswers.given.has(last);
+  });
+
   function retryLastTurn() {
     const message = retryMessage;
     if (message) submitMessage(message, { projectUserTurn: false, retryable: true });
@@ -399,6 +409,7 @@
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
         ...(entry.routineProposal ? { routineProposal: entry.routineProposal } : {}),
+        ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
       };
     }
     if (entry.kind === 'guidance') {
@@ -521,6 +532,66 @@
     olderHistoryFailed = false;
     void loadOlderHistory();
   }
+
+  // Admin delivers Routine notices on its own schedule (ADR-0086), so while a Local Team's conversation is open and the
+  // page is visible, that Team's Routine list and newest history page are re-read at a modest interval and when the
+  // page becomes visible again. Only Routine rows merge into the transcript, by identity and version: a new row, or a
+  // newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the draft,
+  // and the reader's place stay as they are; a reader already at the end follows the new row.
+  const ROUTINE_REFRESH_MS = 15_000;
+  const FOLLOW_SLACK = 48;
+  let routineRefreshing = false;
+
+  // A row is never added under a message still waiting for its reply, or while history or a turn is in motion.
+  function routineMergeIdle() {
+    return !composerBusy && !historyWorking && turns.at(-1)?.role !== 'user';
+  }
+
+  async function refreshRoutineNotices(teamId) {
+    if (routineRefreshing || document.visibilityState !== 'visible' || chatTeamId !== teamId) return;
+    routineRefreshing = true;
+    const generation = historyGeneration;
+    try {
+      loadTeamRoutines(fetch, teamId).catch(() => {});
+      if (!routineMergeIdle()) return;
+      const page = await listChatHistory(fetch, teamId);
+      if (generation !== historyGeneration || chatTeamId !== teamId || !routineMergeIdle()) return;
+      const team = $teamContext.teams.find((entry) => entry.id === teamId);
+      const shown = new Map(
+        turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
+      );
+      const arrived = newerRoutineEntries(shown, page.entries);
+      if (!team || arrived.length === 0) return;
+      const viewport = turnsViewport;
+      const following = Boolean(viewport) &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
+      const moved = new Set(arrived.map((entry) => entry.id));
+      turns = [
+        ...turns.filter((turn) => !moved.has(turn.historyId)),
+        ...arrived.map((entry) => historyTurn(entry, team.name)),
+      ];
+      if (following) await revealLatestExchange();
+    } catch {
+      // The next refresh tries again; the open conversation stays as it is.
+    } finally {
+      routineRefreshing = false;
+    }
+  }
+
+  $effect(() => {
+    const teamId = chatTeamId;
+    if (!mounted || !teamId || $sessionContext.profile !== 'local') return;
+    const refresh = () => void refreshRoutineNotices(teamId);
+    const shown = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const timer = setInterval(refresh, ROUTINE_REFRESH_MS);
+    document.addEventListener('visibilitychange', shown);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', shown);
+    };
+  });
 
   function applyInstallPlanEvent(incoming, receipt) {
     if (incoming.outcome === 'already-installed') {
@@ -1250,6 +1321,7 @@
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
           ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
+          ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -1600,7 +1672,7 @@
 
   function send(event) {
     event.preventDefault();
-    if (submitMessage(draft)) {
+    if (!questionOpen && submitMessage(draft)) {
       draft = '';
       promptHistoryIndex = -1;
     }
@@ -1966,8 +2038,8 @@
                             {lifecycleMessages.confirm}
                           </span>
                           <div class="assistant-lifecycle-actions">
-                            <Button
-                              variant="secondary"
+                            <DialogAction
+                              kind="cancel"
                               size="compact"
                               type="button"
                               onclick={() => submitLifecycleDecision('no')}
@@ -1977,9 +2049,9 @@
                               })}
                             >
                               {lifecycleMessages.cancelAction}
-                            </Button>
-                            <Button
-                              variant="danger"
+                            </DialogAction>
+                            <DialogAction
+                              kind="danger"
                               size="compact"
                               type="button"
                               onclick={() => submitLifecycleDecision('yes')}
@@ -1989,7 +2061,7 @@
                               })}
                             >
                               {lifecycleMessages.uninstallAction}
-                            </Button>
+                            </DialogAction>
                           </div>
                         {/if}
                         {#if lifecycle.status}
@@ -2027,6 +2099,11 @@
                     teamName={assistantTurn.author}
                     {assistantNames}
                   />
+                  {#if assistantTurn.usage}
+                    <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
+                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
+                    </p>
+                  {/if}
                 </Message>
                 {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
                   <!-- An install that continues the requested task keeps showing that task's execution stages. -->
@@ -2122,8 +2199,8 @@
                   bind:element={composerInput}
                   bind:value={draft}
                   rows="2"
-                  placeholder={placeholder}
-                  disabled={composerBusy}
+                  placeholder={questionOpen ? $t('clarify').answerFirst : placeholder}
+                  disabled={composerBusy || questionOpen}
                   onkeydown={handleComposerKeydown}
                 />
               {/if}
@@ -2135,7 +2212,7 @@
               {/if}
               <Button
                 bind:element={integrationsButton}
-                class="composer-integrations glitch-host"
+                class="composer-integrations"
                 variant="ghost"
                 size="icon"
                 type="button"
@@ -2146,29 +2223,38 @@
                 aria-expanded={integrationsOpen}
                 aria-controls="assistant-integrations-drawer"
               >
-                <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0zM12 16v2.2a2.8 2.8 0 0 1-2.8 2.8H8"></path>
                 </svg>
               </Button>
               {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
-                <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
-                  {copy.stop}
+                <!-- While a turn runs, Send becomes Stop in place; once the turn ends it is Send again. -->
+                <Button
+                  bind:element={stopButton}
+                  class="composer-send composer-stop"
+                  type="button"
+                  variant="ghost"
+                  onclick={stop}
+                  disabled={stopping}
+                  title={copy.stop}
+                >
+                  <span class="sr-only">{copy.stop}</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>
                 </Button>
-              {/if}
-              {#if keyRequired}
+              {:else if keyRequired}
                 <Button type="submit" disabled={brainSaving || providerKey.trim().length < 16}>
                   {brainSaving ? keyCopy.validating : keyCopy.saveKey}
                 </Button>
               {:else}
                 <Button
-                  class="composer-send glitch-host"
+                  class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
-                  <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
                 </Button>
               {/if}
               </Toolbar>
@@ -2352,6 +2438,13 @@
     overflow-wrap: anywhere;
   }
 
+  .task-usage {
+    margin: 0.35rem 0 0;
+    color: var(--shimpz-color-text-dim);
+    font: 500 0.68rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
   .clarification-reply { display: grid; gap: 2px; margin: 0; }
   .reply-label {
     color: var(--shimpz-color-text-muted);
@@ -2601,6 +2694,20 @@
     border-color: var(--shimpz-color-border);
     filter: none;
     opacity: 1;
+  }
+
+  /* Stop takes Send's place while a turn runs: the same key, filled red with an X. */
+  .composer-input :global(.shimpz-button.composer-send.composer-stop),
+  .composer-input :global(.shimpz-button.composer-send.composer-stop:hover:not(:disabled)) {
+    color: var(--shimpz-color-bg);
+    background: var(--shimpz-color-danger);
+    border-color: var(--shimpz-color-danger);
+  }
+
+  .composer-input :global(.shimpz-button.composer-send.composer-stop:disabled) {
+    color: var(--shimpz-color-bg);
+    background: color-mix(in srgb, var(--shimpz-color-danger) 45%, transparent);
+    border-color: color-mix(in srgb, var(--shimpz-color-danger) 45%, transparent);
   }
 
   :global(.composer-actions .shimpz-button svg) {

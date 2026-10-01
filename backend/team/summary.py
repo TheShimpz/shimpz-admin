@@ -7,13 +7,38 @@ from collections.abc import Callable
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from team import bridge as team
+from team import http as team_http
 
+from chat import assistant_inventory
 from protocol.http.v1 import payload as team_contract
 
 
 def register(app: FastAPI) -> None:
-    """An installed Assistant's summary is read in both profiles."""
+    """The interface registry and an installed Assistant's summary are read in both profiles."""
+    app.add_api_route("/api/assistants", assistants_list, methods=["GET"])
     app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/summary", assistant_summary, methods=["GET"])
+
+
+def assistants_list() -> JSONResponse:
+    """The registry names the interface shows, without Team's canonical English summaries (ADR-0091).
+
+    Team's registry summary is the English catalog text it plans with; the interface never shows it, so only each
+    identity and name reach the browser.
+    """
+    return team_http.response(_interface_registry)
+
+
+def _interface_registry() -> team.TeamResponse:
+    response = team.list_assistants()
+    if not 200 <= response.status < 300:
+        return response
+    try:
+        registry = assistant_inventory.registry(response)
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Team Assistant registry is invalid") from None
+    return team.TeamResponse(
+        200, {"assistants": [{"id": item.assistant_id, "title": item.name} for item in registry.values()]}
+    )
 
 
 def localized(read: Callable[[str], team.TeamResponse], locale: str, subject: str) -> JSONResponse:

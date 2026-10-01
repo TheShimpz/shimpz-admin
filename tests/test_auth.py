@@ -84,11 +84,21 @@ class PasswordVerifierTests(unittest.TestCase):
 
         secret = auth.new_secret()
         scheme = auth._SESSION_SCHEME
-        self.assertIsNone(auth.verify_session("not-hex", f"{scheme}:9999999999:nonce:pwd+totp:signature"))
+        self.assertIsNone(auth.verify_session("not-hex", f"{scheme}:9999999999:nonce:pwd+totp:{'0' * 64}"))
         body = f"{scheme}:not-a-time:nonce:pwd+totp"
         signature = hmac.new(bytes.fromhex(secret), body.encode(), hashlib.sha256).hexdigest()
         self.assertIsNone(auth.verify_session(secret, f"{body}:{signature}"))
         self.assertIsNone(auth.verify_session(secret, auth.issue_session(secret, "totp", ttl=-1)))
+
+    def test_session_signature_must_be_lowercase_ascii_hex_before_comparison(self) -> None:
+        secret = auth.new_secret()
+        token = auth.issue_session(secret, "totp")
+        body, _separator, signature = token.rpartition(":")
+        # Starlette decodes cookie bytes as Latin-1, so a UTF-8 cookie arrives as non-ASCII text.
+        for forged in ("\u00c3\u00a9" * 32, signature[:-1] + "\u00e9", signature.upper(), "signature", signature + "0"):
+            with self.subTest(forged=forged):
+                self.assertIsNone(auth.verify_session(secret, f"{body}:{forged}"))
+        self.assertIsNotNone(auth.verify_session(secret, token))
 
 
 class LocalLoginLimiterTests(unittest.TestCase):

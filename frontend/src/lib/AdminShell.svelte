@@ -61,6 +61,7 @@
           oncreate={createTeam}
           ondelete={deleteTeam}
           routines={profile === 'local'}
+          reorder={profile === 'local'}
         />
         <TeamSidebar {active} />
       </div>
@@ -122,6 +123,7 @@
           oncreate={createTeam}
           ondelete={deleteTeam}
           routines={profile === 'local'}
+          reorder={profile === 'local'}
           onnavigate={closeTeamDrawer}
         />
       </Modal>

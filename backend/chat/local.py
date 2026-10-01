@@ -37,6 +37,8 @@ _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal", "trace_id"})
 # A done event's public fields; a chat reply may carry one Routine proposal for the confirmation card (ADR-0086).
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal"})
+# A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
+USAGE_FIELD = "usage"
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -231,7 +233,7 @@ class PublicResponse(team.TeamResponse):
         if body.get("team_id") != team_id:
             return None
         event = None
-        if set(body) == DONE_FIELDS:
+        if set(body) - {USAGE_FIELD} == DONE_FIELDS:
             event = {"type": "done", **body}
         return event
 
@@ -672,9 +674,20 @@ def _project_turn(
         proposal = routine_contract.canonical_proposal(proposal)
         if proposal is None:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    shown = f"{team_name} {reply} {_clarification_text(clarification)} {proposal['quote'] if proposal else ''}"
+    usage = response.body.get(USAGE_FIELD)
+    if USAGE_FIELD in response.body:
+        # What the turn consumed is presentation only; it must match the closed Team shape.
+        usage = team_contract.canonical_turn_usage(usage)
+        if usage is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    shown = " ".join(
+        (
+            f"{team_name} {reply} {_clarification_text(clarification)} {proposal['quote'] if proposal else ''}",
+            *(f"{model['provider']} {model['model']}" for model in (usage["models"] if usage else ())),
+        )
+    )
     if (
-        set(response.body) != _TURN_RESPONSE_FIELDS
+        set(response.body) - {USAGE_FIELD} != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
         or not _valid_trace_id(response.body.get("trace_id"))
         or not _valid_team_name(team_name)
@@ -693,6 +706,7 @@ def _project_turn(
             "reply": reply,
             "clarification": clarification,
             "routine_proposal": proposal,
+            **({USAGE_FIELD: usage} if usage is not None else {}),
         },
     )
 

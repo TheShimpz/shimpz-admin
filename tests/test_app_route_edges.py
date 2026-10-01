@@ -391,16 +391,16 @@ class AppRouteEdgeTests(unittest.TestCase):
             },
         )
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=registry):
-            shown = self.admin_app.assistants_list()
+            shown = self.admin_app.team_summary.assistants_list()
         unavailable = self.admin_app.team.TeamResponse(503, {"detail": "Team is unavailable"})
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=unavailable):
-            refused = self.admin_app.assistants_list()
+            refused = self.admin_app.team_summary.assistants_list()
         malformed = self.admin_app.team.TeamResponse(200, {"assistants": [{"id": "hello-pulse"}]})
         with (
             mock.patch.object(self.admin_app.team, "list_assistants", return_value=malformed),
             self.assertRaises(self.admin_app.HTTPException) as invalid,
         ):
-            self.admin_app.assistants_list()
+            self.admin_app.team_summary.assistants_list()
 
         self.assertEqual(
             json.loads(shown.body),
@@ -417,7 +417,6 @@ class AppRouteEdgeTests(unittest.TestCase):
     def test_thin_team_assistant_and_file_routes_preserve_the_team_response(self) -> None:
         response = self.admin_app.team.TeamResponse(200, {"ok": True})
         synchronous = (
-            (self.admin_app.teams_list, self.admin_app.team, "list_teams", ()),
             (self.admin_app.team_inference.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
             (self.admin_app.team_snapshots.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
             (
@@ -432,8 +431,8 @@ class AppRouteEdgeTests(unittest.TestCase):
                 "uninstall_assistant",
                 ("team_1", "assistant"),
             ),
-            (self.admin_app.team_files.files_list, self.admin_app.team, "list_files", ("team_1",)),
-            (self.admin_app.team_files.file_delete, self.admin_app.team, "delete_file", ("team_1", "f" * 32)),
+            (self.admin_app.team_files.team_files_list, self.admin_app.team, "list_files", ("team_1",)),
+            (self.admin_app.team_files.team_file_delete, self.admin_app.team, "delete_file", ("team_1", "f" * 32)),
         )
         for route, owner, name, arguments in synchronous:
             with self.subTest(route=route.__name__), mock.patch.object(owner, name, return_value=response):
@@ -474,7 +473,7 @@ class AppRouteEdgeTests(unittest.TestCase):
             ),
             mock.patch.object(self.admin_app.team, "upload_file", return_value=response),
         ):
-            uploaded = asyncio.run(self.admin_app.team_files.file_upload("team_1", mock.Mock()))
+            uploaded = asyncio.run(self.admin_app.team_files.team_file_upload("team_1", mock.Mock()))
         self.assertEqual(uploaded.status_code, 200)
 
 

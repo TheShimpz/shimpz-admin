@@ -15,8 +15,7 @@ from history import http as chat_history_http
 from starlette.concurrency import run_in_threadpool
 from team import bridge
 from team import http as team_http
-
-from protocol.http.v1 import websocket as chat_ws_common
+from team import order as team_order
 
 MAX_TEAM_RENAME_BODY_BYTES = 1024
 # A recreated name whose id a renamed Team still holds gets the next free suffix: marketing, marketing_2 ... _9.
@@ -45,12 +44,16 @@ def _candidate_ids(team_name: str) -> list[str]:
 
 
 def _create(team_name: str) -> tuple[str, bridge.TeamResponse]:
-    """Try the name's id, then its suffixes, only while each is held by a Team with another current name."""
-    for team_id in _candidate_ids(team_name):
-        response = bridge.create(team_id, team_name)
-        if response.status != 409 or response.body.get("code") != "team-name-conflict":
-            return team_id, response
-    return team_id, response
+    """Try the name's id, then its suffixes, only while each is held by a Team with another current name.
+
+    Creation holds the Team order lock, and an id that no Team holds first loses any position it kept saved.
+    """
+    with team_order.LOCK:
+        for team_id in _candidate_ids(team_name):
+            response = team_order.release_for_create(team_id) or bridge.create(team_id, team_name)
+            if response.status != 409 or response.body.get("code") != "team-name-conflict":
+                return team_id, response
+        return team_id, response
 
 
 def create(payload: dict) -> JSONResponse:
@@ -65,21 +68,12 @@ def create(payload: dict) -> JSONResponse:
 
 def register(app: FastAPI, allowed_origins: Callable[[], frozenset[str]]) -> None:
     async def rename(team_id: str, request: Request) -> JSONResponse:
-        raw_origin = request.headers.get("origin")
-        origin = chat_ws_common.canonical_origin(raw_origin)
-        # Only an exactly canonical Origin is admitted: a header that merely normalizes into one grants nothing.
-        if origin is None or origin != raw_origin or origin not in allowed_origins():
-            raise HTTPException(status_code=403, detail="browser origin is not admitted")
+        team_http.require_admitted_origin(request, allowed_origins)
         team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_RENAME_BODY_BYTES))
         return await run_in_threadpool(team_http.response, lambda: bridge.rename(team_id, team_name))
 
     async def team_rename(team_id: str, request: Request) -> JSONResponse:
         """Rename a Team; every answer, including a refusal, is no-store."""
-        try:
-            response = await rename(team_id, request)
-        except HTTPException as exc:
-            raise HTTPException(exc.status_code, exc.detail, headers={"Cache-Control": "no-store"}) from None
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        return await team_http.no_store(lambda: rename(team_id, request))
 
     app.add_api_route("/api/teams/{team_id}", team_rename, methods=["PATCH"])

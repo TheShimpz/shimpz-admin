@@ -435,6 +435,8 @@ def _text(value: object, maximum: int) -> bool:
 
 
 def _fingerprint(request: dict[str, object], supplied: str) -> bool:
+    if _FINGERPRINT.fullmatch(supplied) is None:
+        return False
     try:
         canonical = json.dumps(
             request,

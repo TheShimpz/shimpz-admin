@@ -681,6 +681,13 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         self.assertEqual(request["headers"]["x-shimpz-filename"], "brief.txt")
         self.assertEqual(request["headers"]["content-length"], str(len(content)))
 
+    def test_malformed_multipart_body_is_a_client_error_before_team_call(self):
+        document = self._run_asgi_probe("malformed-file")
+
+        self.assertEqual(document["status"], 400)
+        self.assertEqual(document["body"], {"detail": "invalid multipart body"})
+        self.assertEqual(_TeamHandler.requests, [])
+
     def test_multipart_envelope_over_the_limit_stops_before_team_call(self):
         document = self._run_asgi_probe("oversized-file")
 
@@ -896,6 +903,20 @@ def _run_asgi_probe(scenario: str) -> None:
     elif scenario == "file-upload":
         boundary = "shimpz-admin-upload-boundary"
         payload = _multipart_file_body(boundary, b"Team private data")
+        status, body = asyncio.run(
+            _asgi_request(
+                admin_app,
+                "POST",
+                "/api/teams/team_1/files",
+                payload,
+                token=token,
+                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+            )
+        )
+        output = {"status": status, "body": body}
+    elif scenario == "malformed-file":
+        boundary = "shimpz-admin-upload-boundary"
+        payload = f"--{boundary}\r\nNoColonHeader\r\n\r\nx\r\n--{boundary}--\r\n".encode()
         status, body = asyncio.run(
             _asgi_request(
                 admin_app,

@@ -1,5 +1,6 @@
 <script>
-  import { Button, Card, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { Card, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
   let {
     open = $bindable(false),
@@ -60,16 +61,16 @@
     {#if hint}<p class="dialog-route-hint">{hint}</p>{/if}
     {#if error}<Notice variant="error">{error}</Notice>{/if}
     {#snippet footer()}
-      <Button type="button" variant="secondary" disabled={busy} onclick={oncancel}>
+      <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>
         {secondaryLabel}
-      </Button>
+      </DialogAction>
       {#if primaryVisible}
-        <Button
+        <DialogAction
+          kind={destructive ? 'danger' : 'confirm'}
           type="submit"
-          variant={destructive ? 'danger' : 'primary'}
           disabled={busy || primaryDisabled}>
           {primaryLabel}
-        </Button>
+        </DialogAction>
       {/if}
     {/snippet}
   </DialogFrame>

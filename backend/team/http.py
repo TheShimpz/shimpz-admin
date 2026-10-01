@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -50,3 +51,21 @@ async def bounded_json_object(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
     return payload
+
+
+def require_admitted_origin(request: Request, allowed_origins: Callable[[], frozenset[str]]) -> None:
+    """Admit only an exactly canonical browser Origin: a header that merely normalizes into one grants nothing."""
+    raw_origin = request.headers.get("origin")
+    origin = chat_ws_common.canonical_origin(raw_origin)
+    if origin is None or origin != raw_origin or origin not in allowed_origins():
+        raise HTTPException(status_code=403, detail="browser origin is not admitted")
+
+
+async def no_store(handler: Callable[[], Awaitable[JSONResponse]]) -> JSONResponse:
+    """Answer without caching; a refusal is no-store too."""
+    try:
+        response = await handler()
+    except HTTPException as exc:
+        raise HTTPException(exc.status_code, exc.detail, headers={"Cache-Control": "no-store"}) from None
+    response.headers["Cache-Control"] = "no-store"
+    return response

@@ -1,4 +1,5 @@
 import { parseClarification, renderClarification } from './clarification.js';
+import { parseTaskUsage } from './taskUsage.js';
 import { parseRoutineProposal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
@@ -1186,17 +1187,22 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (value.type === 'done') {
     let clarification = null;
     let routineProposal = null;
+    let usage = null;
     try {
       clarification = parseClarification(value.clarification);
       routineProposal = parseRoutineProposal(value.routine_proposal);
+      usage = parseTaskUsage(value.usage);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
     }
     if (clarification && value.reply !== renderClarification(clarification)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
+    const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification', 'routine_proposal'];
+    // `usage` is optional: Team reports it only when a model call of the turn reported usage.
+    if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
     if (
-      !exactKeys(value, ['type', 'team_id', 'team_name', 'reply', 'clarification', 'routine_proposal']) ||
+      !exactKeys(value, doneKeys) ||
       !TEAM_ID_RE.test(value.team_id) ||
       value.team_id !== expectedTeamId ||
       // The Team id binds the turn; its display name may have changed by a rename (ADR-0088) and is only checked.
@@ -1215,6 +1221,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       reply: value.reply,
       clarification,
       routine_proposal: routineProposal,
+      ...(usage ? { usage } : {}),
     };
   }
   if (value.type === 'assistant-install-plan') {

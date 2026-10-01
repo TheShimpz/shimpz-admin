@@ -92,12 +92,17 @@ async function listTeams(fetcher) {
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
   }
+  return parseTeamList(body, response.status);
+}
+
+// GET /api/teams and PUT /api/teams/order answer the same closed list, already in the Supervisor's display order.
+function parseTeamList(body, status) {
   if (
     !hasExactEnvelopeKeys(body, ['teams']) ||
     !Array.isArray(body.teams) ||
     body.teams.length > MAX_TEAMS
   ) {
-    throw new LocalApiError('The local Team inventory is invalid.', response.status);
+    throw new LocalApiError('The local Team inventory is invalid.', status);
   }
 
   const seen = new Set();
@@ -109,7 +114,7 @@ async function listTeams(fetcher) {
       team.status !== 'running' ||
       seen.has(team.team_id)
     ) {
-      throw new LocalApiError('The local Team inventory is invalid.', response.status);
+      throw new LocalApiError('The local Team inventory is invalid.', status);
     }
     canonicalTeamName(team.team_name);
     seen.add(team.team_id);
@@ -148,6 +153,11 @@ function markFailure(attempt, error, fallback, clearAuthority) {
 let renameClock = 0;
 let contextEpoch = 0;
 const renamedAt = new Map();
+// Every Team list read from Admin advances this, so a failed reorder never rolls back over a newer list.
+let listVersion = 0;
+// Every admitted reorder and every order published from a save advances this, so a list re-read that began before
+// either never publishes an older order or membership over it.
+let orderRevision = 0;
 
 function withRenames(teams, since) {
   return teams.map((team) => {
@@ -174,6 +184,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       omittedAssistantIds: [],
     };
     if (attempt === generation) {
+      listVersion += 1;
       teamContext.set({
         phase: 'ready',
         ...snapshot,
@@ -188,6 +199,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   // Re-apply renames at publication: one may have been confirmed while the inventory was loading.
   const published = withRenames(listed, since);
   if (attempt === generation) {
+    listVersion += 1;
     teamContext.set({
       phase: 'ready',
       teams: published,
@@ -206,6 +218,7 @@ export async function loadTeamContext(fetcher, preferredId = '') {
   const canonicalPreferredId = preferredTeamId(preferredId);
   const previousId = get(teamContext).selectedTeamId;
   const attempt = ++generation;
+  listVersion += 1;
   teamContext.set({ ...emptyContext(), phase: 'loading' });
   try {
     return await hydrate(fetcher, canonicalPreferredId, attempt, previousId);
@@ -322,7 +335,10 @@ export async function refreshTeamInventory(fetcher) {
 export function clearTeamContext() {
   generation += 1;
   contextEpoch += 1;
+  listVersion += 1;
   renamedAt.clear();
+  reorder.desired = null;
+  reorder.baseline = null;
   teamContext.set(emptyContext());
 }
 
@@ -416,6 +432,127 @@ export async function renameTeam(fetcher, id, name) {
     teams: state.teams.map((team) => (team.id === canonicalId ? { ...team, name: body.team_name } : team)),
   }));
   return renamed;
+}
+
+function sameMembers(ids, teams) {
+  const members = new Set(teams.map((team) => team.id));
+  return ids.length === members.size && ids.every((id) => members.has(id));
+}
+
+/** The current Team objects in `ids` order; names, statuses, and selection are untouched. */
+function arranged(teams, ids) {
+  const byId = new Map(teams.map((team) => [team.id, team]));
+  return ids.map((id) => byId.get(id));
+}
+
+function applyOrder(ids) {
+  teamContext.update((state) => (sameMembers(ids, state.teams) ? { ...state, teams: arranged(state.teams, ids) } : state));
+}
+
+async function putTeamOrder(fetcher, ids) {
+  const response = await fetcher('/api/teams/order', {
+    method: 'PUT',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ team_ids: ids }),
+  });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'The Team order could not be saved.'), response.status);
+  }
+  const teams = parseTeamList(body, response.status);
+  if (!sameMembers(ids, teams)) throw new LocalApiError('The Team order returned an invalid response.', response.status);
+  return teams.map((team) => team.id);
+}
+
+/**
+ * Re-read only the Team list after Admin refused an order for stale membership: the selection, catalog, and inventory
+ * stay as they are unless the selected Team itself is gone, which reloads the whole context.
+ */
+export async function reloadTeamList(fetcher) {
+  requireFetcher(fetcher);
+  const since = renameClock;
+  const epoch = contextEpoch;
+  const version = listVersion;
+  const revision = orderRevision;
+  const listed = await listTeams(fetcher);
+  const current = get(teamContext);
+  if (
+    epoch !== contextEpoch ||
+    version !== listVersion ||
+    revision !== orderRevision ||
+    (current.phase === 'loading' && !current.teams.length)
+  ) return;
+  if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
+    await loadTeamContext(fetcher, '');
+    return;
+  }
+  listVersion += 1;
+  teamContext.set({ ...current, teams: withRenames(listed, since) });
+}
+
+// Reordering is optimistic and serialized: the list moves at once, one save runs at a time, and moves made during a
+// save are coalesced into the next one. `baseline` is the last order Admin confirmed, the one a failure restores.
+const reorder = { desired: null, baseline: null, running: null };
+
+async function drainTeamOrder(fetcher) {
+  while (reorder.desired) {
+    const ids = reorder.desired;
+    reorder.desired = null;
+    const epoch = contextEpoch;
+    const version = listVersion;
+    try {
+      const saved = await putTeamOrder(fetcher, ids);
+      // A save answered after the context cleared never publishes; an order queued since then still gets saved.
+      if (epoch !== contextEpoch) continue;
+      reorder.baseline = saved;
+      // Admin's answer is the committed order; a move made meanwhile is applied by the next save instead.
+      if (!reorder.desired) {
+        orderRevision += 1;
+        applyOrder(saved);
+      }
+    } catch (error) {
+      if (epoch !== contextEpoch) continue;
+      reorder.desired = null;
+      // Only the order rolls back, and never over a Team list read after this save began.
+      if (version === listVersion && reorder.baseline) {
+        orderRevision += 1;
+        applyOrder(reorder.baseline);
+      }
+      reorder.baseline = null;
+      const safe = publicError(error, 'The Team order could not be saved.');
+      // Teams were added or removed since this list was read: read it again. Not awaited, so no move made meanwhile
+      // can be queued behind a save that has already given up.
+      if (safe.status === 409) reloadTeamList(fetcher).catch(() => {});
+      throw safe;
+    }
+  }
+  reorder.baseline = null;
+}
+
+/** Show the Teams in `ids` order now and save it; the promise settles when every queued order has been saved. */
+export function reorderTeams(fetcher, ids) {
+  requireFetcher(fetcher);
+  const current = get(teamContext);
+  if (
+    !Array.isArray(ids) ||
+    ids.length > MAX_TEAMS ||
+    new Set(ids).size !== ids.length ||
+    !sameMembers(ids, current.teams)
+  ) {
+    return Promise.reject(new LocalApiError('Invalid local Team request.'));
+  }
+  // The order a failure restores: the list as shown before the first queued move, also after a cleared context.
+  if (!reorder.running || !reorder.baseline) reorder.baseline = current.teams.map((team) => team.id);
+  reorder.desired = [...ids];
+  orderRevision += 1;
+  teamContext.set({ ...current, teams: arranged(current.teams, ids) });
+  if (!reorder.running) {
+    reorder.running = drainTeamOrder(fetcher).finally(() => {
+      reorder.running = null;
+    });
+  }
+  return reorder.running;
 }
 
 export async function deleteTeam(fetcher, id, name, password) {

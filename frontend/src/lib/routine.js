@@ -478,7 +478,18 @@ export function parseRoutineRunEntry(value) {
     outcome: value.outcome,
     createdAt: value.created_at,
     detail: structuredClone(value.detail),
+    version: value.version,
   };
+}
+
+/**
+ * The Routine rows of a re-read history page that a transcript does not show yet at their version, in page order.
+ * `shown` maps each shown Routine row id to its version; any other kind of entry is left to the conversation.
+ */
+export function newerRoutineEntries(shown, entries) {
+  return entries.filter((entry) => (
+    entry.kind === 'routine-run' && (!shown.has(entry.id) || shown.get(entry.id) < entry.version)
+  ));
 }
 
 /**

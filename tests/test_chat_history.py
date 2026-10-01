@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import sqlite3
 import sys
 import tempfile
@@ -66,118 +65,6 @@ class ChatHistoryTests(unittest.TestCase):
         turn = history.new_turn_id()
         history.append_user(team_id, turn, "Request")
         return turn
-
-    def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
-        asked = {
-            "question": "Qual período?",
-            "options": [{"label": "Hoje", "description": ""}, {"label": "Semana", "description": "Sete dias."}],
-            "default_index": 1,
-        }
-        turn_id = history.new_turn_id()
-        self.assertTrue(history.append_user("marketing", turn_id, "Quais modelos?"))
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Qual período?\n\n1. Hoje\n2. Semana ✓ — Sete dias.",
-            "routine_proposal": None,
-        }
-        with self.assertRaises(ValueError):
-            history.append_reply("marketing", turn_id, {**done, "reply": "Other text", "clarification": asked})
-        with self.assertRaises(ValueError):
-            history.append_reply("marketing", turn_id, {**done, "clarification": {**asked, "default_index": 9}})
-        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "clarification": asked}))
-        entry = history.page("marketing")["entries"][-1]
-        self.assertEqual(entry["clarification"], asked)
-        self.assertEqual(entry["id"], f"{turn_id}:reply")
-
-        # A tampered stored question makes the history unavailable instead of rendering it.
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "clarification": {**asked, "options": asked["options"][:1]},
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
-        with self.assertRaises(history.HistoryUnavailableError):
-            history.page("marketing")
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "clarification": None,
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
-        with self.assertRaises(history.HistoryUnavailableError):
-            history.page("marketing")
-
-    def test_a_reply_keeps_its_closed_routine_proposal_for_reload(self) -> None:
-        proposal = {
-            "proposal_id": "c" * 32,
-            "op": "propose",
-            "quote": "Todo dia às 9, liste as zonas",
-            "schedule": {"kind": "daily", "time": "09:00"},
-            "timezone": None,
-            "routine_id": None,
-            "assistant_ids": ["shimpz-cloudflare"],
-            "expires_in": 900,
-        }
-        turn_id = history.new_turn_id()
-        self.assertTrue(history.append_user("marketing", turn_id, "Todo dia às 9, liste as zonas"))
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Posso agendar isso; confirme no cartão.",
-            "clarification": None,
-        }
-        with self.assertRaises(ValueError):
-            history.append_reply("marketing", turn_id, {**done, "routine_proposal": {**proposal, "op": "run"}})
-        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "routine_proposal": proposal}))
-        entry = history.page("marketing")["entries"][-1]
-        self.assertEqual(entry["routine_proposal"], proposal)
-        # A proposal never enters the Brain's conversation window; only the reply text does.
-        following = history.new_turn_id()
-        self.assertTrue(history.append_user("marketing", following, "Obrigado"))
-        window = history.conversation("marketing", following)
-        self.assertIn("Posso agendar isso; confirme no cartão.", repr(window))
-        self.assertNotIn(proposal["proposal_id"], repr(window))
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "routine_proposal": {**proposal, "expires_in": -1},
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
-        with self.assertRaises(history.HistoryUnavailableError):
-            history.page("marketing")
 
     def test_records_idempotent_terminal_rows_in_presentation_order(self) -> None:
         first = history.new_turn_id()

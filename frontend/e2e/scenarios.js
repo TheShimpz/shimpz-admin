@@ -6,6 +6,18 @@ import { localizedChallenge } from './localizedRequest.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
+// The Local sidebar as the owner sees it: newest first, Marketing (the Team the chat scenarios talk to) on top.
+export const TEAMS = Object.freeze([
+  TEAM,
+  ...['Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'].map((name) => ({
+    team_id: name.toLowerCase(),
+    team_name: name,
+    status: 'running',
+  })),
+]);
+const MAX_TEAMS = 128;
+const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
+
 export const ASSISTANTS = [
   { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
   { id: 'whatsapp', title: 'WhatsApp' },
@@ -88,9 +100,25 @@ function hexId(prefix, sequence) {
   return `${prefix}${sequence.toString(16)}`.padStart(32, '0');
 }
 
-// Each scenario names its starting state; `ready` is the Local chat with one Team and no Routines.
+// Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
-  ready: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [] }),
+  ready: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [] }),
+  // The next Team order save finds the membership changed: a Team created elsewhere appears, and Admin answers 409.
+  'reorder-conflict': () => ({
+    session: authenticatedLocalSession(),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    reorder: 'conflict-once',
+  }),
+  // The next Team order save fails the way an unavailable Admin does.
+  'reorder-unavailable': () => ({
+    session: authenticatedLocalSession(),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    reorder: 'unavailable-once',
+  }),
   routines: () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
@@ -118,6 +146,14 @@ const STARTS = {
     routines: [],
     runs: [],
     human: 'approval',
+  }),
+  // A plain approval whose kicker names the Assistant while the Creator's own title stays.
+  'human-confirm': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'confirm',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
@@ -182,6 +218,49 @@ function routineRoutes(state, method, path, body) {
     return ok({ team_id: 'marketing', run_id: run[1], [run[2] === 'stop' ? 'stopped' : 'resolved']: true });
   }
   return null;
+}
+
+// PUT /api/teams/order: exactly `{ team_ids }`, an exact permutation of the current Team ids. A malformed body is 400;
+// a body naming another set of Teams is 409, so the page reloads the list.
+function reorderTeams(state, body) {
+  const ids = body?.team_ids;
+  if (
+    !body || typeof body !== 'object' || Array.isArray(body) ||
+    Object.keys(body).length !== 1 || !Array.isArray(ids) || ids.length > MAX_TEAMS ||
+    !ids.every((id) => typeof id === 'string' && TEAM_ID_RE.test(id)) || new Set(ids).size !== ids.length
+  ) {
+    return { status: 400, json: { detail: 'Invalid Team order.' } };
+  }
+  if (state.reorder === 'unavailable-once') {
+    state.reorder = null;
+    return { status: 503, json: { detail: 'The Team order is unavailable.' } };
+  }
+  if (state.reorder === 'conflict-once') {
+    state.reorder = null;
+    state.teams = [{ team_id: 'oracle', team_name: 'Oracle', status: 'running' }, ...state.teams];
+  }
+  const byId = new Map(state.teams.map((team) => [team.team_id, team]));
+  if (ids.length !== byId.size || !ids.every((id) => byId.has(id))) {
+    return { status: 409, json: { detail: 'The Teams changed. Reload the list.' } };
+  }
+  state.teams = ids.map((id) => byId.get(id));
+  return ok({ teams: state.teams });
+}
+
+// Every listed Team other than Marketing answers its read-only views empty, so selecting one in the preview works.
+function otherTeamRoutes(state, method, path) {
+  const match = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/(.+)$/);
+  if (method !== 'GET' || !match || !state.teams.some((team) => team.team_id === match[1])) return null;
+  const [, teamId, view] = match;
+  return {
+    assistants: () => ok({ assistants: [] }),
+    files: () => ok({ files: [] }),
+    'chat/history': () => ok({ entries: [], before: null }),
+    inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }),
+    'assistant-integrations': () => ok({ integrations: [] }),
+    'assistant-stored-inputs': () => ok({ stored_inputs: [] }),
+    routines: () => ok({ team_id: teamId, routines: [], runs: [] }),
+  }[view]?.() ?? null;
 }
 
 function propose(state, message) {
@@ -307,11 +386,48 @@ function approvalChallenge(locale) {
   };
 }
 
+// A plain approval request, where the Creator's own title stays and the kicker names the Assistant.
+const CONFIRM_REQUEST = Object.freeze({
+  kind: 'approval',
+  ordinal: 0,
+  title: 'Publish reviewed DNS changes?',
+  description: 'Cloudflare will update the A record for www.example.com.',
+  fingerprint: 'e'.repeat(64),
+});
+
+function confirmChallenge(locale) {
+  return {
+    type: 'human-required',
+    challenge_id: 'd'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
+    action: { id: 'update-dns-record', summary: 'Update one DNS record.' },
+    // The purpose was written in English, so Team projects it only in an English challenge (ADR-0091).
+    ...(locale === 'en'
+      ? { purpose: 'To point your domain at the new server, I need to change one DNS record in Cloudflare.' }
+      : {}),
+    ...localizedChallenge(CONFIRM_REQUEST, { locale }),
+  };
+}
+
+const HUMAN_CHALLENGES = Object.freeze({
+  approval: approvalChallenge,
+  confirm: confirmChallenge,
+  'stored-input': storedInputChallenge,
+});
+
 // The pending request in the language a chat or sync frame names, as Team reopens it.
 function humanChallenge(state, frame) {
-  const locale = frame.locale ?? 'en';
-  return state.human === 'approval' ? approvalChallenge(locale) : storedInputChallenge(locale);
+  return HUMAN_CHALLENGES[state.human](frame.locale ?? 'en');
 }
+
+// Every preview reply reports what its task used, like Team does: tokens per model and the turn's duration.
+const PREVIEW_USAGE = Object.freeze({
+  duration_ms: 6240,
+  models: [
+    { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11_900, output_tokens: 580 },
+  ],
+});
 
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
@@ -326,6 +442,7 @@ function chatReply(state, frame) {
       : `Preview reply to: ${message}`,
     clarification: null,
     routine_proposal: recurring ? propose(state, message) : null,
+    usage: structuredClone(PREVIEW_USAGE),
   };
 }
 
@@ -340,6 +457,7 @@ export function createScenario(name = 'ready') {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
       if (!state.session.authenticated) return null;
       if (path === '/api/teams' && method === 'GET') return ok({ teams: state.teams });
+      if (path === '/api/teams/order' && method === 'PUT') return reorderTeams(state, body);
       if (path === '/api/assistants' && method === 'GET') return ok({ assistants: ASSISTANTS });
       if (path === '/api/model-providers' && method === 'GET') return ok({ providers: providers() });
       if (path === '/api/decision-provider' && method === 'GET') {
@@ -351,7 +469,8 @@ export function createScenario(name = 'ready') {
         state.teams = state.teams.map((team) => (team.team_id === 'marketing' ? { ...team, team_name: name } : team));
         return ok({ team_id: 'marketing', team_name: name });
       }
-      if (!state.teams.length || !path.startsWith('/api/teams/marketing/')) return null;
+      if (!state.teams.length) return null;
+      if (!path.startsWith('/api/teams/marketing/')) return otherTeamRoutes(state, method, path);
       if (path === '/api/teams/marketing/assistants' && method === 'GET') {
         return ok({
           assistants: [
@@ -376,7 +495,26 @@ export function createScenario(name = 'ready') {
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {
       path: '/api/teams/marketing/chat/ws',
-      message(frame) {
+      // The listed Team a chat socket path belongs to, or null; the preview answers every listed Team's chat.
+      team(path) {
+        const teamId = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/chat\/ws$/)?.[1];
+        return teamId && state.teams.some((team) => team.team_id === teamId) ? teamId : null;
+      },
+      message(frame, teamId = 'marketing') {
+        // Any Team but Marketing just echoes, so a Team picked in the preview chats without a scenario of its own.
+        if (teamId !== 'marketing') {
+          if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
+          if (frame?.type !== 'chat') return [];
+          return [{
+            type: 'done',
+            team_id: teamId,
+            team_name: state.teams.find((team) => team.team_id === teamId)?.team_name ?? teamId,
+            reply: `Preview reply to: ${typeof frame.message === 'string' ? frame.message : ''}`,
+            clarification: null,
+            routine_proposal: null,
+            usage: structuredClone(PREVIEW_USAGE),
+          }];
+        }
         if (frame?.type === 'sync') return state.humanPending ? [humanChallenge(state, frame)] : [{ type: 'sync-empty' }];
         if (frame?.type === 'chat' && state.human) {
           state.humanPending = true;
@@ -390,9 +528,10 @@ export function createScenario(name = 'ready') {
             team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
             reply: frame.decision === 'deny'
               ? 'Ok — I stopped that Action.'
-              : state.human === 'approval'
-                ? `Done — published with ${frame.value}.`
-                : 'Done — the search ran with your key.',
+              : {
+                approval: `Done — published with ${frame.value}.`,
+                confirm: 'Done — the DNS record was updated.',
+              }[state.human] ?? 'Done — the search ran with your key.',
             clarification: null,
             routine_proposal: null,
           }];

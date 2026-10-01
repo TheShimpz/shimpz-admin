@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { Button } from '@shimpz/frontend';
 
+  import DialogAction from '$lib/DialogAction.svelte';
   import { locale } from '$lib/i18n.js';
   import {
     browserTimezone,
@@ -114,18 +114,18 @@
     {/if}
     <p class="muted">{copy.card.notScheduled}</p>
     <div class="actions">
-      <Button
+      <DialogAction
+        kind={cancel ? 'danger' : 'confirm'}
         size="sm"
         type="button"
-        variant={cancel ? 'danger' : 'primary'}
         disabled={phase === 'working' || !preview.fits}
         onclick={confirm}
       >
         {phase === 'working' ? copy.card.working : cancel ? copy.card.cancelConfirm : copy.card.confirm}
-      </Button>
-      <Button size="sm" type="button" variant="ghost" disabled={phase === 'working'} onclick={dismiss}>
+      </DialogAction>
+      <DialogAction kind="dismiss" size="sm" type="button" disabled={phase === 'working'} onclick={dismiss}>
         {copy.card.dismiss}
-      </Button>
+      </DialogAction>
     </div>
   {/if}
 </section>
