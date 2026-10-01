@@ -104,7 +104,12 @@
   const lifecycleExpiryTimers = new Map();
   const lifecycleIconCaptures = new Map();
   let reconnectAttempt = 0;
-  const MAX_RECONNECT_ATTEMPTS = 5;
+  let reconnectSince = 0;
+  // A Local release swap restarts Admin and Team for about half a minute, so a dropped socket keeps reconnecting with
+  // a capped backoff for long enough to cover it before the page asks for a refresh. Admin's session refusal is final.
+  const RECONNECT_WINDOW_MS = 150_000;
+  const MAX_RECONNECT_DELAY_MS = 10_000;
+  const SESSION_REFUSED_CLOSE_CODE = 4401;
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
@@ -1056,11 +1061,13 @@
 
   function scheduleReconnect(expectedTeamId) {
     if (reconnectTimer || !mounted || chatTeamId !== expectedTeamId) return;
-    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+    const now = performance.now();
+    if (reconnectAttempt === 0) reconnectSince = now;
+    if (now - reconnectSince >= RECONNECT_WINDOW_MS) {
       setError(copy.connectionFailed);
       return;
     }
-    const delay = Math.min(400 * (2 ** reconnectAttempt), 5000);
+    const delay = Math.min(400 * (2 ** Math.min(reconnectAttempt, 5)), MAX_RECONNECT_DELAY_MS);
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
@@ -1313,7 +1320,7 @@
       }
       resetProgress();
     };
-    active.onclose = () => {
+    active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       lastSentMessage = '';
       socket = null;
@@ -1324,6 +1331,10 @@
       resetProgress();
       if (busy) busy = false;
       resetChallengeState();
+      if (event.code === SESSION_REFUSED_CLOSE_CODE) {
+        setError(copy.connectionFailed);
+        return;
+      }
       setError(copy.disconnected);
       scheduleReconnect(expectedTeamId);
     };

@@ -156,6 +156,8 @@ async function routeReadyChat(page, {
   holdPostInstallInventory = false,
   disconnectHumanResponse = false,
   disconnectFirstChat = false,
+  refusedReconnects = 0,
+  expireSessionOnFirstChat = false,
   holdHumanResponse = false,
   humanKind = '',
   humanAssistantId = 'shimpz-cloudflare',
@@ -210,6 +212,7 @@ async function routeReadyChat(page, {
   let syncFrames = 0;
   let expiredHumanRedelivered = false;
   let firstChatDisconnected = false;
+  let reconnectsRefused = 0;
   let storedInputClears = 0;
   let assistantInstalled = assistantUninstall || !assistantPlan;
   let cloudflareInstalled = assistantInstalled;
@@ -478,6 +481,12 @@ async function routeReadyChat(page, {
     },
   );
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    if (firstChatDisconnected && reconnectsRefused < refusedReconnects) {
+      // Admin is down while a release swaps its containers: the upgrade fails before the socket ever opens.
+      reconnectsRefused += 1;
+      socket.connectToServer();
+      return;
+    }
     sendProgressEvent = (event) => socket.send(JSON.stringify(event));
     const connection = chatConnections;
     chatConnections += 1;
@@ -545,6 +554,11 @@ async function routeReadyChat(page, {
         if (disconnectFirstChat && !firstChatDisconnected && frame.type === 'chat') {
           firstChatDisconnected = true;
           socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
+          return;
+        }
+        if (expireSessionOnFirstChat) {
+          // Admin revalidates the session before every frame and closes the socket once it has expired.
+          socket.close({ code: 4401 });
           return;
         }
         if (assistantGuidanceCode && !targetlessGuidanceSent) {
@@ -825,6 +839,7 @@ async function routeReadyChat(page, {
     assistantIconRequests: () => assistantIconRequests,
     chatFrames: () => chatFrames,
     chatConnections: () => chatConnections,
+    refusedConnections: () => reconnectsRefused,
     credentialBodies: () => credentialBodies,
     decisionRequests: () => decisionRequests,
     configureDecisionElsewhere: (masked) => {
@@ -2337,6 +2352,48 @@ test('does not trust an install-only plan for a later request from an Assistant 
 
   await expect(page.getByText('The secure chat response was invalid.')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', async ({ page }) => {
+  // The browser spaces out repeated failed upgrades in real time, beyond the virtual clock.
+  test.slow();
+  await page.clock.install();
+  // More refused upgrades than the old five-attempt budget allowed, as a Local release swap causes.
+  const chat = await routeReadyChat(page, { disconnectFirstChat: true, refusedReconnects: 6, reply: 'Task complete.' });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const reconnecting = page.getByText('The secure chat connection was interrupted. Reconnecting…');
+  await expect(reconnecting).toBeVisible();
+
+  // Virtual time advances one second per probe, while the browser's own delay after a failed attempt runs in real time.
+  const advanced = (probe) => async () => {
+    await page.clock.runFor(1_000);
+    return probe();
+  };
+  await expect.poll(advanced(() => chat.refusedConnections()), { timeout: 30_000 }).toBe(6);
+  await expect.poll(advanced(() => reconnecting.isVisible()), { timeout: 30_000 }).toBe(false);
+  await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toHaveCount(0);
+
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('Task complete.')).toBeVisible();
+});
+
+test('an expired session ends the chat connection instead of reconnecting', async ({ page }) => {
+  await page.clock.install();
+  const chat = await routeReadyChat(page, { expireSessionOnFirstChat: true });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toBeVisible();
+  const connections = chat.chatConnections();
+  await page.clock.runFor(60_000);
+  expect(chat.chatConnections()).toBe(connections);
 });
 
 test('resumes one prior capability objective after reconnect and installs its Assistant', async ({ page }) => {
