@@ -191,6 +191,8 @@ test('a parameterized reference admits only its closed shape and bounded paramet
     messageReference('Delete {count} records in {zone}.', { count: 0, zone: 'example.com' }),
     messageReference('Rotate {key}.', { key: 'Key_1.a:b-c' }),
     messageReference('Publish {count}.', { count: 10 ** 15 - 1 }),
+    messageReference('Authorize {name}.', { name: '_acme-challenge.example.com' }),
+    messageReference('Authorize {name}.', { name: `${'a'.repeat(63)}.`.repeat(3) + 'b'.repeat(61) }),
     messageReference('Eight', Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`p${index}`, index]))),
   ]) assert.deepEqual(parseChatEvent(titled(title), 'team_1', 'Marketing').request.title, title);
   for (const title of [
@@ -208,6 +210,11 @@ test('a parameterized reference admits only its closed shape and bounded paramet
     messageReference('Count', { count: 10 ** 15 }),
     messageReference('Prose', { value: 'two words' }),
     messageReference('Long', { value: 'a'.repeat(129) }),
+    messageReference('Wildcard', { name: '*.example.com' }),
+    messageReference('Trailing dot', { name: '_dmarc.example.com.' }),
+    messageReference('Empty label', { name: '_dmarc..example.com' }),
+    messageReference('Uppercase', { name: '_DMARC.example.com' }),
+    messageReference('Overlong', { name: `${'a'.repeat(63)}.`.repeat(3) + 'b'.repeat(62) }),
     messageReference('Nested', { value: { a: 1 } }),
   ]) assert.throws(() => parseChatEvent(titled(title), 'team_1', 'Marketing'), /invalid/i, JSON.stringify(title));
 });

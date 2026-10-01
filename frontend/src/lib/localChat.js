@@ -244,11 +244,12 @@ function canonicalIntegrationRequirement(value) {
 // reads the separate `rendered` copy instead, in the language the challenge was created for.
 const MESSAGE_ID_RE = /^[0-9a-f]{64}$/;
 const MESSAGE_PARAM_NAME_RE = /^[a-z][a-z0-9_]{0,31}$/;
-const DOMAIN_PARAM_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+// Every `domain` value is also a `dns_name` value (an exact DNS record name), so one grammar admits both kinds.
+const DNS_NAME_PARAM_RE = /^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)*$/;
 const IDENTIFIER_PARAM_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const MAX_MESSAGE_PARAMS = 8;
 const MAX_INTEGER_PARAM = 10 ** 15;
-const MAX_DOMAIN_PARAM_CHARS = 253;
+const MAX_DNS_NAME_PARAM_CHARS = 253;
 const MAX_IDENTIFIER_PARAM_CHARS = 128;
 const PACK_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const RENDERED_FIELD_CHARS = Object.freeze({ title: 80, description: 500, label: 80, placeholder: 120 });
@@ -257,7 +258,7 @@ const RENDERED_OPTION_CHARS = Object.freeze({ label: 80, description: 160 });
 function messageParam(value) {
   if (Number.isSafeInteger(value)) return value >= 0 && value < MAX_INTEGER_PARAM;
   return typeof value === 'string' && (
-    (value.length <= MAX_DOMAIN_PARAM_CHARS && DOMAIN_PARAM_RE.test(value)) ||
+    (value.length <= MAX_DNS_NAME_PARAM_CHARS && DNS_NAME_PARAM_RE.test(value)) ||
     (value.length <= MAX_IDENTIFIER_PARAM_CHARS && IDENTIFIER_PARAM_RE.test(value))
   );
 }
