@@ -155,6 +155,9 @@ let contextEpoch = 0;
 const renamedAt = new Map();
 // Every Team list read from Admin advances this, so a failed reorder never rolls back over a newer list.
 let listVersion = 0;
+// Every admitted reorder and every order published from a save advances this, so a list re-read that began before
+// either never publishes an older order or membership over it.
+let orderRevision = 0;
 
 function withRenames(teams, since) {
   return teams.map((team) => {
@@ -471,9 +474,15 @@ export async function reloadTeamList(fetcher) {
   const since = renameClock;
   const epoch = contextEpoch;
   const version = listVersion;
+  const revision = orderRevision;
   const listed = await listTeams(fetcher);
   const current = get(teamContext);
-  if (epoch !== contextEpoch || version !== listVersion || (current.phase === 'loading' && !current.teams.length)) return;
+  if (
+    epoch !== contextEpoch ||
+    version !== listVersion ||
+    revision !== orderRevision ||
+    (current.phase === 'loading' && !current.teams.length)
+  ) return;
   if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
     await loadTeamContext(fetcher, '');
     return;
@@ -498,12 +507,18 @@ async function drainTeamOrder(fetcher) {
       if (epoch !== contextEpoch) continue;
       reorder.baseline = saved;
       // Admin's answer is the committed order; a move made meanwhile is applied by the next save instead.
-      if (!reorder.desired) applyOrder(saved);
+      if (!reorder.desired) {
+        orderRevision += 1;
+        applyOrder(saved);
+      }
     } catch (error) {
       if (epoch !== contextEpoch) continue;
       reorder.desired = null;
       // Only the order rolls back, and never over a Team list read after this save began.
-      if (version === listVersion && reorder.baseline) applyOrder(reorder.baseline);
+      if (version === listVersion && reorder.baseline) {
+        orderRevision += 1;
+        applyOrder(reorder.baseline);
+      }
       reorder.baseline = null;
       const safe = publicError(error, 'The Team order could not be saved.');
       // Teams were added or removed since this list was read: read it again. Not awaited, so no move made meanwhile
@@ -530,6 +545,7 @@ export function reorderTeams(fetcher, ids) {
   // The order a failure restores: the list as shown before the first queued move, also after a cleared context.
   if (!reorder.running || !reorder.baseline) reorder.baseline = current.teams.map((team) => team.id);
   reorder.desired = [...ids];
+  orderRevision += 1;
   teamContext.set({ ...current, teams: arranged(current.teams, ids) });
   if (!reorder.running) {
     reorder.running = drainTeamOrder(fetcher).finally(() => {

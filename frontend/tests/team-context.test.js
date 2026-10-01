@@ -1008,3 +1008,49 @@ test('a move made after the context cleared and reloaded during a save is still 
   await assert.rejects(second, /The Team order could not be saved/);
   assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);
 });
+
+// Like heldOrderFetcher, but once `hold()` is called every Team list read also waits for the test to answer it.
+function heldListAndOrderFetcher() {
+  const lists = [];
+  let holding = false;
+  const held = heldOrderFetcher();
+  const fetcher = async (url, options = {}) => {
+    if (holding && url === '/api/teams') return new Promise((resolve) => lists.push({ answer: resolve }));
+    return held.fetcher(url, options);
+  };
+  return { fetcher, saves: held.saves, lists, hold: () => { holding = true; } };
+}
+
+const ORACLE = { team_id: 'oracle', team_name: 'Oracle', status: 'running' };
+
+for (const reloadFirst of [false, true]) {
+  test(`a list re-read after a 409 never overrides a later saved reorder (${reloadFirst ? 'read' : 'save'} answered first)`, async () => {
+    const { fetcher, saves, lists, hold } = heldListAndOrderFetcher();
+    await loadTeamContext(fetcher, 'marketing');
+    hold();
+    // Another tab added Oracle: the save is refused as stale and the list is read again, but that read is slow.
+    const refused = reorderTeams(fetcher, ['support', 'marketing', 'sales']);
+    await settle();
+    saves[0].answer(response(409, { detail: 'The Teams changed.' }));
+    await assert.rejects(refused, (error) => error.status === 409);
+    await settle();
+    assert.equal(lists.length, 1);
+
+    // Oracle is removed again, so the shown three Teams are current, and a new reorder of them is saved.
+    const saving = reorderTeams(fetcher, ['sales', 'marketing', 'support']);
+    await settle();
+    const stale = response(200, { teams: [ORACLE, ...THREE_TEAMS] });
+    if (reloadFirst) {
+      lists[0].answer(stale);
+      await settle();
+    }
+    saves[1].answer(response(200, { teams: listedTeams(['sales', 'marketing', 'support']) }));
+    await saving;
+    if (!reloadFirst) {
+      lists[0].answer(stale);
+      await settle();
+    }
+    assert.deepEqual(orderIds(), ['sales', 'marketing', 'support']);
+    assert.equal(get(teamContext).selectedTeamId, 'marketing');
+  });
+}
