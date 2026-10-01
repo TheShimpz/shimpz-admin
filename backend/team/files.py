@@ -1,6 +1,7 @@
 """Bounded browser file ingress for the Admin-to-Team boundary."""
 
 from fastapi import HTTPException, Request
+from python_multipart.exceptions import ParseError
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 from team import bridge as team
@@ -47,7 +48,7 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
         ).parse()
     except _MultipartBodyTooLargeError:
         raise HTTPException(status_code=413, detail="file upload too large") from None
-    except MultiPartException:
+    except MultiPartException, ParseError:
         raise HTTPException(status_code=400, detail="invalid multipart body") from None
 
     try:
