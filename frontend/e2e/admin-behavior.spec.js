@@ -3294,6 +3294,33 @@ test('a reply whose done frame reports no usage shows no usage line', async ({ p
   await expect(reply).not.toContainText('tokens');
 });
 
+test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {
+  const [first, second] = ['d'.repeat(32), 'e'.repeat(32)];
+  const usage = {
+    duration_ms: 6240,
+    models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 }],
+  };
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${first}:user`, kind: 'message', role: 'user', text: 'List my DNS zones' },
+        { id: `${first}:reply`, kind: 'message', role: 'assistant', text: 'Two zones.', author: 'Marketing', usage },
+        { id: `${second}:user`, kind: 'message', role: 'user', text: 'And the records?' },
+        { id: `${second}:reply`, kind: 'message', role: 'assistant', text: 'Four records.', author: 'Marketing' },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+  const replies = page.getByRole('article', { name: 'Marketing' });
+  await expect(replies).toHaveCount(2);
+  await expect(replies.first()).toContainText('Two zones.');
+  await expect(replies.first()).toContainText('12,480 tokens');
+  await expect(replies.first().getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+  await expect(replies.nth(1)).toContainText('Four records.');
+  await expect(replies.nth(1)).not.toContainText('tokens');
+});
+
 test('a done frame with malformed usage is refused and shows no reply', async ({ page }) => {
   await routeReadyChat(page, { usage: { duration_ms: 1, models: [] } });
   await page.goto('/chat/');

@@ -160,3 +160,43 @@ test('projects safe history service failures and rejects invalid requests', asyn
     );
   }
 });
+
+const USAGE = {
+  duration_ms: 6240,
+  models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 11_900, output_tokens: 580 }],
+};
+
+function replyEntry(extra = {}) {
+  return { id: `${TURN_A}:reply`, kind: 'message', role: 'assistant', text: 'Done.', author: 'Marketing', ...extra };
+}
+
+async function historyOf(entry) {
+  return listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+}
+
+test('a restored reply keeps its exact turn usage, and one stored without usage has none', async () => {
+  const [used] = (await historyOf(replyEntry({ usage: USAGE }))).entries;
+  assert.deepEqual(used.usage, USAGE);
+  const [plain] = (await historyOf(replyEntry())).entries;
+  assert.equal(Object.hasOwn(plain, 'usage'), false);
+});
+
+test('a restored reply whose usage breaks the closed shape, or a user message with usage, fails closed', async () => {
+  const model = USAGE.models[0];
+  for (const entry of [
+    replyEntry({ usage: null }),
+    replyEntry({ usage: {} }),
+    replyEntry({ usage: { ...USAGE, extra: true } }),
+    replyEntry({ usage: { ...USAGE, models: [] } }),
+    replyEntry({ usage: { ...USAGE, duration_ms: 86_400_001 } }),
+    replyEntry({ usage: { ...USAGE, models: [{ ...model, provider: ['openai'] }] } }),
+    replyEntry({ usage: { ...USAGE, models: [model, model] } }),
+    { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'hello', usage: USAGE },
+  ]) {
+    await assert.rejects(
+      historyOf(entry),
+      (error) => error instanceof LocalApiError && error.message.includes('history is invalid'),
+      JSON.stringify(entry),
+    );
+  }
+});

@@ -398,6 +398,7 @@
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
         ...(entry.routineProposal ? { routineProposal: entry.routineProposal } : {}),
+        ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
       };
     }
     if (entry.kind === 'guidance') {
