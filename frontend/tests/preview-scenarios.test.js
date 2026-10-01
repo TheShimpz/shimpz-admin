@@ -116,12 +116,15 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
 });
 
 test('a human request names an Assistant its Team inventory lists, so Admin opens it', () => {
-  const scenario = createScenario('human-request');
-  const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [] });
-  const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
-  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
-  assert.equal(parsed.type, 'human-required');
-  assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
+  for (const [name, kind] of [['human-request', 'input:password'], ['human-approval', 'approval']]) {
+    const scenario = createScenario(name);
+    const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [] });
+    const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+    const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+    assert.equal(parsed.type, 'human-required', name);
+    assert.equal(parsed.request.kind, kind, name);
+    assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id), name);
+  }
 });
 
 test('the Team order is saved only as an exact permutation of the listed Teams', () => {
@@ -173,4 +176,28 @@ test('every listed Team answers its read-only views, and an unlisted one fails c
   }
   assert.equal(scenario.respond({ method: 'GET', path: '/api/teams/neo/unknown' }), null);
   assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/neo/routines', body: {} }), null);
+});
+
+test('every listed Team answers its chat with a reply the parser admits, and an unlisted one has no socket', () => {
+  const scenario = createScenario('ready');
+  assert.equal(scenario.chat.team('/api/teams/neo/chat/ws'), 'neo');
+  assert.equal(scenario.chat.team('/api/teams/marketing/chat/ws'), 'marketing');
+  assert.equal(scenario.chat.team('/api/teams/oracle/chat/ws'), null);
+  assert.equal(scenario.chat.team('/api/teams/neo/chat'), null);
+  const [done] = scenario.chat.message({ type: 'chat', message: 'Hello', files: [], assistant_ids: [] }, 'neo');
+  const parsed = parseChatEvent(done, 'neo', 'Neo');
+  assert.equal(parsed.team_name, 'Neo');
+  assert.equal(parsed.reply, 'Preview reply to: Hello');
+  assert.deepEqual(scenario.chat.message({ type: 'sync' }, 'neo'), [{ type: 'sync-empty' }]);
+  assert.deepEqual(scenario.chat.message({ type: 'stop' }, 'neo'), []);
+});
+
+test('every preview reply reports usage in the exact done-frame shape', () => {
+  const scenario = createScenario('ready');
+  for (const teamId of ['marketing', 'neo']) {
+    const [done] = scenario.chat.message({ type: 'chat', message: 'Hello', files: [], assistant_ids: [] }, teamId);
+    const parsed = parseChatEvent(done, teamId, done.team_name);
+    assert.equal(parsed.usage.models.length, 1, teamId);
+    assert.equal(parsed.usage.duration_ms, 6240, teamId);
+  }
 });

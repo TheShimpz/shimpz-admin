@@ -139,6 +139,13 @@ const STARTS = {
     runs: [],
     human: true,
   }),
+  'human-approval': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'approval',
+  }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
@@ -327,6 +334,31 @@ const HUMAN_CHALLENGE = Object.freeze({
   },
 });
 
+// An approval request, where the Creator's own title stays and the kicker names the Assistant.
+const APPROVAL_CHALLENGE = Object.freeze({
+  type: 'human-required',
+  challenge_id: 'd'.repeat(32),
+  expires_in: 180,
+  assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
+  action: { id: 'update-dns-record', summary: 'Update one DNS record.' },
+  purpose: 'To point your domain at the new server, I need to change one DNS record in Cloudflare.',
+  request: {
+    kind: 'approval',
+    ordinal: 0,
+    title: 'Publish reviewed DNS changes?',
+    description: 'Cloudflare will update the A record for www.example.com.',
+    fingerprint: 'e'.repeat(64),
+  },
+});
+
+// Every preview reply reports what its task used, like Team does: tokens per model and the turn's duration.
+const PREVIEW_USAGE = Object.freeze({
+  duration_ms: 6240,
+  models: [
+    { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11_900, output_tokens: 580 },
+  ],
+});
+
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
@@ -340,6 +372,7 @@ function chatReply(state, frame) {
       : `Preview reply to: ${message}`,
     clarification: null,
     routine_proposal: recurring ? propose(state, message) : null,
+    usage: structuredClone(PREVIEW_USAGE),
   };
 }
 
@@ -392,8 +425,27 @@ export function createScenario(name = 'ready') {
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {
       path: '/api/teams/marketing/chat/ws',
-      message(frame) {
+      // The listed Team a chat socket path belongs to, or null; the preview answers every listed Team's chat.
+      team(path) {
+        const teamId = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/chat\/ws$/)?.[1];
+        return teamId && state.teams.some((team) => team.team_id === teamId) ? teamId : null;
+      },
+      message(frame, teamId = 'marketing') {
         if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
+        // Any Team but Marketing just echoes, so a Team picked in the preview chats without a scenario of its own.
+        if (teamId !== 'marketing') {
+          if (frame?.type !== 'chat') return [];
+          return [{
+            type: 'done',
+            team_id: teamId,
+            team_name: state.teams.find((team) => team.team_id === teamId)?.team_name ?? teamId,
+            reply: `Preview reply to: ${typeof frame.message === 'string' ? frame.message : ''}`,
+            clarification: null,
+            routine_proposal: null,
+            usage: structuredClone(PREVIEW_USAGE),
+          }];
+        }
+        if (frame?.type === 'chat' && state.human === 'approval') return [structuredClone(APPROVAL_CHALLENGE)];
         if (frame?.type === 'chat' && state.human) return [structuredClone(HUMAN_CHALLENGE)];
         if (frame?.type === 'human-response') {
           return [{

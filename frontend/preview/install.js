@@ -17,6 +17,15 @@ function chosenScenario() {
 }
 
 const scenario = createScenario(chosenScenario());
+// A saved Team order survives a reload of the preview tab, the way Admin keeps it; it is replayed through the
+// scenario's own validation, so a stale order is simply refused. The reorder failure scenarios always start fresh.
+const ORDER_KEY = scenario.name.startsWith('reorder-') ? null : `shimpz-preview-team-order:${scenario.name}`;
+try {
+  const saved = ORDER_KEY && JSON.parse(sessionStorage.getItem(ORDER_KEY) ?? 'null');
+  if (Array.isArray(saved)) scenario.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: saved } });
+} catch {
+  // Without storage the preview starts from the scenario's own order.
+}
 const realFetch = window.fetch.bind(window);
 const RealWebSocket = window.WebSocket;
 
@@ -39,10 +48,30 @@ window.fetch = async (input, init = {}) => {
     body = null;
   }
   const answer = scenario.respond({ method: request.method, path: url.pathname, body });
+  if (ORDER_KEY && answer?.status === 200 && url.pathname === '/api/teams/order') {
+    try {
+      sessionStorage.setItem(ORDER_KEY, JSON.stringify(body.team_ids));
+    } catch {
+      // The order still holds until the tab reloads.
+    }
+  }
   return answer
     ? jsonResponse(answer.status, answer.json)
     : jsonResponse(503, { detail: `The ${scenario.name} preview scenario does not answer this request.` });
 };
+
+const ACTION = { assistant_id: 'shimpz-cloudflare', index: 1, action: 'list-zones', total: 1 };
+const PREVIEW_PROGRESS = Object.freeze([
+  ['admin', 'admin-preparation', 40],
+  ['team', 'team-context', 120],
+  ['team', 'model', 2100],
+  ['team', 'action', 900, ACTION],
+  ['team', 'model', 1300],
+  ['admin', 'reply-validation', 30],
+].flatMap(([origin, phase, elapsed, action], index) => [
+  { type: 'progress', seq: index * 2 + 1, origin, phase, state: 'started', ...(action ?? {}) },
+  { type: 'progress', seq: index * 2 + 2, origin, phase, state: 'finished', elapsed_ms: elapsed, ...(action ?? {}) },
+]));
 
 // A scripted chat socket: it accepts the requested subprotocol and answers frames from the scenario.
 class ScenarioSocket extends EventTarget {
@@ -51,9 +80,10 @@ class ScenarioSocket extends EventTarget {
   static CLOSING = 2;
   static CLOSED = 3;
 
-  constructor(url, protocols) {
+  constructor(url, protocols, teamId) {
     super();
     this.url = url;
+    this.teamId = teamId;
     this.protocol = [protocols].flat().filter(Boolean)[0] ?? '';
     this.readyState = ScenarioSocket.CONNECTING;
     this.onopen = null;
@@ -64,6 +94,14 @@ class ScenarioSocket extends EventTarget {
       this.readyState = ScenarioSocket.OPEN;
       this.#emit('open', new Event('open'));
     }, 0);
+  }
+
+  #pending = [];
+
+  #deliver(reply) {
+    if (this.readyState === ScenarioSocket.OPEN) {
+      this.#emit('message', new MessageEvent('message', { data: JSON.stringify(reply) }));
+    }
   }
 
   #emit(type, event) {
@@ -79,12 +117,19 @@ class ScenarioSocket extends EventTarget {
     } catch {
       return;
     }
-    for (const reply of scenario.chat.message(frame)) {
-      setTimeout(() => {
-        if (this.readyState === ScenarioSocket.OPEN) {
-          this.#emit('message', new MessageEvent('message', { data: JSON.stringify(reply) }));
-        }
-      }, 400);
+    // Stop cancels the replies still on their way and answers like Team: the turn stopped.
+    if (frame?.type === 'stop') {
+      this.#pending.splice(0).forEach(clearTimeout);
+      setTimeout(() => this.#deliver({ type: 'stopped' }), 0);
+      return;
+    }
+    for (const reply of scenario.chat.message(frame, this.teamId)) {
+      // A finished reply arrives after the execution stages a real turn reports, so its trace can be reviewed.
+      const frames = reply?.type === 'done' ? [...PREVIEW_PROGRESS, reply] : [reply];
+      frames.forEach((item, index) => {
+        const delay = item === reply ? 3000 : 200 + index * 220;
+        this.#pending.push(setTimeout(() => this.#deliver(item), delay));
+      });
     }
   }
 
@@ -98,7 +143,8 @@ class ScenarioSocket extends EventTarget {
 window.WebSocket = function PreviewWebSocket(url, protocols) {
   const target = new URL(url, location.href);
   const sameHost = target.host === location.host;
-  if (sameHost && target.pathname === scenario.chat.path) return new ScenarioSocket(target.href, protocols);
+  const teamId = sameHost ? scenario.chat.team(target.pathname) : null;
+  if (teamId) return new ScenarioSocket(target.href, protocols, teamId);
   // Only Vite's own hot-reload socket stays real; every other socket is refused.
   if (sameHost && [protocols].flat().some((name) => ['vite-hmr', 'vite-ping'].includes(name))) {
     return new RealWebSocket(url, protocols);
