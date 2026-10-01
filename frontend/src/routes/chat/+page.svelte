@@ -161,8 +161,11 @@
   let historyHydrating = $derived(
     Boolean(chatTeamId) && (historyLoading || socketTeamId !== chatTeamId),
   );
+  // A connection that is opening is about to sync, so the composer stays read-only from the history load through the
+  // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
+  let socketOpening = $derived(Boolean(socket) && !socketReady);
   let composerBusy = $derived(
-    busy || syncing || lifecycleOutcomePending !== null || historyHydrating,
+    busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
