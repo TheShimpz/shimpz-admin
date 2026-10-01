@@ -2,6 +2,7 @@
   import { Button } from '@shimpz/frontend';
 
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import Markdown from '$lib/Markdown.svelte';
   import {
@@ -78,7 +79,14 @@
     working = true;
     result = '';
     try {
-      const opened = await openRoutineChallenge(fetch, teamId, entry.runId, (value) => parseChatEvent(value, teamId, teamName));
+      // Team renders the request copy in the interface language selected when the run is reviewed (ADR-0091).
+      const opened = await openRoutineChallenge(
+        fetch,
+        teamId,
+        entry.runId,
+        $locale,
+        (value) => parseChatEvent(value, teamId, teamName),
+      );
       if (opened.status === 'integrations-required') waitingIntegration = true;
       else challenge = opened.challenge;
     } catch (error) {

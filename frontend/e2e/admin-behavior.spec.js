@@ -4040,8 +4040,10 @@ test.describe('Team Routines', () => {
     });
     const answers = [];
     const resumes = [];
+    const openings = [];
     await page.route('**/api/teams/marketing/routines/runs/*/challenge', async (route) => {
       const runId = new URL(route.request().url()).pathname.split('/')[6];
+      openings.push(route.request().postDataJSON());
       await route.fulfill({
         json: runId === run
           ? {
@@ -4100,6 +4102,8 @@ test.describe('Team Routines', () => {
     await rows.nth(0).getByRole('button', { name: 'Continue the run' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('The run continued: waiting for another answer');
     expect(resumes).toEqual(['POST']);
+    // Every opening names the interface language the request copy is rendered in (ADR-0091).
+    expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
   });
 
   test('Hosted offers no Routines', async ({ page }) => {

@@ -59,8 +59,9 @@ async def routine_resolve(team_id: str, run_id: str, request: Request):
     return _no_store(await run_in_threadpool(team_http.response, lambda: manage.resolve(team_id, run_id, body)))
 
 
-async def routine_challenge(team_id: str, run_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: answer.open_challenge(team_id, run_id)))
+async def routine_challenge(team_id: str, run_id: str, request: Request):
+    body = await team_http.bounded_json_object(request)
+    return _no_store(await run_in_threadpool(team_http.response, lambda: answer.open_challenge(team_id, run_id, body)))
 
 
 def human_route(authenticate: answer.Authenticate):

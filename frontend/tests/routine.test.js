@@ -325,6 +325,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('routine-proposal-unavailable'), errors), errors.gone);
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
+  assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
+  assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   assert.equal(isTimezone(browserTimezone()), true);
@@ -398,19 +400,27 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
   const run = 'd'.repeat(32);
   const challenge = { type: 'human-required', challenge_id: 'b'.repeat(32) };
   let api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'human-required', challenge }]]);
-  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, (value) => ({ parsed: value })), {
+  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, 'pt', (value) => ({ parsed: value })), {
     status: 'human-required',
     challenge: { parsed: challenge },
   });
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/challenge`);
+  // Opening names exactly the interface language the request copy renders in (ADR-0091).
+  assert.deepEqual(JSON.parse(api.calls[0].init.body), { locale: 'pt' });
+  assert.equal(api.calls[0].init.headers['Content-Type'], 'application/json');
+  for (const locale of [null, 'pt-BR', 'PT', undefined]) {
+    api = fetcher([]);
+    await assert.rejects(openRoutineChallenge(api.fetch, 'team_1', run, locale, () => null), RoutineError);
+    assert.equal(api.calls.length, 0);
+  }
   api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'integrations-required' }]]);
-  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, () => null), { status: 'integrations-required' });
+  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, 'en', () => null), { status: 'integrations-required' });
   for (const [body, parse] of [
     [{ team_id: 'team_1', run_id: 'e'.repeat(32), status: 'integrations-required' }, () => null],
     [{ team_id: 'team_1', run_id: run, status: 'human-required', challenge }, () => { throw new Error('x'); }],
     [{ team_id: 'team_1', run_id: run, status: 'done' }, () => null],
   ]) {
-    await assert.rejects(openRoutineChallenge(fetcher([[200, body]]).fetch, 'team_1', run, parse), RoutineError);
+    await assert.rejects(openRoutineChallenge(fetcher([[200, body]]).fetch, 'team_1', run, 'en', parse), RoutineError);
   }
 
   const frame = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'deny' };

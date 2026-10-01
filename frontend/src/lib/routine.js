@@ -1,6 +1,7 @@
 // Team Routines (ADR-0086) as the browser admits them. Each parser mirrors Team's closed protocol view and throws on
 // any other shape; nothing here schedules or authorizes: a Routine exists only after a Supervisor confirms it.
 
+import { isLocale } from './locales.js';
 import { jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
@@ -390,6 +391,9 @@ export function routineErrorMessage(error, copy) {
   const byCode = {
     'routine-proposal-unavailable': copy.gone,
     'team-context-changed': copy.changed,
+    // The run's request no longer renders against the Team's reviewed Assistant; it stays frozen (ADR-0091).
+    'human-request-invalid': copy.changed,
+    'assistant-language-drift': copy.unavailable,
     'routine-limit': copy.full,
     'routine-rate-limit': copy.full,
     'routine-run-uncertain': copy.uncertain,
@@ -477,9 +481,16 @@ export function parseRoutineRunEntry(value) {
   };
 }
 
-/** Open a frozen run's fresh challenge, or learn that it waits for an Integration. */
-export async function openRoutineChallenge(fetcher, teamId, runId, parseChallenge) {
-  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/challenge`), { method: 'POST' });
+/**
+ * Open a frozen run's fresh challenge, or learn that it waits for an Integration. Team renders the request copy in the
+ * interface language named here, so a different language always opens a fresh challenge (ADR-0091).
+ */
+export async function openRoutineChallenge(fetcher, teamId, runId, locale, parseChallenge) {
+  if (!isLocale(locale)) throw new RoutineError('routine-request-invalid');
+  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/challenge`), {
+    method: 'POST',
+    body: JSON.stringify({ locale }),
+  });
   if (exact(body, ['team_id', 'run_id', 'status']) && body.status === 'integrations-required'
     && body.team_id === teamId && body.run_id === runId) {
     return { status: 'integrations-required' };

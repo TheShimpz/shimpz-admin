@@ -19,6 +19,7 @@ from team import transport
 
 from chat import human
 from chat import local as chat_local
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
 from routine import team as routine_team
@@ -56,10 +57,16 @@ def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object]] | None:
     return entry if entry is not None and entry[0] > time.monotonic() else None
 
 
-def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
-    """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration."""
+def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamResponse:
+    """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration.
+
+    The browser names the Admin interface language, and Team renders the request copy in it (ADR-0091).
+    """
     canonical, run = _run(team_id, run_id)
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", {})
+    opening = routine_contract.canonical_challenge_open(body)
+    if opening is None:
+        raise team.TeamRequestError("Routine challenge opening is invalid")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
     if response.status != 200 or not isinstance(response.body, dict):
         return manage._projected(response, lambda _body: None)
     body = dict(response.body)
