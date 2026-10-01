@@ -202,8 +202,8 @@
           </li>
         </ol>
         <div class="actions">
-          <Button type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
-            {saving ? copy.validating : copy.save}
+          <Button class="glitch-host" type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
+            <span class="glitch-text">{saving ? copy.validating : copy.save}</span>
           </Button>
         </div>
       </form>

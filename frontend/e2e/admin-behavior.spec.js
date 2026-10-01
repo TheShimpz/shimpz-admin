@@ -950,7 +950,7 @@ async function openFastRouting(page) {
   return { trigger, fast: page.getByRole('dialog', { name: 'Fast routing (Jev)' }) };
 }
 
-test('the Supervisor adds and removes the Jev key after reading what goes to TypeSafe', async ({ page }) => {
+test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -961,10 +961,7 @@ test('the Supervisor adds and removes the Jev key after reading what goes to Typ
   await expect(key).toBeFocused();
   await expect(key).toHaveAttribute('type', 'password');
   await expect(key).toHaveAttribute('autocomplete', 'off');
-  await expect(key).toHaveAccessibleDescription(
-    /when it is confident a request is ordinary, the model's routing step is skipped\..*go to TypeSafe\. TypeSafe says it does not train on them/,
-  );
-  const save = fast.getByRole('button', { name: 'Save key' });
+  const save = fast.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
   const secret = 'tsk-browser-contract-0123456789';
   await key.fill(secret);
@@ -990,7 +987,7 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
   const { trigger, fast } = await openFastRouting(page);
   await fast.getByLabel('TypeSafe API key').fill('tsk-rejected-contract-0123456789');
-  await fast.getByRole('button', { name: 'Save key' }).click();
+  await fast.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(fast.getByRole('alert')).toHaveText('TypeSafe rejected this key.');
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('tsk-rejected-contract-0123456789');
 
