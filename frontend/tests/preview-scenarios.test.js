@@ -103,6 +103,8 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
       type: 'chat', message: 'Notícias de IA de hoje', files: [], assistant_ids: [], locale: 'pt',
     });
     const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+    assert.equal(parsed.locale, 'pt');
+    assert.ok(parsed.purpose);
     assert.equal(parsed.help_url, 'https://dashboard.exa.ai/api-keys');
     assert.equal(parsed.request.stored_input, 'exa-api-key');
     const [done] = scenario.chat.message({
@@ -117,8 +119,10 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
 
 test('a human request names an Assistant its Team inventory lists, so Admin opens it', () => {
   const scenario = createScenario('human-request');
-  const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [] });
+  const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });
   const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+  // The purpose was written in Portuguese, so an English challenge carries none.
+  assert.equal(parsed.purpose, undefined);
   const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
   assert.equal(parsed.type, 'human-required');
   assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
@@ -132,15 +136,19 @@ test('the human-approval scenario renders its copy in the turn language and keep
   const portuguese = parseChatEvent(ask('pt'), 'marketing', 'Marketing');
   assert.equal(portuguese.locale, 'pt');
   assert.equal(displayedHumanRequest(portuguese).title, 'Alterações de DNS a publicar: 3. Zona: example.com.');
-  const english = parseChatEvent(ask('ja'), 'marketing', 'Marketing');
-  assert.equal(english.locale, 'en');
-  assert.equal(displayedHumanRequest(english).title, 'DNS changes to publish: 3. Zone: example.com.');
-  assert.deepEqual(portuguese.request, english.request);
+  const japanese = parseChatEvent(ask('ja'), 'marketing', 'Marketing');
+  assert.equal(japanese.locale, 'ja');
+  assert.equal(displayedHumanRequest(japanese).title, 'DNS changes to publish: 3. Zone: example.com.');
+  assert.deepEqual(portuguese.request, japanese.request);
+  // A sync reopens the pending request in the language it names, as Team does (ADR-0091).
+  const [reopened] = scenario.chat.message({ type: 'sync', locale: 'pt' });
+  assert.equal(parseChatEvent(reopened, 'marketing', 'Marketing').locale, 'pt');
   assert.deepEqual(displayedHumanRequest(portuguese).options.map((option) => option.value), ['proxied', 'dns-only']);
   const [done] = scenario.chat.message({
     type: 'human-response', challenge_id: portuguese.challenge_id, decision: 'submit', value: 'dns-only',
   });
   assert.match(parseChatEvent(done, 'marketing', 'Marketing').reply, /dns-only/u);
+  assert.deepEqual(scenario.chat.message({ type: 'sync', locale: 'pt' }), [{ type: 'sync-empty' }]);
   const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
   assert.ok(inventory.some((entry) => entry.assistant === portuguese.assistant.id));
 });

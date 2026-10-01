@@ -109,6 +109,8 @@
   let humanRejection = $state();
   let humanWorking = $state(false);
   let humanExpiredId = $state('');
+  // The interface language a reconciling sync asked Team to render the pending request in (ADR-0091).
+  let humanRelocalizing = $state('');
   let integrations = $state([]);
   let storedInputs = $state([]);
   let integrationsReady = $state(false);
@@ -134,6 +136,8 @@
   let storeCopy = $derived($t('store'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
+  // A request rendered in another language than the one selected now is never answered; a fresh one is requested.
+  let humanStale = $derived(Boolean(humanChallenge) && humanChallenge.locale !== $locale);
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -894,6 +898,7 @@
     humanRejection = undefined;
     humanWorking = false;
     humanExpiredId = '';
+    humanRelocalizing = '';
     integrationsDialogOpen = false;
     integrationsReady = false;
     integrationWorking = '';
@@ -1023,7 +1028,7 @@
       syncing = true;
       resetProgress();
       try {
-        active.send(JSON.stringify(createSyncFrame(expectedTeamId)));
+        active.send(JSON.stringify(createSyncFrame(expectedTeamId, $locale)));
       } catch {
         socket = null;
         socketReady = false;
@@ -1056,6 +1061,11 @@
         }
         if (incoming.type === 'human-required') {
           const challenge = incoming;
+          if (humanRelocalizing) {
+            // Admin opened the pending request in exactly the language the reconciling sync named.
+            if (challenge.locale !== humanRelocalizing) throw new Error('unexpected human request language');
+            humanRelocalizing = '';
+          }
           if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
           else {
             void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
@@ -1099,6 +1109,14 @@
           syncing = false;
           resetProgress();
           clearTurnInstalled();
+          if (humanRelocalizing) {
+            // The request ended before it could be opened in the selected language.
+            busy = false;
+            stopping = false;
+            resetChallengeState();
+            setError(humanRequestCopy.expired);
+            return;
+          }
           if (humanExpiredId) {
             busy = false;
             stopping = false;
@@ -1655,7 +1673,7 @@
   function respondToHuman(response) {
     const teamId = chatTeamId;
     const challenge = humanChallenge;
-    if (!teamId || !challenge || humanWorking || !socketReady || !socket) return;
+    if (!teamId || !challenge || humanStale || humanWorking || !socketReady || !socket) return;
     let frame;
     try {
       frame = createHumanResponseFrame(
@@ -1698,12 +1716,33 @@
     syncing = true;
     resetProgress();
     try {
-      socket.send(JSON.stringify(createSyncFrame(chatTeamId)));
+      socket.send(JSON.stringify(createSyncFrame(chatTeamId, $locale)));
     } catch {
       syncing = false;
       socket.close();
     }
   }
+
+  // A pending or restored request in another language than the one selected is replaced by a fresh challenge in the
+  // selected language before it can be answered. A reply that arrives after yet another switch is reconciled again.
+  function relocalizeHumanRequest(selected) {
+    humanRelocalizing = selected;
+    syncing = true;
+    try {
+      socket.send(JSON.stringify(createSyncFrame(chatTeamId, selected)));
+    } catch {
+      humanRelocalizing = '';
+      syncing = false;
+      socket.close();
+    }
+  }
+
+  $effect(() => {
+    const selected = $locale;
+    if (!humanStale || humanWorking || humanRelocalizing || syncing || !socketReady || !socket) return;
+    if (humanChallenge.challenge_id === humanExpiredId) return;
+    relocalizeHumanRequest(selected);
+  });
 
   function expireHumanRequest(challengeId) {
     if (humanChallenge?.challenge_id !== challengeId || humanExpiredId === challengeId) return;
@@ -2157,7 +2196,7 @@
           open={Boolean(humanChallenge) && humanChallenge?.challenge_id !== humanExpiredId}
           challenge={humanChallenge}
           rejection={humanRejection}
-          working={humanWorking}
+          working={humanWorking || humanStale}
           onrespond={respondToHuman}
           onretry={retryHumanAuthentication}
           onexpire={expireHumanRequest}

@@ -46,18 +46,21 @@ class TeamBridgeEdgeTests(unittest.TestCase):
             self.assertEqual(bridge.create("team_1", " Marketing "), expected)
             self.assertEqual(bridge.stop_chat("team_1"), expected)
             self.assertEqual(bridge.pending_chat_integrations("team_1"), expected)
-            self.assertEqual(bridge.pending_chat_human("team_1"), expected)
+            self.assertEqual(bridge.open_chat_human("team_1", "pt"), expected)
         self.assertEqual(
             call.call_args_list,
             [
                 mock.call("POST", "/v1/teams/team_1/create", {"team_name": "Marketing"}),
                 mock.call("POST", "/v1/teams/team_1/chat/stop", {}),
                 mock.call("GET", "/v1/teams/team_1/chat/integrations"),
-                mock.call("GET", "/v1/teams/team_1/chat/human"),
+                mock.call("POST", "/v1/teams/team_1/chat/human/challenge", {"locale": "pt"}),
             ],
         )
         with self.assertRaisesRegex(bridge.TeamRequestError, "team name"):
             bridge.create("team_1", " ")
+        for locale in (None, "xx"):
+            with self.assertRaisesRegex(bridge.TeamRequestError, "interface language"):
+                bridge.open_chat_human("team_1", locale)
 
     def test_space_reset_projects_only_the_admin_confirmation(self) -> None:
         response = bridge.TeamResponse(

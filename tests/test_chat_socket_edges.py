@@ -412,7 +412,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = socket._Connection()
             with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
-                self.assertIsNone(await socket._load_sync_snapshot(websocket, connection, "team_1"))
+                self.assertIsNone(await socket._load_sync_snapshot(websocket, connection, "team_1", "en"))
             self.assertTrue(connection.sync_terminal_sent)
 
             turn = socket._Turn(None, "pending-stop")
@@ -423,7 +423,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNone(connection.active)
 
             connection = socket._Connection(sync_task=mock.Mock())
-            await socket._dispatch_sync(websocket, connection, "team_1")
+            await socket._dispatch_sync(websocket, connection, "team_1", "en")
 
             connection = socket._Connection(active=socket._Turn(None, "chat"))
             await socket._dispatch_chat(
@@ -500,11 +500,18 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNotNone(pending.active)
 
             await socket._dispatch(websocket, socket._Connection(), "team_1", {"type": "bad"}, authenticate)
+            # A sync frame names exactly one interface language for a restored request (ADR-0091).
+            for frame in ({"type": "sync"}, {"type": "sync", "locale": "xx"}, {"type": "sync", "locale": None}):
+                await socket._dispatch(websocket, socket._Connection(), "team_1", frame, authenticate)
+                self.assertEqual(
+                    websocket.send_json.await_args.args[0],
+                    {"type": "error", "status": 400, "detail": "unsupported chat frame"},
+                )
             await socket._dispatch(
                 websocket,
                 socket._Connection(lifecycle=mock.sentinel.lifecycle),
                 "team_1",
-                {"type": "sync"},
+                {"type": "sync", "locale": "en"},
                 authenticate,
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
@@ -612,21 +619,21 @@ class ChatSocketEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             with mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=None)):
-                self.assertIsNone(await socket._load_sync_snapshot(websocket, socket._Connection(), "team_1"))
+                self.assertIsNone(await socket._load_sync_snapshot(websocket, socket._Connection(), "team_1", "en"))
 
             with mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(return_value=None)):
-                await socket._deliver_sync(websocket, socket._Connection(), "team_1")
+                await socket._deliver_sync(websocket, socket._Connection(), "team_1", "en")
 
             snapshot = socket._SyncSnapshot("human", object())
             with mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(return_value=snapshot)):
-                await socket._deliver_sync(websocket, socket._Connection(closed=True), "team_1")
+                await socket._deliver_sync(websocket, socket._Connection(closed=True), "team_1", "en")
 
             connection = socket._Connection()
             with (
                 mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(side_effect=RuntimeError)),
                 mock.patch.object(socket, "_send_sync_terminal_once", new=mock.AsyncMock(return_value=False)),
             ):
-                await socket._deliver_sync(websocket, connection, "team_1")
+                await socket._deliver_sync(websocket, connection, "team_1", "en")
             self.assertTrue(connection.closed)
 
         asyncio.run(scenario())

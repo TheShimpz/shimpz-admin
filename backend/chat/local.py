@@ -618,13 +618,20 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
     )
 
 
-def _project_pending_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
+def _project_pending_challenge(
+    response: team.TeamResponse,
+    team_id: str,
+    locale: str | None = None,
+) -> team.TeamResponse:
+    """Project a Team challenge; a human one requested in an interface language must be rendered in exactly it."""
     if response.body.get("status") == "integrations-required":
         return _project_integration_challenge(response, team_id)
     if response.body.get("status") == "human-required":
         try:
             body = human.project(response.body, team_id)
         except human.HumanChallengeError:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-challenge-response-invalid"})
+        if locale is not None and body["locale"] != locale:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-challenge-response-invalid"})
         return PublicResponse(response.status, body)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
@@ -706,6 +713,7 @@ def _submit(
     request: Callable[..., team.TeamResponse],
     progress: Callable[[dict[str, object]], None],
     assurance: dict[str, str] | None = None,
+    locale: str | None = None,
 ) -> team.TeamResponse:
     with _admin_span(progress, "admin-preparation"):
         canonical_id = team.canonical_team_id(team_id)
@@ -730,7 +738,7 @@ def _submit(
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
+        return _project_pending_challenge(response, canonical_id, locale)
     if response.body.get("status") == "human-denied":
         return _project_human_denial(response, canonical_id)
     if not 200 <= response.status < 300:
@@ -753,7 +761,9 @@ def turn(
         # A non-object browser payload reaches the Team body validator unchanged and fails closed there.
         return team.canonical_team_chat_body({**value, "conversation": wire} if isinstance(value, dict) else value)
 
-    return _submit(team_id, payload, team_body, team.chat, progress)
+    # Team renders a new or already pending human request in the chat's interface language (ADR-0091).
+    locale = payload.get("locale") if isinstance(payload, dict) else None
+    return _submit(team_id, payload, team_body, team.chat, progress, locale=locale)
 
 
 def resume_integrations(
@@ -819,11 +829,12 @@ def pending_integrations(team_id: object) -> team.TeamResponse:
     )
 
 
-def pending_human(team_id: object) -> team.TeamResponse:
+def open_human(team_id: object, locale: str) -> team.TeamResponse:
+    """The Team's pending human challenge rendered in the selected interface language, or that none is pending."""
     return _pending(
         team_id,
-        team.pending_chat_human,
-        _project_pending_challenge,
+        lambda canonical_id: team.open_chat_human(canonical_id, locale),
+        lambda response, canonical_id: _project_pending_challenge(response, canonical_id, locale),
         "human-challenge-response-invalid",
     )
 

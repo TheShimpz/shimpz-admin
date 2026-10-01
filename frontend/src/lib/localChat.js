@@ -739,9 +739,10 @@ export function createStopFrame(teamId) {
   return { type: 'stop' };
 }
 
-export function createSyncFrame(teamId) {
+// A sync restores the Team's pending request in the interface language selected now (ADR-0091).
+export function createSyncFrame(teamId, locale) {
   requireTeam(teamId);
-  return { type: 'sync' };
+  return { type: 'sync', locale: requireLocale(locale) };
 }
 
 function canonicalHumanResponseValue(value) {

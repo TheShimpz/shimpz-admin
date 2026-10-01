@@ -99,7 +99,8 @@ test('chat builds only the versioned WebSocket contract', () => {
   }
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
-  assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
+  assert.deepEqual(createSyncFrame('team_1', 'pt'), { type: 'sync', locale: 'pt' });
+  assert.throws(() => createSyncFrame('team_1'), /Invalid local chat request/);
   assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v7');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),

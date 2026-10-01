@@ -240,32 +240,37 @@ function clarifyReply(state, message) {
   };
 }
 
-// The human-request scenario pauses an Action for a Stored Input the Team does not hold yet (ADR-0090).
-const HUMAN_CHALLENGE = Object.freeze({
-  type: 'human-required',
-  challenge_id: 'b'.repeat(32),
-  expires_in: 180,
-  assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
-  action: { id: 'search-web', summary: 'Search the web with Exa.' },
-  purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.',
-  help_url: 'https://dashboard.exa.ai/api-keys',
-  ...localizedChallenge({
-    kind: 'input:password',
-    ordinal: 0,
-    title: 'Exa API key',
-    description: 'Exa search uses your Exa API key. It is stored encrypted for this Team and reused.',
-    fingerprint: 'c'.repeat(64),
-    label: 'Exa API key',
-    required: true,
-    placeholder: 'Paste your Exa API key',
-    min_length: 1,
-    max_length: 128,
-    stored_input: 'exa-api-key',
-  }),
+// The human-request scenario pauses an Action for a Stored Input the Team does not hold yet (ADR-0090). Its purpose is
+// written in Portuguese, so Team projects it only in a Portuguese challenge (ADR-0091).
+const STORED_INPUT_REQUEST = Object.freeze({
+  kind: 'input:password',
+  ordinal: 0,
+  title: 'Exa API key',
+  description: 'Exa search uses your Exa API key. It is stored encrypted for this Team and reused.',
+  fingerprint: 'c'.repeat(64),
+  label: 'Exa API key',
+  required: true,
+  placeholder: 'Paste your Exa API key',
+  min_length: 1,
+  max_length: 128,
+  stored_input: 'exa-api-key',
 });
 
+function storedInputChallenge(locale) {
+  return {
+    type: 'human-required',
+    challenge_id: 'b'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
+    action: { id: 'search-web', summary: 'Search the web with Exa.' },
+    ...(locale === 'pt' ? { purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.' } : {}),
+    help_url: 'https://dashboard.exa.ai/api-keys',
+    ...localizedChallenge(STORED_INPUT_REQUEST, { locale }),
+  };
+}
+
 // The human-approval scenario asks to choose how a DNS change is published. Team renders the Assistant's English copy
-// in the turn's interface language (ADR-0091); this preview carries English and Portuguese, and English otherwise.
+// in the requested interface language (ADR-0091); this preview carries Portuguese text and English text otherwise.
 const APPROVAL_REQUEST = Object.freeze({
   kind: 'input:choice',
   ordinal: 0,
@@ -292,19 +297,20 @@ const APPROVAL_COPY = Object.freeze({
 });
 
 function approvalChallenge(locale) {
-  const shown = APPROVAL_COPY[locale] ? locale : 'en';
   return {
     type: 'human-required',
     challenge_id: 'b'.repeat(32),
     expires_in: 180,
     assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
     action: { id: 'publish-dns', summary: 'Publish reviewed DNS changes.' },
-    ...localizedChallenge(APPROVAL_REQUEST, { locale: shown, shown: APPROVAL_COPY[shown] ?? {} }),
+    ...localizedChallenge(APPROVAL_REQUEST, { locale, shown: APPROVAL_COPY[locale] ?? {} }),
   };
 }
 
+// The pending request in the language a chat or sync frame names, as Team reopens it.
 function humanChallenge(state, frame) {
-  return state.human === 'approval' ? approvalChallenge(frame.locale) : structuredClone(HUMAN_CHALLENGE);
+  const locale = frame.locale ?? 'en';
+  return state.human === 'approval' ? approvalChallenge(locale) : storedInputChallenge(locale);
 }
 
 function chatReply(state, frame) {
@@ -371,9 +377,13 @@ export function createScenario(name = 'ready') {
     chat: {
       path: '/api/teams/marketing/chat/ws',
       message(frame) {
-        if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
-        if (frame?.type === 'chat' && state.human) return [humanChallenge(state, frame)];
+        if (frame?.type === 'sync') return state.humanPending ? [humanChallenge(state, frame)] : [{ type: 'sync-empty' }];
+        if (frame?.type === 'chat' && state.human) {
+          state.humanPending = true;
+          return [humanChallenge(state, frame)];
+        }
         if (frame?.type === 'human-response') {
+          state.humanPending = false;
           return [{
             type: 'done',
             team_id: 'marketing',

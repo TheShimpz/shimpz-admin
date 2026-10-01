@@ -410,9 +410,12 @@ def pending_chat_integrations(team_id: object) -> TeamResponse:
     return _call("GET", f"/v1/teams/{canonical_id}/chat/integrations")
 
 
-def pending_chat_human(team_id: object) -> TeamResponse:
+def open_chat_human(team_id: object, locale: object) -> TeamResponse:
+    """Open the Team's pending human challenge with its request copy in one interface language (ADR-0091)."""
     canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/human")
+    if team_contract.canonical_locale(locale) is None:
+        raise TeamRequestError("opening a human challenge requires one interface language")
+    return _call("POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": locale})
 
 
 def resume_chat_integrations(

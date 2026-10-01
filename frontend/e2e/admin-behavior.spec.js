@@ -165,6 +165,8 @@ async function routeReadyChat(page, {
   humanPurpose = '',
   humanHelpUrl = '',
   humanExpiresIn = 300,
+  // Team renders a request in the turn's interface language (ADR-0091); this fixture keeps its English copy.
+  humanLocale = 'en',
   redeliverExpiredHuman = false,
   humanRejections = [],
   integrationChallenge = false,
@@ -496,7 +498,7 @@ async function routeReadyChat(page, {
       action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
       ...localizedChallenge(storedInputAfterPlan || humanStoredInput
         ? { ...humanRequest('input:password'), stored_input: humanStoredInput || 'cloudflare-token' }
-        : humanRequest(humanKind)),
+        : humanRequest(humanKind), { locale: humanLocale }),
       ...humanPresentation,
     }));
 
@@ -3091,6 +3093,7 @@ test('restores Supervisor password authorization as a focused validation modal',
   const contract = await routeReadyChat(page, {
     holdHumanResponse: true,
     humanKind: 'auth:password',
+    humanLocale: 'pt',
     humanRejections: [{
       type: 'human-response-rejected',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',

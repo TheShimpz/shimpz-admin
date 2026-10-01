@@ -570,7 +570,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     }
                 )
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                await websocket.send_json({"type": "sync"})
+                await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
                 route.set_result(
                     self.assistant_route.Result(

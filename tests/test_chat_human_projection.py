@@ -416,18 +416,41 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         self.assertFalse(human.browser_value({"kind": "unknown"}, True))
         self.assertFalse(human._browser_choices({}, None))
 
-    def test_pending_human_is_team_bound_and_none_is_closed(self) -> None:
-        pending = team.TeamResponse(200, _response(_request("approval")))
-        with mock.patch.object(team, "pending_chat_human", return_value=pending):
-            projected = local.pending_human("team_1")
-        self.assertEqual(projected.body["status"], "human-required")
+    def test_opened_human_is_team_bound_in_the_requested_language_and_none_is_closed(self) -> None:
+        request = _request("approval")
+        pending = team.TeamResponse(200, _response(request, **localization(rendered_for(request), "pt")))
+        with mock.patch.object(team, "open_chat_human", return_value=pending) as opened:
+            projected = local.open_human("team_1", "pt")
+        self.assertEqual((projected.body["status"], projected.body["locale"]), ("human-required", "pt"))
+        opened.assert_called_once_with("team_1", "pt")
+
+        # A challenge rendered in another language than the one Admin asked for is refused (ADR-0091).
+        with mock.patch.object(team, "open_chat_human", return_value=pending):
+            self.assertEqual(
+                local.open_human("team_1", "de"),
+                team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+            )
 
         none = team.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
-        with mock.patch.object(team, "pending_chat_human", return_value=none):
+        with mock.patch.object(team, "open_chat_human", return_value=none):
             self.assertEqual(
-                local.pending_human("team_1"),
+                local.open_human("team_1", "pt"),
                 team.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
+
+    def test_a_chat_turn_admits_only_a_human_challenge_in_its_interface_language(self) -> None:
+        request = _request("approval")
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        payload = {"message": "Publish", "files": [], "assistant_ids": ["shimpz-cloudflare"], "locale": "pt"}
+        for locale, expected in (("pt", 428), ("en", 502)):
+            controller = team.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))
+            with (
+                self.subTest(locale=locale),
+                mock.patch.object(team, "get_inference", return_value=inference),
+                mock.patch.object(local.models, "resolve_api_key", return_value="sk-test-0123456789"),
+                mock.patch.object(team, "chat", return_value=controller),
+            ):
+                self.assertEqual(local.turn("team_1", payload, ()).status, expected)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,7 @@ from chat import (
     socket_boundary,
     task_resume,
 )
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 CHAT_SUBPROTOCOL = "shimpz.chat.v7"
@@ -265,6 +266,7 @@ async def _finish_active_turn(
 
 def _sync_snapshot(
     team_id: str,
+    locale: str,
     progress: Callable[[dict[str, object]], None],
 ) -> _SyncSnapshot:
     pending_integration = local.pending_integrations(team_id)
@@ -276,17 +278,19 @@ def _sync_snapshot(
         return _SyncSnapshot("integration", pending_integration, resumed)
     if not sync_delivery.is_empty_pending(pending_integration, team_id):
         return _SyncSnapshot("integration", pending_integration)
-    return _SyncSnapshot("human", local.pending_human(team_id))
+    # A pending human request is restored in the interface language the browser selected (ADR-0091).
+    return _SyncSnapshot("human", local.open_human(team_id, locale))
 
 
 async def _load_sync_snapshot(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
+    locale: str,
 ) -> _SyncSnapshot | None:
     progress, report = _progress_channel()
     try:
-        future = submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, report)
+        future = submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, locale, report)
     except ExecutorSaturatedError:
         await _send_sync_terminal_once(
             websocket,
@@ -308,13 +312,13 @@ async def _load_sync_snapshot(
     return snapshot
 
 
-async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
+async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str, locale: str) -> None:
     task = asyncio.current_task()
     try:
         completed = False
         with contextlib.suppress(Exception):
             connection.pending_history_id = await history_delivery.observe(team_id)
-            snapshot = await _load_sync_snapshot(websocket, connection, team_id)
+            snapshot = await _load_sync_snapshot(websocket, connection, team_id, locale)
             if snapshot is None:
                 return
             if connection.closed:
@@ -441,12 +445,12 @@ def _request_stop(
     return turn.stop_task
 
 
-async def _dispatch_sync(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
+async def _dispatch_sync(websocket: WebSocket, connection: _Connection, team_id: str, locale: str) -> None:
     if connection.sync_task is not None or connection.active is not None:
         await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
         return
     connection.sync_terminal_sent = False
-    connection.sync_task = asyncio.create_task(_deliver_sync(websocket, connection, team_id))
+    connection.sync_task = asyncio.create_task(_deliver_sync(websocket, connection, team_id, locale))
 
 
 def _authenticated_denial(response: object) -> bool:
@@ -734,8 +738,9 @@ async def _dispatch(
     if connection.lifecycle_proposal is not None and frame_type != "chat":
         await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle decision is pending"))
         return
-    if frame_type == "sync" and set(frame) == {"type"}:
-        await _dispatch_sync(websocket, connection, team_id)
+    sync_locale = _sync_locale(frame) if frame_type == "sync" else None
+    if sync_locale is not None:
+        await _dispatch_sync(websocket, connection, team_id, sync_locale)
     elif frame_type == "chat":
         await _dispatch_chat(websocket, connection, team_id, frame)
     elif frame_type == "resume-task":
@@ -761,6 +766,11 @@ async def _dispatch(
         await _dispatch_human_response(websocket, connection, team_id, frame, authenticate)
     else:
         await _send_event(websocket, _error_terminal(400, "unsupported chat frame"))
+
+
+def _sync_locale(frame: dict[str, object]) -> str | None:
+    """A sync frame is exactly ``{"type": "sync", "locale": code}``: a restored request renders in that language."""
+    return team_contract.canonical_locale(frame["locale"]) if set(frame) == {"type", "locale"} else None
 
 
 def _has_subprotocol(websocket: WebSocket) -> bool:
