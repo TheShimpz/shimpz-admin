@@ -1,7 +1,25 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  let { label, deleteLabel, ondelete, renameLabel = '', onrename = null, routinesLabel = '', onroutines = null } = $props();
+  let {
+    label,
+    deleteLabel,
+    ondelete,
+    renameLabel = '',
+    onrename = null,
+    routinesLabel = '',
+    onroutines = null,
+    // Reordering (Local only): each move is offered when its handler is set and disabled at the list's boundary.
+    moveUpLabel = '',
+    onmoveup = null,
+    moveDownLabel = '',
+    onmovedown = null,
+    first = false,
+    last = false,
+  } = $props();
+
+  // A disabled item cannot take focus, so keyboard movement skips it.
+  const ITEMS = '[role="menuitem"]:not(:disabled)';
 
   let open = $state(false);
   let root = $state();
@@ -38,7 +56,7 @@
     queueMicrotask(() => {
       menu?.showPopover();
       place();
-      menu?.querySelector('[role="menuitem"]')?.focus();
+      menu?.querySelector(ITEMS)?.focus();
     });
   }
 
@@ -56,7 +74,7 @@
 
   // Arrow keys, Home, and End move between the menu items, so every item is reachable from the keyboard.
   function menuKeydown(event) {
-    const items = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])];
+    const items = [...(menu?.querySelectorAll(ITEMS) ?? [])];
     const index = items.indexOf(document.activeElement);
     const last = items.length - 1;
     const next = {
@@ -106,6 +124,14 @@
         {routinesLabel}
       </Button>
     {/if}
+    {#if onmoveup && onmovedown}
+      <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" disabled={first} onclick={() => choose(onmoveup)}>
+        {moveUpLabel}
+      </Button>
+      <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" disabled={last} onclick={() => choose(onmovedown)}>
+        {moveDownLabel}
+      </Button>
+    {/if}
     <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
       {deleteLabel}
     </Button>
@@ -119,5 +145,6 @@
   .content:not(:popover-open) { display: none; }
   .content :global(.item) { width: 100%; justify-content: flex-start; border: 0; background: transparent; clip-path: none; text-align: start; }
   .content :global(.item.danger) { color: var(--shimpz-color-danger); }
-  .content :global(.item:hover) { background: var(--shimpz-color-surface-high); }
+  .content :global(.item:hover:not(:disabled)) { background: var(--shimpz-color-surface-high); }
+  .content :global(.item:disabled) { color: var(--shimpz-color-text-dim); cursor: default; opacity: 0.55; }
 </style>

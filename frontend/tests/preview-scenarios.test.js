@@ -123,3 +123,54 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
   assert.equal(parsed.type, 'human-required');
   assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
 });
+
+test('the Team order is saved only as an exact permutation of the listed Teams', () => {
+  const scenario = createScenario('ready');
+  const ids = () => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const put = (body) => scenario.respond({ method: 'PUT', path: '/api/teams/order', body });
+  const listed = ids();
+  assert.deepEqual(listed, ['marketing', 'trinity', 'cypher', 'morpheus', 'neo', 'smith']);
+
+  for (const body of [
+    null,
+    [],
+    { team_ids: 'marketing' },
+    { team_ids: listed, extra: true },
+    { team_ids: [...listed, 'marketing'] },
+    { team_ids: ['Marketing', ...listed.slice(1)] },
+    { team_ids: Array.from({ length: 129 }, (_, index) => `t${index}`) },
+  ]) {
+    assert.equal(put(body).status, 400);
+  }
+  assert.equal(put({ team_ids: listed.slice(1) }).status, 409);
+  assert.equal(put({ team_ids: [...listed.slice(1), 'oracle'] }).status, 409);
+  assert.deepEqual(ids(), listed);
+
+  const reordered = [...listed].reverse();
+  assert.deepEqual(put({ team_ids: reordered }).json.teams.map((team) => team.team_id), reordered);
+  assert.deepEqual(ids(), reordered);
+});
+
+test('the reorder failure scenarios fail one save, then save normally', () => {
+  const unavailable = createScenario('reorder-unavailable');
+  const order = (scenario) => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const reversed = order(unavailable).reverse();
+  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 503);
+  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 200);
+
+  const conflict = createScenario('reorder-conflict');
+  const before = order(conflict);
+  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: before } }).status, 409);
+  assert.deepEqual(order(conflict), ['oracle', ...before]);
+  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: order(conflict) } }).status, 200);
+});
+
+test('every listed Team answers its read-only views, and an unlisted one fails closed', () => {
+  const scenario = createScenario('ready');
+  for (const view of ['assistants', 'files', 'chat/history', 'inference', 'assistant-integrations', 'assistant-stored-inputs', 'routines']) {
+    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/neo/${view}` }).status, 200, view);
+    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/oracle/${view}` }), null, view);
+  }
+  assert.equal(scenario.respond({ method: 'GET', path: '/api/teams/neo/unknown' }), null);
+  assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/neo/routines', body: {} }), null);
+});

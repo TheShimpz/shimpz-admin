@@ -10,7 +10,9 @@ import {
   loadTeamContext,
   MAX_CHAT_ASSISTANTS,
   refreshTeamInventory,
+  reloadTeamList,
   renameTeam,
+  reorderTeams,
   selectTeam,
   teamContext,
 } from '../src/lib/teamContext.js';
@@ -814,4 +816,195 @@ test('a rename answered after the context cleared never publishes over the next 
     '/api/teams/research/assistants': async () => response(200, { assistants: [] }),
   }), 'Research');
   assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Marketing');
+});
+
+const THREE_TEAMS = [
+  { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+  { team_id: 'support', team_name: 'Support', status: 'running' },
+  { team_id: 'sales', team_name: 'Sales', status: 'running' },
+];
+
+function listedTeams(ids, teams = THREE_TEAMS) {
+  return ids.map((id) => teams.find((team) => team.team_id === id));
+}
+
+function orderIds() {
+  return get(teamContext).teams.map((team) => team.id);
+}
+
+// A fetcher whose order saves wait for the test to answer them, so concurrency is deterministic.
+function heldOrderFetcher({ list = () => THREE_TEAMS } = {}) {
+  const saves = [];
+  const base = fixtureFetcher({
+    '/api/teams': () => response(200, { teams: list() }),
+    '/api/teams/sales/assistants': () => response(200, { assistants: [] }),
+  });
+  const fetcher = async (url, options = {}) => {
+    if (url !== '/api/teams/order') return base(url, options);
+    assert.equal(options.method, 'PUT');
+    assert.equal(options.cache, 'no-store');
+    return new Promise((resolve) => saves.push({ body: JSON.parse(options.body), answer: resolve }));
+  };
+  return { fetcher, saves };
+}
+
+async function settle() {
+  for (let index = 0; index < 5; index += 1) await new Promise((resolve) => setImmediate(resolve));
+}
+
+test('a reorder moves the list at once, sends the exact permutation, and keeps Admin\'s committed order', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  await loadTeamContext(fetcher, 'support');
+  const saving = reorderTeams(fetcher, ['sales', 'marketing', 'support']);
+  assert.deepEqual(orderIds(), ['sales', 'marketing', 'support']);
+  await settle();
+  assert.deepEqual(saves.map((save) => save.body), [{ team_ids: ['sales', 'marketing', 'support'] }]);
+  saves[0].answer(response(200, { teams: listedTeams(['sales', 'marketing', 'support']) }));
+  await saving;
+  assert.deepEqual(orderIds(), ['sales', 'marketing', 'support']);
+  assert.equal(get(teamContext).selectedTeamId, 'support');
+});
+
+test('moves made during a save are coalesced into one later save, never sent concurrently', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  await loadTeamContext(fetcher);
+  const first = reorderTeams(fetcher, ['support', 'marketing', 'sales']);
+  await settle();
+  const second = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+  const third = reorderTeams(fetcher, ['sales', 'marketing', 'support']);
+  assert.equal(first, second);
+  assert.equal(second, third);
+  assert.equal(saves.length, 1);
+  saves[0].answer(response(200, { teams: listedTeams(['support', 'marketing', 'sales']) }));
+  await settle();
+  // The committed first order never overwrites the newer move on screen while it waits for its own save.
+  assert.deepEqual(orderIds(), ['sales', 'marketing', 'support']);
+  assert.deepEqual(saves.map((save) => save.body.team_ids), [
+    ['support', 'marketing', 'sales'],
+    ['sales', 'marketing', 'support'],
+  ]);
+  saves[1].answer(response(200, { teams: listedTeams(['sales', 'marketing', 'support']) }));
+  await third;
+  assert.deepEqual(orderIds(), ['sales', 'marketing', 'support']);
+});
+
+test('a failed save restores only the order, keeping the selection and a rename made meanwhile', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  const renaming = fixtureFetcher({
+    '/api/teams/sales': () => response(200, { team_id: 'sales', team_name: 'Revenue' }),
+  });
+  await loadTeamContext(fetcher, 'support');
+  const saving = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+  await renameTeam(renaming, 'sales', 'Revenue');
+  await settle();
+  saves[0].answer(response(503, { detail: 'The Team order is unavailable.' }));
+  await assert.rejects(saving, (error) => error instanceof LocalApiError && error.status === 503);
+  assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);
+  assert.equal(get(teamContext).teams[2].name, 'Revenue');
+  assert.equal(get(teamContext).selectedTeamId, 'support');
+});
+
+test('a failed save never rolls back over a Team list read after it began', async () => {
+  let teams = THREE_TEAMS;
+  const { fetcher, saves } = heldOrderFetcher({ list: () => teams });
+  await loadTeamContext(fetcher);
+  const saving = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+  await settle();
+  teams = listedTeams(['support', 'sales', 'marketing']);
+  await loadTeamContext(fetcher, 'marketing');
+  saves[0].answer(response(500, {}));
+  await assert.rejects(saving, /The Team order could not be saved/);
+  assert.deepEqual(orderIds(), ['support', 'sales', 'marketing']);
+});
+
+test('a stale membership refusal reloads the Team list and keeps the selection', async () => {
+  let teams = THREE_TEAMS;
+  const { fetcher, saves } = heldOrderFetcher({ list: () => teams });
+  await loadTeamContext(fetcher, 'support');
+  const saving = reorderTeams(fetcher, ['support', 'marketing', 'sales']);
+  await settle();
+  const oracle = { team_id: 'oracle', team_name: 'Oracle', status: 'running' };
+  teams = [oracle, ...THREE_TEAMS];
+  saves[0].answer(response(409, { detail: 'The Teams changed.' }));
+  await assert.rejects(saving, (error) => error.status === 409);
+  await settle();
+  assert.deepEqual(orderIds(), ['oracle', 'marketing', 'support', 'sales']);
+  assert.equal(get(teamContext).selectedTeamId, 'support');
+});
+
+test('reloading the list after the selected Team is gone reloads the whole context', async () => {
+  let teams = THREE_TEAMS;
+  const { fetcher } = heldOrderFetcher({ list: () => teams });
+  await loadTeamContext(fetcher, 'support');
+  teams = listedTeams(['sales', 'marketing']);
+  await reloadTeamList(fetcher);
+  assert.deepEqual(orderIds(), ['sales', 'marketing']);
+  assert.equal(get(teamContext).selectedTeamId, 'sales');
+});
+
+test('a reorder that is not an exact permutation of the listed Teams is refused before any request', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  await loadTeamContext(fetcher);
+  for (const ids of [
+    ['marketing', 'support'],
+    ['marketing', 'support', 'support'],
+    ['marketing', 'support', 'unknown'],
+    ['marketing', 'support', 'sales', 'extra'],
+    'marketing',
+  ]) {
+    await assert.rejects(reorderTeams(fetcher, ids), /Invalid local Team request/);
+  }
+  assert.throws(() => reorderTeams(null, []), /Invalid local Team request/);
+  await settle();
+  assert.equal(saves.length, 0);
+  assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);
+});
+
+test('an order answer with other Teams or an invalid shape fails closed and restores the order', async () => {
+  for (const answer of [
+    response(200, { teams: listedTeams(['marketing', 'support']) }),
+    response(200, { teams: THREE_TEAMS, extra: true }),
+  ]) {
+    clearTeamContext();
+    const { fetcher, saves } = heldOrderFetcher();
+    await loadTeamContext(fetcher);
+    const saving = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+    await settle();
+    saves[0].answer(answer);
+    await assert.rejects(saving, /invalid/);
+    assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);
+  }
+});
+
+test('a save answered after the context cleared never publishes', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  await loadTeamContext(fetcher);
+  const saving = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+  await settle();
+  clearTeamContext();
+  saves[0].answer(response(503, {}));
+  await saving;
+  assert.deepEqual(get(teamContext).teams, []);
+});
+
+test('a move made after the context cleared and reloaded during a save is still saved, and a failure restores it', async () => {
+  const { fetcher, saves } = heldOrderFetcher();
+  await loadTeamContext(fetcher);
+  const first = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
+  await settle();
+  clearTeamContext();
+  await loadTeamContext(fetcher);
+  const second = reorderTeams(fetcher, ['support', 'marketing', 'sales']);
+  assert.equal(first, second);
+  saves[0].answer(response(200, { teams: listedTeams(['sales', 'support', 'marketing']) }));
+  await settle();
+  assert.deepEqual(saves.map((save) => save.body.team_ids), [
+    ['sales', 'support', 'marketing'],
+    ['support', 'marketing', 'sales'],
+  ]);
+  // The old save never published over the reloaded list; the new move is still on screen.
+  assert.deepEqual(orderIds(), ['support', 'marketing', 'sales']);
+  saves[1].answer(response(503, {}));
+  await assert.rejects(second, /The Team order could not be saved/);
+  assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);
 });

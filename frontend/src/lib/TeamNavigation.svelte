@@ -1,5 +1,6 @@
 <script>
   import { tick } from 'svelte';
+  import { flip } from 'svelte/animate';
   import { ActionLink, Button, ShimpzBrand, TextField } from '@shimpz/frontend';
 
   import { showAdminNotice } from '$lib/adminNotice.js';
@@ -7,7 +8,7 @@
   import { t } from '$lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '$lib/routineContext.js';
   import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
-  import { renameTeam, teamContext } from '$lib/teamContext.js';
+  import { renameTeam, reorderTeams, teamContext } from '$lib/teamContext.js';
   import TeamRoutineTree from '$lib/TeamRoutineTree.svelte';
 
   let {
@@ -16,6 +17,8 @@
     ondelete = () => {},
     // Local Teams have Routines (ADR-0086) and can be renamed (ADR-0088); Hosted has neither yet.
     routines = false,
+    // Local Teams keep the Supervisor's order: drag a row's handle, or Move up / Move down in its actions menu.
+    reorder = false,
     onnavigate = () => {},
     createButton = $bindable(),
   } = $props();
@@ -114,15 +117,199 @@
     return $routineContext.get(teamId) ?? { routines: [], runs: [] };
   }
 
-  // Loads follow the Team list itself, not every Team context transition such as a selection change.
-  let routineTeams = $derived(routines ? JSON.stringify($teamContext.teams.map((team) => team.id)) : '[]');
+  // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
+  let routineTeams = $derived(routines ? JSON.stringify($teamContext.teams.map((team) => team.id).sort()) : '[]');
 
   $effect(() => {
     const ids = JSON.parse(routineTeams);
     retainTeamRoutines(ids);
     for (const id of ids) loadTeamRoutines(fetch, id).catch(() => {});
   });
+
+  // Reordering. The order moves at once and is saved behind it; a refusal restores the last saved order.
+  let canReorder = $derived(reorder && $teamContext.teams.length > 1);
+  let announcement = $state('');
+  let list = $state();
+
+  async function announce(message) {
+    announcement = '';
+    await tick();
+    announcement = message;
+  }
+
+  async function saveOrder(ids, team) {
+    const position = ids.indexOf(team.id) + 1;
+    try {
+      const saving = reorderTeams(fetch, ids);
+      void announce($t('teamNavigation.moved', { team: team.name, position, total: ids.length }));
+      await saving;
+    } catch (error) {
+      showAdminNotice({
+        tone: 'error',
+        label: copy.order,
+        message: error?.status === 409 ? copy.orderStale : copy.orderFailed,
+      });
+    }
+  }
+
+  function teamIds() {
+    return $teamContext.teams.map((item) => item.id);
+  }
+
+  async function moveTeam(team, delta) {
+    const ids = teamIds();
+    const from = ids.indexOf(team.id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, team.id);
+    const saved = saveOrder(ids, team);
+    // The moved row's actions button takes the focus back, so the next move is one menu away.
+    await tick();
+    list?.querySelector(`[data-team-row="${team.id}"] [aria-haspopup="menu"]`)?.focus();
+    await saved;
+  }
+
+  // Pointer dragging works for mouse, pen, and touch from the handle only, so the rest of the row keeps scrolling,
+  // links, rename, and menus. It starts after a short movement, follows the pointer, and drops between rows.
+  const DRAG_THRESHOLD = 6;
+  // Rows glide to a new place unless the Supervisor asked for reduced motion.
+  const settle = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160);
+  const SCROLL_EDGE = 48;
+  let gesture = null;
+  let dragId = $state('');
+  let dragOffset = $state(0);
+  let dropIndex = $state(-1);
+
+  // The drop slot among the other rows, and whether it actually changes the order.
+  let dropTarget = $derived.by(() => {
+    if (!dragId || dropIndex < 0) return null;
+    const ids = teamIds();
+    if (ids.indexOf(dragId) === dropIndex) return null;
+    const others = ids.filter((id) => id !== dragId);
+    return dropIndex < others.length ? { id: others[dropIndex], side: 'before' } : { id: others.at(-1), side: 'after' };
+  });
+
+  function scrollParent(element) {
+    for (let node = element?.parentElement; node; node = node.parentElement) {
+      const { overflowY } = getComputedStyle(node);
+      if (/(auto|scroll)/u.test(overflowY) && node.scrollHeight > node.clientHeight) return node;
+    }
+    return document.scrollingElement;
+  }
+
+  function handleDown(event, team) {
+    if (!canReorder || gesture || renaming || !event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture?.(event.pointerId);
+    const scroller = scrollParent(list);
+    gesture = {
+      team,
+      handle,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      y: event.clientY,
+      scroller,
+      startScroll: scroller?.scrollTop ?? 0,
+      active: false,
+      frame: 0,
+    };
+  }
+
+  function track() {
+    if (!gesture?.active) return;
+    dragOffset = gesture.y - gesture.startY + (gesture.scroller?.scrollTop ?? 0) - gesture.startScroll;
+    let index = 0;
+    for (const row of list?.querySelectorAll(':scope > li') ?? []) {
+      if (row.dataset.teamRow === gesture.team.id) continue;
+      const box = row.querySelector('.row').getBoundingClientRect();
+      if (gesture.y > box.top + box.height / 2) index += 1;
+    }
+    dropIndex = index;
+  }
+
+  // Holding the pointer near the top or bottom edge of the scrolling list scrolls it, faster the closer it gets.
+  function autoScroll() {
+    if (!gesture?.active) return;
+    const scroller = gesture.scroller;
+    if (scroller) {
+      const box = scroller === document.scrollingElement
+        ? { top: 0, bottom: window.innerHeight }
+        : scroller.getBoundingClientRect();
+      const top = Math.max(box.top, 0) + SCROLL_EDGE;
+      const bottom = Math.min(box.bottom, window.innerHeight) - SCROLL_EDGE;
+      const step = gesture.y < top ? -Math.ceil((top - gesture.y) / 4) : gesture.y > bottom ? Math.ceil((gesture.y - bottom) / 4) : 0;
+      if (step) {
+        scroller.scrollTop += step;
+        track();
+      }
+    }
+    gesture.frame = requestAnimationFrame(autoScroll);
+  }
+
+  function handleMove(event) {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    gesture.y = event.clientY;
+    if (!gesture.active) {
+      if (Math.abs(gesture.y - gesture.startY) < DRAG_THRESHOLD) return;
+      gesture.active = true;
+      dragId = gesture.team.id;
+      gesture.frame = requestAnimationFrame(autoScroll);
+    }
+    event.preventDefault();
+    track();
+  }
+
+  function endGesture() {
+    const ended = gesture;
+    gesture = null;
+    if (!ended) return null;
+    cancelAnimationFrame(ended.frame);
+    if (ended.handle.hasPointerCapture?.(ended.pointerId)) ended.handle.releasePointerCapture(ended.pointerId);
+    const result = { ...ended, dropIndex, moved: ended.active };
+    dragId = '';
+    dragOffset = 0;
+    dropIndex = -1;
+    return result;
+  }
+
+  // A drag never doubles as a click on whatever sits under the pointer when it ends.
+  function suppressNextClick() {
+    const swallow = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+  }
+
+  function handleUp(event) {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const ended = endGesture();
+    if (!ended.moved) return;
+    suppressNextClick();
+    const ids = teamIds().filter((id) => id !== ended.team.id);
+    if (ended.dropIndex < 0 || teamIds().indexOf(ended.team.id) === ended.dropIndex) return;
+    ids.splice(ended.dropIndex, 0, ended.team.id);
+    void saveOrder(ids, ended.team);
+  }
+
+  // A cancelled pointer, a lost capture, or Escape drops nothing: the order was never changed during the drag.
+  function cancelDrag() {
+    endGesture();
+  }
+
+  function dragKeydown(event) {
+    if (event.key !== 'Escape' || !gesture?.active) return;
+    // Escape ends only the drag, never an enclosing dialog such as the mobile Team drawer.
+    event.preventDefault();
+    event.stopPropagation();
+    cancelDrag();
+  }
 </script>
+
+<svelte:window onkeydowncapture={dragKeydown} />
 
 <div class="team-navigation">
   <div class="head">
@@ -144,10 +331,20 @@
   </div>
   {#if $teamContext.teams.length > 0}
     <nav aria-label={copy.label}>
-      <ul class="teams">
-        {#each $teamContext.teams as team (team.id)}
+      <ul bind:this={list} class={['teams', dragId && 'is-reordering']}>
+        {#each $teamContext.teams as team, index (team.id)}
           {@const selected = team.id === $teamContext.selectedTeamId}
-          <li class={['team', selected && 'is-selected']}>
+          <li
+            class={[
+              'team',
+              selected && 'is-selected',
+              dragId === team.id && 'is-dragging',
+              dropTarget?.id === team.id && `drop-${dropTarget.side}`,
+            ]}
+            data-team-row={team.id}
+            animate:flip={{ duration: settle }}
+            style:transform={dragId === team.id ? `translateY(${dragOffset}px)` : undefined}
+          >
             <div class={['row', 'glitch-host', renaming === team.id && 'is-renaming']}>
               {#if renaming === team.id}
                 <div class="team-rename">
@@ -179,6 +376,21 @@
               </ActionLink>
               {/if}
               <div class="row-actions">
+                {#if canReorder}
+                  <!-- Pointer only: keyboard and assistive technology reorder from the actions menu. -->
+                  <span
+                    class="drag-handle"
+                    aria-hidden="true"
+                    title={$t('teamNavigation.dragHandle', { team: team.name })}
+                    onpointerdown={(event) => handleDown(event, team)}
+                    onpointermove={handleMove}
+                    onpointerup={handleUp}
+                    onpointercancel={cancelDrag}
+                    onlostpointercapture={(event) => { if (gesture?.pointerId === event.pointerId) cancelDrag(); }}
+                  >
+                    <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"></path></svg>
+                  </span>
+                {/if}
                 <ActionLink
                   class={['row-action', 'glitch-host', selected && active === 'assistants' && 'is-here']}
                   variant="ghost"
@@ -202,6 +414,12 @@
                   onroutines={routines && teamRoutines(team.id).routines.length > 0
                     ? () => toggleTree(team.id)
                     : null}
+                  moveUpLabel={copy.moveUp}
+                  moveDownLabel={copy.moveDown}
+                  onmoveup={canReorder ? () => moveTeam(team, -1) : null}
+                  onmovedown={canReorder ? () => moveTeam(team, 1) : null}
+                  first={index === 0}
+                  last={index === $teamContext.teams.length - 1}
                 />
               </div>
             </div>
@@ -217,6 +435,7 @@
       </ul>
     </nav>
   {/if}
+  {#if reorder}<p class="sr-only" role="status">{announcement}</p>{/if}
 </div>
 
 <style>
@@ -281,14 +500,41 @@
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  /* Reordering: a grip in the row actions, the lifted row following the pointer, and a cyan-to-magenta drop line with
+     a leading tick in the gap where the row will land. */
+  .team { position: relative; }
+  .drag-handle { display: grid; width: 1.5rem; height: 2.25rem; flex: 0 0 auto; place-items: center; color: var(--shimpz-color-text-dim); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .drag-handle:hover { color: var(--shimpz-color-cyan); }
+  .drag-handle svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: square; }
+  .teams.is-reordering, .teams.is-reordering .drag-handle { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+  .is-dragging { z-index: 3; }
+  .is-dragging > .row { --row-bg: color-mix(in srgb, var(--shimpz-color-cyan) 12%, var(--shimpz-color-surface-raised)); filter: drop-shadow(0 0.6rem 1rem rgb(0 0 0 / 60%)) drop-shadow(0 0 0.4rem rgb(0 240 255 / 30%)); }
+  .is-dragging > .row::before { background-image: var(--team-scanlines); }
+  .is-dragging > .row .row-actions { opacity: 1; }
+  .is-dragging .drag-handle, .is-dragging .monogram { color: var(--shimpz-color-cyan); }
+  .is-dragging .monogram { border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
+  .drop-before::before, .drop-after::after {
+    position: absolute; z-index: 4; inset-inline: 0; height: 6px; content: ""; pointer-events: none;
+    background:
+      linear-gradient(var(--shimpz-color-cyan), var(--shimpz-color-cyan)) 0 50% / 6px 6px no-repeat,
+      linear-gradient(90deg, var(--shimpz-color-cyan), var(--shimpz-color-magenta)) 0 50% / 100% 2px no-repeat;
+    filter: drop-shadow(0 0 4px rgb(0 240 255 / 75%));
+  }
+  :global([dir="rtl"]) .drop-before::before, :global([dir="rtl"]) .drop-after::after { background-position: 100% 50%, 0 50%; }
+  .drop-before::before { inset-block-start: -4px; }
+  .drop-after::after { inset-block-end: -4px; }
   @media (pointer: coarse) {
     .row { grid-template-columns: minmax(0, 1fr) auto; }
     .row-actions { position: static; padding: 0; background: none; opacity: 1; }
     .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.75rem; height: 2.75rem; }
+    .drag-handle { width: 2.25rem; height: 2.75rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     .row::before, .row-actions { transition: none; }
     .row .name, .row .monogram, .row :global(svg), .head :global(svg) { animation: none !important; }
+  }
+  @media (forced-colors: active) {
+    .drop-before::before, .drop-after::after { background: Highlight; filter: none; }
   }
   @media (forced-colors: active) {
     .is-selected > .row { outline: 1px solid Highlight; }
