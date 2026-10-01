@@ -711,8 +711,8 @@ class TeamOrderStackTests(_LiveTeamCase):
         order_path = self.root / "team-order.json"
         with mock.patch.dict(os.environ, {"SHIMPZ_TEAM_ORDER_STORE": str(order_path)}):
             document = self._run_asgi_probe("team-order", Path(__file__).resolve())
-        self.assertEqual(document["anonymous_list"], [401, None])
-        self.assertEqual(document["anonymous_reorder"], [401, None])
+        self.assertEqual(document["anonymous_list"], [401, "no-store"])
+        self.assertEqual(document["anonymous_reorder"], [401, "no-store"])
         self.assertEqual(document["no_origin"], [403, "no-store"])
         self.assertEqual(document["newest_first"], [200, "no-store", ["b", "a"]])
         self.assertEqual(document["reordered"], [200, "no-store", ["a", "b"]])

@@ -304,6 +304,12 @@ def _secure_response(response: Response) -> Response:
     return response
 
 
+def _refused(response: Response) -> Response:
+    """A Supervisor gate refusal is never cached, whichever API route it stands in for."""
+    response.headers["Cache-Control"] = "no-store"
+    return _secure_response(response)
+
+
 @app.middleware("http")
 async def _gate(request: Request, call_next):
     """Keep static/auth routes open and validate the profile's current Supervisor on every API call."""
@@ -322,12 +328,12 @@ async def _gate(request: Request, call_next):
         evidence = await _session_evidence(request.cookies)
     except SessionEvidenceUnavailableError:
         response = JSONResponse({"detail": "Account identity is unavailable"}, status_code=503)
-        return _secure_response(response)
+        return _refused(response)
     except auth.PasswordRecordError:
-        return _secure_response(_password_recovery_response())
+        return _refused(_password_recovery_response())
     if evidence is None:
         response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
-        return _secure_response(response)
+        return _refused(response)
     request.state.supervisor = evidence
     try:
         with _team_session_scope(request.cookies):
@@ -335,7 +341,7 @@ async def _gate(request: Request, call_next):
             return _secure_response(response)
     except supervisor.SupervisorAuthorityError, team.TeamRequestError:
         response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
-        return _secure_response(response)
+        return _refused(response)
 
 
 @app.post("/api/session")
