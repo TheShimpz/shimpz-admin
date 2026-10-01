@@ -1,9 +1,12 @@
-"""Bounded browser file ingress for the Admin-to-Team boundary."""
+"""Same-origin Team file routes and their bounded browser file ingress at the Admin-to-Team boundary."""
 
-from fastapi import HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 from team import bridge as team
+from team import http as team_http
 
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
 MAX_MULTIPART_BODY_BYTES = team.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
@@ -11,6 +14,29 @@ MAX_MULTIPART_BODY_BYTES = team.MAX_FILE_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_B
 
 class _MultipartBodyTooLargeError(OSError):
     pass
+
+
+def register(app: FastAPI) -> None:
+    """A Team's files are listed, uploaded, and deleted in both profiles."""
+    app.add_api_route("/api/teams/{team_id}/files", files_list, methods=["GET"])
+    app.add_api_route("/api/teams/{team_id}/files", file_upload, methods=["POST"])
+    app.add_api_route("/api/teams/{team_id}/files/{file_id}", file_delete, methods=["DELETE"])
+
+
+def files_list(team_id: str) -> JSONResponse:
+    return team_http.response(lambda: team.list_files(team_id))
+
+
+async def file_upload(team_id: str, request: Request) -> JSONResponse:
+    filename, media_type, content = await bounded_multipart_file(request)
+    return await run_in_threadpool(
+        team_http.response,
+        lambda: team.upload_file(team_id, filename, media_type, content),
+    )
+
+
+def file_delete(team_id: str, file_id: str) -> JSONResponse:
+    return team_http.response(lambda: team.delete_file(team_id, file_id))
 
 
 async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:

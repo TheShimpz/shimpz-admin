@@ -959,23 +959,7 @@ def team_assistant_uninstall(team_id: str, assistant_id: str):
     return _team_response(lambda: team.uninstall_assistant(team_id, assistant_id))
 
 
-@app.get("/api/teams/{team_id}/files")
-def team_files_list(team_id: str):
-    return _team_response(lambda: team.list_files(team_id))
-
-
-@app.post("/api/teams/{team_id}/files")
-async def team_file_upload(team_id: str, request: Request):
-    filename, media_type, content = await team_files.bounded_multipart_file(request)
-    return await run_in_threadpool(
-        _team_response,
-        lambda: team.upload_file(team_id, filename, media_type, content),
-    )
-
-
-@app.delete("/api/teams/{team_id}/files/{file_id}")
-def team_file_delete(team_id: str, file_id: str):
-    return _team_response(lambda: team.delete_file(team_id, file_id))
+team_files.register(app)
 
 
 @app.api_route(
