@@ -43,6 +43,7 @@ from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
 from team import snapshots as team_snapshots
+from team import summary as team_summary
 
 import browser
 from action import stored_input as action_stored_input
@@ -151,6 +152,11 @@ team_inference.register(app)
 app.add_api_route(
     "/api/teams/{team_id}/assistants/{assistant_id}/icon",
     team_assets.assistant_icon,
+    methods=["GET"],
+)
+app.add_api_route(
+    "/api/teams/{team_id}/assistants/{assistant_id}/summary",
+    team_summary.assistant_summary,
     methods=["GET"],
 )
 app.add_api_route(

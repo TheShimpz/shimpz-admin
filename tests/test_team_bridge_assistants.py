@@ -282,6 +282,31 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 team.local_assistant_summary(image_id, locale)
         self.assertEqual(len(_TeamHandler.requests), before)
 
+    def test_reads_an_installed_assistant_summary_in_one_closed_locale(self):
+        _TeamHandler.response_headers = {"Content-Type": "application/json"}
+        _TeamHandler.response_body = json.dumps({"locale": "ja", "summary": "要約。"}).encode()
+
+        response = team.assistant_summary("team_1", "hello-pulse", "ja")
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["summary"], "要約。")
+        request = _TeamHandler.requests[-1]
+        self.assertEqual(request["method"], "GET")
+        self.assertEqual(request["path"], "/v1/teams/team_1/assistants/hello-pulse/summary/ja")
+        before = len(_TeamHandler.requests)
+        for team_id, assistant_id, locale in (
+            ("team_1", "hello-pulse", "pt-BR"),
+            ("team_1", "hello-pulse", None),
+            ("team_1", "Hello", "pt"),
+            ("Team", "hello-pulse", "pt"),
+        ):
+            with (
+                self.subTest(team_id=team_id, assistant_id=assistant_id, locale=locale),
+                self.assertRaises(team.TeamRequestError),
+            ):
+                team.assistant_summary(team_id, assistant_id, locale)
+        self.assertEqual(len(_TeamHandler.requests), before)
+
     def test_rejects_an_invalid_assistant_icon_response(self):
         _TeamHandler.response_headers = {"Content-Type": "application/octet-stream"}
         _TeamHandler.response_body = b"not an admitted icon"
@@ -754,6 +779,7 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         ("/api/teams/{team_id}/assistants", "GET"),
         ("/api/teams/{team_id}/assistants", "POST"),
         ("/api/teams/{team_id}/assistants/{assistant_id}/icon", "GET"),
+        ("/api/teams/{team_id}/assistants/{assistant_id}/summary", "GET"),
         ("/api/teams/{team_id}/assistants/{assistant_id}", "DELETE"),
         ("/api/teams/{team_id}/files", "GET"),
         ("/api/teams/{team_id}/files", "POST"),

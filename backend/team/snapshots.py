@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from team import assets as team_assets
 from team import bridge as team
 from team import http as team_http
-
-from protocol.http.v1 import payload as team_contract
+from team import summary as team_summary
 
 
 def register(app: FastAPI, profile: str) -> None:
@@ -27,20 +26,10 @@ def local_assistants_list() -> JSONResponse:
 def local_assistant_summary(image_hash: str, locale: str = "") -> JSONResponse:
     """One staged snapshot's summary in the interface language, from its own pack (ADR-0091).
 
-    Team's answer must be exactly the snapshot summary in the requested locale; a busy preview passes its retry hint
-    through unchanged, and any other failure keeps Team's bounded status and code.
+    A busy preview passes its retry hint through unchanged.
     """
-    canonical = team_contract.canonical_locale(locale)
-    if canonical is None:
-        raise HTTPException(status_code=422, detail="Assistant summary locale is invalid")
-    try:
-        result = team.local_assistant_summary(f"sha256:{image_hash}", canonical)
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    if result.status != 200:
-        return JSONResponse(status_code=result.status, content=result.body)
-    body = {key: value for key, value in result.body.items() if key != "trace_id"}
-    summary = team_contract.canonical_snapshot_summary(body)
-    if summary is None or summary["locale"] != canonical:
-        raise HTTPException(status_code=502, detail="Local Assistant summary is invalid")
-    return JSONResponse(content=summary, headers={"Cache-Control": "no-store"})
+    return team_summary.localized(
+        lambda canonical: team.local_assistant_summary(f"sha256:{image_hash}", canonical),
+        locale,
+        "Local Assistant",
+    )

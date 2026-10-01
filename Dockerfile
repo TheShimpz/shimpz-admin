@@ -71,7 +71,7 @@ COPY backend/space/host_reset.py backend/space/release.py backend/space/reset.py
 COPY backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
 COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py backend/team/names.py \
-    backend/team/snapshots.py backend/team/transport.py ./team/
+    backend/team/snapshots.py backend/team/summary.py backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py backend/protocol/http/v1/routine.py \
     backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build

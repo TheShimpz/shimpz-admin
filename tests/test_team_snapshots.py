@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -68,7 +68,7 @@ class SnapshotSummaryTests(unittest.TestCase):
             {"locale": "pt", "summary": "Resumo.", "messages": []},
             {"locale": "pt"},
         ):
-            with self.subTest(body=body), self.assertRaises(snapshots.HTTPException) as caught:
+            with self.subTest(body=body), self.assertRaises(HTTPException) as caught:
                 self.summary(transport.TeamResponse(200, body))
             self.assertEqual(caught.exception.status_code, 502)
 
@@ -86,11 +86,11 @@ class SnapshotSummaryTests(unittest.TestCase):
     def test_refuses_an_invalid_locale_or_image_before_reaching_team(self) -> None:
         with mock.patch.object(bridge, "local_assistant_summary") as read:
             for locale in ("", "it", "PT", "pt-BR"):
-                with self.subTest(locale=locale), self.assertRaises(snapshots.HTTPException) as caught:
+                with self.subTest(locale=locale), self.assertRaises(HTTPException) as caught:
                     snapshots.local_assistant_summary(IMAGE_HASH, locale)
                 self.assertEqual(caught.exception.status_code, 422)
         read.assert_not_called()
-        with self.assertRaises(snapshots.HTTPException) as caught:
+        with self.assertRaises(HTTPException) as caught:
             snapshots.local_assistant_summary("not-a-digest", "pt")
         self.assertEqual(caught.exception.status_code, 400)
 

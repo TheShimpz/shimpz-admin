@@ -512,6 +512,14 @@ def assistant_icon(team_id: object, assistant_id: object) -> TeamAssetResponse:
     return _call_asset(f"{_assistant_path(team_id, assistant_id)}/icon")
 
 
+def assistant_summary(team_id: object, assistant_id: object, locale: object) -> TeamResponse:
+    """Return one installed Assistant's summary in one interface language, read from its binding's pack."""
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale}")
+
+
 def install_assistant(team_id: object, payload: object) -> TeamResponse:
     if not isinstance(payload, dict) or set(payload) != {"assistant_id", "source_digest"}:
         raise TeamRequestError("request body must contain only assistant_id and source_digest")
