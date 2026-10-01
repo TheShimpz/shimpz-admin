@@ -352,6 +352,9 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             private,
             _response(tampered),
             _response({**request, "fingerprint": "0" * 64}),
+            # A non-hex fingerprint fails as an invalid challenge instead of raising in the digest comparison.
+            _response({**request, "fingerprint": "\u00e9" * 64}),
+            _response({**request, "fingerprint": "A" * 64}),
             _response({**request, "options": [request["options"][0], request["options"][0]]}),
             _response(request, expires_in=True),
             _response(

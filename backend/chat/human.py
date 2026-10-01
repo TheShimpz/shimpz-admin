@@ -64,6 +64,8 @@ _STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 # admits each reference's closed shape and parameter grammar; Team alone resolves the declared message and parameters.
 MAX_REFERENCE_PARAMS = 8
 _MESSAGE_ID = re.compile(r"[0-9a-f]{64}\Z")
+# A request fingerprint is exactly the lowercase hex SHA-256 digest; anything else fails before a constant-time compare.
+_FINGERPRINT = re.compile(r"^[0-9a-f]{64}\Z")
 _PARAM_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
 _DOMAIN_PARAM = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
 _IDENTIFIER_PARAM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*\Z")
@@ -308,7 +310,11 @@ def _request(value: object) -> dict[str, object]:
         raise HumanChallengeError("invalid human request")
     request = dict(value)
     fingerprint = request.pop("fingerprint", None)
-    if not isinstance(fingerprint, str) or not _fingerprint(request, fingerprint):
+    if (
+        not isinstance(fingerprint, str)
+        or _FINGERPRINT.fullmatch(fingerprint) is None
+        or not _fingerprint(request, fingerprint)
+    ):
         raise HumanChallengeError("invalid human request fingerprint")
     kind = request.get("kind")
     ordinal = request.get("ordinal")
