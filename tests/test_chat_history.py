@@ -475,6 +475,22 @@ class ChatHistoryTests(unittest.TestCase):
         )
         self.assertEqual(history.page("marketing")["entries"][-1]["text"], reply)
 
+    def test_cursor_positions_stay_within_the_signed_sqlite_rowid_range(self) -> None:
+        largest = 2**63 - 1
+        self.assertEqual(history._position(history._cursor(largest)), largest)
+        for position in (2**63, 2**64 - 1):
+            with self.subTest(position=position), self.assertRaises(ValueError):
+                history._position(history._cursor(position))
+
+    def test_history_route_rejects_an_out_of_range_cursor_as_a_bad_request(self) -> None:
+        history.append_user("marketing", history.new_turn_id(), "Private")
+        with (
+            mock.patch.object(history_http.team, "resolve_team_name", return_value="Marketing"),
+            self.assertRaises(HTTPException) as rejected,
+        ):
+            history_http.page("marketing", before=history._cursor(2**63))
+        self.assertEqual(rejected.exception.status_code, 400)
+
     def test_rejects_invalid_cursor_and_wrong_schema_version(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")
         with self.assertRaises(ValueError):

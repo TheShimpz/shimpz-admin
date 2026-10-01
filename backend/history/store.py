@@ -28,6 +28,7 @@ MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
 MAX_REPLY_CHARS = 60_000
 MAX_GUIDANCE_REPLY_CHARS = 240
+_MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -457,7 +458,8 @@ def _position(value: object) -> int | None:
         position = struct.unpack(">Q", raw)[0]
     except UnicodeError, ValueError, struct.error:
         raise ValueError("chat history cursor is invalid") from None
-    if _cursor(position) != value or position < 1:
+    # A transcript position is a signed 64-bit SQLite rowid; a larger unsigned value is malformed, not unavailable.
+    if _cursor(position) != value or not 1 <= position <= _MAX_POSITION:
         raise ValueError("chat history cursor is invalid")
     return position
 
