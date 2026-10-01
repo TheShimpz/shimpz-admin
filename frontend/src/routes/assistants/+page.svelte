@@ -38,6 +38,8 @@
   let dialogMode = $state('install');
   let dialogAttempt = 0;
   let publicAssistants = $state([]);
+  // The interface language the presented public catalog was read in; its summaries show only while it is selected.
+  let publicCatalogLocale = $state('');
   let publicCatalogPhase = $state('loading');
   let publicCatalogError = $state('');
   let localSnapshots = $state([]);
@@ -482,6 +484,7 @@
       }
 
       publicAssistants = nextPublicAssistants;
+      publicCatalogLocale = language;
       publicCatalogPhase = nextPublicPhase;
       publicCatalogError = nextPublicError;
       if (localProfile) {
@@ -670,7 +673,7 @@
         class="assistant-card"
         name={assistant.name}
         meta={assistant.creators.join(', ')}
-        summary={assistant.summary}
+        summary={publicCatalogLocale === $locale ? assistant.summary : ''}
         iconSrc={catalogIconUrls[publicIconKey(assistant)]}
         iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
         iconLoading="eager"

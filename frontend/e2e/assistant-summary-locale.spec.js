@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { LOCALES } from '../src/lib/locales.js';
+import { messages } from '../src/lib/messages.js';
 
 // ADR-0091: published and staged Assistant summaries follow the interface language. Published summaries come from
 // the locale-keyed public catalog; a staged snapshot's comes from its own language pack through Team. English is the
@@ -11,19 +13,23 @@ const ICON = Buffer.from(
 const PUBLISHED = {
   en: 'Publishes reviewed DNS changes.',
   pt: 'Publica alterações de DNS revisadas.',
+  es: 'Publica cambios de DNS revisados.',
 };
 const STAGED = {
   en: 'Inspects staged Cloudflare zones.',
   pt: 'Inspeciona zonas Cloudflare preparadas.',
+  es: 'Inspecciona zonas de Cloudflare preparadas.',
 };
 
-async function routeAssistants(page, { catalogLocale = (locale) => locale } = {}) {
+// Answers each catalog read only once `catalogGate(locale)` settles, so a test can hold one language's reply.
+async function routeAssistants(page, { catalogLocale = (locale) => locale, catalogGate = async () => {} } = {}) {
   const requests = { catalog: [], summaries: [] };
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const locale = url.searchParams.get('locale');
     if (url.pathname === '/api/assistant-catalog') {
       requests.catalog.push(locale);
+      await catalogGate(locale);
       return route.fulfill({ json: { version: 1, locale: catalogLocale(locale), assistants: [{
         assistant_id: 'dns-publisher', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'d'.repeat(64)}`, name: 'DNS Publisher',
@@ -59,6 +65,18 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale } = {}
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });
   return requests;
+}
+
+function held() {
+  let release;
+  const promise = new Promise((resolve) => { release = resolve; });
+  return { promise, release };
+}
+
+async function switchLanguage(page, from, to) {
+  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
+  await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) }).click();
+  await page.getByRole('menuitemradio', { name: name(to) }).click();
 }
 
 test('shows published and staged summaries in the interface language and reloads them on a language change', async ({ page }) => {
@@ -97,4 +115,54 @@ test('a public catalog answered in another language is refused instead of shown'
   await page.goto('/assistants/');
   await expect(page.getByRole('article', { name: /^zone-inspector/ })).toBeVisible();
   await expect(page.getByRole('article', { name: 'dns-publisher' })).toHaveCount(0);
+});
+
+test("hides the previous language's published summary while the new catalog is delayed", async ({ page }) => {
+  const pt = held();
+  const requests = await routeAssistants(page, { catalogGate: (locale) => (locale === 'pt' ? pt.promise : undefined) });
+  await page.goto('/assistants/');
+  const published = page.getByRole('article', { name: 'dns-publisher' });
+  await expect(published).toContainText(PUBLISHED.en);
+
+  await switchLanguage(page, 'en', 'pt');
+  await expect.poll(() => requests.catalog).toEqual(['en', 'pt']);
+  await expect(published).toBeVisible();
+  await expect(published).not.toContainText(PUBLISHED.en);
+  await expect(published).not.toContainText(PUBLISHED.pt);
+
+  pt.release();
+  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.pt);
+  await expect(published).toContainText(PUBLISHED.pt);
+  await expect(published).not.toContainText(PUBLISHED.en);
+});
+
+test("rapid language switches present only the selected language's published summary", async ({ page }) => {
+  const gates = { pt: held(), es: held() };
+  const requests = await routeAssistants(page, { catalogGate: (locale) => gates[locale]?.promise });
+  await page.goto('/assistants/');
+  const published = page.getByRole('article', { name: 'dns-publisher' });
+  await expect(published).toContainText(PUBLISHED.en);
+
+  await switchLanguage(page, 'en', 'pt');
+  await switchLanguage(page, 'pt', 'es');
+  await expect.poll(() => requests.catalog).toEqual(['en', 'pt', 'es']);
+  await expect(published).toBeVisible();
+  for (const summary of Object.values(PUBLISHED)) await expect(published).not.toContainText(summary);
+
+  // The superseded Portuguese reply is never presented, even when it is the first to arrive.
+  gates.pt.release();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  for (const summary of Object.values(PUBLISHED)) await expect(published).not.toContainText(summary);
+  gates.es.release();
+  await expect(published).toContainText(PUBLISHED.es);
+
+  // Returning to English hides the Spanish summary until the English catalog is presented again.
+  const en = held();
+  gates.en = en;
+  await switchLanguage(page, 'es', 'en');
+  await expect.poll(() => requests.catalog).toEqual(['en', 'pt', 'es', 'en']);
+  for (const summary of Object.values(PUBLISHED)) await expect(published).not.toContainText(summary);
+  en.release();
+  await expect(published).toContainText(PUBLISHED.en);
+  await expect(published).not.toContainText(PUBLISHED.es);
 });
