@@ -198,7 +198,6 @@
               spellcheck="false"
               required
               disabled={saving}
-              aria-describedby={`${panelId}-note`}
             />
           </li>
         </ol>
@@ -212,10 +211,6 @@
     {#if fast.error}
       <p class="error" role="alert">{fast.error}</p>
     {/if}
-    <section class="privacy" aria-labelledby={`${panelId}-privacy`}>
-      <p class="privacy-title" id={`${panelId}-privacy`}>{copy.privacyTitle}</p>
-      <p class="note" id={`${panelId}-note`}>{copy.note}</p>
-    </section>
     {/if}
   </div>
 </div>
@@ -239,7 +234,7 @@
   .head { display: flex; align-items: center; gap: var(--shimpz-space-2); }
   .glyph { width: 0.95rem; height: 0.95rem; fill: none; stroke: var(--shimpz-color-cyan); stroke-width: 1.5; stroke-linejoin: miter; }
   .title { flex: 1; margin: 0; color: var(--shimpz-color-text); font: 700 0.66rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-  .summary, .status, .note, .error, .step-copy { margin: 0; line-height: 1.5; }
+  .summary, .status, .error, .step-copy { margin: 0; line-height: 1.5; }
   .summary { color: var(--shimpz-color-text-muted); font-size: 0.8rem; }
   .status { color: var(--shimpz-color-cyan); font: 400 0.74rem/1.4 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: var(--shimpz-space-2); }
@@ -251,9 +246,6 @@
   .step-copy { color: var(--shimpz-color-text); font-size: 0.8rem; }
   .steps :global(.shimpz-text-link) { width: fit-content; font: 400 0.74rem/1.4 var(--shimpz-font-mono); }
   .actions { display: flex; justify-content: flex-end; }
-  .privacy { display: grid; gap: 0.35rem; padding-block-start: var(--shimpz-space-3); border-block-start: 1px solid var(--shimpz-color-border); }
-  .privacy-title { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.58rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-  .note { color: var(--shimpz-color-text-dim); font-size: 0.7rem; }
   .error { color: var(--shimpz-color-danger); font-size: 0.74rem; }
   @media (prefers-reduced-motion: reduce) {
     .fast-menu :global(svg) { animation: none !important; }
