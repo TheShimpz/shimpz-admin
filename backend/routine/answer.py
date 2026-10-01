@@ -8,6 +8,7 @@ the Supervisor's session with the Team's model key.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import re
 import threading
 import time
@@ -25,9 +26,13 @@ from routine import team as routine_team
 
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 MAX_OPEN_CHALLENGES = 64
+# Teams whose latest opening is tracked; an answer awaiting authentication has left _CHALLENGES but still needs one.
+MAX_TRACKED_GENERATIONS = 4 * MAX_OPEN_CHALLENGES
 _CHALLENGES: dict[tuple[str, str, str], tuple[float, dict[str, object]]] = {}
-# How many challenges each Team has opened; a rejected answer restores its challenge only if no newer one opened since.
+# Each Team's latest opening, as a token never reused by any Team; a rejected answer restores its challenge only while
+# that token is still the Team's own, so a newer opening or an evicted (untracked) Team refuses the restoration.
 _GENERATIONS: dict[str, int] = {}
+_TOKENS = itertools.count(1)
 _CHALLENGES_LOCK = threading.Lock()
 Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
@@ -54,21 +59,25 @@ def _store(key: tuple[str, str, str], deadline: float, request: dict[str, object
 def _remember(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
     """Keep a challenge Team just opened; Team cancelled that Team's earlier one."""
     with _CHALLENGES_LOCK:
-        _GENERATIONS[key[0]] = _GENERATIONS.get(key[0], 0) + 1
+        # Re-inserted last, so the least recently opened Team is evicted first.
+        _GENERATIONS.pop(key[0], None)
+        _GENERATIONS[key[0]] = next(_TOKENS)
+        while len(_GENERATIONS) > MAX_TRACKED_GENERATIONS:
+            _GENERATIONS.pop(next(iter(_GENERATIONS)))
         _store(key, deadline, request)
 
 
-def _restore(key: tuple[str, str, str], deadline: float, request: dict[str, object], generation: int) -> None:
+def _restore(key: tuple[str, str, str], deadline: float, request: dict[str, object], generation: int | None) -> None:
     """Reopen a challenge after a rejected answer, unless the Team opened a newer one that cancelled it meanwhile."""
     with _CHALLENGES_LOCK:
-        if _GENERATIONS.get(key[0], 0) == generation:
+        if generation is not None and _GENERATIONS.get(key[0]) == generation:
             _store(key, deadline, request)
 
 
-def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object], int] | None:
+def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object], int | None] | None:
     with _CHALLENGES_LOCK:
         entry = _CHALLENGES.pop(key, None)
-        generation = _GENERATIONS.get(key[0], 0)
+        generation = _GENERATIONS.get(key[0])
     return (*entry, generation) if entry is not None and entry[0] > time.monotonic() else None
 
 

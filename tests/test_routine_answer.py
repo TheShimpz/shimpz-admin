@@ -217,6 +217,42 @@ class RoutineAnswerTests(unittest.TestCase):
         answer._remember(("team_y", RUN, CHALLENGE), 10**12, {})
         self.assertNotIn(("team_x", RUN, CHALLENGE), answer._CHALLENGES)
 
+    def test_generation_tracking_is_bounded_and_eviction_refuses_a_delayed_restoration(self) -> None:
+        for index in range(answer.MAX_TRACKED_GENERATIONS + 1):
+            answer._remember((f"team_{index}", RUN, CHALLENGE), 10**12, {})
+        self.assertEqual(len(answer._GENERATIONS), answer.MAX_TRACKED_GENERATIONS)
+        self.assertNotIn("team_0", answer._GENERATIONS)
+        answer._GENERATIONS.clear()
+        answer._CHALLENGES.clear()
+
+        self.open("auth:password")
+        password = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": "hunter2"}
+
+        async def other_teams_evict_meanwhile(*_args):
+            # While team_1's answer awaits authentication, enough other Teams open challenges to evict its tracking.
+            for index in range(answer.MAX_TRACKED_GENERATIONS):
+                answer._remember((f"team_other_{index}", RUN, CHALLENGE), 10**12, {})
+            self.assertNotIn("team_1", answer._GENERATIONS)
+            return human.AuthenticationResult("denied", attempts_remaining=2)
+
+        rejected, stream = self.respond(dict(password), mock.AsyncMock(side_effect=other_teams_evict_meanwhile))
+        self.assertEqual((rejected.status, rejected.body["code"]), (409, "authentication-denied"))
+        stream.assert_not_called()
+        self.assertNotIn(("team_1", RUN, CHALLENGE), answer._CHALLENGES)
+
+        # A Team re-tracked after eviction gets a fresh token, so a restoration captured before eviction stays refused.
+        self.open("auth:password")
+        deadline, request, generation = answer._take(("team_1", RUN, CHALLENGE))
+        for index in range(answer.MAX_TRACKED_GENERATIONS):
+            answer._remember((f"team_more_{index}", RUN, CHALLENGE), 10**12, {})
+        self.open("auth:password")
+        self.assertGreater(answer._GENERATIONS["team_1"], generation)
+        answer._take(("team_1", RUN, CHALLENGE))
+        answer._restore(("team_1", RUN, CHALLENGE), deadline, request, generation)
+        self.assertNotIn(("team_1", RUN, CHALLENGE), answer._CHALLENGES)
+        answer._restore(("team_1", RUN, CHALLENGE), deadline, request, None)
+        self.assertNotIn(("team_1", RUN, CHALLENGE), answer._CHALLENGES)
+
     def test_routes_bind_chat_password_authority_and_refuse_malformed_answers(self) -> None:
         authenticate = mock.AsyncMock()
         route = routine_http.human_route(authenticate)
