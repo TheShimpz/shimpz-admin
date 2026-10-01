@@ -160,8 +160,8 @@ def create(team_id: object, team_name: object) -> TeamResponse:
     return _call("POST", f"/v1/teams/{canonical_id}/create", {"team_name": team_name.strip()})
 
 
-def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamResponse | str:
-    """Project one strict Team identity from the controller inventory before destruction."""
+def team_inventory(response: TeamResponse) -> TeamResponse | list[dict[str, str]]:
+    """Project the strict Team inventory in Team's order, or the failure that stands in for it."""
     if not 200 <= response.status < 300:
         return response
     try:
@@ -176,7 +176,8 @@ def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamRespon
         inventory = response.body["teams"]
         if not isinstance(inventory, list) or len(inventory) > MAX_TEAMS:
             raise ValueError("invalid inventory")
-        names: dict[str, str] = {}
+        teams: list[dict[str, str]] = []
+        seen: set[str] = set()
         for item in inventory:
             if not isinstance(item, dict) or set(item) != {"team_id", "team_name", "status"}:
                 raise ValueError("invalid Team fields")
@@ -184,16 +185,25 @@ def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamRespon
             item_name = canonical_team_name(item["team_name"])
             if item["team_id"] != item_id or item["team_name"] != item_name or item["status"] != "running":
                 raise ValueError("non-canonical Team identity")
-            if item_id in names:
+            if item_id in seen:
                 raise ValueError("duplicate Team identity")
-            names[item_id] = item_name
+            seen.add(item_id)
+            teams.append({"team_id": item_id, "team_name": item_name, "status": "running"})
     except KeyError, TypeError, ValueError, TeamRequestError:
         log.warning("team returned an invalid Team inventory")
         return TeamResponse(502, {"detail": "Team inventory response is invalid."})
-    try:
-        return names[team_id]
-    except KeyError:
-        return TeamResponse(404, {"detail": "Team not found"})
+    return teams
+
+
+def _authoritative_team_name(response: TeamResponse, team_id: str) -> TeamResponse | str:
+    """Project one strict Team identity from the controller inventory before destruction."""
+    inventory = team_inventory(response)
+    if isinstance(inventory, TeamResponse):
+        return inventory
+    for team in inventory:
+        if team["team_id"] == team_id:
+            return team["team_name"]
+    return TeamResponse(404, {"detail": "Team not found"})
 
 
 def resolve_team_name(team_id: object) -> TeamResponse | str:
