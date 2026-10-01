@@ -1,6 +1,7 @@
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseRoutineProposal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
+import { isLocale } from './locales.js';
 import {
   ASSISTANT_ID_RE,
   codePointLength,
@@ -603,15 +604,21 @@ export function capabilityContinuation(value) {
   return CAPABILITY_CONTINUATIONS.has(normalizedCapabilityContinuation(value));
 }
 
-/** Build the ordinary chat frame accepted by shimpz.chat.v7. */
-export function createChatFrame(teamId, turn) {
+function requireLocale(locale) {
+  if (!isLocale(locale)) throw new LocalApiError('Invalid local chat request.');
+  return locale;
+}
+
+/** Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in. */
+export function createChatFrame(teamId, turn, locale) {
   requireTeam(teamId);
-  return { type: 'chat', ...canonicalChatTurn(turn) };
+  return { type: 'chat', ...canonicalChatTurn(turn), locale: requireLocale(locale) };
 }
 
 /** Build Local Admin's one-use resume frame without persisting the prior objective. */
-export function createResumeTaskFrame(teamId, turn, objectiveTurn) {
+export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale) {
   requireTeam(teamId);
+  requireLocale(locale);
   const current = canonicalChatTurn(turn);
   const objective = canonicalChatTurn(objectiveTurn);
   if (
@@ -629,6 +636,7 @@ export function createResumeTaskFrame(teamId, turn, objectiveTurn) {
     files: [],
     assistant_ids: current.assistant_ids,
     objective_assistant_ids: objective.assistant_ids,
+    locale,
   };
 }
 

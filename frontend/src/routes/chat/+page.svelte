@@ -20,7 +20,7 @@
   } from '$lib/executionProgress.js';
   import Markdown from '$lib/Markdown.svelte';
   import { escapeMarkdownText } from '$lib/markdown.js';
-  import { t } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import { messages } from '$lib/messages.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
   import { sessionContext } from '$lib/sessionContext.js';
@@ -1506,11 +1506,11 @@
         assistant_ids: assistantIds,
       };
       if (resumable) {
-        frame = createResumeTaskFrame(teamId, currentTurn, resumable);
+        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale);
         resumedObjective = resumable.message;
         capabilityObjective = null;
       } else {
-        frame = createChatFrame(teamId, currentTurn);
+        frame = createChatFrame(teamId, currentTurn, $locale);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);

@@ -3,17 +3,10 @@
 // partial translation never shows a blank; it shows English.
 import { writable, derived } from 'svelte/store';
 import { messages } from './messages.js';
+import { LOCALES } from './locales.js';
 
-export const LOCALES = [
-  { code: 'en', name: 'English', dir: 'ltr' },
-  { code: 'pt', name: 'Português', dir: 'ltr' },
-  { code: 'es', name: 'Español', dir: 'ltr' },
-  { code: 'zh', name: '中文', dir: 'ltr' },
-  { code: 'fr', name: 'Français', dir: 'ltr' },
-  { code: 'de', name: 'Deutsch', dir: 'ltr' },
-  { code: 'ja', name: '日本語', dir: 'ltr' },
-  { code: 'ar', name: 'العربية', dir: 'rtl' },
-];
+export { LOCALES };
+
 const CODES = new Set(LOCALES.map((l) => l.code));
 
 function detect() {

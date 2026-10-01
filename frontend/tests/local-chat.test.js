@@ -81,13 +81,20 @@ test('chat builds only the versioned WebSocket contract', () => {
     message: '  Hi  ',
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
-  });
+  }, 'pt');
   assert.deepEqual(frame, {
     type: 'chat',
     message: 'Hi',
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
+    locale: 'pt',
   });
+  for (const locale of [undefined, null, 'pt-BR', 'EN', 'it', 1]) {
+    assert.throws(
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale),
+      /Invalid local chat request/,
+    );
+  }
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
@@ -115,6 +122,7 @@ test('chat resumes only one exact prior capability objective', () => {
       'team_1',
       { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
       objective,
+      'pt',
     ),
     {
       type: 'resume-task',
@@ -123,7 +131,17 @@ test('chat resumes only one exact prior capability objective', () => {
       files: [],
       assistant_ids: [],
       objective_assistant_ids: [],
+      locale: 'pt',
     },
+  );
+  assert.throws(
+    () => createResumeTaskFrame(
+      'team_1',
+      { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
+      objective,
+      'xx',
+    ),
+    /Invalid local chat request/,
   );
   for (const [current, prior] of [
     [
@@ -144,7 +162,7 @@ test('chat resumes only one exact prior capability objective', () => {
     ],
   ]) {
     assert.throws(
-      () => createResumeTaskFrame('team_1', current, prior),
+      () => createResumeTaskFrame('team_1', current, prior, 'pt'),
       /Invalid task resume request/,
     );
   }
@@ -308,8 +326,8 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
 
 test('chat requires one exact bounded Assistant scope and keeps empty scope Brain-only', () => {
   assert.deepEqual(
-    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }),
-    { type: 'chat', message: 'Hi', files: [], assistant_ids: [] },
+    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en'),
+    { type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en' },
   );
 
   for (const extra of [
@@ -321,7 +339,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     assert.throws(
       () => createChatFrame('team_1', {
         message: 'Hi', files: [], assistant_ids: [], ...extra,
-      }),
+      }, 'en'),
       /only message, files, and assistant_ids/,
     );
   }
@@ -334,7 +352,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     Array.from({ length: 17 }, (_value, index) => `assistant-${index}`),
   ]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }),
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }, 'en'),
       /Invalid local chat request/,
     );
   }
@@ -1030,7 +1048,7 @@ test('a terminal event admits a Team name of 80 code points and refuses 81', () 
 });
 
 test('chat text is bounded by Unicode code points, as its producers count it', () => {
-  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] });
+  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] }, 'en');
   const human = (value) => createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', value);
   const done = (reply) => parseChatEvent(
     { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply, clarification: null, routine_proposal: null },

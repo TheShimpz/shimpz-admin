@@ -2309,6 +2309,7 @@ test('resumes one prior capability objective after reconnect and installs its As
     files: [],
     assistant_ids: [],
     objective_assistant_ids: [],
+    locale: 'en',
   });
   const persistedBrowserState = await page.evaluate(() => JSON.stringify({
     local: Object.entries(localStorage),
@@ -4175,3 +4176,20 @@ test('any other request shows the Brain purpose and its Assistant, but never a k
   await expect(dialog.getByRole('link')).toHaveCount(0);
 });
 
+test('every chat frame carries the interface language selected when it is sent', async ({ page }) => {
+  const chat = await routeReadyChat(page);
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  await expect(composer).toBeEnabled();
+
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  const portuguese = page.getByRole('textbox', { name: 'Enviar', exact: true });
+  await portuguese.fill('Liste minhas zonas DNS');
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await expect.poll(() => chat.chatFrames().length).toBe(2);
+  expect(chat.chatFrames().map((frame) => [frame.type, frame.locale])).toEqual([['chat', 'en'], ['chat', 'pt']]);
+});
