@@ -45,6 +45,13 @@
       : challenge?.purpose
         ?? (isStoredInput ? $t('humanRequest.storedInputNeed', { assistant: challenge?.assistant?.name ?? '' }) : request?.description),
   );
+  // The Brain's purpose explains why; it never replaces the Assistant's own description of what will be authorized,
+  // so any other request keeps that scope visible beside the purpose.
+  let scope = $derived(
+    !rejected && !isStoredInput && challenge?.purpose && request?.description !== challenge.purpose
+      ? request?.description ?? ''
+      : '',
+  );
   // Team sends a key page only for a Stored Input request, copied from its reviewed Assistant's declaration.
   let helpUrl = $derived(isStoredInput ? challenge?.help_url ?? '' : '');
   let copy = $derived($t('humanRequest'));
@@ -234,6 +241,10 @@
       </p>
     {/if}
 
+    {#if scope}
+      <p class="request-scope">{scope}</p>
+    {/if}
+
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
         <Notice variant="error">
@@ -300,6 +311,7 @@
     font: 400 0.76rem/1.45 var(--shimpz-font-sans);
   }
   .request-lead { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
+  .request-scope { max-width: 58ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.84rem; line-height: 1.55; }
   .clock { margin-inline-start: auto; color: var(--shimpz-color-text-muted); font: 500 0.7rem/1.45 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   :global(.shimpz-button.request-action) { display: inline-flex; align-items: center; gap: 0.45rem; }
   :global(.shimpz-button.request-action svg) { width: 0.95rem; height: 0.95rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }

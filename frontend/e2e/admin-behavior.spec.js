@@ -4165,13 +4165,15 @@ test('a Stored Input request without a key page or purpose names its Assistant a
   expect(contract.humanResponses()[0]).not.toHaveProperty('value');
 });
 
-test('any other request shows the Brain purpose and its Assistant, but never a key link', async ({ page }) => {
+test('any other request shows the Brain purpose beside its authorized scope and Assistant, never a key link', async ({ page }) => {
   await routeReadyChat(page, { humanKind: 'approval', humanPurpose: TASK_PURPOSE });
   await page.goto('/chat/');
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Publish the reviewed DNS changes');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
   await expect(dialog).toContainText(TASK_PURPOSE);
+  // The purpose explains why; the Assistant's own description of what is authorized stays visible beside it.
+  await expect(dialog).toContainText('Shimpz Cloudflare paused before continuing this exact Action.');
   await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
   await expect(dialog.getByRole('link')).toHaveCount(0);
 });
