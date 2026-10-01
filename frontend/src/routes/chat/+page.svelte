@@ -14,6 +14,8 @@
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
+  import { newerRoutineEntries } from '$lib/routine.js';
+  import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -521,6 +523,66 @@
     olderHistoryFailed = false;
     void loadOlderHistory();
   }
+
+  // Admin delivers Routine notices on its own schedule (ADR-0086), so while a Local Team's conversation is open and the
+  // page is visible, that Team's Routine list and newest history page are re-read at a modest interval and when the
+  // page becomes visible again. Only Routine rows merge into the transcript, by identity and version: a new row, or a
+  // newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the draft,
+  // and the reader's place stay as they are; a reader already at the end follows the new row.
+  const ROUTINE_REFRESH_MS = 15_000;
+  const FOLLOW_SLACK = 48;
+  let routineRefreshing = false;
+
+  // A row is never added under a message still waiting for its reply, or while history or a turn is in motion.
+  function routineMergeIdle() {
+    return !composerBusy && !historyWorking && turns.at(-1)?.role !== 'user';
+  }
+
+  async function refreshRoutineNotices(teamId) {
+    if (routineRefreshing || document.visibilityState !== 'visible' || chatTeamId !== teamId) return;
+    routineRefreshing = true;
+    const generation = historyGeneration;
+    try {
+      loadTeamRoutines(fetch, teamId).catch(() => {});
+      if (!routineMergeIdle()) return;
+      const page = await listChatHistory(fetch, teamId);
+      if (generation !== historyGeneration || chatTeamId !== teamId || !routineMergeIdle()) return;
+      const team = $teamContext.teams.find((entry) => entry.id === teamId);
+      const shown = new Map(
+        turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
+      );
+      const arrived = newerRoutineEntries(shown, page.entries);
+      if (!team || arrived.length === 0) return;
+      const viewport = turnsViewport;
+      const following = Boolean(viewport) &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
+      const moved = new Set(arrived.map((entry) => entry.id));
+      turns = [
+        ...turns.filter((turn) => !moved.has(turn.historyId)),
+        ...arrived.map((entry) => historyTurn(entry, team.name)),
+      ];
+      if (following) await revealLatestExchange();
+    } catch {
+      // The next refresh tries again; the open conversation stays as it is.
+    } finally {
+      routineRefreshing = false;
+    }
+  }
+
+  $effect(() => {
+    const teamId = chatTeamId;
+    if (!mounted || !teamId || $sessionContext.profile !== 'local') return;
+    const refresh = () => void refreshRoutineNotices(teamId);
+    const shown = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const timer = setInterval(refresh, ROUTINE_REFRESH_MS);
+    document.addEventListener('visibilitychange', shown);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', shown);
+    };
+  });
 
   function applyInstallPlanEvent(incoming, receipt) {
     if (incoming.outcome === 'already-installed') {

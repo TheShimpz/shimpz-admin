@@ -18,6 +18,7 @@ import {
   parseRoutinePreview,
   previewMatches,
   parseRoutineProposal,
+  newerRoutineEntries,
   parseRoutineRunEntry,
   parseRoutineView,
   parseRunView,
@@ -353,6 +354,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     outcome: 'done',
     createdAt: RUN_ENTRY.created_at,
     detail: RUN_ENTRY.detail,
+    version: RUN_ENTRY.version,
   });
   const valid = [
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
@@ -392,6 +394,17 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
   assert.equal(history.entries[0].kind, 'routine-run');
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, outcome: 'run' }]), 'marketing'));
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing'));
+});
+
+test('a re-read history page yields only Routine rows not yet shown at their version', () => {
+  const row = (letter, version) => ({ id: `${letter.repeat(32)}:routine`, kind: 'routine-run', version });
+  const message = { id: `${'c'.repeat(32)}:reply`, kind: 'message', role: 'assistant', text: 'Done.' };
+  const shown = new Map([[row('a', 2).id, 2], [row('b', 1).id, 1]]);
+  const page = [row('a', 2), message, row('b', 3), row('d', 1)];
+  // An unchanged row and every other kind of entry stay as they are; a newer version and a new row come in page order.
+  assert.deepEqual(newerRoutineEntries(shown, page), [row('b', 3), row('d', 1)]);
+  assert.deepEqual(newerRoutineEntries(new Map([[row('b', 1).id, 4]]), [row('b', 3)]), []);
+  assert.deepEqual(newerRoutineEntries(new Map(), []), []);
 });
 
 test('a frozen run is opened, answered, and resumed only through exact answers', async () => {

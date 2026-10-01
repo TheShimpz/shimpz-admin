@@ -4407,6 +4407,97 @@ test.describe('Team Routines', () => {
     expect(resumes).toEqual(['POST']);
   });
 
+  test('a Routine notice delivered after the chat opened becomes reviewable without a reload', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+    const run = 'd'.repeat(32);
+    const row = (id, outcome, detail, version) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: ROUTINE_VIEW.routine_id,
+      quote: ROUTINE_VIEW.quote,
+      run_id: id,
+      outcome,
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version,
+    });
+    const earlier = row('c'.repeat(32), 'done', { reply: 'No DNS changes.' }, 1);
+    const frozen = row(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, 1);
+    let history = { entries: [earlier], before: null };
+    let runs = [];
+    await routeReadyChat(page, { history });
+    // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far.
+    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({ json: history }));
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs },
+    }));
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        run_id: run,
+        status: 'human-required',
+        challenge: {
+          type: 'human-required',
+          challenge_id: 'b'.repeat(32),
+          expires_in: 300,
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+          request: humanRequest('approval'),
+        },
+      },
+    }));
+    const answers = [];
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+      answers.push(route.request().postDataJSON());
+      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    await expect(rows).toHaveCount(1);
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'A draft that must survive');
+
+    // The scheduler delivers a frozen run while the conversation is open.
+    history = { entries: [earlier, frozen], before: null };
+    runs = [{
+      run_id: run,
+      routine_id: ROUTINE_VIEW.routine_id,
+      status: 'frozen',
+      scheduled_at: '2026-10-01T12:00:00Z',
+      request_kind: 'human',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+      batch_fingerprint: null,
+      actions: [],
+    }];
+    await page.clock.fastForward(15_000);
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
+    await expect(rows.nth(0)).toContainText('No DNS changes.');
+    await expect(composer).toHaveValue('A draft that must survive');
+    // The Team's Routine tree shows the same run waiting.
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+    await expect(navigation.getByRole('group', { name: 'Routines' })).toContainText('Waiting for an approval');
+    if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
+
+    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+    await dialog.getByRole('button', { name: 'Approve action' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: Done');
+    expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+
+    // The run's newer version replaces its row instead of adding another; the draft is still there.
+    history = { entries: [earlier, { ...frozen, outcome: 'done', detail: { reply: 'Published the record.' }, version: 2 }], before: null };
+    runs = [];
+    await page.clock.fastForward(15_000);
+    await expect(rows.nth(1)).toContainText('Published the record.');
+    await expect(rows).toHaveCount(2);
+    await expect(composer).toHaveValue('A draft that must survive');
+  });
+
   test('Hosted offers no Routines', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
     // Even with Routines available to fetch, Hosted never asks for them.
