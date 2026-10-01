@@ -270,6 +270,23 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value.pop("rendered_copy")
+
+        def admitted_as_invalid(value: dict[str, object]) -> None:
+            value["rendered_copy"]["invalid"] = value["rendered_copy"]["valid"][:1]
+
+        def refused_as_valid(value: dict[str, object]) -> None:
+            value["rendered_copy"]["valid"] = value["rendered_copy"]["invalid"][:1]
+
+        for mutate in (missing, admitted_as_invalid, refused_as_valid):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_routine_vectors(self) -> None:
         def missing_schedules(value: dict[str, object]) -> None:
             value["routine_schedule"]["daily_rate"] = []
