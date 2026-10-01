@@ -86,13 +86,19 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         response = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
 
+        # Team's English provider summary is validated but never reaches the browser, which words it per language.
+        browser_requirement = {key: value for key, value in integration_requirement().items() if key != "summary"}
         self.assertEqual(
             response,
             team.TeamResponse(
                 428,
-                {key: value for key, value in body.items() if key != "trace_id"},
+                {
+                    **{key: value for key, value in body.items() if key != "trace_id"},
+                    "requirements": [browser_requirement],
+                },
             ),
         )
+        self.assertNotIn(integration_requirement()["summary"], json.dumps(response.body))
         self.assertNotIn("token", json.dumps(response.body).lower())
         self.assertNotIn("client_secret", json.dumps(response.body).lower())
 
@@ -121,6 +127,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "requirements": [{**requirement, "actions": [requirement["actions"][0], requirement["actions"][0]]}],
             },
             {**valid, "requirements": [{**requirement, "client_secret": "must-not-cross"}]},
+            {**valid, "requirements": [{**requirement, "summary": " untrimmed"}]},
         )
         for body in invalid:
             with self.subTest(body=body):
@@ -157,7 +164,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(response.status, 428)
         self.assertEqual(response.body["status"], "integrations-required")
-        self.assertEqual(response.body["requirements"], [integration_requirement()])
+        self.assertEqual(
+            response.body["requirements"],
+            [{key: value for key, value in integration_requirement().items() if key != "summary"}],
+        )
 
     def test_turn_reports_measured_admin_and_team_execution_events(self) -> None:
         inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})

@@ -591,6 +591,8 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                         "summary": chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     }
                 )
+            # Team's provider summary is English platform text; the browser words each provider per language.
+            chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
             requirements.append(
                 {
                     "assistant_id": assistant_id,
@@ -598,7 +600,6 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                     "integration_id": integration_id,
                     "provider": team.canonical_assistant_id(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
-                    "summary": chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     "scopes": scopes,
                     "actions": actions,
                 }

@@ -768,7 +768,6 @@ async function routeReadyChat(page, {
               integration_id: 'cloudflare',
               provider: 'cloudflare',
               name: 'Cloudflare',
-              summary: 'Reads reviewed zone and DNS metadata.',
               scopes: ['dns.read', 'dns.write', 'offline_access', 'zone.read'],
               actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
             }],
@@ -2690,7 +2689,6 @@ test('presents individual authorization controls for every pending Integration',
         integration_id: 'cloudflare-zones',
         provider: 'cloudflare',
         name: 'Cloudflare zones',
-        summary: 'Reads reviewed Cloudflare zones.',
         scopes: ['zone.read'],
         actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
       },
@@ -2700,7 +2698,6 @@ test('presents individual authorization controls for every pending Integration',
         integration_id: 'whatsapp-messages',
         provider: 'whatsapp',
         name: 'WhatsApp messages',
-        summary: 'Sends reviewed WhatsApp messages.',
         scopes: ['messages.write'],
         actions: [{ id: 'send-message', name: 'Send message', summary: 'Sends one reviewed message.' }],
       },
@@ -2740,6 +2737,51 @@ test('presents individual authorization controls for every pending Integration',
   await popup.close();
 });
 
+// Each pending Integration explains its provider in the Supervisor's language; Team's English provider text never
+// reaches the browser, so a row in English or without an explanation fails.
+for (const [language, send, title, copy] of [
+  ['pt', 'Enviar', 'Conecte uma conta necessária', (provider) => (
+    `Conecte sua conta ${provider} para que este assistente use apenas as permissões revisadas do ${provider}.`
+  )],
+  ['ar', 'Send', 'اربط حسابًا مطلوبًا', (provider) => (
+    `اربط حسابك على ${provider} ليستخدم هذا المساعد صلاحيات ${provider} المراجعة فقط.`
+  )],
+]) {
+  test(`the ${language} multi-Integration consent explains every provider in the interface language`, async ({ page }) => {
+    await page.addInitScript((lang) => localStorage.setItem('shimpz_lang', lang), language);
+    await routeReadyChat(page, {
+      integrationChallenge: true,
+      whatsappInstalled: true,
+      integrationRequirements: [
+        {
+          assistant_id: 'shimpz-cloudflare',
+          assistant_name: 'Shimpz Cloudflare',
+          integration_id: 'cloudflare-zones',
+          provider: 'cloudflare',
+          name: 'Cloudflare zones',
+          scopes: ['zone.read'],
+          actions: [{ id: 'list-zones', name: 'List zones', summary: 'Lists Cloudflare zones.' }],
+        },
+        {
+          assistant_id: 'whatsapp',
+          assistant_name: 'WhatsApp',
+          integration_id: 'whatsapp-messages',
+          provider: 'whatsapp',
+          name: 'WhatsApp messages',
+          scopes: ['messages.write'],
+          actions: [{ id: 'send-message', name: 'Send message', summary: 'Sends one reviewed message.' }],
+        },
+      ],
+    });
+    await page.goto('/chat/');
+    await page.getByRole('textbox', { name: send, exact: true }).fill('Review my DNS');
+    await page.getByRole('button', { name: send, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: title });
+    await expect(dialog.getByText(copy('Cloudflare'), { exact: true })).toBeVisible();
+    await expect(dialog.getByText(copy('WhatsApp'), { exact: true })).toBeVisible();
+  });
+}
+
 // Informed authorization: the consent names the requesting Action, Assistant, version, and scopes in the
 // Supervisor's language, so a dialog attributing the grant to the wrong Assistant or Action fails.
 for (const [language, route, expected] of [
@@ -2755,7 +2797,6 @@ for (const [language, route, expected] of [
       integration_id: 'x-integration',
       provider: 'x',
       name: 'X',
-      summary: 'Publica posts aprovados.',
       scopes: ['tweet.read', 'tweet.write'],
       actions: [{ id: 'publish-post', name: 'Publicar post', summary: 'Publica um post aprovado.' }],
     }],

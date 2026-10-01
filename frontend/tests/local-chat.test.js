@@ -45,7 +45,6 @@ function integrationRequirement() {
     integration_id: 'x-integration',
     provider: 'x',
     name: 'X integration',
-    summary: 'Publishes approved posts through your X integration.',
     scopes: ['tweet.read', 'tweet.write', 'users.read'],
     actions: [
       { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
@@ -727,6 +726,11 @@ test('chat rejects augmented, duplicated, and sensitive integration requirements
     { ...base, requirements: [] },
     { ...base, requirements: [integrationRequirement(), integrationRequirement()] },
     { ...base, requirements: [{ ...integrationRequirement(), client_id: 'must-not-cross' }] },
+    // Team's English provider summary never reaches the browser, which words each provider in the interface language.
+    {
+      ...base,
+      requirements: [{ ...integrationRequirement(), summary: 'Lets approved Actions access the connected X integration.' }],
+    },
     { ...base, requirements: [{ ...integrationRequirement(), scopes: ['tweet.read', 'tweet.read'] }] },
     {
       ...base,

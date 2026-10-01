@@ -220,7 +220,6 @@ function canonicalIntegrationRequirement(value) {
       'integration_id',
       'provider',
       'name',
-      'summary',
       'scopes',
       'actions',
     ])
@@ -233,7 +232,6 @@ function canonicalIntegrationRequirement(value) {
     integration_id: canonicalId(value.integration_id),
     provider: canonicalId(value.provider),
     name: canonicalPublicText(value.name, 80),
-    summary: canonicalPublicText(value.summary, 160),
     scopes: canonicalIntegrationScopes(value.scopes),
     actions: canonicalIntegrationActions(value.actions),
   };
