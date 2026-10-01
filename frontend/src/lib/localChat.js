@@ -291,6 +291,53 @@ function canonicalHumanInputBase(value, base) {
   return { ...base, label: canonicalPublicText(value.label, 80), required: value.required };
 }
 
+// The Team HTTP protocol's Stored Input key-page grammar (HELP_URL_PATTERN), byte for byte: one canonical public
+// https URL with a path, an optional query, and no port, credentials, fragment, dot segment, or trailing break.
+export const HELP_URL_PATTERN = [
+  String.raw`^https://(?=[^/]{1,253}/)`,
+  String.raw`(?![^/]*\.(?:arpa|example|home|internal|invalid|lan|local|localdomain|localhost|onion|test)/)`,
+  String.raw`(?:(?!xn--)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?!xn--)[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?`,
+  String.raw`(?:/(?!\.\.?(?:/|\?|(?![\s\S])))(?:[A-Za-z0-9._~!$&()*+,;=:@-]|%(?!2E)[0-9A-F]{2})*)+`,
+  String.raw`(?:\?(?:[A-Za-z0-9._~!$&()*+,;=:@/?-]|%[0-9A-F]{2})+)?(?![\s\S])`,
+].join('');
+const HELP_URL_RE = new RegExp(HELP_URL_PATTERN, 'u');
+const MAX_HELP_URL_CHARS = 2048;
+const MAX_PURPOSE_CHARS = 280;
+const PURPOSE_FORBIDDEN_RE = /[\p{C}\p{Zl}\p{Zp}]|(?!-)\p{Pd}| -|- |:\/\//u;
+
+// Where a person creates a Stored Input's value, as its reviewed Assistant declared it; it must also survive the
+// browser's own URL serialization unchanged, so the link opens exactly what Team admitted.
+export function canonicalHelpUrl(value) {
+  if (typeof value !== 'string' || value.length > MAX_HELP_URL_CHARS || !HELP_URL_RE.test(value)) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.href !== value) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return value;
+}
+
+// The Brain's task-bound sentence for why an Action pauses (Team payload.canonical_purpose): plain single-line text
+// that can explain but never point somewhere.
+export function canonicalPurpose(value) {
+  if (
+    typeof value !== 'string' ||
+    value.normalize('NFC') !== value ||
+    value.trim() !== value ||
+    codePointLength(value) < 1 ||
+    codePointLength(value) > MAX_PURPOSE_CHARS ||
+    PURPOSE_FORBIDDEN_RE.test(value) ||
+    value.toLowerCase().includes('www.')
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return value;
+}
+
 function canonicalHumanRequest(value) {
   const base = canonicalHumanRequestBase(value);
   const baseKeys = ['kind', 'ordinal', 'title', 'description', 'fingerprint'];
@@ -1235,21 +1282,30 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     };
   }
   if (value.type === 'human-required') {
+    // Optional presentation beside the fingerprinted request (ADR-0090): the Brain's task-bound purpose and, only for
+    // a Stored Input request, the key page its reviewed Assistant declared.
+    const optional = ['purpose', 'help_url'].filter((key) => Object.hasOwn(value, key));
     if (
-      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request']) ||
+      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', ...optional]) ||
       typeof value.challenge_id !== 'string' ||
       !OPAQUE_ID_RE.test(value.challenge_id) ||
       !Number.isSafeInteger(value.expires_in) ||
       value.expires_in < 1 ||
       value.expires_in > 300
     ) throw new LocalApiError('The local chat response is invalid.');
+    const request = canonicalHumanRequest(value.request);
+    if (optional.includes('help_url') && (request.kind !== 'input:password' || request.stored_input === undefined)) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
     return {
       type: 'human-required',
       challenge_id: value.challenge_id,
       expires_in: value.expires_in,
       assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80),
       action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160),
-      request: canonicalHumanRequest(value.request),
+      request,
+      ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
+      ...(optional.includes('help_url') ? { help_url: canonicalHelpUrl(value.help_url) } : {}),
     };
   }
   throw new LocalApiError('The local chat response is invalid.');

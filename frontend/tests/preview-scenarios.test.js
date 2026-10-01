@@ -95,3 +95,22 @@ test('the clarify scenarios ask one valid question and fail the first answer onl
     assert.match(done.reply, /Stack montável/u);
   }
 });
+
+test('the human-request scenario pauses with a challenge the chat parser admits and resolves either decision', () => {
+  for (const decision of ['deny', 'submit']) {
+    const scenario = createScenario('human-request');
+    const [challenge] = scenario.chat.message({
+      type: 'chat', message: 'Notícias de IA de hoje', files: [], assistant_ids: [], locale: 'pt',
+    });
+    const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+    assert.equal(parsed.help_url, 'https://dashboard.exa.ai/api-keys');
+    assert.equal(parsed.request.stored_input, 'exa-api-key');
+    const [done] = scenario.chat.message({
+      type: 'human-response',
+      challenge_id: challenge.challenge_id,
+      decision,
+      ...(decision === 'submit' ? { value: 'exa-key' } : {}),
+    });
+    assert.equal(parseChatEvent(done, 'marketing', 'Marketing').type, 'done');
+  }
+});

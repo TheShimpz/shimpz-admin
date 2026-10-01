@@ -160,6 +160,9 @@ async function routeReadyChat(page, {
   holdHumanResponse = false,
   humanKind = '',
   humanAssistantId = 'shimpz-cloudflare',
+  humanStoredInput = '',
+  humanPurpose = '',
+  humanHelpUrl = '',
   humanExpiresIn = 300,
   redeliverExpiredHuman = false,
   humanRejections = [],
@@ -479,15 +482,21 @@ async function routeReadyChat(page, {
     const connection = chatConnections;
     chatConnections += 1;
 
+    // The optional Brain-written purpose and reviewed key page travel beside the fingerprinted request (ADR-0090).
+    const humanPresentation = {
+      ...(humanPurpose ? { purpose: humanPurpose } : {}),
+      ...(humanHelpUrl ? { help_url: humanHelpUrl } : {}),
+    };
     const sendHumanChallenge = (expiresIn = humanExpiresIn) => socket.send(JSON.stringify({
       type: 'human-required',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       expires_in: expiresIn,
       assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
       action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-      request: storedInputAfterPlan
-        ? { ...humanRequest('input:password'), stored_input: 'cloudflare-token' }
+      request: storedInputAfterPlan || humanStoredInput
+        ? { ...humanRequest('input:password'), stored_input: humanStoredInput || 'cloudflare-token' }
         : humanRequest(humanKind),
+      ...humanPresentation,
     }));
 
     const deliverHumanResponse = (progressOnly = false) => {
@@ -650,6 +659,7 @@ async function routeReadyChat(page, {
                 assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
                 action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
                 request: { ...humanRequest('input:password'), stored_input: 'cloudflare-token' },
+                ...humanPresentation,
               }));
               return;
             }
@@ -2135,11 +2145,11 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
   const tasks = page.locator('.assistant-install-plan [data-slot="chat-task"]');
   await expect(tasks).toHaveCount(2);
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'complete');
-  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toBeVisible();
   await expect(composer).toBeDisabled();
-  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
-  await dialog.getByRole('button', { name: 'Send response' }).click();
+  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send' }).click();
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
   await expect(composer).toBeEnabled();
@@ -2163,16 +2173,16 @@ test('recovers a just-in-time request from a just-installed Assistant after a sa
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and send the summary');
   await composer.press('Enter');
-  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
-  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
-  await dialog.getByRole('button', { name: 'Send response' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
+  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => contract.humanResponses().length).toBe(1);
   await expect(dialog).toBeHidden();
   const syncsBeforeReconnect = contract.syncFrames();
 
   contract.disconnectHumanSocket();
   await expect.poll(() => contract.syncFrames()).toBeGreaterThan(syncsBeforeReconnect);
-  await expect(page.getByRole('dialog', { name: 'Provide the missing Action context' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Shimpz Cloudflare' })).toBeVisible();
   await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
 });
 
@@ -2189,11 +2199,11 @@ test('admits a just-in-time request from an Assistant the refreshed Team invento
   await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and post the summary in Slack');
   await composer.press('Enter');
 
-  const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toBeVisible();
   await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
-  await dialog.getByLabel(/Cloudflare API secret/).fill('saved-third-party-secret');
-  await dialog.getByRole('button', { name: 'Send response' }).click();
+  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
   expect(chat.humanResponses()).toHaveLength(1);
 });
@@ -2895,12 +2905,8 @@ for (const [kind, title] of humanPresentations) {
     await page.getByRole('button', { name: 'Send' }).click();
     const dialog = page.getByRole('dialog', { name: title });
     await expect(dialog).toBeVisible();
-    // The request names the exact Action, Assistant, and version it authorizes.
-    await expect(dialog.locator('.request-context strong')).toHaveText([
-      'list-zones',
-      'Shimpz Cloudflare',
-      'v0.4.1',
-    ]);
+    // Beside its Creator-authored title, the request names the reviewed Assistant and the exact version it authorizes.
+    await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
     // A secret is never typed into a visible field.
     if (kind === 'input:password') {
       await expect(dialog.getByLabel(/Cloudflare API secret/)).toHaveAttribute('type', 'password');
@@ -2930,7 +2936,7 @@ for (const [kind, title] of humanPresentations) {
         ? 'Approve action'
         : kind === 'auth:passkey'
           ? 'Use passkey'
-          : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send response',
+          : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send',
     }).click();
     await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
     expect(contract.humanResponses()).toHaveLength(1);
@@ -2950,7 +2956,7 @@ test('bounds a human text response in Unicode code points like the Admin backend
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
   const field = dialog.getByLabel(/Response/);
-  const send = dialog.getByRole('button', { name: 'Send response' });
+  const send = dialog.getByRole('button', { name: 'Send' });
   // The fixture bounds input:text to 64 code points; each emoji is two UTF-16 code units.
   const atLimit = '😀'.repeat(humanRequest('input:text').max_length);
 
@@ -2976,11 +2982,11 @@ test('updates the Action human request countdown without a page refresh', async 
   await page.getByRole('button', { name: 'Send' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
-  await expect(dialog).toContainText('Expires in 300 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 5:00');
   await page.clock.fastForward(1_000);
-  await expect(dialog).toContainText('Expires in 299 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 4:59');
   await page.clock.fastForward(2_000);
-  await expect(dialog).toContainText('Expires in 297 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 4:57');
 });
 
 test('closes and reconciles an expired Action human request', async ({ page }) => {
@@ -2992,9 +2998,9 @@ test('closes and reconciles an expired Action human request', async ({ page }) =
   await page.getByRole('button', { name: 'Send' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
-  await expect(dialog).toContainText('Expires in 3 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 0:03');
   await page.clock.fastForward(1_000);
-  await expect(dialog).toContainText('Expires in 2 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 0:02');
   await page.clock.fastForward(2_000);
 
   await expect(dialog).toHaveCount(0);
@@ -3054,11 +3060,11 @@ test('reopens a server-authoritative human request redelivered after local expir
   await page.getByRole('button', { name: 'Send' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
-  await expect(dialog).toContainText('Expires in 3 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 0:03');
   await page.clock.fastForward(3_000);
 
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('Expires in 2 seconds.');
+  await expect(dialog.getByRole('timer')).toHaveText('Expires in 0:02');
   await expect(page.getByText('The Action request expired. Send the message again to retry.')).toHaveCount(0);
   expect(contract.humanResponses()).toEqual([]);
   expect(contract.syncFrames()).toBe(2);
@@ -3105,7 +3111,7 @@ test('restores Supervisor password authorization as a focused validation modal',
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Confirmando a senha do Supervisor…');
   await expect(dialog.getByLabel('Senha do Supervisor')).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: 'Negar e interromper' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Confirmar autorização' })).toBeDisabled();
   await expect(page.getByRole('group', { name: 'Estou processando...' })).toHaveCount(0);
   await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
@@ -4105,3 +4111,67 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   });
 });
+
+const KEY_PAGE = 'https://dashboard.exa.ai/api-keys';
+const TASK_PURPOSE = 'To bring today’s AI news I need to search the web with Shimpz Cloudflare.';
+
+async function openHumanRequest(page, options) {
+  const contract = await routeReadyChat(page, { humanKind: 'input:password', ...options });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Bring me today’s AI news');
+  await page.getByRole('button', { name: 'Send' }).click();
+  return contract;
+}
+
+test('a Stored Input request links its reviewed key page and sends the pasted key once', async ({ page }) => {
+  const contract = await openHumanRequest(page, {
+    humanStoredInput: 'exa-api-key',
+    humanPurpose: TASK_PURPOSE,
+    humanHelpUrl: KEY_PAGE,
+  });
+  const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
+  await expect(dialog).toContainText(TASK_PURPOSE);
+  const link = dialog.getByRole('link');
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveAttribute('href', KEY_PAGE);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  const field = dialog.getByLabel('Shimpz Cloudflare API key');
+  await expect(field).toHaveAttribute('type', 'password');
+  await field.fill('exa-secret-key');
+  await dialog.getByRole('button', { name: 'Send' }).click();
+
+  await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+  expect(contract.humanResponses()).toEqual([expect.objectContaining({
+    type: 'human-response',
+    challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    decision: 'submit',
+    value: 'exa-secret-key',
+  })]);
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  expect(stored).not.toContain('exa-secret-key');
+});
+
+test('a Stored Input request without a key page or purpose names its Assistant and offers no link', async ({ page }) => {
+  const contract = await openHumanRequest(page, { humanStoredInput: 'exa-api-key' });
+  const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
+  await expect(dialog).toContainText('Shimpz Cloudflare needs this key');
+  await expect(dialog.getByRole('link')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
+  expect(contract.humanResponses()).toEqual([expect.objectContaining({ decision: 'deny' })]);
+  expect(contract.humanResponses()[0]).not.toHaveProperty('value');
+});
+
+test('any other request shows the Brain purpose and its Assistant, but never a key link', async ({ page }) => {
+  await routeReadyChat(page, { humanKind: 'approval', humanPurpose: TASK_PURPOSE });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Publish the reviewed DNS changes');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+  await expect(dialog).toContainText(TASK_PURPOSE);
+  await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
+  await expect(dialog.getByRole('link')).toHaveCount(0);
+});
+

@@ -1,10 +1,9 @@
 export const humanRequestMessages = {
   en: {
-    approvalKicker: 'Action // approval', inputKicker: 'Action // input required', authKicker: 'Action // sensitive authorization',
-    context: 'Action {action} from {assistant} v{version} needs human validation. Expires in {seconds} seconds.',
-    required: 'Required', optional: 'Optional', chooseOption: 'Choose an option', approve: 'Approve action', submit: 'Send response', authorize: 'Confirm authorization', cancel: 'Deny and stop', usePasskey: 'Use passkey',
+    chooseOption: 'Choose an option', approve: 'Approve action', submit: 'Send', authorize: 'Confirm authorization', cancel: 'Cancel', usePasskey: 'Use passkey',
+    keyHelp: 'Create your key here', keyHelpAfter: 'and paste it below.', storedInputNeed: '{assistant} needs this key to continue.',
+    storedInputLabel: '{assistant} API key', storedInputPlaceholder: 'Paste your key here', expiresIn: 'Expires in {time}',
     validating: 'Confirming your Supervisor password…',
-    storedInputLead: 'This value is encrypted after the Action succeeds and reused without asking again.',
     passwordLabel: 'Supervisor password', totpLabel: 'Verification code', totpPlaceholder: 'Enter your one-time code',
     selectionHint: 'Choose from {minimum} to {maximum} options.', invalid: 'Review this response before continuing.',
     validationKicker: 'Action // validation', deniedTitle: 'Supervisor password not confirmed',
@@ -16,11 +15,10 @@ export const humanRequestMessages = {
     expired: 'The Action request expired. Send the message again to retry.',
   },
   pt: {
-    approvalKicker: 'Action // aprovação', inputKicker: 'Action // resposta necessária', authKicker: 'Action // autorização sensível',
-    context: 'A ação {action} do assistente {assistant} v{version} precisa de validação humana. Expira em {seconds} segundos.',
-    required: 'Obrigatório', optional: 'Opcional', chooseOption: 'Escolha uma opção', approve: 'Aprovar ação', submit: 'Enviar resposta', authorize: 'Confirmar autorização', cancel: 'Negar e interromper', usePasskey: 'Usar passkey',
+    chooseOption: 'Escolha uma opção', approve: 'Aprovar ação', submit: 'Enviar', authorize: 'Confirmar autorização', cancel: 'Cancelar', usePasskey: 'Usar passkey',
+    keyHelp: 'Gere sua chave aqui', keyHelpAfter: 'e cole abaixo.', storedInputNeed: 'O {assistant} precisa desta chave para continuar.',
+    storedInputLabel: 'Chave de API do {assistant}', storedInputPlaceholder: 'Cole sua chave aqui', expiresIn: 'Expira em {time}',
     validating: 'Confirmando a senha do Supervisor…',
-    storedInputLead: 'Este valor será criptografado após a conclusão da Action e reutilizado sem ser solicitado novamente.',
     passwordLabel: 'Senha do Supervisor', totpLabel: 'Código de verificação', totpPlaceholder: 'Digite o código de uso único',
     selectionHint: 'Escolha entre {minimum} e {maximum} opções.', invalid: 'Revise esta resposta antes de continuar.',
     validationKicker: 'Action // validação', deniedTitle: 'Senha do Supervisor não confirmada',
@@ -32,11 +30,10 @@ export const humanRequestMessages = {
     expired: 'A solicitação do Action expirou. Envie a mensagem novamente para tentar de novo.',
   },
   es: {
-    approvalKicker: 'Action // aprobación', inputKicker: 'Action // respuesta necesaria', authKicker: 'Action // autorización sensible',
-    context: 'La acción {action} del asistente {assistant} v{version} necesita validación humana. Caduca en {seconds} segundos.',
-    required: 'Obligatorio', optional: 'Opcional', chooseOption: 'Elige una opción', approve: 'Aprobar acción', submit: 'Enviar respuesta', authorize: 'Confirmar autorización', cancel: 'Denegar y detener', usePasskey: 'Usar passkey',
+    chooseOption: 'Elige una opción', approve: 'Aprobar acción', submit: 'Enviar', authorize: 'Confirmar autorización', cancel: 'Cancelar', usePasskey: 'Usar passkey',
+    keyHelp: 'Crea tu clave aquí', keyHelpAfter: 'y pégala abajo.', storedInputNeed: '{assistant} necesita esta clave para continuar.',
+    storedInputLabel: 'Clave de API de {assistant}', storedInputPlaceholder: 'Pega tu clave aquí', expiresIn: 'Caduca en {time}',
     validating: 'Confirmando la contraseña del Supervisor…',
-    storedInputLead: 'Este valor se cifra cuando la Action finaliza y se reutiliza sin volver a solicitarlo.',
     passwordLabel: 'Contraseña del Supervisor', totpLabel: 'Código de verificación', totpPlaceholder: 'Introduce el código de un solo uso',
     selectionHint: 'Elige entre {minimum} y {maximum} opciones.', invalid: 'Revisa esta respuesta antes de continuar.',
     validationKicker: 'Action // validación', deniedTitle: 'Contraseña del Supervisor no confirmada',
@@ -48,11 +45,10 @@ export const humanRequestMessages = {
     expired: 'La solicitud de Action caducó. Envía el mensaje de nuevo para volver a intentarlo.',
   },
   zh: {
-    approvalKicker: 'Action // 审批', inputKicker: 'Action // 需要输入', authKicker: 'Action // 敏感授权',
-    context: '助手 {assistant} v{version} 的操作 {action} 需要人工确认。{seconds} 秒后过期。',
-    required: '必填', optional: '可选', chooseOption: '选择一个选项', approve: '批准操作', submit: '提交回复', authorize: '确认授权', cancel: '拒绝并停止', usePasskey: '使用通行密钥',
+    chooseOption: '选择一个选项', approve: '批准操作', submit: '发送', authorize: '确认授权', cancel: '取消', usePasskey: '使用通行密钥',
+    keyHelp: '在这里创建密钥', keyHelpAfter: '然后粘贴到下方。', storedInputNeed: '{assistant} 需要此密钥才能继续。',
+    storedInputLabel: '{assistant} API 密钥', storedInputPlaceholder: '在这里粘贴密钥', expiresIn: '{time} 后过期',
     validating: '正在确认 Supervisor 密码…',
-    storedInputLead: '此值会在 Action 成功后加密保存，之后无需再次输入即可复用。',
     passwordLabel: 'Supervisor 密码', totpLabel: '验证码', totpPlaceholder: '输入一次性验证码',
     selectionHint: '请选择 {minimum} 到 {maximum} 个选项。', invalid: '继续前请检查此回复。',
     validationKicker: 'Action // 验证', deniedTitle: '未确认 Supervisor 密码',
@@ -64,11 +60,10 @@ export const humanRequestMessages = {
     expired: 'Action 请求已过期。请重新发送消息后再试。',
   },
   fr: {
-    approvalKicker: 'Action // approbation', inputKicker: 'Action // réponse requise', authKicker: 'Action // autorisation sensible',
-    context: 'L’action {action} de l’assistant {assistant} v{version} nécessite une validation humaine. Expire dans {seconds} secondes.',
-    required: 'Obligatoire', optional: 'Facultatif', chooseOption: 'Choisissez une option', approve: 'Approuver l’action', submit: 'Envoyer la réponse', authorize: 'Confirmer l’autorisation', cancel: 'Refuser et arrêter', usePasskey: 'Utiliser une passkey',
+    chooseOption: 'Choisissez une option', approve: 'Approuver l’action', submit: 'Envoyer', authorize: 'Confirmer l’autorisation', cancel: 'Annuler', usePasskey: 'Utiliser une passkey',
+    keyHelp: 'Créez votre clé ici', keyHelpAfter: 'et collez-la ci-dessous.', storedInputNeed: '{assistant} a besoin de cette clé pour continuer.',
+    storedInputLabel: 'Clé d’API de {assistant}', storedInputPlaceholder: 'Collez votre clé ici', expiresIn: 'Expire dans {time}',
     validating: 'Confirmation du mot de passe du Supervisor…',
-    storedInputLead: 'Cette valeur est chiffrée après la réussite de l’Action et réutilisée sans nouvelle demande.',
     passwordLabel: 'Mot de passe du Supervisor', totpLabel: 'Code de vérification', totpPlaceholder: 'Saisissez le code à usage unique',
     selectionHint: 'Choisissez entre {minimum} et {maximum} options.', invalid: 'Vérifiez cette réponse avant de continuer.',
     validationKicker: 'Action // validation', deniedTitle: 'Mot de passe du Supervisor non confirmé',
@@ -80,11 +75,10 @@ export const humanRequestMessages = {
     expired: 'La demande d’Action a expiré. Renvoyez le message pour réessayer.',
   },
   de: {
-    approvalKicker: 'Action // Freigabe', inputKicker: 'Action // Eingabe erforderlich', authKicker: 'Action // sensible Autorisierung',
-    context: 'Die Aktion {action} des Assistants {assistant} v{version} benötigt eine menschliche Bestätigung. Läuft in {seconds} Sekunden ab.',
-    required: 'Erforderlich', optional: 'Optional', chooseOption: 'Option auswählen', approve: 'Aktion freigeben', submit: 'Antwort senden', authorize: 'Autorisierung bestätigen', cancel: 'Ablehnen und stoppen', usePasskey: 'Passkey verwenden',
+    chooseOption: 'Option auswählen', approve: 'Aktion freigeben', submit: 'Senden', authorize: 'Autorisierung bestätigen', cancel: 'Abbrechen', usePasskey: 'Passkey verwenden',
+    keyHelp: 'Erstelle deinen Schlüssel hier', keyHelpAfter: 'und füge ihn unten ein.', storedInputNeed: '{assistant} braucht diesen Schlüssel, um fortzufahren.',
+    storedInputLabel: 'API-Schlüssel für {assistant}', storedInputPlaceholder: 'Füge deinen Schlüssel hier ein', expiresIn: 'Läuft ab in {time}',
     validating: 'Supervisor-Passwort wird bestätigt…',
-    storedInputLead: 'Dieser Wert wird nach erfolgreicher Action verschlüsselt und ohne erneute Abfrage wiederverwendet.',
     passwordLabel: 'Supervisor-Passwort', totpLabel: 'Bestätigungscode', totpPlaceholder: 'Einmalcode eingeben',
     selectionHint: 'Wähle zwischen {minimum} und {maximum} Optionen.', invalid: 'Prüfe diese Antwort, bevor du fortfährst.',
     validationKicker: 'Action // Validierung', deniedTitle: 'Supervisor-Passwort nicht bestätigt',
@@ -96,11 +90,10 @@ export const humanRequestMessages = {
     expired: 'Die Action-Anfrage ist abgelaufen. Sende die Nachricht erneut, um es noch einmal zu versuchen.',
   },
   ja: {
-    approvalKicker: 'Action // 承認', inputKicker: 'Action // 入力が必要', authKicker: 'Action // 機密性の高い認証',
-    context: 'アシスタント {assistant} v{version} のアクション {action} には人による確認が必要です。{seconds} 秒後に期限切れになります。',
-    required: '必須', optional: '任意', chooseOption: 'オプションを選択', approve: 'アクションを承認', submit: '回答を送信', authorize: '認証を確認', cancel: '拒否して停止', usePasskey: 'パスキーを使用',
+    chooseOption: 'オプションを選択', approve: 'アクションを承認', submit: '送信', authorize: '認証を確認', cancel: 'キャンセル', usePasskey: 'パスキーを使用',
+    keyHelp: 'こちらでキーを作成し', keyHelpAfter: '下に貼り付けてください。', storedInputNeed: '{assistant} を続けるにはこのキーが必要です。',
+    storedInputLabel: '{assistant} の API キー', storedInputPlaceholder: 'ここにキーを貼り付け', expiresIn: '残り {time}',
     validating: 'Supervisor パスワードを確認しています…',
-    storedInputLead: 'この値は Action の成功後に暗号化され、次回から再入力なしで再利用されます。',
     passwordLabel: 'Supervisor パスワード', totpLabel: '確認コード', totpPlaceholder: 'ワンタイムコードを入力',
     selectionHint: '{minimum}〜{maximum} 個のオプションを選択してください。', invalid: '続行する前に回答を確認してください。',
     validationKicker: 'Action // 検証', deniedTitle: 'Supervisor パスワードを確認できませんでした',
@@ -112,11 +105,10 @@ export const humanRequestMessages = {
     expired: 'Action リクエストの有効期限が切れました。再試行するにはメッセージをもう一度送信してください。',
   },
   ar: {
-    approvalKicker: 'Action // موافقة', inputKicker: 'Action // إدخال مطلوب', authKicker: 'Action // تفويض حساس',
-    context: 'يحتاج الإجراء {action} من المساعد {assistant} v{version} إلى تحقق بشري. تنتهي الصلاحية خلال {seconds} ثانية.',
-    required: 'مطلوب', optional: 'اختياري', chooseOption: 'اختر خيارًا', approve: 'الموافقة على الإجراء', submit: 'إرسال الرد', authorize: 'تأكيد التفويض', cancel: 'الرفض والإيقاف', usePasskey: 'استخدام مفتاح مرور',
+    chooseOption: 'اختر خيارًا', approve: 'الموافقة على الإجراء', submit: 'إرسال', authorize: 'تأكيد التفويض', cancel: 'إلغاء', usePasskey: 'استخدام مفتاح مرور',
+    keyHelp: 'أنشئ مفتاحك من هنا', keyHelpAfter: 'ثم الصقه أدناه.', storedInputNeed: 'يحتاج {assistant} إلى هذا المفتاح للمتابعة.',
+    storedInputLabel: 'مفتاح API لـ {assistant}', storedInputPlaceholder: 'الصق مفتاحك هنا', expiresIn: 'تنتهي خلال {time}',
     validating: 'جارٍ تأكيد كلمة مرور Supervisor…',
-    storedInputLead: 'تُشفّر هذه القيمة بعد نجاح Action ويُعاد استخدامها دون طلبها مرة أخرى.',
     passwordLabel: 'كلمة مرور Supervisor', totpLabel: 'رمز التحقق', totpPlaceholder: 'أدخل الرمز لمرة واحدة',
     selectionHint: 'اختر من {minimum} إلى {maximum} خيارات.', invalid: 'راجع هذا الرد قبل المتابعة.',
     validationKicker: 'Action // تحقق', deniedTitle: 'لم يتم تأكيد كلمة مرور Supervisor',
@@ -129,16 +121,3 @@ export const humanRequestMessages = {
   },
 };
 
-export function humanRequestContextParts(template, challenge, seconds) {
-  const replacements = {
-    '{action}': { text: challenge.action.id, emphasized: true },
-    '{assistant}': { text: challenge.assistant.name, emphasized: true },
-    'v{version}': { text: `v${challenge.assistant.version}`, emphasized: true },
-    '{version}': { text: challenge.assistant.version, emphasized: true },
-    '{seconds}': { text: String(seconds), emphasized: false },
-  };
-  return template
-    .split(/(\{action\}|\{assistant\}|v\{version\}|\{version\}|\{seconds\})/u)
-    .filter(Boolean)
-    .map((token) => replacements[token] ?? { text: token, emphasized: false });
-}

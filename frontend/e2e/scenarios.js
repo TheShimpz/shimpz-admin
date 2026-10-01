@@ -104,6 +104,13 @@ const STARTS = {
     runs: [],
     clarify: 'fail-once',
   }),
+  'human-request': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: true,
+  }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
@@ -225,6 +232,30 @@ function clarifyReply(state, message) {
   };
 }
 
+// The human-request scenario pauses an Action for a Stored Input the Team does not hold yet (ADR-0090).
+const HUMAN_CHALLENGE = Object.freeze({
+  type: 'human-required',
+  challenge_id: 'b'.repeat(32),
+  expires_in: 180,
+  assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
+  action: { id: 'search-web', summary: 'Search the web with Exa.' },
+  purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.',
+  help_url: 'https://dashboard.exa.ai/api-keys',
+  request: {
+    kind: 'input:password',
+    ordinal: 0,
+    title: 'Exa API key',
+    description: 'Exa search uses your Exa API key. It is stored encrypted for this Team and reused.',
+    fingerprint: 'c'.repeat(64),
+    label: 'Exa API key',
+    required: true,
+    placeholder: 'Paste your Exa API key',
+    min_length: 1,
+    max_length: 128,
+    stored_input: 'exa-api-key',
+  },
+});
+
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
@@ -286,6 +317,17 @@ export function createScenario(name = 'ready') {
       path: '/api/teams/marketing/chat/ws',
       message(frame) {
         if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
+        if (frame?.type === 'chat' && state.human) return [structuredClone(HUMAN_CHALLENGE)];
+        if (frame?.type === 'human-response') {
+          return [{
+            type: 'done',
+            team_id: 'marketing',
+            team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
+            reply: frame.decision === 'deny' ? 'Ok — I stopped that Action.' : 'Done — the search ran with your key.',
+            clarification: null,
+            routine_proposal: null,
+          }];
+        }
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];
       },
