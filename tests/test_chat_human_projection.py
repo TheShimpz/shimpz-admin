@@ -330,6 +330,17 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 with self.assertRaises(human.HumanChallengeError):
                     human.project(_response(request), "team_1")
 
+    def test_team_refusals_of_a_changed_request_reach_the_browser_as_safe_codes(self) -> None:
+        for code, detail in (
+            ("assistant-language-drift", "an installed Assistant's language pack changed; retry the message"),
+            ("human-request-invalid", "the Assistant request for your input changed; retry the message"),
+            ("team-context-changed", "the Team capabilities changed; retry"),
+        ):
+            with self.subTest(code=code):
+                refused = local._safe_error(team.TeamResponse(409, {"code": code, "detail": "must-not-cross"}))
+                event = refused.websocket_event("team_1")
+                self.assertEqual(event, {"type": "error", "status": 409, "detail": f"{code}: {detail}"})
+
     def test_tampered_or_augmented_challenges_fail_without_reflection(self) -> None:
         request = _request("input:select")
         tampered = dict(request)

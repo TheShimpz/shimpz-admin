@@ -50,6 +50,7 @@ MAX_INTEGRATION_LABEL_CHARS = 80
 MAX_INTEGRATION_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
     "assistant-action-blocked": "Assistant Action execution is blocked until it is reinstalled",
+    "assistant-language-drift": "an installed Assistant's language pack changed; retry the message",
     "assistant-integration-challenge-expired": "the Assistant integration expired; retry the message",
     "assistant-integration-contract-invalid": "the Assistant integration contract changed; retry the message",
     "assistant-integration-state-unavailable": "Assistant integration state is unavailable",
@@ -76,6 +77,7 @@ _CHAT_ERROR_DETAILS = {
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
     "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
     "human-challenge-response-invalid": "the Assistant request for your input was invalid",
+    "human-request-invalid": "the Assistant request for your input changed; retry the message",
     "chat-challenge-response-invalid": "the Assistant challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
