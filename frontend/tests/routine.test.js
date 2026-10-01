@@ -324,6 +324,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   const errors = routineMessages.en.errors;
   assert.equal(routineErrorMessage(new RoutineError('routine-proposal-unavailable'), errors), errors.gone);
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
+  assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   assert.equal(isTimezone(browserTimezone()), true);

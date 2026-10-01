@@ -396,6 +396,7 @@ export function routineErrorMessage(error, copy) {
     'routine-run-not-found': copy.ended,
     'routine-run-not-uncertain': copy.ended,
     'routine-state-unavailable': copy.unavailable,
+    'team-context-unavailable': copy.unavailable,
   };
   return byCode[code] ?? copy.generic;
 }
