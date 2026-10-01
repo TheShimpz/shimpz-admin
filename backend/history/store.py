@@ -514,7 +514,8 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             raise ValueError("invalid stored message")
     if role == "assistant" and "usage" in payload:
         expected.add("usage")
-        if team_contract.canonical_turn_usage(payload["usage"]) != payload["usage"]:
+        usage = team_contract.canonical_turn_usage(payload["usage"])
+        if usage is None or usage != payload["usage"]:
             raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")

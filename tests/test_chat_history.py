@@ -220,6 +220,10 @@ class ChatHistoryTests(unittest.TestCase):
                 f"{turn_id}:reply",
             ),
             ({"kind": "message", "role": "user", "text": "x", "usage": usage}, f"{following}:user"),
+            (
+                {"kind": "message", "role": "assistant", "text": "x", "author": "Marketing", "usage": None},
+                f"{plain}:reply",
+            ),
         ):
             with self.subTest(stored=stored):
                 with sqlite3.connect(self.path) as database:
