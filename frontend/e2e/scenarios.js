@@ -110,7 +110,14 @@ const STARTS = {
     teams: [TEAM],
     routines: [],
     runs: [],
-    human: true,
+    human: 'stored-input',
+  }),
+  'human-approval': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'approval',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
@@ -257,6 +264,49 @@ const HUMAN_CHALLENGE = Object.freeze({
   }),
 });
 
+// The human-approval scenario asks to choose how a DNS change is published. Team renders the Assistant's English copy
+// in the turn's interface language (ADR-0091); this preview carries English and Portuguese, and English otherwise.
+const APPROVAL_REQUEST = Object.freeze({
+  kind: 'input:choice',
+  ordinal: 0,
+  title: 'DNS changes to publish: 3. Zone: example.com.',
+  description: 'Choose how Shimpz Cloudflare publishes the reviewed records for example.com.',
+  fingerprint: 'c'.repeat(64),
+  label: 'Publishing mode',
+  required: true,
+  options: [
+    { value: 'proxied', label: 'Proxied', description: 'Route traffic through Cloudflare.' },
+    { value: 'dns-only', label: 'DNS only', description: null },
+  ],
+});
+const APPROVAL_COPY = Object.freeze({
+  pt: {
+    title: 'Alterações de DNS a publicar: 3. Zona: example.com.',
+    description: 'Escolha como o Shimpz Cloudflare publica os registros revisados de example.com.',
+    label: 'Modo de publicação',
+    options: [
+      { label: 'Com proxy', description: 'Encaminhar o tráfego pela Cloudflare.' },
+      { label: 'Somente DNS', description: null },
+    ],
+  },
+});
+
+function approvalChallenge(locale) {
+  const shown = APPROVAL_COPY[locale] ? locale : 'en';
+  return {
+    type: 'human-required',
+    challenge_id: 'b'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+    action: { id: 'publish-dns', summary: 'Publish reviewed DNS changes.' },
+    ...localizedChallenge(APPROVAL_REQUEST, { locale: shown, shown: APPROVAL_COPY[shown] ?? {} }),
+  };
+}
+
+function humanChallenge(state, frame) {
+  return state.human === 'approval' ? approvalChallenge(frame.locale) : structuredClone(HUMAN_CHALLENGE);
+}
+
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
@@ -301,7 +351,7 @@ export function createScenario(name = 'ready') {
           assistants: [
             { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' },
             // A human request names an installed Assistant; Admin refuses one the Team inventory does not list.
-            ...(state.human
+            ...(state.human === 'stored-input'
               ? [{ assistant: 'shimpz-exa', assistant_version: '0.1.1', status: 'running', provenance: 'published' }]
               : []),
           ],
@@ -322,13 +372,17 @@ export function createScenario(name = 'ready') {
       path: '/api/teams/marketing/chat/ws',
       message(frame) {
         if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
-        if (frame?.type === 'chat' && state.human) return [structuredClone(HUMAN_CHALLENGE)];
+        if (frame?.type === 'chat' && state.human) return [humanChallenge(state, frame)];
         if (frame?.type === 'human-response') {
           return [{
             type: 'done',
             team_id: 'marketing',
             team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
-            reply: frame.decision === 'deny' ? 'Ok — I stopped that Action.' : 'Done — the search ran with your key.',
+            reply: frame.decision === 'deny'
+              ? 'Ok — I stopped that Action.'
+              : state.human === 'approval'
+                ? `Done — published with ${frame.value}.`
+                : 'Done — the search ran with your key.',
             clarification: null,
             routine_proposal: null,
           }];

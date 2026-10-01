@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { renderClarification } from '../src/lib/clarification.js';
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
@@ -122,4 +122,25 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
   const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
   assert.equal(parsed.type, 'human-required');
   assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id));
+});
+
+test('the human-approval scenario renders its copy in the turn language and keeps canonical option values', () => {
+  const scenario = createScenario('human-approval');
+  const ask = (locale) => scenario.chat.message({
+    type: 'chat', message: 'Publish my DNS changes', files: [], assistant_ids: [], locale,
+  })[0];
+  const portuguese = parseChatEvent(ask('pt'), 'marketing', 'Marketing');
+  assert.equal(portuguese.locale, 'pt');
+  assert.equal(displayedHumanRequest(portuguese).title, 'Alterações de DNS a publicar: 3. Zona: example.com.');
+  const english = parseChatEvent(ask('ja'), 'marketing', 'Marketing');
+  assert.equal(english.locale, 'en');
+  assert.equal(displayedHumanRequest(english).title, 'DNS changes to publish: 3. Zone: example.com.');
+  assert.deepEqual(portuguese.request, english.request);
+  assert.deepEqual(displayedHumanRequest(portuguese).options.map((option) => option.value), ['proxied', 'dns-only']);
+  const [done] = scenario.chat.message({
+    type: 'human-response', challenge_id: portuguese.challenge_id, decision: 'submit', value: 'dns-only',
+  });
+  assert.match(parseChatEvent(done, 'marketing', 'Marketing').reply, /dns-only/u);
+  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+  assert.ok(inventory.some((entry) => entry.assistant === portuguese.assistant.id));
 });
