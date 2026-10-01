@@ -138,8 +138,10 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:
                 raise ValueError("invalid Team integration status")
-            # Team's summary is the binding's English catalog text; the browser reads it per interface language instead.
+            # Team's Assistant summary is the binding's English catalog text, which the browser reads per interface
+            # language instead, and its provider summary is English text the interface never shows.
             chat_ws_common.public_text(item["assistant_summary"], 160, field="Assistant summary")
+            chat_ws_common.public_text(item["summary"], 160, field="integration summary")
             integrations.append(
                 {
                     "assistant_id": assistant_id,
@@ -148,7 +150,6 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                     "id": integration_id,
                     "provider": payloads.canonical_assistant_id(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),
-                    "summary": chat_ws_common.public_text(item["summary"], 160, field="integration summary"),
                     "scopes": _integration_scopes(item["scopes"]),
                     "status": status,
                     "integration": _integration_identity(item["integration"]),

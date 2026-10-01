@@ -63,7 +63,6 @@ function integrationInventory(status = 'connected') {
         id: 'x-integration',
         provider: 'x',
         name: 'X integration',
-        summary: 'Publishes approved posts through your X integration.',
         scopes: ['tweet.read', 'tweet.write', 'users.read'],
         status,
         integration: status === 'missing' ? null : { id: '142', name: 'Shimpz', username: 'TheShimpz' },
@@ -768,8 +767,9 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
     { integrations: [{ ...inventory.integrations[0], integration: { id: '', name: null, username: null } }] },
     { integrations: [{ ...inventory.integrations[0], expires_at: 'tomorrow' }] },
     { integrations: [{ ...inventory.integrations[0], assistant_version: 'latest' }] },
-    // Team's English summary never reaches the browser, which reads it per interface language instead.
+    // Team's English summaries never reach the browser, which reads the Assistant summary per interface language.
     { integrations: [{ ...inventory.integrations[0], assistant_summary: 'Publishes reviewed social updates.' }] },
+    { integrations: [{ ...inventory.integrations[0], summary: 'Publishes approved posts through your X integration.' }] },
     {
       integrations: [
         inventory.integrations[0],
