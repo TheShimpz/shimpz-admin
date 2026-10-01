@@ -154,20 +154,85 @@ class OrderFileTests(OrderCase):
         with mock.patch.object(team_order, "_save") as saved:
             team_order.forget("b")
         saved.assert_not_called()
-        # An invalid order names no Team: there is nothing to remove, and it stays as found.
-        self.write(b"garbage")
+
+    def test_a_mutation_removes_admins_own_invalid_order_so_no_position_can_return(self) -> None:
+        for raw, mode in ((b"garbage", 0o600), (b'{"team_ids":["a","b"]}', 0o644)):
+            with self.subTest(raw=raw, mode=oct(mode)):
+                self.write(raw, mode)
+                with self.assertLogs("shimpz-admin", "WARNING"):
+                    team_order.forget("b")
+                self.assertFalse(self.path.exists())
+        # Another name for the same inode survives; only the order's own entry is removed.
+        self.saved("a")
+        link = self.root / "second-link"
+        os.link(self.path, link)
         with self.assertLogs("shimpz-admin", "WARNING"):
+            team_order.forget("b")
+        self.assertEqual((self.path.exists(), link.exists()), (False, True))
+
+    def test_a_mutation_refuses_an_invalid_order_it_cannot_safely_remove(self) -> None:
+        self.saved("a")
+        with (
+            mock.patch.object(team_order.os, "geteuid", return_value=os.geteuid() + 1),
+            self.assertLogs("shimpz-admin", "WARNING"),
+            self.assertRaises(team_order.OrderUnavailableError),
+        ):
             team_order.forget("a")
-        self.assertEqual(self.path.read_bytes(), b"garbage")
+        self.path.chmod(0o644)
+        with (
+            mock.patch.object(Path, "unlink", side_effect=PermissionError("denied")),
+            self.assertLogs("shimpz-admin", "WARNING"),
+            self.assertRaises(team_order.OrderUnavailableError),
+        ):
+            team_order.forget("a")
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+        os.mkfifo(self.path, 0o600)
+        with self.assertLogs("shimpz-admin", "WARNING"), self.assertRaises(team_order.OrderUnavailableError):
+            team_order.forget("a")
         self.path.unlink()
         self.path.symlink_to(self.root / "elsewhere.json")
         with self.assertRaises(team_order.OrderUnavailableError):
             team_order.forget("a")
+        self.assertTrue(self.path.is_symlink())
+
+    def test_a_retry_completes_the_directory_barrier_an_earlier_attempt_missed(self) -> None:
+        self.saved("a", "b")
+        # The rename lands, then the directory fsync fails: the removal is not yet durable.
+        with (
+            mock.patch.object(team_order.os, "fsync", side_effect=[None, OSError("EIO")]),
+            self.assertRaises(team_order.OrderUnavailableError),
+        ):
+            team_order.forget("a")
+        self.assertEqual(team_order.load(), ["b"])
+        with mock.patch.object(team_order.os, "fsync", wraps=os.fsync) as fsync:
+            team_order.forget("a")
+        fsync.assert_called_once()
+        # An unlink that landed before its barrier failed is made durable by the retry, too.
+        with (
+            mock.patch.object(team_order.os, "fsync", side_effect=OSError("EIO")),
+            self.assertRaises(team_order.OrderUnavailableError),
+        ):
+            team_order.clear()
+        self.assertFalse(self.path.exists())
+        with mock.patch.object(team_order.os, "fsync", wraps=os.fsync) as fsync:
+            team_order.clear()
+        fsync.assert_called_once()
+
+    def test_the_barrier_has_nothing_to_sync_without_a_directory_and_fails_on_an_unusable_one(self) -> None:
+        with mock.patch.object(team_order, "ORDER_PATH", self.root / "missing" / "team-order.json"):
+            team_order.forget("a")
+            team_order.clear()
+        parent = self.root / "file"
+        parent.write_bytes(b"")
+        with (
+            mock.patch.object(team_order, "ORDER_PATH", parent / "team-order.json"),
+            self.assertRaises(team_order.OrderUnavailableError),
+        ):
+            team_order._sync_parent()
 
     def test_clear_removes_the_order_and_interrupted_writes_but_nothing_else(self) -> None:
         team_order.clear()
-        with mock.patch.object(team_order, "ORDER_PATH", self.root / "missing" / "team-order.json"):
-            team_order.clear()
         self.saved("a")
         leftover = self.root / ".team-order.json.abcd1234.tmp"
         unrelated = self.root / "admin.json"
@@ -382,7 +447,7 @@ class CreationTests(OrderCase):
         self.assertEqual(team_order.load(), ["old", "a"])
 
     def test_creation_needs_no_inventory_when_no_position_is_saved_for_the_id(self) -> None:
-        for raw in (None, b'{"team_ids":["a"]}', b"garbage"):
+        for raw in (None, b'{"team_ids":["a"]}'):
             with self.subTest(raw=raw):
                 if raw is not None:
                     self.write(raw)
@@ -391,7 +456,39 @@ class CreationTests(OrderCase):
                 self.assertEqual(response.status_code, 200)
                 listed.assert_not_called()
                 create.assert_called_once_with("old", "Old")
-        self.assertEqual(self.path.read_bytes(), b"garbage")
+        self.assertEqual(team_order.load(), ["a"])
+
+    def test_creation_removes_an_invalid_order_so_a_stale_position_cannot_return(self) -> None:
+        # A valid order with unsafe permissions still names the old id; it must not survive to be repaired later.
+        for raw, mode in ((b"garbage", 0o600), (b'{"team_ids":["old","a"]}', 0o644)):
+            with self.subTest(raw=raw, mode=oct(mode)):
+                self.write(raw, mode)
+                with self.assertLogs("shimpz-admin", "WARNING"):
+                    response, listed, create = self.create(_inventory())
+                self.assertEqual(response.status_code, 200)
+                listed.assert_not_called()
+                create.assert_called_once_with("old", "Old")
+                self.assertFalse(self.path.exists())
+
+    def test_creation_waits_for_the_barrier_a_failed_release_left_incomplete(self) -> None:
+        self.saved("old", "a")
+        with (
+            mock.patch.object(team_order.os, "fsync", side_effect=[None, OSError("EIO")]),
+            self.assertLogs("shimpz-admin", "ERROR"),
+        ):
+            response, _listed, create = self.create(_inventory("a"))
+        self.assertEqual((response.status_code, json.loads(response.body)["code"]), (503, "team-order-unavailable"))
+        create.assert_not_called()
+        self.assertEqual(team_order.load(), ["a"])
+        events: list[str] = []
+        created = team.TeamResponse(200, {"team_id": "old", "created": True})
+        with (
+            mock.patch.object(team_order.os, "fsync", side_effect=lambda _fd: events.append("fsync")),
+            mock.patch.object(team, "create", side_effect=lambda *_args: events.append("created") or created),
+            mock.patch.object(team_names.chat_history_http, "team_created", side_effect=lambda _id, result: result),
+        ):
+            self.assertEqual(team_names.create({"team_name": "Old"}).status_code, 200)
+        self.assertEqual(events, ["fsync", "created"])
 
     def test_nothing_is_created_when_the_stale_position_cannot_be_released(self) -> None:
         self.saved("old")
@@ -405,13 +502,24 @@ class CreationTests(OrderCase):
             response, _listed, create = self.create(_inventory())
         self.assertEqual((response.status_code, json.loads(response.body)["code"]), (503, "team-order-unavailable"))
         create.assert_not_called()
-        self.path.unlink()
-        self.path.symlink_to(self.root / "elsewhere.json")
-        with self.assertLogs("shimpz-admin", "ERROR"):
-            response, listed, create = self.create(_inventory())
-        self.assertEqual(response.status_code, 503)
-        listed.assert_not_called()
-        create.assert_not_called()
+        for unsafe in ("symlink", "foreign"):
+            with self.subTest(unsafe=unsafe):
+                self.path.unlink()
+                if unsafe == "symlink":
+                    self.path.symlink_to(self.root / "elsewhere.json")
+                    owner = os.geteuid()
+                else:
+                    self.saved("old")
+                    owner = os.geteuid() + 1
+                with (
+                    mock.patch.object(team_order.os, "geteuid", return_value=owner),
+                    self.assertLogs("shimpz-admin", "WARNING"),
+                ):
+                    response, listed, create = self.create(_inventory())
+                self.assertEqual(response.status_code, 503)
+                listed.assert_not_called()
+                create.assert_not_called()
+                self.assertTrue(self.path.is_symlink() or self.path.exists())
 
 
 class SerializationTests(OrderCase):
@@ -505,6 +613,17 @@ class LifecycleCleanupTests(OrderCase):
         self.assertEqual(self.admin_app._team_delete_with_history("a", lambda: absent).status, 200)
         self.assertEqual(team_order.load(), [])
 
+    def test_a_deletion_whose_invalid_order_cannot_be_removed_reports_partial_completion(self) -> None:
+        self.saved("a")
+        deleted = team.TeamResponse(200, {"deleted": True})
+        with (
+            mock.patch.object(team_order.os, "geteuid", return_value=os.geteuid() + 1),
+            self.assertLogs("shimpz-admin", "WARNING"),
+        ):
+            response = self.admin_app._team_delete_with_history("a", lambda: deleted)
+        self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
+        self.assertTrue(self.path.exists())
+
     def test_space_reset_removes_the_saved_order_and_reports_a_failed_removal(self) -> None:
         reset = team.TeamResponse(200, {"reset": True})
         failed = team.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"})
@@ -519,7 +638,7 @@ class LifecycleCleanupTests(OrderCase):
         self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
         self.assertIn("run the Space reset again", response.body["detail"])
 
-    def test_deletion_and_reset_wait_for_a_reorder_in_progress(self) -> None:
+    def assert_waits_for_a_reorder(self, name: str, run, outcome: team.TeamResponse) -> None:
         listing = threading.Event()
         release = threading.Event()
         events: list[str] = []
@@ -530,24 +649,37 @@ class LifecycleCleanupTests(OrderCase):
             release.wait(5)
             return _inventory("a")
 
-        def delete() -> team.TeamResponse:
-            events.append("delete")
-            return team.TeamResponse(200, {"deleted": True})
+        def action() -> team.TeamResponse:
+            events.append(name)
+            return outcome
 
         with mock.patch.object(team, "list_teams", side_effect=inventory):
             reorderer = threading.Thread(target=team_order.reorder, args=(["a"],))
             reorderer.start()
             self.assertTrue(listing.wait(5))
-            deleter = threading.Thread(target=self.admin_app._team_delete_with_history, args=("a", delete))
-            deleter.start()
+            mutator = threading.Thread(target=run, args=(action,))
+            mutator.start()
             time.sleep(0.05)
             self.assertEqual(events, ["inventory"])
             release.set()
             reorderer.join(5)
-            deleter.join(5)
-        self.assertEqual(events, ["inventory", "delete"])
+            mutator.join(5)
+        self.assertEqual(events, ["inventory", name])
+
+    def test_deletion_waits_for_a_reorder_in_progress(self) -> None:
+        deleted = team.TeamResponse(200, {"deleted": True})
+        self.assert_waits_for_a_reorder(
+            "delete", lambda action: self.admin_app._team_delete_with_history("a", action), deleted
+        )
         # The deletion ran after the save, so the deleted Team's position does not survive it.
         self.assertEqual(team_order.load(), [])
+
+    def test_reset_waits_for_a_reorder_in_progress(self) -> None:
+        self.assert_waits_for_a_reorder(
+            "reset", self.admin_app._space_reset_with_history, team.TeamResponse(200, {"reset": True})
+        )
+        # The reset ran after the save, so no saved order survives it.
+        self.assertFalse(self.path.exists())
 
     def test_the_local_list_route_projects_and_the_hosted_one_passes_through(self) -> None:
         self.saved("a")

@@ -99,10 +99,22 @@ def load() -> list[str] | None:
     return team_ids
 
 
-def _fsync_directory(path: Path) -> None:
-    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+def _sync_parent() -> None:
+    """Complete the directory durability barrier, so an earlier rename or unlink is on disk before it is relied on.
+
+    It runs even when a retry finds nothing left to change: an earlier attempt may have renamed or unlinked before
+    its own barrier failed. A missing directory holds no order, so it has nothing to make durable.
+    """
+    try:
+        directory = os.open(ORDER_PATH.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise OrderUnavailableError("Team order directory cannot be opened") from exc
     try:
         os.fsync(directory)
+    except OSError as exc:
+        raise OrderUnavailableError("Team order directory cannot be synchronized") from exc
     finally:
         os.close(directory)
 
@@ -110,9 +122,8 @@ def _fsync_directory(path: Path) -> None:
 def _save(team_ids: list[str]) -> None:
     """Atomically and durably replace the order: a 0600 temporary file is fsynced, renamed, then its directory."""
     payload = json.dumps({"team_ids": team_ids}, separators=(",", ":")).encode("ascii")
-    parent = ORDER_PATH.parent
     try:
-        descriptor, name = tempfile.mkstemp(prefix=f".{ORDER_PATH.name}.", suffix=".tmp", dir=parent)
+        descriptor, name = tempfile.mkstemp(prefix=f".{ORDER_PATH.name}.", suffix=".tmp", dir=ORDER_PATH.parent)
     except OSError as exc:
         raise OrderUnavailableError("Team order cannot be written") from exc
     temporary = Path(name)
@@ -126,43 +137,54 @@ def _save(team_ids: list[str]) -> None:
         finally:
             os.close(descriptor)
         temporary.replace(ORDER_PATH)
-        _fsync_directory(parent)
     except OSError as exc:
         temporary.unlink(missing_ok=True)
         raise OrderUnavailableError("Team order cannot be written") from exc
+    _sync_parent()
 
 
-def _saved_for_cleanup() -> list[str] | None:
-    """The saved order a cleanup edits; an invalid one names no Team, but a failed read is never ignored."""
+def _remove_invalid() -> None:
+    """Remove an invalid order only when it is this Admin's own regular file; anything else refuses the mutation."""
+    try:
+        metadata = ORDER_PATH.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid():
+            raise OrderUnavailableError("Team order is invalid and is not Admin's own file")
+        ORDER_PATH.unlink()
+    except OSError as exc:
+        raise OrderUnavailableError("Team order cannot be removed") from exc
+
+
+def _saved_for_mutation() -> list[str] | None:
+    """The saved order a lifecycle mutation edits; an invalid one is removed, never read as naming no Team.
+
+    Listing alone falls back to newest first past an invalid order. A mutation removes Admin's own invalid file, so
+    no position it held can return once its metadata is repaired, and refuses when it cannot remove it.
+    """
     try:
         return load()
     except OrderInvalidError:
-        log.warning("Admin Team order is invalid; it names no Team")
+        log.warning("Admin Team order is invalid; removing it")
+        _remove_invalid()
         return None
 
 
 def forget(team_id: str) -> None:
     """Durably remove one Team's saved position."""
-    saved = _saved_for_cleanup()
+    saved = _saved_for_mutation()
     if saved is not None and team_id in saved:
         _save([item for item in saved if item != team_id])
+    else:
+        _sync_parent()
 
 
 def clear() -> None:
-    """Remove the saved order and any temporary file an interrupted write left."""
-    parent = ORDER_PATH.parent
+    """Durably remove the saved order and any temporary file an interrupted write left."""
     try:
-        removed = False
-        for path in (ORDER_PATH, *parent.glob(f".{ORDER_PATH.name}.*.tmp")):
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                continue
-            removed = True
-        if removed:
-            _fsync_directory(parent)
+        for path in (ORDER_PATH, *ORDER_PATH.parent.glob(f".{ORDER_PATH.name}.*.tmp")):
+            path.unlink(missing_ok=True)
     except OSError as exc:
         raise OrderUnavailableError("Team order cannot be removed") from exc
+    _sync_parent()
 
 
 def arrange(teams: list[dict[str, str]], saved: list[str] | None) -> list[dict[str, str]]:
@@ -226,19 +248,15 @@ def release_for_create(team_id: str) -> bridge.TeamResponse | None:
     The caller holds LOCK across this release and its creation. A refusal is returned before anything is created.
     """
     try:
-        saved = _saved_for_cleanup()
-    except OrderUnavailableError:
-        log.exception("Admin Team order is unavailable before Team creation")
-        return _unavailable("The Team order is unavailable, so no Team was created; try again")
-    if saved is None or team_id not in saved:
-        return None
-    teams = _fresh_inventory()
-    if isinstance(teams, bridge.TeamResponse):
-        return teams
-    if any(team["team_id"] == team_id for team in teams):
-        return None
-    try:
-        _save([item for item in saved if item != team_id])
+        saved = _saved_for_mutation()
+        if saved is None or team_id not in saved:
+            _sync_parent()
+            return None
+        teams = _fresh_inventory()
+        if isinstance(teams, bridge.TeamResponse):
+            return teams
+        if all(team["team_id"] != team_id for team in teams):
+            _save([item for item in saved if item != team_id])
     except OrderUnavailableError:
         log.exception("Admin Team order could not release a stale position before Team creation")
         return _unavailable("The Team order is unavailable, so no Team was created; try again")
