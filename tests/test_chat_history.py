@@ -180,6 +180,59 @@ class ChatHistoryTests(unittest.TestCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
+    def test_a_reply_keeps_its_closed_turn_usage_for_reload(self) -> None:
+        usage = {
+            "duration_ms": 6200,
+            "models": [{"provider": "openai", "model": "gpt-6-luna", "input_tokens": 1331, "output_tokens": 36}],
+        }
+        turn_id = self._admitted()
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "Two zones are active.",
+            "clarification": None,
+            "routine_proposal": None,
+        }
+        for invalid in (None, {**usage, "models": []}, {**usage, "duration_ms": 86_400_001}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", turn_id, {**done, "usage": invalid})
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "usage": usage}))
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "usage": usage}))
+        entry = history.page("marketing")["entries"][-1]
+        self.assertEqual((entry["id"], entry["usage"]), (f"{turn_id}:reply", usage))
+        # What a turn consumed never enters the Brain's conversation window.
+        following = self._admitted()
+        self.assertNotIn("gpt-6-luna", repr(history.conversation("marketing", following)))
+        # A reply stored without usage stays valid; a tampered or misplaced usage makes the history unavailable.
+        plain = self._admitted()
+        self.assertTrue(history.append_reply("marketing", plain, done))
+        self.assertNotIn("usage", history.page("marketing")["entries"][-1])
+        for stored, key in (
+            (
+                {
+                    "kind": "message",
+                    "role": "assistant",
+                    "text": "x",
+                    "author": "Marketing",
+                    "usage": {**usage, "models": []},
+                },
+                f"{turn_id}:reply",
+            ),
+            ({"kind": "message", "role": "user", "text": "x", "usage": usage}, f"{following}:user"),
+        ):
+            with self.subTest(stored=stored):
+                with sqlite3.connect(self.path) as database:
+                    [original] = database.execute(
+                        "SELECT payload FROM transcript WHERE event_key = ?", (key,)
+                    ).fetchone()
+                    database.execute("UPDATE transcript SET payload = ? WHERE event_key = ?", (json.dumps(stored), key))
+                with self.assertRaises(history.HistoryUnavailableError):
+                    history.page("marketing")
+                with sqlite3.connect(self.path) as database:
+                    database.execute("UPDATE transcript SET payload = ? WHERE event_key = ?", (original, key))
+                self.assertEqual(history.page("marketing")["entries"][-1]["text"], "Two zones are active.")
+
     def test_records_idempotent_terminal_rows_in_presentation_order(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()

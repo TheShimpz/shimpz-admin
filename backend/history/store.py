@@ -247,7 +247,7 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification", "routine_proposal"}
-    if not isinstance(event, Mapping) or set(event) != fields:
+    if not isinstance(event, Mapping) or set(event) - {"usage"} != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
@@ -266,6 +266,12 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload restores the confirmation card; the Team decides whether it is still live.
         entry["routine_proposal"] = proposal
+    if "usage" in event:
+        usage = team_contract.canonical_turn_usage(event["usage"])
+        if usage is None:
+            raise ValueError("chat history reply event is invalid")
+        # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
+        entry["usage"] = usage
     return _append(
         canonical_team, f"{canonical_turn}:reply", entry, anchor_turn=canonical_turn, finish_turn=canonical_turn
     )
@@ -505,6 +511,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
     if role == "assistant" and "routine_proposal" in payload:
         expected.add("routine_proposal")
         if routine_contract.canonical_proposal(payload["routine_proposal"]) != payload["routine_proposal"]:
+            raise ValueError("invalid stored message")
+    if role == "assistant" and "usage" in payload:
+        expected.add("usage")
+        if team_contract.canonical_turn_usage(payload["usage"]) != payload["usage"]:
             raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")
