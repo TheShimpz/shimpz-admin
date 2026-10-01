@@ -144,6 +144,27 @@ class AppMultipartEdgeTests(unittest.TestCase):
             ),
         )
 
+    def test_real_parser_rejects_malformed_headers_and_bounds_an_undeclared_epilogue(self) -> None:
+        self.assert_status(
+            400,
+            self.admin_app.team_files.bounded_multipart_file(
+                _request(self.multipart_headers(), chunks=[b"--test\r\nNoColonHeader\r\n\r\nx\r\n--test--\r\n"])
+            ),
+        )
+
+        part = (
+            b"--test\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="brief.txt"\r\n'
+            b"Content-Type: text/plain\r\n\r\nx\r\n--test--\r\n"
+        )
+        with mock.patch.object(self.admin_app.team_files, "MAX_MULTIPART_BODY_BYTES", len(part) + 16):
+            self.assert_status(
+                413,
+                self.admin_app.team_files.bounded_multipart_file(
+                    _request(self.multipart_headers(), chunks=[part, b"e" * 64, b"e" * 64])
+                ),
+            )
+
     def test_streaming_limit_and_parser_failure_are_mapped_without_leaking_parser_errors(self) -> None:
         with (
             mock.patch.object(self.admin_app.team_files, "MAX_MULTIPART_BODY_BYTES", 3),
