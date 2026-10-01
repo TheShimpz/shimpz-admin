@@ -72,6 +72,7 @@
     linear-gradient(color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent), color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent)) top left / 1.1rem 1px no-repeat,
     color-mix(in srgb, var(--shimpz-color-cyan) 2%, var(--shimpz-color-bg));
   clip-path: var(--shimpz-control-shape);
+  font-size: 0.875rem;
   transition: border-color var(--shimpz-duration-fast) var(--shimpz-ease), background var(--shimpz-duration-fast) var(--shimpz-ease);
 }
 
@@ -84,6 +85,13 @@
     color-mix(in srgb, var(--shimpz-color-cyan) 4%, var(--shimpz-color-bg));
   outline: none;
   box-shadow: none;
+}
+
+/* Touch browsers zoom into a focused field below 16px, so touch keeps the full size. */
+@media (pointer: coarse) {
+  :root .shimpz-field input:not([type="checkbox"], [type="radio"], [type="file"]),
+  :root .shimpz-field textarea,
+  :root .shimpz-field select { font-size: 1rem; }
 }
 
 *,
