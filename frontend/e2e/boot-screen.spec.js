@@ -222,6 +222,13 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
 test('releases the Assistants route when initial catalog hydration does not settle', async ({ page }) => {
   const catalogGate = deferred();
   const catalogRequested = deferred();
+  // The release deadline runs in the page, so the page records that the boot surface appeared; polling for it from
+  // the test could start after a loaded machine has already released it.
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector('[data-slot="boot-screen"]')) window.bootScreenShown = true;
+    }).observe(document, { subtree: true, childList: true });
+  });
   await page.route('**/api/**', (route) => json(
     route,
     { detail: 'Unavailable outside this boot contract.' },
@@ -248,8 +255,8 @@ test('releases the Assistants route when initial catalog hydration does not sett
   await page.goto('/assistants/');
   const boot = page.locator('[data-slot="boot-screen"]');
   await catalogRequested.promise;
-  await expect(boot).toBeVisible();
   await expect(boot).toHaveCount(0, { timeout: 3500 });
+  expect(await page.evaluate(() => window.bootScreenShown)).toBe(true);
   await expect(page.locator('.assistant-catalog-loading')).toBeVisible();
 
   catalogGate.resolve();
