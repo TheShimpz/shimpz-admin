@@ -3434,7 +3434,6 @@ test('keeps a first Store install ready while local display metadata catches up'
           ? [{
             id: 'shimpz-cloudflare',
             title: 'Shimpz Cloudflare',
-            summary: 'Safely manage Cloudflare DNS records through OAuth.',
           }]
           : [],
       }),
