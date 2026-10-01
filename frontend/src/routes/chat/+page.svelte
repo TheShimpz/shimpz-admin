@@ -1,5 +1,5 @@
 <script>
-  import { flushSync, onMount, tick } from 'svelte';
+  import { flushSync, getContext, onMount, tick } from 'svelte';
   import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import DialogAction from '$lib/DialogAction.svelte';
@@ -27,7 +27,7 @@
   import { locale, t } from '$lib/i18n.js';
   import { messages } from '$lib/messages.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
-  import { sessionContext } from '$lib/sessionContext.js';
+  import { SESSION_ENDED, sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
   import { MAX_CHAT_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import {
@@ -106,10 +106,16 @@
   let reconnectAttempt = 0;
   let reconnectSince = 0;
   // A Local release swap restarts Admin and Team for about half a minute, so a dropped socket keeps reconnecting with
-  // a capped backoff for long enough to cover it before the page asks for a refresh. Admin's session refusal is final.
+  // a capped backoff for long enough to cover it before the page asks for a refresh. Admin refuses an expired session
+  // before it accepts the upgrade, which the browser reports only as a failed connection, so a socket that never
+  // opened asks Admin whether the session is still valid before the next attempt. A confirmed signed-out session
+  // returns to the sign-in flow, and Admin's session refusal of an open socket is final either way.
   const RECONNECT_WINDOW_MS = 150_000;
   const MAX_RECONNECT_DELAY_MS = 10_000;
+  const SESSION_PROBE_TIMEOUT_MS = 5_000;
   const SESSION_REFUSED_CLOSE_CODE = 4401;
+  const sessionEnded = getContext(SESSION_ENDED);
+  let sessionProbe = 0;
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
@@ -984,6 +990,7 @@
   }
 
   function closeSocket() {
+    sessionProbe += 1;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = undefined;
@@ -1075,6 +1082,32 @@
     }, delay);
   }
 
+  // Only an answered session check that reports no authentication ends the reconnect loop; an unreachable or failing
+  // Admin is the transient outage the loop exists to ride out.
+  async function sessionSignedOut() {
+    try {
+      const response = await fetch('/api/session', {
+        method: 'POST',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(SESSION_PROBE_TIMEOUT_MS),
+      });
+      if (!response.ok) return false;
+      const session = await response.json();
+      return session?.authenticated === false;
+    } catch {
+      return false;
+    }
+  }
+
+  async function continueAfterSessionCheck(expectedTeamId, sessionRefused) {
+    const probe = ++sessionProbe;
+    const signedOut = await sessionSignedOut();
+    if (probe !== sessionProbe || socket || !mounted || chatTeamId !== expectedTeamId) return;
+    if (signedOut) sessionEnded();
+    else if (sessionRefused) setError(copy.connectionFailed);
+    else scheduleReconnect(expectedTeamId);
+  }
+
   function connectSocket(expectedTeamId) {
     closeSocket();
     if (!mounted || !expectedTeamId || chatTeamId !== expectedTeamId) return;
@@ -1090,9 +1123,11 @@
       return;
     }
     socket = active;
+    let opened = false;
 
     active.onopen = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
+      opened = true;
       if (active.protocol !== CHAT_WS_PROTOCOL) {
         socket = null;
         active.close(1002, 'Protocol required');
@@ -1332,11 +1367,12 @@
       if (busy) busy = false;
       resetChallengeState();
       if (event.code === SESSION_REFUSED_CLOSE_CODE) {
-        setError(copy.connectionFailed);
+        void continueAfterSessionCheck(expectedTeamId, true);
         return;
       }
       setError(copy.disconnected);
-      scheduleReconnect(expectedTeamId);
+      if (opened) scheduleReconnect(expectedTeamId);
+      else void continueAfterSessionCheck(expectedTeamId, false);
     };
   }
 

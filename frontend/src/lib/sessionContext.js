@@ -19,3 +19,7 @@ export function setSessionContext(session) {
   if (!['local', 'hosted'].includes(profile)) throw new Error('invalid Admin profile');
   sessionContext.set({ oauthCompletionMode: mode, profile });
 }
+
+// The root layout provides this callback so a page that confirms its session has ended hands the browser back to
+// the normal signed-out flow.
+export const SESSION_ENDED = Symbol('shimpz.session-ended');

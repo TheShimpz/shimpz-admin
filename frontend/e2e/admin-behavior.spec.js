@@ -157,6 +157,8 @@ async function routeReadyChat(page, {
   disconnectHumanResponse = false,
   disconnectFirstChat = false,
   refusedReconnects = 0,
+  adminDownRefusals = 0,
+  expireSessionOnDisconnect = false,
   expireSessionOnFirstChat = false,
   holdHumanResponse = false,
   humanKind = '',
@@ -251,12 +253,22 @@ async function routeReadyChat(page, {
     contentType: 'application/json',
     body: JSON.stringify({ detail: 'Unavailable outside this rendered contract.' }),
   }));
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(hostedSession
-      ? { profile: 'hosted', authenticated: true, account_id: 'account-1' }
-      : authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
-  }));
+  await page.route('**/api/session', (route) => {
+    // While Admin itself restarts, its session check is unreachable too.
+    if (firstChatDisconnected && reconnectsRefused < adminDownRefusals) return route.abort('connectionrefused');
+    if (firstChatDisconnected && expireSessionOnDisconnect) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
+      });
+    }
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(hostedSession
+        ? { profile: 'hosted', authenticated: true, account_id: 'account-1' }
+        : authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
+    });
+  });
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
@@ -482,7 +494,8 @@ async function routeReadyChat(page, {
   );
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
     if (firstChatDisconnected && reconnectsRefused < refusedReconnects) {
-      // Admin is down while a release swaps its containers: the upgrade fails before the socket ever opens.
+      // Admin is down while a release swaps its containers, or refuses an expired session before accepting the
+      // upgrade: either way the upgrade fails before the socket ever opens.
       reconnectsRefused += 1;
       socket.connectToServer();
       return;
@@ -2359,7 +2372,13 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   test.slow();
   await page.clock.install();
   // More refused upgrades than the old five-attempt budget allowed, as a Local release swap causes.
-  const chat = await routeReadyChat(page, { disconnectFirstChat: true, refusedReconnects: 6, reply: 'Task complete.' });
+  // Admin's own session check is unreachable for the first half of the outage and answers once Admin is back.
+  const chat = await routeReadyChat(page, {
+    disconnectFirstChat: true,
+    refusedReconnects: 6,
+    adminDownRefusals: 3,
+    reply: 'Task complete.',
+  });
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2380,6 +2399,29 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   await fillWhenReady(page, composer, 'List my DNS zones');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Task complete.')).toBeVisible();
+});
+
+test('a session that expired while disconnected returns to sign-in instead of reconnecting', async ({ page }) => {
+  await page.clock.install();
+  const chat = await routeReadyChat(page, {
+    disconnectFirstChat: true,
+    refusedReconnects: Number.MAX_SAFE_INTEGER,
+    expireSessionOnDisconnect: true,
+  });
+  await page.goto('/chat/');
+
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(async () => {
+    await page.clock.runFor(1_000);
+    return chat.refusedConnections();
+  }).toBeGreaterThan(0);
+  await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  const refused = chat.refusedConnections();
+  await page.clock.runFor(160_000);
+  expect(chat.refusedConnections()).toBe(refused);
 });
 
 test('an expired session ends the chat connection instead of reconnecting', async ({ page }) => {

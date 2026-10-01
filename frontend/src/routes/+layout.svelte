@@ -14,7 +14,7 @@
   import { clearModelContext, modelContext } from '$lib/modelContext.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '$lib/passkey.js';
   import { clearTeamRoutines } from '$lib/routineContext.js';
-  import { clearSessionContext, setSessionContext } from '$lib/sessionContext.js';
+  import { clearSessionContext, SESSION_ENDED, setSessionContext } from '$lib/sessionContext.js';
   import { clearTeamContext, teamContext } from '$lib/teamContext.js';
 
   let { children } = $props();
@@ -39,6 +39,7 @@
       assistantsViewSettled = true;
     },
   });
+  setContext(SESSION_ENDED, () => checkSession());
 
   let active = $derived(
     page.url.pathname.startsWith('/chat')
