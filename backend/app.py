@@ -42,6 +42,7 @@ from team import files as team_files
 from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
+from team import snapshots as team_snapshots
 
 import browser
 from action import stored_input as action_stored_input
@@ -905,10 +906,6 @@ def assistants_list():
     return _team_response(team.list_assistants)
 
 
-def local_assistants_list():
-    return _team_response(team.list_local_assistants)
-
-
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
     return _team_response(lambda: team.list_installed_assistants(team_id))
@@ -931,13 +928,8 @@ async def team_local_assistant_install(team_id: str, request: Request):
     )
 
 
+team_snapshots.register(app, ADMIN_PROFILE)
 if ADMIN_PROFILE == "local":
-    app.add_api_route("/api/local-assistants", local_assistants_list, methods=["GET"])
-    app.add_api_route(
-        "/api/local-assistants/{image_hash}/icon",
-        team_assets.local_assistant_icon,
-        methods=["GET"],
-    )
     app.add_api_route(
         "/api/teams/{team_id}/assistants/local",
         team_local_assistant_install,

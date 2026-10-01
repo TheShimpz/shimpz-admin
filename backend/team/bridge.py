@@ -489,6 +489,15 @@ def local_assistant_icon(image_id: object) -> TeamAssetResponse:
     return _call_asset(f"/v1/local-assistants/{digest.removeprefix('sha256:')}/icon")
 
 
+def local_assistant_summary(image_id: object, locale: object) -> TeamResponse:
+    """Return one exact unpublished image's summary in one interface language, read from its own pack."""
+    digest = canonical_source_digest(image_id)
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/summary/{canonical_locale}")
+
+
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"

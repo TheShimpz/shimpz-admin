@@ -1,11 +1,13 @@
 import { LocalApiError, safeApiError } from './localApi.js';
-import { ASSISTANT_ID_RE } from './validate.js';
+import { isLocale } from './locales.js';
+import { ASSISTANT_ID_RE, codePointLength, CONTROL_RE, exactKeys, jsonObject } from './validate.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
 const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
+const MAX_SUMMARY_CHARS = 160;
 
 function createQueue() {
   return { active: 0, pending: [] };
@@ -136,6 +138,40 @@ async function fetchLocalIcon(fetcher, imageId, delay, signal) {
   throw new LocalApiError('The Local Assistant icon is unavailable.');
 }
 
+function acceptedSummary(body, locale, status) {
+  const summary = body.summary;
+  if (
+    !exactKeys(body, ['locale', 'summary']) ||
+    body.locale !== locale ||
+    typeof summary !== 'string' ||
+    !summary ||
+    summary !== summary.trim() ||
+    summary !== summary.normalize('NFC') ||
+    codePointLength(summary) > MAX_SUMMARY_CHARS ||
+    CONTROL_RE.test(summary)
+  ) {
+    throw new LocalApiError('The Local Assistant summary is invalid.', status);
+  }
+  return summary;
+}
+
+async function fetchLocalSummary(fetcher, imageId, locale, delay, signal) {
+  const imageHash = imageId.slice('sha256:'.length);
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetcher(`/api/local-assistants/${imageHash}/summary?locale=${locale}`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (response.ok) return acceptedSummary(await jsonObject(response), locale, response.status);
+    const retryAfter = await localBusyRetry(response);
+    if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
+      throw await responseError(response, 'The Local Assistant summary is unavailable.');
+    }
+    await delay(retryAfter, signal);
+  }
+}
+
 async function fetchPublicIcon(fetcher, assistantId, delay, signal) {
   for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt += 1) {
     const response = await fetcher(`/api/assistants/${encodeURIComponent(assistantId)}/catalog-icon`, {
@@ -182,4 +218,22 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
     return Promise.reject(new LocalApiError('Invalid Assistant icon request.'));
   }
   return schedule(publicQueue, () => fetchPublicIcon(fetcher, assistantId, delay, signal), signal);
+}
+
+/**
+ * Fetch one staged snapshot's summary in one interface language, read by Team from the snapshot's own language pack
+ * (ADR-0091), through the same two-slot queue as its icon because both share Team's bounded preview.
+ */
+export function loadLocalAssistantSummary(fetcher, imageId, locale, options = {}) {
+  const { delay = sleep, signal } = options;
+  if (
+    typeof fetcher !== 'function' ||
+    !SHA256_RE.test(imageId) ||
+    !isLocale(locale) ||
+    typeof delay !== 'function' ||
+    (signal !== undefined && !(signal instanceof AbortSignal))
+  ) {
+    return Promise.reject(new LocalApiError('Invalid Local Assistant summary request.'));
+  }
+  return schedule(localQueue, () => fetchLocalSummary(fetcher, imageId, locale, delay, signal), signal);
 }

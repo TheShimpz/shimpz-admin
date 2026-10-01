@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   loadLocalAssistantIcon,
+  loadLocalAssistantSummary,
   loadPublicAssistantIcon,
 } from '../src/lib/localAssistantIcons.js';
 
@@ -126,4 +127,76 @@ test('aborts active and queued icon work without starving the queue', async () =
   assert.equal(results.every((result) => result.status === 'rejected'), true);
   assert.equal(started, 2);
   assert.equal((await loadLocalAssistantIcon(async () => pngResponse(), IMAGE_ID)).type, 'image/png');
+});
+
+function summaryResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+test('reads a staged snapshot summary in exactly one interface language with one busy retry', async () => {
+  const requests = [];
+  const delays = [];
+  const fetcher = async (url, options) => {
+    requests.push({ url, accept: options.headers.Accept });
+    if (requests.length === 1) {
+      return summaryResponse({ code: 'local-assistant-preview-busy', retry_after_ms: 30 }, 503);
+    }
+    return summaryResponse({ locale: 'pt', summary: 'Publica alterações de DNS.' });
+  };
+
+  const summary = await loadLocalAssistantSummary(fetcher, IMAGE_ID, 'pt', {
+    delay: async (delay) => delays.push(delay),
+  });
+
+  assert.equal(summary, 'Publica alterações de DNS.');
+  assert.deepEqual(delays, [30]);
+  assert.deepEqual(requests, Array(2).fill({
+    url: `/api/local-assistants/${'a'.repeat(64)}/summary?locale=pt`,
+    accept: 'application/json',
+  }));
+});
+
+test('refuses invalid summary requests and any answer outside the requested locale or shape', async () => {
+  let calls = 0;
+  const counted = async () => {
+    calls += 1;
+    return summaryResponse({ locale: 'pt', summary: 'Resumo.' });
+  };
+  for (const [imageId, locale] of [['latest', 'pt'], [IMAGE_ID, 'pt-BR'], [IMAGE_ID, undefined]]) {
+    await assert.rejects(loadLocalAssistantSummary(counted, imageId, locale), /Invalid Local Assistant summary request/);
+  }
+  await assert.rejects(
+    loadLocalAssistantSummary(counted, IMAGE_ID, 'pt', { signal: 'not a signal' }),
+    /Invalid Local Assistant summary request/,
+  );
+  assert.equal(calls, 0);
+
+  for (const body of [
+    { locale: 'en', summary: 'Summary.' },
+    { locale: 'pt' },
+    { locale: 'pt', summary: '' },
+    { locale: 'pt', summary: ' Resumo.' },
+    { locale: 'pt', summary: 'Resumo\nlinha.' },
+    { locale: 'pt', summary: 'Cafe\u0301.' },
+    { locale: 'pt', summary: 'x'.repeat(161) },
+    { locale: 'pt', summary: 'Resumo.', trace_id: 'a'.repeat(32) },
+  ]) {
+    await assert.rejects(
+      loadLocalAssistantSummary(async () => summaryResponse(body), IMAGE_ID, 'pt'),
+      /summary is invalid/,
+    );
+  }
+  await assert.rejects(
+    loadLocalAssistantSummary(async () => summaryResponse({ detail: 'Team is unavailable' }, 502), IMAGE_ID, 'pt'),
+    /Team is unavailable/,
+  );
+  let busy = 0;
+  await assert.rejects(
+    loadLocalAssistantSummary(async () => {
+      busy += 1;
+      return summaryResponse({ code: 'local-assistant-preview-busy', retry_after_ms: 1 }, 503);
+    }, IMAGE_ID, 'pt', { delay: async () => {} }),
+    /summary is unavailable/,
+  );
+  assert.equal(busy, 3);
 });

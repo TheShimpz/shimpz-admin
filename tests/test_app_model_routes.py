@@ -50,6 +50,7 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/teams/{team_id}/inference", "PUT"),
                 ("/api/local-assistants", "GET"),
                 ("/api/local-assistants/{image_hash}/icon", "GET"),
+                ("/api/local-assistants/{image_hash}/summary", "GET"),
                 ("/api/teams/{team_id}/assistants/local", "POST"),
             }.issubset(routes)
         )

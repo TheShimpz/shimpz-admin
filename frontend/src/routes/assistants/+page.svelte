@@ -15,7 +15,11 @@
     uninstallAssistant,
   } from '$lib/localApi.js';
   import { locale, t } from '$lib/i18n.js';
-  import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '$lib/localAssistantIcons.js';
+  import {
+    loadLocalAssistantIcon,
+    loadLocalAssistantSummary,
+    loadPublicAssistantIcon,
+  } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
@@ -45,6 +49,8 @@
   let localInstallDialogError = $state('');
   let pendingLocalSnapshot = $state(null);
   let pendingLocalSnapshots = $state([]);
+  // A staged snapshot's summary per interface language, read by Team from the snapshot's own pack (ADR-0091).
+  let localSummaries = $state({});
   let catalogIconUrls = $state({});
   // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
   let catalogIconFailures = $state({});
@@ -332,6 +338,29 @@
     showAssistantDialog();
   }
 
+  function localSummaryKey(language, snapshot) {
+    return `${language}:${snapshot.image_id}`;
+  }
+
+  // English is the snapshot's catalog summary itself; any other language shows only its pack translation.
+  function localSnapshotSummary(snapshot) {
+    return $locale === 'en' ? snapshot.summary : localSummaries[localSummaryKey($locale, snapshot)] ?? '';
+  }
+
+  async function loadLocalSummaries(snapshots, language, request, signal) {
+    if (language === 'en') return;
+    await Promise.allSettled(snapshots.map(async (snapshot) => {
+      const key = localSummaryKey(language, snapshot);
+      if (localSummaries[key]) return;
+      try {
+        const summary = await loadLocalAssistantSummary(fetch, snapshot.image_id, language, { signal });
+        if (request === catalogPresentationRequest) localSummaries[key] = summary;
+      } catch {
+        // An unavailable translation leaves the summary empty rather than showing another language.
+      }
+    }));
+  }
+
   function localIconKey(snapshot) {
     return `local:${snapshot.image_id}`;
   }
@@ -471,6 +500,12 @@
       if (request !== catalogPresentationRequest) return;
       initialViewReadiness?.settleAssistants?.();
 
+      const summaries = loadLocalSummaries(
+        groups.map((group) => group.primary),
+        language,
+        request,
+        controller.signal,
+      );
       const iconTimeout = globalThis.setTimeout(
         () => iconController.abort(),
         ICON_PRESENTATION_BUDGET_MS,
@@ -491,6 +526,7 @@
       }));
       globalThis.clearTimeout(iconTimeout);
       controller.signal.removeEventListener('abort', abortIcons);
+      await summaries;
     } finally {
       if (request === catalogPresentationRequest) catalogRefreshing = false;
     }
@@ -554,7 +590,7 @@
     }
   }
 
-  // The catalog follows the interface language and reloads when it changes.
+  // The catalog and staged snapshot summaries follow the interface language and reload when it changes.
   $effect(() => {
     void $locale;
     untrack(() => { void loadCatalogPresentation(); });
@@ -604,7 +640,7 @@
         class="assistant-card local-assistant-card"
         name={group.primary.name}
         meta={group.primary.declared_creators.join(', ')}
-        summary={group.primary.summary}
+        summary={localSnapshotSummary(group.primary)}
         iconSrc={catalogIconUrls[localIconKey(group.primary)]}
         iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
         iconLoading="eager"

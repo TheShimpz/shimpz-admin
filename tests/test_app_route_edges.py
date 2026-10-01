@@ -385,7 +385,7 @@ class AppRouteEdgeTests(unittest.TestCase):
             (self.admin_app.teams_list, self.admin_app.team, "list_teams", ()),
             (self.admin_app.team_inference.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
             (self.admin_app.assistants_list, self.admin_app.team, "list_assistants", ()),
-            (self.admin_app.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
+            (self.admin_app.team_snapshots.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
             (
                 self.admin_app.team_assistants_list,
                 self.admin_app.team,
