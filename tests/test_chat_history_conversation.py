@@ -43,7 +43,6 @@ def _uninstall_assistant() -> dict[str, str]:
     return {
         "id": "shimpz-cloudflare",
         "name": "Shimpz Cloudflare",
-        "summary": "Manage DNS records.",
         "version": "0.4.5",
     }
 

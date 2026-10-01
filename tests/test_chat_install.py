@@ -114,12 +114,8 @@ class ChatLifecycleTests(unittest.TestCase):
                 "team_id": "team_1",
                 "reply": "Assistant uninstall requires confirmation.",
                 "expires_in": 120,
-                "assistant": {
-                    "id": "shimpz-cloudflare",
-                    "name": "Shimpz Cloudflare",
-                    "summary": "Manage Cloudflare zones and DNS records.",
-                    "version": "0.4.4",
-                },
+                # The registry summary is Team's English catalog text and is never shown with the proposal.
+                "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.4"},
             },
         )
         self.assertEqual(

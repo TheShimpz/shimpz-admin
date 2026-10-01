@@ -712,12 +712,7 @@ async function routeReadyChat(page, {
               team_id: 'marketing',
               reply: 'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
               expires_in: 120,
-              assistant: {
-                id: 'shimpz-cloudflare',
-                name: 'Shimpz Cloudflare',
-                summary: assistantSummary,
-                version: '0.4.1',
-              },
+              assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
             }));
             return;
           }
@@ -2003,12 +1998,7 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
           id: `${turnId}:uninstall`,
           kind: 'assistant-uninstall',
           state: 'uninstalled',
-          assistant: {
-            id: 'shimpz-cloudflare',
-            name: 'Shimpz Cloudflare',
-            summary: 'Safely manage Cloudflare DNS records through OAuth.',
-            version: '0.4.1',
-          },
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
           uninstalled: true,
         },
       ],

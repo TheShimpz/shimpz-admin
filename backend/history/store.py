@@ -378,7 +378,7 @@ def append_guidance(team_id: object, turn_id: object, code: object, reply: objec
 
 
 def _uninstall_assistant(value: object) -> dict[str, str]:
-    if not isinstance(value, Mapping) or set(value) != {"id", "name", "summary", "version"}:
+    if not isinstance(value, Mapping) or set(value) != {"id", "name", "version"}:
         raise ValueError("chat history uninstall Assistant is invalid")
     assistant_id = team_contract.canonical_assistant_id(value["id"])
     version = value["version"]
@@ -389,7 +389,6 @@ def _uninstall_assistant(value: object) -> dict[str, str]:
     return {
         "id": assistant_id,
         "name": chat_ws_common.public_text(value["name"], 80, field="Assistant name"),
-        "summary": chat_ws_common.public_text(value["summary"], 160, field="Assistant summary"),
         "version": version,
     }
 

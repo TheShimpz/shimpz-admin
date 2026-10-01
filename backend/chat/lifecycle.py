@@ -72,14 +72,9 @@ def retain_history(connection: Connection, history_id: str | None, event: Mappin
 
 
 def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[str, object]:
+    """The displayed identity only: the registry summary is Team's English catalog text and is never shown."""
     assistant = proposal.assistant
-    identity: dict[str, object] = {
-        "id": assistant.assistant_id,
-        "name": assistant.name,
-        "summary": assistant.summary,
-    }
-    identity["version"] = proposal.assistant_version
-    return identity
+    return {"id": assistant.assistant_id, "name": assistant.name, "version": proposal.assistant_version}
 
 
 def _proposal_event(

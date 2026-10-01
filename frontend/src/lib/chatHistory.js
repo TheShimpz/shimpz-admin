@@ -49,14 +49,13 @@ function assistantId(value, status) {
 }
 
 function publicAssistant(value, status) {
-  if (!exactKeys(value, ['id', 'name', 'summary', 'version'])) throw invalidHistory(status);
+  if (!exactKeys(value, ['id', 'name', 'version'])) throw invalidHistory(status);
   if (typeof value.version !== 'string' || !SEMANTIC_VERSION_RE.test(value.version)) {
     throw invalidHistory(status);
   }
   return {
     id: assistantId(value.id, status),
     name: publicText(value.name, 80, status),
-    summary: publicText(value.summary, 160, status),
     version: value.version,
   };
 }

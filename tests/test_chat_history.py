@@ -47,7 +47,6 @@ def _uninstall_assistant() -> dict[str, str]:
     return {
         "id": "shimpz-cloudflare",
         "name": "Shimpz Cloudflare",
-        "summary": "Manage DNS records.",
         "version": "0.4.5",
     }
 
@@ -341,7 +340,6 @@ class ChatHistoryTests(unittest.TestCase):
         assistant = {
             "id": "shimpz-cloudflare",
             "name": "Shimpz Cloudflare",
-            "summary": "Manage DNS records.",
             "version": "0.4.5",
         }
         guidance = self._admitted()
@@ -741,6 +739,17 @@ class ChatHistoryTests(unittest.TestCase):
                 ),
             ),
             (history._validate_stored_uninstall, ({"kind": "assistant-uninstall", "state": "working"},)),
+            # Team's English registry summary is never stored or shown with an uninstall.
+            (
+                history._validate_stored_uninstall,
+                (
+                    {
+                        "kind": "assistant-uninstall",
+                        "state": "cancelled",
+                        "assistant": {**assistant, "summary": "Manage DNS records."},
+                    },
+                ),
+            ),
             (
                 history._validate_stored_uninstall,
                 ({"kind": "assistant-uninstall", "state": "cancelled", "assistant": assistant, "extra": True},),

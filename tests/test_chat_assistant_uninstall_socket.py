@@ -130,14 +130,11 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(proposed["expires_in"], 120)
                 self.assertEqual(
                     proposed["assistant"],
-                    {
-                        "id": "shimpz-cloudflare",
-                        "name": "Shimpz Cloudflare",
-                        "summary": "Manage Cloudflare zones and DNS records.",
-                        "version": "0.4.4",
-                    },
+                    {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.4"},
                 )
                 self.assertNotIn("source_digest", json.dumps(proposed))
+                # The registry summary is Team's English catalog text and the proposal never shows it.
+                self.assertNotIn("Manage Cloudflare zones and DNS records.", json.dumps(proposed))
 
                 await websocket.send_json(
                     {

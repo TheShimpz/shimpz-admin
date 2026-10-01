@@ -577,7 +577,6 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
     assistant: {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
-      summary: 'Manage Cloudflare zones and DNS records.',
       version: '0.4.4',
     },
   };
@@ -659,11 +658,12 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall
     assistant: {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
-      summary: 'Manage Cloudflare zones and DNS records.',
       version: '0.4.4',
     },
   };
   for (const invalid of [
+    // Team's English registry summary is never shown with an uninstall proposal.
+    { ...proposed, assistant: { ...proposed.assistant, summary: 'Manage Cloudflare zones and DNS records.' } },
     { ...proposed, source_digest: `sha256:${'a'.repeat(64)}` },
     { ...proposed, team_id: 'other_team' },
     { ...proposed, expires_in: 121 },
@@ -1057,14 +1057,14 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     'Marketing',
   );
   const failure = (detail) => parseChatEvent({ type: 'error', status: 503, detail }, 'team_1', 'Marketing');
-  const uninstall = (reply, name, summary) => parseChatEvent({
+  const uninstall = (reply, name) => parseChatEvent({
     type: 'assistant-uninstall',
     state: 'proposed',
     proposal_id: 'd'.repeat(32),
     team_id: 'team_1',
     reply,
     expires_in: 120,
-    assistant: { id: 'shimpz-cloudflare', name, summary, version: '0.4.4' },
+    assistant: { id: 'shimpz-cloudflare', name, version: '0.4.4' },
   }, 'team_1', 'Marketing');
   for (const character of ['界', '😀']) {
     const text = (length) => character.repeat(length);
@@ -1079,9 +1079,9 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     assert.throws(() => done(text(60_001)), /response is invalid/);
     assert.equal(failure(text(800)).detail, text(800));
     assert.throws(() => failure(text(801)), /response is invalid/);
-    const proposed = uninstall(text(60_000), text(80), text(160));
-    assert.deepEqual([proposed.reply, proposed.assistant.name, proposed.assistant.summary], [text(60_000), text(80), text(160)]);
-    for (const args of [[text(60_001), 'Name', 'Summary'], ['Reply', text(81), 'Summary'], ['Reply', 'Name', text(161)]]) {
+    const proposed = uninstall(text(60_000), text(80));
+    assert.deepEqual([proposed.reply, proposed.assistant.name], [text(60_000), text(80)]);
+    for (const args of [[text(60_001), 'Name'], ['Reply', text(81)]]) {
       assert.throws(() => uninstall(...args), /response is invalid/);
     }
   }

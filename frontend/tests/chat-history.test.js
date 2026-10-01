@@ -122,6 +122,13 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
       kind: 'assistant-uninstall',
       state: 'failed',
       status: 200,
+      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.5' },
+    },
+    // Team's English registry summary is never stored or shown with an uninstall.
+    {
+      id: `${TURN_A}:uninstall`,
+      kind: 'assistant-uninstall',
+      state: 'cancelled',
       assistant: {
         id: 'shimpz-cloudflare',
         name: 'Shimpz Cloudflare',

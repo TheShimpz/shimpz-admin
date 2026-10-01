@@ -1031,14 +1031,13 @@ function canonicalUninstallAssistant(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'summary', 'version']) ||
+    !exactKeys(value, ['id', 'name', 'version']) ||
     typeof value.version !== 'string' ||
     !SEMANTIC_VERSION_RE.test(value.version)
   ) throw new LocalApiError('The local chat response is invalid.');
   return {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
-    summary: canonicalPublicText(value.summary, 160),
     version: value.version,
   };
 }
