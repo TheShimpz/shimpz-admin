@@ -666,6 +666,47 @@ class LifecycleCleanupTests(OrderCase):
             mutator.join(5)
         self.assertEqual(events, ["inventory", name])
 
+    def reset_refused(self, owner: int) -> None:
+        reset = team.TeamResponse(200, {"reset": True})
+        with (
+            mock.patch.object(team_order.os, "geteuid", return_value=owner),
+            self.assertLogs("shimpz-admin", "ERROR"),
+        ):
+            response = self.admin_app._space_reset_with_history(lambda: reset)
+        self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
+
+    def test_space_reset_preserves_a_foreign_order_and_temporary_file(self) -> None:
+        leftover = self.root / ".team-order.json.abcd1234.tmp"
+        self.saved("a")
+        leftover.write_bytes(b"{}")
+        self.reset_refused(os.geteuid() + 1)
+        self.assertEqual((team_order.load(), leftover.read_bytes()), (["a"], b"{}"))
+
+    def test_space_reset_preserves_a_fifo_or_symlink_and_still_removes_its_own_files(self) -> None:
+        leftover = self.root / ".team-order.json.abcd1234.tmp"
+        target = self.root / "elsewhere.json"
+        target.write_bytes(b'{"team_ids":["a"]}')
+        for unsafe in ("fifo", "symlink"):
+            with self.subTest(unsafe=unsafe):
+                if unsafe == "fifo":
+                    os.mkfifo(self.path, 0o600)
+                else:
+                    self.path.symlink_to(target)
+                leftover.write_bytes(b"{}")
+                self.reset_refused(os.geteuid())
+                self.assertEqual(self.path.is_symlink(), unsafe == "symlink")
+                self.assertTrue(os.path.lexists(self.path))
+                self.assertFalse(leftover.exists())
+                self.path.unlink()
+        self.assertEqual(target.read_bytes(), b'{"team_ids":["a"]}')
+
+    def test_an_entry_that_cannot_be_inspected_is_never_removed(self) -> None:
+        parent = self.root / "file"
+        parent.write_bytes(b"")
+        with self.assertRaises(team_order.OrderUnavailableError):
+            team_order._unlink_owned(parent / "team-order.json")
+        self.assertTrue(parent.exists())
+
     def test_deletion_waits_for_a_reorder_in_progress(self) -> None:
         deleted = team.TeamResponse(200, {"deleted": True})
         self.assert_waits_for_a_reorder(

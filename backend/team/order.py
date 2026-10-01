@@ -143,13 +143,18 @@ def _save(team_ids: list[str]) -> None:
     _sync_parent()
 
 
-def _remove_invalid() -> None:
-    """Remove an invalid order only when it is this Admin's own regular file; anything else refuses the mutation."""
+def _unlink_owned(path: Path) -> None:
+    """Remove one cleanup entry only when it is this Admin's own regular file; anything else stays and refuses."""
     try:
-        metadata = ORDER_PATH.lstat()
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid():
-            raise OrderUnavailableError("Team order is invalid and is not Admin's own file")
-        ORDER_PATH.unlink()
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise OrderUnavailableError("Team order cannot be inspected") from exc
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid():
+        raise OrderUnavailableError("Team order entry is not Admin's own file")
+    try:
+        path.unlink()
     except OSError as exc:
         raise OrderUnavailableError("Team order cannot be removed") from exc
 
@@ -164,7 +169,7 @@ def _saved_for_mutation() -> list[str] | None:
         return load()
     except OrderInvalidError:
         log.warning("Admin Team order is invalid; removing it")
-        _remove_invalid()
+        _unlink_owned(ORDER_PATH)
         return None
 
 
@@ -178,13 +183,20 @@ def forget(team_id: str) -> None:
 
 
 def clear() -> None:
-    """Durably remove the saved order and any temporary file an interrupted write left."""
-    try:
-        for path in (ORDER_PATH, *ORDER_PATH.parent.glob(f".{ORDER_PATH.name}.*.tmp")):
-            path.unlink(missing_ok=True)
-    except OSError as exc:
-        raise OrderUnavailableError("Team order cannot be removed") from exc
+    """Durably remove the saved order and any temporary file an interrupted write left.
+
+    Only Admin's own regular files are removed. A foreign, special, or linked entry stays in place, and the reset
+    reports its cleanup incomplete after the removals it could make are durable.
+    """
+    unsafe = False
+    for path in (ORDER_PATH, *ORDER_PATH.parent.glob(f".{ORDER_PATH.name}.*.tmp")):
+        try:
+            _unlink_owned(path)
+        except OrderUnavailableError:
+            unsafe = True
     _sync_parent()
+    if unsafe:
+        raise OrderUnavailableError("Team order cleanup left an entry that is not Admin's own file")
 
 
 def arrange(teams: list[dict[str, str]], saved: list[str] | None) -> list[dict[str, str]]:
