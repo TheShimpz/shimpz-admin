@@ -120,11 +120,10 @@ function humanRequest(kind) {
   return base;
 }
 
+// The composer accepts text only once the Team's history, connection, and first sync are ready, and then keeps it.
 async function fillWhenReady(page, composer, message) {
-  await expect(async () => {
-    await composer.fill(message);
-    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
+  await composer.fill(message);
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
 }
 
 async function openTeamNavigation(page) {
@@ -954,6 +953,36 @@ test('asks for a missing provider key in the composer without leaving the conver
   await page.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   expect(JSON.stringify(chat.chatFrames())).not.toContain(secret);
+});
+
+// Text typed into the composer is never dropped: once the visible composer accepts input it stays editable while the
+// Team's history loads, its connection opens, and its first sync settles, so a message typed at any moment can be sent.
+test('the visible composer never turns read-only again before the first message', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.composerStates = [];
+    const record = () => {
+      const composer = document.getElementById('chat-composer');
+      if (!composer?.checkVisibility({ visibilityProperty: true })) return;
+      const state = composer.disabled ? 'disabled' : 'enabled';
+      if (window.composerStates.at(-1) !== state) window.composerStates.push(state);
+    };
+    new MutationObserver(record).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['class', 'disabled'],
+    });
+  });
+  const chat = await routeReadyChat(page, { history: KEYLESS_HISTORY });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await composer.fill('Typed as soon as it was editable');
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  const states = await page.evaluate(() => window.composerStates);
+  expect(states.slice(states.indexOf('enabled'))).toEqual(['enabled']);
+  await send.click();
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
 });
 
 async function openFastRouting(page) {
