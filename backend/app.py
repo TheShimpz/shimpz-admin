@@ -149,16 +149,8 @@ app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=N
 platform_release.register(app, ADMIN_PROFILE)
 routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST)
 team_inference.register(app)
-app.add_api_route(
-    "/api/teams/{team_id}/assistants/{assistant_id}/icon",
-    team_assets.assistant_icon,
-    methods=["GET"],
-)
-app.add_api_route(
-    "/api/teams/{team_id}/assistants/{assistant_id}/summary",
-    team_summary.assistant_summary,
-    methods=["GET"],
-)
+team_assets.register(app)
+team_summary.register(app)
 app.add_api_route(
     "/api/assistant-catalog",
     chat_assets.assistant_catalog,

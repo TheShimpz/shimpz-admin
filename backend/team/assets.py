@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, Response
 from team import bridge
 
@@ -23,6 +23,11 @@ def _response(action) -> Response:
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+def register(app: FastAPI) -> None:
+    """An installed Assistant's icon is read in both profiles."""
+    app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/icon", assistant_icon, methods=["GET"])
 
 
 def assistant_icon(team_id: str, assistant_id: str) -> Response:

@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from team import bridge as team
 
 from protocol.http.v1 import payload as team_contract
+
+
+def register(app: FastAPI) -> None:
+    """An installed Assistant's summary is read in both profiles."""
+    app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/summary", assistant_summary, methods=["GET"])
 
 
 def localized(read: Callable[[str], team.TeamResponse], locale: str, subject: str) -> JSONResponse:
