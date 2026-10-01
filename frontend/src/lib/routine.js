@@ -499,11 +499,15 @@ export async function openRoutineChallenge(fetcher, teamId, runId, locale, parse
     || body.team_id !== teamId || body.run_id !== runId) {
     throw new RoutineError('routine-response-invalid');
   }
+  let challenge;
   try {
-    return { status: 'human-required', challenge: parseChallenge(body.challenge) };
+    challenge = parseChallenge(body.challenge);
   } catch {
     throw new RoutineError('routine-response-invalid');
   }
+  // The opening named the language its copy renders in; a challenge in any other language is not this opening.
+  if (challenge.locale !== locale) throw new RoutineError('routine-response-invalid');
+  return { status: 'human-required', challenge };
 }
 
 function resumed(body, teamId, runId) {

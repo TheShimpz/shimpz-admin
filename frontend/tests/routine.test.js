@@ -398,11 +398,11 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
 
 test('a frozen run is opened, answered, and resumed only through exact answers', async () => {
   const run = 'd'.repeat(32);
-  const challenge = { type: 'human-required', challenge_id: 'b'.repeat(32) };
+  const challenge = { type: 'human-required', challenge_id: 'b'.repeat(32), locale: 'pt' };
   let api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'human-required', challenge }]]);
-  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, 'pt', (value) => ({ parsed: value })), {
+  assert.deepEqual(await openRoutineChallenge(api.fetch, 'team_1', run, 'pt', (value) => ({ ...value })), {
     status: 'human-required',
-    challenge: { parsed: challenge },
+    challenge,
   });
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/challenge`);
   // Opening names exactly the interface language the request copy renders in (ADR-0091).
@@ -419,6 +419,8 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
     [{ team_id: 'team_1', run_id: 'e'.repeat(32), status: 'integrations-required' }, () => null],
     [{ team_id: 'team_1', run_id: run, status: 'human-required', challenge }, () => { throw new Error('x'); }],
     [{ team_id: 'team_1', run_id: run, status: 'done' }, () => null],
+    // A challenge rendered in another language than the opening named is refused.
+    [{ team_id: 'team_1', run_id: run, status: 'human-required', challenge }, (value) => ({ ...value })],
   ]) {
     await assert.rejects(openRoutineChallenge(fetcher([[200, body]]).fetch, 'team_1', run, 'en', parse), RoutineError);
   }

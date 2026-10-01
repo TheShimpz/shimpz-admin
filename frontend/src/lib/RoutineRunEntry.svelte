@@ -91,10 +91,18 @@
       else challenge = opened.challenge;
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
+      challenge = null;
     } finally {
       working = false;
     }
   }
+
+  // A challenge opened in another language than the one selected now is never answered: each opening is a fresh
+  // challenge, so the run is opened again in the selected language, also when the language changed mid-opening.
+  let stale = $derived(Boolean(challenge) && challenge.locale !== $locale);
+  $effect(() => {
+    if (stale && !working) void review();
+  });
 
   async function respond(response) {
     const frame = createHumanResponseFrame(teamId, challenge.challenge_id, response.decision, response.value);
@@ -166,7 +174,7 @@
     open={Boolean(challenge)}
     {challenge}
     {rejection}
-    {working}
+    working={working || stale}
     onrespond={respond}
     ondismiss={() => (challenge = null)}
     dismissLabel={copy.card.dismiss}
