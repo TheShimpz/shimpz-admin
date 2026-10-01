@@ -69,13 +69,14 @@ function englishCopy(kind) {
 /**
  * Answer the chat socket like Team: one pending request per Team, rendered in the language a chat or sync frame names.
  * A frame naming another language than the pending request's reissues it as a fresh challenge whose earlier id stops
- * answering. `hold` defers the reply to the named frame types until the test releases it.
+ * answering. `hold` defers the reply to the named frame types until the test releases it; `defer` lets Team act on
+ * them at once and holds only the delivery of what it answered.
  */
 async function routeLocalizedTeam(page, { purpose = false } = {}) {
   await routeScenario(page, 'ready');
   const frames = [];
   const held = [];
-  const team = { pending: null, issued: 0, turns: 0, hold: new Set(), socket: null };
+  const team = { pending: null, issued: 0, turns: 0, hold: new Set(), defer: new Set(), socket: null };
   const challenge = () => ({
     type: 'human-required',
     challenge_id: team.pending.id,
@@ -124,7 +125,10 @@ async function routeLocalizedTeam(page, { purpose = false } = {}) {
         for (const event of reply(frame)) socket.send(JSON.stringify(event));
       };
       if (team.hold.has(frame.type)) held.push(deliver);
-      else deliver();
+      else if (team.defer.has(frame.type)) {
+        const events = reply(frame);
+        held.push(() => events.forEach((event) => socket.send(JSON.stringify(event))));
+      } else deliver();
     });
   });
   return {
@@ -151,6 +155,15 @@ async function switchLanguage(page, from, to) {
   const name = (code) => LOCALES.find((entry) => entry.code === code).name;
   await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) }).click();
   await page.getByRole('menuitemradio', { name: name(to) }).click();
+}
+
+// The open request makes the page behind it inert, so a language change while it is shown is driven through the
+// menu's own handlers, as any change of the interface language that does not pass through the person's pointer.
+async function switchLanguageBehindRequest(page, from, to) {
+  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
+  await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) })
+    .dispatchEvent('click');
+  await page.getByRole('menuitemradio', { name: name(to) }).dispatchEvent('click');
 }
 
 // Answer one open request with the person's choice; `value` is what the browser frame must carry.
@@ -233,6 +246,45 @@ test('a request that arrives after the language changed is answered only through
   await expect(page.getByText('Done 1.')).toBeVisible();
   expect(chat.of('human-response')).toEqual([
     { type: 'human-response', challenge_id: '2'.padStart(32, '0'), decision: 'submit', value: true },
+  ]);
+});
+
+test('switching back while a reissue is undelivered never answers the request Team replaced', async ({ page }) => {
+  const chat = await routeLocalizedTeam(page);
+  await page.goto('/chat/?team=marketing');
+  await sendMessage(page, 'en', 'Publish my DNS changes');
+  const english = page.getByRole('dialog', { name: ENGLISH.approval.title });
+  const approve = english.getByRole('button', { name: humanRequestMessages.en.approve, exact: true });
+  await expect(approve).toBeEnabled();
+
+  // Team reissues the request in Portuguese at once, but its fresh challenge has not reached Admin yet.
+  chat.team.defer = new Set(['sync']);
+  await switchLanguageBehindRequest(page, 'en', 'pt');
+  await expect.poll(() => chat.heldCount()).toBe(1);
+  expect(chat.team.pending).toMatchObject({ locale: 'pt', id: '2'.padStart(32, '0') });
+
+  // Back in English, the shown request reads in the selected language again, yet Team no longer answers its id.
+  await switchLanguageBehindRequest(page, 'pt', 'en');
+  await expect(english).toBeVisible();
+  await expect(approve).toBeDisabled();
+  await approve.click({ force: true });
+  expect(chat.of('human-response')).toEqual([]);
+
+  // The Portuguese challenge arrives and is reconciled to English; until that reissue lands nothing is answerable.
+  chat.release();
+  await expect.poll(() => chat.of('sync').map((frame) => frame.locale)).toEqual(['en', 'pt', 'en']);
+  await expect.poll(() => chat.heldCount()).toBe(1);
+  const portuguese = page.getByRole('dialog', { name: renderedCopy('approval', 'pt').title });
+  await expect(portuguese.getByRole('button', { name: humanRequestMessages.en.approve, exact: true })).toBeDisabled();
+  expect(chat.of('human-response')).toEqual([]);
+
+  chat.team.defer = new Set();
+  chat.release();
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  await expect(page.getByText('Done 1.')).toBeVisible();
+  expect(chat.of('human-response')).toEqual([
+    { type: 'human-response', challenge_id: '3'.padStart(32, '0'), decision: 'submit', value: true },
   ]);
 });
 

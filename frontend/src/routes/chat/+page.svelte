@@ -138,6 +138,8 @@
   let humanRequestCopy = $derived($t('humanRequest'));
   // A request rendered in another language than the one selected now is never answered; a fresh one is requested.
   let humanStale = $derived(Boolean(humanChallenge) && humanChallenge.locale !== $locale);
+  // While a reconciling sync is in flight Team may already have replaced the shown request, even after switching back.
+  let humanUnanswerable = $derived(humanStale || Boolean(humanRelocalizing));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -1673,7 +1675,7 @@
   function respondToHuman(response) {
     const teamId = chatTeamId;
     const challenge = humanChallenge;
-    if (!teamId || !challenge || humanStale || humanWorking || !socketReady || !socket) return;
+    if (!teamId || !challenge || humanUnanswerable || humanWorking || !socketReady || !socket) return;
     let frame;
     try {
       frame = createHumanResponseFrame(
@@ -2196,7 +2198,7 @@
           open={Boolean(humanChallenge) && humanChallenge?.challenge_id !== humanExpiredId}
           challenge={humanChallenge}
           rejection={humanRejection}
-          working={humanWorking || humanStale}
+          working={humanWorking || humanUnanswerable}
           onrespond={respondToHuman}
           onretry={retryHumanAuthentication}
           onexpire={expireHumanRequest}
