@@ -2107,11 +2107,20 @@
                 </svg>
               </Button>
               {#if busy && !syncing && (!lifecycleWorking || installPlanWorking)}
-                <Button bind:element={stopButton} variant="danger" size="compact" type="button" onclick={stop} disabled={stopping}>
-                  {copy.stop}
+                <!-- While a turn runs, Send becomes Stop in place; once the turn ends it is Send again. -->
+                <Button
+                  bind:element={stopButton}
+                  class="composer-send composer-stop glitch-host"
+                  type="button"
+                  variant="ghost"
+                  onclick={stop}
+                  disabled={stopping}
+                  title={copy.stop}
+                >
+                  <span class="sr-only">{copy.stop}</span>
+                  <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>
                 </Button>
-              {/if}
-              {#if keyRequired}
+              {:else if keyRequired}
                 <Button type="submit" disabled={brainSaving || providerKey.trim().length < 16}>
                   {brainSaving ? keyCopy.validating : keyCopy.saveKey}
                 </Button>
@@ -2557,6 +2566,20 @@
     border-color: var(--shimpz-color-border);
     filter: none;
     opacity: 1;
+  }
+
+  /* Stop takes Send's place while a turn runs: the same key, filled red with an X. */
+  .composer-input :global(.shimpz-button.composer-send.composer-stop),
+  .composer-input :global(.shimpz-button.composer-send.composer-stop:hover:not(:disabled)) {
+    color: var(--shimpz-color-bg);
+    background: var(--shimpz-color-danger);
+    border-color: var(--shimpz-color-danger);
+  }
+
+  .composer-input :global(.shimpz-button.composer-send.composer-stop:disabled) {
+    color: var(--shimpz-color-bg);
+    background: color-mix(in srgb, var(--shimpz-color-danger) 45%, transparent);
+    border-color: color-mix(in srgb, var(--shimpz-color-danger) 45%, transparent);
   }
 
   :global(.composer-actions .shimpz-button svg) {

@@ -3214,6 +3214,27 @@ test('keeps an intentional Stop silent after the turn ends', async ({ page }) =>
   await expect(composer).toBeFocused();
 });
 
+test('Send becomes Stop in place while a turn runs and is Send again once the reply arrives', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdReply: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  const stop = page.getByRole('button', { name: 'Stop', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await expect(stop).toHaveCount(0);
+  await send.click();
+
+  await expect(stop).toBeEnabled();
+  await expect(send).toHaveCount(0);
+  chat.releaseReply();
+
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(send).toBeVisible();
+  await composer.fill('And the records?');
+  await expect(send).toBeEnabled();
+});
+
 test('keeps an unexpected terminal error visible after silent Stop handling', async ({ page }) => {
   await routeReadyChat(page, { terminalError: true });
   await page.goto('/chat/');
