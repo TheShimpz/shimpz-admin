@@ -4092,6 +4092,36 @@ test.describe('Team order', () => {
     await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
+  test('a drag whose navigation is swapped out by a layout change ends and saves nothing', async ({ page }) => {
+    test.skip(page.viewportSize().width <= 820, 'starts from the desktop sidebar');
+    // Counts animation frames requested by the page, so a drag loop left running is observable.
+    await page.addInitScript(() => {
+      const request = window.requestAnimationFrame.bind(window);
+      window.__frames = 0;
+      window.requestAnimationFrame = (callback) => {
+        window.__frames += 1;
+        return request(callback);
+      };
+    });
+    const { navigation, orders } = await openOrder(page);
+    await navigation.getByRole('link', { name: 'Neo', exact: true }).hover();
+    const handle = await navigation.getByTitle('Drag to reorder Neo').boundingBox();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 20, { steps: 4 });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('button', { name: 'Open the Team list' })).toBeVisible();
+    await page.waitForTimeout(300);
+    const frames = await page.evaluate(() => window.__frames);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__frames)).toBe(frames);
+    await page.mouse.up();
+    expect(orders).toEqual([]);
+  });
+
   test('Hosted offers no reordering', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
     await page.route('**/api/teams', (route) => route.fulfill({

@@ -1,5 +1,5 @@
 <script>
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { flip } from 'svelte/animate';
   import { ActionLink, Button, ShimpzBrand, TextField } from '@shimpz/frontend';
 
@@ -232,6 +232,12 @@
   // Holding the pointer near the top or bottom edge of the scrolling list scrolls it, faster the closer it gets.
   function autoScroll() {
     if (!gesture?.active) return;
+    // A handle that left the page (its row was removed, or the layout swapped this navigation out) ends the drag, so
+    // the loop never re-arms and never keeps a removed list or scroller alive.
+    if (!gesture.handle.isConnected) {
+      cancelDrag();
+      return;
+    }
     const scroller = gesture.scroller;
     if (scroller) {
       const box = scroller === document.scrollingElement
@@ -299,6 +305,8 @@
   function cancelDrag() {
     endGesture();
   }
+
+  onDestroy(cancelDrag);
 
   function dragKeydown(event) {
     if (event.key !== 'Escape' || !gesture?.active) return;
