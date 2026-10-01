@@ -16,8 +16,6 @@ from starlette.concurrency import run_in_threadpool
 from team import bridge
 from team import http as team_http
 
-from protocol.http.v1 import websocket as chat_ws_common
-
 MAX_TEAM_RENAME_BODY_BYTES = 1024
 # A recreated name whose id a renamed Team still holds gets the next free suffix: marketing, marketing_2 ... _9.
 MAX_ID_SUFFIX = 9
@@ -65,21 +63,12 @@ def create(payload: dict) -> JSONResponse:
 
 def register(app: FastAPI, allowed_origins: Callable[[], frozenset[str]]) -> None:
     async def rename(team_id: str, request: Request) -> JSONResponse:
-        raw_origin = request.headers.get("origin")
-        origin = chat_ws_common.canonical_origin(raw_origin)
-        # Only an exactly canonical Origin is admitted: a header that merely normalizes into one grants nothing.
-        if origin is None or origin != raw_origin or origin not in allowed_origins():
-            raise HTTPException(status_code=403, detail="browser origin is not admitted")
+        team_http.require_admitted_origin(request, allowed_origins)
         team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_RENAME_BODY_BYTES))
         return await run_in_threadpool(team_http.response, lambda: bridge.rename(team_id, team_name))
 
     async def team_rename(team_id: str, request: Request) -> JSONResponse:
         """Rename a Team; every answer, including a refusal, is no-store."""
-        try:
-            response = await rename(team_id, request)
-        except HTTPException as exc:
-            raise HTTPException(exc.status_code, exc.detail, headers={"Cache-Control": "no-store"}) from None
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        return await team_http.no_store(lambda: rename(team_id, request))
 
     app.add_api_route("/api/teams/{team_id}", team_rename, methods=["PATCH"])
