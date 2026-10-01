@@ -191,6 +191,7 @@ def _prepare_install(
         selection.assistant_ids,
         installed,
         available,
+        catalog,
         task_follows=task_follows,
     )
     return Result("assistant-install", preparation=preparation)

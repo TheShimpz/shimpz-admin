@@ -6,7 +6,7 @@ import secrets
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from chat.executor import submit_in_context
@@ -134,6 +134,61 @@ def _enabled_capabilities_with_providers(
     )
 
 
+def _shown_assistants(
+    assistants: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+    catalog: store_catalog.StoreCatalog,
+    locale: str,
+) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]:
+    """The planned Assistants as a person reads them: every summary in the turn's interface language (ADR-0091).
+
+    Planning reads the canonical English catalog. A person reads discovery's localized summary of exactly the same
+    publication, or a staged snapshot's own pack translation; a summary that cannot be shown in the turn's language
+    fails the preparation and is never replaced by English.
+    """
+    if locale == store_catalog.PLANNING_LOCALE:
+        return assistants
+    published: dict[str, store_catalog.CatalogAssistant] | None = None
+    shown: list[store_catalog.CatalogAssistant | local_catalog.LocalAssistant] = []
+    for assistant in assistants:
+        if isinstance(assistant, local_catalog.LocalAssistant):
+            shown.append(replace(assistant, summary=local_catalog.localized_summary(assistant, locale)))
+            continue
+        if published is None:
+            published = {item.assistant_id: item for item in catalog.get(locale)}
+        localized = published.get(assistant.assistant_id)
+        # Only the summary is localized, so anything else that differs is another publication than the one planned.
+        if localized is None or replace(localized, summary=assistant.summary) != assistant:
+            raise ValueError("the localized Store catalog does not describe the planned publication")
+        shown.append(localized)
+    return tuple(shown)
+
+
+def _shown_or_none(
+    assistants: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+    catalog: store_catalog.StoreCatalog,
+    locale: str,
+) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...] | None:
+    try:
+        return _shown_assistants(assistants, catalog, locale)
+    except OSError, ValueError, team.TeamRequestError:
+        return None
+
+
+def _shown_preparation(
+    preparation: Preparation,
+    catalog: store_catalog.StoreCatalog,
+    locale: str,
+) -> Preparation:
+    """Bind a prepared plan to what its person reads: each summary in the turn's interface language."""
+    plan = preparation.plan
+    if plan is None:
+        return preparation
+    assistants = _shown_or_none(plan.assistants, catalog, locale)
+    if assistants is None:
+        return Preparation(error_status=502)
+    return replace(preparation, plan=replace(plan, assistants=assistants))
+
+
 def _prepared_plan(
     team_id: str,
     enabled_ids: tuple[str, ...],
@@ -196,6 +251,8 @@ def _prepare_gap(
     available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
     installed: dict[str, assistant_inventory.InstalledAssistant],
     enabled: tuple[assistant_proposal.Capability, ...],
+    catalog: store_catalog.StoreCatalog,
+    locale: str,
 ) -> Preparation:
     kept_enabled, shortlist = assistant_proposal.capability_candidates(
         message,
@@ -222,7 +279,8 @@ def _prepare_gap(
         return Preparation()
     installable_ids = frozenset(assistant.assistant_id for assistant in shortlist)
     missing = tuple(assistant_id for assistant_id in selected if assistant_id in installable_ids)
-    return _prepared_plan(team_id, tuple(capability.assistant_id for capability in enabled), shortlist, missing)
+    enabled_ids = tuple(capability.assistant_id for capability in enabled)
+    return _shown_preparation(_prepared_plan(team_id, enabled_ids, shortlist, missing), catalog, locale)
 
 
 def prepare_capability(
@@ -245,7 +303,7 @@ def prepare_capability(
         available = planning_catalog(catalog, include_local)
     except OSError, ValueError, team.TeamRequestError:
         return Preparation()
-    return _prepare_gap(team_id, payload["message"], available, installed, enabled)
+    return _prepare_gap(team_id, payload["message"], available, installed, enabled, catalog, payload["locale"])
 
 
 def prepare_install(
@@ -254,19 +312,22 @@ def prepare_install(
     selected_ids: tuple[str, ...],
     installed: dict[str, assistant_inventory.InstalledAssistant],
     available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+    catalog: store_catalog.StoreCatalog,
     *,
     task_follows: bool = False,
 ) -> Preparation:
     """Bind a structured install selection to exact current state.
 
     The plan is terminal for an install-only request; when the objective also asks for work, the original objective
-    is dispatched once after installation or after confirming the selection is already running.
+    is dispatched once after installation or after confirming the selection is already running. Either way each
+    summary is shown in the turn's interface language.
     """
     if not selected_ids or len(selected_ids) > MAX_PLAN_ASSISTANTS:
         return Preparation(error_status=422)
     identities = {assistant.assistant_id: assistant for assistant in available}
     if any(assistant_id not in identities for assistant_id in selected_ids):
         return Preparation(error_status=409)
+    locale = str(payload["locale"])
     missing = tuple(
         assistant_id
         for assistant_id in selected_ids
@@ -276,27 +337,28 @@ def prepare_install(
         dispatch_ids = tuple(sorted(set(payload["assistant_ids"]) | set(selected_ids))) if task_follows else ()
         if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
             return Preparation(error_status=409)
+        shown = _shown_or_none(tuple(identities[assistant_id] for assistant_id in selected_ids), catalog, locale)
+        if shown is None:
+            return Preparation(error_status=502)
         return Preparation(
             already_installed=AlreadyInstalled(
                 plan_id=secrets.token_hex(16),
                 team_id=team_id,
                 assistants=tuple(
                     {
-                        "id": assistant_id,
-                        "name": identities[assistant_id].name,
-                        "summary": identities[assistant_id].summary,
-                        "providers": sorted(
-                            {integration.provider for integration in identities[assistant_id].integrations}
-                        ),
-                        "provenance": installed[assistant_id].provenance,
+                        "id": assistant.assistant_id,
+                        "name": assistant.name,
+                        "summary": assistant.summary,
+                        "providers": sorted({integration.provider for integration in assistant.integrations}),
+                        "provenance": installed[assistant.assistant_id].provenance,
                         "status": "installed",
                     }
-                    for assistant_id in selected_ids
+                    for assistant in shown
                 ),
                 dispatch_ids=dispatch_ids,
             )
         )
-    return _prepared_plan(
+    prepared = _prepared_plan(
         team_id,
         tuple(payload["assistant_ids"]),
         available,
@@ -305,6 +367,7 @@ def prepare_install(
         dispatch_selected=selected_ids,
         lifecycle_ids=selected_ids,
     )
+    return _shown_preparation(prepared, catalog, locale)
 
 
 def _items(plan: Plan, states: dict[str, str]) -> tuple[dict[str, object], ...]:
