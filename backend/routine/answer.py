@@ -79,7 +79,18 @@ def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
         "type": "human-required",
         **{
             name: projected[name]
-            for name in ("challenge_id", "expires_in", "assistant", "action", "request", "purpose", "help_url")
+            for name in (
+                "challenge_id",
+                "expires_in",
+                "assistant",
+                "action",
+                "request",
+                "rendered",
+                "locale",
+                "pack_digest",
+                "purpose",
+                "help_url",
+            )
             if name in projected
         },
     }

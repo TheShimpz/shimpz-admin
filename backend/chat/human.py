@@ -49,6 +49,9 @@ RESPONSE_FIELDS = frozenset(
         "assistant",
         "action",
         "request",
+        "rendered",
+        "locale",
+        "pack_digest",
         "trace_id",
     }
 )
@@ -57,6 +60,16 @@ PRESENTATION_FIELDS = frozenset({"purpose", "help_url"})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # Team names a persistent password Stored Input with this exact identifier grammar (ADR-0059).
 _STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
+# A copy field is a catalog reference (Assistant Spec v1, ADR-0091). Admin never holds the reviewed catalog, so it
+# admits each reference's closed shape and parameter grammar; Team alone resolves the declared message and parameters.
+MAX_REFERENCE_PARAMS = 8
+_MESSAGE_ID = re.compile(r"[0-9a-f]{64}\Z")
+_PARAM_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
+_DOMAIN_PARAM = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+_IDENTIFIER_PARAM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*\Z")
+MAX_INTEGER_PARAM = 10**15
+MAX_DOMAIN_PARAM_CHARS = 253
+MAX_IDENTIFIER_PARAM_CHARS = 128
 log = logging.getLogger("shimpz-admin")
 
 
@@ -236,8 +249,19 @@ def project(body: object, team_id: str) -> dict[str, object]:
         "assistant": assistant,
         "action": action,
         "request": request,
+        **_localization(body, request),
         **_presentation(body, request),
     }
+
+
+def _localization(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
+    """The display copy of exactly the request's references, its concrete locale, and the pack (ADR-0091)."""
+    rendered = team_contract.canonical_rendered(body["rendered"], request)
+    locale = team_contract.canonical_locale(body["locale"])
+    pack_digest = team_contract.canonical_pack_digest(body["pack_digest"])
+    if rendered is None or locale is None or pack_digest is None:
+        raise HumanChallengeError("invalid human challenge localization")
+    return {"rendered": rendered, "locale": locale, "pack_digest": pack_digest}
 
 
 def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, str]:
@@ -292,8 +316,8 @@ def _request(value: object) -> dict[str, object]:
         not isinstance(kind, str)
         or type(ordinal) is not int
         or not 0 <= ordinal < MAX_REQUESTS_PER_ACTION
-        or not _text(request.get("title"), 80)
-        or not _text(request.get("description"), 500)
+        or not _reference(request.get("title"))
+        or not _reference(request.get("description"))
         or not _kind(request, kind)
     ):
         raise HumanChallengeError("invalid human request")
@@ -335,7 +359,7 @@ def _length(request: dict[str, object], limit: int) -> bool:
     placeholder = request.get("placeholder")
     return (
         _input_base(request)
-        and (placeholder is None or _text(placeholder, 120))
+        and (placeholder is None or _reference(placeholder))
         and type(minimum) is int
         and type(maximum) is int
         and 0 <= minimum <= maximum <= limit
@@ -362,7 +386,7 @@ def _choices(request: dict[str, object], *, multiple: bool) -> bool:
 
 
 def _input_base(request: dict[str, object]) -> bool:
-    return type(request.get("required")) is bool and _text(request.get("label"), 80)
+    return type(request.get("required")) is bool and _reference(request.get("label"))
 
 
 def _option(value: object) -> bool:
@@ -370,8 +394,32 @@ def _option(value: object) -> bool:
         isinstance(value, dict)
         and set(value) == {"value", "label", "description"}
         and _text(value.get("value"), 128)
-        and _text(value.get("label"), 80)
-        and (value.get("description") is None or _text(value.get("description"), 160))
+        and _reference(value.get("label"))
+        and (value.get("description") is None or _reference(value.get("description")))
+    )
+
+
+def _reference(value: object) -> bool:
+    """One closed `{message, params}` catalog reference with bounded integer, domain, or identifier parameters."""
+    if not isinstance(value, dict) or set(value) != {"message", "params"}:
+        return False
+    message = value["message"]
+    params = value["params"]
+    return (
+        isinstance(message, str)
+        and _MESSAGE_ID.fullmatch(message) is not None
+        and isinstance(params, dict)
+        and len(params) <= MAX_REFERENCE_PARAMS
+        and all(_PARAM_NAME.fullmatch(name) is not None and _param(item) for name, item in params.items())
+    )
+
+
+def _param(value: object) -> bool:
+    if type(value) is int:
+        return 0 <= value < MAX_INTEGER_PARAM
+    return isinstance(value, str) and (
+        (len(value) <= MAX_DOMAIN_PARAM_CHARS and _DOMAIN_PARAM.fullmatch(value) is not None)
+        or (len(value) <= MAX_IDENTIFIER_PARAM_CHARS and _IDENTIFIER_PARAM.fullmatch(value) is not None)
     )
 
 

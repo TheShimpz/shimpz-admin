@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import hashlib
 import importlib
 import json
 import threading
 from unittest import mock
+
+from tests import localized_request
 
 TURN_ID = "a" * 32
 # How long a test waits for a frame or worker it expects. CI runs every lane on all processors, where a one-second
@@ -155,28 +156,21 @@ def integration_challenge(status: int = 428) -> object:
 
 def human_challenge(kind: str, status: int = 428) -> object:
     local_module = importlib.import_module("chat.local")
-    request: dict[str, object] = {
+    plain: dict[str, object] = {
         "kind": kind,
         "ordinal": 0,
         "title": "Confirm this Action",
         "description": "The Action is waiting for your response.",
     }
     if kind == "input:password":
-        request.update(
+        plain.update(
             label="API secret",
             required=True,
             placeholder="Enter the secret",
             min_length=1,
             max_length=1024,
         )
-    canonical = json.dumps(
-        request,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    request["fingerprint"] = hashlib.sha256(canonical).hexdigest()
+    request, rendered = localized_request.localize(plain)
     return local_module.PublicResponse(
         status,
         {
@@ -188,6 +182,7 @@ def human_challenge(kind: str, status: int = 428) -> object:
             "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.1"},
             "action": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
             "request": request,
+            **localized_request.localization(rendered),
         },
     )
 

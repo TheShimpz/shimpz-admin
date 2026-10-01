@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from team import transport
 from test_chat_human_projection import _fingerprinted, _request, _response
+from tests.localized_request import localization
 
 from chat import human
 from chat import local as chat_local
@@ -75,7 +76,20 @@ class RoutineAnswerTests(unittest.TestCase):
 
     def test_an_opened_challenge_is_projected_like_chat_and_answered_once(self) -> None:
         challenge = self.open()
-        self.assertEqual(set(challenge), {"type", "challenge_id", "expires_in", "assistant", "action", "request"})
+        self.assertEqual(
+            set(challenge),
+            {
+                "type",
+                "challenge_id",
+                "expires_in",
+                "assistant",
+                "action",
+                "request",
+                "rendered",
+                "locale",
+                "pack_digest",
+            },
+        )
         frame = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": True}
         result, stream = self.respond(frame)
         self.assertEqual(result.body, {"team_id": "team_1", "run_id": RUN, "status": "done"})
@@ -89,17 +103,28 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual((again.status, again.body["code"]), (409, "human-request-expired"))
         stream.assert_not_called()
 
-    def test_an_opened_challenge_forwards_its_purpose_and_key_page(self) -> None:
+    def test_an_opened_challenge_forwards_its_localized_copy_purpose_and_key_page(self) -> None:
         request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
+        rendered = {
+            "title": "Chave do Exa",
+            "description": "Informe a chave da API do Exa.",
+            "label": "Chave",
+            "placeholder": "Cole a chave",
+        }
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
         help_url = "https://dashboard.exa.ai/api-keys"
-        body = {**_response(stored, purpose=purpose, help_url=help_url), "run_id": RUN}
+        body = {
+            **_response(stored, purpose=purpose, help_url=help_url, **localization(rendered, "pt")),
+            "run_id": RUN,
+        }
         with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
             response = answer.open_challenge("team_1", RUN)
         challenge = response.body["challenge"]
         self.assertEqual((challenge["purpose"], challenge["help_url"]), (purpose, help_url))
         self.assertEqual(challenge["request"], stored)
+        self.assertEqual((challenge["rendered"], challenge["locale"]), (rendered, "pt"))
+        self.assertEqual(challenge["pack_digest"], body["pack_digest"])
 
     def test_a_denial_ends_the_run_and_a_password_is_verified_here(self) -> None:
         self.open()
