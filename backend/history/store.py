@@ -598,34 +598,45 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators[payload["kind"]](payload)
 
 
+def _page_rows(database: sqlite3.Connection, team_id: str, position: int | None) -> sqlite3.Cursor:
+    if position is None:
+        return database.execute(
+            "SELECT position, event_key, payload FROM transcript WHERE team_id = ? ORDER BY position DESC LIMIT ?",
+            (team_id, PAGE_ROWS + 1),
+        )
+    return database.execute(
+        "SELECT position, event_key, payload FROM transcript WHERE team_id = ? AND position < ? "
+        "ORDER BY position DESC LIMIT ?",
+        (team_id, position, PAGE_ROWS + 1),
+    )
+
+
 def page(team_id: object, *, before: object = None) -> dict[str, object]:
+    """Return one newest-first page, fetching rows one at a time so the byte cap bounds the memory it holds.
+
+    Iteration stops at the first row that would exceed the row or byte bound; that one-row lookahead is what
+    proves an older entry exists and keeps the older-history cursor.
+    """
     canonical_team = _team_id(team_id)
     position = _position(before)
-    with _database() as database:
-        if position is None:
-            rows = database.execute(
-                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? ORDER BY position DESC LIMIT ?",
-                (canonical_team, PAGE_ROWS + 1),
-            ).fetchall()
-        else:
-            rows = database.execute(
-                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? AND position < ? "
-                "ORDER BY position DESC LIMIT ?",
-                (canonical_team, position, PAGE_ROWS + 1),
-            ).fetchall()
     selected: list[tuple[int, str, dict[str, object]]] = []
     size = 0
-    for row_position, event_key, raw in rows[:PAGE_ROWS]:
-        payload = _decoded(raw)
-        entry_size = len(raw.encode("utf-8")) + len(event_key)
-        if selected and size + entry_size > MAX_PAGE_BYTES:
-            break
-        selected.append((row_position, event_key, payload))
-        size += entry_size
+    has_older = False
+    with _database() as database, contextlib.closing(_page_rows(database, canonical_team, position)) as rows:
+        for row_position, event_key, raw in rows:
+            if len(selected) == PAGE_ROWS:
+                has_older = True
+                break
+            payload = _decoded(raw)
+            entry_size = len(raw.encode("utf-8")) + len(event_key)
+            if selected and size + entry_size > MAX_PAGE_BYTES:
+                has_older = True
+                break
+            selected.append((row_position, event_key, payload))
+            size += entry_size
     if not selected:
         return {"entries": [], "before": None}
     oldest = selected[-1][0]
-    has_older = len(selected) < len(rows)
     entries = [{"id": event_key, **payload} for _, event_key, payload in reversed(selected)]
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
 

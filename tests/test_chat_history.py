@@ -7,6 +7,7 @@ import contextlib
 import sqlite3
 import sys
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -340,6 +341,98 @@ class ChatHistoryTests(unittest.TestCase):
 
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.path.with_name(f"{self.path.name}-wal").exists())
+
+    def _append_turn(self, team_id: str, prompt: str, reply: str) -> None:
+        turn_id = history.new_turn_id()
+        self.assertTrue(history.append_user(team_id, turn_id, prompt))
+        self.assertTrue(
+            history.append_reply(
+                team_id,
+                turn_id,
+                {
+                    "type": "done",
+                    "team_id": team_id,
+                    "team_name": "Marketing",
+                    "reply": reply,
+                    "clarification": None,
+                    "routine_proposal": None,
+                },
+            )
+        )
+
+    def _all_pages(self, team_id: str) -> list[dict[str, object]]:
+        pages = []
+        before = None
+        while True:
+            page = history.page(team_id, before=before)
+            pages.append(page)
+            before = page["before"]
+            if before is None:
+                return pages
+
+    def test_large_multibyte_replies_page_within_the_byte_cap_without_losing_older_entries(self) -> None:
+        turns = 12
+        for index in range(turns):
+            self._append_turn("marketing", f"Prompt {index}", chr(0x1F600 + index) * history.MAX_REPLY_CHARS)
+
+        pages = self._all_pages("marketing")
+
+        self.assertGreater(len(pages), 1)
+        for page in pages[:-1]:
+            self.assertIsNotNone(page["before"])
+        observed = []
+        for page in reversed(pages):
+            entries = page["entries"]
+            self.assertTrue(entries)
+            size = sum(
+                len(history._encoded({key: value for key, value in entry.items() if key != "id"}).encode("utf-8"))
+                + len(entry["id"])
+                for entry in entries
+            )
+            self.assertLessEqual(size, history.MAX_PAGE_BYTES)
+            observed.extend(entries)
+        expected = []
+        for index in range(turns):
+            expected.extend([f"Prompt {index}", chr(0x1F600 + index) * history.MAX_REPLY_CHARS])
+        self.assertEqual([entry["text"] for entry in observed], expected)
+        self.assertEqual(len({entry["id"] for entry in observed}), len(observed))
+
+    def test_page_holds_only_the_rows_it_returns_plus_one_lookahead(self) -> None:
+        reply = "\U0001f600" * history.MAX_REPLY_CHARS
+        for index in range(history.PAGE_ROWS // 2 + 1):
+            self._append_turn("marketing", f"Prompt {index}", reply)
+
+        tracemalloc.start()
+        self.addCleanup(tracemalloc.stop)
+        tracemalloc.reset_peak()
+        baseline = tracemalloc.get_traced_memory()[0]
+        page = history.page("marketing")
+        peak = tracemalloc.get_traced_memory()[1] - baseline
+
+        # Each stored reply is about 240 KB; draining the full row window would hold over 7 MB.
+        self.assertLess(peak, 3 * 1024 * 1024)
+        newest = history.PAGE_ROWS // 2
+        self.assertEqual(
+            [entry["text"] for entry in page["entries"]],
+            [f"Prompt {newest - 1}", reply, f"Prompt {newest}", reply],
+        )
+        self.assertIsNotNone(page["before"])
+
+    def test_row_bound_keeps_the_cursor_only_while_an_older_row_exists(self) -> None:
+        for index in range(history.PAGE_ROWS):
+            history.append_user("marketing", history.new_turn_id(), f"Prompt {index}")
+        exact = history.page("marketing")
+        self.assertEqual(len(exact["entries"]), history.PAGE_ROWS)
+        self.assertIsNone(exact["before"])
+
+        history.append_user("marketing", history.new_turn_id(), "Newest prompt")
+        newest = history.page("marketing")
+        self.assertEqual(len(newest["entries"]), history.PAGE_ROWS)
+        self.assertEqual(newest["entries"][-1]["text"], "Newest prompt")
+        self.assertIsNotNone(newest["before"])
+        oldest = history.page("marketing", before=newest["before"])
+        self.assertEqual([entry["text"] for entry in oldest["entries"]], ["Prompt 0"])
+        self.assertIsNone(oldest["before"])
 
     def test_preserves_maximum_length_multibyte_reply(self) -> None:
         turn_id = history.new_turn_id()
