@@ -2,6 +2,7 @@
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { localizedChallenge } from './localizedRequest.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -241,7 +242,7 @@ const HUMAN_CHALLENGE = Object.freeze({
   action: { id: 'search-web', summary: 'Search the web with Exa.' },
   purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.',
   help_url: 'https://dashboard.exa.ai/api-keys',
-  request: {
+  ...localizedChallenge({
     kind: 'input:password',
     ordinal: 0,
     title: 'Exa API key',
@@ -253,7 +254,7 @@ const HUMAN_CHALLENGE = Object.freeze({
     min_length: 1,
     max_length: 128,
     stored_input: 'exa-api-key',
-  },
+  }),
 });
 
 function chatReply(state, frame) {

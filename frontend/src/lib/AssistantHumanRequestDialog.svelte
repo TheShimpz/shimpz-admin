@@ -8,6 +8,7 @@
     TextLink,
   } from '@shimpz/frontend';
   import { t } from '$lib/i18n.js';
+  import { displayedHumanRequest } from '$lib/localChat.js';
 
   let {
     open = $bindable(false),
@@ -32,7 +33,9 @@
   let fieldsContainer = $state();
   let stateStatus = $state();
 
-  let request = $derived(challenge?.request);
+  // Every Assistant-authored word comes from the rendered copy in the interface language; the kind, bounds, and option
+  // values stay the canonical request's, so an answer always submits exactly what Team fingerprinted (ADR-0091).
+  let request = $derived(challenge ? displayedHumanRequest(challenge) : undefined);
   let kind = $derived(request?.kind ?? '');
   let isAuth = $derived(kind.startsWith('auth:'));
   let isStoredInput = $derived(kind === 'input:password' && Boolean(request?.stored_input));

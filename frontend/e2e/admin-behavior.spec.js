@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
+import { localizedChallenge } from './localizedRequest.js';
 
 import { routeScenario } from './scenarioRoutes.js';
 import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
@@ -493,9 +494,9 @@ async function routeReadyChat(page, {
       expires_in: expiresIn,
       assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
       action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-      request: storedInputAfterPlan || humanStoredInput
+      ...localizedChallenge(storedInputAfterPlan || humanStoredInput
         ? { ...humanRequest('input:password'), stored_input: humanStoredInput || 'cloudflare-token' }
-        : humanRequest(humanKind),
+        : humanRequest(humanKind)),
       ...humanPresentation,
     }));
 
@@ -658,7 +659,7 @@ async function routeReadyChat(page, {
                 expires_in: humanExpiresIn,
                 assistant: { id: humanAssistantId, name: 'Shimpz Cloudflare', version: '0.4.1' },
                 action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-                request: { ...humanRequest('input:password'), stored_input: 'cloudflare-token' },
+                ...localizedChallenge({ ...humanRequest('input:password'), stored_input: 'cloudflare-token' }),
                 ...humanPresentation,
               }));
               return;
@@ -4053,7 +4054,7 @@ test.describe('Team Routines', () => {
               expires_in: 300,
               assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
               action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-              request: humanRequest('approval'),
+              ...localizedChallenge(humanRequest('approval')),
             },
           }
           : { team_id: 'marketing', run_id: runId, status: 'integrations-required' },

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { localizedChallenge } from '../e2e/localizedRequest.js';
+
 import {
   CHAT_WS_PROTOCOL,
   authorizeAssistantIntegration,
@@ -213,14 +215,14 @@ function humanRequest(kind) {
   return base;
 }
 
-function humanChallenge(kind) {
+function humanChallenge(kind, plain = humanRequest(kind)) {
   return {
     type: 'human-required',
     challenge_id: CHALLENGE_ID,
     expires_in: 300,
     assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
     action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-    request: humanRequest(kind),
+    ...localizedChallenge(plain),
   };
 }
 
@@ -266,14 +268,12 @@ test('chat accepts every exact bounded public human request presentation', () =>
     assert.notEqual(parsed.request, challenge.request);
   }
 
-  const storedInput = humanChallenge('input:password');
-  storedInput.request.stored_input = 'whatsapp-token';
+  const storedInput = humanChallenge('input:password', { ...humanRequest('input:password'), stored_input: 'whatsapp-token' });
   assert.deepEqual(
     parseChatEvent(storedInput, 'team_1', 'Marketing').request.stored_input,
     'whatsapp-token',
   );
-  const wrongKind = humanChallenge('input:text');
-  wrongKind.request.stored_input = 'whatsapp-token';
+  const wrongKind = humanChallenge('input:text', { ...humanRequest('input:text'), stored_input: 'whatsapp-token' });
   assert.throws(() => parseChatEvent(wrongKind, 'team_1', 'Marketing'), /invalid/i);
 });
 
@@ -318,7 +318,7 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
     { ...base, request: { ...base.request, fingerprint: 'not-a-fingerprint' } },
     { ...base, request: { ...base.request, min_selections: 3 } },
     { ...base, request: { ...base.request, options: [...base.request.options, base.request.options[0]] } },
-    { ...humanChallenge('approval'), request: { ...humanRequest('approval'), secret: 'must-not-cross' } },
+    { ...humanChallenge('approval'), request: { ...humanChallenge('approval').request, secret: 'must-not-cross' } },
   ]) assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
 });
 

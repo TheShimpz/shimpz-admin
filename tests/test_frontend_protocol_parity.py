@@ -54,6 +54,17 @@ class FrontendProtocolParityTests(unittest.TestCase):
             with self.subTest(check=check):
                 self.assertIn(check, rule)
 
+    def test_the_browser_rendered_copy_bounds_are_the_team_bounds(self) -> None:
+        for name, bounds in (
+            ("RENDERED_FIELD_CHARS", team_contract.RENDERED_FIELD_CHARS),
+            ("RENDERED_OPTION_CHARS", team_contract.RENDERED_OPTION_CHARS),
+        ):
+            with self.subTest(name=name):
+                literal = re.fullmatch(r"Object\.freeze\(\{ (.+) \}\)", _constant(self.source, name))
+                self.assertIsNotNone(literal)
+                pairs = dict(re.findall(r"(\w+): (\d+)", literal[1]))
+                self.assertEqual({field: int(value) for field, value in pairs.items()}, bounds)
+
 
 if __name__ == "__main__":
     unittest.main()

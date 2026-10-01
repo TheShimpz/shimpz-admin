@@ -239,6 +239,102 @@ function canonicalIntegrationRequirement(value) {
   };
 }
 
+// Every copy field of a request is a reference into its Assistant's reviewed English catalog (ADR-0091). Admin verified
+// the fingerprint over these references; the browser admits only their closed shape and never shows them. A person
+// reads the separate `rendered` copy instead, in the language the challenge was created for.
+const MESSAGE_ID_RE = /^[0-9a-f]{64}$/;
+const MESSAGE_PARAM_NAME_RE = /^[a-z][a-z0-9_]{0,31}$/;
+const DOMAIN_PARAM_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const IDENTIFIER_PARAM_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const MAX_MESSAGE_PARAMS = 8;
+const MAX_INTEGER_PARAM = 10 ** 15;
+const MAX_DOMAIN_PARAM_CHARS = 253;
+const MAX_IDENTIFIER_PARAM_CHARS = 128;
+const PACK_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+const RENDERED_FIELD_CHARS = Object.freeze({ title: 80, description: 500, label: 80, placeholder: 120 });
+const RENDERED_OPTION_CHARS = Object.freeze({ label: 80, description: 160 });
+
+function messageParam(value) {
+  if (Number.isSafeInteger(value)) return value >= 0 && value < MAX_INTEGER_PARAM;
+  return typeof value === 'string' && (
+    (value.length <= MAX_DOMAIN_PARAM_CHARS && DOMAIN_PARAM_RE.test(value)) ||
+    (value.length <= MAX_IDENTIFIER_PARAM_CHARS && IDENTIFIER_PARAM_RE.test(value))
+  );
+}
+
+function canonicalCopyReference(value) {
+  const params = value?.params;
+  if (
+    !exactKeys(value, ['message', 'params']) ||
+    typeof value.message !== 'string' ||
+    !MESSAGE_ID_RE.test(value.message) ||
+    !params ||
+    typeof params !== 'object' ||
+    Array.isArray(params) ||
+    Reflect.ownKeys(params).length > MAX_MESSAGE_PARAMS ||
+    !Reflect.ownKeys(params).every((name) => (
+      typeof name === 'string' && MESSAGE_PARAM_NAME_RE.test(name) && messageParam(params[name])
+    ))
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return { message: value.message, params: { ...params } };
+}
+
+function canonicalOptionalCopyReference(value) {
+  return value === null ? null : canonicalCopyReference(value);
+}
+
+// One rendered field: null exactly where its reference is null, otherwise bounded public NFC text.
+function renderedText(text, reference, maximum) {
+  if (reference === null) {
+    if (text !== null) throw new LocalApiError('The local chat response is invalid.');
+    return null;
+  }
+  if (typeof text !== 'string' || text.normalize('NFC') !== text) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  return canonicalPublicText(text, maximum);
+}
+
+// The display copy of exactly the canonical request's copy fields, in its field and option order (Team HTTP
+// payload.canonical_rendered); option values and kinds stay in the request.
+function canonicalRendered(value, request) {
+  const fields = Object.keys(RENDERED_FIELD_CHARS).filter((field) => Object.hasOwn(request, field));
+  const options = Object.hasOwn(request, 'options');
+  if (!exactKeys(value, options ? [...fields, 'options'] : fields)) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const rendered = Object.fromEntries(fields.map((field) => [
+    field,
+    renderedText(value[field], request[field], RENDERED_FIELD_CHARS[field]),
+  ]));
+  if (!options) return rendered;
+  if (!Array.isArray(value.options) || value.options.length !== request.options.length) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  rendered.options = value.options.map((item, index) => {
+    if (!exactKeys(item, ['label', 'description'])) throw new LocalApiError('The local chat response is invalid.');
+    const option = request.options[index];
+    return {
+      label: renderedText(item.label, option.label, RENDERED_OPTION_CHARS.label),
+      description: renderedText(item.description, option.description, RENDERED_OPTION_CHARS.description),
+    };
+  });
+  return rendered;
+}
+
+/**
+ * The request as a person reads it: its rendered copy over the canonical request, whose kind, bounds, Stored Input,
+ * and option values stay exactly what Team fingerprinted, so a submitted value is always a canonical option value.
+ */
+export function displayedHumanRequest(challenge) {
+  const { options, ...copy } = challenge.rendered;
+  const request = { ...challenge.request, ...copy };
+  if (options) {
+    request.options = challenge.request.options.map((option, index) => ({ value: option.value, ...options[index] }));
+  }
+  return request;
+}
+
 function canonicalHumanOption(value) {
   if (
     !value ||
@@ -248,8 +344,8 @@ function canonicalHumanOption(value) {
   ) throw new LocalApiError('The local chat response is invalid.');
   return {
     value: canonicalPublicText(value.value, 128),
-    label: canonicalPublicText(value.label, 80),
-    description: canonicalOptionalPublicText(value.description, 160),
+    label: canonicalCopyReference(value.label),
+    description: canonicalOptionalCopyReference(value.description),
   };
 }
 
@@ -279,8 +375,8 @@ function canonicalHumanRequestBase(value) {
   return {
     kind: value.kind,
     ordinal: value.ordinal,
-    title: canonicalPublicText(value.title, 80),
-    description: canonicalPublicText(value.description, 500),
+    title: canonicalCopyReference(value.title),
+    description: canonicalCopyReference(value.description),
     fingerprint: value.fingerprint,
   };
 }
@@ -289,7 +385,7 @@ function canonicalHumanInputBase(value, base) {
   if (typeof value.required !== 'boolean') {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  return { ...base, label: canonicalPublicText(value.label, 80), required: value.required };
+  return { ...base, label: canonicalCopyReference(value.label), required: value.required };
 }
 
 // The Team HTTP protocol's Stored Input key-page grammar (HELP_URL_PATTERN), byte for byte: one canonical public
@@ -356,8 +452,6 @@ function canonicalHumanRequest(value) {
     if (storedInput !== undefined) lengthKeys.push('stored_input');
     if (
       !exactKeys(value, lengthKeys) ||
-      (value.placeholder !== null && typeof value.placeholder !== 'string') ||
-      (typeof value.placeholder === 'string' && canonicalPublicText(value.placeholder, 120) !== value.placeholder) ||
       !Number.isSafeInteger(value.min_length) ||
       !Number.isSafeInteger(value.max_length) ||
       value.min_length < 0 ||
@@ -366,7 +460,7 @@ function canonicalHumanRequest(value) {
     ) throw new LocalApiError('The local chat response is invalid.');
     return {
       ...input,
-      placeholder: value.placeholder,
+      placeholder: canonicalOptionalCopyReference(value.placeholder),
       min_length: value.min_length,
       max_length: value.max_length,
       ...(storedInput === undefined ? {} : { stored_input: storedInput }),
@@ -1291,15 +1385,22 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'human-required') {
     // Optional presentation beside the fingerprinted request (ADR-0090): the Brain's task-bound purpose and, only for
-    // a Stored Input request, the key page its reviewed Assistant declared.
+    // a Stored Input request, the key page its reviewed Assistant declared. The rendered copy, its concrete locale,
+    // and the language pack's digest are required beside the canonical request (ADR-0091).
     const optional = ['purpose', 'help_url'].filter((key) => Object.hasOwn(value, key));
     if (
-      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', ...optional]) ||
+      !exactKeys(value, [
+        'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
+        ...optional,
+      ]) ||
       typeof value.challenge_id !== 'string' ||
       !OPAQUE_ID_RE.test(value.challenge_id) ||
       !Number.isSafeInteger(value.expires_in) ||
       value.expires_in < 1 ||
-      value.expires_in > 300
+      value.expires_in > 300 ||
+      !isLocale(value.locale) ||
+      typeof value.pack_digest !== 'string' ||
+      !PACK_DIGEST_RE.test(value.pack_digest)
     ) throw new LocalApiError('The local chat response is invalid.');
     const request = canonicalHumanRequest(value.request);
     if (optional.includes('help_url') && (request.kind !== 'input:password' || request.stored_input === undefined)) {
@@ -1312,6 +1413,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80),
       action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160),
       request,
+      rendered: canonicalRendered(value.rendered, request),
+      locale: value.locale,
+      pack_digest: value.pack_digest,
       ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
       ...(optional.includes('help_url') ? { help_url: canonicalHelpUrl(value.help_url) } : {}),
     };
