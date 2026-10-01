@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import sys
 import tempfile
 import unicodedata
@@ -202,6 +203,19 @@ class ChatHistoryConversationTests(unittest.TestCase):
         self.assertEqual(len(projected), conversation_context.MAX_ENTRIES)
         self.assertEqual(projected[0].text, "Pergunta 1")
         self.assertEqual(projected[-1].text, "Resposta 4")
+
+    def test_conversation_projection_reads_only_the_eligible_partial_index(self) -> None:
+        turn_id = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn_id, "Pergunta"))
+        with sqlite3.connect(self.path) as database:
+            plan = database.execute(
+                f"EXPLAIN QUERY PLAN {history.CONVERSATION_QUERY}", ("marketing", 2, conversation_context.MAX_ENTRIES)
+            ).fetchall()
+            version = database.execute("PRAGMA user_version").fetchone()[0]
+
+        self.assertEqual(version, history.SCHEMA_VERSION)
+        self.assertEqual(len(plan), 1)
+        self.assertIn("USING INDEX transcript_team_conversation (team_id=? AND position<?)", plan[0][3])
 
     def test_conversation_projection_truncates_head_and_tail_and_requires_an_exact_anchor(self) -> None:
         prior = history.new_turn_id()

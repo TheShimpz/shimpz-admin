@@ -22,7 +22,7 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
@@ -114,11 +114,14 @@ def _initialize(database: sqlite3.Connection) -> None:
             UNIQUE (team_id, event_key)
         );
         CREATE INDEX transcript_team_position ON transcript (team_id, position);
+        CREATE INDEX transcript_team_conversation ON transcript (team_id, position)
+            WHERE substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply'
+            OR substr(event_key, -9) = ':guidance';
         CREATE TABLE resumable_turn (
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 4;
+        PRAGMA user_version = 5;
         """
     )
 
@@ -640,6 +643,17 @@ def _conversation_entry(event_key: object, payload: dict[str, object]) -> conver
         return None
 
 
+# The eligibility predicate repeats the partial index `transcript_team_conversation` exactly, so the projection
+# skips every Routine notice and other row between the anchor and the latest eligible entries.
+CONVERSATION_QUERY = (
+    "SELECT event_key, payload FROM transcript "
+    "WHERE team_id = ? AND position < ? AND "
+    "(substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply' "
+    "OR substr(event_key, -9) = ':guidance') "
+    "ORDER BY position DESC LIMIT ?"
+)
+
+
 def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_context.Entry, ...]:
     """Return the latest eligible same-Team entries before one exact admitted user turn."""
     canonical_team = _team_id(team_id)
@@ -655,12 +669,7 @@ def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_
         if anchor_payload.get("kind") != "message" or anchor_payload.get("role") != "user":
             raise HistoryUnavailableError("chat history conversation anchor is invalid")
         rows = database.execute(
-            "SELECT event_key, payload FROM transcript "
-            "WHERE team_id = ? AND position < ? AND "
-            "(substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply' "
-            "OR substr(event_key, -9) = ':guidance') "
-            "ORDER BY position DESC LIMIT ?",
-            (canonical_team, anchor[0], conversation_context.MAX_ENTRIES),
+            CONVERSATION_QUERY, (canonical_team, anchor[0], conversation_context.MAX_ENTRIES)
         ).fetchall()
     projected = (_conversation_entry(event_key, _decoded(raw)) for event_key, raw in reversed(rows))
     return tuple(entry for entry in projected if entry is not None)
