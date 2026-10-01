@@ -1085,45 +1085,73 @@ test('answering a question sends the request with the answer at once and the Tea
   expect(sentMessages(scenario.chatFrames())).toHaveLength(2);
 });
 
-test('answering the newer of two identical questions closes that question and keeps the older one open', async ({ page }) => {
+test('the composer waits while the latest question is open and the card\'s answer unlocks it', async ({ page }) => {
   const scenario = await routeScenario(page, 'clarify');
-  const { composer } = await askVoiceQuestion(page, scenario);
-  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
-  await fillWhenReady(page, composer, VOICE_REQUEST);
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(cards).toHaveCount(2);
+  const { composer, card } = await askVoiceQuestion(page, scenario);
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveAttribute('placeholder', 'Answer the question above to continue.');
+  await expect(send).toBeDisabled();
 
-  await cards.last().getByRole('button', { name: 'Answer' }).click();
+  await card.getByRole('button', { name: 'Answer' }).click();
   const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
   await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
-  await expect(cards).toHaveCount(1);
-  const replies = page.getByRole('article', { name: 'Marketing' });
-  await expect(replies.first().getByRole('form')).toHaveCount(1);
-  await expect(replies.nth(1).getByRole('form')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await composer.fill('Thanks');
+  await expect(send).toBeEnabled();
   expect(sentMessages(scenario.chatFrames())).toEqual([
-    VOICE_REQUEST,
     VOICE_REQUEST,
     composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
   ]);
 });
 
+// Two open questions come back from the history: the composer waits for the latest, and either card answers.
+function twoOpenQuestions(firstRequest, secondRequest) {
+  return [['a'.repeat(32), firstRequest], ['b'.repeat(32), secondRequest]].flatMap(([turn, text]) => [
+    { id: `${turn}:user`, kind: 'message', role: 'user', text },
+    {
+      id: `${turn}:reply`,
+      kind: 'message',
+      role: 'assistant',
+      text: CLARIFICATION_REPLY,
+      author: 'Marketing',
+      clarification: CLARIFICATION,
+    },
+  ]);
+}
+
+test('answering the newer of two identical questions closes that question and keeps the older one open', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    history: { entries: twoOpenQuestions(VOICE_REQUEST, VOICE_REQUEST), before: null },
+  });
+  await page.goto('/chat/');
+  const cards = page.getByRole('form', { name: CLARIFICATION.question });
+  await expect(cards).toHaveCount(2);
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeDisabled();
+
+  await cards.last().getByRole('button', { name: 'Answer' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  await expect(cards).toHaveCount(1);
+  const replies = page.getByRole('article', { name: 'Marketing' });
+  await expect(replies.first().getByRole('form')).toHaveCount(1);
+  await expect(replies.nth(1).getByRole('form')).toHaveCount(0);
+  expect(sentMessages(chat.chatFrames())).toEqual([composedAnswer(VOICE_REQUEST, CLARIFICATION.question, 'Today')]);
+});
+
 test('an older question answered after another request closes once its answer is sent', async ({ page }) => {
-  const scenario = await routeScenario(page, 'clarify');
-  const { composer } = await askVoiceQuestion(page, scenario);
-  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
-  await fillWhenReady(page, composer, 'Compare every video API too');
-  await page.getByRole('button', { name: 'Send' }).click();
+  const chat = await routeReadyChat(page, {
+    history: { entries: twoOpenQuestions(VOICE_REQUEST, 'Compare every video API too'), before: null },
+  });
+  await page.goto('/chat/');
+  const cards = page.getByRole('form', { name: CLARIFICATION.question });
   await expect(cards).toHaveCount(2);
 
   await cards.first().getByRole('button', { name: 'Answer' }).click();
-  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
-  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(cards).toHaveCount(1);
-  expect(sentMessages(scenario.chatFrames())).toEqual([
-    VOICE_REQUEST,
-    'Compare every video API too',
-    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
-  ]);
+  expect(sentMessages(chat.chatFrames())).toEqual([composedAnswer(VOICE_REQUEST, CLARIFICATION.question, 'Today')]);
+  // The latest reply asks nothing, so the composer is free again although the newer question stays open.
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
 });
 
 test('a custom answer takes focus and can be sent only once it has text', async ({ page }) => {

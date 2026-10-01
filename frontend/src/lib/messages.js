@@ -375,6 +375,7 @@ export const messages = {
       tooLong: "The request plus this answer is too long for one message. Shorten the answer.",
       questionLabel: "Question",
       answerLabel: "Answer",
+      answerFirst: "Answer the question above to continue.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -773,6 +774,7 @@ export const messages = {
       tooLong: "O pedido com esta resposta ficou longo demais para uma mensagem. Encurte a resposta.",
       questionLabel: "Pergunta",
       answerLabel: "Resposta",
+      answerFirst: "Responda à pergunta acima para continuar.",
     },
     teamSidebar: {
       "retry": "Tentar dados locais novamente"
@@ -1171,6 +1173,7 @@ export const messages = {
       tooLong: "El pedido con esta respuesta es demasiado largo para un mensaje. Acorta la respuesta.",
       questionLabel: "Pregunta",
       answerLabel: "Respuesta",
+      answerFirst: "Responde a la pregunta de arriba para continuar.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -1569,6 +1572,7 @@ export const messages = {
       tooLong: "请求加上此回答超出单条消息长度，请缩短回答。",
       questionLabel: "问题",
       answerLabel: "回答",
+      answerFirst: "请先回答上面的问题再继续。",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -1967,6 +1971,7 @@ export const messages = {
       tooLong: "La demande avec cette réponse est trop longue pour un message. Raccourcissez la réponse.",
       questionLabel: "Question",
       answerLabel: "Réponse",
+      answerFirst: "Répondez à la question ci-dessus pour continuer.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2365,6 +2370,7 @@ export const messages = {
       tooLong: "Die Anfrage mit dieser Antwort ist für eine Nachricht zu lang. Kürzen Sie die Antwort.",
       questionLabel: "Frage",
       answerLabel: "Antwort",
+      answerFirst: "Beantworte die Frage oben, um fortzufahren.",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -2763,6 +2769,7 @@ export const messages = {
       tooLong: "依頼とこの回答を合わせると 1 通のメッセージには長すぎます。回答を短くしてください。",
       questionLabel: "質問",
       answerLabel: "回答",
+      answerFirst: "続けるには上の質問に答えてください。",
     },
     teamSidebar: {
       "retry": "Retry local data"
@@ -3161,6 +3168,7 @@ export const messages = {
       tooLong: "الطلب مع هذه الإجابة أطول من رسالة واحدة. اختصر الإجابة.",
       questionLabel: "السؤال",
       answerLabel: "الإجابة",
+      answerFirst: "أجب عن السؤال أعلاه للمتابعة.",
     },
     teamSidebar: {
       "retry": "Retry local data"

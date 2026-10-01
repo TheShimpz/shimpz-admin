@@ -275,6 +275,12 @@
     return { given, sent };
   });
 
+  // While the latest reply asks a question nobody answered, the composer waits for that answer; the card sends it.
+  let questionOpen = $derived.by(() => {
+    const last = exchanges.length - 1;
+    return last >= 0 && clarifiedRequest(exchanges[last]) !== null && !clarificationAnswers.given.has(last);
+  });
+
   function retryLastTurn() {
     const message = retryMessage;
     if (message) submitMessage(message, { projectUserTurn: false, retryable: true });
@@ -1578,7 +1584,7 @@
 
   function send(event) {
     event.preventDefault();
-    if (submitMessage(draft)) {
+    if (!questionOpen && submitMessage(draft)) {
       draft = '';
       promptHistoryIndex = -1;
     }
@@ -2079,8 +2085,8 @@
                   bind:element={composerInput}
                   bind:value={draft}
                   rows="2"
-                  placeholder={placeholder}
-                  disabled={composerBusy}
+                  placeholder={questionOpen ? $t('clarify').answerFirst : placeholder}
+                  disabled={composerBusy || questionOpen}
                   onkeydown={handleComposerKeydown}
                 />
               {/if}
@@ -2130,7 +2136,7 @@
                   class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
