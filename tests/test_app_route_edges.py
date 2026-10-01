@@ -397,8 +397,8 @@ class AppRouteEdgeTests(unittest.TestCase):
                 "uninstall_assistant",
                 ("team_1", "assistant"),
             ),
-            (self.admin_app.team_files_list, self.admin_app.team, "list_files", ("team_1",)),
-            (self.admin_app.team_file_delete, self.admin_app.team, "delete_file", ("team_1", "f" * 32)),
+            (self.admin_app.team_files.team_files_list, self.admin_app.team, "list_files", ("team_1",)),
+            (self.admin_app.team_files.team_file_delete, self.admin_app.team, "delete_file", ("team_1", "f" * 32)),
         )
         for route, owner, name, arguments in synchronous:
             with self.subTest(route=route.__name__), mock.patch.object(owner, name, return_value=response):
@@ -439,7 +439,7 @@ class AppRouteEdgeTests(unittest.TestCase):
             ),
             mock.patch.object(self.admin_app.team, "upload_file", return_value=response),
         ):
-            uploaded = asyncio.run(self.admin_app.team_file_upload("team_1", mock.Mock()))
+            uploaded = asyncio.run(self.admin_app.team_files.team_file_upload("team_1", mock.Mock()))
         self.assertEqual(uploaded.status_code, 200)
 
 
