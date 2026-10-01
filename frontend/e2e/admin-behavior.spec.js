@@ -136,6 +136,15 @@ async function openTeamNavigation(page) {
   return page.locator('.shell-sidebar');
 }
 
+// Each installed Assistant's summary per interface language, as Team reads it from the binding's pack (ADR-0091).
+const INSTALLED_SUMMARIES = {
+  'shimpz-cloudflare': {
+    en: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+    pt: 'Inspeciona zonas do Cloudflare e gerencia registros DNS comuns com segurança por OAuth.',
+  },
+  'shimpz-slack': { en: 'Send reviewed messages to Slack.' },
+};
+
 async function routeReadyChat(page, {
   assistantPlan = false,
   alreadyInstalledResult = false,
@@ -429,7 +438,6 @@ async function routeReadyChat(page, {
           assistant_id: 'shimpz-cloudflare',
           assistant_name: 'Shimpz Cloudflare',
           assistant_version: '0.4.2',
-          assistant_summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
           id: 'cloudflare',
           provider: 'cloudflare',
           name: 'Cloudflare',
@@ -443,7 +451,6 @@ async function routeReadyChat(page, {
           assistant_id: 'shimpz-slack',
           assistant_name: 'Shimpz Slack',
           assistant_version: '0.1.0',
-          assistant_summary: 'Send reviewed messages to Slack.',
           id: 'slack',
           provider: 'slack',
           name: 'Slack',
@@ -456,6 +463,23 @@ async function routeReadyChat(page, {
       ],
     }),
   }));
+  // Team reads an installed Assistant's summary from its binding's pack, only in the requested interface language.
+  await page.route(
+    (url) => /^\/api\/teams\/marketing\/assistants\/[^/]+\/summary$/.test(url.pathname),
+    (route) => {
+      const url = new URL(route.request().url());
+      const locale = url.searchParams.get('locale');
+      const summary = INSTALLED_SUMMARIES[url.pathname.split('/')[5]]?.[locale];
+      return route.fulfill(summary ? {
+        contentType: 'application/json',
+        body: JSON.stringify({ locale, summary }),
+      } : {
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'installed Assistant manifest failed its reviewed contract' }),
+      });
+    },
+  );
   await page.route('**/api/teams/marketing/assistant-stored-inputs', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -2622,6 +2646,36 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
   await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(drawer.getByText('Inspect Cloudflare zones and safely manage common DNS records through OAuth.')).toBeHidden();
   await expect(drawer.getByText('Send reviewed messages to Slack.')).toBeVisible();
+});
+
+test('shows an expanded Assistant summary only in the interface language', async ({ page }) => {
+  const summaryLocales = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/summary')) summaryLocales.push(url.searchParams.get('locale'));
+  });
+  await routeReadyChat(page, { multipleIntegrations: true });
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.locator('#assistant-integrations-drawer');
+  const cloudflareToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-cloudflare"]');
+  const slackToggle = drawer.locator('button[aria-controls="assistant-integration-group-shimpz-slack"]');
+  await cloudflareToggle.click();
+  await expect(drawer.getByText(INSTALLED_SUMMARIES['shimpz-cloudflare'].en)).toBeVisible();
+
+  // The language changes while the drawer stays open; on a phone the open drawer covers the menu, so use the keyboard.
+  await page.getByRole('button', { name: 'Language: English' }).press('Enter');
+  await page.getByRole('menuitemradio', { name: 'Português' }).press('Enter');
+  await expect(drawer.getByText(INSTALLED_SUMMARIES['shimpz-cloudflare'].pt)).toBeVisible();
+  await expect(drawer.getByText(INSTALLED_SUMMARIES['shimpz-cloudflare'].en)).toHaveCount(0);
+
+  // A summary Team cannot read in this language stays empty instead of falling back to English.
+  await slackToggle.click();
+  await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect.poll(() => summaryLocales).toEqual(['en', 'pt', 'pt']);
+  await expect(drawer.getByText(INSTALLED_SUMMARIES['shimpz-slack'].en)).toHaveCount(0);
+  await expect(drawer.locator('#assistant-integration-group-shimpz-slack p')).toHaveCount(0);
 });
 
 test('presents individual authorization controls for every pending Integration', async ({ page }) => {

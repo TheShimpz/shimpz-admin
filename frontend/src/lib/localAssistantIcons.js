@@ -1,6 +1,6 @@
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
-import { ASSISTANT_ID_RE, codePointLength, CONTROL_RE, exactKeys, jsonObject } from './validate.js';
+import { ASSISTANT_ID_RE, codePointLength, CONTROL_RE, exactKeys, jsonObject, TEAM_ID_RE } from './validate.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
@@ -138,7 +138,7 @@ async function fetchLocalIcon(fetcher, imageId, delay, signal) {
   throw new LocalApiError('The Local Assistant icon is unavailable.');
 }
 
-function acceptedSummary(body, locale, status) {
+function acceptedSummary(body, locale, status, invalid = 'The Local Assistant summary is invalid.') {
   const summary = body.summary;
   if (
     !exactKeys(body, ['locale', 'summary']) ||
@@ -150,7 +150,7 @@ function acceptedSummary(body, locale, status) {
     codePointLength(summary) > MAX_SUMMARY_CHARS ||
     CONTROL_RE.test(summary)
   ) {
-    throw new LocalApiError('The Local Assistant summary is invalid.', status);
+    throw new LocalApiError(invalid, status);
   }
   return summary;
 }
@@ -236,4 +236,31 @@ export function loadLocalAssistantSummary(fetcher, imageId, locale, options = {}
     return Promise.reject(new LocalApiError('Invalid Local Assistant summary request.'));
   }
   return schedule(localQueue, () => fetchLocalSummary(fetcher, imageId, locale, delay, signal), signal);
+}
+
+/**
+ * Fetch one installed Assistant's summary in one interface language, read by Team from the binding's own language
+ * pack (ADR-0091). The answer must be exactly that language; there is no English fallback.
+ */
+export async function loadAssistantSummary(fetcher, teamId, assistantId, locale, options = {}) {
+  const { signal } = options;
+  if (
+    typeof fetcher !== 'function' ||
+    typeof teamId !== 'string' ||
+    !TEAM_ID_RE.test(teamId) ||
+    typeof assistantId !== 'string' ||
+    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isLocale(locale) ||
+    (signal !== undefined && !(signal instanceof AbortSignal))
+  ) {
+    throw new LocalApiError('Invalid Assistant summary request.');
+  }
+  const path = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/summary`;
+  const response = await fetcher(`${path}?locale=${locale}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  if (!response.ok) throw await responseError(response, 'The Assistant summary is unavailable.');
+  return acceptedSummary(await jsonObject(response), locale, response.status, 'The Assistant summary is invalid.');
 }

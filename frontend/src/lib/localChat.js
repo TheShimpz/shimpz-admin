@@ -563,7 +563,6 @@ function canonicalIntegrationInventoryItem(value) {
       'assistant_id',
       'assistant_name',
       'assistant_version',
-      'assistant_summary',
       'id',
       'provider',
       'name',
@@ -582,7 +581,6 @@ function canonicalIntegrationInventoryItem(value) {
     assistant_id: canonicalId(value.assistant_id, 'The Assistant integration inventory is invalid.'),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
     assistant_version: canonicalSemanticVersion(value.assistant_version),
-    assistant_summary: canonicalPublicText(value.assistant_summary, 160),
     id: canonicalId(value.id, 'The Assistant integration inventory is invalid.'),
     provider: canonicalId(value.provider, 'The Assistant integration inventory is invalid.'),
     name: canonicalPublicText(value.name, 80),
@@ -806,7 +804,7 @@ export async function listAssistantIntegrations(fetcher, teamId) {
   const assistantMetadata = new Map();
   for (const integration of integrations) {
     const current = assistantMetadata.get(integration.assistant_id);
-    const metadata = [integration.assistant_name, integration.assistant_version, integration.assistant_summary];
+    const metadata = [integration.assistant_name, integration.assistant_version];
     if (current && current.some((value, index) => value !== metadata[index])) {
       throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
     }

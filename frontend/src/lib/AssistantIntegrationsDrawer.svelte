@@ -9,7 +9,8 @@
     ScrollArea,
     Toolbar,
   } from '@shimpz/frontend';
-  import { t } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
+  import { loadAssistantSummary } from '$lib/localAssistantIcons.js';
   import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
 
   let {
@@ -28,6 +29,8 @@
 
   let closeButton = $state();
   let expandedAssistantId = $state('');
+  // Each installed Assistant's summary per interface language, read by Team from its binding's pack (ADR-0091).
+  let summaries = $state({});
   let copy = $derived($t('assistantIntegrations'));
   let groups = $derived.by(() => {
     const grouped = new Map();
@@ -36,7 +39,6 @@
       grouped.set(integration.assistant_id, {
         id: integration.assistant_id,
         name: integration.assistant_name,
-        summary: integration.assistant_summary,
         version: integration.assistant_version,
       });
     }
@@ -47,6 +49,10 @@
   function iconSource(assistantId) {
     if (!open || !teamId) return undefined;
     return `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+  }
+
+  function summaryKey(assistantId, language) {
+    return `${teamId}\u0000${assistantId}\u0000${language}`;
   }
 
   function toggleAssistant(assistantId) {
@@ -83,6 +89,30 @@
     }
     const button = closeButton;
     queueMicrotask(() => button?.focus());
+  });
+
+  // An expanded Assistant reads its summary in the current interface language; a summary that cannot be read in that
+  // language stays empty rather than showing another language. Closing the drawer forgets every summary.
+  $effect(() => {
+    if (!open) {
+      summaries = {};
+      return;
+    }
+    const assistantId = expandedAssistantId;
+    const language = $locale;
+    if (!assistantId || !teamId) return;
+    const key = summaryKey(assistantId, language);
+    if (Object.hasOwn(summaries, key)) return;
+    const controller = new AbortController();
+    loadAssistantSummary(fetch, teamId, assistantId, language, { signal: controller.signal }).then(
+      (summary) => {
+        summaries = { ...summaries, [key]: summary };
+      },
+      () => {
+        if (!controller.signal.aborted) summaries = { ...summaries, [key]: '' };
+      },
+    );
+    return () => controller.abort();
   });
 </script>
 
@@ -175,8 +205,9 @@
             {header}
             {action}
           >
+            {@const summary = summaries[summaryKey(assistant.id, $locale)]}
             <div id={detailsId} class="assistant-details" hidden={!expanded}>
-              <p>{assistant.summary}</p>
+              {#if summary}<p>{summary}</p>{/if}
             </div>
           </Card>
         {/each}

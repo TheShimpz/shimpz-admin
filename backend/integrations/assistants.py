@@ -90,7 +90,11 @@ def _integration_expiry(value: object) -> str | None:
 
 
 def _project_integration_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
-    """Expose status metadata only; provider tokens and controller generations stay private."""
+    """Expose status metadata only; provider tokens, controller generations, and English summaries stay private.
+
+    Team's Assistant summary is canonical English (ADR-0091), so the browser reads each summary in the interface
+    language from the installed binding's pack instead.
+    """
     if not 200 <= response.status < 300:
         return response
     try:
@@ -134,14 +138,13 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:
                 raise ValueError("invalid Team integration status")
+            # Team's summary is the binding's English catalog text; the browser reads it per interface language instead.
+            chat_ws_common.public_text(item["assistant_summary"], 160, field="Assistant summary")
             integrations.append(
                 {
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(item["assistant_name"], 80, field="Assistant name"),
                     "assistant_version": assistant_version,
-                    "assistant_summary": chat_ws_common.public_text(
-                        item["assistant_summary"], 160, field="Assistant summary"
-                    ),
                     "id": integration_id,
                     "provider": payloads.canonical_assistant_id(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),

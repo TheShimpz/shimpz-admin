@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  loadAssistantSummary,
   loadLocalAssistantIcon,
   loadLocalAssistantSummary,
   loadPublicAssistantIcon,
@@ -199,4 +200,67 @@ test('refuses invalid summary requests and any answer outside the requested loca
     /summary is unavailable/,
   );
   assert.equal(busy, 3);
+});
+
+test('reads an installed Assistant summary only in the requested interface language', async () => {
+  const requests = [];
+  const controller = new AbortController();
+  const summary = await loadAssistantSummary(async (url, options) => {
+    requests.push({ url, cache: options.cache, accept: options.headers.Accept, signal: options.signal });
+    return summaryResponse({ locale: 'ja', summary: 'DNS の変更を安全に公開します。' });
+  }, 'team_1', 'shimpz-cloudflare', 'ja', { signal: controller.signal });
+
+  assert.equal(summary, 'DNS の変更を安全に公開します。');
+  assert.deepEqual(requests, [{
+    url: '/api/teams/team_1/assistants/shimpz-cloudflare/summary?locale=ja',
+    cache: 'no-store',
+    accept: 'application/json',
+    signal: controller.signal,
+  }]);
+
+  let calls = 0;
+  const counted = async () => {
+    calls += 1;
+    return summaryResponse({ locale: 'pt', summary: 'Resumo.' });
+  };
+  for (const [teamId, assistantId, locale, options] of [
+    ['Team 1', 'shimpz-cloudflare', 'pt', {}],
+    ['team_1', '../icon', 'pt', {}],
+    ['team_1', 'shimpz-cloudflare', 'pt-BR', {}],
+    ['team_1', 'shimpz-cloudflare', undefined, {}],
+    [undefined, 'shimpz-cloudflare', 'pt', {}],
+    ['team_1', 7, 'pt', {}],
+    ['team_1', 'shimpz-cloudflare', 'pt', { signal: 'not a signal' }],
+  ]) {
+    await assert.rejects(
+      loadAssistantSummary(counted, teamId, assistantId, locale, options),
+      /Invalid Assistant summary request/,
+    );
+  }
+  await assert.rejects(loadAssistantSummary(null, 'team_1', 'shimpz-cloudflare', 'pt'), /Invalid Assistant summary/);
+  assert.equal(calls, 0);
+
+  for (const body of [
+    { locale: 'en', summary: 'Publish DNS changes safely.' },
+    { locale: 'pt', summary: ' Resumo.' },
+    { locale: 'pt', summary: 'Resumo.', trace_id: 'a'.repeat(32) },
+  ]) {
+    await assert.rejects(
+      loadAssistantSummary(async () => summaryResponse(body), 'team_1', 'shimpz-cloudflare', 'pt'),
+      /^LocalApiError: The Assistant summary is invalid\.$/,
+    );
+  }
+  await assert.rejects(
+    loadAssistantSummary(
+      async () => summaryResponse({ detail: 'Assistant is not installed in this Team' }, 404),
+      'team_1',
+      'shimpz-cloudflare',
+      'pt',
+    ),
+    (error) => error.status === 404 && error.message === 'Assistant is not installed in this Team',
+  );
+  await assert.rejects(
+    loadAssistantSummary(async () => summaryResponse({}, 502), 'team_1', 'shimpz-cloudflare', 'pt'),
+    /The Assistant summary is unavailable/,
+  );
 });

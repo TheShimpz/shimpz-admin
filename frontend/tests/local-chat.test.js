@@ -60,7 +60,6 @@ function integrationInventory(status = 'connected') {
         assistant_id: 'social-publisher',
         assistant_name: 'Social Publisher',
         assistant_version: '0.9.0',
-        assistant_summary: 'Publishes reviewed social updates.',
         id: 'x-integration',
         provider: 'x',
         name: 'X integration',
@@ -769,7 +768,8 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
     { integrations: [{ ...inventory.integrations[0], integration: { id: '', name: null, username: null } }] },
     { integrations: [{ ...inventory.integrations[0], expires_at: 'tomorrow' }] },
     { integrations: [{ ...inventory.integrations[0], assistant_version: 'latest' }] },
-    { integrations: [{ ...inventory.integrations[0], assistant_summary: ' untrimmed' }] },
+    // Team's English summary never reaches the browser, which reads it per interface language instead.
+    { integrations: [{ ...inventory.integrations[0], assistant_summary: 'Publishes reviewed social updates.' }] },
     {
       integrations: [
         inventory.integrations[0],

@@ -62,7 +62,10 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         with mock.patch.object(assistants.transport, "_call", return_value=response) as call:
             projected = assistants.list_assistant_integrations("team_1")
 
-        self.assertEqual(projected, assistants.TeamResponse(200, {"integrations": [integration]}))
+        # Team's English summary is validated but never reaches the browser, which reads it per interface language.
+        browser = {key: value for key, value in integration.items() if key != "assistant_summary"}
+        self.assertEqual(projected, assistants.TeamResponse(200, {"integrations": [browser]}))
+        self.assertNotIn(integration["assistant_summary"], json.dumps(projected.body))
         call.assert_called_once_with("GET", "/v1/teams/team_1/assistant-integrations")
         self.assertNotRegex(json.dumps(projected.body), r"token|code|verifier|client_secret")
 
