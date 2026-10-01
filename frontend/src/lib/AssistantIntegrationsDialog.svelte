@@ -1,11 +1,11 @@
 <script>
   import {
-    Button,
     DialogFrame,
     Modal,
     Notice,
     TextField,
   } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { locale, t } from '$lib/i18n.js';
   import {
     assistantIntegrationLabels,
@@ -186,7 +186,8 @@
                   {#each requirement.scopes as scope (scope)}<strong><bdi>{scope}</bdi></strong>{/each}
                 </div>
               </div>
-              <Button
+              <DialogAction
+                kind="confirm"
                 type="button"
                 disabled={submitting}
                 aria-label={`${$t('assistantIntegrations.authorize', { provider: requirementProvider })} — ${requirement.name}`}
@@ -198,7 +199,7 @@
                     : 'assistantIntegrations.authorize',
                   { provider: requirementProvider },
                 )}
-              </Button>
+              </DialogAction>
             </article>
           {/each}
         </section>
@@ -207,20 +208,20 @@
 
     {#if submitError}<Notice variant="error">{submitError}</Notice>{/if}
     {#snippet footer()}
-      <Button type="button" variant="secondary" disabled={submitting} onclick={close}>{copy.cancel}</Button>
+      <DialogAction kind="cancel" type="button" disabled={submitting} onclick={close}>{copy.cancel}</DialogAction>
       {#if awaitingCompletion}
-        <Button type="button" disabled={submitting || !completionCode.trim()} onclick={complete}>
+        <DialogAction kind="confirm" type="button" disabled={submitting || !completionCode.trim()} onclick={complete}>
           {submitting ? copy.completing : copy.complete}
-        </Button>
+        </DialogAction>
       {:else if hasSingleRequirement}
-        <Button type="button" disabled={submitting} onclick={() => authorize(nextRequirement)}>
+        <DialogAction kind="confirm" type="button" disabled={submitting} onclick={() => authorize(nextRequirement)}>
           {$t(
             submitting
               ? 'assistantIntegrations.authorizing'
               : 'assistantIntegrations.authorize',
             messageValues,
           )}
-        </Button>
+        </DialogAction>
       {/if}
     {/snippet}
   </DialogFrame>

@@ -2,7 +2,8 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
 
-  import { Button, DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import { t } from '$lib/i18n.js';
   import { LocalApiError } from '$lib/localApi.js';
@@ -184,12 +185,12 @@
         </Notice>
       {/if}
       {#snippet footer()}
-        <Button variant="secondary" type="button" onclick={closeDelete} disabled={deleting}>{copy.cancel}</Button>
-        <Button
-          variant="danger"
+        <DialogAction kind="cancel" type="button" onclick={closeDelete} disabled={deleting}>{copy.cancel}</DialogAction>
+        <DialogAction
+          kind="danger"
           type="submit"
           disabled={deleting || !deletingTeam || deleteName !== deletingTeam.name || !supervisorPassword}
-        >{deleting ? copy.deleting : copy.deleteAction}</Button>
+        >{deleting ? copy.deleting : copy.deleteAction}</DialogAction>
       {/snippet}
     </DialogFrame>
   </form>
@@ -213,9 +214,9 @@
       {#if createError}<Notice variant="error">{createError}</Notice>{/if}
       {#snippet footer()}
         {#if !requiresTeam}
-          <Button variant="secondary" type="button" onclick={closeCreate} disabled={creating}>{copy.cancel}</Button>
+          <DialogAction kind="cancel" type="button" onclick={closeCreate} disabled={creating}>{copy.cancel}</DialogAction>
         {/if}
-        <Button type="submit" disabled={creating || !teamName.trim()}>{creating ? copy.creating : copy.create}</Button>
+        <DialogAction kind="confirm" type="submit" disabled={creating || !teamName.trim()}>{creating ? copy.creating : copy.create}</DialogAction>
       {/snippet}
     </DialogFrame>
   </form>

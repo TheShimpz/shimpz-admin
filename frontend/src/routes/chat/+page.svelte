@@ -2,6 +2,7 @@
   import { flushSync, onMount, tick } from 'svelte';
   import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
   import { listChatHistory } from '$lib/chatHistory.js';
@@ -1922,8 +1923,8 @@
                             {lifecycleMessages.confirm}
                           </span>
                           <div class="assistant-lifecycle-actions">
-                            <Button
-                              variant="secondary"
+                            <DialogAction
+                              kind="cancel"
                               size="compact"
                               type="button"
                               onclick={() => submitLifecycleDecision('no')}
@@ -1933,9 +1934,9 @@
                               })}
                             >
                               {lifecycleMessages.cancelAction}
-                            </Button>
-                            <Button
-                              variant="danger"
+                            </DialogAction>
+                            <DialogAction
+                              kind="danger"
                               size="compact"
                               type="button"
                               onclick={() => submitLifecycleDecision('yes')}
@@ -1945,7 +1946,7 @@
                               })}
                             >
                               {lifecycleMessages.uninstallAction}
-                            </Button>
+                            </DialogAction>
                           </div>
                         {/if}
                         {#if lifecycle.status}
@@ -2091,7 +2092,7 @@
               {/if}
               <Button
                 bind:element={integrationsButton}
-                class="composer-integrations glitch-host"
+                class="composer-integrations"
                 variant="ghost"
                 size="icon"
                 type="button"
@@ -2102,7 +2103,7 @@
                 aria-expanded={integrationsOpen}
                 aria-controls="assistant-integrations-drawer"
               >
-                <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 3v4M15 3v4M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0zM12 16v2.2a2.8 2.8 0 0 1-2.8 2.8H8"></path>
                 </svg>
               </Button>
@@ -2110,7 +2111,7 @@
                 <!-- While a turn runs, Send becomes Stop in place; once the turn ends it is Send again. -->
                 <Button
                   bind:element={stopButton}
-                  class="composer-send composer-stop glitch-host"
+                  class="composer-send composer-stop"
                   type="button"
                   variant="ghost"
                   onclick={stop}
@@ -2118,7 +2119,7 @@
                   title={copy.stop}
                 >
                   <span class="sr-only">{copy.stop}</span>
-                  <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>
                 </Button>
               {:else if keyRequired}
                 <Button type="submit" disabled={brainSaving || providerKey.trim().length < 16}>
@@ -2126,14 +2127,14 @@
                 </Button>
               {:else}
                 <Button
-                  class="composer-send glitch-host"
+                  class="composer-send"
                   type="submit"
                   variant="ghost"
                   disabled={composerBusy || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
-                  <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5V4.5M5.5 11 12 4.5l6.5 6.5"></path></svg>
                 </Button>
               {/if}
               </Toolbar>

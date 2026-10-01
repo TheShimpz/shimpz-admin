@@ -81,7 +81,6 @@
 <div bind:this={root} class="team-actions">
   <Button
     bind:element={trigger}
-    class="glitch-host"
     variant="ghost"
     size="sm"
     iconOnly
@@ -93,6 +92,7 @@
     aria-controls={menuId}
     onclick={toggle}
   >
+    <!-- The Button glitches by itself; `glitch-icon` lets the Team row it sits in glitch it on row hover too. -->
     <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg>
   </Button>
   <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} tabindex="-1" popover="manual" onkeydown={menuKeydown}>

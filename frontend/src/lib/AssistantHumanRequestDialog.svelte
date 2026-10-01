@@ -1,12 +1,12 @@
 <script>
   import { tick } from 'svelte';
   import {
-    Button,
     Notice,
     ActionRequestFields,
     PromptDialog,
     TextLink,
   } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
 
   let {
@@ -272,29 +272,18 @@
       <span class="clock" role="timer">{$t('humanRequest.expiresIn', { time: clock })}</span>
     </div>
     {#snippet footer()}
-      <!-- Every action in this dialog is one standard control: a glitch host with its label and a mnemonic icon. -->
       {#if ondismiss}
-        <Button class="glitch-host request-action" type="button" variant="ghost" disabled={working} onclick={cancel}>
-          <span class="glitch-text">{dismissLabel}</span>
-          <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"></path></svg>
-        </Button>
+        <DialogAction kind="dismiss" type="button" disabled={working} onclick={cancel}>{dismissLabel}</DialogAction>
       {/if}
-      <Button class="glitch-host request-action" type="button" variant="secondary" disabled={working} onclick={deny}>
-        <span class="glitch-text">{copy.cancel}</span>
-        <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
-      </Button>
+      <DialogAction kind="cancel" type="button" disabled={working} onclick={deny}>{copy.cancel}</DialogAction>
       {#if rejected}
-        <Button class="glitch-host request-action" type="button" disabled={working || (locked && retrySeconds > 0)} onclick={retry}>
-          <span class="glitch-text">{locked && retrySeconds > 0
+        <DialogAction kind="retry" type="button" disabled={working || (locked && retrySeconds > 0)} onclick={retry}>
+          {locked && retrySeconds > 0
             ? $t('humanRequest.retryCountdown', { seconds: String(retrySeconds) })
-            : copy.retry}</span>
-          <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"></path></svg>
-        </Button>
+            : copy.retry}
+        </DialogAction>
       {:else}
-        <Button class="glitch-host request-action" type="submit" disabled={working}>
-          <span class="glitch-text">{primaryLabel}</span>
-          <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
-        </Button>
+        <DialogAction kind="confirm" type="submit" disabled={working}>{primaryLabel}</DialogAction>
       {/if}
     {/snippet}
   </PromptDialog>
@@ -313,7 +302,5 @@
   .request-lead { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
   .request-scope { max-width: 58ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.84rem; line-height: 1.55; }
   .clock { margin-inline-start: auto; color: var(--shimpz-color-text-muted); font: 500 0.7rem/1.45 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  :global(.shimpz-button.request-action) { display: inline-flex; align-items: center; gap: 0.45rem; }
-  :global(.shimpz-button.request-action svg) { width: 0.95rem; height: 0.95rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
 </style>

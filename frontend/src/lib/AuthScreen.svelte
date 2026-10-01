@@ -1,5 +1,6 @@
 <script>
-  import { Button, Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
+  import { Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
 
   let {
@@ -69,7 +70,7 @@
         <h1 id="auth-title">{$t('auth.checking')}</h1>
         {#if error}
           <Notice variant="error">{error}</Notice>
-          <Button variant="secondary" type="button" onclick={onRetry}>{$t('auth.retry')}</Button>
+          <DialogAction kind="retry" type="button" onclick={onRetry}>{$t('auth.retry')}</DialogAction>
         {/if}
       </div>
     {:else if recovery}
@@ -93,10 +94,9 @@
             <TextField id="admin-password-confirm" label={$t('auth.confirm')} type="password" bind:value={confirmation} autocomplete="new-password" required minlength="15" disabled={busy} error={confirmationError} />
           {/if}
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
-          <Button type="submit" disabled={busy || !password || (hosted && !username)}>
-            <span>{busy ? $t('auth.checking') : setup ? $t('auth.continue') : $t('auth.signIn')}</span>
-            <span aria-hidden="true">→</span>
-          </Button>
+          <DialogAction kind="confirm" type="submit" disabled={busy || !password || (hosted && !username)}>
+            {busy ? $t('auth.checking') : setup ? $t('auth.continue') : $t('auth.signIn')}
+          </DialogAction>
         </form>
       {:else if totpEnrollment || totpLogin}
         {#if totpEnrollment && enrollment}
@@ -111,17 +111,17 @@
         <form onsubmit={(event) => (event.preventDefault(), onSubmitTotp())}>
           <TextField id="admin-totp" label={$t('auth.totpCode')} type="text" bind:value={code} autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required disabled={busy} />
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
-          <Button type="submit" disabled={busy || !/^[0-9]{6}$/.test(code)}>{busy ? $t('auth.checking') : $t('auth.verify')}</Button>
+          <DialogAction kind="confirm" type="submit" disabled={busy || !/^[0-9]{6}$/.test(code)}>{busy ? $t('auth.checking') : $t('auth.verify')}</DialogAction>
           {#if totpLogin && passkeyAvailable}
             <div class="alternative"><span>{$t('auth.or')}</span></div>
-            <Button variant="secondary" type="button" onclick={onUsePasskey} disabled={busy}>{$t('auth.usePasskey')}</Button>
+            <DialogAction kind="confirm" variant="secondary" type="button" onclick={onUsePasskey} disabled={busy}>{$t('auth.usePasskey')}</DialogAction>
           {/if}
         </form>
       {:else if passkeyOffer}
         <div class="passkey-actions">
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
-          <Button type="button" onclick={onRegisterPasskey} disabled={busy}>{busy ? $t('auth.passkeyWaiting') : $t('auth.createPasskey')}</Button>
-          <Button variant="secondary" type="button" onclick={onSkipPasskey} disabled={busy}>{$t('auth.passkeyLater')}</Button>
+          <DialogAction kind="confirm" type="button" onclick={onRegisterPasskey} disabled={busy}>{busy ? $t('auth.passkeyWaiting') : $t('auth.createPasskey')}</DialogAction>
+          <DialogAction kind="dismiss" type="button" onclick={onSkipPasskey} disabled={busy}>{$t('auth.passkeyLater')}</DialogAction>
         </div>
       {/if}
     {/if}

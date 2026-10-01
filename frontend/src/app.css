@@ -48,8 +48,21 @@
   :root { --glitch-split-text: none; --glitch-split-icon: none; }
 }
 
-/* The one Admin hover glitch. Mark the control that is hovered or focused `glitch-host`, and inside it the label
-   `glitch-text` and the icon `glitch-icon`; a disabled host stays still. */
+/* The one Admin hover glitch. Every enabled Admin button (the shared Button, `.shimpz-button`) has it on hover and
+   keyboard focus without any markup: its content takes the text split and any icon inside it the icon split. A
+   disabled button stays still. The content is already an inline-flex box, so the animation never changes layout. */
+.shimpz-button:is(:hover, :focus-visible):not(:disabled, [aria-disabled="true"]) > .button-content {
+  text-shadow: var(--glitch-split-text);
+  animation: admin-glitch-text 280ms steps(1, end);
+}
+
+.shimpz-button:is(:hover, :focus-visible):not(:disabled, [aria-disabled="true"]) svg {
+  filter: var(--glitch-split-icon);
+  animation: admin-glitch-icon 280ms steps(1, end);
+}
+
+/* A control that is not a Button (a link, a list row) opts in: mark the hovered or focused control `glitch-host`, its
+   label `glitch-text` and its icon `glitch-icon`. Never add these to a Button, which already glitches. */
 .glitch-text { display: inline-block; }
 
 .glitch-host:is(:hover, :focus-visible, :has(:focus-visible)):not(:disabled, [aria-disabled="true"]) .glitch-text {

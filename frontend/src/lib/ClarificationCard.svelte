@@ -97,9 +97,9 @@
       <p class="error" role="alert">{error}</p>
     {/if}
     <div class="actions">
-      <Button class="answer glitch-host" type="submit" size="sm" disabled={disabled || !ready}>
-        <span class="glitch-text">{copy.use}</span>
-        <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17 4 12l5-5"></path><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+      <Button class="answer" type="submit" size="sm" disabled={disabled || !ready}>
+        {copy.use}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17 4 12l5-5"></path><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
       </Button>
     </div>
   </form>

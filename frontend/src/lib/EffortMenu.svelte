@@ -114,7 +114,7 @@
 <div bind:this={root} class="effort-menu">
   <Button
     bind:element={trigger}
-    class="effort-trigger glitch-host"
+    class="effort-trigger"
     variant="ghost"
     size="sm"
     iconOnly
@@ -128,7 +128,7 @@
     onclick={toggle}
   >
     <!-- A dial whose needle points to the current effort: left, center, or right. -->
-    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M3.8 17a8.2 8.2 0 1 1 16.4 0"></path>
       <path d="M5.9 10.2 7 11M12 5.8v1.4M18.1 10.2 17 11"></path>
       <path class="needle" d="M12 17 12 9.8" transform={`rotate(${(effortIndex - 1) * 55} 12 17)`}></path>
@@ -155,7 +155,7 @@
       {#each INFERENCE_EFFORTS as effort, index (effort)}
         <Button
           bind:element={stops[index]}
-          class={['stop', 'glitch-host', index === effortIndex && 'is-current']}
+          class={['stop', index === effortIndex && 'is-current']}
           variant="ghost"
           size="sm"
           type="button"
@@ -166,7 +166,7 @@
           onclick={() => choose(index)}
           onkeydown={stopKeydown}
         >
-          <span class="stop-label glitch-text">{copy.efforts[effort]}</span>
+          <span class="stop-label">{copy.efforts[effort]}</span>
         </Button>
       {/each}
     </div>
@@ -209,7 +209,7 @@
   .stop-label { font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
   .effort :global(.stop:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; box-shadow: none; }
   @media (prefers-reduced-motion: reduce) {
-    .effort-menu :global(svg), .effort :global(.stop-label) { animation: none !important; }
+    .effort-menu :global(svg), .effort :global(.button-content) { animation: none !important; }
     .fill, .thumb, .needle { transition: none; }
   }
 </style>

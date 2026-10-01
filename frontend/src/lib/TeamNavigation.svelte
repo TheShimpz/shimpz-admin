@@ -129,7 +129,7 @@
     <ShimpzBrand class="head-mark" variant="symbol" decorative />
     <Button
       bind:element={createButton}
-      class="new-team glitch-host"
+      class="new-team"
       variant="ghost"
       size="sm"
       iconOnly
@@ -139,7 +139,7 @@
       onclick={oncreate}
       disabled={busy}
     >
-      <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
     </Button>
   </div>
   {#if $teamContext.teams.length > 0}

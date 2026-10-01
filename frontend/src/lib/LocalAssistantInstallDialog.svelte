@@ -1,5 +1,6 @@
 <script>
-  import { Button, Card, ChoiceItem, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { Card, ChoiceItem, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
 
   let {
@@ -80,12 +81,12 @@
       {/if}
       {#if error}<Notice variant="error">{error}</Notice>{/if}
       {#snippet footer()}
-        <Button type="button" variant="secondary" disabled={busy} onclick={oncancel}>
+        <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>
           {copy.assistantActionCancel}
-        </Button>
-        <Button type="submit" disabled={busy || !snapshot || !team}>
+        </DialogAction>
+        <DialogAction kind="confirm" type="submit" disabled={busy || !snapshot || !team}>
           {busy ? copy.localInstalling : copy.localInstall}
-        </Button>
+        </DialogAction>
       {/snippet}
     </DialogFrame>
   </form>
