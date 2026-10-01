@@ -379,12 +379,46 @@ class AppRouteEdgeTests(unittest.TestCase):
             ):
                 self.assert_async_status(expected, self.admin_app.teams_destroy("team_1", request))
 
+    def test_the_interface_registry_carries_names_but_never_the_canonical_english_summary(self) -> None:
+        registry = self.admin_app.team.TeamResponse(
+            200,
+            {
+                "assistants": [
+                    {"id": "hello-pulse", "title": "Hello Pulse", "summary": "Says hello.", "actions": ["hello"]},
+                    {"id": "salesnator", "title": "Salesnator", "summary": "Runs sales work.", "actions": ["sell"]},
+                ],
+                "trace_id": "a" * 32,
+            },
+        )
+        with mock.patch.object(self.admin_app.team, "list_assistants", return_value=registry):
+            shown = self.admin_app.assistants_list()
+        unavailable = self.admin_app.team.TeamResponse(503, {"detail": "Team is unavailable"})
+        with mock.patch.object(self.admin_app.team, "list_assistants", return_value=unavailable):
+            refused = self.admin_app.assistants_list()
+        malformed = self.admin_app.team.TeamResponse(200, {"assistants": [{"id": "hello-pulse"}]})
+        with (
+            mock.patch.object(self.admin_app.team, "list_assistants", return_value=malformed),
+            self.assertRaises(self.admin_app.HTTPException) as invalid,
+        ):
+            self.admin_app.assistants_list()
+
+        self.assertEqual(
+            json.loads(shown.body),
+            {
+                "assistants": [
+                    {"id": "hello-pulse", "title": "Hello Pulse"},
+                    {"id": "salesnator", "title": "Salesnator"},
+                ]
+            },
+        )
+        self.assertEqual((refused.status_code, json.loads(refused.body)), (503, {"detail": "Team is unavailable"}))
+        self.assertEqual(invalid.exception.status_code, 502)
+
     def test_thin_team_assistant_and_file_routes_preserve_the_team_response(self) -> None:
         response = self.admin_app.team.TeamResponse(200, {"ok": True})
         synchronous = (
             (self.admin_app.teams_list, self.admin_app.team, "list_teams", ()),
             (self.admin_app.team_inference.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
-            (self.admin_app.assistants_list, self.admin_app.team, "list_assistants", ()),
             (self.admin_app.team_snapshots.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
             (
                 self.admin_app.team_assistants_list,

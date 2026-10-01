@@ -268,17 +268,14 @@ async function routeReadyChat(page, {
         {
           id: 'shimpz-cloudflare',
           title: 'Shimpz Cloudflare',
-          summary: 'Safely manage Cloudflare DNS records through OAuth.',
         },
         {
           id: 'whatsapp',
           title: 'WhatsApp',
-          summary: 'Send reviewed WhatsApp messages.',
         },
         ...(multipleIntegrations ? [{
           id: 'shimpz-slack',
           title: 'Shimpz Slack',
-          summary: 'Send reviewed Slack messages from your Team.',
         }] : []),
       ],
     }),
@@ -3642,7 +3639,7 @@ test('names every running Assistant beyond the chat limit and sends exactly the 
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      assistants: ids.map((id, index) => ({ id, title: `Helper ${index}`, summary: `Runs reviewed work ${index}.` })),
+      assistants: ids.map((id, index) => ({ id, title: `Helper ${index}` })),
     }),
   }));
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({

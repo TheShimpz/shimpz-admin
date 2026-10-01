@@ -47,6 +47,7 @@ from team import snapshots as team_snapshots
 import browser
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
+from chat import assistant_inventory
 from chat import human as chat_human
 from chat import socket as chat_socket
 from integrations import account as account_identity
@@ -903,7 +904,25 @@ async def oauth_cloudflare_callback(request: Request):
 
 @app.get("/api/assistants")
 def assistants_list():
-    return _team_response(team.list_assistants)
+    """The registry names the interface shows, without Team's canonical English summaries (ADR-0091).
+
+    Team's registry summary is the English catalog text it plans with; the interface never shows it, so only each
+    identity and name reach the browser.
+    """
+    return _team_response(_interface_registry)
+
+
+def _interface_registry() -> team.TeamResponse:
+    response = team.list_assistants()
+    if not 200 <= response.status < 300:
+        return response
+    try:
+        registry = assistant_inventory.registry(response)
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Team Assistant registry is invalid") from None
+    return team.TeamResponse(
+        200, {"assistants": [{"id": item.assistant_id, "title": item.name} for item in registry.values()]}
+    )
 
 
 @app.get("/api/teams/{team_id}/assistants")

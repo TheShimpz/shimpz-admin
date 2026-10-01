@@ -57,8 +57,8 @@ function fixtureFetcher(overrides = {}) {
     if (url === '/api/assistants') {
       return response(200, {
         assistants: [
-          { id: 'hello-pulse', title: 'Hello Pulse', summary: 'Says hello.' },
-          { id: 'salesnator', title: 'Salesnator', summary: 'Runs sales work.' },
+          { id: 'hello-pulse', title: 'Hello Pulse' },
+          { id: 'salesnator', title: 'Salesnator' },
         ],
       });
     }
@@ -86,8 +86,8 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
     ],
     selectedTeamId: 'support',
     catalog: [
-      { id: 'hello-pulse', name: 'Hello Pulse', summary: 'Says hello.' },
-      { id: 'salesnator', name: 'Salesnator', summary: 'Runs sales work.' },
+      { id: 'hello-pulse', name: 'Hello Pulse' },
+      { id: 'salesnator', name: 'Salesnator' },
     ],
     installedAssistants: [installedAssistant('hello-pulse')],
     activeAssistantIds: ['hello-pulse'],
@@ -155,8 +155,8 @@ test('Team and Assistant catalogs load in parallel and each context load refresh
   }));
   releaseCatalog(response(200, {
     assistants: [
-      { id: 'hello-pulse', title: 'Hello Pulse', summary: 'Says hello.' },
-      { id: 'salesnator', title: 'Salesnator', summary: 'Runs sales work.' },
+      { id: 'hello-pulse', title: 'Hello Pulse' },
+      { id: 'salesnator', title: 'Salesnator' },
     ],
   }));
   await pending;
@@ -180,8 +180,8 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
       catalogRequests += 1;
       return response(200, {
         assistants: [
-          { id: 'hello-pulse', title: 'Hello Pulse', summary: 'Says hello.' },
-          { id: 'salesnator', title: 'Salesnator', summary: 'Runs sales work.' },
+          { id: 'hello-pulse', title: 'Hello Pulse' },
+          { id: 'salesnator', title: 'Salesnator' },
         ],
       });
     },
@@ -191,8 +191,8 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
     teams: [],
     selectedTeamId: '',
     catalog: [
-      { id: 'hello-pulse', name: 'Hello Pulse', summary: 'Says hello.' },
-      { id: 'salesnator', name: 'Salesnator', summary: 'Runs sales work.' },
+      { id: 'hello-pulse', name: 'Hello Pulse' },
+      { id: 'salesnator', name: 'Salesnator' },
     ],
     installedAssistants: [],
     activeAssistantIds: [],
@@ -270,7 +270,6 @@ test('refresh exposes a first install and its newly projected display metadata t
       assistants: [{
         id: 'shimpz-cloudflare',
         title: 'Shimpz Cloudflare',
-        summary: 'Safely manage Cloudflare DNS records through OAuth.',
       }],
     }),
     '/api/teams/marketing/assistants': async () => response(200, {
@@ -283,7 +282,6 @@ test('refresh exposes a first install and its newly projected display metadata t
     {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
-      summary: 'Safely manage Cloudflare DNS records through OAuth.',
     },
   ]);
   assert.deepEqual(get(teamContext).installedAssistants, [
@@ -543,8 +541,8 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
     teams: [],
     selectedTeamId: '',
     catalog: [
-      { id: 'hello-pulse', name: 'Hello Pulse', summary: 'Says hello.' },
-      { id: 'salesnator', name: 'Salesnator', summary: 'Runs sales work.' },
+      { id: 'hello-pulse', name: 'Hello Pulse' },
+      { id: 'salesnator', name: 'Salesnator' },
     ],
     installedAssistants: [],
     activeAssistantIds: [],
@@ -618,7 +616,6 @@ test('Assistant scope keeps the exact protocol limit and reports every omitted A
   const catalog = Array.from({ length: MAX_CHAT_ASSISTANTS + 2 }, (_value, index) => ({
     id: `assistant-${index}`,
     title: `Assistant ${index}`,
-    summary: `Runs reviewed work ${index}.`,
   }));
   const installed = catalog.map((entry) => installedAssistant(entry.id));
   await loadTeamContext(fixtureFetcher({

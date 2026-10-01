@@ -28,7 +28,10 @@ export function safeApiError(body, fallback) {
   return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;
 }
 
-/** Project the controller-owned registry onto display-only Assistant identities. */
+/**
+ * Project the controller-owned registry onto display-only Assistant identities. Admin sends only each identity and
+ * name: Team's registry summary is the canonical English text it plans with, never shown in the interface.
+ */
 export async function listAssistantCatalog(fetcher) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local Assistant request.');
   const response = await fetcher('/api/assistants', {
@@ -48,10 +51,10 @@ export async function listAssistantCatalog(fetcher) {
   return body.assistants.map((entry) => {
     const id = entry?.id;
     const name = entry?.title;
-    const summary = entry?.summary;
     if (
       !entry ||
       typeof entry !== 'object' ||
+      !exactKeys(entry, ['id', 'title']) ||
       typeof id !== 'string' ||
       id.length > 80 ||
       !ASSISTANT_ID_RE.test(id) ||
@@ -60,17 +63,12 @@ export async function listAssistantCatalog(fetcher) {
       !name ||
       codePointLength(name) > 80 ||
       CONTROL_RE.test(name) ||
-      typeof summary !== 'string' ||
-      summary !== summary.trim() ||
-      !summary ||
-      codePointLength(summary) > 160 ||
-      CONTROL_RE.test(summary) ||
       seen.has(id)
     ) {
       throw new LocalApiError('The local Assistant catalog is invalid.', response.status);
     }
     seen.add(id);
-    return { id, name, summary };
+    return { id, name };
   });
 }
 

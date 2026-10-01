@@ -7,8 +7,8 @@ import { localizedChallenge } from './localizedRequest.js';
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
 export const ASSISTANTS = [
-  { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare', summary: 'Safely manage Cloudflare DNS records through OAuth.' },
-  { id: 'whatsapp', title: 'WhatsApp', summary: 'Send reviewed WhatsApp messages.' },
+  { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
+  { id: 'whatsapp', title: 'WhatsApp' },
 ];
 
 export const ROUTINE_PROPOSAL = {

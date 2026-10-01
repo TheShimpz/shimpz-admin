@@ -322,15 +322,15 @@ test('projects only bounded display identities from the local Assistant catalog'
     assert.deepEqual(options, { cache: 'no-store', headers: { Accept: 'application/json' } });
     return response(200, {
       assistants: [
-        { id: 'hello-pulse', title: 'Hello Pulse', summary: 'First', actions: ['hello'] },
-        { id: 'salesnator', title: 'Salesnator', summary: 'Second', actions: [] },
+        { id: 'hello-pulse', title: 'Hello Pulse' },
+        { id: 'salesnator', title: 'Salesnator' },
       ],
     });
   };
 
   assert.deepEqual(await listAssistantCatalog(fetcher), [
-    { id: 'hello-pulse', name: 'Hello Pulse', summary: 'First' },
-    { id: 'salesnator', name: 'Salesnator', summary: 'Second' },
+    { id: 'hello-pulse', name: 'Hello Pulse' },
+    { id: 'salesnator', name: 'Salesnator' },
   ]);
 });
 
@@ -384,8 +384,8 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
   const invalid = (error) => error instanceof LocalApiError;
   for (const character of ['界', '😀']) {
     const text = (length) => character.repeat(length);
-    const local = (title, summary) => listAssistantCatalog(async () => response(200, {
-      assistants: [{ id: 'hello-pulse', title, summary, actions: [] }],
+    const local = (title) => listAssistantCatalog(async () => response(200, {
+      assistants: [{ id: 'hello-pulse', title }],
     }));
     const published = (name, summary) => listPublicAssistantCatalog(async () => response(200, {
       version: 1,
@@ -416,7 +416,10 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
         unpublished: true,
       }],
     }));
-    for (const list of [local, published, snapshots]) {
+    const [registered] = await local(text(80));
+    assert.equal(registered.name, text(80));
+    await assert.rejects(local(text(81)), invalid);
+    for (const list of [published, snapshots]) {
       const [entry] = await list(text(80), text(160));
       assert.deepEqual([entry.name, entry.summary], [text(80), text(160)]);
       await assert.rejects(list(text(81), 'Summary'), invalid);
@@ -472,16 +475,16 @@ test('rejects malformed public Assistant catalog projections', async () => {
 test('rejects malformed or ambiguous Assistant catalog identities', async () => {
   for (const assistants of [
     null,
-    [{ id: '../escape', title: 'Escape', summary: 'Invalid id.' }],
-    [{ id: 'hello-pulse', title: ' Hello Pulse', summary: 'Invalid title.' }],
-    [{ id: 'hello-pulse', title: 'Hello\nPulse', summary: 'Invalid title.' }],
-    [{ id: 'hello-pulse', title: 'Hello Pulse' }],
-    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: ' Summary' }],
-    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: 'Invalid\nsummary' }],
-    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: 'x'.repeat(161) }],
+    [{ id: '../escape', title: 'Escape' }],
+    [{ id: 'hello-pulse', title: ' Hello Pulse' }],
+    [{ id: 'hello-pulse', title: 'Hello\nPulse' }],
+    [{ id: 'hello-pulse' }],
+    // Team's canonical English summary never reaches the interface.
+    [{ id: 'hello-pulse', title: 'Hello Pulse', summary: 'Says hello.' }],
+    [{ id: 'hello-pulse', title: 'Hello Pulse', actions: [] }],
     [
-      { id: 'hello-pulse', title: 'Hello Pulse', summary: 'First' },
-      { id: 'hello-pulse', title: 'Duplicate', summary: 'Second' },
+      { id: 'hello-pulse', title: 'Hello Pulse' },
+      { id: 'hello-pulse', title: 'Duplicate' },
     ],
   ]) {
     await assert.rejects(
