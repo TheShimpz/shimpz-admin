@@ -19,10 +19,14 @@ export async function routeScenario(page, name = 'ready') {
   });
   // Every other Admin socket is closed; the scenario's chat socket is registered last, so it takes precedence.
   await page.routeWebSocket(/\/api(?:\/|$)/, (socket) => socket.close({ code: 1008, reason: 'Not in this scenario.' }));
+  // Every chat frame the page sends is kept in order, so a test can prove exactly what reached the Team boundary.
+  const chatFrames = [];
   await page.routeWebSocket(`**${scenario.chat.path}`, (socket) => {
     socket.onMessage((message) => {
-      for (const reply of scenario.chat.message(JSON.parse(message))) socket.send(JSON.stringify(reply));
+      const frame = JSON.parse(message);
+      chatFrames.push(frame);
+      for (const reply of scenario.chat.message(frame)) socket.send(JSON.stringify(reply));
     });
   });
-  return scenario;
+  return { ...scenario, chatFrames: () => chatFrames };
 }

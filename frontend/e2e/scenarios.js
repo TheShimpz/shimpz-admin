@@ -96,6 +96,14 @@ const STARTS = {
     routines: [ROUTINE_VIEW, WEEKLY_ROUTINE],
     runs: [UNCERTAIN_RUN, FROZEN_RUN],
   }),
+  clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
+  'clarify-error': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    clarify: 'fail-once',
+  }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
@@ -168,8 +176,58 @@ function propose(state, message) {
   return structuredClone(proposal);
 }
 
+export const CLARIFICATION = Object.freeze({
+  question: '“Todas as opções do mercado” é amplo demais para validar literalmente. Qual escopo de comparação você quer?',
+  options: [
+    {
+      label: 'Principais APIs gerenciadas',
+      description: 'Comparar plataformas prontas de agentes de voz em tempo real, custos, idiomas, latência e recursos.',
+    },
+    {
+      label: 'Stack montável',
+      description: 'Comparar frameworks e provedores de STT, LLM, TTS e telefonia para montar uma solução própria.',
+    },
+    {
+      label: 'Shortlist ampla',
+      description: 'Mapear as principais APIs e frameworks, com foco em conversação em português e custo total.',
+    },
+  ],
+  default_index: 2,
+});
+
+// The clarify scenarios ask one question for a first request and answer the composed reply; `fail-once` fails the
+// first answer the way an Assistant Action failure does, so the retry can be seen.
+function clarifyReply(state, message) {
+  const answer = message.match(/\n(?:Resposta|Answer): (.+)$/u)?.[1];
+  if (!answer) {
+    return {
+      type: 'done',
+      team_id: 'marketing',
+      team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
+      reply: `${CLARIFICATION.question}\n\n${CLARIFICATION.options
+        .map((option, index) => `${index + 1}. ${option.label}${index === CLARIFICATION.default_index ? ' ✓' : ''} — ${option.description}`)
+        .join('\n')}`,
+      clarification: structuredClone(CLARIFICATION),
+      routine_proposal: null,
+    };
+  }
+  if (state.clarify === 'fail-once') {
+    state.clarify = 'ok';
+    return { type: 'error', status: 502, detail: 'local chat request failed' };
+  }
+  return {
+    type: 'done',
+    team_id: 'marketing',
+    team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
+    reply: `Certo — sigo com **${answer}**. Preview reply for the chosen scope.`,
+    clarification: null,
+    routine_proposal: null,
+  };
+}
+
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
+  if (state.clarify) return clarifyReply(state, message);
   const recurring = /\b(every|daily|weekly|toda|todo|cada)\b/iu.test(message);
   return {
     type: 'done',

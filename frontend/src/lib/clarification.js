@@ -1,5 +1,5 @@
-// One Brain multiple-choice clarification (ADR-0081). It is presentation only: answering never sends anything;
-// it fills the composer with the original request and the answer, and the user reviews and sends that message.
+// One Brain multiple-choice clarification (ADR-0081). Answering sends one new user message that combines the
+// original request, the question, and the chosen answer; that message remains the only Action authority.
 
 import { codePointLength } from './validate.js';
 
@@ -67,7 +67,7 @@ export function renderClarification(clarification) {
 }
 
 /**
- * Combine the original request, the question, and the answer into the message the user will review and send.
+ * Combine the original request, the question, and the answer into the message the answer sends.
  * Returns null when the answer is empty or the combination would exceed the chat message limit; it never truncates.
  */
 export function composeClarifiedRequest(original, question, answer, labels) {
@@ -75,4 +75,21 @@ export function composeClarifiedRequest(original, question, answer, labels) {
   if (!text) return null;
   const composed = `${original.trim()}\n\n${labels.question}: ${question}\n${labels.answer}: ${text}`;
   return codePointLength(composed) <= MAX_COMPOSED_CHARS ? composed : null;
+}
+
+/**
+ * The answer a sent message gives to a clarification, or null. A message answers it only when it is exactly the
+ * composition `composeClarifiedRequest` produces for that original request and question with one of the given label
+ * pairs (one per interface language, so a language change never reopens an answered question), so the transcript can
+ * show the answer alone while the Team still receives the whole request.
+ */
+export function clarificationAnswer(message, original, question, labelSets) {
+  if (typeof message !== 'string' || typeof original !== 'string') return null;
+  for (const labels of labelSets) {
+    const prefix = `${original.trim()}\n\n${labels.question}: ${question}\n${labels.answer}: `;
+    if (!message.startsWith(prefix)) continue;
+    const answer = message.slice(prefix.length);
+    if (answer && answer === answer.trim() && !answer.includes('\n')) return answer;
+  }
+  return null;
 }

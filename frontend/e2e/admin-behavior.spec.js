@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { accessibilityViolations } from './axe.js';
 
 import { routeScenario } from './scenarioRoutes.js';
-import { ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
+import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PROPOSAL, ROUTINE_VIEW } from './scenarios.js';
 
 // The page-level WebSocket transport mock is stateful. Keep this file ordered while
 // the independent shell and boot contracts continue using the full worker pool.
@@ -151,6 +151,7 @@ async function routeReadyChat(page, {
   assistantGuidanceReply = '',
   holdTargetlessUninstallGuidance = false,
   assistantUninstallWasRemoved = true,
+  failUninstallDecision = false,
   holdAssistantUninstall = false,
   holdAssistantInventoryRefresh = false,
   holdPostInstallInventory = false,
@@ -686,6 +687,10 @@ async function routeReadyChat(page, {
             }));
             return;
           }
+          if (failUninstallDecision) {
+            socket.send(JSON.stringify({ type: 'error', status: 503, detail: 'chat history is unavailable' }));
+            return;
+          }
           if (frame.message === 'no') {
             socket.send(JSON.stringify({
               type: 'assistant-uninstall',
@@ -1030,40 +1035,191 @@ const CLARIFICATION = {
   default_index: 0,
 };
 const CLARIFICATION_REPLY = 'Which period should the list cover?\n\n1. Today ✓ — Only models released today.\n2. This week\n3. This month';
+const VOICE_REQUEST = 'Compare every voice agent API on the market';
 
-test('a multiple-choice question fills the composer with the request and the answer, and sends nothing', async ({ page }) => {
-  const chat = await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
-  await page.goto('/chat/');
+function composedAnswer(original, question, answer) {
+  return `${original}\n\nQuestion: ${question}\nAnswer: ${answer}`;
+}
+
+function sentMessages(frames) {
+  return frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+}
+
+async function askVoiceQuestion(page, scenario) {
+  await page.goto('/chat/?team=marketing');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Which new AI models were released?');
+  await fillWhenReady(page, composer, VOICE_REQUEST);
   await page.getByRole('button', { name: 'Send' }).click();
+  const card = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
+  await expect(card.getByRole('radio', { name: /· recommended/ })).toBeChecked();
+  expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST]);
+  return { composer, card };
+}
 
-  const card = page.getByRole('form', { name: CLARIFICATION.question });
-  await expect(card).toBeVisible();
-  await expect(card.getByRole('radio', { name: /Today · recommended/ })).toBeChecked();
-  await expect(card.getByRole('radio', { name: 'Other answer' })).not.toBeChecked();
-  await expect(page.getByText('1. Today ✓')).toHaveCount(0);
-  const frames = chat.chatFrames().length;
+test('answering a question sends the request with the answer at once and the Team replies', async ({ page }) => {
+  const scenario = await routeScenario(page, 'clarify');
+  const { composer, card } = await askVoiceQuestion(page, scenario);
+  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
 
-  await card.getByRole('radio', { name: 'This week' }).check();
-  await card.getByRole('button', { name: 'Use this answer' }).click();
-  await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue(
-    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: This week',
-  );
-
-  await card.getByRole('radio', { name: 'Other answer' }).check();
-  await card.getByRole('button', { name: 'Use this answer' }).click();
-  await expect(card.getByRole('alert')).toHaveText('Choose an option or write your answer.');
-  await card.getByRole('textbox', { name: 'Other answer' }).fill('The last 48 hours');
-  await card.getByRole('button', { name: 'Use this answer' }).click();
-  await expect(composer).toHaveValue(
-    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: The last 48 hours',
-  );
-  expect(chat.chatFrames()).toHaveLength(frames);
+  await card.getByRole('button', { name: 'Answer' }).click();
+  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
+  expect(sentMessages(scenario.chatFrames())).toEqual([
+    VOICE_REQUEST,
+    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
+  ]);
+  // The answered question offers no second answer, even in another language, and nothing was left to send again.
+  await expect(card).toHaveCount(0);
+  await expect(composer).toHaveValue('');
+  await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await expect(page.getByRole('textbox', { name: 'Enviar', exact: true })).toBeEnabled();
+  await expect(card).toHaveCount(0);
+  expect(sentMessages(scenario.chatFrames())).toHaveLength(2);
 });
 
-test('a question of 240 emoji is offered and its emoji answer fills the composer', async ({ page }) => {
+test('answering the newer of two identical questions closes that question and keeps the older one open', async ({ page }) => {
+  const scenario = await routeScenario(page, 'clarify');
+  const { composer } = await askVoiceQuestion(page, scenario);
+  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
+  await fillWhenReady(page, composer, VOICE_REQUEST);
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(cards).toHaveCount(2);
+
+  await cards.last().getByRole('button', { name: 'Answer' }).click();
+  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
+  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
+  await expect(cards).toHaveCount(1);
+  const replies = page.getByRole('article', { name: 'Marketing' });
+  await expect(replies.first().getByRole('form')).toHaveCount(1);
+  await expect(replies.nth(1).getByRole('form')).toHaveCount(0);
+  expect(sentMessages(scenario.chatFrames())).toEqual([
+    VOICE_REQUEST,
+    VOICE_REQUEST,
+    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
+  ]);
+});
+
+test('an older question answered after another request closes once its answer is sent', async ({ page }) => {
+  const scenario = await routeScenario(page, 'clarify');
+  const { composer } = await askVoiceQuestion(page, scenario);
+  const cards = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
+  await fillWhenReady(page, composer, 'Compare every video API too');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(cards).toHaveCount(2);
+
+  await cards.first().getByRole('button', { name: 'Answer' }).click();
+  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
+  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
+  await expect(cards).toHaveCount(1);
+  expect(sentMessages(scenario.chatFrames())).toEqual([
+    VOICE_REQUEST,
+    'Compare every video API too',
+    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
+  ]);
+});
+
+test('a custom answer takes focus and can be sent only once it has text', async ({ page }) => {
+  const scenario = await routeScenario(page, 'clarify');
+  const { card } = await askVoiceQuestion(page, scenario);
+  const answer = card.getByRole('button', { name: 'Answer' });
+
+  await card.getByRole('radio', { name: 'Other answer' }).check();
+  const custom = card.getByRole('textbox', { name: 'Other answer' });
+  await expect(custom).toBeFocused();
+  await expect(answer).toBeDisabled();
+  await custom.fill('   ');
+  await expect(answer).toBeDisabled();
+  await custom.fill('  Only APIs that speak Portuguese  ');
+  await expect(answer).toBeEnabled();
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByText('Certo — sigo com Only APIs that speak Portuguese')).toBeVisible();
+  expect(sentMessages(scenario.chatFrames())).toEqual([
+    VOICE_REQUEST,
+    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, 'Only APIs that speak Portuguese'),
+  ]);
+});
+
+test('a failed answer is sent again once by Try again, without a second user turn', async ({ page }) => {
+  const scenario = await routeScenario(page, 'clarify-error');
+  const { card } = await askVoiceQuestion(page, scenario);
+  const composed = composedAnswer(
+    VOICE_REQUEST,
+    SCENARIO_CLARIFICATION.question,
+    SCENARIO_CLARIFICATION.options[1].label,
+  );
+
+  await card.getByRole('radio', { name: SCENARIO_CLARIFICATION.options[1].label }).check();
+  await card.getByRole('button', { name: 'Answer' }).click();
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeEnabled();
+  expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST, composed]);
+
+  await retry.click();
+  await expect(page.getByText(`Certo — sigo com ${SCENARIO_CLARIFICATION.options[1].label}`)).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST, composed, composed]);
+  await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
+});
+
+test('Try again resends only the latest failed message', async ({ page }) => {
+  const chat = await routeReadyChat(page, { terminalError: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeEnabled();
+
+  // A new message replaces the failed one as the only message that can be sent again.
+  await fillWhenReady(page, composer, 'List my DNS records');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(retry).toBeEnabled();
+  expect(sentMessages(chat.chatFrames())).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
+});
+
+test('an error delivered by a reconnect sync never offers to resend a finished request', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const frames = [];
+  let connections = 0;
+  // Registered after the scenario, so this chat socket takes precedence: the first request ends with Team guidance,
+  // the socket restarts, and the reconnect sync reports a failure that belongs to no request of this page.
+  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    connections += 1;
+    const connection = connections;
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      frames.push(frame);
+      if (frame.type === 'sync') {
+        socket.send(JSON.stringify(connection === 1
+          ? { type: 'sync-empty' }
+          : { type: 'error', status: 503, detail: 'synthetic runtime failure' }));
+      } else if (frame.type === 'chat') {
+        socket.send(JSON.stringify({
+          type: 'assistant-guidance',
+          team_id: 'marketing',
+          code: 'assistant-uninstall-target-required',
+          reply: 'Which installed Assistant do you want to uninstall?',
+        }));
+        socket.close({ code: 1011, reason: 'Synthetic restart' });
+      }
+    });
+  });
+  await page.goto('/chat/?team=marketing');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Uninstall the Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  expect(frames.filter((frame) => frame.type === 'chat')).toHaveLength(1);
+  expect(connections).toBe(2);
+});
+
+test('a question of 240 emoji is offered and its emoji answer is sent', async ({ page }) => {
   // Team bounds clarification text by Unicode code points; each emoji is two UTF-16 units.
   const clarification = {
     question: '😀'.repeat(240),
@@ -1071,45 +1227,81 @@ test('a question of 240 emoji is offered and its emoji answer fills the composer
     default_index: 0,
   };
   const reply = `${clarification.question}\n\n1. ${clarification.options[0].label} ✓ — ${clarification.options[0].description}\n2. This week`;
-  await routeReadyChat(page, { clarification, reply });
+  const chat = await routeReadyChat(page, { clarification, reply });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'Which new AI models were released?');
   await page.getByRole('button', { name: 'Send' }).click();
 
   const card = page.getByRole('form', { name: clarification.question });
+  await card.getByRole('button', { name: 'Answer' }).click();
+  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual([
+    'Which new AI models were released?',
+    composedAnswer('Which new AI models were released?', clarification.question, clarification.options[0].label),
+  ]);
+});
+
+test('an answer that would exceed one message is refused and nothing is sent', async ({ page }) => {
+  const chat = await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  const request = 'x'.repeat(16_000 - 60);
+  await fillWhenReady(page, composer, request);
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  const card = page.getByRole('form', { name: CLARIFICATION.question });
+  await card.getByRole('button', { name: 'Answer' }).click();
+  await expect(card.getByRole('alert')).toBeVisible();
   await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Use this answer' }).click();
-  await expect(composer).toHaveValue(
-    `Which new AI models were released?\n\nQuestion: ${clarification.question}\nAnswer: ${clarification.options[0].label}`,
-  );
+  expect(sentMessages(chat.chatFrames())).toEqual([request]);
 });
 
 test('a reloaded question stays bound to its own request', async ({ page }) => {
   const turn = 'd'.repeat(32);
+  const asked = [
+    { id: `${turn}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
+    {
+      id: `${turn}:reply`,
+      kind: 'message',
+      role: 'assistant',
+      text: CLARIFICATION_REPLY,
+      author: 'Marketing',
+      clarification: CLARIFICATION,
+    },
+  ];
+  const chat = await routeReadyChat(page, { clarification: null, history: { entries: asked, before: null } });
+  await page.goto('/chat/');
+  const card = page.getByRole('form', { name: CLARIFICATION.question });
+  await card.getByRole('button', { name: 'Answer' }).click();
+  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual([
+    composedAnswer('Which new AI models were released?', CLARIFICATION.question, 'Today'),
+  ]);
+});
+
+test('a reloaded question answered in another language offers no second answer', async ({ page }) => {
+  const [first, second] = ['d'.repeat(32), 'e'.repeat(32)];
+  const composed = `Which new AI models were released?\n\nPergunta: ${CLARIFICATION.question}\nResposta: This week`;
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${turn}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
+        { id: `${first}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
         {
-          id: `${turn}:reply`,
+          id: `${first}:reply`,
           kind: 'message',
           role: 'assistant',
           text: CLARIFICATION_REPLY,
           author: 'Marketing',
           clarification: CLARIFICATION,
         },
+        { id: `${second}:user`, kind: 'message', role: 'user', text: composed },
+        { id: `${second}:reply`, kind: 'message', role: 'assistant', text: 'Here are this week’s models.', author: 'Marketing' },
       ],
       before: null,
     },
   });
   await page.goto('/chat/');
-  const card = page.getByRole('form', { name: CLARIFICATION.question });
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Use this answer' }).click();
-  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveValue(
-    'Which new AI models were released?\n\nQuestion: Which period should the list cover?\nAnswer: Today',
-  );
+  await expect(page.getByText('Here are this week’s models.')).toBeVisible();
+  await expect(page.getByRole('form', { name: CLARIFICATION.question })).toHaveCount(0);
 });
 
 test('discards an unsent provider key and never sends on the unsaved model', async ({ page }) => {
@@ -1152,7 +1344,8 @@ test('shows a Brain failure and its retry beside an earlier chat error', async (
   await page.getByRole('button', { name: 'Save key' }).click();
   await expect(page.getByText('The Team model selection could not be saved.')).toBeVisible();
   await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'The Team model selection could not be saved.' })
+    .getByRole('button', { name: 'Try again' })).toBeVisible();
 });
 
 test('keeps a saved key when the model selection fails and retries only the selection', async ({ page }) => {
@@ -2176,6 +2369,37 @@ test('keeps target-required guidance valid when Stop races its response', async 
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
   await expect(page.getByText('The secure chat response was invalid.', { exact: true })).toHaveCount(0);
+});
+
+test('a failed uninstall decision never offers to resend the earlier request', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const uninstall = page.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+  await expect(uninstall).toBeEnabled();
+  await page.waitForTimeout(2100);
+  await uninstall.click();
+
+  await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'yes']);
+});
+
+test('a typed uninstall decision that fails is never offered for resend', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' })).toBeEnabled();
+  await fillWhenReady(page, composer, 'no');
+  await page.getByRole('button', { name: 'Send' }).click();
+
+  await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'no']);
 });
 
 test('uninstalls an Assistant from the inline proposal and confirms Team absence', async ({ page }) => {

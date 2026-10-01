@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { renderClarification } from '../src/lib/clarification.js';
+import { parseChatEvent } from '../src/lib/localChat.js';
+import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
 
@@ -74,4 +76,22 @@ test('runs are stopped or released by id, and the chat socket answers a sync', (
   assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.runs, []);
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
+});
+
+test('the clarify scenarios ask one valid question and fail the first answer only when told to', () => {
+  const chat = (scenario, message) => scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] })[0];
+  const answer = `Pedido\n\nQuestion: ${CLARIFICATION.question}\nAnswer: Stack montável`;
+  for (const name of ['clarify', 'clarify-error']) {
+    const scenario = createScenario(name);
+    const asked = chat(scenario, 'Pedido');
+    assert.equal(asked.reply, renderClarification(CLARIFICATION));
+    assert.deepEqual(parseChatEvent(asked, 'marketing', 'Marketing').clarification, CLARIFICATION);
+    if (name === 'clarify-error') {
+      assert.deepEqual(chat(scenario, answer), { type: 'error', status: 502, detail: 'local chat request failed' });
+    }
+    const done = chat(scenario, answer);
+    assert.equal(done.type, 'done');
+    assert.equal(done.clarification, null);
+    assert.match(done.reply, /Stack montável/u);
+  }
 });

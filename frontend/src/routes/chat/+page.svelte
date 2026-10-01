@@ -9,6 +9,7 @@
   import EffortMenu from '$lib/EffortMenu.svelte';
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
+  import { clarificationAnswer } from '$lib/clarification.js';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
@@ -20,6 +21,7 @@
   import Markdown from '$lib/Markdown.svelte';
   import { escapeMarkdownText } from '$lib/markdown.js';
   import { t } from '$lib/i18n.js';
+  import { messages } from '$lib/messages.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
@@ -88,6 +90,10 @@
   let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
+  // The message of the turn in flight, and the message of a turn that just failed, which its error offers to send
+  // again. Only a user message is retryable; a failed decision or a later unrelated error never offers a resend.
+  let retryMessage = $state('');
+  let lastSentMessage = '';
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
@@ -154,6 +160,8 @@
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
+  // A question answer or a retry sends at once, so it is offered only when a message could be sent now.
+  let sendUnavailable = $derived(composerBusy || brainSaving || !$modelContext.ready || !socketReady);
   let keyCopy = $derived($t('providerSetup'));
   let brainProvider = $derived(
     $modelContext.providers.find((entry) => entry.id === $modelContext.provider) ?? null,
@@ -217,11 +225,58 @@
     return user.text;
   }
 
-  async function useClarifiedRequest(composed) {
-    draft = composed;
-    await tick();
-    composerInput?.focus({ preventScroll: true });
-    composerInput?.setSelectionRange?.(composed.length, composed.length);
+  // Every interface language's labels, so an answer sent in one language still closes its question in another.
+  const CLARIFY_LABELS = Object.values(messages)
+    .map(({ clarify }) => ({ question: clarify?.questionLabel, answer: clarify?.answerLabel }))
+    .filter(({ question, answer }) => question && answer);
+
+  // The user message each live answer projected, mapped to the assistant turn of the card it answered.
+  let liveAnswers = $state(new Map());
+
+  function answerClarification(exchange, { composed }) {
+    const userKey = nextRenderKey;
+    if (submitMessage(composed) && turns.at(-1)?.renderKey === userKey) {
+      liveAnswers = new Map(liveAnswers).set(userKey, exchange.assistant.renderKey);
+    }
+  }
+
+  // Each question is answered by at most one later message that is exactly its composed request: a live answer by the
+  // message it sent, and otherwise the nearest earlier open question it composes. `given` maps the question's exchange
+  // to that answer, and `sent` maps the answering exchange to the answer it shows.
+  let clarificationAnswers = $derived.by(() => {
+    const given = new Map();
+    const sent = new Map();
+    const exchangeOf = new Map(exchanges.map((exchange, index) => [exchange.assistant?.renderKey, index]));
+    const answer = (later, index) => {
+      if (index === undefined || index >= later || given.has(index)) return false;
+      const exchange = exchanges[index];
+      const original = clarifiedRequest(exchange);
+      if (original === null) return false;
+      const value = clarificationAnswer(
+        exchanges[later].user?.text,
+        original,
+        exchange.assistant.clarification.question,
+        CLARIFY_LABELS,
+      );
+      if (value === null) return false;
+      given.set(index, value);
+      sent.set(later, value);
+      return true;
+    };
+    exchanges.forEach((exchange, later) => {
+      const linked = exchange.user ? liveAnswers.get(exchange.user.renderKey) : undefined;
+      if (linked !== undefined) answer(later, exchangeOf.get(linked));
+    });
+    exchanges.forEach((exchange, later) => {
+      if (!exchange.user || sent.has(later)) return;
+      for (let index = later - 1; index >= 0 && !answer(later, index); index -= 1);
+    });
+    return { given, sent };
+  });
+
+  function retryLastTurn() {
+    const message = retryMessage;
+    if (message) submitMessage(message, { projectUserTurn: false, retryable: true });
   }
 
   function groupExchanges(values) {
@@ -733,11 +788,13 @@
   function clearError() {
     error = '';
     errorDetail = '';
+    retryMessage = '';
   }
 
   function setError(message, detail = '') {
     error = message;
     errorDetail = detail;
+    retryMessage = '';
   }
 
   async function focusComposer() {
@@ -1150,12 +1207,17 @@
       }
 
       const receipt = progressEvents.map((item) => ({ ...item }));
+      // Only a turn this socket started and the user did not stop can be sent again; a terminal delivered by a
+      // reconnect sync may belong to any earlier request.
+      const retryable = !syncing && !stopping;
       expireSocketLifecycles();
       busy = false;
       syncing = false;
       stopping = false;
       resetChallengeState();
       clearTurnInstalled();
+      const failedMessage = lastSentMessage;
+      lastSentMessage = '';
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1172,11 +1234,13 @@
       } else {
         const projectedError = projectedChatError(incoming.status, incoming.detail);
         setError(projectedError.message, projectedError.detail);
+        retryMessage = retryable ? failedMessage : '';
       }
       resetProgress();
     };
     active.onclose = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
+      lastSentMessage = '';
       socket = null;
       socketReady = false;
       syncing = false;
@@ -1195,6 +1259,8 @@
     clearTurnInstalled();
     clearLifecycleIconCaptures();
     capabilityObjective = null;
+    lastSentMessage = '';
+    liveAnswers = new Map();
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
     stopping = false;
@@ -1404,6 +1470,7 @@
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
+    retryable = projectUserTurn,
     useCapabilityObjective = true,
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
@@ -1420,6 +1487,7 @@
     ) return false;
     let frame;
     let resumedObjective = '';
+    const decisionPending = turns.some((turn) => turn.lifecycle?.state === 'proposed');
     clearTurnInstalled();
     const assistantIds = [...$teamContext.activeAssistantIds];
     const continuation = useCapabilityObjective && capabilityContinuation(normalized);
@@ -1462,6 +1530,9 @@
     }
     try {
       socket.send(JSON.stringify(frame));
+      // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
+      // objective or the proposal was consumed, so neither is ever offered again.
+      lastSentMessage = retryable && !resumable && !decisionPending ? normalized : '';
       if (useCapabilityObjective && !continuation) {
         capabilityObjective = {
           message: normalized,
@@ -1745,13 +1816,18 @@
             <section class="exchange">
               {#if userTurn}
                 <Message variant="user" author={copy.you}>
+                  {@const answer = clarificationAnswers.sent.get(index) ?? null}
                   {#if userTurn.resumedObjective}
                     <div class="resumed-task">
                       <strong>{copy.install.resuming}</strong>
                       <span>{userTurn.resumedObjective}</span>
                     </div>
                   {/if}
-                  <p>{userTurn.text}</p>
+                  {#if answer !== null}
+                    <p class="clarification-reply"><span class="reply-label">{$t('clarify').answered}</span>{answer}</p>
+                  {:else}
+                    <p>{userTurn.text}</p>
+                  {/if}
                 </Message>
               {/if}
               {#if assistantTurn}
@@ -1762,8 +1838,9 @@
                       clarification={assistantTurn.clarification}
                       original={clarifiedOriginal}
                       copy={$t('clarify')}
-                      disabled={composerBusy}
-                      onuse={useClarifiedRequest}
+                      answered={clarificationAnswers.given.get(index) ?? null}
+                      disabled={sendUnavailable}
+                      onanswer={(answer) => answerClarification(exchange, answer)}
                     />
                   {:else if assistantTurn.routineRun}
                     <RoutineRunEntry
@@ -1949,6 +2026,9 @@
           <Notice class="error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
+            {#if error && retryMessage && !busy}
+              <Button size="sm" variant="secondary" disabled={sendUnavailable} onclick={retryLastTurn}>{copy.retry}</Button>
+            {/if}
           </Notice>
         {/if}
 
@@ -2228,6 +2308,14 @@
     overflow-wrap: anywhere;
   }
 
+  .clarification-reply { display: grid; gap: 2px; margin: 0; }
+  .reply-label {
+    color: var(--shimpz-color-text-muted);
+    font-family: var(--shimpz-font-mono, ui-monospace, monospace);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
   .resumed-task {
     display: grid;
     gap: 0.2rem;

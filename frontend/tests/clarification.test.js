@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import {
+  clarificationAnswer,
   composeClarifiedRequest,
   MAX_COMPOSED_CHARS,
   parseClarification,
@@ -53,6 +54,28 @@ test('an answer is combined with the original request without truncation', () =>
   );
   assert.equal(composeClarifiedRequest('Pedido', ASKED.question, '   ', LABELS), null);
   assert.equal(composeClarifiedRequest('x'.repeat(MAX_COMPOSED_CHARS), ASKED.question, 'Hoje', LABELS), null);
+});
+
+test('a sent message answers a question only when it is exactly the composed request', () => {
+  const ENGLISH = { question: 'Question', answer: 'Answer' };
+  const SETS = [ENGLISH, LABELS];
+  const composed = composeClarifiedRequest(' Quais modelos saíram? ', ASKED.question, ' Esta semana ', LABELS);
+  assert.equal(clarificationAnswer(composed, 'Quais modelos saíram?', ASKED.question, SETS), 'Esta semana');
+  assert.equal(clarificationAnswer(composed, ' Quais modelos saíram? ', ASKED.question, [LABELS]), 'Esta semana');
+  for (const [message, original, question, labelSets] of [
+    [composed, 'Outro pedido', ASKED.question, SETS],
+    [composed, 'Quais modelos saíram?', 'Outra pergunta?', SETS],
+    [composed, 'Quais modelos saíram?', ASKED.question, [ENGLISH]],
+    [composed, 'Quais modelos saíram?', ASKED.question, [{ question: 'Pergunta', answer: 'Answer' }]],
+    [`${composed}\nE também amanhã`, 'Quais modelos saíram?', ASKED.question, SETS],
+    [`${composed} `, 'Quais modelos saíram?', ASKED.question, SETS],
+    ['Quais modelos saíram?\n\nPergunta: Qual período você quer cobrir?\nResposta: ', 'Quais modelos saíram?', ASKED.question, SETS],
+    ['Esta semana', 'Quais modelos saíram?', ASKED.question, SETS],
+    [null, 'Quais modelos saíram?', ASKED.question, SETS],
+    [composed, null, ASKED.question, SETS],
+  ]) {
+    assert.equal(clarificationAnswer(message, original, question, labelSets), null, JSON.stringify(message));
+  }
 });
 
 test('clarification text is bounded by Unicode code points, as Team counts it', () => {
