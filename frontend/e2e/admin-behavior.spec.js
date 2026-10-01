@@ -192,6 +192,7 @@ async function routeReadyChat(page, {
   routineProposal = null,
   hostedSession = false,
   reply,
+  usage,
 } = {}) {
   let inferenceWrites = 0;
   const decisionRequests = [];
@@ -788,6 +789,7 @@ async function routeReadyChat(page, {
               reply: reply ?? '**Rendered answer** with a [safe link](https://example.com).',
               clarification: clarification ?? null,
               routine_proposal: routineProposal ?? null,
+              ...(usage === undefined ? {} : { usage }),
             }));
         if (holdReply) releaseReply = completeReply;
         else completeReply();
@@ -3261,6 +3263,44 @@ test('Send becomes Stop in place while a turn runs and is Send again once the re
   await expect(send).toBeVisible();
   await composer.fill('And the records?');
   await expect(send).toBeEnabled();
+});
+
+test('a reply shows what its task used only when its done frame reports usage', async ({ page }) => {
+  const usage = {
+    duration_ms: 6240,
+    models: [
+      { provider: 'anthropic', model: 'claude-opus-5-5', input_tokens: 1000, output_tokens: 200 },
+      { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 },
+    ],
+  };
+  await routeReadyChat(page, { usage });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toContainText('Rendered answer');
+  await expect(reply).toContainText('$0.0095');
+  await expect(reply).toContainText('13,680 tokens');
+  await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+});
+
+test('a reply whose done frame reports no usage shows no usage line', async ({ page }) => {
+  await routeReadyChat(page);
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toContainText('Rendered answer');
+  await expect(reply).not.toContainText('tokens');
+});
+
+test('a done frame with malformed usage is refused and shows no reply', async ({ page }) => {
+  await routeReadyChat(page, { usage: { duration_ms: 1, models: [] } });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
 });
 
 test('keeps an unexpected terminal error visible after silent Stop handling', async ({ page }) => {

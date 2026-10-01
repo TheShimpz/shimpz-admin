@@ -11,6 +11,7 @@
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarificationAnswer } from '$lib/clarification.js';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
@@ -1234,6 +1235,7 @@
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
           ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
+          ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -1990,6 +1992,11 @@
                     teamName={assistantTurn.author}
                     {assistantNames}
                   />
+                  {#if assistantTurn.usage}
+                    <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
+                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
+                    </p>
+                  {/if}
                 </Message>
                 {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
                   <!-- An install that continues the requested task keeps showing that task's execution stages. -->
@@ -2324,6 +2331,13 @@
     overflow-wrap: anywhere;
   }
 
+  .task-usage {
+    margin: 0.35rem 0 0;
+    color: var(--shimpz-color-text-dim);
+    font: 500 0.68rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
   .clarification-reply { display: grid; gap: 2px; margin: 0; }
   .reply-label {
     color: var(--shimpz-color-text-muted);
