@@ -955,7 +955,7 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
   const { fast } = await openFastRouting(page);
-  await expect(fast.getByRole('link', { name: /console\.typesafe\.ai\/keys/ }))
+  await expect(fast.getByRole('link', { name: /Create your key here/ }))
     .toHaveAttribute('href', 'https://console.typesafe.ai/keys');
   const key = fast.getByLabel('TypeSafe API key');
   await expect(key).toBeFocused();

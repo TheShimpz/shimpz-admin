@@ -161,7 +161,14 @@
         <StatusBadge tone={fast.configured ? 'info' : 'neutral'}>{fast.configured ? copy.stateOn : copy.stateOff}</StatusBadge>
       {/if}
     </header>
-    <p class="summary">{copy.summary}</p>
+    <!-- One paragraph: what Jev does, and, until a key exists, where to create it. -->
+    <p class="summary">
+      {copy.summary}
+      {#if fast.phase === 'ready' && !fast.configured}
+        <TextLink href={KEYS_URL} title={KEYS_URL} external>{copy.keyLink} ↗</TextLink>
+        {copy.keyAfter}
+      {/if}
+    </p>
     {#if fast.phase === 'unavailable'}
       <p class="status" role="status">{copy.unavailable}</p>
     {:else if fast.phase === 'idle' || fast.phase === 'loading'}
@@ -175,32 +182,23 @@
       </div>
     {:else}
       <form class="form" onsubmit={saveFast}>
-        <ol class="steps">
-          <li>
-            <span class="step-copy">{copy.createKey}</span>
-            <TextLink href={KEYS_URL} external>console.typesafe.ai/keys ↗</TextLink>
-          </li>
-          <li>
-            <span class="step-copy">{copy.pasteKey}</span>
-            <TextField
-              id={`${panelId}-key`}
-              label={copy.key}
-              visuallyHiddenLabel
-              placeholder={copy.key}
-              type="password"
-              bind:value={fastKey}
-              minlength="16"
-              maxlength="8192"
-              autocomplete="off"
-              data-1p-ignore
-              data-lpignore="true"
-              data-bwignore="true"
-              spellcheck="false"
-              required
-              disabled={saving}
-            />
-          </li>
-        </ol>
+        <TextField
+          id={`${panelId}-key`}
+          label={copy.key}
+          visuallyHiddenLabel
+          placeholder={copy.key}
+          type="password"
+          bind:value={fastKey}
+          minlength="16"
+          maxlength="8192"
+          autocomplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore="true"
+          spellcheck="false"
+          required
+          disabled={saving}
+        />
         <div class="actions">
           <Button class="glitch-host" type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
             <span class="glitch-text">{saving ? copy.validating : copy.save}</span>
@@ -234,17 +232,11 @@
   .head { display: flex; align-items: center; gap: var(--shimpz-space-2); }
   .glyph { width: 0.95rem; height: 0.95rem; fill: none; stroke: var(--shimpz-color-cyan); stroke-width: 1.5; stroke-linejoin: miter; }
   .title { flex: 1; margin: 0; color: var(--shimpz-color-text); font: 700 0.66rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-  .summary, .status, .error, .step-copy { margin: 0; line-height: 1.5; }
+  .summary, .status, .error { margin: 0; line-height: 1.5; }
   .summary { color: var(--shimpz-color-text-muted); font-size: 0.8rem; }
   .status { color: var(--shimpz-color-cyan); font: 400 0.74rem/1.4 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: var(--shimpz-space-2); }
   .form { display: grid; gap: var(--shimpz-space-3); }
-  /* Two real steps, numbered: get a key at TypeSafe, then paste it. */
-  .steps { display: grid; gap: var(--shimpz-space-3); margin: 0; padding: 0; list-style: none; counter-reset: step; }
-  .steps li { position: relative; display: grid; gap: var(--shimpz-space-2); padding-inline-start: 1.9rem; counter-increment: step; }
-  .steps li::before { position: absolute; inset-block-start: 0.1rem; inset-inline-start: 0; color: var(--shimpz-color-cyan); content: counter(step, decimal-leading-zero); font: 700 0.64rem/1.6 var(--shimpz-font-mono); letter-spacing: 0.08em; }
-  .step-copy { color: var(--shimpz-color-text); font-size: 0.8rem; }
-  .steps :global(.shimpz-text-link) { width: fit-content; font: 400 0.74rem/1.4 var(--shimpz-font-mono); }
   .actions { display: flex; justify-content: flex-end; }
   .error { color: var(--shimpz-color-danger); font-size: 0.74rem; }
   @media (prefers-reduced-motion: reduce) {
