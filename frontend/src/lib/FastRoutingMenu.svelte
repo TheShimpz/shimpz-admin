@@ -186,7 +186,7 @@
           id={`${panelId}-key`}
           label={copy.key}
           visuallyHiddenLabel
-          placeholder={copy.key}
+          placeholder={copy.placeholder}
           type="password"
           bind:value={fastKey}
           minlength="16"
