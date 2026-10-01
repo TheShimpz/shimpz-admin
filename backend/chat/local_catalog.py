@@ -150,11 +150,8 @@ def primary(response: object) -> tuple[LocalAssistant, ...]:
 def localized_summary(assistant: LocalAssistant, locale: str) -> str:
     """One staged snapshot's summary in one interface language, read by Team from the snapshot's own pack (ADR-0091).
 
-    English is the snapshot's catalog summary itself; any other language is only the pack translation Team returns
-    for exactly that language, never the English summary in its place.
+    The summary is only what Team returns for exactly that language, never the English summary in its place.
     """
-    if locale == store_catalog.PLANNING_LOCALE:
-        return assistant.summary
     response = team.local_assistant_summary(assistant.image_id, locale)
     if not isinstance(response, team.TeamResponse) or response.status != 200 or not isinstance(response.body, dict):
         raise ValueError("Local Assistant summary is unavailable")

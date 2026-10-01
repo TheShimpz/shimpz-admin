@@ -628,7 +628,7 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
         return store
 
     def test_a_planned_publication_shows_discovery_summary_in_the_turn_language(self) -> None:
-        store = self._store((self.PORTUGUESE,))
+        store = self._store((self.PORTUGUESE, replace(WHATSAPP, summary="Mensagens revisadas do WhatsApp.")))
         planned = assistant_plan.team.TeamResponse(
             200, {"team_id": "team_1", "status": "install-required", "assistant_ids": ["cloudflare"]}
         )
@@ -653,6 +653,17 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
         assert confirmed.already_installed is not None
         self.assertEqual(
             [item["summary"] for item in confirmed.already_installed.assistants], [self.PORTUGUESE.summary]
+        )
+        # One localized catalog read serves every planned publication.
+        store.get.reset_mock()
+        both = assistant_plan.prepare_install(
+            "team_1", payload, ("cloudflare", "whatsapp"), {}, (CLOUDFLARE, WHATSAPP), store
+        )
+        store.get.assert_called_once_with("pt")
+        assert both.plan is not None
+        self.assertEqual(
+            [assistant.summary for assistant in both.plan.assistants],
+            [self.PORTUGUESE.summary, "Mensagens revisadas do WhatsApp."],
         )
 
     def test_a_summary_that_cannot_be_shown_in_the_turn_language_fails_the_preparation(self) -> None:
