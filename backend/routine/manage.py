@@ -150,14 +150,24 @@ def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
     return _projected(response, admit)
 
 
-def resume(team_id: object, routine_id: object) -> team.TeamResponse:
-    """Turn a paused Routine's dispatch back on; an unresolved incident still holds it."""
+def _set_paused(team_id: object, routine_id: object, paused: bool) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     routine = _id(routine_id, "Routine")
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/{routine}/resume", {})
+    action = "pause" if paused else "resume"
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/{routine}/{action}", {})
     fields = {
         "team_id": lambda value: value == canonical,
         "routine_id": lambda value: value == routine,
-        "paused": lambda value: value is False,
+        "paused": lambda value: value is paused,
     }
     return _projected(response, _exact(fields))
+
+
+def resume(team_id: object, routine_id: object) -> team.TeamResponse:
+    """Turn a paused Routine's dispatch back on; an unresolved incident still holds it."""
+    return _set_paused(team_id, routine_id, False)
+
+
+def pause(team_id: object, routine_id: object) -> team.TeamResponse:
+    """Turn a Routine's dispatch off until it is resumed; a run already going finishes."""
+    return _set_paused(team_id, routine_id, True)

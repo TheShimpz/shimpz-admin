@@ -11,6 +11,7 @@ import {
   readRunDiagnostics,
 } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { ROUTINE_TEXT } from '../e2e/routineScenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
 
@@ -270,7 +271,7 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
 });
 
 test('the daily-cap preview asks its question, then creates the continuous Routine the answer names', () => {
-  const scenario = createScenario('routine-cap');
+  const scenario = createScenario('routine-cap', 'pt');
   const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
   const [asked] = scenario.chat.message(frame('Fique conferindo meus registros DNS sem parar'));
   const event = parseChatEvent(asked, 'marketing', 'Marketing');
@@ -284,4 +285,25 @@ test('the daily-cap preview asks its question, then creates the continuous Routi
   assert.deepEqual(routines.map((routine) => routine.schedule), [{ kind: 'continuous', gap: 5, cap: 500 }]);
   const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
   assert.equal(parseRoutineRunEntry(entries.at(-1)).detail.schedule.cap, 500);
+});
+
+test("every locale's Routine preview names and asks in that language, through the real parsers", async () => {
+  for (const locale of Object.keys(ROUTINE_TEXT)) {
+    const scenario = createScenario('routine-lifecycle', locale);
+    const { routines } = await listRoutines(adapter(scenario), 'marketing');
+    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names, locale);
+    assert.deepEqual(routines.map((routine) => routine.quote), ROUTINE_TEXT[locale].quotes, locale);
+    const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+    for (const entry of entries) assert.ok(ROUTINE_TEXT[locale].quotes.includes(parseRoutineRunEntry(entry).quote), locale);
+    const asking = createScenario('routine-cap', locale);
+    const [asked] = asking.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].quotes[0], files: [], assistant_ids: [] });
+    const { clarification } = parseChatEvent(asked, 'marketing', 'Marketing');
+    assert.equal(clarification.question, ROUTINE_TEXT[locale].capQuestion, locale);
+    const [created] = asking.chat.message({
+      type: 'chat', message: `${ROUTINE_TEXT[locale].quotes[0]}\n\nQ: ${clarification.question}\nA: ${clarification.options[1].label}`,
+      files: [], assistant_ids: [],
+    });
+    assert.equal(created.clarification, null, locale);
+    assert.equal(asking.respond({ method: 'GET', path: ROUTINES }).json.routines[0].schedule.cap, 500, locale);
+  }
 });

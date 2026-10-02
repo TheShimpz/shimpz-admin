@@ -126,7 +126,7 @@ const STARTS = {
   }),
   // Every Routine notice in the transcript, a held run's recovery card, a paused Routine, a minute rollup, and a run's
   // execution details (ADR-0092).
-  'routine-lifecycle': () => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart() }),
+  'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
   // A continuous request that names no daily cap asks for it; the answer creates the Routine.
   'routine-cap': () => ({
     session: authenticatedLocalSession(),
@@ -458,10 +458,11 @@ function chatReply(state, frame) {
 }
 
 /** A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. */
-export function createScenario(name = 'ready') {
+export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
-  const state = { history: [], sequence: 0, ...structuredClone(start()) };
+  // A scenario's own texts, such as a Routine's name and request, are written in the interface language it starts in.
+  const state = { history: [], sequence: 0, locale, ...structuredClone(start(locale)) };
   return {
     name,
     respond({ method = 'GET', path, body = null }) {
