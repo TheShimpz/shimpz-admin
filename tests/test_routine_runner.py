@@ -33,6 +33,8 @@ from routine import delivery, scheduler, team
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
 BATCH = VECTORS["notice_batch"]["valid"][0]
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
+CLAIMED = {"run": CLAIM, "next_due_at": None}
+IDLE = {"run": None, "next_due_at": None}
 TRACE = "a" * 32
 
 
@@ -162,7 +164,7 @@ class RoutineHistoryTests(unittest.TestCase):
                 {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
             )
         )
-        self.assertFalse(history.append_routine_notice({**done, "detail": {"reply": "Another reply."}}))
+        self.assertFalse(history.append_routine_notice({**done, "detail": {"actions": [["shimpz-cloudflare", "x"]]}}))
         entries = history.page("team_1")["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
@@ -198,11 +200,12 @@ class RoutineTeamCallTests(unittest.TestCase):
             models, "resolve_api_key", side_effect=lambda provider: "k" * 20 if provider == "openai" else None
         ):
             self.assertEqual(team.providers(), ("openai",))
-        with mock.patch.object(transport, "_call", return_value=answer({"run": CLAIM})) as call:
-            self.assertEqual(team.claim(("openai",)), CLAIM)
+        with mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call:
+            self.assertEqual(team.claim(("openai",)), CLAIMED)
         call.assert_called_once_with("POST", "/v1/routines/claim", {"providers": ["openai"]})
-        with mock.patch.object(transport, "_call", return_value=answer({"run": None})):
-            self.assertIsNone(team.claim(("openai",)))
+        hinted = {"run": None, "next_due_at": 1790000300}
+        with mock.patch.object(transport, "_call", return_value=answer(hinted)):
+            self.assertEqual(team.claim(("openai",)), hinted)
         with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
             self.assertEqual(team.notices(), BATCH)
         with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
@@ -212,10 +215,11 @@ class RoutineTeamCallTests(unittest.TestCase):
             {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
         )
         for response, action in (
-            (answer({"run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
+            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
+            (answer({"run": None}), lambda: team.claim(("openai",))),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
-            (team_bridge.TeamResponse(200, {"run": None}), lambda: team.claim(("openai",))),
+            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim(("openai",))),
             (answer({"code": "x"}, 503), team.notices),
             (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
         ):
@@ -269,6 +273,8 @@ class RoutineTeamCallTests(unittest.TestCase):
             self.assertEqual(team.run(CLAIM, identity), "done")
         bindings = stream.call_args.kwargs["bindings"]
         self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
+        # The signed segment names exactly the revision and plan the claim leased.
+        self.assertEqual(stream.call_args.args[2], {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"]})
         self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
         stream.call_args.kwargs["progress"]({"type": "progress"})
@@ -384,7 +390,7 @@ class RoutineSchedulerTests(unittest.TestCase):
         runner = scheduler.RoutineScheduler(workers=1)
         self.addCleanup(runner.close)
         with (
-            mock.patch.object(team, "claim", return_value=CLAIM) as claim,
+            mock.patch.object(team, "claim", return_value=CLAIMED) as claim,
             mock.patch.object(team, "run", side_effect=run),
         ):
             runner.tick()
@@ -409,14 +415,14 @@ class RoutineSchedulerTests(unittest.TestCase):
         ):
             runner.tick()
         self.assertEqual(len(logged.output), 2)
-        with mock.patch.object(team, "claim", return_value=None):
+        with mock.patch.object(team, "claim", return_value=IDLE):
             runner.tick()
         with mock.patch.object(team, "providers", return_value=()), mock.patch.object(team, "claim") as claim:
             runner.tick()
         claim.assert_not_called()
         failed = threading.Event()
         with (
-            mock.patch.object(team, "claim", return_value=CLAIM),
+            mock.patch.object(team, "claim", return_value=CLAIMED),
             mock.patch.object(
                 team,
                 "run",
@@ -429,6 +435,31 @@ class RoutineSchedulerTests(unittest.TestCase):
         while not runner._slots.acquire(blocking=False):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.01)
+
+    def test_a_hint_or_a_finished_run_wakes_the_next_tick_sooner_but_never_in_a_tight_loop(self) -> None:
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0)
+        self.addCleanup(runner.close)
+        self.assertEqual(runner.delay(1000.0), 30)
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 1010}):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 10)
+        # A hint already due waits the minimum, never zero; one beyond the interval waits the interval.
+        self.assertEqual(runner.delay(1020.0), scheduler.MIN_WAKE_SECONDS)
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 9999}):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 30)
+        with mock.patch.object(team, "providers", return_value=()):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 30)
+        finished = threading.Event()
+        with (
+            mock.patch.object(team, "claim", return_value=CLAIMED),
+            mock.patch.object(team, "run", side_effect=lambda *_args: finished.set() or "done"),
+        ):
+            runner.tick()
+            self.assertTrue(finished.wait(5))
+            self.assertTrue(runner._wake.wait(5))
+        self.assertEqual(runner.delay(time.time() + 60), scheduler.MIN_WAKE_SECONDS)
 
     def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
         runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)

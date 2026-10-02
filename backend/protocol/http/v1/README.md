@@ -120,6 +120,31 @@ Team also keeps, never on the wire, the evidence of the request that granted eac
 plan digest, a commitment to the message, the quote's span, each input's validated provenance, and any answer a bound
 Routine question selected.
 
+A run has one notice, keyed by its run id, whose version grows as the run goes on (`routine.canonical_notice_detail`
+closes each outcome's detail). `done` and `recovered` name the ordered `actions`, `[assistant, action]` pairs of the
+steps it carried out, never their input or result; `recovered` is a run that a continuation completed after a hold.
+`held` names the step whose effect is unresolved as `{assistant_id, action}`, both `null` when the run sealed no
+plan cursor; the same run's notice then goes on as `paused`, the same step plus a `reason` (`decided`,
+`unavailable`, `exhausted`, or `person`), or `user-skipped` when the person chose Pular. A person's `user-skipped`
+is a run outcome; the Routine outcome `skipped` reports missed firings and has no run id. `failed` names its code
+and the Actions that completed; a run whose failed step may have acted is held instead.
+
+A Supervisor's `GET /v1/teams/:team_id/routines` lists each Routine (`routine.canonical_routine_view`, whose `paused`
+says dispatch is off), its live runs (`routine.canonical_run_view`), and its unresolved `incidents`, at most
+`routine.MAX_UNRESOLVED_INCIDENTS` (`routine.canonical_incident_view`): each held run's id, Routine, quote, creation
+instant, and step, which outlive a deleted Routine. `POST /v1/teams/:team_id/routines/incidents/:incident_id/card` with `{}` opens that run's recovery
+card (`routine.canonical_card`): the step, the revision the run executed, a one-use 32-hex `nonce`, `expires_in` of
+300 seconds, and exactly the choices `verify`, `skip`, and `pause` with the `recommended` one first (`pause` when no
+verifier can prove anything). The card is bound to the authenticated person, the Team incarnation, the Routine and
+its current revision, the run, and its operation. `POST .../answer` with exactly `{nonce, choice}`
+(`routine.canonical_card_answer_request`) answers it once and is answered by `routine.canonical_card_answer`:
+Verificar's `verdict` (`occurred`, `absent`, `none`, `inconclusive`, `unverifiable`, or `exhausted`) and, when the
+evidence let the already-authorized run go on, how its continuation ended; Pular answers `skipped` and Pausar
+`paused`, each with a `null` verdict. An expired, foreign, or reused card is `routine-card-expired`, and one whose
+Routine revision, Team incarnation, or operation changed since it opened is `routine-card-stale`.
+`POST /v1/teams/:team_id/routines/:routine_id/resume` with `{}` turns dispatch back on and starts a fresh failure
+streak; an unresolved incident still holds the Routine until its card settles it.
+
 A Local Supervisor reads one Routine run's execution details (ADR-0092) with
 `GET /v1/teams/:team_id/routines/runs/:run_id/diagnostics`, answered by `routine.canonical_diagnostics`: the Team and
 run ids and at most 32 diagnostics, oldest first, one per attempt of one logical operation (`operation_id`, the
@@ -199,6 +224,13 @@ Ed25519 assertion travels in `X-Shimpz-Routine` with the JWT key id `local-routi
 `team-local-routine`; `supervisor.canonical_claims(value, audience=ROUTINE_AUDIENCE)` admits the same request, body,
 model, lifetime, and one-use nonce bindings as a Supervisor assertion, requires `authority: "routine"` with
 `authority_sha256` equal to the SHA-256 of the run's lease token, and refuses any human assurance or decision binding.
+Admin's scheduler claims under the Team bearer with `POST /v1/routines/claim` and exactly `{providers}`
+(`routine.canonical_claim_request`); the answer (`routine.canonical_claim`) is one run with its lease token, lease
+expiry, provider, and the Routine `revision` and `plan_digest` it was claimed at, or `null` with `next_due_at`, the
+earliest epoch second a Routine of a Team Admin can run becomes due (`null` when none will), so Admin wakes then
+while still reconciling on its own interval. The run's signed segment request,
+`POST /v1/teams/:team_id/routines/runs/:run_id/segment`, carries exactly that `{revision, plan_digest}`
+(`routine.canonical_segment_request`); any other is refused as `routine-revision-stale` before anything runs.
 
 An intent-route classification (never selection, chat, or any other request) may also carry one Supervisor-configured
 TypeSafe key in `X-Shimpz-Decision-Api-Key` (ADR-0077). The Local Supervisor assertion then binds its digest as

@@ -53,6 +53,11 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             "notice_batch": routine_contract.canonical_notice_batch,
             "claim": routine_contract.canonical_claim,
             "claim_request": routine_contract.canonical_claim_request,
+            "incident": routine_contract.canonical_incident_view,
+            "card": routine_contract.canonical_card,
+            "card_answer_request": routine_contract.canonical_card_answer_request,
+            "card_answer": routine_contract.canonical_card_answer,
+            "segment_request": routine_contract.canonical_segment_request,
         }
         for kind, admit in views.items():
             for value in VECTORS["routine_views"][kind]["valid"]:
@@ -77,14 +82,16 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
 
     def test_notice_details_are_closed_and_never_carry_action_data(self) -> None:
         valid = {
-            "done": {"reply": "Updated."},
-            "needs-input": {"question": "Which zone?"},
+            "done": {"actions": [["dns", "list-zones"]]},
+            "recovered": {"actions": [["dns", "replace-dns-record"]]},
+            "held": {"assistant_id": "dns", "action": "replace-dns-record"},
+            "paused": {"assistant_id": "dns", "action": "replace-dns-record", "reason": "person"},
+            "user-skipped": {"assistant_id": None, "action": None},
             "skipped": {"missed": 3},
             "scope-changed": {"assistants": ["dns"]},
             "failed": {"code": "assistant-rpc-failed", "actions": [["dns", "list-zones"]]},
             "denied": {"actions": []},
             "stopped": {"actions": [["dns", "list-zones"]]},
-            "uncertain": {"actions": [["dns", "replace-dns-record"]]},
             "frozen": {"request_kind": "human", "assistant_id": "dns", "action": "replace-dns-record"},
             "created": DEFINED,
             "changed": DEFINED,
@@ -93,6 +100,10 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         for outcome, detail in valid.items():
             self.assertEqual(routine_contract.canonical_notice_detail(outcome, detail), detail)
         for outcome, detail in (
+            ("done", {"reply": "Updated."}),
+            ("uncertain", {"actions": []}),
+            ("needs-input", {"question": "Which zone?"}),
+            ("paused", {"assistant_id": "dns", "action": "x", "reason": "approve"}),
             ("scope-changed", {"assistants": []}),
             ("scope-changed", {"assistants": ["Bad"]}),
             ("stopped", {"actions": [["dns", {"input": 1}]]}),

@@ -15,27 +15,31 @@ MAX_ROUTINE_NAME_CHARS = 80
 # The ordered Actions of a compiled plan (ADR-0092 section 3).
 MAX_ROUTINE_STEPS = 8
 MAX_DAILY_RUNS = 24
-MAX_NOTICE_REPLY_CHARS = 16_000
-MAX_NOTICE_QUESTION_CHARS = 240
 MAX_NOTICE_ACTIONS = 16
 MAX_NOTICE_ASSISTANTS = 16
 OUTCOMES = frozenset(
     {
         "done",
+        "recovered",
+        "held",
+        "paused",
+        "user-skipped",
         "failed",
         "denied",
-        "uncertain",
         "stopped",
         "skipped",
         "scope-changed",
-        "needs-input",
         "frozen",
         "created",
         "changed",
     }
 )
-# Outcomes of the Routine itself, never of a run: they carry no run id.
+# Outcomes of the Routine itself, never of a run: they carry no run id. ``skipped`` reports missed firings; a person's
+# Pular of a held run is the run outcome ``user-skipped``.
 ROUTINE_OUTCOMES = ("skipped", "scope-changed", "created", "changed")
+# Why a held run's Routine was paused (ADR-0092): the recovery decision, a decision that could not be made, the spent
+# recovery budget, or the person's Pausar.
+PAUSE_REASONS = ("decided", "unavailable", "exhausted", "person")
 # The same identifier grammar as payload.py; protocol modules stay independent, and a Team test pins the equality.
 ASSISTANT_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 ACTION_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
@@ -113,10 +117,6 @@ def daily_rate(schedule: dict[str, object]) -> Fraction:
     if kind == "hourly":
         return Fraction(24, schedule["every"])
     return {"daily": Fraction(1), "weekly": Fraction(1, 7), "monthly": Fraction(1, 28)}[kind]
-
-
-def _text(value: object, maximum: int) -> bool:
-    return isinstance(value, str) and 0 < len(value) <= maximum and value.strip() == value
 
 
 def _actions(value: object) -> bool:
@@ -249,11 +249,32 @@ def _frozen(detail: dict[str, object]) -> bool:
     )
 
 
-# Each outcome's exact detail fields and their check. denied, stopped, and uncertain name the Actions that completed or
-# whose effects are unknown; after a restart an uncertain run may not know them, and its notice then says only that.
+def _completed(detail: dict[str, object]) -> bool:
+    """The ordered Assistant Actions a completed run carried out; never their input or result."""
+    return _actions(detail["actions"]) and 0 < len(detail["actions"]) <= MAX_ROUTINE_STEPS
+
+
+def _step_pair(assistant_id: object, action: object) -> bool:
+    if assistant_id is None and action is None:
+        return True
+    return _identity(assistant_id, ASSISTANT_ID_RE) and _identity(action, ACTION_ID_RE)
+
+
+def _held_step(detail: dict[str, object]) -> bool:
+    """The step a held run stopped at, or both null when the run sealed no plan before it was held."""
+    return _step_pair(detail["assistant_id"], detail["action"])
+
+
+_STEP_FIELDS = {"assistant_id", "action"}
+
+# Each outcome's exact detail fields and their check. denied and stopped name the Actions that completed; held,
+# paused, and user-skipped name the step whose possible effects are unresolved.
 _DETAILS = {
-    "done": ({"reply"}, lambda detail: _text(detail["reply"], MAX_NOTICE_REPLY_CHARS)),
-    "needs-input": ({"question"}, lambda detail: _text(detail["question"], MAX_NOTICE_QUESTION_CHARS)),
+    "done": ({"actions"}, _completed),
+    "recovered": ({"actions"}, _completed),
+    "held": (_STEP_FIELDS, _held_step),
+    "paused": (_STEP_FIELDS | {"reason"}, lambda detail: _held_step(detail) and detail["reason"] in PAUSE_REASONS),
+    "user-skipped": (_STEP_FIELDS, _held_step),
     "skipped": ({"missed"}, lambda detail: type(detail["missed"]) is int and detail["missed"] >= 1),
     "scope-changed": ({"assistants"}, _scope_changed),
     "frozen": ({"request_kind", "assistant_id", "action"}, _frozen),
@@ -263,7 +284,6 @@ _DETAILS = {
     ),
     "denied": ({"actions"}, lambda detail: _actions(detail["actions"])),
     "stopped": ({"actions"}, lambda detail: _actions(detail["actions"])),
-    "uncertain": ({"actions"}, lambda detail: _actions(detail["actions"])),
     "created": ({"name", "steps", "schedule", "timezone"}, _defined),
     "changed": ({"name", "steps", "schedule", "timezone"}, _defined),
 }
@@ -279,15 +299,14 @@ def canonical_notice_detail(outcome: object, detail: object) -> dict[str, object
 
 # Views a Local Team returns to Admin for Routines. Admin admits each only in exactly this closed form.
 MAX_NOTICE_BATCH = 1024
-# The encoded notice list of one batch, under the Local API's 128 KiB response cap with room for its envelope. A
-# notice at its bound, a 16,000-character reply whose every character JSON-escapes to six bytes, is about 96.5 KB.
+# The encoded notice list of one batch, under the Local API's 128 KiB response cap with room for its envelope. The
+# largest notice, a created or changed Routine's projection of a plan admitted within 64 KiB, fits alone.
 MAX_NOTICE_BATCH_BYTES = 112 * 1024
-RUN_STATUSES = frozenset({"leased", "frozen", "uncertain"})
+RUN_STATUSES = frozenset({"leased", "frozen", "held"})
 # The model providers a Local Team can use; a claim names its Team's, so Admin sends that provider's key.
 MODEL_PROVIDERS = ("anthropic", "openai")
 TEAM_ID_RE = re.compile(r"[a-z0-9_]{1,40}\Z")
 LEASE_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}\Z")
-_HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
 _INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 
 
@@ -323,7 +342,7 @@ def _optional(value: object, pattern: re.Pattern[str]) -> bool:
 def canonical_routine_view(value: object) -> dict[str, object] | None:
     """One Routine as a Supervisor sees it, with its name and its plan's safe projection."""
     fields = {"routine_id", "name", "quote", "schedule", "timezone", "assistant_ids", "next_run_at", "needs_reconfirm"}
-    if not isinstance(value, dict) or set(value) != fields | {"deleting", "steps"}:
+    if not isinstance(value, dict) or set(value) != fields | {"deleting", "paused", "steps"}:
         return None
     valid = (
         _identity(value["routine_id"], ROUTINE_ID_RE)
@@ -338,14 +357,15 @@ def canonical_routine_view(value: object) -> dict[str, object] | None:
         and _instant(value["next_run_at"])
         and type(value["needs_reconfirm"]) is bool
         and type(value["deleting"]) is bool
+        and type(value["paused"]) is bool
     )
     return copy.deepcopy(value) if valid else None
 
 
 def canonical_run_view(value: object) -> dict[str, object] | None:
-    """One live run: a frozen run names its request, an uncertain one its batch and the Actions it may have run."""
+    """One live run: a frozen run names the request it waits for; a leased or held one only that it is live."""
     fields = {"run_id", "routine_id", "status", "scheduled_at", "request_kind", "assistant_id", "action"}
-    if not isinstance(value, dict) or set(value) != fields | {"batch_fingerprint", "actions"}:
+    if not isinstance(value, dict) or set(value) != fields:
         return None
     status = value["status"]
     request = (value["request_kind"], value["assistant_id"], value["action"])
@@ -358,15 +378,86 @@ def canonical_run_view(value: object) -> dict[str, object] | None:
         _identity(value["run_id"], ROUTINE_ID_RE)
         and _identity(value["routine_id"], ROUTINE_ID_RE)
         and _instant(value["scheduled_at"])
+        and isinstance(status, str)
+        and status in RUN_STATUSES
         and (frozen if status == "frozen" else request == (None, None, None))
-        and (
-            _identity(value["batch_fingerprint"], _HEX64_RE)
-            if status == "uncertain"
-            else isinstance(status, str) and status in RUN_STATUSES and value["batch_fingerprint"] is None
-        )
-        and _actions(value["actions"])
-        and (status == "uncertain" or value["actions"] == [])
     )
+    return copy.deepcopy(value) if valid else None
+
+
+def canonical_incident_view(value: object) -> dict[str, object] | None:
+    """One unresolved incident of a held run, which a recovery card settles; it outlives a deleted Routine."""
+    fields = {"incident_id", "routine_id", "quote", "created_at", "assistant_id", "action"}
+    if not isinstance(value, dict) or set(value) != fields:
+        return None
+    valid = (
+        _identity(value["incident_id"], ROUTINE_ID_RE)
+        and _identity(value["routine_id"], ROUTINE_ID_RE)
+        and value["quote"] is not None
+        and canonical_quote(value["quote"]) == value["quote"]
+        and _instant(value["created_at"])
+        and _step_pair(value["assistant_id"], value["action"])
+    )
+    return copy.deepcopy(value) if valid else None
+
+
+# The unresolved incidents a Team holds at most, which its Routine list carries (ADR-0092).
+MAX_UNRESOLVED_INCIDENTS = 32
+# A held run's recovery card (ADR-0092 section 7): exactly Verificar, Pular, and Pausar, the recommended one first.
+CARD_CHOICES = ("verify", "skip", "pause")
+CARD_SECONDS = 300
+NONCE_RE = re.compile(r"[0-9a-f]{32}\Z")
+CARD_VERDICTS = ("occurred", "absent", "none", "inconclusive", "unverifiable", "exhausted")
+# How an answer left the run: settled by the person, or how its already-authorized continuation ended.
+CARD_STATUSES = ("skipped", "paused", "recovered", "held", "frozen", "failed", "stopped")
+
+
+def canonical_card(value: object) -> dict[str, object] | None:
+    """An opened recovery card: the step it is about, its one-use nonce, and its three choices."""
+    fields = {"team_id", "incident_id", "routine_id", "revision", "assistant_id", "action", "nonce", "expires_in"}
+    if not isinstance(value, dict) or set(value) != fields | {"choices", "recommended"}:
+        return None
+    choices = value["choices"]
+    valid = (
+        _identity(value["team_id"], TEAM_ID_RE)
+        and _identity(value["incident_id"], ROUTINE_ID_RE)
+        and _identity(value["routine_id"], ROUTINE_ID_RE)
+        and type(value["revision"]) is int
+        and 1 <= value["revision"] < 2**31
+        and _identity(value["assistant_id"], ASSISTANT_ID_RE)
+        and _identity(value["action"], ACTION_ID_RE)
+        and _identity(value["nonce"], NONCE_RE)
+        and value["expires_in"] == CARD_SECONDS
+        and type(value["expires_in"]) is int
+        and isinstance(choices, list)
+        and all(isinstance(choice, str) for choice in choices)
+        and sorted(choices) == sorted(CARD_CHOICES)
+        and value["recommended"] in ("verify", "pause")
+        and choices[0] == value["recommended"]
+    )
+    return copy.deepcopy(value) if valid else None
+
+
+def canonical_card_answer_request(value: object) -> dict[str, str] | None:
+    """A person's answer to one card: its nonce and exactly one choice."""
+    if not isinstance(value, dict) or set(value) != {"nonce", "choice"}:
+        return None
+    valid = _identity(value["nonce"], NONCE_RE) and value["choice"] in CARD_CHOICES
+    return {"nonce": value["nonce"], "choice": value["choice"]} if valid else None
+
+
+def canonical_card_answer(value: object) -> dict[str, object] | None:
+    """What an answer did: Verificar's verdict and how the run went on, or the person's Pular or Pausar."""
+    if not isinstance(value, dict) or set(value) != {"team_id", "incident_id", "choice", "verdict", "status"}:
+        return None
+    choice, verdict, status = value["choice"], value["verdict"], value["status"]
+    if choice == "verify":
+        shape = verdict in CARD_VERDICTS and (status is None or status in CARD_STATUSES[2:])
+    elif choice in ("skip", "pause"):
+        shape = verdict is None and status == ("skipped" if choice == "skip" else "paused")
+    else:
+        shape = False
+    valid = _identity(value["team_id"], TEAM_ID_RE) and _identity(value["incident_id"], ROUTINE_ID_RE) and shape
     return copy.deepcopy(value) if valid else None
 
 
@@ -425,17 +516,30 @@ def canonical_claim_request(value: object) -> dict[str, object] | None:
     return {"providers": list(providers)} if valid else None
 
 
+PLAN_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+
+def _revision(value: object) -> bool:
+    return type(value) is int and 1 <= value < 2**31
+
+
 def canonical_claim(value: object) -> dict[str, object] | None:
-    """A claim's answer: no run, or one run with the lease token Admin's routine identity signs for."""
-    if not isinstance(value, dict) or set(value) != {"run"}:
+    """A claim's answer: one run with the lease token Admin's routine identity signs for, or none and a wake hint.
+
+    A run names the Routine revision and plan digest it was claimed at, which its segment request binds. With no run,
+    ``next_due_at`` is the earliest epoch second a Routine Admin can run becomes due, or null; Admin still reconciles
+    on its own interval, since a hint can be missed.
+    """
+    if not isinstance(value, dict) or set(value) != {"run", "next_due_at"}:
         return None
-    run = value["run"]
+    run, hint = value["run"], value["next_due_at"]
     if run is None:
-        return {"run": None}
+        return {"run": None, "next_due_at": hint} if hint is None or (type(hint) is int and hint > 0) else None
     fields = {"team_id", "run_id", "routine_id", "lease_token", "lease_expires_at", "provider"}
     valid = (
-        isinstance(run, dict)
-        and set(run) == fields
+        hint is None
+        and isinstance(run, dict)
+        and set(run) == fields | {"revision", "plan_digest"}
         and _identity(run["team_id"], TEAM_ID_RE)
         and _identity(run["run_id"], ROUTINE_ID_RE)
         and _identity(run["routine_id"], ROUTINE_ID_RE)
@@ -443,8 +547,18 @@ def canonical_claim(value: object) -> dict[str, object] | None:
         and type(run["lease_expires_at"]) is int
         and run["lease_expires_at"] > 0
         and run["provider"] in MODEL_PROVIDERS
+        and _revision(run["revision"])
+        and _identity(run["plan_digest"], PLAN_DIGEST_RE)
     )
     return copy.deepcopy(value) if valid else None
+
+
+def canonical_segment_request(value: object) -> dict[str, object] | None:
+    """A leased run's segment request: exactly the revision and plan digest its claim named, under the signature."""
+    if not isinstance(value, dict) or set(value) != {"revision", "plan_digest"}:
+        return None
+    valid = _revision(value["revision"]) and _identity(value["plan_digest"], PLAN_DIGEST_RE)
+    return {"revision": value["revision"], "plan_digest": value["plan_digest"]} if valid else None
 
 
 # Per-execution diagnostics (ADR-0092 section 8): one Team-sanitized handled failure, or one safe transport condition,

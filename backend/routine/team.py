@@ -18,8 +18,8 @@ from protocol.http.v1 import routine as routine_contract
 
 RUN_TIMEOUT_SECONDS = 15 * 60
 _TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-# "held": a compiled run Team holds as an incident for recovery (ADR-0092).
-RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen", "held"})
+# "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
+RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
 # Team admits at most this many deliveries in one notice acknowledgment.
 MAX_ACK_DELIVERIES = 256
 
@@ -43,14 +43,14 @@ def providers() -> tuple[str, ...]:
     return tuple(provider for provider in routine_contract.MODEL_PROVIDERS if models.resolve_api_key(provider))
 
 
-def claim(held: tuple[str, ...]) -> dict[str, object] | None:
-    """Lease at most one due run; None when nothing may start now."""
+def claim(held: tuple[str, ...]) -> dict[str, object]:
+    """Lease at most one due run: ``run`` is None when nothing may start now, and ``next_due_at`` then hints when."""
     body = routine_contract.canonical_claim(
         _answer(transport._call("POST", "/v1/routines/claim", {"providers": list(held)}))
     )
     if body is None:
         raise RoutineTeamError("Routine claim is invalid")
-    return body["run"]
+    return body
 
 
 def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
@@ -62,7 +62,8 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{team_id}/routines/runs/{run_id}/segment",
-        {},
+        # The signed segment names exactly the revision and plan its claim leased (ADR-0092).
+        {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"]},
         timeout=RUN_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings(
             model_credential=(claimed["provider"], api_key),

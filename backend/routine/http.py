@@ -19,7 +19,9 @@ def register(application: FastAPI, profile: str, authenticate: answer.Authentica
     application.add_api_route(base, routines_list, methods=["GET"])
     application.add_api_route(base + "/{routine_id}", routine_delete, methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
-    application.add_api_route(base + "/runs/{run_id}/resolve", routine_resolve, methods=["POST"])
+    application.add_api_route(base + "/{routine_id}/resume", routine_resume, methods=["POST"])
+    application.add_api_route(base + "/incidents/{incident_id}/card", routine_card, methods=["POST"])
+    application.add_api_route(base + "/incidents/{incident_id}/answer", routine_card_answer, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/challenge", routine_challenge, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/human", human_route(authenticate), methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/integrations", routine_integrations, methods=["POST"])
@@ -42,9 +44,19 @@ async def routine_stop(team_id: str, run_id: str):
     return _no_store(await run_in_threadpool(team_http.response, lambda: manage.stop(team_id, run_id)))
 
 
-async def routine_resolve(team_id: str, run_id: str, request: Request):
+async def routine_resume(team_id: str, routine_id: str):
+    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.resume(team_id, routine_id)))
+
+
+async def routine_card(team_id: str, incident_id: str):
+    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.open_card(team_id, incident_id)))
+
+
+async def routine_card_answer(team_id: str, incident_id: str, request: Request):
     body = await team_http.bounded_json_object(request)
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.resolve(team_id, run_id, body)))
+    return _no_store(
+        await run_in_threadpool(team_http.response, lambda: manage.answer_card(team_id, incident_id, body))
+    )
 
 
 async def routine_challenge(team_id: str, run_id: str, request: Request):

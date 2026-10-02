@@ -17,7 +17,6 @@ from protocol.http.v1 import routine as routine_contract
 
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 _TRACE_ID_RE = _ID_RE
-_HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
 _ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 _INVALID = team.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
 
@@ -66,17 +65,17 @@ def list_routines(team_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines")
 
-    def items(admit: Callable[[object], object]) -> Callable[[object], bool]:
+    def items(admit: Callable[[object], object], bound: int) -> Callable[[object], bool]:
         return lambda value: (
-            isinstance(value, list)
-            and len(value) <= routine_contract.MAX_ROUTINES
-            and all(admit(item) is not None for item in value)
+            isinstance(value, list) and len(value) <= bound and all(admit(item) is not None for item in value)
         )
 
     fields = {
         "team_id": lambda value: value == canonical,
-        "routines": items(routine_contract.canonical_routine_view),
-        "runs": items(routine_contract.canonical_run_view),
+        "routines": items(routine_contract.canonical_routine_view, routine_contract.MAX_ROUTINES),
+        "runs": items(routine_contract.canonical_run_view, routine_contract.MAX_ROUTINES),
+        # Held runs' incidents, which outlive a deleted Routine, each settled through its recovery card (ADR-0092).
+        "incidents": items(routine_contract.canonical_incident_view, routine_contract.MAX_UNRESOLVED_INCIDENTS),
     }
     return _projected(response, _exact(fields))
 
@@ -105,11 +104,45 @@ def stop(team_id: object, run_id: object) -> team.TeamResponse:
     return _run_decision(team_id, run_id, "stop", {}, "stopped")
 
 
-def resolve(team_id: object, run_id: object, body: object) -> team.TeamResponse:
-    """A Supervisor's informed resolution of an uncertain run's exact batch."""
-    fingerprint = (
-        body.get("batch_fingerprint") if isinstance(body, dict) and set(body) == {"batch_fingerprint"} else None
-    )
-    if not isinstance(fingerprint, str) or _HEX64_RE.fullmatch(fingerprint) is None:
-        raise team.TeamRequestError("Routine resolution is invalid")
-    return _run_decision(team_id, run_id, "resolve", {"batch_fingerprint": fingerprint}, "resolved")
+def _bound(team_id: str, incident_id: str, admit: Callable[[object], dict[str, object] | None]):
+    """A card view that names exactly the Team and incident it was asked for."""
+
+    def bound(body: dict[str, object]) -> dict[str, object] | None:
+        admitted = admit(body)
+        if admitted is None or (admitted["team_id"], admitted["incident_id"]) != (team_id, incident_id):
+            return None
+        return admitted
+
+    return bound
+
+
+def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
+    """Open a held run's recovery card for the authenticated person (ADR-0092 section 7)."""
+    canonical = team.canonical_team_id(team_id)
+    incident = _id(incident_id, "Routine incident")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/card", {})
+    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card))
+
+
+def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
+    """Answer one open recovery card once with Verificar, Pular, or Pausar."""
+    canonical = team.canonical_team_id(team_id)
+    incident = _id(incident_id, "Routine incident")
+    answer = routine_contract.canonical_card_answer_request(body)
+    if answer is None:
+        raise team.TeamRequestError("Routine card answer is invalid")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
+    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
+
+
+def resume(team_id: object, routine_id: object) -> team.TeamResponse:
+    """Turn a paused Routine's dispatch back on; an unresolved incident still holds it."""
+    canonical = team.canonical_team_id(team_id)
+    routine = _id(routine_id, "Routine")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/{routine}/resume", {})
+    fields = {
+        "team_id": lambda value: value == canonical,
+        "routine_id": lambda value: value == routine,
+        "paused": lambda value: value is False,
+    }
+    return _projected(response, _exact(fields))

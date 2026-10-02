@@ -24,6 +24,9 @@ from routine import manage
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
 ROUTINE = VECTORS["routine"]["valid"][0]
 RUN = VECTORS["run"]["valid"][1]
+INCIDENT = VECTORS["incident"]["valid"][0]
+CARD = {**VECTORS["card"]["valid"][0], "incident_id": "c" * 32}
+ANSWERED = {**VECTORS["card_answer"]["valid"][0], "incident_id": "c" * 32}
 TRACE = "a" * 32
 ID = "c" * 32
 
@@ -51,13 +54,19 @@ class RoutineManageTests(unittest.TestCase):
         return mock.patch.object(transport, "_call", return_value=response)
 
     def test_each_answer_is_admitted_only_in_its_view_and_errors_carry_only_a_safe_code(self) -> None:
-        listed = {"team_id": "team_1", "routines": [ROUTINE], "runs": [RUN]}
+        listed = {"team_id": "team_1", "routines": [ROUTINE], "runs": [RUN], "incidents": [INCIDENT]}
         with self.call(answer(listed)):
             self.assertEqual(manage.list_routines("team_1").body, listed)
         for untraced in (team.TeamResponse(200, dict(listed)), team.TeamResponse(200, {**listed, "trace_id": "x"})):
             with self.subTest(untraced=untraced), self.call(untraced):
                 self.assertEqual(manage.list_routines("team_1").body, {"code": "routine-response-invalid"})
-        for invalid in ({**listed, "runs": [{**RUN, "status": "running"}]}, {**listed, "routines": [ROUTINE] * 9}):
+        for invalid in (
+            {**listed, "runs": [{**RUN, "status": "running"}]},
+            {**listed, "routines": [ROUTINE] * 9},
+            {**listed, "incidents": [INCIDENT] * 33},
+            {**listed, "incidents": [{**INCIDENT, "status": "unresolved"}]},
+            {key: value for key, value in listed.items() if key != "incidents"},
+        ):
             with self.subTest(invalid=invalid), self.call(answer(invalid)):
                 self.assertEqual(manage.list_routines("team_1").status, 502)
         with self.call(answer({"team_id": "team_1", "routine_id": ID, "deleted": False})) as call:
@@ -68,14 +77,30 @@ class RoutineManageTests(unittest.TestCase):
         with self.call(answer({"team_id": "team_1", "run_id": ID, "stopped": True})) as call:
             self.assertTrue(manage.stop("team_1", ID).body["stopped"])
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{ID}/stop", {})
-        with self.call(answer({"team_id": "team_1", "run_id": ID, "resolved": True})) as call:
-            self.assertTrue(manage.resolve("team_1", ID, {"batch_fingerprint": "e" * 64}).body["resolved"])
+        # A recovery card and its answer are admitted only for exactly the Team and incident asked for.
+        with self.call(answer(CARD)) as call:
+            self.assertEqual(manage.open_card("team_1", ID).body, CARD)
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/card", {})
+        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "choices": []}):
+            with self.subTest(card=foreign), self.call(answer(foreign)):
+                self.assertEqual(manage.open_card("team_1", ID).status, 502)
+        chosen = {"nonce": CARD["nonce"], "choice": "verify"}
+        with self.call(answer(ANSWERED)) as call:
+            self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
+        with self.call(answer({**ANSWERED, "status": "skipped"})):
+            self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
+        with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": False})) as call:
+            self.assertFalse(manage.resume("team_1", ID).body["paused"])
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/{ID}/resume", {})
+        with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": True})):
+            self.assertEqual(manage.resume("team_1", ID).status, 502)
         with self.call(answer({"team_id": "team_1", "run_id": "d" * 32, "stopped": True})):
             self.assertEqual(manage.stop("team_1", ID).status, 502)
         for error, expected in (
             (
-                answer({"code": "routine-run-uncertain", "error": "x", "trace_id": TRACE}, 409),
-                (409, "routine-run-uncertain"),
+                answer({"code": "routine-card-stale", "error": "x", "trace_id": TRACE}, 409),
+                (409, "routine-card-stale"),
             ),
             (answer({"code": "Bad Code", "error": "private detail"}, 500), (500, "routine-request-failed")),
             (answer({"detail": "team unavailable"}, 302), (502, "routine-request-failed")),
@@ -91,8 +116,11 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.list_routines("Team 1"),
                 lambda: manage.delete("team_1", "../x"),
                 lambda: manage.stop("team_1", "x"),
-                lambda: manage.resolve("team_1", ID, {"batch_fingerprint": "x"}),
-                lambda: manage.resolve("team_1", ID, []),
+                lambda: manage.open_card("team_1", "x"),
+                lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "skip"}),
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
+                lambda: manage.answer_card("team_1", ID, []),
+                lambda: manage.resume("team_1", "x"),
             ):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
@@ -107,7 +135,9 @@ class RoutineRouteTests(unittest.TestCase):
         local = FastAPI()
         routine_http.register(local, "local", mock.AsyncMock())
         # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route.
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 7)
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 9)
+        # The retired release of an uncertain run stays absent.
+        self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
         self.assertFalse(any("proposals" in route.path for route in local.routes))
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
@@ -115,15 +145,21 @@ class RoutineRouteTests(unittest.TestCase):
             list_routines=mock.Mock(return_value=ok),
             delete=mock.Mock(return_value=ok),
             stop=mock.Mock(return_value=ok),
-            resolve=mock.Mock(return_value=ok),
+            resume=mock.Mock(return_value=ok),
+            open_card=mock.Mock(return_value=ok),
+            answer_card=mock.Mock(return_value=ok),
         ):
+            chosen = {"nonce": "c" * 32, "choice": "pause"}
             responses = [
                 routine_http.routines_list("team_1"),
                 asyncio.run(routine_http.routine_delete("team_1", ID)),
                 asyncio.run(routine_http.routine_stop("team_1", ID)),
-                asyncio.run(routine_http.routine_resolve("team_1", ID, request({"batch_fingerprint": "e" * 64}))),
+                asyncio.run(routine_http.routine_resume("team_1", ID)),
+                asyncio.run(routine_http.routine_card("team_1", ID)),
+                asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen))),
             ]
-            manage.resolve.assert_called_once_with("team_1", ID, {"batch_fingerprint": "e" * 64})
+            manage.answer_card.assert_called_once_with("team_1", ID, chosen)
+            manage.open_card.assert_called_once_with("team_1", ID)
         for response in responses:
             self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
 
