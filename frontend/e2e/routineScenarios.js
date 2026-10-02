@@ -30,42 +30,81 @@ const ROUTINE = Object.freeze({
   paused: false,
 });
 
-const id = (digit) => digit.repeat(32);
+// Every fixture text in the preview's interface language, so a Routine's name and request read as the Admin does.
+export const ROUTINE_TEXT = Object.freeze({
+  en: {
+    names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup"],
+    quotes: ["Keep checking my DNS records nonstop, up to 500 times a day", "Every Sunday at 8, update the www record", "Every day at 9, check my certificates", "On the 1st of every month, clean up old DNS records"],
+    capQuestion: "Which daily run limit do you prefer?",
+    capLabel: "Up to {cap} runs a day",
+    capReply: "Done: it runs every 5 s after each run, up to {cap} a day.",
+  },
+  pt: {
+    names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS"],
+    quotes: ["Fique conferindo meus registros DNS sem parar, até 500 vezes por dia", "Todo domingo às 8h, atualize o registro www", "Todo dia às 9h, confira meus certificados", "No dia 1 de cada mês, limpe registros DNS antigos"],
+    capQuestion: "Qual limite diário de execuções você prefere?",
+    capLabel: "Até {cap} execuções por dia",
+    capReply: "Pronto: ela roda a cada 5 s após cada execução, até {cap} por dia.",
+  },
+  es: {
+    names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS"],
+    quotes: ["Sigue revisando mis registros DNS sin parar, hasta 500 veces al día", "Cada domingo a las 8, actualiza el registro www", "Todos los días a las 9, revisa mis certificados", "El día 1 de cada mes, limpia los registros DNS antiguos"],
+    capQuestion: "¿Qué límite diario de ejecuciones prefieres?",
+    capLabel: "Hasta {cap} ejecuciones al día",
+    capReply: "Listo: se ejecuta cada 5 s tras cada ejecución, hasta {cap} al día.",
+  },
+  zh: {
+    names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理"],
+    quotes: ["不停地检查我的 DNS 记录，每天最多 500 次", "每周日 8 点，更新 www 记录", "每天 9 点，检查我的证书", "每月 1 日，清理旧的 DNS 记录"],
+    capQuestion: "你希望每天最多运行多少次？",
+    capLabel: "每天最多 {cap} 次",
+    capReply: "好了：每次运行结束 5 秒后再次运行，每天最多 {cap} 次。",
+  },
+  fr: {
+    names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel"],
+    quotes: ["Vérifie mes enregistrements DNS en continu, jusqu’à 500 fois par jour", "Chaque dimanche à 8 h, mets à jour l’enregistrement www", "Tous les jours à 9 h, vérifie mes certificats", "Le 1er de chaque mois, nettoie les anciens enregistrements DNS"],
+    capQuestion: "Quelle limite quotidienne d’exécutions préférez-vous ?",
+    capLabel: "Jusqu’à {cap} exécutions par jour",
+    capReply: "C’est fait : elle s’exécute toutes les 5 s après chaque exécution, jusqu’à {cap} par jour.",
+  },
+  de: {
+    names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung"],
+    quotes: ["Prüfe meine DNS-Einträge ununterbrochen, bis zu 500-mal am Tag", "Jeden Sonntag um 8 Uhr den www-Eintrag aktualisieren", "Jeden Tag um 9 Uhr meine Zertifikate prüfen", "Am 1. jedes Monats alte DNS-Einträge bereinigen"],
+    capQuestion: "Welches tägliche Ausführungslimit bevorzugst du?",
+    capLabel: "Bis zu {cap} Ausführungen pro Tag",
+    capReply: "Erledigt: Sie läuft alle 5 s nach jeder Ausführung, bis zu {cap} pro Tag.",
+  },
+  ja: {
+    names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理"],
+    quotes: ["DNS レコードを休まず確認して、1 日最大 500 回まで", "毎週日曜 8 時に www レコードを更新して", "毎日 9 時に証明書を確認して", "毎月 1 日に古い DNS レコードを整理して"],
+    capQuestion: "1 日の実行上限はどれにしますか？",
+    capLabel: "1 日最大 {cap} 回",
+    capReply: "完了：各実行の 5 秒後に再実行し、1 日最大 {cap} 回です。",
+  },
+  ar: {
+    names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري"],
+    quotes: ["واصل فحص سجلات DNS دون توقف، حتى 500 مرة يوميًا", "كل يوم أحد الساعة 8، حدّث سجل www", "كل يوم الساعة 9، افحص شهاداتي", "في اليوم الأول من كل شهر، نظّف سجلات DNS القديمة"],
+    capQuestion: "ما الحد اليومي لعمليات التشغيل الذي تفضّله؟",
+    capLabel: "حتى {cap} تشغيل يوميًا",
+    capReply: "تم: يعمل كل 5 ث بعد كل تشغيل، حتى {cap} يوميًا.",
+  },
+});
 
-// The continuous Routine created from chat, healthy and rolling its runs up per minute.
-const CONTINUOUS = Object.freeze({
-  ...ROUTINE,
-  routine_id: id('1'),
-  quote: 'Fique conferindo meus registros DNS sem parar, até 500 vezes por dia',
-  schedule: { kind: 'continuous', gap: 5, cap: 500 },
-});
-// A weekly Routine whose run is held for recovery.
-const HELD = Object.freeze({
-  ...ROUTINE,
-  routine_id: id('2'),
-  name: 'Weekly DNS update',
-  quote: 'Todo domingo às 8h, atualize o registro www',
-  schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
-  next_run_at: '2026-10-04T11:00:00Z',
-});
-// A daily Routine its failures paused; nothing holds it, so it resumes from the sidebar or its last row.
-const PAUSED = Object.freeze({
-  ...ROUTINE,
-  routine_id: id('3'),
-  name: 'Daily certificates',
-  quote: 'Todo dia às 9h, confira meus certificados',
-  schedule: { kind: 'daily', time: '09:00' },
-  paused: true,
-});
-// A Routine a person paused from its card; its held run still waits for a decision.
-const PAUSED_HELD = Object.freeze({
-  ...ROUTINE,
-  routine_id: id('4'),
-  name: 'Monthly cleanup',
-  quote: 'No dia 1 de cada mês, limpe registros antigos',
-  schedule: { kind: 'monthly', day: 1, time: '10:00' },
-  paused: true,
-});
+const id = (digit) => digit.repeat(32);
+const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
+
+// The continuous Routine created from chat, healthy and rolling its runs up per minute; a weekly Routine whose run is
+// held for recovery; a daily Routine its failures paused, which nothing holds; and a monthly one a person paused from
+// its card while its held run still waits for a decision.
+function routines(locale) {
+  const { names, quotes } = textFor(locale);
+  return [
+    { ...ROUTINE, routine_id: id('1'), schedule: { kind: 'continuous', gap: 5, cap: 500 } },
+    { ...ROUTINE, routine_id: id('2'), schedule: { kind: 'weekly', weekday: 6, time: '08:00' }, next_run_at: '2026-10-04T11:00:00Z' },
+    { ...ROUTINE, routine_id: id('3'), schedule: { kind: 'daily', time: '09:00' }, paused: true },
+    { ...ROUTINE, routine_id: id('4'), schedule: { kind: 'monthly', day: 1, time: '10:00' }, paused: true },
+  ].map((routine, index) => ({ ...routine, name: names[index], quote: quotes[index] }));
+}
 
 const HELD_RUN = id('5');
 const PAUSED_RUN = id('6');
@@ -104,7 +143,7 @@ function defined(routine) {
 const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']];
 
 // The transcript, oldest first: one row of every Routine notice the owner validates.
-function history() {
+function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD]) {
   return [
     row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: '2026-10-01T11:58:00Z' }),
     row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: '2026-10-01T11:58:30Z' }),
@@ -120,12 +159,14 @@ function history() {
   ];
 }
 
-export function routineLifecycleStart() {
+export function routineLifecycleStart(locale = 'en') {
+  const listed = routines(locale);
+  const [, HELD, , PAUSED_HELD] = listed;
   return {
-    routines: [CONTINUOUS, HELD, PAUSED, PAUSED_HELD],
+    routines: listed,
     runs: [],
     incidents: [incident(HELD_RUN, HELD, 'update-dns-record'), incident(PAUSED_RUN, PAUSED_HELD, 'delete-dns-record')],
-    history: history(),
+    history: history(listed),
   };
 }
 
@@ -217,39 +258,40 @@ export function routineRecoveryRoutes(state, method, path, body) {
   return null;
 }
 
-// The continuous request with no daily cap, asked as Brain asks it: each option names its daily cap.
-export const CAP_CLARIFICATION = Object.freeze({
-  question: 'Qual limite diário de execuções você prefere?',
-  options: [
-    { label: 'Até 100 execuções por dia', description: '' },
-    { label: 'Até 500 execuções por dia', description: '' },
-    { label: 'Até 1000 execuções por dia', description: '' },
-  ],
-  default_index: 0,
-});
+// The continuous request with no daily cap, asked as Brain asks it in the interface language: each option names its cap.
+const CAP_OPTIONS = [100, 500, 1000];
 
-const CAPS = { 'Até 100 execuções por dia': 100, 'Até 500 execuções por dia': 500, 'Até 1000 execuções por dia': 1000 };
+export function capClarification(locale = 'en') {
+  const text = textFor(locale);
+  return {
+    question: text.capQuestion,
+    options: CAP_OPTIONS.map((cap) => ({ label: text.capLabel.replace('{cap}', String(cap)), description: '' })),
+    default_index: 0,
+  };
+}
 
 /**
  * The daily-cap question of a continuous request, then the Routine its answer creates with its created notice; any
  * other answer is asked again. Returns the chat frame Team would send.
  */
 export function capReply(state, message, teamName) {
-  const answer = message.match(/\n(?:Resposta|Answer): (.+)$/u)?.[1];
+  const text = textFor(state.locale);
+  const asked = capClarification(state.locale);
   const base = { type: 'done', team_id: 'marketing', team_name: teamName };
-  const cap = CAPS[answer];
-  if (!cap) {
+  const chosen = asked.options.findIndex((option) => message.endsWith(`: ${option.label}`));
+  if (chosen < 0) {
     return {
       ...base,
-      reply: `${CAP_CLARIFICATION.question}\n\n${CAP_CLARIFICATION.options
-        .map((option, index) => `${index + 1}. ${option.label}${index === CAP_CLARIFICATION.default_index ? ' ✓' : ''}`)
+      reply: `${asked.question}\n\n${asked.options
+        .map((option, index) => `${index + 1}. ${option.label}${index === asked.default_index ? ' ✓' : ''}`)
         .join('\n')}`,
-      clarification: structuredClone(CAP_CLARIFICATION),
+      clarification: asked,
     };
   }
+  const cap = CAP_OPTIONS[chosen];
   state.sequence += 1;
   const routine = {
-    ...CONTINUOUS,
+    ...routines(state.locale)[0],
     routine_id: `9${state.sequence.toString(16)}`.padStart(32, '0'),
     quote: message.split('\n')[0].slice(0, 200),
     schedule: { kind: 'continuous', gap: 5, cap },
@@ -257,5 +299,5 @@ export function capReply(state, message, teamName) {
   state.routines = [...state.routines, routine];
   const noticeId = `7${state.sequence.toString(16)}`.padStart(32, '0');
   state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { run: false })];
-  return { ...base, reply: `Pronto: a rotina roda a cada 5 s após cada execução, até ${cap} por dia.`, clarification: null };
+  return { ...base, reply: text.capReply.replace('{cap}', String(cap)), clarification: null };
 }

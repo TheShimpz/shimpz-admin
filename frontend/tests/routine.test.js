@@ -23,6 +23,11 @@ import {
   parseRoutineView,
   isSteps,
   parseRunView,
+  pauseRoutine,
+  pointerWords,
+  humanizeId,
+  literalWords,
+  routineStatus,
   readRunDiagnostics,
   resumeRoutine,
   resumeRoutineIntegrations,
@@ -617,4 +622,46 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
     );
   }
   await assert.rejects(readRunDiagnostics(fetcher([]).fetch, 'team_1', '../x'), (error) => error.code === 'routine-request-invalid');
+});
+
+test('a plan reads in words: ids, result paths, and literal previews', () => {
+  assert.equal(humanizeId('list-dns-records'), 'List DNS records');
+  assert.equal(humanizeId('zone_id'), 'Zone ID');
+  assert.equal(humanizeId('dns'), 'DNS');
+  assert.equal(humanizeId('---'), '---');
+  const plan = routineMessages.pt.plan;
+  assert.equal(pointerWords('/zones/0/id', plan), 'zones › primeiro › id');
+  assert.equal(pointerWords('/items/2/a~1b~0c', plan), 'items › item 3 › a/b~c');
+  assert.equal(literalWords('"example.com"'), 'example.com');
+  assert.equal(literalWords('1'), '1');
+  assert.equal(literalWords('{"a":1}'), '{"a":1}');
+  assert.equal(literalWords('not json'), 'not json');
+});
+
+test("a Routine's status is its most urgent one", () => {
+  const routine = { routine_id: 'a'.repeat(32), schedule: { kind: 'daily', time: '09:00' }, paused: false, deleting: false, needs_reconfirm: false };
+  const run = (status) => ({ run_id: 'b'.repeat(32), routine_id: routine.routine_id, status });
+  const incident = { incident_id: 'c'.repeat(32), routine_id: routine.routine_id };
+  assert.equal(routineStatus(routine), 'healthy');
+  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5, cap: 10 } }), 'continuous');
+  assert.equal(routineStatus(routine, [run('leased')]), 'running');
+  assert.equal(routineStatus(routine, [run('frozen')]), 'waiting');
+  assert.equal(routineStatus({ ...routine, paused: true }, [run('frozen')]), 'paused');
+  assert.equal(routineStatus({ ...routine, paused: true, needs_reconfirm: true }), 'reconfirm');
+  assert.equal(routineStatus({ ...routine, paused: true }, [], [incident]), 'recovery');
+  assert.equal(routineStatus(routine, [run('held')]), 'recovery');
+  assert.equal(routineStatus({ ...routine, deleting: true }, [], [incident]), 'deleting');
+  assert.equal(routineStatus(routine, [{ ...run('leased'), routine_id: 'd'.repeat(32) }]), 'healthy');
+});
+
+test('Pausar and Retomar admit only exactly that Routine in the asked state', async () => {
+  const routineId = 'a'.repeat(32);
+  let api = fetcher([[200, { team_id: 'team_1', routine_id: routineId, paused: true }]]);
+  assert.equal(await pauseRoutine(api.fetch, 'team_1', routineId), true);
+  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/${routineId}/pause`);
+  assert.equal(api.calls[0].init.method, 'POST');
+  await assert.rejects(
+    pauseRoutine(fetcher([[200, { team_id: 'team_1', routine_id: routineId, paused: false }]]).fetch, 'team_1', routineId),
+    (error) => error.code === 'routine-response-invalid',
+  );
 });

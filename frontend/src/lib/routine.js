@@ -333,17 +333,79 @@ export function stopRoutineRun(fetcher, teamId, runId) {
   return decideRun(fetcher, teamId, runId, 'stop', {}, 'stopped');
 }
 
-/** Turn a paused Routine's dispatch back on; an unresolved incident still holds it until its card settles it. */
-export async function resumeRoutine(fetcher, teamId, routineId) {
-  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/resume`), {
+async function setPaused(fetcher, teamId, routineId, paused) {
+  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/${paused ? 'pause' : 'resume'}`), {
     method: 'POST',
     body: JSON.stringify({}),
   });
   if (!exact(body, ['team_id', 'routine_id', 'paused']) || body.team_id !== teamId || body.routine_id !== routineId
-    || body.paused !== false) {
+    || body.paused !== paused) {
     throw new RoutineError('routine-response-invalid');
   }
-  return false;
+  return paused;
+}
+
+/** Turn a paused Routine's dispatch back on; an unresolved incident still holds it until its card settles it. */
+export function resumeRoutine(fetcher, teamId, routineId) {
+  return setPaused(fetcher, teamId, routineId, false);
+}
+
+/** Turn a Routine's dispatch off until it is resumed; a run already going finishes. */
+export function pauseRoutine(fetcher, teamId, routineId) {
+  return setPaused(fetcher, teamId, routineId, true);
+}
+
+/**
+ * How a listed Routine stands for the person, most urgent first: being deleted, held for recovery, waiting to be asked
+ * again, paused, waiting for an approval, running now, or idle between runs (continuous or on its schedule).
+ */
+export function routineStatus(routine, runs = [], incidents = []) {
+  const own = runs.filter((run) => run.routine_id === routine.routine_id);
+  if (routine.deleting) return 'deleting';
+  if (incidents.some((item) => item.routine_id === routine.routine_id) || own.some((run) => run.status === 'held')) {
+    return 'recovery';
+  }
+  if (routine.needs_reconfirm) return 'reconfirm';
+  if (routine.paused) return 'paused';
+  if (own.some((run) => run.status === 'frozen')) return 'waiting';
+  if (own.length) return 'running';
+  return routine.schedule.kind === 'continuous' ? 'continuous' : 'healthy';
+}
+
+/** Statuses that need the person, shown in words beside the Routine. */
+export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'waiting']);
+
+const ACRONYMS = new Set(['api', 'dns', 'http', 'id', 'ip', 'ssl', 'tls', 'url']);
+
+/** A machine identifier as words: "list-dns-records" reads "List DNS records", "zone_id" reads "Zone ID". */
+export function humanizeId(value) {
+  const words = String(value).split(/[-_.]+/u).filter(Boolean)
+    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.toLowerCase()));
+  if (words.length === 0) return String(value);
+  const [first, ...rest] = words;
+  return [first === first.toUpperCase() ? first : first[0].toUpperCase() + first.slice(1), ...rest].join(' ');
+}
+
+/** A JSON Pointer into a step's result as words: "/zones/0/id" reads "zones › first › id". */
+export function pointerWords(pointer, copy) {
+  return pointer.split('/').slice(1)
+    .map((segment) => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
+    .map((segment) => {
+      if (!/^(0|[1-9][0-9]{0,8})$/.test(segment)) return segment;
+      const index = Number(segment);
+      return index === 0 ? copy.first : fill(copy.item, { n: index + 1 });
+    })
+    .join(' › ');
+}
+
+/** A literal's preview as plain words: a JSON string reads without its quotes; anything else stays as Team showed it. */
+export function literalWords(preview) {
+  try {
+    const value = JSON.parse(preview);
+    return typeof value === 'string' ? value : preview;
+  } catch {
+    return preview;
+  }
 }
 
 // A held run's recovery card (ADR-0092 section 7): exactly Verificar, Pular, and Pausar, the recommended one first.

@@ -3957,7 +3957,7 @@ async function routeRoutines(
   page,
   { others = [], listFailsAfterDelete = false, runEnding = false } = {},
 ) {
-  const calls = { deletes: [], stops: [], resumes: [] };
+  const calls = { deletes: [], stops: [], resumes: [], pauses: [] };
   // The Routine is paused, and an earlier run of it is held for recovery (ADR-0092).
   let routines = [{ ...ROUTINE_VIEW, paused: true }, ...others];
   let runs = [];
@@ -3983,6 +3983,12 @@ async function routeRoutines(
     calls.resumes.push(route.request().postDataJSON());
     routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: false } : routine));
     await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
+  });
+  await page.route('**/api/teams/marketing/routines/*/pause', async (route) => {
+    const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
+    calls.pauses.push(route.request().postDataJSON());
+    routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: true } : routine));
+    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: true } });
   });
   await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
     const routineId = new URL(route.request().url()).pathname.split('/').at(-1);
@@ -4245,7 +4251,7 @@ test.describe('Team order', () => {
 test.describe('Team Routines', () => {
   test.use({ timezoneId: 'America/Sao_Paulo' });
 
-  test('a Routine asked for in chat is created at once, announced, and joins the Team tree', async ({ page }) => {
+  test('a Routine asked for in chat is created at once, announced, and joins the Team list', async ({ page }) => {
     await routeScenario(page, 'ready');
     await page.goto('/chat/?team=marketing');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -4258,49 +4264,53 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    const node = navigation.getByRole('group', { name: 'Routines' })
-      .getByRole('button', { name: /Every day at 9, list my DNS zones/ });
-    await expect(node).toHaveCount(1);
-    // Its details let the Supervisor inspect the plan: each step's Action and its Stored Inputs by name only.
-    await node.click();
-    const steps = navigation.getByRole('list', { name: 'Steps' });
-    await expect(steps).toContainText('list-zones');
+    const item = navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: /Daily DNS zones/ });
+    await expect(item).toHaveCount(1);
+    // Its panel shows the plan: each step's Assistant and Action, and its saved keys by name only.
+    await item.click();
+    const panel = page.getByRole('dialog', { name: 'Daily DNS zones' });
+    const steps = panel.getByRole('list', { name: 'Steps' });
+    await expect(steps).toContainText('List zones');
     await expect(steps).toContainText('api-token');
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
 
     // The created notice is in the Team's transcript, with the browser's timezone the message was sent with.
     await page.reload();
     const created = page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' });
     await expect(created).toContainText('America/Sao_Paulo');
-    await expect(created.getByRole('list', { name: 'Steps' })).toContainText('list-zones');
+    await expect(created.getByRole('list', { name: 'Steps' })).toContainText('List zones');
   });
 
-  test('a Team\'s own Routines button opens its tree from pointer or keyboard and says when one needs attention', async ({ page }) => {
+  test('a Team\'s own Routines button opens its list from pointer or keyboard and says when one needs attention', async ({ page }) => {
     await routeReadyChat(page);
     // A paused Routine with a held run: the button's name says a Routine needs the person.
     await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     const button = navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' });
-    const tree = navigation.getByRole('group', { name: 'Routines' });
+    const list = navigation.getByRole('group', { name: 'Routines' });
     await expect(button).toHaveAttribute('aria-expanded', 'false');
-    await expect(tree).toHaveCount(0);
+    await expect(list).toHaveCount(0);
     await button.click();
     await expect(button).toHaveAttribute('aria-expanded', 'true');
-    await expect(tree.getByRole('button', { name: new RegExp(ROUTINE_VIEW.quote) })).toHaveCount(1);
+    // The item names the Routine, when it runs, and in words why it needs the person.
+    const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
+    await expect(item).toContainText('Needs recovery');
     await button.click();
-    await expect(tree).toHaveCount(0);
-    // From the keyboard: focus stays on the button while Enter and Space open and close the tree.
+    await expect(list).toHaveCount(0);
+    // From the keyboard: focus stays on the button while Enter and Space open and close the list.
     await button.focus();
     await page.keyboard.press('Enter');
-    await expect(tree).toHaveCount(1);
+    await expect(list).toHaveCount(1);
     await expect(button).toBeFocused();
     await page.keyboard.press(' ');
-    await expect(tree).toHaveCount(0);
+    await expect(list).toHaveCount(0);
     await expect(button).toBeFocused();
-    // The Team's actions menu still offers the same tree.
+    // The Team's actions menu still offers the same list.
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(tree).toHaveCount(1);
+    await expect(list).toHaveCount(1);
     await expect(button).toHaveAttribute('aria-expanded', 'true');
   });
 
@@ -4316,41 +4326,79 @@ test.describe('Team Routines', () => {
     await expect(navigation.getByRole('button', { name: /^Routines for (?!Marketing)/ })).toHaveCount(0);
   });
 
-  test('a Team\'s Routines open as a tree under it: a paused one resumes, and deletion is confirmed in place', async ({ page }) => {
-    await routeReadyChat(page);
-    // The refresh after the deletion fails; the confirmed deletion must still leave the tree.
+  test('a Routine opens in a panel from the keyboard: it resumes, pauses, shows its runs, and is deleted after a confirmation', async ({ page }) => {
+    const failed = 'c'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${failed}:routine`,
+          kind: 'routine-run',
+          notice_id: failed,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: failed,
+          outcome: 'failed',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { code: 'assistant-rpc-failed', actions: [] },
+          version: 1,
+        }],
+        before: null,
+      },
+    });
+    // The refresh after the deletion fails; the confirmed deletion must still leave the list.
     const calls = await routeRoutines(page, { listFailsAfterDelete: true });
+    const diagnostics = [];
+    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
+      diagnostics.push(new URL(route.request().url()).pathname);
+      await route.fulfill({ json: { team_id: 'marketing', run_id: failed, diagnostics: [] } });
+    });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await page.getByRole('menuitem', { name: 'Routines' }).click();
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const list = navigation.getByRole('group', { name: 'Routines' });
+    const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
+    await expect(item).toContainText('Every day at 09:00');
+    await item.focus();
+    await page.keyboard.press('Enter');
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect(panel).toContainText(ROUTINE_VIEW.quote);
+    await expect(panel).toContainText('America/Sao_Paulo');
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Escape closes the panel and returns focus to the Routine it was opened from.
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(item).toBeFocused();
+    await item.click();
 
-    const tree = navigation.getByRole('group', { name: 'Routines' });
-    await expect(tree).toBeVisible();
-    const node = tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ });
-    await expect(node).toContainText('Every day at 09:00');
-    await expect(node).toHaveAttribute('aria-expanded', 'false');
-    const detail = page.locator(`#${await node.getAttribute('aria-controls')}`);
-    await expect(detail).toHaveCount(1);
-    await expect(detail).toBeHidden();
-    await node.click();
-    await expect(node).toHaveAttribute('aria-expanded', 'true');
-    await expect(tree).toContainText('America/Sao_Paulo');
     // Resume turns dispatch back on; the held run's incident still holds the Routine until its card settles it.
-    await tree.getByRole('button', { name: 'Resume' }).click();
-    await expect(tree.getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    await expect(panel).toContainText('A run of this Routine is held for recovery.');
+    await panel.getByRole('button', { name: 'Resume' }).click();
+    await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(calls.resumes).toEqual([{}]);
-    // The retired release of an uncertain run is gone.
-    await expect(tree.getByRole('button', { name: 'I checked; release it' })).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Pause' }).click();
+    await expect(panel.getByRole('button', { name: 'Resume' })).toBeVisible();
+    expect(calls.pauses).toEqual([{}]);
 
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    await expect(tree).toContainText('Delete this Routine? A run in progress is stopped.');
+    // A recent run opens its execution details.
+    await panel.getByRole('button', { name: 'Execution details' }).click();
+    const details = page.getByRole('dialog', { name: 'Execution details' });
+    await expect(details).toContainText('No failed attempts were recorded for this run.');
+    expect(diagnostics).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    await details.getByRole('button', { name: 'Close' }).click();
+    await expect(details).toHaveCount(0);
+
+    // Delete asks first; nothing is deleted until it is confirmed.
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel).toContainText('Delete this Routine? A run in progress is stopped.');
     expect(calls.deletes).toEqual([]);
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    // With no Routines left, the tree and its menu item disappear and focus returns to the Team's actions.
-    await expect(tree).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Cancel' }).click();
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(list).toHaveCount(0);
     expect(calls.deletes).toEqual(['DELETE']);
+    // With no Routines left, focus returns to the Team's actions, whose menu no longer offers Routines.
     await expect(navigation.getByRole('button', { name: 'Actions for Marketing' })).toBeFocused();
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
@@ -4362,36 +4410,34 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await page.getByRole('menuitem', { name: 'Routines' }).click();
-
-    const tree = navigation.getByRole('group', { name: 'Routines' });
-    const node = tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ });
-    await node.click();
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    await expect(tree).toContainText('Being deleted');
-    await expect(tree.getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    await expect(node).toBeFocused();
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const list = navigation.getByRole('group', { name: 'Routines' });
+    await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel).toContainText('Being deleted');
+    await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
     expect(calls.deletes).toEqual(['DELETE']);
   });
 
-  test('deleting one of several Routines moves focus to the node that takes its place', async ({ page }) => {
+  test('deleting one of several Routines leaves the others listed and focus on the Team\'s Routines', async ({ page }) => {
     await routeReadyChat(page);
-    const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), quote: 'Every Monday, check my certificates' };
+    const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check', quote: 'Every Monday, check my certificates' };
     await routeRoutines(page, { others: [weekly] });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await page.getByRole('menuitem', { name: 'Routines' }).click();
-
-    const tree = navigation.getByRole('group', { name: 'Routines' });
-    await tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ }).click();
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    await tree.getByRole('button', { name: 'Delete' }).click();
-    await expect(tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ })).toHaveCount(0);
-    await expect(tree.getByRole('button', { name: /Every Monday, check my certificates/ })).toBeFocused();
+    const button = navigation.getByRole('button', { name: /^Routines for Marketing/ });
+    await button.click();
+    const list = navigation.getByRole('group', { name: 'Routines' });
+    await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) })).toHaveCount(0);
+    await expect(list.getByRole('button', { name: /Certificate check/ })).toHaveCount(1);
+    await expect(button).toBeFocused();
   });
 
   test('Routine outcomes appear in the transcript, apart from the conversation', async ({ page }) => {

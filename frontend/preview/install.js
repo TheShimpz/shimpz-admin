@@ -16,7 +16,32 @@ function chosenScenario() {
   return SCENARIOS.includes(name) ? name : 'ready';
 }
 
-const scenario = createScenario(chosenScenario());
+// The interface language Admin will start in (i18n.js), so the scenario's own texts match it; after switching the
+// language, reload the preview to see the scenario in it.
+function chosenLocale() {
+  const supported = ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar'];
+  let stored = null;
+  try {
+    stored = localStorage.getItem('shimpz_lang');
+  } catch {
+    stored = null;
+  }
+  const candidates = [stored, ...(navigator.languages ?? [navigator.language])].filter(Boolean);
+  return candidates.map((code) => code.slice(0, 2).toLowerCase()).find((code) => supported.includes(code)) ?? 'en';
+}
+
+const scenario = createScenario(chosenScenario(), chosenLocale());
+// Switching the interface language reloads the preview, so the scenario's texts follow it.
+try {
+  const setItem = Storage.prototype.setItem;
+  Storage.prototype.setItem = function setPreviewItem(key, value) {
+    const changed = this === localStorage && key === 'shimpz_lang' && this.getItem(key) !== value;
+    setItem.call(this, key, value);
+    if (changed) location.reload();
+  };
+} catch {
+  // Without storage the language still switches; reload the preview to see the scenario in it.
+}
 // A saved Team order survives a reload of the preview tab, the way Admin keeps it; it is replayed through the
 // scenario's own validation, so a stale order is simply refused. The reorder failure scenarios always start fresh.
 const ORDER_KEY = scenario.name.startsWith('reorder-') ? null : `shimpz-preview-team-order:${scenario.name}`;
