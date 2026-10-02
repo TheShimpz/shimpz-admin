@@ -47,6 +47,11 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         for case in VECTORS["routine_schedule"]["daily_rate"]:
             self.assertEqual(str(routine_contract.daily_rate(case["schedule"])), case["rate"])
         self.assertEqual(routine_contract.daily_rate({"kind": "hourly", "every": 5}), Fraction(24, 5))
+        # A Routine's rolling cap is its whole daily rate, and its mode says how its runs are claimed.
+        self.assertEqual(routine_contract.daily_cap({"kind": "hourly", "every": 5}), 5)
+        self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5, "cap": 300}), 300)
+        self.assertEqual(routine_contract.run_mode({"kind": "continuous", "gap": 5, "cap": 300}), "continuous")
+        self.assertEqual(routine_contract.run_mode({"kind": "daily", "time": "09:00"}), "scheduled")
         views = {
             "routine": routine_contract.canonical_routine_view,
             "run": routine_contract.canonical_run_view,
