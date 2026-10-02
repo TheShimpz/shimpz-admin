@@ -8,7 +8,6 @@
   import {
     answerRoutineCard,
     answerRoutineChallenge,
-    CARD_CHOICES,
     fillRoutineCopy,
     openRoutineCard,
     openRoutineChallenge,
@@ -32,6 +31,9 @@
   // or a resumed run that froze again for its next approval.
   let ended = $state(false);
 
+  // The held run's recovery card (ADR-0092): Team's own card, opened for this person and shown with its choices in
+  // Team's order before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
+  let card = $state(null);
   let detail = $derived(entry.detail);
   let actions = $derived(
     (detail.actions ?? []).map(([assistant, action]) => `${assistant} · ${action}`).join(', '),
@@ -41,7 +43,7 @@
     switch (entry.outcome) {
       case 'done': return run.done;
       case 'recovered': return run.recovered;
-      case 'held': return heldWords();
+      case 'held': return heldWords(card ?? detail);
       case 'paused': return fillRoutineCopy(run.paused, { reason: run.pauseReasons[detail.reason] });
       case 'user-skipped': return run.userSkipped;
       case 'failed': return fillRoutineCopy(run.failed, { code: detail.code });
@@ -63,9 +65,10 @@
         });
     }
   });
-  function heldWords() {
-    if (detail.assistant_id === null) return copy.run.heldUnknown;
-    return fillRoutineCopy(copy.run.held, { assistant: detail.assistant_id, action: detail.action });
+  // The step a card names is Team's current one, which a stale transcript row may not show.
+  function heldWords(step = detail) {
+    if (step.assistant_id === null) return copy.run.heldUnknown;
+    return fillRoutineCopy(copy.run.held, { assistant: step.assistant_id, action: step.action });
   }
   function outcomeWords(status) {
     const run = copy.run;
@@ -79,22 +82,52 @@
     }[status] ?? run.failedOutcome;
   }
 
-  // The recovery card: each choice opens a fresh card and answers it once; Team binds it to this person and run.
+  // Set when a card is needed: at first, after each answer while the run is still held, and when the person retries
+  // an opening that failed; it never retries on its own.
+  let wanted = $state(true);
+  let recoverable = $derived((entry.outcome === 'held' || entry.outcome === 'paused') && !ended);
+
+  async function openCard() {
+    try {
+      card = await openRoutineCard(fetch, teamId, entry.runId);
+    } catch (error) {
+      card = null;
+      // A run already settled has nothing left to answer here; its newer notice replaces this row.
+      if (error?.code === 'routine-incident-unavailable') ended = true;
+      else result = routineErrorMessage(error, copy.errors);
+    }
+  }
+
+  $effect(() => {
+    if (recoverable && wanted && !working) {
+      wanted = false;
+      working = true;
+      void openCard().finally(() => { working = false; });
+    }
+  });
+
+  function unresolvedWords(verdict) {
+    return { policy: copy.card.policy, unquiesced: copy.card.unquiesced }[verdict] ?? copy.card.unproven;
+  }
+
   async function recover(choice) {
+    const answering = card;
     working = true;
     result = '';
     try {
-      const card = await openRoutineCard(fetch, teamId, entry.runId);
-      const answered = await answerRoutineCard(fetch, teamId, entry.runId, card, choice);
+      const answered = await answerRoutineCard(fetch, teamId, entry.runId, answering, choice);
       const run = copy.run;
       if (answered.status === 'skipped') result = run.userSkipped;
       else if (answered.status === 'paused') result = fillRoutineCopy(run.paused, { reason: run.pauseReasons.person });
-      else if (answered.status === null) result = copy.card.unproven;
+      else if (answered.status === null) result = unresolvedWords(answered.verdict);
       else result = fillRoutineCopy(run.continued, { outcome: outcomeWords(answered.status) });
       ended = answered.status !== null;
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
     } finally {
+      // The card was used or refused either way; while the run is still held, the next answer needs a fresh one.
+      card = null;
+      wanted = true;
       working = false;
     }
   }
@@ -187,18 +220,27 @@
   {#if result}
     <p class="result" role="status">{result}</p>
   {/if}
-  {#if (entry.outcome === 'held' || entry.outcome === 'paused') && !ended}
-    <div class="buttons">
-      {#each CARD_CHOICES as choice (choice)}
-        <Button
-          size="sm"
-          variant="secondary"
-          type="button"
-          disabled={working}
-          onclick={() => recover(choice)}
-        >{copy.card[choice]}</Button>
-      {/each}
-    </div>
+  {#if recoverable}
+    {#if card}
+      {#if entry.outcome === 'paused'}<p class="actions">{heldWords(card)}</p>{/if}
+      <!-- Pular's consequence is stated before any choice is made. -->
+      <p class="actions">{copy.card.skipConsequence}</p>
+      <div class="buttons">
+        {#each card.choices as choice (choice)}
+          <Button
+            size="sm"
+            variant={choice === card.recommended ? 'primary' : 'secondary'}
+            type="button"
+            disabled={working}
+            onclick={() => recover(choice)}
+          >{copy.card[choice]}</Button>
+        {/each}
+      </div>
+    {:else if !working}
+      <div class="buttons">
+        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>{copy.list.retry}</Button>
+      </div>
+    {/if}
   {:else if entry.outcome !== 'frozen' || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this row when it is delivered. -->
   {:else if waitingIntegration}

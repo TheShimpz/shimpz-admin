@@ -4389,7 +4389,7 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(3)).toContainText('Actions: shimpz-cloudflare · list-zones');
   });
 
-  test('a held run is settled from its transcript row with Verify, Skip, or Pause', async ({ page }) => {
+  test('a held run is settled from its transcript row through the card Team opened, in its order', async ({ page }) => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const row = (id, outcome, detail) => ({
@@ -4413,17 +4413,21 @@ test.describe('Team Routines', () => {
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
       opened.push(incidentId);
+      // The paused run's step has no verifier: Team recommends Pausar and puts it first.
+      const recommended = incidentId === paused ? 'pause' : 'verify';
       await route.fulfill({
         json: {
           team_id: 'marketing',
           incident_id: incidentId,
           routine_id: ROUTINE_VIEW.routine_id,
           revision: 1,
-          ...step,
+          // Team's card names its current step, which the transcript row may not show yet.
+          assistant_id: 'shimpz-cloudflare',
+          action: incidentId === held ? 'create-dns-record' : 'replace-dns-record',
           nonce: String(opened.length).repeat(32),
           expires_in: 300,
-          choices: ['verify', 'skip', 'pause'],
-          recommended: 'verify',
+          choices: recommended === 'pause' ? ['pause', 'verify', 'skip'] : ['verify', 'skip', 'pause'],
+          recommended,
         },
       });
     });
@@ -4441,25 +4445,28 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     await expect(rows).toHaveCount(2);
-    // Exactly three choices, one action each; there is no approval or other option.
-    for (const index of [0, 1]) {
-      await expect(rows.nth(index).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
-    }
-    // Verify that proves nothing keeps the run held and its choices available.
+    // Each row shows exactly three choices, one action each, in the order of the card Team opened, before any answer.
+    await expect(rows.nth(0).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect(rows.nth(1).getByRole('button')).toHaveText(['Pause', 'Verify', 'Skip']);
+    expect(answers).toEqual([]);
+    // The step shown is the card's, and Skip's consequence is stated before it is chosen.
+    await expect(rows.nth(0)).toContainText('create-dns-record');
+    await expect(rows.nth(0)).toContainText('Later runs continue.');
+    // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
     await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
-    await expect(rows.nth(0).getByRole('button', { name: 'Skip' })).toBeEnabled();
-    // Each answer uses a freshly opened card's nonce, once.
+    await expect(rows.nth(0).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
     await rows.nth(0).getByRole('button', { name: 'Skip' }).click();
     await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
     await rows.nth(1).getByRole('button', { name: 'Pause' }).click();
     await expect(rows.nth(1).getByRole('button')).toHaveCount(0);
-    expect(opened).toEqual([held, held, paused]);
-    expect(answers).toEqual([
-      { nonce: '1'.repeat(32), choice: 'verify' },
-      { nonce: '2'.repeat(32), choice: 'skip' },
-      { nonce: '3'.repeat(32), choice: 'pause' },
-    ]);
+    expect(new Set(opened)).toEqual(new Set([held, paused]));
+    // Every answer carries exactly the nonce of a card the row had shown, never one opened after the click.
+    const nonces = opened.map((_id, index) => String(index + 1).repeat(32));
+    expect(answers.map((answer) => answer.choice)).toEqual(['verify', 'skip', 'pause']);
+    for (const answer of answers) expect(nonces).toContain(answer.nonce);
+    const heldNonces = opened.flatMap((id, index) => (id === held ? [String(index + 1).repeat(32)] : []));
+    expect(answers.slice(0, 2).map((answer) => answer.nonce)).toEqual(heldNonces.slice(0, 2));
   });
 
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {

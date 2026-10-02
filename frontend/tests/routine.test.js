@@ -292,6 +292,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'held', detail: STEP },
     { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: null, action: null } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'policy' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { assistant_id: null, action: null, reason: 'evidence' } },
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: STEP },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
@@ -488,6 +490,8 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     ['skip', { ...answered, choice: 'skip', verdict: null, status: 'skipped' }],
     ['pause', { ...answered, choice: 'pause', verdict: null, status: 'paused' }],
     ['verify', { ...answered, verdict: 'inconclusive', status: null }],
+    ['verify', { ...answered, verdict: 'policy', status: null }],
+    ['verify', { ...answered, verdict: 'unquiesced', status: null }],
   ]) {
     api = fetcher([[200, body]]);
     assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, card, choice), body);
