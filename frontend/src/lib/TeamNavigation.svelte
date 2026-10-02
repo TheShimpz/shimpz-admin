@@ -117,6 +117,14 @@
     return $routineContext.get(teamId) ?? { routines: [], runs: [], incidents: [] };
   }
 
+  // A Team's Routines need the person when one is held for recovery, paused, or waiting to be asked again.
+  function routinesNeedAttention(teamId) {
+    const listed = teamRoutines(teamId);
+    return listed.incidents.length > 0 ||
+      listed.runs.some((run) => run.status === 'held') ||
+      listed.routines.some((routine) => routine.paused || routine.needs_reconfirm);
+  }
+
   // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
   let routineTeams = $derived(routines ? JSON.stringify($teamContext.teams.map((team) => team.id).sort()) : '[]');
 
@@ -412,6 +420,24 @@
                     <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>
                   {/snippet}
                 </ActionLink>
+                {#if routines && teamRoutines(team.id).routines.length > 0}
+                  {@const attention = routinesNeedAttention(team.id)}
+                  {@const routinesLabel = $t(attention ? 'teamNavigation.routinesAttention' : 'teamNavigation.routines', { team: team.name })}
+                  <Button
+                    class={['row-action', 'routines-action', 'glitch-host', treeOpen.has(team.id) && 'is-here']}
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    type="button"
+                    aria-label={routinesLabel}
+                    title={routinesLabel}
+                    aria-expanded={treeOpen.has(team.id)}
+                    onclick={() => toggleTree(team.id)}
+                  >
+                    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                    {#if attention}<span class="attention" aria-hidden="true"></span>{/if}
+                  </Button>
+                {/if}
                 <TeamActionsMenu
                   label={$t('teamNavigation.actions', { team: team.name })}
                   deleteLabel={copy.deleteTeam}
@@ -484,16 +510,14 @@
   }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
   .teams { gap: 2px; }
-  .row { --row-bg: var(--shimpz-color-bg); position: relative; isolation: isolate; display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-items: center; }
+  .row { --row-bg: var(--shimpz-color-bg); position: relative; isolation: isolate; display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .row::before { background-color: var(--row-bg); transition: background-color var(--shimpz-duration-fast) var(--shimpz-ease); }
   /* The selected Team keeps the hover treatment: the same tint and scanlines. */
   .row:hover, .row:focus-within, .is-selected > .row { --row-bg: var(--team-hover-bg); }
   .row:hover::before, .row:focus-within::before, .is-selected > .row::before { background-image: var(--team-scanlines); }
   .row:hover .monogram { animation: admin-glitch-icon 280ms steps(1, end); }
-  /* Row actions overlay the end of the name so collapsed Teams keep their full width until hover or focus. */
-  .row-actions { position: absolute; inset-block: 0; inset-inline-end: 0; display: flex; align-items: center; padding-inline: 1.5rem var(--shimpz-space-2); background: linear-gradient(to right, transparent, var(--row-bg) 1.5rem); opacity: 0; transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease); }
-  :global([dir="rtl"]) .row-actions { background: linear-gradient(to left, transparent, var(--row-bg) 1.5rem); }
-  .row:hover .row-actions, .row:focus-within .row-actions, .is-selected > .row .row-actions { opacity: 1; }
+  /* Row actions always stay visible beside the name, so a Team's Routines and actions are found without hovering. */
+  .row-actions { display: flex; align-items: center; padding-inline-end: var(--shimpz-space-2); }
   .row :global(.team-link) { min-width: 0; height: auto; min-height: 2.75rem; justify-content: flex-start; padding: 0.4rem var(--shimpz-space-3); border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
   .team-rename { display: flex; min-width: 0; overflow: hidden; min-height: 2.75rem; align-items: center; gap: 0.7rem; padding: 0.4rem var(--shimpz-space-3); }
   .team-rename :global(.rename-field) { display: block; flex: 1 1 0; width: auto; min-width: 0; }
@@ -509,6 +533,10 @@
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  .row :global(.routines-action) { position: relative; }
+  /* A Routine held, paused, or waiting to be asked again: a small yellow dot; the button's name says it in words. */
+  .attention { position: absolute; inset-block-start: 0.45rem; inset-inline-end: 0.4rem; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--shimpz-color-yellow); box-shadow: 0 0 0.35rem var(--shimpz-color-yellow); pointer-events: none; }
+  @media (forced-colors: active) { .attention { background: Highlight; box-shadow: none; } }
   /* Reordering: a grip in the row actions, the lifted row following the pointer, and a cyan-to-magenta drop line with
      a leading tick in the gap where the row will land. */
   .team { position: relative; }
@@ -519,7 +547,6 @@
   .is-dragging { z-index: 3; }
   .is-dragging > .row { --row-bg: color-mix(in srgb, var(--shimpz-color-cyan) 12%, var(--shimpz-color-surface-raised)); filter: drop-shadow(0 0.6rem 1rem rgb(0 0 0 / 60%)) drop-shadow(0 0 0.4rem rgb(0 240 255 / 30%)); }
   .is-dragging > .row::before { background-image: var(--team-scanlines); }
-  .is-dragging > .row .row-actions { opacity: 1; }
   .is-dragging .drag-handle, .is-dragging .monogram { color: var(--shimpz-color-cyan); }
   .is-dragging .monogram { border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
   .drop-before::before, .drop-after::after {
@@ -533,13 +560,12 @@
   .drop-before::before { inset-block-start: -4px; }
   .drop-after::after { inset-block-end: -4px; }
   @media (pointer: coarse) {
-    .row { grid-template-columns: minmax(0, 1fr) auto; }
-    .row-actions { position: static; padding: 0; background: none; opacity: 1; }
+    .row-actions { padding: 0; }
     .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.75rem; height: 2.75rem; }
     .drag-handle { width: 2.25rem; height: 2.75rem; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .row::before, .row-actions { transition: none; }
+    .row::before { transition: none; }
     .row .name, .row .monogram, .row :global(svg), .head :global(svg) { animation: none !important; }
   }
   @media (forced-colors: active) {

@@ -4274,6 +4274,48 @@ test.describe('Team Routines', () => {
     await expect(created.getByRole('list', { name: 'Steps' })).toContainText('list-zones');
   });
 
+  test('a Team\'s own Routines button opens its tree from pointer or keyboard and says when one needs attention', async ({ page }) => {
+    await routeReadyChat(page);
+    // A paused Routine with a held run: the button's name says a Routine needs the person.
+    await routeRoutines(page);
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    const button = navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' });
+    const tree = navigation.getByRole('group', { name: 'Routines' });
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(tree).toHaveCount(0);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await expect(tree.getByRole('button', { name: new RegExp(ROUTINE_VIEW.quote) })).toHaveCount(1);
+    await button.click();
+    await expect(tree).toHaveCount(0);
+    // From the keyboard: focus stays on the button while Enter and Space open and close the tree.
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(tree).toHaveCount(1);
+    await expect(button).toBeFocused();
+    await page.keyboard.press(' ');
+    await expect(tree).toHaveCount(0);
+    await expect(button).toBeFocused();
+    // The Team's actions menu still offers the same tree.
+    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+    await page.getByRole('menuitem', { name: 'Routines' }).click();
+    await expect(tree).toHaveCount(1);
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('a Team whose Routines are all running needs no attention, and a Team without Routines has no Routines button', async ({ page }) => {
+    await routeReadyChat(page);
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await expect(navigation.getByRole('button', { name: 'Routines for Marketing', exact: true })).toBeVisible();
+    await expect(navigation.getByRole('button', { name: /needs your attention/ })).toHaveCount(0);
+    await expect(navigation.getByRole('button', { name: /^Routines for (?!Marketing)/ })).toHaveCount(0);
+  });
+
   test('a Team\'s Routines open as a tree under it: a paused one resumes, and deletion is confirmed in place', async ({ page }) => {
     await routeReadyChat(page);
     // The refresh after the deletion fails; the confirmed deletion must still leave the tree.
