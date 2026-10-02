@@ -135,6 +135,21 @@ def answer_card(team_id: object, incident_id: object, body: object) -> team.Team
     return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
 
 
+def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
+    """One run's execution details (ADR-0092): Team's sanitized diagnostics, which the browser renders only as text."""
+    canonical = team.canonical_team_id(team_id)
+    run = _id(run_id, "Routine run")
+    response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/diagnostics")
+
+    def admit(body: dict[str, object]) -> dict[str, object] | None:
+        admitted = routine_contract.canonical_diagnostics(body)
+        return (
+            admitted if admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run) else None
+        )
+
+    return _projected(response, admit)
+
+
 def resume(team_id: object, routine_id: object) -> team.TeamResponse:
     """Turn a paused Routine's dispatch back on; an unresolved incident still holds it."""
     canonical = team.canonical_team_id(team_id)
