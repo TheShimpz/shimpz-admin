@@ -5,9 +5,12 @@
 // Script, layout, and style counters help attribution but do not account for all task time or paint.
 // ThreadTime is sampled separately and can differ from TaskDuration in either direction.
 // TaskOtherDuration includes other work; heap deltas alone cannot identify garbage collection.
+// Each older page loads the way a reader gets it: a wheel scroll to the top of the transcript brings the history
+// sentinel into view, and the page requests and prepends the next page with no button.
+// Wall time runs from the older-history request to the first frame after its prepend; CPU windows begin at the scroll.
 // Journey metrics span every older-page load after the initial hydrated page.
 // A forced collection after the visible window bounds deferred heap work separately.
-// Journey totals contain the idle and click windows; adding them would count work twice.
+// Journey totals contain the idle and scroll windows; adding them would count work twice.
 // Collection totals also include assertions; journeyWallMs is measured by the driver.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
@@ -98,6 +101,22 @@ function installSocket() {
     close() { this.readyState = 3; }
   }
   window.WebSocket = FakeWebSocket;
+  // Marks when the page issues the measured older-history request, and where the current first exchange sits when its
+  // response reaches the page: the view the prepend must keep, including a loading status laid out but not yet painted.
+  // That one read may force layout the prepend frame would otherwise do. Nothing is recorded until the probe arms it.
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+    if (!window.benchArmed || window.benchRequestAt !== undefined
+      || !url.pathname.endsWith('/chat/history') || !url.searchParams.has('before')) {
+      return nativeFetch(input, init);
+    }
+    window.benchRequestAt = performance.now();
+    return nativeFetch(input, init).then((response) => {
+      window.benchViewY = window.benchAnchor.getBoundingClientRect().y;
+      return response;
+    });
+  };
 }
 
 async function performanceMetrics(cdp) {
@@ -121,7 +140,8 @@ async function measure(browser, baseURL, existingPages) {
     const page = await context.newPage();
     const unexpected = [];
     const errors = [];
-    let historyRequests = 0;
+    let newestRequests = 0;
+    let olderRequests = 0;
     page.on('pageerror', (error) => errors.push(error.name));
     await page.addInitScript(installSocket);
     await page.route('**/api/**', async (route) => {
@@ -132,7 +152,8 @@ async function measure(browser, baseURL, existingPages) {
         const before = url.searchParams.get('before');
         const index = before === null ? 0 : Number(before.slice(0, -1));
         if (before !== null && before !== cursor(index)) unexpected.push('invalid cursor');
-        historyRequests += 1;
+        if (before === null) newestRequests += 1;
+        else olderRequests += 1;
         body = historyPage(index, existingPages + 2);
       } else {
         body = apiFixture(method, url.pathname);
@@ -145,18 +166,27 @@ async function measure(browser, baseURL, existingPages) {
     await page.waitForFunction(() => window.benchReady === true);
     const cdp = await context.newCDPSession(page);
     await cdp.send('Performance.enable');
+    const viewport = page.locator('.turns');
+    const exchanges = (expected) => page.waitForFunction((count) => (
+      document.querySelectorAll('.exchange').length === count && !document.querySelector('.history-older-status')
+    ), expected);
+    await exchanges(32);
+    await viewport.hover();
+    // One wheel gesture over the transcript scrolls it to the top, where the sentinel requests the older page.
+    const scrollToTop = async () => {
+      const top = await viewport.evaluate((element) => element.scrollTop);
+      await page.mouse.wheel(0, -(top + 1000));
+    };
     const journeyStart = await performanceMetrics(cdp);
     const journeyStartWall = performance.now();
-    const older = page.getByRole('button', { name: 'Load older messages' });
     for (let index = 1; index < existingPages; index += 1) {
-      await older.click();
-      await page.locator('.exchange').nth(index * 32 - 1).waitFor();
+      await scrollToTop();
+      await exchanges((index + 1) * 32);
     }
-    if (historyRequests !== existingPages) throw new Error('History setup made an unexpected request count.');
-    await older.scrollIntoViewIfNeeded();
-    const oldFirst = page.locator('.exchange').first();
-    const oldFirstText = await oldFirst.textContent();
-    const oldFirstY = (await oldFirst.boundingBox()).y;
+    if (newestRequests < 1 || olderRequests !== existingPages - 1) {
+      throw new Error('History setup made an unexpected request count.');
+    }
+    const oldFirstText = await page.locator('.exchange').first().textContent();
     await page.evaluate(() => {
       const root = document.querySelector('.turns');
       window.benchExisting = new Set(root.querySelectorAll('.exchange'));
@@ -165,15 +195,18 @@ async function measure(browser, baseURL, existingPages) {
         for (const record of records) for (const node of record.addedNodes) {
           if (node instanceof Element && node.classList.contains('exchange')) window.benchAdded.add(node);
         }
+        const created = [...window.benchAdded].filter((node) => !window.benchExisting.has(node)).length;
+        if (created >= 32 && window.benchPrependFrame === undefined) {
+          window.benchPrependFrame = requestAnimationFrame(() => { window.benchPrependedAt = performance.now(); });
+        }
       });
       window.benchObserver.observe(root, { childList: true, subtree: true });
       window.benchLongTasks = [];
       new PerformanceObserver((list) => window.benchLongTasks.push(
         ...list.getEntries().map((entry) => entry.duration),
       )).observe({ entryTypes: ['longtask'] });
-      root.querySelector('.history-older button').addEventListener('click', () => {
-        window.benchStart = performance.now();
-      }, { capture: true, once: true });
+      window.benchAnchor = root.querySelector('.exchange');
+      window.benchArmed = true;
     });
     const idleStart = await performanceMetrics(cdp);
     await page.evaluate(async () => {
@@ -185,24 +218,24 @@ async function measure(browser, baseURL, existingPages) {
     const idleCpuMs = idleEnd.TaskDuration - idleStart.TaskDuration;
     const beforeMetrics = await performanceMetrics(cdp);
     const windowStart = performance.now();
-    await older.click();
-    await page.waitForFunction(() => window.benchAdded.size >= 32);
-    const result = await page.evaluate(async ({ oldFirstText, oldFirstY }) => {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+    await scrollToTop();
+    await page.waitForFunction(() => Number.isFinite(window.benchPrependedAt));
+    const result = await page.evaluate(async (oldFirstText) => {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       window.benchObserver.disconnect();
       let shifted = document.querySelector('.exchange');
       for (let index = 0; index < 32; index += 1) shifted = shifted?.nextElementSibling;
       const created = [...window.benchAdded].filter((node) => !window.benchExisting.has(node)).length;
       return {
-        wallMs: performance.now() - window.benchStart,
+        wallMs: window.benchPrependedAt - window.benchRequestAt,
         created,
         moved: [...window.benchAdded].filter((node) => window.benchExisting.has(node)).length,
         maxLongTaskMs: Math.max(0, ...window.benchLongTasks),
-        complete: created === 32 && shifted?.textContent === oldFirstText,
-        scrollShiftPx: Math.round(((shifted?.getBoundingClientRect().y ?? 0) - oldFirstY) * 10) / 10,
+        complete: created === 32 && shifted === window.benchAnchor && shifted.textContent === oldFirstText
+          && Number.isFinite(window.benchViewY) && window.benchRequestAt < window.benchPrependedAt,
+        scrollShiftPx: Math.round(((shifted?.getBoundingClientRect().y ?? 0) - window.benchViewY) * 10) / 10,
       };
-    }, { oldFirstText, oldFirstY });
+    }, oldFirstText);
     const afterMetrics = await performanceMetrics(cdp);
     result.journeyTaskMs = afterMetrics.TaskDuration - journeyStart.TaskDuration;
     result.journeyThreadMs = afterMetrics.ThreadTime - journeyStart.ThreadTime;
@@ -224,11 +257,14 @@ async function measure(browser, baseURL, existingPages) {
     result.idleThreadMs = idleEnd.ThreadTime - idleStart.ThreadTime;
     result.idleOtherMs = idleEnd.TaskOtherDuration - idleStart.TaskOtherDuration;
     result.idleHeapDeltaBytes = idleEnd.JSHeapUsedSize - idleStart.JSHeapUsedSize;
-    if (!result.complete ||
-        await page.locator('.exchange').count() !== (existingPages + 1) * 32 ||
+    const shown = await page.locator('.exchange').count();
+    if (!result.complete || shown !== (existingPages + 1) * 32 ||
         result.created !== 32 || Math.abs(result.scrollShiftPx) > 2 ||
-        historyRequests !== existingPages + 1 || unexpected.length || errors.length) {
-      throw new Error('History prepend changed content, request count, or browser health.');
+        olderRequests !== existingPages || unexpected.length || errors.length) {
+      throw new Error(`History prepend changed content, request count, or browser health: ${JSON.stringify({
+        existingPages, complete: result.complete, created: result.created, shown,
+        scrollShiftPx: result.scrollShiftPx, olderRequests, unexpected, errors,
+      })}`);
     }
     const beforeCollection = await performanceMetrics(cdp);
     await cdp.send('HeapProfiler.collectGarbage');
