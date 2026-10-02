@@ -1,6 +1,8 @@
 // Team Routine copy (ADR-0086, ADR-0092). A Routine is created or updated from the user's own chat message, and every
 // run asks for the authorizations its Actions declare.
 
+import { routineDetailsMessages } from './routineDetailsMessages.js';
+
 export const routineMessages = {
   en: {
     schedule: {
@@ -64,6 +66,7 @@ export const routineMessages = {
       review: "Review",
       dismiss: "Not now",
       continued: "The run continued: {outcome}",
+      resumed: "Resumed. Its next run starts on schedule.",
       waitingAgain: "waiting for another answer",
       connect: "Connect {assistant} from the Team's Store, then continue the run.",
       continue: "Continue the run",
@@ -91,6 +94,7 @@ export const routineMessages = {
       reopen: "Open the card again",
       recommended: "Recommended: {choice}",
     },
+    details: routineDetailsMessages.en,
     errors: {
       generic: 'The Routine request failed. Try again.',
       expired: 'This request expired. Review the run again.',
@@ -163,6 +167,7 @@ export const routineMessages = {
       review: "Revisar",
       dismiss: "Agora não",
       continued: "A execução continuou: {outcome}",
+      resumed: "Retomada. A próxima execução começa no horário previsto.",
       waitingAgain: "aguardando outra resposta",
       connect: "Conecte {assistant} pela Store do Time e depois continue a execução.",
       continue: "Continuar a execução",
@@ -190,6 +195,7 @@ export const routineMessages = {
       reopen: "Abrir o cartão de novo",
       recommended: "Recomendado: {choice}",
     },
+    details: routineDetailsMessages.pt,
     errors: {
       generic: 'O pedido da rotina falhou. Tente de novo.',
       expired: 'Este pedido expirou. Revise a execução de novo.',
@@ -262,6 +268,7 @@ export const routineMessages = {
       review: "Revisar",
       dismiss: "Ahora no",
       continued: "La ejecución continuó: {outcome}",
+      resumed: "Reanudada. Su próxima ejecución empieza según lo programado.",
       waitingAgain: "esperando otra respuesta",
       connect: "Conecta {assistant} desde la Store del Equipo y luego continúa la ejecución.",
       continue: "Continuar la ejecución",
@@ -289,6 +296,7 @@ export const routineMessages = {
       reopen: "Abrir la tarjeta de nuevo",
       recommended: "Recomendado: {choice}",
     },
+    details: routineDetailsMessages.es,
     errors: {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
       expired: 'Esta solicitud caducó. Revisa la ejecución de nuevo.',
@@ -361,6 +369,7 @@ export const routineMessages = {
       review: "查看",
       dismiss: "暂不",
       continued: "运行已继续：{outcome}",
+      resumed: "已恢复。下一次运行将按计划开始。",
       waitingAgain: "正在等待另一个回答",
       connect: "请在团队的 Store 中连接 {assistant}，然后继续运行。",
       continue: "继续运行",
@@ -388,6 +397,7 @@ export const routineMessages = {
       reopen: "重新打开卡片",
       recommended: "推荐：{choice}",
     },
+    details: routineDetailsMessages.zh,
     errors: {
       generic: '例行任务请求失败。请重试。',
       expired: '此请求已过期。请重新查看这次运行。',
@@ -460,6 +470,7 @@ export const routineMessages = {
       review: "Examiner",
       dismiss: "Pas maintenant",
       continued: "L’exécution a continué : {outcome}",
+      resumed: "Reprise. Sa prochaine exécution démarre comme prévu.",
       waitingAgain: "en attente d’une autre réponse",
       connect: "Connectez {assistant} depuis la Store de l’Équipe, puis continuez l’exécution.",
       continue: "Continuer l’exécution",
@@ -487,6 +498,7 @@ export const routineMessages = {
       reopen: "Rouvrir la carte",
       recommended: "Recommandé : {choice}",
     },
+    details: routineDetailsMessages.fr,
     errors: {
       generic: 'La demande de routine a échoué. Réessayez.',
       expired: 'Cette demande a expiré. Examinez de nouveau l’exécution.',
@@ -559,6 +571,7 @@ export const routineMessages = {
       review: "Prüfen",
       dismiss: "Nicht jetzt",
       continued: "Die Ausführung wurde fortgesetzt: {outcome}",
+      resumed: "Fortgesetzt. Die nächste Ausführung startet planmäßig.",
       waitingAgain: "wartet auf eine weitere Antwort",
       connect: "Verbinden Sie {assistant} im Store des Teams und setzen Sie die Ausführung dann fort.",
       continue: "Ausführung fortsetzen",
@@ -586,6 +599,7 @@ export const routineMessages = {
       reopen: "Karte erneut öffnen",
       recommended: "Empfohlen: {choice}",
     },
+    details: routineDetailsMessages.de,
     errors: {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
       expired: 'Diese Anfrage ist abgelaufen. Prüfen Sie den Lauf erneut.',
@@ -658,6 +672,7 @@ export const routineMessages = {
       review: "確認",
       dismiss: "今はしない",
       continued: "実行を続けました：{outcome}",
+      resumed: "再開しました。次の実行は予定どおり始まります。",
       waitingAgain: "別の回答を待っています",
       connect: "チームの Store で {assistant} を接続してから、実行を続けてください。",
       continue: "実行を続ける",
@@ -685,6 +700,7 @@ export const routineMessages = {
       reopen: "カードをもう一度開く",
       recommended: "推奨：{choice}",
     },
+    details: routineDetailsMessages.ja,
     errors: {
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
       expired: 'このリクエストは期限切れです。実行をもう一度確認してください。',
@@ -757,6 +773,7 @@ export const routineMessages = {
       review: "مراجعة",
       dismiss: "ليس الآن",
       continued: "استمر التشغيل: {outcome}",
+      resumed: "استُؤنف. يبدأ التشغيل التالي في موعده.",
       waitingAgain: "بانتظار إجابة أخرى",
       connect: "صِل {assistant} من Store الخاص بالفريق، ثم تابع التشغيل.",
       continue: "متابعة التشغيل",
@@ -784,6 +801,7 @@ export const routineMessages = {
       reopen: "افتح البطاقة مرة أخرى",
       recommended: "الموصى به: {choice}",
     },
+    details: routineDetailsMessages.ar,
     errors: {
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',
       expired: 'انتهت صلاحية هذا الطلب. راجع التشغيل مرة أخرى.',

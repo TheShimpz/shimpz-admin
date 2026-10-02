@@ -631,3 +631,69 @@ export async function resumeRoutineIntegrations(fetcher, teamId, runId) {
   const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/integrations`), { method: 'POST' });
   return resumed(body, teamId, runId);
 }
+
+// One Routine run's execution details (ADR-0092 section 8): per attempt of one logical operation, Team's sanitized
+// handled failure or a safe transport condition. Every text member is literal evidence, rendered only as escaped text,
+// never as Markdown or HTML, and never effect proof or authority.
+const MAX_RUN_DIAGNOSTICS = 32;
+const MAX_DIAGNOSTIC_ATTEMPTS = 64;
+const MAX_DIAGNOSTIC_TEXT_BYTES = 2048;
+const OPERATION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const ERROR_TYPE_RE = /^[!-~]{1,128}$/;
+const PROVIDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
+const CONDITION_RE = /^(?:exit-status:-?[0-9]{1,10}|stderr-output|timeout|frame-invalid|exit-unavailable|transport-failed)$/;
+// Tab and line feed only; every other control, bidi override or isolate, and zero-width formatting character is refused.
+const UNSAFE_DIAGNOSTIC_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/u;
+const ENCODER = new TextEncoder();
+
+function diagnosticText(value) {
+  return (
+    typeof value === 'string' &&
+    value.isWellFormed() &&
+    !UNSAFE_DIAGNOSTIC_RE.test(value) &&
+    ENCODER.encode(value).length <= MAX_DIAGNOSTIC_TEXT_BYTES
+  );
+}
+
+function isFailure(value) {
+  return (
+    exact(value, ['error_type', 'message', 'provider', 'http_status', 'response_excerpt', 'redacted', 'truncated']) &&
+    typeof value.error_type === 'string' &&
+    ERROR_TYPE_RE.test(value.error_type) &&
+    diagnosticText(value.message) &&
+    (value.provider === null || (typeof value.provider === 'string' && value.provider.length <= 253 &&
+      PROVIDER_RE.test(value.provider))) &&
+    (value.http_status === null || whole(value.http_status, 100, 599)) &&
+    (value.response_excerpt === null || diagnosticText(value.response_excerpt)) &&
+    typeof value.redacted === 'boolean' &&
+    typeof value.truncated === 'boolean'
+  );
+}
+
+function isDiagnostic(value) {
+  return (
+    exact(value, ['operation_id', 'attempt', 'assistant_id', 'action', 'recorded_at', 'failure', 'condition']) &&
+    typeof value.operation_id === 'string' &&
+    OPERATION_ID_RE.test(value.operation_id) &&
+    whole(value.attempt, 1, MAX_DIAGNOSTIC_ATTEMPTS) &&
+    typeof value.assistant_id === 'string' &&
+    ASSISTANT_ID_RE.test(value.assistant_id) &&
+    typeof value.action === 'string' &&
+    ACTION_ID_RE.test(value.action) &&
+    isInstant(value.recorded_at) &&
+    (value.failure === null) !== (value.condition === null) &&
+    (value.failure === null || isFailure(value.failure)) &&
+    (value.condition === null || (typeof value.condition === 'string' && CONDITION_RE.test(value.condition)))
+  );
+}
+
+/** One run's execution details for exactly the Team and run asked for, oldest attempt first. */
+export async function readRunDiagnostics(fetcher, teamId, runId) {
+  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/diagnostics`));
+  return view(body, ['team_id', 'run_id', 'diagnostics'], (item) =>
+    item.team_id === teamId &&
+    item.run_id === runId &&
+    Array.isArray(item.diagnostics) &&
+    item.diagnostics.length <= MAX_RUN_DIAGNOSTICS &&
+    item.diagnostics.every(isDiagnostic)).diagnostics;
+}

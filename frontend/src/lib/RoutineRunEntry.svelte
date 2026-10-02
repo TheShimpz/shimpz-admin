@@ -5,12 +5,15 @@
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
+  import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
+  import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
     fillRoutineCopy,
     openRoutineCard,
     openRoutineChallenge,
+    resumeRoutine,
     resumeRoutineIntegrations,
     routineErrorMessage,
     scheduleWords,
@@ -34,6 +37,32 @@
   // The held run's recovery card (ADR-0092): Team's own card, opened for this person and shown with its choices in
   // Team's order before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
   let card = $state(null);
+  // The run's execution details are read from Team only when the person opens them.
+  let details = $state(false);
+
+  // A row that left its Routine paused offers Resume while Team still lists the Routine as paused and no unresolved
+  // incident holds it; a held run is settled through its card first, and resuming never bypasses that (ADR-0092).
+  let listed = $derived($routineContext.get(teamId));
+  let resumable = $derived(
+    ['paused', 'user-skipped', 'failed'].includes(entry.outcome) &&
+      Boolean(listed?.routines.some((routine) => routine.routine_id === entry.routineId && routine.paused &&
+        !routine.deleting && !routine.needs_reconfirm)) &&
+      !listed.incidents.some((incident) => incident.routine_id === entry.routineId),
+  );
+
+  async function resume() {
+    working = true;
+    result = '';
+    try {
+      await resumeRoutine(fetch, teamId, entry.routineId);
+      result = copy.run.resumed;
+      await loadTeamRoutines(fetch, teamId);
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    } finally {
+      working = false;
+    }
+  }
   let detail = $derived(entry.detail);
   let actions = $derived(
     (detail.actions ?? []).map(([assistant, action]) => `${assistant} · ${action}`).join(', '),
@@ -288,7 +317,21 @@
       </Button>
     </div>
   {/if}
+  {#if entry.runId || resumable}
+    <div class="buttons">
+      {#if resumable}
+        <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>{copy.list.resume}</Button>
+      {/if}
+      {#if entry.runId}
+        <Button size="sm" variant="ghost" type="button" onclick={() => (details = true)}>{copy.details.open}</Button>
+      {/if}
+    </div>
+  {/if}
 </div>
+
+{#if details}
+  <RoutineRunDetails {teamId} runId={entry.runId} copy={copy.details} errors={copy.errors} onclose={() => (details = false)} />
+{/if}
 
 {#if challenge}
   <AssistantHumanRequestDialog
