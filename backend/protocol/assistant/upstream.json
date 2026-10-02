@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/TheShimpz/shimpz-developers",
-  "commit": "2a31d6616b352e2a004408f4553ec92806e90b2d",
-  "path": "protocol/assistant/v1/human-request-vectors.json",
+  "commit": "f4126605720acac6afcca1dbbcad9e7551aebdf1",
+  "path": "protocol/assistant/v1/vectors/human-request.json",
   "sha256": "1289f81c5edff0275a9d930b9ba33e7e09440c24e4dd8e68e046f83c66f147cc"
 }
