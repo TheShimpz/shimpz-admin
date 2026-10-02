@@ -17,6 +17,7 @@ from pathlib import Path
 
 from history import context as conversation_context
 
+from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -30,7 +31,6 @@ MAX_REPLY_CHARS = 60_000
 MAX_GUIDANCE_REPLY_CHARS = 240
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-_SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _GUIDANCE_CODES = frozenset(
     {
@@ -390,7 +390,7 @@ def _uninstall_assistant(value: object) -> dict[str, str]:
     version = value["version"]
     if assistant_id is None or assistant_id != value["id"] or not isinstance(version, str):
         raise ValueError("chat history uninstall Assistant is invalid")
-    if _SEMANTIC_VERSION_RE.fullmatch(version) is None:
+    if store_catalog.VERSION_RE.fullmatch(version) is None:
         raise ValueError("chat history uninstall Assistant is invalid")
     return {
         "id": assistant_id,

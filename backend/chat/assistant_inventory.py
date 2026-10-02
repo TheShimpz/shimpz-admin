@@ -7,13 +7,12 @@ from dataclasses import dataclass
 
 from team import bridge as team
 
-from chat import assistant_proposal
+from chat import assistant_proposal, store_catalog
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 128
 # Team admits the Developers install protocol's 128 Actions per Assistant.
 MAX_ACTIONS_PER_ASSISTANT = 128
-SEMANTIC_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _RUNTIME_STATUS = re.compile(r"^[a-z]{2,24}$")
 _PROVENANCES = frozenset({"local", "published"})
 
@@ -66,7 +65,7 @@ def installed(response: object) -> dict[str, InstalledAssistant]:
         if (
             assistant_id != item["assistant"]
             or not isinstance(version, str)
-            or SEMANTIC_VERSION.fullmatch(version) is None
+            or store_catalog.VERSION_RE.fullmatch(version) is None
             or provenance not in _PROVENANCES
             or not isinstance(status, str)
             or _RUNTIME_STATUS.fullmatch(status) is None

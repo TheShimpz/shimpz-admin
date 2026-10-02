@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlparse
 
 from team import transport
 
-from chat import payloads
+from chat import payloads, store_catalog
 from integrations import cloudflare
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -24,9 +24,7 @@ MAX_INTEGRATION_SCOPES = 32
 
 _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
-_OAUTH_SCOPE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
-_SEMANTIC_VERSION_RE = re.compile(r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 def _canonical_team_id(value: object) -> str:
@@ -53,7 +51,7 @@ def _integration_scopes(value: object) -> list[str]:
         raise ValueError("invalid OAuth scopes")
     scopes: list[str] = []
     for item in value:
-        if not isinstance(item, str) or _OAUTH_SCOPE_RE.fullmatch(item) is None:
+        if not isinstance(item, str) or cloudflare.SCOPE_RE.fullmatch(item) is None:
             raise ValueError("invalid OAuth scopes")
         scopes.append(item)
     if len(set(scopes)) != len(scopes):
@@ -129,7 +127,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                 raise ValueError("duplicate Team integration")
             identities.add(identity)
             assistant_version = item["assistant_version"]
-            if not isinstance(assistant_version, str) or _SEMANTIC_VERSION_RE.fullmatch(assistant_version) is None:
+            if not isinstance(assistant_version, str) or store_catalog.VERSION_RE.fullmatch(assistant_version) is None:
                 raise ValueError("invalid Assistant version")
             status = item["status"]
             if status not in {"missing", "connected", "expired", "reauthorization-required"}:

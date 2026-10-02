@@ -78,11 +78,10 @@ def canonical_local_team_name(value: object) -> str:
 
 
 canonical_assistant_id = payloads.canonical_assistant_id
-_SOURCE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def canonical_source_digest(value: object) -> str:
-    if not isinstance(value, str) or _SOURCE_DIGEST_RE.fullmatch(value) is None:
+    if not isinstance(value, str) or team_contract.SOURCE_DIGEST_RE.fullmatch(value) is None:
         raise TeamRequestError("source digest must be a canonical sha256 digest")
     return value
 

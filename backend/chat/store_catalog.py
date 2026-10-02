@@ -13,6 +13,8 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from protocol.http.v1 import payload as team_contract
+
 CATALOG_HOST = "shimpz.com"
 CATALOG_PATH = "/api/assistants"
 CATALOG_TIMEOUT_SECONDS = 5
@@ -27,9 +29,7 @@ MAX_ACTIONS = 128
 MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
 MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
-_ASSISTANT_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CREATOR = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 _GITHUB = re.compile(
     r"^https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/"
@@ -127,7 +127,7 @@ def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
         if (
             not isinstance(integration_id, str)
             or integration_id != provider
-            or _ASSISTANT_ID.fullmatch(integration_id) is None
+            or team_contract.ASSISTANT_ID_RE.fullmatch(integration_id) is None
         ):
             raise ValueError("catalog Integration identity is invalid")
         output.append(CatalogIntegration(provider=provider, scopes=_strings(item["scopes"], 32, 128)))
@@ -148,8 +148,8 @@ def _actions(value: object) -> tuple[str, ...]:
         requests = _strings(item["human_requests"], 11, 25)
         if (
             not isinstance(action_id, str)
-            or _ASSISTANT_ID.fullmatch(action_id) is None
-            or any(_ASSISTANT_ID.fullmatch(integration) is None for integration in integrations)
+            or team_contract.ASSISTANT_ID_RE.fullmatch(action_id) is None
+            or any(team_contract.ASSISTANT_ID_RE.fullmatch(integration) is None for integration in integrations)
             or any(request not in _HUMAN_REQUEST_KINDS for request in requests)
         ):
             raise ValueError("catalog Action is invalid")
@@ -163,13 +163,19 @@ def _assistant(value: object) -> CatalogAssistant:
     if not isinstance(value, dict) or set(value) != _ASSISTANT_FIELDS:
         raise ValueError("catalog Assistant fields are invalid")
     assistant_id = value["assistant_id"]
-    if not isinstance(assistant_id, str) or _ASSISTANT_ID.fullmatch(assistant_id) is None:
+    if not isinstance(assistant_id, str) or team_contract.ASSISTANT_ID_RE.fullmatch(assistant_id) is None:
         raise ValueError("catalog Assistant identifier is invalid")
-    if not isinstance(value["assistant_version"], str) or _VERSION.fullmatch(value["assistant_version"]) is None:
+    if not isinstance(value["assistant_version"], str) or VERSION_RE.fullmatch(value["assistant_version"]) is None:
         raise ValueError("catalog Assistant version is invalid")
-    if not isinstance(value["source_digest"], str) or _DIGEST.fullmatch(value["source_digest"]) is None:
+    if (
+        not isinstance(value["source_digest"], str)
+        or team_contract.SOURCE_DIGEST_RE.fullmatch(value["source_digest"]) is None
+    ):
         raise ValueError("catalog source digest is invalid")
-    if not isinstance(value["icon_digest"], str) or _DIGEST.fullmatch(value["icon_digest"]) is None:
+    if (
+        not isinstance(value["icon_digest"], str)
+        or team_contract.SOURCE_DIGEST_RE.fullmatch(value["icon_digest"]) is None
+    ):
         raise ValueError("catalog icon digest is invalid")
     if value["platforms"] != ["linux/amd64", "linux/arm64"]:
         raise ValueError("catalog platforms are invalid")
@@ -345,7 +351,7 @@ def fetch_assistant_icon(
     connection_factory: Callable[..., http.client.HTTPSConnection] = http.client.HTTPSConnection,
 ) -> bytes:
     """Fetch one current public Assistant icon without accepting browser-supplied digests."""
-    if _ASSISTANT_ID.fullmatch(assistant_id) is None:
+    if team_contract.ASSISTANT_ID_RE.fullmatch(assistant_id) is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
     assistants = (CATALOG if catalog is None else catalog).get()
     assistant = next((item for item in assistants if item.assistant_id == assistant_id), None)

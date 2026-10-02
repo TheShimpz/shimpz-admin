@@ -16,7 +16,6 @@ UNINSTALL_PROPOSAL_TTL_SECONDS = 120
 MAX_CAPABILITY_SHORTLIST = 8
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
 _SEARCH_SEPARATOR = re.compile(r"[^a-z0-9]+")
-_TEAM_ID = re.compile(r"^[a-z0-9_]{1,40}$")
 _PROPOSAL_ID = re.compile(r"^[0-9a-f]{32}$")
 _STOP_WORDS = frozenset(
     {
@@ -372,7 +371,7 @@ def uninstall_shortlist(
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:
     proposal_id = proposal_id_factory()
-    if _TEAM_ID.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
+    if team_contract.TEAM_ID_RE.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
         raise ValueError("invalid Assistant lifecycle proposal")
     return proposal_id
 

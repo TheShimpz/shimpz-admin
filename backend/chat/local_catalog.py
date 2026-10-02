@@ -9,11 +9,10 @@ from datetime import datetime
 from team import bridge as team
 
 from chat import store_catalog
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 50
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CREATOR = re.compile(r"^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
 _CREATED = re.compile(r"^[0-9TZ:+.-]{20,64}$")
 _PLATFORMS = frozenset({"linux/amd64", "linux/arm64"})
@@ -89,9 +88,9 @@ def _assistant(value: object) -> LocalAssistant:
     if (
         assistant_id != value["assistant_id"]
         or not isinstance(version, str)
-        or _VERSION.fullmatch(version) is None
+        or store_catalog.VERSION_RE.fullmatch(version) is None
         or not isinstance(image_id, str)
-        or _DIGEST.fullmatch(image_id) is None
+        or team_contract.SOURCE_DIGEST_RE.fullmatch(image_id) is None
         or not isinstance(creators, list)
         or not 1 <= len(creators) <= 4
         or any(not isinstance(creator, str) or _CREATOR.fullmatch(creator) is None for creator in creators)

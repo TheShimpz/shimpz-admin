@@ -6,24 +6,21 @@ view; any other body becomes one safe error, so the browser never renders an unc
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from http import HTTPStatus
 
 from team import bridge as team
 from team import transport
 
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
+from routine import team as routine_team
 
-_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-_TRACE_ID_RE = _ID_RE
-_HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
-_ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 _INVALID = team.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
 
 
 def _id(value: object, name: str) -> str:
-    if not isinstance(value, str) or _ID_RE.fullmatch(value) is None:
+    if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
         raise team.TeamRequestError(f"{name} is invalid")
     return value
 
@@ -46,10 +43,10 @@ def _projected(
     if not 200 <= response.status < 300:
         code = body.get("code")
         status = response.status if 400 <= response.status <= 599 else HTTPStatus.BAD_GATEWAY
-        safe = isinstance(code, str) and _ERROR_CODE_RE.fullmatch(code) is not None
+        safe = isinstance(code, str) and routine_contract.ERROR_CODE_RE.fullmatch(code) is not None
         return team.TeamResponse(status, {"code": code if safe else "routine-request-failed"})
     trace_id = body.pop("trace_id", None)
-    if not isinstance(trace_id, str) or _TRACE_ID_RE.fullmatch(trace_id) is None:
+    if not isinstance(trace_id, str) or routine_team.TRACE_ID_RE.fullmatch(trace_id) is None:
         return _INVALID
     admitted = admit(body)
     return _INVALID if admitted is None else team.TeamResponse(response.status, admitted)
@@ -98,7 +95,9 @@ def _deleted(team_id: str, routine_id: str | None) -> Callable[[dict[str, object
         {
             "team_id": lambda value: value == team_id,
             "routine_id": lambda value: (
-                isinstance(value, str) and _ID_RE.fullmatch(value) is not None and routine_id in (None, value)
+                isinstance(value, str)
+                and routine_contract.ROUTINE_ID_RE.fullmatch(value) is not None
+                and routine_id in (None, value)
             ),
             "deleted": lambda value: type(value) is bool,
         }
@@ -153,6 +152,6 @@ def resolve(team_id: object, run_id: object, body: object) -> team.TeamResponse:
     fingerprint = (
         body.get("batch_fingerprint") if isinstance(body, dict) and set(body) == {"batch_fingerprint"} else None
     )
-    if not isinstance(fingerprint, str) or _HEX64_RE.fullmatch(fingerprint) is None:
+    if not isinstance(fingerprint, str) or team_contract.SHA256_RE.fullmatch(fingerprint) is None:
         raise team.TeamRequestError("Routine resolution is invalid")
     return _run_decision(team_id, run_id, "resolve", {"batch_fingerprint": fingerprint}, "resolved")

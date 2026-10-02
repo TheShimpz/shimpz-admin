@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-import re
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -20,11 +19,11 @@ from team import transport
 
 from chat import human
 from chat import local as chat_local
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
 from routine import team as routine_team
 
-_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 MAX_OPEN_CHALLENGES = 64
 # Teams whose latest opening is tracked; an answer awaiting authentication has left _CHALLENGES but still needs one.
 MAX_TRACKED_GENERATIONS = 4 * MAX_OPEN_CHALLENGES
@@ -39,7 +38,7 @@ Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
 def _run(team_id: object, run_id: object) -> tuple[str, str]:
     canonical = team.canonical_team_id(team_id)
-    if not isinstance(run_id, str) or _ID_RE.fullmatch(run_id) is None:
+    if not isinstance(run_id, str) or routine_contract.ROUTINE_ID_RE.fullmatch(run_id) is None:
         raise team.TeamRequestError("Routine run is invalid")
     return canonical, run_id
 

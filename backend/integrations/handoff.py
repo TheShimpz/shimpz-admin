@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlsplit
 
 from integrations import cloudflare
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 HANDOFF_TTL_SECONDS = 600
@@ -34,7 +35,6 @@ HANDOFF_CAPACITY = 256
 CALLBACK_MODES = frozenset({"loopback", "hosted", "out-of-band"})
 AUTOMATIC_CALLBACK_MODES = frozenset({"loopback", "hosted"})
 
-_TEAM_ID_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _HANDOFF_RE = re.compile(r"^[0-9a-f]{64}$")
 _STATE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _COMPLETION_RE = re.compile(r"^c1\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$")
@@ -94,7 +94,7 @@ def _admin_session_digest(session_token: object) -> bytes:
 
 
 def _team_id(value: object) -> str:
-    if not isinstance(value, str) or _TEAM_ID_RE.fullmatch(value) is None:
+    if not isinstance(value, str) or team_contract.TEAM_ID_RE.fullmatch(value) is None:
         raise OAuthHandoffError("OAuth Team binding is invalid")
     return value
 

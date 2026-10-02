@@ -17,7 +17,7 @@ from team import transport
 from protocol.http.v1 import routine as routine_contract
 
 RUN_TIMEOUT_SECONDS = 15 * 60
-_TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
+TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
 # Team admits at most this many deliveries in one notice acknowledgment.
 MAX_ACK_DELIVERIES = 256
@@ -32,7 +32,7 @@ def _answer(response: team.TeamResponse) -> dict[str, object]:
         raise RoutineTeamError(f"Team answered {response.status}")
     body = dict(response.body)
     trace_id = body.pop("trace_id", None)
-    if not isinstance(trace_id, str) or _TRACE_ID_RE.fullmatch(trace_id) is None:
+    if not isinstance(trace_id, str) or TRACE_ID_RE.fullmatch(trace_id) is None:
         raise RoutineTeamError("Team answer has no trace")
     return body
 
