@@ -34,7 +34,65 @@ GuidanceCode = Literal[
     "assistant-install-target-required",
     "assistant-uninstall-target-required",
     "assistant-lifecycle-ambiguous",
+    "assistant-lifecycle-attachments",
+    "assistant-capability-attachments",
 ]
+# Platform guidance for a message that carried attachments, in every interface language (ADR-0093): attachments never
+# install or remove an Assistant, and a missing capability is installed only from an attachment-free request.
+ATTACHMENT_GUIDANCE: dict[str, dict[str, str]] = {
+    "assistant-lifecycle-attachments": {
+        "ar": "لا يمكن استخدام المرفقات لتثبيت المساعدين أو إزالتهم. أرسل هذا الطلب مرة أخرى بدون مرفقات.",
+        "de": (
+            "Anhänge können nicht zum Installieren oder Entfernen von Assistenten verwendet werden. "
+            "Sende diese Anfrage erneut ohne Anhänge."
+        ),
+        "en": "Attachments can't be used to install or remove Assistants. Send that request again without attachments.",
+        "es": (
+            "Los adjuntos no pueden usarse para instalar o quitar Asistentes. "
+            "Envía esa solicitud de nuevo sin adjuntos."
+        ),
+        "fr": (
+            "Les pièces jointes ne peuvent pas servir à installer ou retirer des Assistants. "
+            "Renvoyez cette demande sans pièces jointes."
+        ),
+        "ja": (
+            "添付ファイルを使ってアシスタントをインストールまたは削除することはできません。"
+            "添付ファイルなしでもう一度送信してください。"
+        ),
+        "pt": (
+            "Anexos não podem ser usados para instalar ou remover Assistentes. Envie esse pedido de novo sem anexos."
+        ),
+        "zh": "附件不能用于安装或移除助手。请不带附件重新发送该请求。",
+    },
+    "assistant-capability-attachments": {
+        "ar": "تحتاج هذه المهمة إلى مساعد لم يُثبَّت بعد. لتثبيته، أرسل الطلب مرة أخرى بدون مرفقات.",
+        "de": (
+            "Für diese Aufgabe wird ein Assistent benötigt, der noch nicht installiert ist. "
+            "Sende die Anfrage zum Installieren erneut ohne Anhänge."
+        ),
+        "en": (
+            "This task needs an Assistant that isn't installed yet. "
+            "To install it, send the request again without attachments."
+        ),
+        "es": (
+            "Esta tarea necesita un Asistente que aún no está instalado. "
+            "Para instalarlo, envía la solicitud de nuevo sin adjuntos."
+        ),
+        "fr": (
+            "Cette tâche nécessite un Assistant qui n'est pas encore installé. "
+            "Pour l'installer, renvoyez la demande sans pièces jointes."
+        ),
+        "ja": (
+            "このタスクには、まだインストールされていないアシスタントが必要です。"
+            "インストールするには、添付ファイルなしでもう一度送信してください。"
+        ),
+        "pt": (
+            "Esta tarefa precisa de um Assistente que ainda não está instalado. "
+            "Para instalá-lo, envie o pedido de novo sem anexos."
+        ),
+        "zh": "此任务需要一个尚未安装的助手。如需安装，请不带附件重新发送该请求。",
+    },
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +324,10 @@ def _classified_uninstall(
     )
 
 
+def _attachment_guidance(code: GuidanceCode, locale: str) -> Guidance:
+    return Guidance(code, ATTACHMENT_GUIDANCE[code][locale])
+
+
 def _lifecycle_result(
     team_id: str,
     payload: dict[str, object],
@@ -276,9 +338,9 @@ def _lifecycle_result(
     *,
     allow_uninstall: bool,
 ) -> Result:
-    if payload["files"]:
-        return Result("unresolved", error_status=422)
     locale = payload["locale"]
+    if payload["files"]:
+        return Result(classification.intent, guidance=_attachment_guidance("assistant-lifecycle-attachments", locale))
     if classification.intent == "unresolved":
         return Result("unresolved", guidance=Guidance("assistant-lifecycle-ambiguous", classification.reply))
     if classification.intent == "assistant-install":
@@ -344,6 +406,10 @@ def _prepare(
             if capability is not None
             else assistant_plan.prepare_capability(team_id, payload, catalog, local_enabled)
         )
+        if payload["files"] and preparation.plan is not None:
+            # A message with attachments never installs a capability; it is explained instead (ADR-0093).
+            guidance = _attachment_guidance("assistant-capability-attachments", payload["locale"])
+            return Result(classification.intent, guidance=guidance)
         return Result(classification.intent, preparation=preparation)
     if capability is not None:
         capability.cancel()

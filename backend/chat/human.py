@@ -55,8 +55,10 @@ RESPONSE_FIELDS = frozenset(
         "trace_id",
     }
 )
-# Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090).
-PRESENTATION_FIELDS = frozenset({"purpose", "help_url"})
+# Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090). `file` is
+# the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093).
+PRESENTATION_FIELDS = frozenset({"purpose", "help_url", "file"})
+AUTHORIZATION_KINDS = frozenset({"approval", *AUTH_KINDS})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # Team names a persistent password Stored Input with this exact identifier grammar (ADR-0059).
 _STORED_INPUT_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -267,9 +269,9 @@ def _localization(body: dict[str, object], request: dict[str, object]) -> dict[s
     return {"rendered": rendered, "locale": locale, "pack_digest": pack_digest}
 
 
-def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, str]:
-    """The optional Brain-written purpose and the reviewed key page of a Stored Input request (ADR-0090)."""
-    presentation: dict[str, str] = {}
+def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
+    """The optional Brain-written purpose, a Stored Input request's key page, and an authorization's file disclosure."""
+    presentation: dict[str, object] = {}
     if "purpose" in body:
         purpose = team_contract.canonical_purpose(body["purpose"])
         if purpose is None:
@@ -280,6 +282,12 @@ def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[s
         if help_url is None or request["kind"] != "input:password" or "stored_input" not in request:
             raise HumanChallengeError("invalid human challenge help URL")
         presentation["help_url"] = help_url
+    if "file" in body:
+        # The consent names exactly the file whose original bytes the approval delivers; the filename is literal data.
+        disclosed = team_contract.canonical_file_disclosure(body["file"])
+        if disclosed is None or request["kind"] not in AUTHORIZATION_KINDS:
+            raise HumanChallengeError("invalid human challenge file disclosure")
+        presentation["file"] = disclosed
     return presentation
 
 

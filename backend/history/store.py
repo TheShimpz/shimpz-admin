@@ -22,7 +22,10 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+# A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
+# never enters a conversation projection (ADR-0093); every other row is `plain`.
+PROVENANCES = frozenset({"plain", "attached"})
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
@@ -37,6 +40,8 @@ _GUIDANCE_CODES = frozenset(
         "assistant-install-target-required",
         "assistant-uninstall-target-required",
         "assistant-lifecycle-ambiguous",
+        "assistant-lifecycle-attachments",
+        "assistant-capability-attachments",
     }
 )
 _LOCK = threading.RLock()
@@ -111,17 +116,18 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT NOT NULL,
             event_key TEXT NOT NULL,
             payload TEXT NOT NULL,
+            provenance TEXT NOT NULL CHECK (provenance IN ('plain', 'attached')),
             UNIQUE (team_id, event_key)
         );
         CREATE INDEX transcript_team_position ON transcript (team_id, position);
         CREATE INDEX transcript_team_conversation ON transcript (team_id, position)
-            WHERE substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply'
-            OR substr(event_key, -9) = ':guidance';
+            WHERE provenance = 'plain' AND (substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply'
+            OR substr(event_key, -9) = ':guidance');
         CREATE TABLE resumable_turn (
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 5;
+        PRAGMA user_version = 6;
         """
     )
 
@@ -163,22 +169,26 @@ def _append(
     *,
     anchor_turn: str | None = None,
     finish_turn: str | None = None,
+    provenance: str = "plain",
 ) -> bool:
     encoded = _encoded(payload)
+    if provenance not in PROVENANCES:
+        raise ValueError("chat history provenance is invalid")
     with _database() as database:
         # A turn's later event needs its user row in the same transaction: after Team deletion or Space reset cleared
         # the transcript, a delayed reply or outcome must not recreate that history.
-        if anchor_turn is not None and (
-            database.execute(
-                "SELECT 1 FROM transcript WHERE team_id = ? AND event_key = ?",
+        if anchor_turn is not None:
+            anchor = database.execute(
+                "SELECT provenance FROM transcript WHERE team_id = ? AND event_key = ?",
                 (team_id, f"{anchor_turn}:user"),
             ).fetchone()
-            is None
-        ):
-            return False
+            if anchor is None:
+                return False
+            # Every row of a turn keeps the provenance its message was admitted with.
+            provenance = anchor[0]
         cursor = database.execute(
-            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
-            (team_id, event_key, encoded),
+            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload, provenance) VALUES (?, ?, ?, ?)",
+            (team_id, event_key, encoded, provenance),
         )
         committed = cursor.rowcount == 1
         if not committed:
@@ -227,19 +237,24 @@ def append_routine_notice(notice: object) -> bool:
                 return existing[0] == encoded
             database.execute("DELETE FROM transcript WHERE team_id = ? AND event_key = ?", (team_id, event_key))
         database.execute(
-            "INSERT INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)", (team_id, event_key, encoded)
+            "INSERT INTO transcript (team_id, event_key, payload, provenance) VALUES (?, ?, ?, 'plain')",
+            (team_id, event_key, encoded),
         )
     return True
 
 
-def append_user(team_id: object, turn_id: object, message: object) -> bool:
+def append_user(team_id: object, turn_id: object, message: object, *, attached: bool = False) -> bool:
+    """Admit one user message; a message that carried attachments marks its whole turn ``attached`` (ADR-0093)."""
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     text = _text(message, team_contract.MAX_CHAT_MESSAGE_CHARS, "user message")
+    if type(attached) is not bool:
+        raise ValueError("chat history attachment provenance is invalid")
     return _append(
         canonical_team,
         f"{canonical_turn}:user",
         {"kind": "message", "role": "user", "text": text},
+        provenance="attached" if attached else "plain",
     )
 
 
@@ -247,7 +262,7 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    if not isinstance(event, Mapping) or set(event) - {"usage"} != fields:
+    if not isinstance(event, Mapping) or set(event) - {"usage", "restricted_actions"} != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
@@ -266,6 +281,12 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
+    if "restricted_actions" in event:
+        restricted = team_contract.canonical_restricted_actions(event["restricted_actions"])
+        if restricted is None:
+            raise ValueError("chat history reply event is invalid")
+        # Stored so a reload shows the same guidance for the Actions the attachments withheld (ADR-0093).
+        entry["restricted_actions"] = restricted
     return _append(
         canonical_team, f"{canonical_turn}:reply", entry, anchor_turn=canonical_turn, finish_turn=canonical_turn
     )
@@ -501,6 +522,11 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             or payload.get("text") != team_contract.render_clarification(clarification)
         ):
             raise ValueError("invalid stored message")
+    if role == "assistant" and "restricted_actions" in payload:
+        expected.add("restricted_actions")
+        restricted = team_contract.canonical_restricted_actions(payload["restricted_actions"])
+        if restricted is None or restricted != payload["restricted_actions"]:
+            raise ValueError("invalid stored message")
     if role == "assistant" and "usage" in payload:
         expected.add("usage")
         usage = team_contract.canonical_turn_usage(payload["usage"])
@@ -644,10 +670,11 @@ def _conversation_entry(event_key: object, payload: dict[str, object]) -> conver
 
 
 # The eligibility predicate repeats the partial index `transcript_team_conversation` exactly, so the projection
-# skips every Routine notice and other row between the anchor and the latest eligible entries.
+# skips every Routine notice, every row of a turn whose message carried attachments (ADR-0093), and every other row
+# between the anchor and the latest eligible entries. Lifecycle routing and the empty-checkpoint bridge both read it.
 CONVERSATION_QUERY = (
     "SELECT event_key, payload FROM transcript "
-    "WHERE team_id = ? AND position < ? AND "
+    "WHERE team_id = ? AND position < ? AND provenance = 'plain' AND "
     "(substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply' "
     "OR substr(event_key, -9) = ':guidance') "
     "ORDER BY position DESC LIMIT ?"

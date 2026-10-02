@@ -65,7 +65,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 [str(identity["issued_at"]), identity["nonce"]],
             )
             self.assertEqual(connection.admitted_history_id, "a" * 32)
-            append.assert_called_once_with("team_1", "a" * 32, "Hello")
+            append.assert_called_once_with("team_1", "a" * 32, "Hello", attached=False)
 
             connection = socket._Connection()
             with (

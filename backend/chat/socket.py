@@ -614,7 +614,7 @@ async def _admit_chat_payload(
         websocket,
         connection,
         team_id,
-        payload["message"],
+        payload,
     )
     return (payload, identity) if admitted else None
 
@@ -623,10 +623,10 @@ async def _commit_user_history(
     websocket: WebSocket,
     connection: _Connection,
     team_id: str,
-    message: object,
+    payload: dict[str, object],
 ) -> bool:
     try:
-        history_id = await history_delivery.admit(team_id, message)
+        history_id = await history_delivery.admit(team_id, payload["message"], attached=bool(payload["files"]))
     except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat user history commit failed")
         await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))

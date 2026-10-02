@@ -76,6 +76,15 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
                 self.assertEqual(turn(usage=invalid).body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(usage=usage, cost=1).body, {"code": "chat-response-invalid"})
 
+        # The Actions a turn's attachments withheld reach the browser exactly, as identities only (ADR-0093).
+        restricted = {"actions": [{"assistant": "shimpz-cloudflare", "action": "list-zones"}], "total": 2}
+        named = turn(restricted_actions=restricted)
+        self.assertEqual(named.websocket_event("team_1")["restricted_actions"], restricted)
+        self.assertNotIn("restricted_actions", turn().body)
+        for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
+            with self.subTest(restricted=invalid):
+                self.assertEqual(turn(restricted_actions=invalid).body, {"code": "chat-response-invalid"})
+
     def test_projects_only_a_closed_clarification_free_of_forbidden_values(self) -> None:
         asked = {
             "question": "Qual período?",

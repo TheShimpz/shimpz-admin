@@ -240,6 +240,34 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
+    def test_an_authorization_projects_the_file_its_approval_delivers_and_nothing_else_does(self) -> None:
+        disclosed = {
+            "id": "0123456789abcdef0123456789abcdef",
+            "name": "Relatório de março.pdf",
+            "media_type": "application/pdf",
+            "size": 482113,
+            "sha256": "a" * 64,
+        }
+        for kind in ("approval", "auth:totp"):
+            projected = local._project_pending_challenge(
+                team.TeamResponse(428, _response(_request(kind), file=disclosed)), "team_1"
+            )
+            self.assertEqual(projected.websocket_event("team_1")["file"], disclosed)
+        plain = local._project_pending_challenge(team.TeamResponse(428, _response(_request("approval"))), "team_1")
+        self.assertNotIn("file", plain.body)
+        for body in (
+            _response(_request("approval"), file={**disclosed, "size": 8 * 1024 * 1024 + 1}),
+            _response(_request("approval"), file={**disclosed, "name": "a/b.pdf"}),
+            _response(_request("approval"), file={**disclosed, "content": "withheld"}),
+            _response(_request("approval"), file=None),
+            _response(_request("input:text"), file=disclosed),
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+
     def test_rendered_copy_locale_and_pack_project_beside_the_canonical_request(self) -> None:
         request, rendered = localize(
             {

@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from team import transport
 from test_chat_human_projection import _fingerprinted, _request, _response
-from tests.localized_request import localization
+from tests.localized_request import localization, rendered_for
 
 from chat import human
 from chat import local as chat_local
@@ -128,6 +128,17 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(challenge["request"], stored)
         self.assertEqual((challenge["rendered"], challenge["locale"]), (rendered, "pt"))
         self.assertEqual(challenge["pack_digest"], body["pack_digest"])
+
+        # A Routine holds no file grant, so a challenge that discloses a file is refused (ADR-0093).
+        disclosed = {"id": "0" * 32, "name": "a.pdf", "media_type": "application/pdf", "size": 1, "sha256": "a" * 64}
+        approval = _request("approval")
+        filed = {
+            **_response(approval, **localization(rendered_for(approval), "pt")),
+            "run_id": RUN,
+            "file": disclosed,
+        }
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, filed)):
+            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
 
         # A challenge rendered in another language than the opening named is refused and never remembered.
         with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):

@@ -518,16 +518,50 @@ class AssistantRouteTests(unittest.TestCase):
         ):
             assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog, False)
 
-    def test_lifecycle_request_with_files_is_rejected_before_directories_open(self) -> None:
-        attached = payload("instale o cloudflare")
-        attached["files"] = ["a" * 32]
+    def test_lifecycle_request_with_files_gets_localized_guidance_before_directories_open(self) -> None:
+        attached = {**payload("instale o cloudflare"), "files": ["a" * 32], "locale": "pt"}
         with mock.patch.object(
             assistant_route.local,
             "intent_route",
             return_value=response("assistant-install", "cloudflare"),
         ):
             result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog, False)
-        self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
+        self.assertEqual(
+            result,
+            assistant_route.Result(
+                "assistant-install",
+                guidance=assistant_route.Guidance(
+                    "assistant-lifecycle-attachments",
+                    assistant_route.ATTACHMENT_GUIDANCE["assistant-lifecycle-attachments"]["pt"],
+                ),
+            ),
+        )
+
+    def test_a_task_with_files_never_installs_its_missing_capability(self) -> None:
+        attached = {**payload("publique o relatório"), "files": ["a" * 32], "locale": "ja"}
+        plan = assistant_route.assistant_plan.Preparation(plan=mock.sentinel.plan)
+        with (
+            mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
+        ):
+            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog, False)
+        self.assertEqual(result.guidance.code, "assistant-capability-attachments")
+        self.assertIsNone(result.preparation)
+        with (
+            mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
+            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
+        ):
+            plain = assistant_route.prepare("team_1", payload("publique o relatório"), mock.sentinel.catalog, False)
+        self.assertIs(plain.preparation, plan)
+
+    def test_every_attachment_guidance_is_public_text_in_every_interface_language(self) -> None:
+        from protocol.http.v1 import payload as team_contract
+
+        for code, replies in assistant_route.ATTACHMENT_GUIDANCE.items():
+            self.assertEqual(set(replies), set(team_contract.CHAT_LOCALES), code)
+            for locale, reply in replies.items():
+                with self.subTest(code=code, locale=locale):
+                    self.assertTrue(assistant_route._valid_guidance_reply(reply))
 
     def test_unresolved_or_failed_route_never_becomes_an_ordinary_task(self) -> None:
         with mock.patch.object(

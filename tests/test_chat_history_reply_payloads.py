@@ -155,6 +155,39 @@ class ChatHistoryReplyPayloadTests(unittest.TestCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
+    def test_a_reply_keeps_the_actions_its_attachments_withheld_for_reload(self) -> None:
+        restricted = {"actions": [{"assistant": "shimpz-cloudflare", "action": "list-zones"}], "total": 3}
+        turn_id = self._admitted()
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "The contract names two zones.",
+            "clarification": None,
+        }
+        for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", turn_id, {**done, "restricted_actions": invalid})
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "restricted_actions": restricted}))
+        entry = history.page("marketing")["entries"][-1]
+        self.assertEqual(entry["restricted_actions"], restricted)
+        tampered = self._admitted()
+        self.assertTrue(history.append_reply("marketing", tampered, done))
+        stored = {
+            "kind": "message",
+            "role": "assistant",
+            "text": "x",
+            "author": "Marketing",
+            "restricted_actions": {**restricted, "total": 0},
+        }
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (json.dumps(stored), f"{tampered}:reply"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
     def test_a_reply_keeps_its_closed_turn_usage_for_reload(self) -> None:
         usage = {
             "duration_ms": 6200,

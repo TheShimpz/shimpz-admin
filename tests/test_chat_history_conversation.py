@@ -174,6 +174,45 @@ class ChatHistoryConversationTests(unittest.TestCase):
             ],
         )
 
+    def test_an_attached_turn_never_enters_the_projection_but_stays_in_the_history(self) -> None:
+        done = {"type": "done", "team_id": "marketing", "team_name": "Marketing", "clarification": None}
+        plain = history.new_turn_id()
+        attached = history.new_turn_id()
+        refused = history.new_turn_id()
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", plain, "Quais zonas temos?"))
+        self.assertTrue(history.append_reply("marketing", plain, {**done, "reply": "Duas zonas."}))
+        self.assertTrue(history.append_user("marketing", attached, "Resuma o contrato anexo.", attached=True))
+        self.assertTrue(history.append_reply("marketing", attached, {**done, "reply": "O contrato diz X."}))
+        self.assertTrue(history.append_user("marketing", refused, "Instale isso.", attached=True))
+        self.assertTrue(
+            history.append_guidance(
+                "marketing", refused, "assistant-lifecycle-attachments", "Envie esse pedido de novo sem anexos."
+            )
+        )
+        self.assertTrue(history.append_user("marketing", current, "E agora?"))
+
+        projected = history.conversation("marketing", current)
+
+        # Neither the attached message nor anything its turn produced reaches routing or the bridge (ADR-0093).
+        self.assertEqual([entry.text for entry in projected], ["Quais zonas temos?", "Duas zonas."])
+        texts = [entry.get("text", entry.get("reply")) for entry in history.page("marketing")["entries"]]
+        self.assertIn("O contrato diz X.", texts)
+        with sqlite3.connect(self.path) as database:
+            rows = dict(database.execute("SELECT event_key, provenance FROM transcript").fetchall())
+        self.assertEqual(rows[f"{attached}:reply"], "attached")
+        self.assertEqual(rows[f"{refused}:guidance"], "attached")
+        self.assertEqual(rows[f"{plain}:reply"], "plain")
+        for invalid in (1, "yes", None):
+            with self.subTest(attached=invalid), self.assertRaises(ValueError):
+                history.append_user("marketing", history.new_turn_id(), "x", attached=invalid)
+        with self.assertRaises(ValueError):
+            history._append("marketing", f"{history.new_turn_id()}:user", {}, provenance="other")
+        with sqlite3.connect(self.path) as database, self.assertRaises(sqlite3.IntegrityError):
+            database.execute(
+                "INSERT INTO transcript (team_id, event_key, payload, provenance) VALUES ('m', 'k', '{}', 'other')"
+            )
+
     def test_conversation_projection_keeps_only_the_newest_eight_eligible_entries(self) -> None:
         for index in range(5):
             turn_id = history.new_turn_id()

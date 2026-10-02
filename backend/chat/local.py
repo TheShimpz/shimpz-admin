@@ -38,6 +38,9 @@ _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarificati
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
+# The Actions a completed turn withheld for its attachment content, named for guidance only (ADR-0093).
+RESTRICTED_FIELD = "restricted_actions"
+_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -232,7 +235,7 @@ class PublicResponse(team.TeamResponse):
         if body.get("team_id") != team_id:
             return None
         event = None
-        if set(body) - {USAGE_FIELD} == DONE_FIELDS:
+        if set(body) - _OPTIONAL_DONE_FIELDS == DONE_FIELDS:
             event = {"type": "done", **body}
         return event
 
@@ -673,6 +676,12 @@ def _project_turn(
         usage = team_contract.canonical_turn_usage(usage)
         if usage is None:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    restricted = None
+    if RESTRICTED_FIELD in response.body:
+        # The Actions withheld for attachment content are identities only; they must match the closed Team shape.
+        restricted = team_contract.canonical_restricted_actions(response.body[RESTRICTED_FIELD])
+        if restricted is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = " ".join(
         (
             f"{team_name} {reply} {_clarification_text(clarification)}",
@@ -680,7 +689,7 @@ def _project_turn(
         )
     )
     if (
-        set(response.body) - {USAGE_FIELD} != _TURN_RESPONSE_FIELDS
+        set(response.body) - _OPTIONAL_DONE_FIELDS != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
         or not _valid_trace_id(response.body.get("trace_id"))
         or not _valid_team_name(team_name)
@@ -699,6 +708,7 @@ def _project_turn(
             "reply": reply,
             "clarification": clarification,
             **({USAGE_FIELD: usage} if usage is not None else {}),
+            **({RESTRICTED_FIELD: restricted} if restricted is not None else {}),
         },
     )
 

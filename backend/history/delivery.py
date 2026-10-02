@@ -20,20 +20,21 @@ def configure(profile: str) -> None:
     _enabled = profile == "local"
 
 
-def _append_live_user(team_id: str, turn_id: str, message: object) -> bool:
+def _append_live_user(team_id: str, turn_id: str, message: object, attached: bool) -> bool:
     # Team deletion and Space reset hold the lifecycle lock across their Team call and transcript cleanup, so a user
     # row written here either precedes that cleanup or finds the Team gone: it never survives a completed deletion.
     with store.LIFECYCLE_LOCK:
         if isinstance(team.resolve_team_name(team_id), team.TeamResponse):
             raise store.HistoryUnavailableError("the Team is no longer available")
-        return store.append_user(team_id, turn_id, message)
+        return store.append_user(team_id, turn_id, message, attached=attached)
 
 
-async def admit(team_id: str, message: object) -> str | None:
+async def admit(team_id: str, message: object, *, attached: bool = False) -> str | None:
+    """Admit one user message; ``attached`` marks a turn whose message carried attachments (ADR-0093)."""
     if not _enabled:
         return None
     turn_id = store.new_turn_id()
-    committed = await asyncio.to_thread(_append_live_user, team_id, turn_id, message)
+    committed = await asyncio.to_thread(_append_live_user, team_id, turn_id, message, attached)
     if not committed:
         raise store.HistoryUnavailableError("chat history user entry was not committed")
     return turn_id
