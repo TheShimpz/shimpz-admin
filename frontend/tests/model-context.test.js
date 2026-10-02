@@ -400,3 +400,95 @@ test('a key saved while switching Teams stays in the provider cache for the next
   assert.equal(providerRequests, 1);
   assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').masked, '••••kept');
 });
+
+// Team marketing saves an Anthropic key while Team support, whose persisted Brain is Anthropic, becomes active.
+function teamSwitchFetcher({ releaseKey, failMarketingSelection = false, writes = [] }) {
+  const marketing = fixtureFetcher('marketing', { provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
+  const support = fixtureFetcher('support', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
+  return async (url, options = {}) => {
+    if (options.method === 'PUT') writes.push(url);
+    if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
+      await releaseKey;
+      return response(200, { ...providers[1], configured: true, masked: '••••late' });
+    }
+    if (url === '/api/teams/marketing/inference' && options.method === 'PUT' && failMarketingSelection) {
+      return response(502, { detail: 'The Team model selection could not be saved.' });
+    }
+    return url.startsWith('/api/teams/support') ? support(url, options) : marketing(url, options);
+  };
+}
+
+for (const [name, failMarketingSelection] of [['completed', false], ['partially failed', true]]) {
+  test(`a ${name} key save from the previous Team opens the active Team that persisted its provider`, async () => {
+    let releasePut;
+    const releaseKey = new Promise((resolve) => { releasePut = resolve; });
+    const writes = [];
+    const fetcher = teamSwitchFetcher({ releaseKey, failMarketingSelection, writes });
+    await loadModelContext(fetcher, 'marketing');
+    await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
+    const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-late-0123456789');
+    await loadModelContext(fetcher, 'support');
+    assert.equal(get(modelContext).ready, false);
+
+    releasePut();
+    await saving.catch(() => {});
+
+    const current = get(modelContext);
+    assert.equal(current.phase, 'ready');
+    assert.equal(current.teamId, 'support');
+    assert.equal(current.provider, 'anthropic');
+    assert.equal(current.model, 'claude-sonnet-5-5');
+    assert.equal(current.effort, 'low');
+    assert.equal(current.ready, true);
+    assert.equal(current.providers.find((entry) => entry.id === 'anthropic').masked, '••••late');
+    // Reconciling the active Team never writes its selection; only marketing's own save reached the network.
+    assert.deepEqual(writes, ['/api/model-providers/anthropic', '/api/teams/marketing/inference']);
+  });
+}
+
+test('a late key save keeps an unpersisted active selection locked but shows the configured provider', async () => {
+  let releasePut;
+  const releaseKey = new Promise((resolve) => { releasePut = resolve; });
+  const fetcher = teamSwitchFetcher({ releaseKey });
+  await loadModelContext(fetcher, 'marketing');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
+  const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-late-0123456789');
+  await loadModelContext(fetcher, 'support');
+  await selectTeamBrain(fetcher, 'support', 'anthropic', 'claude-opus-5-5');
+
+  releasePut();
+  await saving;
+
+  const current = get(modelContext);
+  assert.equal(current.model, 'claude-opus-5-5');
+  assert.equal(current.ready, false);
+  assert.equal(current.providers.find((entry) => entry.id === 'anthropic').configured, true);
+  await configureModelContext(fetcher, 'support', '');
+  assert.equal(get(modelContext).ready, true);
+  assert.equal(get(modelContext).model, 'claude-opus-5-5');
+});
+
+test('a key save that lands while the next Team is loading opens it when that load settles', async () => {
+  let releasePut;
+  const releaseKey = new Promise((resolve) => { releasePut = resolve; });
+  let releaseInference;
+  const inferenceHeld = new Promise((resolve) => { releaseInference = resolve; });
+  const base = teamSwitchFetcher({ releaseKey });
+  const fetcher = async (url, options = {}) => {
+    if (url === '/api/teams/support/inference' && !options.method) await inferenceHeld;
+    return base(url, options);
+  };
+  await loadModelContext(fetcher, 'marketing');
+  await selectTeamBrain(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
+  const saving = configureModelContext(fetcher, 'marketing', 'sk-ant-late-0123456789');
+  const loading = loadModelContext(fetcher, 'support');
+  releasePut();
+  await saving;
+  assert.equal(get(modelContext).phase, 'loading');
+  releaseInference();
+  await loading;
+
+  assert.equal(get(modelContext).teamId, 'support');
+  assert.equal(get(modelContext).ready, true);
+  assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').masked, '••••late');
+});

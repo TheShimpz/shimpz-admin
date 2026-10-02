@@ -30,6 +30,8 @@ let generation = 0;
 let sessionEpoch = 0;
 let providerCatalogCache = null;
 let providerCatalogRequest = null;
+// The active Team view's persisted inference, as last loaded or saved by that view; null when it has none.
+let persisted = null;
 
 function cachedModelProviders(fetcher) {
   if (providerCatalogCache) return Promise.resolve(providerCatalogCache);
@@ -60,6 +62,39 @@ function selectedModel(provider, modelId) {
   return provider?.models.find((entry) => entry.id === modelId) ?? null;
 }
 
+function persistedAndConfigured(state, provider) {
+  return Boolean(
+    provider?.configured &&
+    persisted?.teamId === state.teamId &&
+    persisted.provider === state.provider &&
+    persisted.model === state.model &&
+    persisted.effort === state.effort,
+  );
+}
+
+// The active Team view always shows the session's shared provider state and keeps its own selection. A provider
+// configured by another Team view's save opens this Team only when its selection is the one it has persisted.
+function reconcile(state) {
+  if (!providerCatalogCache) return state;
+  const provider = providerCatalogCache.find((entry) => entry.id === state.provider);
+  return {
+    ...state,
+    providers: providerCatalogCache,
+    ready: state.ready || persistedAndConfigured(state, provider),
+  };
+}
+
+// Applies a finished load or save only while it is still the current attempt, recording what that Team persisted.
+function settle(attempt, snapshot, saved) {
+  if (attempt !== generation) return snapshot;
+  if (saved) {
+    persisted = { teamId: snapshot.teamId, provider: saved.provider, model: saved.model, effort: saved.effort };
+  }
+  const settled = reconcile(snapshot);
+  modelContext.set(settled);
+  return settled;
+}
+
 function fail(attempt, error, state) {
   const safe = publicError(error, 'The Team model settings are unavailable.');
   if (attempt === generation) {
@@ -73,6 +108,7 @@ export function clearModelContext() {
   sessionEpoch += 1;
   providerCatalogCache = null;
   providerCatalogRequest = null;
+  persisted = null;
   modelContext.set(emptyContext());
 }
 
@@ -84,6 +120,7 @@ export function preloadModelProviders(fetcher) {
 export async function loadModelContext(fetcher, teamId) {
   requireRequest(fetcher, teamId);
   const attempt = ++generation;
+  persisted = null;
   const loading = { ...emptyContext(), phase: 'loading', teamId };
   modelContext.set(loading);
   try {
@@ -118,8 +155,7 @@ export async function loadModelContext(fetcher, teamId) {
       ready: selectionReady,
       error: '',
     };
-    if (attempt === generation) modelContext.set(snapshot);
-    return snapshot;
+    return settle(attempt, snapshot, inference ?? (selectionReady ? { provider: selected.id, model, effort } : null));
   } catch (error) {
     throw fail(attempt, error, loading);
   }
@@ -163,8 +199,7 @@ async function persist(fetcher, teamId, apiKey = '') {
       ready: true,
       error: '',
     };
-    if (attempt === generation) modelContext.set(snapshot);
-    return snapshot;
+    return settle(attempt, snapshot, result.inference);
   } catch (error) {
     const saved = error?.providerState;
     const providers = saved ? withProviderState(saving.providers, saved) : saving.providers;
@@ -178,11 +213,13 @@ function withProviderState(providers, providerState) {
 }
 
 // A saved provider state enters the shared cache only within the session that saved it; it merges into the cache
-// so a Team switch or another provider's save in between is kept.
+// so a Team switch or another provider's save in between is kept. A settled active Team view reconciles at once; a
+// view still loading or saving reconciles when it settles.
 function publishProviderState(epoch, providerState) {
-  if (epoch === sessionEpoch && providerCatalogCache) {
-    providerCatalogCache = withProviderState(providerCatalogCache, providerState);
-  }
+  if (epoch !== sessionEpoch || !providerCatalogCache) return;
+  providerCatalogCache = withProviderState(providerCatalogCache, providerState);
+  const current = get(modelContext);
+  if (current.phase === 'ready') modelContext.set(reconcile(current));
 }
 
 export async function configureModelContext(fetcher, teamId, apiKey = '') {
