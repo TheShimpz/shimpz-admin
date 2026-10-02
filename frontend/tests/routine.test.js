@@ -42,6 +42,8 @@ test('mirrors the schedule, quote, and timezone grammar', () => {
     { kind: 'daily', time: '23:59' },
     { kind: 'weekly', weekday: 6, time: '00:00' },
     { kind: 'monthly', day: 28, time: '12:30' },
+    { kind: 'continuous', gap: 5, cap: 1 },
+    { kind: 'continuous', gap: 86400, cap: 1000 },
   ]) {
     assert.equal(isSchedule(schedule), true, JSON.stringify(schedule));
   }
@@ -56,6 +58,12 @@ test('mirrors the schedule, quote, and timezone grammar', () => {
     { kind: 'weekly', weekday: 7, time: '09:00' },
     { kind: 'monthly', day: 29, time: '09:00' },
     { kind: 'daily', time: '09:00', extra: 1 },
+    { kind: 'continuous', gap: 4, cap: 10 },
+    { kind: 'continuous', gap: 86401, cap: 10 },
+    { kind: 'continuous', gap: 5, cap: 0 },
+    { kind: 'continuous', gap: 5, cap: 1001 },
+    { kind: 'continuous', gap: 5.5, cap: 10 },
+    { kind: 'continuous', gap: 5 },
   ]) {
     assert.equal(isSchedule(schedule), false, JSON.stringify(schedule));
   }
@@ -239,6 +247,12 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda domingo às 09:00');
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
+  // A continuous Routine's pause and cap are numbers in the viewer's locale.
+  const continuous = { kind: 'continuous', gap: 5, cap: 1000 };
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Continuously, 5 s after each run, up to 1,000 runs a day');
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
+  }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;

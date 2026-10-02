@@ -16,6 +16,7 @@ const SCHEDULE_FIELDS = {
   daily: ['kind', 'time'],
   weekly: ['kind', 'weekday', 'time'],
   monthly: ['kind', 'day', 'time'],
+  continuous: ['kind', 'gap', 'cap'],
 };
 
 function exact(value, keys) {
@@ -49,6 +50,9 @@ export function isSchedule(value) {
   const fields = value && typeof value === 'object' ? SCHEDULE_FIELDS[value.kind] : undefined;
   if (!fields || !exact(value, fields)) return false;
   if (value.kind === 'hourly') return whole(value.every, 1, 24);
+  if (value.kind === 'continuous') {
+    return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && whole(value.cap, 1, MAX_DAILY_RUNS);
+  }
   return (
     typeof value.time === 'string' &&
     TIME_RE.test(value.time) &&
@@ -77,7 +81,10 @@ const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ROUTINES = 8;
 // The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
 export const MAX_INCIDENTS = 32;
-export const MAX_DAILY_RUNS = 24;
+// A Team's rolling-24-hour run ceiling, which also bounds one continuous Routine's cap (ADR-0092).
+export const MAX_DAILY_RUNS = 1000;
+export const MIN_CONTINUOUS_GAP_SECONDS = 5;
+export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
@@ -404,6 +411,12 @@ function fill(template, values) {
 export function scheduleWords(schedule, copy, locale) {
   if (schedule.kind === 'hourly') {
     return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
+  }
+  if (schedule.kind === 'continuous') {
+    return fill(copy.continuous, {
+      gap: new Intl.NumberFormat(locale).format(schedule.gap),
+      cap: new Intl.NumberFormat(locale).format(schedule.cap),
+    });
   }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
   if (schedule.kind === 'weekly') {
