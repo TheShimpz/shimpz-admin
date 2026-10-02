@@ -149,7 +149,10 @@ def _resumed(response: team.TeamResponse, canonical: str, run: str) -> team.Team
 def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> team.TeamResponse:
     credential = chat_local.model_credential(canonical)
     if isinstance(credential, team.TeamResponse):
-        return credential
+        if credential.body != {"code": "model-credential-missing"}:
+            return credential
+        # A compiled run resumes without a key; a recovery it then needs pauses as unavailable in Team (ADR-0092).
+        credential = None
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",

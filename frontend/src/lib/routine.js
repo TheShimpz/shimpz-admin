@@ -16,6 +16,7 @@ const SCHEDULE_FIELDS = {
   daily: ['kind', 'time'],
   weekly: ['kind', 'weekday', 'time'],
   monthly: ['kind', 'day', 'time'],
+  continuous: ['kind', 'gap', 'cap'],
 };
 
 function exact(value, keys) {
@@ -49,6 +50,9 @@ export function isSchedule(value) {
   const fields = value && typeof value === 'object' ? SCHEDULE_FIELDS[value.kind] : undefined;
   if (!fields || !exact(value, fields)) return false;
   if (value.kind === 'hourly') return whole(value.every, 1, 24);
+  if (value.kind === 'continuous') {
+    return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && whole(value.cap, 1, MAX_DAILY_RUNS);
+  }
   return (
     typeof value.time === 'string' &&
     TIME_RE.test(value.time) &&
@@ -77,7 +81,11 @@ const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ROUTINES = 8;
 // The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
 export const MAX_INCIDENTS = 32;
-export const MAX_DAILY_RUNS = 24;
+// A Team's rolling-24-hour run ceiling, which also bounds one continuous Routine's cap (ADR-0092).
+export const MAX_DAILY_RUNS = 1000;
+export const MIN_CONTINUOUS_GAP_SECONDS = 5;
+export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
+export const MAX_ROLLUP_RUNS = 60 / MIN_CONTINUOUS_GAP_SECONDS;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
@@ -405,6 +413,12 @@ export function scheduleWords(schedule, copy, locale) {
   if (schedule.kind === 'hourly') {
     return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
   }
+  if (schedule.kind === 'continuous') {
+    return fill(copy.continuous, {
+      gap: new Intl.NumberFormat(locale).format(schedule.gap),
+      cap: new Intl.NumberFormat(locale).format(schedule.cap),
+    });
+  }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
   if (schedule.kind === 'weekly') {
     // 2024-01-01 was a Monday, weekday 0 in the Routine grammar.
@@ -467,6 +481,7 @@ const NOTICE_DETAILS = {
   ],
   'user-skipped': [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
+  healthy: [['runs'], (detail) => whole(detail.runs, 1, MAX_ROLLUP_RUNS)],
   'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],
   frozen: [
     ['request_kind', 'assistant_id', 'action'],
@@ -487,7 +502,8 @@ const NOTICE_DETAILS = {
   changed: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
 };
 
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed'];
+// `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9).
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy'];
 
 function isName(value) {
   return closedText(value, MAX_NAME_CHARS) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;

@@ -42,6 +42,8 @@ test('mirrors the schedule, quote, and timezone grammar', () => {
     { kind: 'daily', time: '23:59' },
     { kind: 'weekly', weekday: 6, time: '00:00' },
     { kind: 'monthly', day: 28, time: '12:30' },
+    { kind: 'continuous', gap: 5, cap: 1 },
+    { kind: 'continuous', gap: 86400, cap: 1000 },
   ]) {
     assert.equal(isSchedule(schedule), true, JSON.stringify(schedule));
   }
@@ -56,6 +58,12 @@ test('mirrors the schedule, quote, and timezone grammar', () => {
     { kind: 'weekly', weekday: 7, time: '09:00' },
     { kind: 'monthly', day: 29, time: '09:00' },
     { kind: 'daily', time: '09:00', extra: 1 },
+    { kind: 'continuous', gap: 4, cap: 10 },
+    { kind: 'continuous', gap: 86401, cap: 10 },
+    { kind: 'continuous', gap: 5, cap: 0 },
+    { kind: 'continuous', gap: 5, cap: 1001 },
+    { kind: 'continuous', gap: 5.5, cap: 10 },
+    { kind: 'continuous', gap: 5 },
   ]) {
     assert.equal(isSchedule(schedule), false, JSON.stringify(schedule));
   }
@@ -239,6 +247,12 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda domingo às 09:00');
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
+  // A continuous Routine's pause and cap are numbers in the viewer's locale.
+  const continuous = { kind: 'continuous', gap: 5, cap: 1000 };
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Continuously, 5 s after each run, up to 1,000 runs a day');
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
+  }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
@@ -297,6 +311,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: STEP },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 12 } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
@@ -328,6 +343,10 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, detail: STEP },
+    // A minute's healthy rollup belongs to the Routine, counts at most what its gaps allow, and names no Actions.
+    { ...RUN_ENTRY, outcome: 'healthy', detail: { runs: 2 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 13 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', assistant_id: 'x', action: 'y' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [] } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },

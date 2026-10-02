@@ -47,6 +47,11 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         for case in VECTORS["routine_schedule"]["daily_rate"]:
             self.assertEqual(str(routine_contract.daily_rate(case["schedule"])), case["rate"])
         self.assertEqual(routine_contract.daily_rate({"kind": "hourly", "every": 5}), Fraction(24, 5))
+        # A Routine's rolling cap is its whole daily rate, and its mode says how its runs are claimed.
+        self.assertEqual(routine_contract.daily_cap({"kind": "hourly", "every": 5}), 5)
+        self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5, "cap": 300}), 300)
+        self.assertEqual(routine_contract.run_mode({"kind": "continuous", "gap": 5, "cap": 300}), "continuous")
+        self.assertEqual(routine_contract.run_mode({"kind": "daily", "time": "09:00"}), "scheduled")
         views = {
             "routine": routine_contract.canonical_routine_view,
             "run": routine_contract.canonical_run_view,
@@ -88,6 +93,7 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             "paused": {"assistant_id": "dns", "action": "replace-dns-record", "reason": "person"},
             "user-skipped": {"assistant_id": None, "action": None},
             "skipped": {"missed": 3},
+            "healthy": {"runs": 12},
             "scope-changed": {"assistants": ["dns"]},
             "failed": {"code": "assistant-rpc-failed", "actions": [["dns", "list-zones"]]},
             "denied": {"actions": []},
@@ -106,6 +112,7 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             ("paused", {"assistant_id": "dns", "action": "x", "reason": "approve"}),
             ("scope-changed", {"assistants": []}),
             ("scope-changed", {"assistants": ["Bad"]}),
+            ("healthy", {"runs": 13}),
             ("stopped", {"actions": [["dns", {"input": 1}]]}),
             ("stopped", {"actions": "dns"}),
             ("failed", {"code": "Bad Code", "actions": []}),

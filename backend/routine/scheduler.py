@@ -1,9 +1,10 @@
 """Admin's Routine scheduler (ADR-0086): one thread claims due runs onto a lane of two workers.
 
-Every tick, with jitter, it delivers notices, then reserves a free lane slot before it asks Team to claim, so a lease
-is never taken for a run no worker can start. Team enforces every lease and deadline itself, so a stalled worker only
-wastes its own slot. A tick comes at the latest every interval; Team's next-due hint and a finished run wake it sooner
-(ADR-0092), and a missed hint only waits for the next reconciliation.
+Every tick, with jitter, it delivers notices, then reserves a free lane slot before each claim, so a lease is never
+taken for a run no worker can start, and it claims until every slot is busy or Team has nothing more to start. Team
+enforces every lease and deadline itself, so a stalled worker only wastes its own slot. A tick comes at the latest
+every interval; Team's next-due hint and a finished run wake it sooner (ADR-0092), and a missed hint only waits for
+the next reconciliation.
 """
 
 from __future__ import annotations
@@ -82,22 +83,30 @@ class RoutineScheduler:
             log.warning("Routine claim failed; retrying on the next tick")
 
     def _start(self) -> None:
-        if not self._slots.acquire(blocking=False):
+        """Fill every free lane slot with a due run, one claim per slot, until Team has nothing more to start.
+
+        The hint kept is the one Team gave when it had nothing more to start. When every slot is busy no hint is kept:
+        nothing can start until a run finishes, and a finished run wakes the next tick, which claims and asks again.
+        """
+        held = self._slots.acquire(blocking=False)
+        if not held:
             return
-        started = False
         try:
             # The identity and its public key exist before any lease is taken for them.
             identity = state.local_routine_identity()
             supervisor.materialize_routine_key(identity)
-            held = team.providers()
-            answer = team.claim(held) if held else {"run": None, "next_due_at": None}
-            claimed = answer["run"]
-            self._due_at = answer["next_due_at"]
-            if claimed is not None:
-                self._workers.submit(self._run, claimed, identity)
-                started = True
+            # Until Team answers with nothing more to start, only a run finishing meanwhile sets the next wake.
+            self._due_at = None
+            while held:
+                answer = team.claim()
+                if answer["run"] is None:
+                    self._due_at = answer["next_due_at"]
+                    return
+                self._workers.submit(self._run, answer["run"], identity)
+                # The slot is now the run's own; the worker frees it.
+                held = self._slots.acquire(blocking=False)
         finally:
-            if not started:
+            if held:
                 self._slots.release()
 
     def _run(self, claimed: dict[str, object], identity: supervisor.LocalIdentity) -> None:
