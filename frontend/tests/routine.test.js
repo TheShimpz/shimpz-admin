@@ -10,6 +10,7 @@ import {
   deleteRoutine,
   fillRoutineCopy,
   instantWords,
+  minuteWords,
   isQuote,
   isSchedule,
   isTimezone,
@@ -262,6 +263,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
+  assert.match(minuteWords('2026-10-05T12:01:00Z', 'en'), /:01/);
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);

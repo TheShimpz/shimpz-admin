@@ -11,6 +11,7 @@
     answerRoutineCard,
     answerRoutineChallenge,
     fillRoutineCopy,
+    minuteWords,
     openRoutineCard,
     openRoutineChallenge,
     resumeRoutine,
@@ -79,7 +80,8 @@
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
-      case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs });
+      // A minute's rollup is dated by the minute it covers, in the viewer's own time.
+      case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs, minute: minuteWords(entry.createdAt, $locale) });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
       case 'created':
       case 'changed':

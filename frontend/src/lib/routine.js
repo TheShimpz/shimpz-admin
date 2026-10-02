@@ -435,6 +435,11 @@ export function instantWords(value, locale, timeZone) {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 }
 
+/** The time of day a minute starts, for the viewer's locale and timezone. */
+export function minuteWords(value, locale) {
+  return new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(value));
+}
+
 /** The localized message for a Routine failure code. */
 export function routineErrorMessage(error, copy) {
   const code = error instanceof RoutineError ? error.code : '';
