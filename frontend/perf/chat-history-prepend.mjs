@@ -49,29 +49,34 @@ function historyPage(index, totalPages) {
   return { entries, before: index + 1 < totalPages ? cursor(index + 1) : null };
 }
 
-function apiFixture(path) {
-  if (path === '/api/session') return {
-    profile: 'local', authenticated: true, initialized: true,
-    authentication_state: 'configured', authentication_method: 'webauthn',
-    origin_admitted: true, passkey_enrollment_available: false,
-    passkey_registered: false, oauth_completion_mode: 'automatic',
-    features: { teamCredentials: true },
+// Closed HTTP fixtures for the current Admin client contracts, shaped like e2e/scenarios.js. Each answer is keyed by
+// method and path; anything else is recorded as unexpected and fails the trial.
+function apiFixture(method, path) {
+  const answers = {
+    'POST /api/session': () => ({
+      profile: 'local', authenticated: true, initialized: true,
+      authentication_state: 'configured', authentication_method: 'webauthn',
+      origin_admitted: true, passkey_enrollment_available: false,
+      passkey_registered: false, oauth_completion_mode: 'automatic',
+      features: { teamCredentials: true },
+    }),
+    'GET /api/teams': () => ({ teams: [team] }),
+    'GET /api/assistants': () => ({ assistants: [] }),
+    'GET /api/model-providers': () => ({ providers: models }),
+    'GET /api/decision-provider': () => ({ provider: 'typesafe', configured: false, masked: null }),
+    'GET /api/platform-release': () => ({
+      release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
+      ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
+    }),
+    'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
+    'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
+    'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
+    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [] }),
+    'GET /api/teams/perf_team/inference': () => ({
+      team_id: team.team_id, provider: provider.id, model: provider.default_model, effort: 'low',
+    }),
   };
-  if (path === '/api/teams') return { teams: [team] };
-  if (path === '/api/assistants') return { assistants: [] };
-  if (path === '/api/model-providers') return { providers: models };
-  if (path === '/api/platform-release') return {
-    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-  };
-  if (path === '/api/assistant-catalog') return { version: 1, assistants: [] };
-  if (path === '/api/local-assistants') return { assistants: [], trace_id: 'c'.repeat(32) };
-  if (path === '/api/teams/perf_team/assistants') return { assistants: [] };
-  if (path === '/api/teams/perf_team/assistant-integrations') return { integrations: [] };
-  if (path === '/api/teams/perf_team/inference') return {
-    team_id: team.team_id, provider: provider.id, model: provider.default_model,
-  };
-  return null;
+  return answers[`${method} ${path}`]?.() ?? null;
 }
 
 function installSocket() {
@@ -121,17 +126,18 @@ async function measure(browser, baseURL, existingPages) {
     await page.addInitScript(installSocket);
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
+      const method = route.request().method();
       let body;
-      if (url.pathname === '/api/teams/perf_team/chat/history') {
+      if (method === 'GET' && url.pathname === '/api/teams/perf_team/chat/history') {
         const before = url.searchParams.get('before');
         const index = before === null ? 0 : Number(before.slice(0, -1));
         if (before !== null && before !== cursor(index)) unexpected.push('invalid cursor');
         historyRequests += 1;
         body = historyPage(index, existingPages + 2);
       } else {
-        body = apiFixture(url.pathname);
+        body = apiFixture(method, url.pathname);
       }
-      if (!body) unexpected.push(url.pathname);
+      if (!body) unexpected.push(`${method} ${url.pathname}`);
       await route.fulfill({ status: body ? 200 : 404, contentType: 'application/json',
         body: JSON.stringify(body ?? { detail: 'unknown' }) });
     });

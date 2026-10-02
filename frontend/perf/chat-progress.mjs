@@ -7,6 +7,7 @@
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { messages } from '../src/lib/messages.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
 const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
@@ -14,6 +15,9 @@ const models = catalog.providers.map((item) => ({
   id: item.id, title: item.title, default_model: item.default_model,
   models: item.models, configured: item.id === provider.id, masked: null,
 }));
+// Visible copy comes from the current catalog, so the checks below track the final phase, not frozen prose.
+const copy = messages.en.chatPage;
+const finalPhase = copy.progress.narrative.replyValidation;
 const counts = (process.env.SHIMPZ_PROGRESS_CASES ?? '36').split(',').map(Number);
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
 const gap = Number(process.env.SHIMPZ_PROGRESS_GAP_MS ?? '0');
@@ -37,30 +41,35 @@ if (!['reduce', 'no-preference'].includes(motion)) {
   throw new Error('Motion must be reduce or no-preference.');
 }
 
-function fixture(path) {
-  if (path === '/api/session') return {
-    profile: 'local', authenticated: true, initialized: true,
-    authentication_state: 'configured', authentication_method: 'webauthn',
-    origin_admitted: true, passkey_enrollment_available: false,
-    passkey_registered: false, oauth_completion_mode: 'automatic',
-    features: { teamCredentials: true },
+// Closed HTTP fixtures for the current Admin client contracts, shaped like e2e/scenarios.js. Each answer is keyed by
+// method and path; anything else is recorded as unexpected and fails the trial.
+function fixture(method, path) {
+  const answers = {
+    'POST /api/session': () => ({
+      profile: 'local', authenticated: true, initialized: true,
+      authentication_state: 'configured', authentication_method: 'webauthn',
+      origin_admitted: true, passkey_enrollment_available: false,
+      passkey_registered: false, oauth_completion_mode: 'automatic',
+      features: { teamCredentials: true },
+    }),
+    'GET /api/teams': () => ({ teams: [team] }),
+    'GET /api/assistants': () => ({ assistants: [] }),
+    'GET /api/model-providers': () => ({ providers: models }),
+    'GET /api/decision-provider': () => ({ provider: 'typesafe', configured: false, masked: null }),
+    'GET /api/platform-release': () => ({
+      release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
+      ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
+    }),
+    'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
+    'GET /api/teams/perf_team/chat/history': () => ({ entries: [], before: null }),
+    'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
+    'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
+    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [] }),
+    'GET /api/teams/perf_team/inference': () => ({
+      team_id: team.team_id, provider: provider.id, model: provider.default_model, effort: 'low',
+    }),
   };
-  if (path === '/api/teams') return { teams: [team] };
-  if (path === '/api/assistants') return { assistants: [] };
-  if (path === '/api/model-providers') return { providers: models };
-  if (path === '/api/platform-release') return {
-    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-  };
-  if (path === '/api/assistant-catalog') return { version: 1, assistants: [] };
-  if (path === '/api/local-assistants') return { assistants: [], trace_id: 'c'.repeat(32) };
-  if (path === '/api/teams/perf_team/assistants') return { assistants: [] };
-  if (path === '/api/teams/perf_team/chat/history') return { entries: [], before: null };
-  if (path === '/api/teams/perf_team/assistant-integrations') return { integrations: [] };
-  if (path === '/api/teams/perf_team/inference') return {
-    team_id: team.team_id, provider: provider.id, model: provider.default_model,
-  };
-  return null;
+  return answers[`${method} ${path}`]?.() ?? null;
 }
 
 function frames(count) {
@@ -190,9 +199,9 @@ async function measure(browser, baseURL, count, control) {
     page.on('pageerror', (error) => pageErrors.push(error.name));
     await page.addInitScript(installSocket);
     await page.route('**/api/**', async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const body = fixture(path);
-      if (!body) badPaths.push(path);
+      const request = `${route.request().method()} ${new URL(route.request().url()).pathname}`;
+      const body = fixture(...request.split(' '));
+      if (!body) badPaths.push(request);
       await route.fulfill({
         status: body ? 200 : 404, contentType: 'application/json',
         body: JSON.stringify(body ?? { detail: 'unknown' }),
@@ -258,27 +267,26 @@ async function measure(browser, baseURL, count, control) {
     }
     if (!control) {
       const lastLive = await page.locator('.thinking .ledger li').last().textContent();
-      if (!lastLive.includes('Admin checks the final response from')
-        || !lastLive.includes('before displaying it')
-        || !lastLive.includes('2 ms')) {
+      if (!lastLive.includes(finalPhase) || !lastLive.includes('2 ms')) {
         throw new Error('Live ledger lost the final progress phase.');
       }
       const announcement = await page.locator('.conversation .live-status').textContent();
-      if (!announcement.includes('Admin checks the final response from')
-        || !announcement.trimEnd().endsWith('Complete')) {
+      if (!announcement.includes(finalPhase)
+        || !announcement.trimEnd().endsWith(copy.progress.states.finished)) {
         throw new Error('Live announcement lost the final progress event.');
       }
     }
     const beforeTerminal = await taskDuration(cdp);
     await page.evaluate((value) => window.benchEmit({
       type: 'done', team_id: value.team_id, team_name: value.team_name, reply: 'Benchmark reply.',
+      clarification: null, routine_proposal: null,
     }), team);
     await page.getByText('Benchmark reply.', { exact: true }).waitFor();
     await page.getByRole('group', { name: 'I’m processing…' }).waitFor({ state: 'detached' });
     if (!await page.getByPlaceholder('Message Performance Team…').isEnabled()) {
       throw new Error('Composer remained disabled after terminal reply.');
     }
-    const receipt = page.getByText(`${count / 2} execution stages completed`, { exact: true });
+    const receipt = page.getByText(copy.progressStagesExecuted.replace('{count}', count / 2), { exact: true });
     if (!control) await receipt.waitFor();
     const terminalTaskMs = await taskDuration(cdp) - beforeTerminal;
     let receiptTaskMs = 0;
