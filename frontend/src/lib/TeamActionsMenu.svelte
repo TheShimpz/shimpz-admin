@@ -116,23 +116,28 @@
   <div bind:this={menu} id={menuId} class="content" role="menu" aria-label={label} tabindex="-1" popover="manual" onkeydown={menuKeydown}>
     {#if onrename}
       <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onrename)}>
+        <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
         {renameLabel}
       </Button>
     {/if}
     {#if onroutines}
       <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(onroutines)}>
+        <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
         {routinesLabel}
       </Button>
     {/if}
     {#if onmoveup && onmovedown}
       <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" disabled={first} onclick={() => choose(onmoveup)}>
+        <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
         {moveUpLabel}
       </Button>
       <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" disabled={last} onclick={() => choose(onmovedown)}>
+        <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
         {moveDownLabel}
       </Button>
     {/if}
     <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>
+      <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>
       {deleteLabel}
     </Button>
   </div>
@@ -143,7 +148,8 @@
   .team-actions :global(svg) { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
   .content { position: fixed; z-index: 80; top: var(--menu-top); left: var(--menu-left); display: grid; min-width: 11rem; padding: var(--shimpz-space-1); margin: 0; color: var(--shimpz-color-text); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); box-shadow: 0 1rem 3rem rgb(0 0 0 / 65%); }
   .content:not(:popover-open) { display: none; }
-  .content :global(.item) { width: 100%; justify-content: flex-start; border: 0; background: transparent; clip-path: none; text-align: start; }
+  .content :global(.item) { width: 100%; justify-content: flex-start; gap: 0.6rem; border: 0; background: transparent; clip-path: none; font-size: 0.7rem; text-align: start; }
+  .content :global(.item-icon) { flex: none; width: 0.95rem; height: 0.95rem; stroke-width: 2; stroke-linejoin: round; }
   .content :global(.item.danger) { color: var(--shimpz-color-danger); }
   .content :global(.item:hover:not(:disabled)) { background: var(--shimpz-color-surface-high); }
   .content :global(.item:disabled) { color: var(--shimpz-color-text-dim); cursor: default; opacity: 0.55; }
