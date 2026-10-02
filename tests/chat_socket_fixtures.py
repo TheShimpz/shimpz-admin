@@ -72,6 +72,7 @@ class Socket:
         self._task: asyncio.Task | None = None
         self._fail_send_type = fail_send_type
         self.send_failed = threading.Event()
+        self.seals: list[str] = []
 
     async def _send(self, message: dict) -> None:
         if message.get("type") == "websocket.send" and "text" in message:
@@ -79,6 +80,10 @@ class Socket:
             if event.get("type") == self._fail_send_type:
                 self.send_failed.set()
                 raise RuntimeError("simulated peer send failure")
+            if event.get("type") == "sent":
+                # The seal of each admitted send is kept apart, so a test reads the turn's own frames in order.
+                self.seals.append(event["request"])
+                return
         await self._outgoing.put(message)
 
     async def start(self) -> dict:

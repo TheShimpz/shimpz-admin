@@ -121,8 +121,11 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                         await websocket.send(
                             '{"type":"chat","message":"hello","files":[],"assistant_ids":[],'
                             '"locale":"en","timezone":"America/Sao_Paulo",'
-                            '"request":{"nonce":"' + "c" * 32 + '","resend":false}}'
+                            '"request":null}'
                         )
+                        # The seal of the admitted send comes first; the browser keeps it to resend this send.
+                        sent = json.loads(await asyncio.wait_for(websocket.recv(), timeout=1))
+                        self.assertEqual((sent["type"], len(sent["request"].split("."))), ("sent", 3))
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
                             {

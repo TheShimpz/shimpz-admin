@@ -10,8 +10,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from sent_request import sent_request
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -76,7 +74,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
                 delivery = connection.active.delivery
@@ -90,7 +88,8 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "reply": "Which installed Assistant do you want to uninstall?",
                 },
             )
-            send.assert_not_awaited()
+            # The only event of the turn's own is the seal of its admitted send.
+            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
             route.assert_called_once()
 
         asyncio.run(scenario())
@@ -123,7 +122,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
                 delivery = connection.active.delivery
@@ -165,7 +164,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
                 delivery = connection.active.delivery
@@ -184,7 +183,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                     mock.AsyncMock(),
                 )
@@ -223,7 +222,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
                 await connection.active.delivery
@@ -257,7 +256,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
 
@@ -291,7 +290,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
 
@@ -329,7 +328,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "ja",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
 
@@ -352,7 +351,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": None,
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
                 {
                     "type": "chat",
@@ -361,7 +360,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "pt-BR",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "language_exemplar": "oi"},
                 {
@@ -371,7 +370,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "pt",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                     "language_exemplar": "oi",
                 },
             )

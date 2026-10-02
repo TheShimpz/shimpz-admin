@@ -12,8 +12,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from sent_request import sent_request
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -22,6 +20,7 @@ from chat.delivery import sync as sync_delivery
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
+from chat import connection as chat_connection
 from chat import human, local, socket, task_resume
 from tests import chat_socket_fixtures
 
@@ -137,7 +136,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
-                "request": sent_request(),
+                "request": None,
             }
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
@@ -160,7 +159,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "assistant_ids": [],
             "locale": "en",
             "timezone": None,
-            "request": sent_request(resend=True),
+            "request": "1." + "a" * 32 + "." + "b" * 64,
         }
 
         async def scenario() -> None:
@@ -180,6 +179,40 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_resend_through_the_socket_reuses_its_sealed_identity_only_while_fresh(self) -> None:
+        frame = {
+            "type": "chat",
+            "message": "Every day at 9, list my zones",
+            "files": [],
+            "assistant_ids": [],
+            "locale": "en",
+            "timezone": None,
+            "request": None,
+        }
+
+        async def admit(candidate, now):
+            websocket = mock.AsyncMock()
+            with (
+                mock.patch.object(chat_connection.time, "time", return_value=now),
+                mock.patch.object(socket.history, "append_user", return_value=True) as append,
+            ):
+                admitted = await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
+            return admitted, websocket.send_json.await_args.args[0], append
+
+        async def scenario() -> None:
+            (_payload, identity), sent, _append = await admit(frame, 1_000_000)
+            self.assertEqual(sent["type"], "sent")
+            resend = {**frame, "request": sent["request"]}
+            (_payload, again), _sent, _append = await admit(resend, 1_000_899)
+            self.assertEqual(again, identity)
+            # Expired, the original send is refused before any history row or Team turn exists.
+            refused, terminal, append = await admit(resend, 1_000_900)
+            self.assertIsNone(refused)
+            self.assertEqual(terminal["status"], 410)
+            append.assert_not_called()
+
+        asyncio.run(scenario())
+
     def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
         valid = {
             "type": "resume-task",
@@ -190,7 +223,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "objective_assistant_ids": [],
             "locale": "en",
             "timezone": None,
-            "request": sent_request(),
+            "request": None,
         }
 
         async def scenario() -> None:
@@ -209,8 +242,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     {"message": valid["objective"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
                 ),
             )
-            self.assertEqual(admitted[2]["nonce"], valid["request"]["nonce"])
-            websocket.send_json.assert_not_awaited()
+            self.assertRegex(admitted[2]["nonce"], r"\A[0-9a-f]{32}\Z")
+            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "sent")
 
             invalid = (
                 {**valid, "extra": True},
@@ -262,10 +295,11 @@ class ChatSocketEdgeTests(unittest.TestCase):
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
 
-            # The same logical send, sent again as a first send, is refused: its nonce is never renewed.
+            # A resend whose seal Admin never issued is refused, never renewed.
             websocket.reset_mock()
+            forged = {**valid, "request": "1." + "a" * 32 + "." + "b" * 64}
             self.assertIsNone(
-                await task_resume.admit(websocket, socket._Connection(), "team_1", valid, _resume_operations())
+                await task_resume.admit(websocket, socket._Connection(), "team_1", forged, _resume_operations())
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 410)
 
@@ -293,7 +327,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "objective_assistant_ids": [],
             "locale": "en",
             "timezone": None,
-            "request": sent_request(),
+            "request": None,
         }
 
         async def scenario() -> None:
@@ -333,7 +367,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {**frame, "request": sent_request()},
+                    dict(frame),
                     _resume_operations(),
                 )
                 await connection.active.delivery
@@ -505,7 +539,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "en",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
             )
 
@@ -521,7 +555,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "en",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
             )
 
@@ -537,7 +571,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
 

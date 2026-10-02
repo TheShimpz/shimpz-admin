@@ -7,7 +7,7 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat.connection import REQUESTS, Connection, Turn, canonical_sent_request
+from chat.connection import Connection, Turn, request_identity, valid_sent_request
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -30,21 +30,17 @@ class Operations:
 
 
 def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
-    if (
-        set(frame)
-        != {
-            "type",
-            "message",
-            "objective",
-            "files",
-            "assistant_ids",
-            "objective_assistant_ids",
-            "locale",
-            "timezone",
-            "request",
-        }
-        or canonical_sent_request(frame["request"]) is None
-    ):
+    if set(frame) != {
+        "type",
+        "message",
+        "objective",
+        "files",
+        "assistant_ids",
+        "objective_assistant_ids",
+        "locale",
+        "timezone",
+        "request",
+    } or not valid_sent_request(frame["request"]):
         raise team.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
         {
@@ -96,14 +92,15 @@ async def admit(
             operations.error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    identity = REQUESTS.identity(team_id, canonical_sent_request(frame["request"]), payloads[1])
-    if identity is None:
+    sealed = request_identity(team_id, frame["request"], payloads[1])
+    if sealed is None:
         await operations.send_event(
             websocket,
             operations.error_terminal(410, "this message can no longer be sent again; send it as a new message"),
         )
         return None
-    return (*payloads, identity)
+    await operations.send_event(websocket, {"type": "sent", "request": sealed[1]})
+    return (*payloads, sealed[0])
 
 
 async def dispatch(

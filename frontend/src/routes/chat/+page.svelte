@@ -42,7 +42,6 @@
     createResumeTaskFrame,
     createStopFrame,
     createSyncFrame,
-    newSendRequest,
     listAssistantIntegrations,
     listAssistantStoredInputs,
     parseChatEvent,
@@ -98,7 +97,8 @@
   // again. Only a user message is retryable; a failed decision or a later unrelated error never offers a resend.
   let retryMessage = $state('');
   let lastSentMessage = '';
-  // The name of the logical send a retry repeats (ADR-0092): Admin reuses its identity and refuses an expired one.
+  // The seal Admin gave the send a retry repeats (ADR-0092): Admin reuses its identity and refuses an expired one. A
+  // send Admin never sealed reached no Team, so its retry is simply a new send.
   let lastSentRequest = null;
   let retryRequest = null;
   let socket = $state(null);
@@ -298,13 +298,7 @@
 
   function retryLastTurn() {
     const message = retryMessage;
-    if (message && retryRequest) {
-      submitMessage(message, {
-        projectUserTurn: false,
-        retryable: true,
-        request: { nonce: retryRequest.nonce, resend: true },
-      });
-    }
+    if (message) submitMessage(message, { projectUserTurn: false, retryable: true, request: retryRequest });
   }
 
   function groupExchanges(values) {
@@ -1172,6 +1166,11 @@
           humanRejection = incoming;
           return;
         }
+        if (incoming.type === 'sent') {
+          if (!busy) throw new Error('unexpected sent frame');
+          if (lastSentMessage) lastSentRequest = incoming.request;
+          return;
+        }
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
@@ -1580,7 +1579,7 @@
     projectUserTurn = true,
     retryable = projectUserTurn,
     useCapabilityObjective = true,
-    request = newSendRequest(),
+    request = null,
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
@@ -1642,6 +1641,7 @@
       // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
       // objective or the proposal was consumed, so neither is ever offered again.
       lastSentMessage = retryable && !resumable && !decisionPending ? normalized : '';
+      // A resend keeps the seal it carries; a new send waits for the seal Admin returns.
       lastSentRequest = lastSentMessage ? request : null;
       if (useCapabilityObjective && !continuation) {
         capabilityObjective = {

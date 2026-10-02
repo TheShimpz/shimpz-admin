@@ -11,8 +11,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from sent_request import sent_request
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -92,13 +90,14 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     },
                 )
                 delivery = connection.active.delivery
                 await delivery
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
-            send.assert_not_awaited()
+            # The only event of the turn's own is the seal of its admitted send.
+            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
 
             pending = socket._Connection(pending_challenge_id="a" * 32)
             with (
@@ -165,7 +164,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 "objective_assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
-                "request": sent_request(),
+                "request": None,
             }
             websocket = mock.AsyncMock()
             with (

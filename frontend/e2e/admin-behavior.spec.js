@@ -562,6 +562,9 @@ async function routeReadyChat(page, {
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat' || frame.type === 'resume-task') {
         chatFrames.push(frame);
+        // Admin seals each admitted send; a resend carries its seal back unchanged (ADR-0092).
+        const seal = frame.request ?? `${1_790_000_000 + chatFrames.length}.${'a'.repeat(32)}.${'b'.repeat(64)}`;
+        socket.send(JSON.stringify({ type: 'sent', request: seal }));
         if (disconnectFirstChat && !firstChatDisconnected && frame.type === 'chat') {
           firstChatDisconnected = true;
           socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
@@ -1256,10 +1259,8 @@ test('Try again resends only the latest failed message', async ({ page }) => {
   await expect(retry).toBeEnabled();
   const frames = chat.chatFrames();
   expect(sentMessages(frames)).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
-  // Each logical send has its own nonce; Try again repeats the failed send's nonce as a resend (ADR-0092).
-  expect(frames.map((frame) => frame.request.resend)).toEqual([false, false, true]);
-  expect(frames[0].request.nonce).not.toBe(frames[1].request.nonce);
-  expect(frames[2].request.nonce).toBe(frames[1].request.nonce);
+  // A new send names no identity; Try again carries back the seal Admin gave the failed send (ADR-0092).
+  expect(frames.map((frame) => frame.request)).toEqual([null, null, `${1_790_000_002}.${'a'.repeat(32)}.${'b'.repeat(64)}`]);
 });
 
 test('a send Admin refuses as expired is never offered to be sent again', async ({ page }) => {
@@ -2389,7 +2390,7 @@ test('resumes one prior capability objective after reconnect and installs its As
     objective_assistant_ids: [],
     locale: 'en',
     timezone: await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
-    request: { nonce: expect.stringMatching(/^[0-9a-f]{32}$/), resend: false },
+    request: null,
   });
   const persistedBrowserState = await page.evaluate(() => JSON.stringify({
     local: Object.entries(localStorage),

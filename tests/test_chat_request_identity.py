@@ -1,18 +1,20 @@
-"""Each logical send keeps one request identity across retries, resends, and reconnects (ADR-0092)."""
+"""Each logical send gets one sealed identity, which only its own resend can reuse while Team admits it (ADR-0092)."""
 
 from __future__ import annotations
 
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from chat import connection as chat_connection
+from chat import payloads as chat_payloads
 from protocol.http.v1 import payload as team_contract
 
-NONCE = "a" * 32
+T = 1_000_000
 PAYLOAD = {
     "message": "Todo dia às 9h, liste as zonas",
     "files": [],
@@ -22,77 +24,59 @@ PAYLOAD = {
 }
 
 
-class Clock:
-    def __init__(self, now: int = 1_000_000) -> None:
-        self.now = now
-
-    def __call__(self) -> float:
-        return float(self.now)
-
-
-def _sent(nonce: str = NONCE, *, resend: bool = False) -> dict[str, object]:
-    return {"nonce": nonce, "resend": resend}
+def _team_body(identity: dict[str, object]) -> dict[str, object]:
+    """The exact Team chat body Admin forwards for this send, admitted by the Team protocol mirror."""
+    return chat_payloads.canonical_team_chat_body({**PAYLOAD, "conversation": [], "request": identity})
 
 
 class RequestIdentityTests(unittest.TestCase):
     def test_a_resend_keeps_its_identity_exactly_while_team_would_admit_it(self) -> None:
-        clock = Clock()
-        book = chat_connection.RequestBook(clock)
-        first = book.identity("team_1", _sent(), PAYLOAD)
-        self.assertEqual(first, {"issued_at": 1_000_000, "nonce": NONCE})
-        # The joined Admin to Team path: what Admin forwards at 899 s is fresh where Team judges it; from 900 s
-        # Admin refuses the resend itself, the same second Team's predicate and receipt expire.
+        identity, seal = chat_connection.request_identity("team_1", None, PAYLOAD, T)
+        self.assertEqual(identity["issued_at"], T)
+        self.assertEqual(_team_body(identity)["request"], identity)
+        # The joined Admin to Team path: a resend at 899 s forwards the original identity, which Team still admits;
+        # from 900 s Admin refuses it itself, the same second Team's predicate and receipt expire.
         for elapsed, admitted in ((899, True), (900, False), (901, False)):
-            clock.now = 1_000_000 + elapsed
             with self.subTest(elapsed=elapsed):
-                forwarded = book.identity("team_1", _sent(resend=True), dict(PAYLOAD))
-                self.assertEqual(forwarded is not None, admitted)
-                self.assertEqual(team_contract.request_identity_fresh(1_000_000, clock.now), admitted)
-                if forwarded is not None:
-                    self.assertEqual(forwarded, first)
+                resent = chat_connection.request_identity("team_1", seal, dict(PAYLOAD), T + elapsed)
+                self.assertEqual(resent is not None, admitted)
+                self.assertEqual(team_contract.request_identity_fresh(T, T + elapsed), admitted)
+                if resent is not None:
+                    self.assertEqual(resent, (identity, seal))
 
-    def test_a_reconnect_resends_through_the_same_process_wide_book(self) -> None:
-        book = chat_connection.RequestBook(Clock())
-        first = book.identity("team_1", _sent(), PAYLOAD)
-        # A new connection carries no state of its own: the browser's nonce finds the same identity.
-        chat_connection.Connection()
-        self.assertEqual(book.identity("team_1", _sent(resend=True), PAYLOAD), first)
+    def test_a_first_send_never_claims_another_sends_identity(self) -> None:
+        first, _seal = chat_connection.request_identity("team_1", None, PAYLOAD, T)
+        # Replaying the original first-send frame, later or after any restart, is a new logical send with a fresh
+        # nonce: no frame can name an earlier identity except through that send's own seal.
+        again, _again = chat_connection.request_identity("team_1", None, PAYLOAD, T + 2_000)
+        self.assertNotEqual(again["nonce"], first["nonce"])
+        self.assertEqual(again["issued_at"], T + 2_000)
 
-    def test_an_unknown_mismatched_or_reused_send_is_refused_never_renewed(self) -> None:
-        book = chat_connection.RequestBook(Clock())
-        book.identity("team_1", _sent(), PAYLOAD)
-        for team_id, sent, payload in (
-            ("team_1", _sent("b" * 32, resend=True), PAYLOAD),
-            ("team_2", _sent(resend=True), PAYLOAD),
-            ("team_1", _sent(resend=True), {**PAYLOAD, "message": "Outra coisa"}),
-            ("team_1", _sent(), PAYLOAD),
+    def test_an_altered_foreign_or_pre_restart_seal_is_refused_never_renewed(self) -> None:
+        _identity, seal = chat_connection.request_identity("team_1", None, PAYLOAD, T)
+        issued, nonce, tag = seal.split(".")
+        for team_id, candidate, payload in (
+            ("team_2", seal, PAYLOAD),
+            ("team_1", seal, {**PAYLOAD, "message": "Outra coisa"}),
+            ("team_1", f"{int(issued) + 1}.{nonce}.{tag}", PAYLOAD),
+            ("team_1", f"{issued}.{'b' * 32}.{tag}", PAYLOAD),
+            ("team_1", f"{issued}.{nonce}.{'0' * 64}", PAYLOAD),
+            ("team_1", "not-a-seal", PAYLOAD),
         ):
-            with self.subTest(team_id=team_id, sent=sent):
-                self.assertIsNone(book.identity(team_id, sent, payload))
-        self.assertEqual(book.identity("team_2", _sent(), PAYLOAD)["nonce"], NONCE)
+            with self.subTest(team_id=team_id, candidate=candidate):
+                self.assertIsNone(chat_connection.request_identity(team_id, candidate, payload, T + 1))
+        # A restart starts with a new key: no seal issued before it verifies any more.
+        with mock.patch.object(chat_connection, "_SEAL_KEY", b"\x00" * 32):
+            self.assertIsNone(chat_connection.request_identity("team_1", seal, PAYLOAD, T + 1))
+        self.assertIsNotNone(chat_connection.request_identity("team_1", seal, PAYLOAD, T + 1))
 
-    def test_a_full_book_lets_its_oldest_send_go_and_then_refuses_resending_it(self) -> None:
-        clock = Clock()
-        book = chat_connection.RequestBook(clock)
-        for index in range(chat_connection.MAX_SENT_REQUESTS):
-            clock.now = 1_000_000 + index % 2
-            book.identity("team_1", _sent(f"{index:032x}"), PAYLOAD)
-        book.identity("team_1", _sent("f" * 32), PAYLOAD)
-        self.assertIsNone(book.identity("team_1", _sent(f"{0:032x}", resend=True), PAYLOAD))
-        self.assertIsNotNone(book.identity("team_1", _sent(f"{1:032x}", resend=True), PAYLOAD))
-
-    def test_only_a_canonical_sent_request_is_admitted(self) -> None:
-        self.assertEqual(chat_connection.canonical_sent_request(_sent()), _sent())
-        for value in (
-            None,
-            {"nonce": NONCE},
-            {**_sent(), "issued_at": 1},
-            {"nonce": NONCE, "resend": 0},
-            {"nonce": "A" * 32, "resend": False},
-            {"nonce": 7, "resend": False},
-        ):
+    def test_only_null_or_a_seal_names_a_send(self) -> None:
+        _identity, seal = chat_connection.request_identity("team_1", None, PAYLOAD, T)
+        self.assertTrue(chat_connection.valid_sent_request(None))
+        self.assertTrue(chat_connection.valid_sent_request(seal))
+        for value in ({"nonce": "a" * 32, "resend": True}, "0." + "a" * 32 + "." + "b" * 64, seal.upper(), 7):
             with self.subTest(value=value):
-                self.assertIsNone(chat_connection.canonical_sent_request(value))
+                self.assertFalse(chat_connection.valid_sent_request(value))
 
 
 if __name__ == "__main__":

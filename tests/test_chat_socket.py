@@ -7,7 +7,6 @@ import concurrent.futures
 import threading
 from unittest import mock
 
-from sent_request import sent_request
 from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
@@ -137,7 +136,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
                     "locale": "en",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
                 {
                     "type": "chat",
@@ -146,7 +145,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "assistant_ids": [f"assistant-{index}" for index in range(17)],
                     "locale": "en",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
                 {
                     "type": "chat",
@@ -155,7 +154,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "assistant_ids": ["Shimpz-Assistant"],
                     "locale": "en",
                     "timezone": None,
-                    "request": sent_request(),
+                    "request": None,
                 },
             )
             with mock.patch.object(self.chat_socket.local, "turn") as turn:
@@ -183,7 +182,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -213,7 +212,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -302,7 +301,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -314,7 +313,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -338,7 +337,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -405,7 +404,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -472,7 +471,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -520,7 +519,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -571,7 +570,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -617,7 +616,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(websocket.send_failed)
@@ -646,7 +645,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
@@ -681,7 +680,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
-                        "request": sent_request(),
+                        "request": None,
                     }
                 )
                 self.assertEqual(

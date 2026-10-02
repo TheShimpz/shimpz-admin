@@ -15,7 +15,6 @@ import {
   createChatFrame,
   createHumanResponseFrame,
   createResumeTaskFrame,
-  newSendRequest,
   createStopFrame,
   createSyncFrame,
   listAssistantIntegrations,
@@ -75,7 +74,8 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
 }
 
-const SENT = { nonce: 'c'.repeat(32), resend: false };
+const SENT = null;
+const SEAL = `1790000000.${'c'.repeat(32)}.${'d'.repeat(64)}`;
 
 test('chat builds only the versioned WebSocket contract', () => {
   const frame = createChatFrame('team_1', {
@@ -98,13 +98,10 @@ test('chat builds only the versioned WebSocket contract', () => {
       /Invalid local chat request/,
     );
   }
-  // Each logical send has its own nonce, which a resend keeps; no other shape names a send.
-  const first = newSendRequest();
-  assert.match(first.nonce, /^[0-9a-f]{32}$/);
-  assert.equal(first.resend, false);
-  assert.notEqual(newSendRequest().nonce, first.nonce);
-  for (const request of [undefined, null, {}, { nonce: 'C'.repeat(32), resend: false }, { ...SENT, resend: 'no' },
-    { ...SENT, extra: 1 }, { nonce: 7, resend: true }]) {
+  // A new send names no identity; a resend carries back exactly the seal Admin gave it, and nothing else names one.
+  assert.equal(createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', SEAL).request, SEAL);
+  for (const request of [undefined, {}, 'seal', SEAL.toUpperCase(), `0.${'c'.repeat(32)}.${'d'.repeat(64)}`,
+    { nonce: 'c'.repeat(32), resend: true }, 7]) {
     assert.throws(
       () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', request),
       /Invalid chat request/,
@@ -1135,5 +1132,17 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
       () => parseChatEvent(body, 'team_1', 'Marketing'),
       /response is invalid/,
     );
+  }
+});
+
+test('a sent event carries exactly one seal Admin issued', () => {
+  assert.deepEqual(parseChatEvent({ type: 'sent', request: SEAL }, 'team_1', 'Marketing'), { type: 'sent', request: SEAL });
+  for (const value of [
+    { type: 'sent' },
+    { type: 'sent', request: null },
+    { type: 'sent', request: 'seal' },
+    { type: 'sent', request: SEAL, team_id: 'team_1' },
+  ]) {
+    assert.throws(() => parseChatEvent(value, 'team_1', 'Marketing'), /invalid/);
   }
 });
