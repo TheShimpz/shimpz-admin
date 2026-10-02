@@ -3957,20 +3957,18 @@ async function routeRoutines(
   page,
   { others = [], listFailsAfterDelete = false, runEnding = false } = {},
 ) {
-  const calls = { deletes: [], stops: [], resolves: [] };
-  let routines = [ROUTINE_VIEW, ...others];
-  let runs = [
+  const calls = { deletes: [], stops: [], resumes: [] };
+  // The Routine is paused, and an earlier run of it is held for recovery (ADR-0092).
+  let routines = [{ ...ROUTINE_VIEW, paused: true }, ...others];
+  let runs = [];
+  const incidents = [
     {
-      run_id: 'b'.repeat(32),
+      incident_id: 'b'.repeat(32),
       routine_id: ROUTINE_VIEW.routine_id,
-      status: 'uncertain',
-      scheduled_at: '2026-09-30T12:00:00Z',
-      request_kind: null,
-      assistant_id: null,
-      action: null,
-      batch_fingerprint: 'e'.repeat(64),
-      // A batch may run the same Action twice; each stays listed.
-      actions: [['shimpz-cloudflare', 'replace-dns-record'], ['shimpz-cloudflare', 'replace-dns-record']],
+      quote: ROUTINE_VIEW.quote,
+      created_at: '2026-09-30T12:01:07Z',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
     },
   ];
   await page.route('**/api/teams/marketing/routines', async (route) => {
@@ -3978,7 +3976,13 @@ async function routeRoutines(
       await route.fulfill({ status: 503, json: { code: 'team-unavailable' } });
       return;
     }
-    await route.fulfill({ json: { team_id: 'marketing', routines, runs } });
+    await route.fulfill({ json: { team_id: 'marketing', routines, runs, incidents } });
+  });
+  await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
+    const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
+    calls.resumes.push(route.request().postDataJSON());
+    routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: false } : routine));
+    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
   });
   await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
     const routineId = new URL(route.request().url()).pathname.split('/').at(-1);
@@ -3989,13 +3993,11 @@ async function routeRoutines(
       : routines.filter((routine) => routine.routine_id !== routineId);
     await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, deleted: !runEnding } });
   });
-  await page.route('**/api/teams/marketing/routines/runs/*/*', async (route) => {
-    const [, runId, action] = new URL(route.request().url()).pathname.match(/runs\/([0-9a-f]{32})\/(stop|resolve)$/);
-    calls[action === 'stop' ? 'stops' : 'resolves'].push(route.request().postDataJSON());
+  await page.route('**/api/teams/marketing/routines/runs/*/stop', async (route) => {
+    const [, runId] = new URL(route.request().url()).pathname.match(/runs\/([0-9a-f]{32})\/stop$/);
+    calls.stops.push(route.request().postDataJSON());
     runs = runs.filter((item) => item.run_id !== runId);
-    await route.fulfill({
-      json: { team_id: 'marketing', run_id: runId, [action === 'stop' ? 'stopped' : 'resolved']: true },
-    });
+    await route.fulfill({ json: { team_id: 'marketing', run_id: runId, stopped: true } });
   });
   return calls;
 }
@@ -4272,7 +4274,7 @@ test.describe('Team Routines', () => {
     await expect(created.getByRole('list', { name: 'Steps' })).toContainText('list-zones');
   });
 
-  test('a Team\'s Routines open as a tree under it, with deletion and release confirmed in place', async ({ page }) => {
+  test('a Team\'s Routines open as a tree under it: a paused one resumes, and deletion is confirmed in place', async ({ page }) => {
     await routeReadyChat(page);
     // The refresh after the deletion fails; the confirmed deletion must still leave the tree.
     const calls = await routeRoutines(page, { listFailsAfterDelete: true });
@@ -4286,7 +4288,6 @@ test.describe('Team Routines', () => {
     await expect(tree).toBeVisible();
     const node = tree.getByRole('button', { name: /Every day at 9, list my DNS zones/ });
     await expect(node).toContainText('Every day at 09:00');
-    await expect(node).toContainText('Effects unknown');
     await expect(node).toHaveAttribute('aria-expanded', 'false');
     const detail = page.locator(`#${await node.getAttribute('aria-controls')}`);
     await expect(detail).toHaveCount(1);
@@ -4294,14 +4295,12 @@ test.describe('Team Routines', () => {
     await node.click();
     await expect(node).toHaveAttribute('aria-expanded', 'true');
     await expect(tree).toContainText('America/Sao_Paulo');
-    await expect(tree).toContainText('These Actions may have changed something:');
-    await expect(tree.getByText('shimpz-cloudflare · replace-dns-record')).toHaveCount(2);
-
-    await tree.getByRole('button', { name: 'I checked; release it' }).click();
-    expect(calls.resolves).toEqual([]);
-    await tree.getByRole('button', { name: 'I checked; release it' }).click();
-    await expect(node).not.toContainText('Effects unknown');
-    expect(calls.resolves).toEqual([{ batch_fingerprint: 'e'.repeat(64) }]);
+    // Resume turns dispatch back on; the held run's incident still holds the Routine until its card settles it.
+    await tree.getByRole('button', { name: 'Resume' }).click();
+    await expect(tree.getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    expect(calls.resumes).toEqual([{}]);
+    // The retired release of an uncertain run is gone.
+    await expect(tree.getByRole('button', { name: 'I checked; release it' })).toHaveCount(0);
 
     await tree.getByRole('button', { name: 'Delete' }).click();
     await expect(tree).toContainText('Delete this Routine? A run in progress is stopped.');
@@ -4373,7 +4372,7 @@ test.describe('Team Routines', () => {
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }),
-          entry(run, 'done', { reply: '**3 zones**, no changes.' }),
+          entry(run, 'done', { actions: [['shimpz-cloudflare', 'list-zones']] }),
         ],
         before: null,
       },
@@ -4386,7 +4385,81 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(1)).toContainText('Actions: shimpz-cloudflare · list-zones');
     await expect(transcript.nth(2)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
     await expect(transcript.nth(3)).toContainText('Routine · Every day at 9, list my DNS zones');
-    await expect(transcript.nth(3).locator('strong')).toHaveText('3 zones');
+    // A done row names the Actions the run carried out, never a model reply.
+    await expect(transcript.nth(3)).toContainText('Actions: shimpz-cloudflare · list-zones');
+  });
+
+  test('a held run is settled from its transcript row with Verify, Skip, or Pause', async ({ page }) => {
+    const held = 'b'.repeat(32);
+    const paused = 'c'.repeat(32);
+    const row = (id, outcome, detail) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: ROUTINE_VIEW.routine_id,
+      quote: ROUTINE_VIEW.quote,
+      run_id: id,
+      outcome,
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version: 2,
+    });
+    const step = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' };
+    await routeReadyChat(page, {
+      history: { entries: [row(held, 'held', step), row(paused, 'paused', { ...step, reason: 'exhausted' })], before: null },
+    });
+    const opened = [];
+    const answers = [];
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+      const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
+      opened.push(incidentId);
+      await route.fulfill({
+        json: {
+          team_id: 'marketing',
+          incident_id: incidentId,
+          routine_id: ROUTINE_VIEW.routine_id,
+          revision: 1,
+          ...step,
+          nonce: String(opened.length).repeat(32),
+          expires_in: 300,
+          choices: ['verify', 'skip', 'pause'],
+          recommended: 'verify',
+        },
+      });
+    });
+    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+      const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
+      const answer = route.request().postDataJSON();
+      answers.push(answer);
+      const result = {
+        verify: { verdict: 'inconclusive', status: null },
+        skip: { verdict: null, status: 'skipped' },
+        pause: { verdict: null, status: 'paused' },
+      }[answer.choice];
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, ...result } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    await expect(rows).toHaveCount(2);
+    // Exactly three choices, one action each; there is no approval or other option.
+    for (const index of [0, 1]) {
+      await expect(rows.nth(index).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
+    }
+    // Verify that proves nothing keeps the run held and its choices available.
+    await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
+    await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
+    await expect(rows.nth(0).getByRole('button', { name: 'Skip' })).toBeEnabled();
+    // Each answer uses a freshly opened card's nonce, once.
+    await rows.nth(0).getByRole('button', { name: 'Skip' }).click();
+    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await rows.nth(1).getByRole('button', { name: 'Pause' }).click();
+    await expect(rows.nth(1).getByRole('button')).toHaveCount(0);
+    expect(opened).toEqual([held, held, paused]);
+    expect(answers).toEqual([
+      { nonce: '1'.repeat(32), choice: 'verify' },
+      { nonce: '2'.repeat(32), choice: 'skip' },
+      { nonce: '3'.repeat(32), choice: 'pause' },
+    ]);
   });
 
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {
@@ -4489,7 +4562,7 @@ test.describe('Team Routines', () => {
       detail,
       version,
     });
-    const earlier = row('c'.repeat(32), 'done', { reply: 'No DNS changes.' }, 1);
+    const earlier = row('c'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] }, 1);
     const frozen = row(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, 1);
     let history = { entries: [earlier], before: null };
     let runs = [];
@@ -4497,7 +4570,7 @@ test.describe('Team Routines', () => {
     // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far.
     await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({ json: history }));
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs },
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] },
     }));
     await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, (route) => route.fulfill({
       json: {
@@ -4535,13 +4608,11 @@ test.describe('Team Routines', () => {
       request_kind: 'human',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      batch_fingerprint: null,
-      actions: [],
     }];
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(1)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
-    await expect(rows.nth(0)).toContainText('No DNS changes.');
+    await expect(rows.nth(0)).toContainText('shimpz-cloudflare · list-zones');
     await expect(composer).toHaveValue('A draft that must survive');
     // The Team's Routine tree shows the same run waiting.
     const navigation = await openTeamNavigation(page);
@@ -4557,10 +4628,11 @@ test.describe('Team Routines', () => {
     expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
 
     // The run's newer version replaces its row instead of adding another; the draft is still there.
-    history = { entries: [earlier, { ...frozen, outcome: 'done', detail: { reply: 'Published the record.' }, version: 2 }], before: null };
+    const published = { actions: [['shimpz-cloudflare', 'replace-dns-record']] };
+    history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
-    await expect(rows.nth(1)).toContainText('Published the record.');
+    await expect(rows.nth(1)).toContainText('shimpz-cloudflare · replace-dns-record');
     await expect(rows).toHaveCount(2);
     await expect(composer).toHaveValue('A draft that must survive');
   });

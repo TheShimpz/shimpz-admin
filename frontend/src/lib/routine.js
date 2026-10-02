@@ -72,9 +72,11 @@ function isAssistants(value, minimum) {
 }
 
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-const HEX64_RE = /^[0-9a-f]{64}$/;
+const NONCE_RE = /^[0-9a-f]{32}$/;
 const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ROUTINES = 8;
+// The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
+export const MAX_INCIDENTS = 32;
 export const MAX_DAILY_RUNS = 24;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
@@ -103,7 +105,7 @@ function view(value, keys, valid) {
 export function parseRoutineView(value) {
   const keys = [
     'routine_id', 'name', 'quote', 'steps', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm',
-    'deleting',
+    'deleting', 'paused',
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
@@ -116,7 +118,8 @@ export function parseRoutineView(value) {
     isAssistants(item.assistant_ids, 1) &&
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
-    typeof item.deleting === 'boolean');
+    typeof item.deleting === 'boolean' &&
+    typeof item.paused === 'boolean');
 }
 
 // A Routine plan's safe projection, mirroring Team's `routine.canonical_steps` (ADR-0092): each step's Action, every
@@ -192,11 +195,9 @@ function isActions(value) {
   );
 }
 
-/** One live run: a frozen run names its request; an uncertain one its batch and the Actions it may have run. */
+/** One live run: a frozen run names its request; a leased or held one only that it is live. */
 export function parseRunView(value) {
-  const keys = [
-    'run_id', 'routine_id', 'status', 'scheduled_at', 'request_kind', 'assistant_id', 'action', 'batch_fingerprint', 'actions',
-  ];
+  const keys = ['run_id', 'routine_id', 'status', 'scheduled_at', 'request_kind', 'assistant_id', 'action'];
   return view(value, keys, (item) => {
     const request = [item.request_kind, item.assistant_id, item.action];
     const frozen =
@@ -211,15 +212,30 @@ export function parseRunView(value) {
       typeof item.routine_id === 'string' &&
       ID_RE.test(item.routine_id) &&
       isInstant(item.scheduled_at) &&
-      ['leased', 'frozen', 'uncertain'].includes(item.status) &&
-      (item.status === 'frozen' ? frozen : request.every((part) => part === null)) &&
-      (item.status === 'uncertain'
-        ? typeof item.batch_fingerprint === 'string' && HEX64_RE.test(item.batch_fingerprint)
-        : item.batch_fingerprint === null) &&
-      isActions(item.actions) &&
-      (item.status === 'uncertain' || item.actions.length === 0)
+      ['leased', 'frozen', 'held'].includes(item.status) &&
+      (item.status === 'frozen' ? frozen : request.every((part) => part === null))
     );
   });
+}
+
+// The step a held run stopped at, or both null when it sealed no plan before it was held.
+function isHeldStep(assistantId, action) {
+  if (assistantId === null && action === null) return true;
+  return typeof assistantId === 'string' && ASSISTANT_ID_RE.test(assistantId) &&
+    typeof action === 'string' && ACTION_ID_RE.test(action);
+}
+
+/** One unresolved incident of a held run, which outlives a deleted Routine (ADR-0092). */
+export function parseIncidentView(value) {
+  const keys = ['incident_id', 'routine_id', 'quote', 'created_at', 'assistant_id', 'action'];
+  return view(value, keys, (item) =>
+    typeof item.incident_id === 'string' &&
+    ID_RE.test(item.incident_id) &&
+    typeof item.routine_id === 'string' &&
+    ID_RE.test(item.routine_id) &&
+    isQuote(item.quote) &&
+    isInstant(item.created_at) &&
+    isHeldStep(item.assistant_id, item.action));
 }
 
 async function request(fetcher, path, init = {}) {
@@ -270,14 +286,20 @@ function deleted(body, teamId, routineId = null) {
 export async function listRoutines(fetcher, teamId) {
   const body = await request(fetcher, teamPath(teamId));
   if (
-    !exact(body, ['team_id', 'routines', 'runs']) ||
+    !exact(body, ['team_id', 'routines', 'runs', 'incidents']) ||
     body.team_id !== teamId ||
     !Array.isArray(body.routines) ||
     !Array.isArray(body.runs) ||
+    !Array.isArray(body.incidents) ||
     body.routines.length > MAX_ROUTINES ||
-    body.runs.length > MAX_ROUTINES
+    body.runs.length > MAX_ROUTINES ||
+    body.incidents.length > MAX_INCIDENTS
   ) throw new RoutineError('routine-response-invalid');
-  return { routines: body.routines.map(parseRoutineView), runs: body.runs.map(parseRunView) };
+  return {
+    routines: body.routines.map(parseRoutineView),
+    runs: body.runs.map(parseRunView),
+    incidents: body.incidents.map(parseIncidentView),
+  };
 }
 
 export async function deleteRoutine(fetcher, teamId, routineId) {
@@ -303,11 +325,73 @@ export function stopRoutineRun(fetcher, teamId, runId) {
   return decideRun(fetcher, teamId, runId, 'stop', {}, 'stopped');
 }
 
-export function resolveRoutineRun(fetcher, teamId, runId, batchFingerprint) {
-  if (typeof batchFingerprint !== 'string' || !HEX64_RE.test(batchFingerprint)) {
-    return Promise.reject(new RoutineError('routine-request-invalid'));
+/** Turn a paused Routine's dispatch back on; an unresolved incident still holds it until its card settles it. */
+export async function resumeRoutine(fetcher, teamId, routineId) {
+  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/resume`), {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (!exact(body, ['team_id', 'routine_id', 'paused']) || body.team_id !== teamId || body.routine_id !== routineId
+    || body.paused !== false) {
+    throw new RoutineError('routine-response-invalid');
   }
-  return decideRun(fetcher, teamId, runId, 'resolve', { batch_fingerprint: batchFingerprint }, 'resolved');
+  return false;
+}
+
+// A held run's recovery card (ADR-0092 section 7): exactly Verificar, Pular, and Pausar, the recommended one first.
+export const CARD_CHOICES = ['verify', 'skip', 'pause'];
+const CARD_VERDICTS = ['occurred', 'absent', 'none', 'inconclusive', 'unverifiable', 'exhausted'];
+const CARD_RUN_STATUSES = ['recovered', 'held', 'frozen', 'failed', 'stopped'];
+
+function parseCard(body, teamId, incidentId) {
+  const keys = [
+    'team_id', 'incident_id', 'routine_id', 'revision', 'assistant_id', 'action', 'nonce', 'expires_in', 'choices',
+    'recommended',
+  ];
+  return view(body, keys, (item) =>
+    item.team_id === teamId &&
+    item.incident_id === incidentId &&
+    typeof item.routine_id === 'string' &&
+    ID_RE.test(item.routine_id) &&
+    Number.isInteger(item.revision) &&
+    item.revision >= 1 &&
+    isHeldStep(item.assistant_id, item.action) &&
+    item.assistant_id !== null &&
+    typeof item.nonce === 'string' &&
+    NONCE_RE.test(item.nonce) &&
+    item.expires_in === 300 &&
+    Array.isArray(item.choices) &&
+    item.choices.length === CARD_CHOICES.length &&
+    CARD_CHOICES.every((choice) => item.choices.includes(choice)) &&
+    ['verify', 'pause'].includes(item.recommended) &&
+    item.choices[0] === item.recommended);
+}
+
+/** Open a held run's recovery card for the signed-in person; its nonce answers it once within five minutes. */
+export async function openRoutineCard(fetcher, teamId, incidentId) {
+  const body = await request(fetcher, teamPath(teamId, `/incidents/${opaque(incidentId)}/card`), {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return parseCard(body, teamId, incidentId);
+}
+
+/** Answer an open card with exactly one choice; returns Verificar's verdict and how the run went on. */
+export async function answerRoutineCard(fetcher, teamId, incidentId, card, choice) {
+  if (!CARD_CHOICES.includes(choice) || typeof card?.nonce !== 'string' || !NONCE_RE.test(card.nonce)) {
+    throw new RoutineError('routine-request-invalid');
+  }
+  const body = await request(fetcher, teamPath(teamId, `/incidents/${opaque(incidentId)}/answer`), {
+    method: 'POST',
+    body: JSON.stringify({ nonce: card.nonce, choice }),
+  });
+  return view(body, ['team_id', 'incident_id', 'choice', 'verdict', 'status'], (item) => {
+    if (item.team_id !== teamId || item.incident_id !== incidentId || item.choice !== choice) return false;
+    if (choice === 'verify') {
+      return CARD_VERDICTS.includes(item.verdict) && (item.status === null || CARD_RUN_STATUSES.includes(item.status));
+    }
+    return item.verdict === null && item.status === (choice === 'skip' ? 'skipped' : 'paused');
+  });
 }
 
 function fill(template, values) {
@@ -345,9 +429,10 @@ export function routineErrorMessage(error, copy) {
     'assistant-language-drift': copy.unavailable,
     'routine-limit': copy.full,
     'routine-rate-limit': copy.full,
-    'routine-run-uncertain': copy.uncertain,
     'routine-run-not-found': copy.ended,
-    'routine-run-not-uncertain': copy.ended,
+    'routine-incident-unavailable': copy.ended,
+    'routine-card-expired': copy.expired,
+    'routine-card-stale': copy.stale,
     'routine-state-unavailable': copy.unavailable,
     'team-context-unavailable': copy.unavailable,
   };
@@ -357,18 +442,28 @@ export function routineErrorMessage(error, copy) {
 export { fill as fillRoutineCopy };
 
 const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
-const MAX_NOTICE_REPLY_CHARS = 16000;
-const MAX_NOTICE_QUESTION_CHARS = 240;
 const MAX_NAME_CHARS = 80;
+const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'person'];
 const MAX_STEPS = 8;
 
 function closedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
 }
 
+// The ordered Assistant Actions a completed run carried out; never their input or result.
+function isCompleted(detail) {
+  return isActions(detail.actions) && detail.actions.length > 0 && detail.actions.length <= MAX_STEPS;
+}
+
 const NOTICE_DETAILS = {
-  done: [['reply'], (detail) => closedText(detail.reply, MAX_NOTICE_REPLY_CHARS)],
-  'needs-input': [['question'], (detail) => closedText(detail.question, MAX_NOTICE_QUESTION_CHARS)],
+  done: [['actions'], isCompleted],
+  recovered: [['actions'], isCompleted],
+  held: [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
+  paused: [
+    ['assistant_id', 'action', 'reason'],
+    (detail) => isHeldStep(detail.assistant_id, detail.action) && PAUSE_REASONS.includes(detail.reason),
+  ],
+  'user-skipped': [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
   'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],
   frozen: [
@@ -386,7 +481,6 @@ const NOTICE_DETAILS = {
   ],
   denied: [['actions'], (detail) => isActions(detail.actions)],
   stopped: [['actions'], (detail) => isActions(detail.actions)],
-  uncertain: [['actions'], (detail) => isActions(detail.actions)],
   created: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
   changed: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
 };
@@ -489,7 +583,7 @@ function resumed(body, teamId, runId) {
     !exact(body, ['team_id', 'run_id', 'status']) ||
     body.team_id !== teamId ||
     body.run_id !== runId ||
-    !['done', 'failed', 'denied', 'uncertain', 'stopped', 'needs-input', 'frozen'].includes(body.status)
+    !['done', 'recovered', 'failed', 'denied', 'stopped', 'frozen', 'held'].includes(body.status)
   ) throw new RoutineError('routine-response-invalid');
   return body.status;
 }

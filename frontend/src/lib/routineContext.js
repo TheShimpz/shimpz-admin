@@ -4,7 +4,10 @@ import { writable } from 'svelte/store';
 
 import { listRoutines } from './routine.js';
 
-/** Team id -> the Team's listed Routines and runs; a Map, so no Team id can resolve to an inherited property. */
+/**
+ * Team id -> the Team's listed Routines, runs, and unresolved incidents; a Map, so no Team id can resolve to an
+ * inherited property.
+ */
 export const routineContext = writable(new Map());
 
 // Only a Team's newest request may apply. Forgetting a Team (removal, session end) or applying a confirmed deletion
@@ -42,6 +45,8 @@ export function dropTeamRoutine(teamId, routineId) {
     return new Map(current).set(teamId, {
       routines: listed.routines.filter((routine) => routine.routine_id !== routineId),
       runs: listed.runs.filter((run) => run.routine_id !== routineId),
+      // A held run's incident outlives its deleted Routine and stays settleable through its card (ADR-0092).
+      incidents: listed.incidents,
     });
   });
 }

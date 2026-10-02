@@ -4,11 +4,13 @@
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
-  import Markdown from '$lib/Markdown.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import {
+    answerRoutineCard,
     answerRoutineChallenge,
+    CARD_CHOICES,
     fillRoutineCopy,
+    openRoutineCard,
     openRoutineChallenge,
     resumeRoutineIntegrations,
     routineErrorMessage,
@@ -16,8 +18,9 @@
   } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message. It names the Routine by its quoted request and never carries an Action's raw input or result; it is not part of the Brain's conversation. A frozen run is answered
-  // here with chat's own approval dialog, and nothing runs until the Supervisor answers.
+  // own message. It names the Routine by its quoted request and never carries an Action's raw input or result; it is
+  // not part of the Brain's conversation. A frozen run is answered here with chat's own approval dialog, and nothing
+  // runs until the Supervisor answers. A held or paused run offers its recovery card's three choices (ADR-0092).
   let { entry, copy, teamId, teamName } = $props();
 
   let challenge = $state(null);
@@ -37,11 +40,13 @@
     const run = copy.run;
     switch (entry.outcome) {
       case 'done': return run.done;
-      case 'needs-input': return fillRoutineCopy(run.needsInput, { question: detail.question });
+      case 'recovered': return run.recovered;
+      case 'held': return heldWords();
+      case 'paused': return fillRoutineCopy(run.paused, { reason: run.pauseReasons[detail.reason] });
+      case 'user-skipped': return run.userSkipped;
       case 'failed': return fillRoutineCopy(run.failed, { code: detail.code });
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
-      case 'uncertain': return run.uncertain;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
       case 'created':
@@ -58,15 +63,40 @@
         });
     }
   });
+  function heldWords() {
+    if (detail.assistant_id === null) return copy.run.heldUnknown;
+    return fillRoutineCopy(copy.run.held, { assistant: detail.assistant_id, action: detail.action });
+  }
   function outcomeWords(status) {
     const run = copy.run;
     return {
       done: run.done,
+      recovered: run.recovered,
       denied: run.denied,
       stopped: run.stopped,
-      uncertain: run.uncertain,
+      held: run.heldOutcome,
       frozen: run.waitingAgain,
     }[status] ?? run.failedOutcome;
+  }
+
+  // The recovery card: each choice opens a fresh card and answers it once; Team binds it to this person and run.
+  async function recover(choice) {
+    working = true;
+    result = '';
+    try {
+      const card = await openRoutineCard(fetch, teamId, entry.runId);
+      const answered = await answerRoutineCard(fetch, teamId, entry.runId, card, choice);
+      const run = copy.run;
+      if (answered.status === 'skipped') result = run.userSkipped;
+      else if (answered.status === 'paused') result = fillRoutineCopy(run.paused, { reason: run.pauseReasons.person });
+      else if (answered.status === null) result = copy.card.unproven;
+      else result = fillRoutineCopy(run.continued, { outcome: outcomeWords(answered.status) });
+      ended = answered.status !== null;
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    } finally {
+      working = false;
+    }
   }
 
   async function settle(action) {
@@ -137,9 +167,9 @@
   }
 
   let tone = $derived(
-    ['failed', 'denied', 'uncertain'].includes(entry.outcome)
+    ['failed', 'denied'].includes(entry.outcome)
       ? 'bad'
-      : ['frozen', 'needs-input', 'scope-changed'].includes(entry.outcome)
+      : ['frozen', 'held', 'paused', 'scope-changed'].includes(entry.outcome)
         ? 'waiting'
         : 'neutral',
   );
@@ -148,9 +178,7 @@
 <div class={['routine-run', tone]}>
   <p class="label">{copy.run.label} · <span class="quote">{entry.quote}</span></p>
   <p class="summary">{summary}</p>
-  {#if entry.outcome === 'done'}
-    <Markdown markdown={detail.reply} variant="chat" />
-  {:else if entry.outcome === 'created' || entry.outcome === 'changed'}
+  {#if entry.outcome === 'created' || entry.outcome === 'changed'}
     <RoutinePlan steps={detail.steps} copy={copy.plan} />
   {/if}
   {#if actions}
@@ -159,7 +187,19 @@
   {#if result}
     <p class="result" role="status">{result}</p>
   {/if}
-  {#if entry.outcome !== 'frozen' || ended}
+  {#if (entry.outcome === 'held' || entry.outcome === 'paused') && !ended}
+    <div class="buttons">
+      {#each CARD_CHOICES as choice (choice)}
+        <Button
+          size="sm"
+          variant="secondary"
+          type="button"
+          disabled={working}
+          onclick={() => recover(choice)}
+        >{copy.card[choice]}</Button>
+      {/each}
+    </div>
+  {:else if entry.outcome !== 'frozen' || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this row when it is delivered. -->
   {:else if waitingIntegration}
     <p class="actions">{fillRoutineCopy(copy.run.connect, { assistant: detail.assistant_id })}</p>

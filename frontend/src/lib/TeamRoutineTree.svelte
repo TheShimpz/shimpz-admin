@@ -7,7 +7,7 @@
     deleteRoutine,
     fillRoutineCopy,
     instantWords,
-    resolveRoutineRun,
+    resumeRoutine,
     routineErrorMessage,
     scheduleWords,
     stopRoutineRun,
@@ -16,8 +16,9 @@
   import RoutinePlan from '$lib/RoutinePlan.svelte';
 
   // One Team's Routines as a tree under its row (ADR-0086). A node opens in place with its schedule and runs in
-  // progress; deleting a Routine and releasing an uncertain run each need an explicit confirmation here.
-  let { teamId, routines = [], runs = [] } = $props();
+  // progress; deleting a Routine needs an explicit confirmation here. A held run is settled from its transcript row's
+  // recovery card (ADR-0092); a paused Routine resumes here, while an unresolved incident still holds it.
+  let { teamId, routines = [], runs = [], incidents = [] } = $props();
 
   let copy = $derived($t('routine'));
   let open = $state('');
@@ -81,8 +82,10 @@
       >
         <span class="quote">{routine.quote}</span>
         <span class="meta">{scheduleWords(routine.schedule, copy.schedule, $locale)}</span>
-        {#if active.some((run) => run.status === 'uncertain')}
-          <span class="flag bad">{copy.list.uncertain}</span>
+        {#if incidents.some((incident) => incident.routine_id === routine.routine_id)}
+          <span class="flag bad">{copy.list.held}</span>
+        {:else if routine.paused}
+          <span class="flag waiting">{copy.list.paused}</span>
         {:else if active.some((run) => run.status === 'frozen')}
           <span class="flag waiting">{copy.list.frozen}</span>
         {:else if active.length}
@@ -96,40 +99,21 @@
           <p class="meta">{copy.list.deleting}</p>
         {:else if routine.needs_reconfirm}
           <p class="warning">{copy.list.needsReconfirm}</p>
+        {:else if routine.paused}
+          <div class="buttons">
+            <span class="meta">{copy.list.paused}</span>
+            <Button variant="secondary" size="sm" type="button" disabled={busy !== ''}
+              onclick={() => act(routine.routine_id, () => resumeRoutine(fetch, teamId, routine.routine_id))}
+            >{copy.list.resume}</Button>
+          </div>
         {:else}
           <p class="meta">
             {fillRoutineCopy(copy.list.next, { next: instantWords(routine.next_run_at, $locale, routine.timezone) })}
           </p>
         {/if}
         {#each active as run (run.run_id)}
-          {#if run.status === 'uncertain'}
-            <p class="warning">{copy.list.uncertainLead}</p>
-            {#if run.actions.length > 0}
-              <p class="meta">{copy.list.uncertainActions}</p>
-              <ul class="actions-list">
-                {#each run.actions as [assistant, action], index (index)}
-                  <li><code>{assistant}</code> · <code>{action}</code></li>
-                {/each}
-              </ul>
-            {:else}
-              <p class="warning">
-                {fillRoutineCopy(copy.list.uncertainUnknown, { assistants: routine.assistant_ids.join(', ') })}
-              </p>
-            {/if}
-            <div class="buttons">
-              {#if confirming === run.run_id}
-                <Button variant="danger" size="sm" type="button" disabled={busy !== ''}
-                  onclick={() => act(run.run_id, () => resolveRoutineRun(fetch, teamId, run.run_id, run.batch_fingerprint))}
-                >{copy.list.resolve}</Button>
-                <Button variant="ghost" size="sm" type="button" disabled={busy !== ''} onclick={() => (confirming = '')}>
-                  {copy.list.cancel}
-                </Button>
-              {:else}
-                <Button variant="secondary" size="sm" type="button" disabled={busy !== ''} onclick={() => (confirming = run.run_id)}>
-                  {copy.list.resolve}
-                </Button>
-              {/if}
-            </div>
+          {#if run.status === 'held'}
+            <p class="meta">{copy.list.held}</p>
           {:else}
             <div class="buttons">
               <span class="meta">{run.status === 'frozen' ? copy.list.frozen : copy.list.running}</span>
@@ -190,6 +174,5 @@
   .flag.bad { color: var(--shimpz-color-danger); }
   .detail[hidden] { display: none; }
   .detail { display: grid; gap: var(--shimpz-space-1); padding: var(--shimpz-space-1) var(--shimpz-space-3) var(--shimpz-space-2) var(--routine-indent); }
-  .actions-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 0.72rem; overflow-wrap: anywhere; }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--shimpz-space-2); }
 </style>

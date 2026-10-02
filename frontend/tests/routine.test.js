@@ -4,6 +4,7 @@ import test from 'node:test';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 import {
+  answerRoutineCard,
   answerRoutineChallenge,
   browserTimezone,
   deleteRoutine,
@@ -13,13 +14,15 @@ import {
   isSchedule,
   isTimezone,
   listRoutines,
+  openRoutineCard,
   openRoutineChallenge,
   newerRoutineEntries,
+  parseIncidentView,
   parseRoutineRunEntry,
   parseRoutineView,
   isSteps,
   parseRunView,
-  resolveRoutineRun,
+  resumeRoutine,
   resumeRoutineIntegrations,
   RoutineError,
   routineErrorMessage,
@@ -105,6 +108,7 @@ const ROUTINE = {
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
+  paused: false,
 };
 const LEASED = {
   run_id: 'b'.repeat(32),
@@ -114,35 +118,53 @@ const LEASED = {
   request_kind: null,
   assistant_id: null,
   action: null,
-  batch_fingerprint: null,
-  actions: [],
 };
 const FROZEN = { ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' };
-const UNCERTAIN = {
-  ...LEASED,
-  status: 'uncertain',
-  batch_fingerprint: 'e'.repeat(64),
-  actions: [['shimpz-cloudflare', 'replace-dns-record']],
+const HELD = { ...LEASED, status: 'held' };
+const INCIDENT = {
+  incident_id: 'b'.repeat(32),
+  routine_id: ROUTINE.routine_id,
+  quote: QUOTE,
+  created_at: '2026-10-05T12:01:07Z',
+  assistant_id: 'shimpz-cloudflare',
+  action: 'replace-dns-record',
 };
 
 test('Routines and runs are admitted only in their closed views', () => {
   assert.deepEqual(parseRoutineView(ROUTINE), ROUTINE);
-  for (const invalid of [{ ...ROUTINE, quote: null }, { ...ROUTINE, deleting: 'no' }, { ...ROUTINE, assistant_ids: [] }]) {
+  assert.deepEqual(parseRoutineView({ ...ROUTINE, paused: true }), { ...ROUTINE, paused: true });
+  const { paused: _paused, ...unpaused } = ROUTINE;
+  for (const invalid of [
+    { ...ROUTINE, quote: null },
+    { ...ROUTINE, deleting: 'no' },
+    { ...ROUTINE, assistant_ids: [] },
+    { ...ROUTINE, paused: 'no' },
+    unpaused,
+  ]) {
     assert.throws(() => parseRoutineView(invalid), RoutineError);
   }
-  for (const run of [LEASED, FROZEN, UNCERTAIN]) assert.deepEqual(parseRunView(run), run);
+  for (const run of [LEASED, FROZEN, HELD]) assert.deepEqual(parseRunView(run), run);
   for (const invalid of [
     { ...LEASED, status: 'running' },
+    // The retired uncertain run and its release batch stay refused.
+    { ...LEASED, status: 'uncertain' },
+    { ...LEASED, batch_fingerprint: null, actions: [] },
     { ...LEASED, request_kind: 'human' },
+    { ...HELD, assistant_id: 'shimpz-cloudflare' },
     { ...FROZEN, action: null },
-    { ...UNCERTAIN, batch_fingerprint: null },
-    { ...LEASED, batch_fingerprint: 'e'.repeat(64) },
-    { ...LEASED, actions: [['shimpz-cloudflare', 'list-zones']] },
-    { ...UNCERTAIN, actions: [['Bad', 'x']] },
-    { ...UNCERTAIN, actions: [['shimpz-cloudflare']] },
-    { ...UNCERTAIN, actions: 'x' },
   ]) {
     assert.throws(() => parseRunView(invalid), RoutineError);
+  }
+  for (const incident of [INCIDENT, { ...INCIDENT, assistant_id: null, action: null }]) {
+    assert.deepEqual(parseIncidentView(incident), incident);
+  }
+  for (const invalid of [
+    { ...INCIDENT, assistant_id: null },
+    { ...INCIDENT, quote: '' },
+    { ...INCIDENT, created_at: '2026-10-05' },
+    { ...INCIDENT, status: 'unresolved' },
+  ]) {
+    assert.throws(() => parseIncidentView(invalid), RoutineError);
   }
 });
 
@@ -157,8 +179,8 @@ function fetcher(responses) {
 }
 
 test('Routine requests go to exact Admin routes and admit only exact answers', async () => {
-  let api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN] }]]);
-  assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN] });
+  let api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] }]]);
+  assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] });
   assert.equal(api.calls[0].init.headers['Content-Type'], undefined);
 
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: true }]]);
@@ -169,21 +191,28 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
   );
   assert.equal(api.calls[0].init.method, 'DELETE');
 
-  api = fetcher([[200, { team_id: 'team_1', run_id: LEASED.run_id, stopped: true }], [200, { team_id: 'team_1', run_id: UNCERTAIN.run_id, resolved: true }]]);
+  api = fetcher([
+    [200, { team_id: 'team_1', run_id: LEASED.run_id, stopped: true }],
+    [200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: false }],
+  ]);
   assert.equal(await stopRoutineRun(api.fetch, 'team_1', LEASED.run_id), true);
-  assert.equal(await resolveRoutineRun(api.fetch, 'team_1', UNCERTAIN.run_id, 'e'.repeat(64)), true);
-  assert.deepEqual(JSON.parse(api.calls[1].init.body), { batch_fingerprint: 'e'.repeat(64) });
+  assert.equal(await resumeRoutine(api.fetch, 'team_1', ROUTINE.routine_id), false);
+  assert.equal(api.calls[1].path, `/api/teams/team_1/routines/${ROUTINE.routine_id}/resume`);
 
+  const empty = { team_id: 'team_1', routines: [], runs: [], incidents: [] };
   for (const [call, responses] of [
-    [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_2', routines: [], runs: [] }]]],
-    [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_1', routines: Array(9).fill(ROUTINE), runs: [] }]]],
+    [(f) => listRoutines(f, 'team_1'), [[200, { ...empty, team_id: 'team_2' }]]],
+    [(f) => listRoutines(f, 'team_1'), [[200, { ...empty, routines: Array(9).fill(ROUTINE) }]]],
+    [(f) => listRoutines(f, 'team_1'), [[200, { ...empty, incidents: Array(33).fill(INCIDENT) }]]],
+    [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_1', routines: [], runs: [] }]]],
+    [(f) => resumeRoutine(f, 'team_1', ROUTINE.routine_id), [[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: true }]]],
     [(f) => stopRoutineRun(f, 'team_1', LEASED.run_id), [[200, { team_id: 'team_1', run_id: 'd'.repeat(32), stopped: true }]]],
   ]) {
     await assert.rejects(call(fetcher(responses).fetch), (error) => error.code === 'routine-response-invalid');
   }
   await assert.rejects(
-    deleteRoutine(fetcher([[409, { code: 'routine-run-uncertain' }]]).fetch, 'team_1', ROUTINE.routine_id),
-    (error) => error.code === 'routine-run-uncertain' && error.status === 409,
+    deleteRoutine(fetcher([[409, { code: 'routine-busy' }]]).fetch, 'team_1', ROUTINE.routine_id),
+    (error) => error.code === 'routine-busy' && error.status === 409,
   );
   await assert.rejects(
     deleteRoutine(fetcher([[500, { code: 'Not Safe' }]]).fetch, 'team_1', ROUTINE.routine_id),
@@ -193,7 +222,10 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
     () => listRoutines(null, 'team_1'),
     () => listRoutines(fetcher([]).fetch, 'Team 1'),
     () => deleteRoutine(fetcher([]).fetch, 'team_1', '../x'),
-    () => resolveRoutineRun(fetcher([]).fetch, 'team_1', UNCERTAIN.run_id, 'x'),
+    () => resumeRoutine(fetcher([]).fetch, 'team_1', 'x'),
+    () => openRoutineCard(fetcher([]).fetch, 'team_1', 'x'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'approve'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'x' }, 'skip'),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
   }
@@ -214,6 +246,9 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
   assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
+  assert.equal(routineErrorMessage(new RoutineError('routine-card-expired'), errors), errors.expired);
+  assert.equal(routineErrorMessage(new RoutineError('routine-card-stale'), errors), errors.stale);
+  assert.equal(routineErrorMessage(new RoutineError('routine-incident-unavailable'), errors), errors.ended);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   const zone = browserTimezone();
@@ -235,9 +270,10 @@ const RUN_ENTRY = {
   run_id: 'b'.repeat(32),
   outcome: 'done',
   created_at: '2026-10-05T12:01:07Z',
-  detail: { reply: 'Nenhuma mudança de DNS.' },
+  detail: { actions: [['shimpz-cloudflare', 'list-zones']] },
   version: 2,
 };
+const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' };
 
 test('a Routine transcript row is admitted only in its closed form', async () => {
   assert.deepEqual(parseRoutineRunEntry(RUN_ENTRY), {
@@ -252,14 +288,17 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     version: RUN_ENTRY.version,
   });
   const valid = [
-    { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
+    { ...RUN_ENTRY, outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'replace-dns-record']] } },
+    { ...RUN_ENTRY, outcome: 'held', detail: STEP },
+    { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: null, action: null } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } },
+    { ...RUN_ENTRY, outcome: 'user-skipped', detail: STEP },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
-    { ...RUN_ENTRY, outcome: 'uncertain', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: DEFINED },
     { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: DEFINED },
   ];
@@ -277,8 +316,16 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, quote: ' padded ' },
     { ...RUN_ENTRY, created_at: '2026-02-30T12:00:00Z' },
     { ...RUN_ENTRY, version: 0 },
-    { ...RUN_ENTRY, detail: { reply: '' } },
-    { ...RUN_ENTRY, detail: { reply: 'x', result: { ip: '1.2.3.4' } } },
+    // A done row names the Actions it carried out, never a reply or a result.
+    { ...RUN_ENTRY, detail: { reply: 'Done.' } },
+    { ...RUN_ENTRY, detail: { actions: [] } },
+    { ...RUN_ENTRY, detail: { actions: [['shimpz-cloudflare', 'list-zones']], result: { ip: '1.2.3.4' } } },
+    { ...RUN_ENTRY, outcome: 'uncertain', detail: { actions: [] } },
+    { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
+    { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: 'shimpz-cloudflare', action: null } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
+    // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
+    { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, detail: STEP },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', assistant_id: 'x', action: 'y' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [] } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },
@@ -412,4 +459,66 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
   for (const invalid of [{ ...ROUTINE, steps: [] }, { ...ROUTINE, name: ' padded ' }, { ...ROUTINE, name: 'é' }]) {
     assert.throws(() => parseRoutineView(invalid), RoutineError);
   }
+});
+
+test('a recovery card offers exactly Verificar, Pular, and Pausar and is answered once through exact answers', async () => {
+  const card = {
+    team_id: 'team_1',
+    incident_id: INCIDENT.incident_id,
+    routine_id: ROUTINE.routine_id,
+    revision: 2,
+    assistant_id: 'shimpz-cloudflare',
+    action: 'replace-dns-record',
+    nonce: 'c'.repeat(32),
+    expires_in: 300,
+    choices: ['verify', 'skip', 'pause'],
+    recommended: 'verify',
+  };
+  const answered = { team_id: 'team_1', incident_id: INCIDENT.incident_id, choice: 'verify', verdict: 'occurred', status: 'recovered' };
+  let api = fetcher([[200, card], [200, answered]]);
+  const opened = await openRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id);
+  assert.deepEqual(opened, card);
+  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, opened, 'verify'), answered);
+  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/card`);
+  assert.equal(api.calls[1].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/answer`);
+  assert.deepEqual(JSON.parse(api.calls[1].init.body), { nonce: card.nonce, choice: 'verify' });
+  const pausing = { ...card, choices: ['pause', 'verify', 'skip'], recommended: 'pause' };
+  assert.deepEqual(await openRoutineCard(fetcher([[200, pausing]]).fetch, 'team_1', INCIDENT.incident_id), pausing);
+  for (const [choice, body] of [
+    ['skip', { ...answered, choice: 'skip', verdict: null, status: 'skipped' }],
+    ['pause', { ...answered, choice: 'pause', verdict: null, status: 'paused' }],
+    ['verify', { ...answered, verdict: 'inconclusive', status: null }],
+  ]) {
+    api = fetcher([[200, body]]);
+    assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, card, choice), body);
+  }
+  for (const invalid of [
+    { ...card, choices: ['verify', 'skip', 'pause', 'other'] },
+    { ...card, choices: ['verify', 'approve', 'pause'] },
+    { ...card, choices: ['skip', 'verify', 'pause'] },
+    { ...card, incident_id: 'd'.repeat(32) },
+    { ...card, team_id: 'team_2' },
+    { ...card, assistant_id: null, action: null },
+    { ...card, expires_in: 600 },
+  ]) {
+    await assert.rejects(
+      openRoutineCard(fetcher([[200, invalid]]).fetch, 'team_1', INCIDENT.incident_id),
+      (error) => error.code === 'routine-response-invalid',
+    );
+  }
+  for (const [choice, body] of [
+    ['verify', { ...answered, status: 'skipped' }],
+    ['skip', { ...answered, choice: 'skip', verdict: null, status: 'paused' }],
+    ['pause', { ...answered, choice: 'skip', verdict: null, status: 'skipped' }],
+    ['verify', { ...answered, verdict: 'maybe' }],
+  ]) {
+    await assert.rejects(
+      answerRoutineCard(fetcher([[200, body]]).fetch, 'team_1', INCIDENT.incident_id, card, choice),
+      (error) => error.code === 'routine-response-invalid',
+    );
+  }
+  await assert.rejects(
+    answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.incident_id, card, 'skip'),
+    (error) => error.code === 'routine-card-stale' && error.status === 409,
+  );
 });

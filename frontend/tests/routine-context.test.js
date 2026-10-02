@@ -29,6 +29,7 @@ const ROUTINE = {
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
+  paused: false,
 };
 const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), quote: 'Every Monday, check my certificates' };
 const RUN = {
@@ -39,17 +40,23 @@ const RUN = {
   request_kind: null,
   assistant_id: null,
   action: null,
-  batch_fingerprint: null,
-  actions: [],
+};
+const INCIDENT = {
+  incident_id: 'd'.repeat(32),
+  routine_id: ROUTINE.routine_id,
+  quote: ROUTINE.quote,
+  created_at: '2026-10-05T12:01:07Z',
+  assistant_id: null,
+  action: null,
 };
 
 // Each listing answers only when the test releases it, so responses can arrive out of order.
 function deferredFetcher() {
   const pending = [];
   const fetch = (path) => new Promise((resolve) => {
-    pending.push((routines, runs = []) => {
+    pending.push((routines, runs = [], incidents = []) => {
       const team = decodeURIComponent(path.split('/')[3]);
-      resolve({ ok: true, status: 200, async json() { return { team_id: team, routines, runs }; } });
+      resolve({ ok: true, status: 200, async json() { return { team_id: team, routines, runs, incidents }; } });
     });
   });
   return { fetch, pending };
@@ -92,14 +99,16 @@ test('a removed Team, an ended session, or a confirmed deletion discards respons
   assert.equal(get(routineContext).size, 0);
 
   const loaded = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[3]([ROUTINE, OTHER], [RUN]);
+  api.pending[3]([ROUTINE, OTHER], [RUN], [INCIDENT]);
   await settle(loaded);
   const beforeDeletion = loadTeamRoutines(api.fetch, 'marketing');
   dropTeamRoutine('marketing', ROUTINE.routine_id);
-  assert.deepEqual(get(routineContext).get('marketing'), { routines: [OTHER], runs: [] });
+  // A held run's incident outlives its deleted Routine.
+  const remaining = { routines: [OTHER], runs: [], incidents: [INCIDENT] };
+  assert.deepEqual(get(routineContext).get('marketing'), remaining);
   api.pending[4]([ROUTINE, OTHER], [RUN]);
   await settle(beforeDeletion);
-  assert.deepEqual(get(routineContext).get('marketing'), { routines: [OTHER], runs: [] });
+  assert.deepEqual(get(routineContext).get('marketing'), remaining);
 
   // Dropping a Routine of a Team never loaded leaves the projection unchanged.
   const unchanged = get(routineContext);

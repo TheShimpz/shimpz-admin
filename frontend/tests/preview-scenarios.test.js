@@ -51,13 +51,19 @@ test('a recurring chat request creates its Routine directly with a created notic
   assert.equal(scenario.respond({ method: 'POST', path: ROUTINES, body: {} }), null);
 });
 
-test('runs are stopped or released by id, and the chat socket answers a sync', () => {
+test('runs are stopped by id, a paused Routine resumes, and the chat socket answers a sync', () => {
   const scenario = createScenario('routines');
   const stop = scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'f'.repeat(32)}/stop`, body: {} });
   assert.equal(stop.json.stopped, true);
-  const release = scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'b'.repeat(32)}/resolve`, body: {} });
-  assert.equal(release.json.resolved, true);
   assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.runs, []);
+  // The retired release of an uncertain run stays absent.
+  assert.equal(scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'b'.repeat(32)}/resolve`, body: {} }), null);
+  const listed = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.equal(listed.incidents.length, 1);
+  assert.equal(listed.routines[0].paused, true);
+  const resumed = scenario.respond({ method: 'POST', path: `${ROUTINES}/${'a'.repeat(32)}/resume`, body: {} });
+  assert.equal(resumed.json.paused, false);
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].paused, false);
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
 });

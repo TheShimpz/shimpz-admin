@@ -44,6 +44,7 @@ export const ROUTINE_VIEW = {
   next_run_at: '2026-10-01T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
+  paused: false,
 };
 
 const WEEKLY_ROUTINE = {
@@ -54,16 +55,14 @@ const WEEKLY_ROUTINE = {
   next_run_at: '2026-10-05T11:00:00Z',
 };
 
-const UNCERTAIN_RUN = {
-  run_id: 'b'.repeat(32),
+// A held run's unresolved incident (ADR-0092): its Routine is paused until a recovery card settles it.
+const HELD_INCIDENT = {
+  incident_id: 'b'.repeat(32),
   routine_id: ROUTINE_VIEW.routine_id,
-  status: 'uncertain',
-  scheduled_at: '2026-09-30T12:00:00Z',
-  request_kind: null,
-  assistant_id: null,
-  action: null,
-  batch_fingerprint: 'e'.repeat(64),
-  actions: [['shimpz-cloudflare', 'replace-dns-record']],
+  quote: ROUTINE_VIEW.quote,
+  created_at: '2026-09-30T12:01:07Z',
+  assistant_id: 'shimpz-cloudflare',
+  action: 'replace-dns-record',
 };
 
 const FROZEN_RUN = {
@@ -74,8 +73,6 @@ const FROZEN_RUN = {
   request_kind: 'human',
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
-  batch_fingerprint: null,
-  actions: [],
 };
 
 export function authenticatedLocalSession(overrides = {}) {
@@ -122,8 +119,9 @@ const STARTS = {
   routines: () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
-    routines: [ROUTINE_VIEW, WEEKLY_ROUTINE],
-    runs: [UNCERTAIN_RUN, FROZEN_RUN],
+    routines: [{ ...ROUTINE_VIEW, paused: true }, WEEKLY_ROUTINE],
+    runs: [FROZEN_RUN],
+    incidents: [HELD_INCIDENT],
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({
@@ -176,17 +174,24 @@ function providers() {
 
 function routineRoutes(state, method, path) {
   const base = '/api/teams/marketing/routines';
-  if (path === base && method === 'GET') return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs });
+  if (path === base && method === 'GET') {
+    return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs, incidents: state.incidents ?? [] });
+  }
+  const resume = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/resume$/);
+  if (resume && method === 'POST') {
+    state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, paused: false } : item));
+    return ok({ team_id: 'marketing', routine_id: resume[1], paused: false });
+  }
   const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
   if (routine && method === 'DELETE') {
     state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
     state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
   }
-  const run = path.match(/^\/api\/teams\/marketing\/routines\/runs\/([0-9a-f]{32})\/(stop|resolve)$/);
+  const run = path.match(/^\/api\/teams\/marketing\/routines\/runs\/([0-9a-f]{32})\/stop$/);
   if (run && method === 'POST') {
     state.runs = state.runs.filter((item) => item.run_id !== run[1]);
-    return ok({ team_id: 'marketing', run_id: run[1], [run[2] === 'stop' ? 'stopped' : 'resolved']: true });
+    return ok({ team_id: 'marketing', run_id: run[1], stopped: true });
   }
   return null;
 }
@@ -230,7 +235,7 @@ function otherTeamRoutes(state, method, path) {
     inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }),
     'assistant-integrations': () => ok({ integrations: [] }),
     'assistant-stored-inputs': () => ok({ stored_inputs: [] }),
-    routines: () => ok({ team_id: teamId, routines: [], runs: [] }),
+    routines: () => ok({ team_id: teamId, routines: [], runs: [], incidents: [] }),
   }[view]?.() ?? null;
 }
 

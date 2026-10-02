@@ -114,7 +114,7 @@
   }
 
   function teamRoutines(teamId) {
-    return $routineContext.get(teamId) ?? { routines: [], runs: [] };
+    return $routineContext.get(teamId) ?? { routines: [], runs: [], incidents: [] };
   }
 
   // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
@@ -436,6 +436,7 @@
                 teamId={team.id}
                 routines={teamRoutines(team.id).routines}
                 runs={teamRoutines(team.id).runs}
+                incidents={teamRoutines(team.id).incidents}
               />
             {/if}
           </li>
