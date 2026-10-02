@@ -4469,6 +4469,69 @@ test.describe('Team Routines', () => {
     expect(answers.slice(0, 2).map((answer) => answer.nonce)).toEqual(heldNonces.slice(0, 2));
   });
 
+  test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }) => {
+    const held = 'b'.repeat(32);
+    await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${held}:routine`,
+          kind: 'routine-run',
+          notice_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: held,
+          outcome: 'held',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+          version: 2,
+        }],
+        before: null,
+      },
+    });
+    let opened = 0;
+    const answers = [];
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+      opened += 1;
+      await route.fulfill({
+        json: {
+          team_id: 'marketing',
+          incident_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          revision: 1,
+          assistant_id: 'shimpz-cloudflare',
+          action: 'replace-dns-record',
+          nonce: String(opened).repeat(32),
+          expires_in: 300,
+          choices: ['verify', 'skip', 'pause'],
+          recommended: 'verify',
+        },
+      });
+    });
+    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+      answers.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: { team_id: 'marketing', incident_id: held, choice: 'skip', verdict: null, status: 'skipped' },
+      });
+    });
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    const choices = row.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
+    await page.clock.runFor(300_000);
+    await expect(choices).toHaveCount(0);
+    await expect(row.getByRole('status')).toHaveText('This recovery card expired.');
+    await page.clock.runFor(600_000);
+    expect(opened).toBe(1);
+    await row.getByRole('button', { name: 'Open the card again' }).click();
+    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect(row.getByRole('status')).toHaveCount(0);
+    await choices.filter({ hasText: 'Skip' }).click();
+    // The answer carries the fresh card's nonce, never the expired one.
+    expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'skip' }]);
+  });
+
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {
     const run = 'd'.repeat(32);
     const frozenRow = (id, requestKind) => ({

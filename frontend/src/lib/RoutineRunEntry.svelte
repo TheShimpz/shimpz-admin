@@ -88,7 +88,25 @@
   let wanted = $state(true);
   let recoverable = $derived((entry.outcome === 'held' || entry.outcome === 'paused') && !ended);
 
+  // A card answers only within Team's lifetime for it; once that passes it is withdrawn here, and the person opens
+  // a fresh one on purpose, so an idle page never keeps opening cards.
+  let expired = $state(false);
+  $effect(() => {
+    if (!card) return;
+    const opened = card;
+    const timer = setTimeout(() => {
+      if (card !== opened) return;
+      card = null;
+      expired = true;
+      result = copy.card.expired;
+    }, opened.expires_in * 1000);
+    return () => clearTimeout(timer);
+  });
+
   async function openCard() {
+    // Reopening after an expiry clears only that notice; a verdict shown after an answer stays.
+    if (expired) result = '';
+    expired = false;
     try {
       card = await openRoutineCard(fetch, teamId, entry.runId);
     } catch (error) {
@@ -108,7 +126,12 @@
   });
 
   function unresolvedWords(verdict) {
-    const words = { policy: copy.card.policy, unquiesced: copy.card.unquiesced, unclassified: copy.card.unclassified };
+    const words = {
+      policy: copy.card.policy,
+      unquiesced: copy.card.unquiesced,
+      unclassified: copy.card.unclassified,
+      exhausted: copy.card.exhausted,
+    };
     return words[verdict] ?? copy.card.unproven;
   }
 
@@ -227,7 +250,8 @@
       {#if entry.outcome === 'paused'}<p class="actions">{heldWords(card)}</p>{/if}
       <!-- Pular's consequence is stated before any choice is made. -->
       <p class="actions">{copy.card.skipConsequence}</p>
-      <div class="buttons">
+      <p class="actions">{fillRoutineCopy(copy.card.recommended, { choice: copy.card[card.recommended] })}</p>
+      <div class="buttons" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
           <Button
             size="sm"
@@ -240,7 +264,9 @@
       </div>
     {:else if !working}
       <div class="buttons">
-        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>{copy.list.retry}</Button>
+        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>
+          {expired ? copy.card.reopen : copy.list.retry}
+        </Button>
       </div>
     {/if}
   {:else if entry.outcome !== 'frozen' || ended}
