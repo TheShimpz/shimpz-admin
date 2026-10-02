@@ -311,6 +311,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: STEP },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 12 } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
@@ -342,6 +343,10 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, detail: STEP },
+    // A minute's healthy rollup belongs to the Routine, counts at most what its gaps allow, and names no Actions.
+    { ...RUN_ENTRY, outcome: 'healthy', detail: { runs: 2 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 13 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', assistant_id: 'x', action: 'y' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [] } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },

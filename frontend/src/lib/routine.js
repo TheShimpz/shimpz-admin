@@ -85,6 +85,7 @@ export const MAX_INCIDENTS = 32;
 export const MAX_DAILY_RUNS = 1000;
 export const MIN_CONTINUOUS_GAP_SECONDS = 5;
 export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
+export const MAX_ROLLUP_RUNS = 60 / MIN_CONTINUOUS_GAP_SECONDS;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
@@ -480,6 +481,7 @@ const NOTICE_DETAILS = {
   ],
   'user-skipped': [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
+  healthy: [['runs'], (detail) => whole(detail.runs, 1, MAX_ROLLUP_RUNS)],
   'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],
   frozen: [
     ['request_kind', 'assistant_id', 'action'],
@@ -500,7 +502,8 @@ const NOTICE_DETAILS = {
   changed: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
 };
 
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed'];
+// `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9).
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy'];
 
 function isName(value) {
   return closedText(value, MAX_NAME_CHARS) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;

@@ -50,6 +50,7 @@
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
+      case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
       case 'created':
       case 'changed':
