@@ -245,16 +245,26 @@ class RoutineAnswerTests(unittest.TestCase):
                     answer.open_challenge("team_1", RUN, {"locale": "pt"}), team.TeamResponse(409, {"code": code})
                 )
 
-    def test_an_integration_resume_needs_the_team_model_key(self) -> None:
+    def test_an_integration_resume_carries_the_team_model_key_only_when_admin_holds_one(self) -> None:
         with mock.patch.object(transport, "_call_stream", return_value=resumed("frozen")) as stream:
             self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "frozen")
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{RUN}/integrations")
+        self.assertIsNotNone(stream.call_args.kwargs["bindings"].model_credential)
+        # A compiled run resumes without a key; Team pauses a recovery it then needs as unavailable.
         missing = team.TeamResponse(409, {"code": "model-credential-missing"})
         with (
             mock.patch.object(chat_local, "model_credential", return_value=missing),
+            mock.patch.object(transport, "_call_stream", return_value=resumed("done")) as stream,
+        ):
+            self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "done")
+        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
+        # Any other credential failure still refuses before Team is asked.
+        broken = team.TeamResponse(502, {"code": "model-credential-store-invalid"})
+        with (
+            mock.patch.object(chat_local, "model_credential", return_value=broken),
             mock.patch.object(transport, "_call_stream") as stream,
         ):
-            self.assertIs(answer.resume_integrations("team_1", RUN), missing)
+            self.assertIs(answer.resume_integrations("team_1", RUN), broken)
         stream.assert_not_called()
 
     def test_open_challenges_are_bounded_and_one_per_team(self) -> None:

@@ -89,8 +89,7 @@ class RoutineScheduler:
             # The identity and its public key exist before any lease is taken for them.
             identity = state.local_routine_identity()
             supervisor.materialize_routine_key(identity)
-            held = team.providers()
-            answer = team.claim(held) if held else {"run": None, "next_due_at": None}
+            answer = team.claim()
             claimed = answer["run"]
             self._due_at = answer["next_due_at"]
             if claimed is not None:

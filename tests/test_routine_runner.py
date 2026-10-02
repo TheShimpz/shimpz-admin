@@ -196,16 +196,17 @@ class RoutineHistoryTests(unittest.TestCase):
 
 class RoutineTeamCallTests(unittest.TestCase):
     def test_calls_admit_only_closed_answers(self) -> None:
-        with mock.patch.object(
-            models, "resolve_api_key", side_effect=lambda provider: "k" * 20 if provider == "openai" else None
+        # A claim holds no model key: a healthy compiled run needs none.
+        with (
+            mock.patch.object(models, "resolve_api_key") as resolve,
+            mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call,
         ):
-            self.assertEqual(team.providers(), ("openai",))
-        with mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call:
-            self.assertEqual(team.claim(("openai",)), CLAIMED)
-        call.assert_called_once_with("POST", "/v1/routines/claim", {"providers": ["openai"]})
+            self.assertEqual(team.claim(), CLAIMED)
+        call.assert_called_once_with("POST", "/v1/routines/claim", {})
+        resolve.assert_not_called()
         hinted = {"run": None, "next_due_at": 1790000300}
         with mock.patch.object(transport, "_call", return_value=answer(hinted)):
-            self.assertEqual(team.claim(("openai",)), hinted)
+            self.assertEqual(team.claim(), hinted)
         with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
             self.assertEqual(team.notices(), BATCH)
         with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
@@ -215,11 +216,11 @@ class RoutineTeamCallTests(unittest.TestCase):
             {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
         )
         for response, action in (
-            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
-            (answer({"run": None}), lambda: team.claim(("openai",))),
+            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim()),
+            (answer({"run": None}), lambda: team.claim()),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
-            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim(("openai",))),
+            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim()),
             (answer({"code": "x"}, 503), team.notices),
             (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
         ):
@@ -273,13 +274,22 @@ class RoutineTeamCallTests(unittest.TestCase):
             self.assertEqual(team.run(CLAIM, identity), "done")
         bindings = stream.call_args.kwargs["bindings"]
         self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
-        # The signed segment names exactly the revision and plan the claim leased.
-        self.assertEqual(stream.call_args.args[2], {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"]})
+        # The signed segment names exactly the revision, plan, and mode the claim leased.
+        self.assertEqual(
+            stream.call_args.args[2],
+            {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"], "mode": CLAIM["mode"]},
+        )
         self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
         stream.call_args.kwargs["progress"]({"type": "progress"})
+        # Without a key the segment still runs, carrying no model credential; Team pauses a recovery it then needs.
+        with (
+            mock.patch.object(models, "resolve_api_key", return_value=None),
+            mock.patch.object(transport, "_call_stream", return_value=done) as stream,
+        ):
+            self.assertEqual(team.run(CLAIM, identity), "done")
+        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
         for key, response in (
-            (None, done),
             ("sk-test-0123456789", answer({"team_id": "team_2", "run_id": CLAIM["run_id"], "status": "done"})),
             ("sk-test-0123456789", answer({"team_id": "team_1", "run_id": CLAIM["run_id"], "status": "running"})),
         ):
@@ -372,7 +382,6 @@ class RoutineSchedulerTests(unittest.TestCase):
             mock.patch.object(state, "local_routine_identity", return_value=self.identity),
             mock.patch.object(supervisor, "materialize_routine_key"),
             mock.patch.object(delivery, "deliver", return_value=0),
-            mock.patch.object(team, "providers", return_value=("openai",)),
         ):
             patch.start()
             self.addCleanup(patch.stop)
@@ -417,9 +426,6 @@ class RoutineSchedulerTests(unittest.TestCase):
         self.assertEqual(len(logged.output), 2)
         with mock.patch.object(team, "claim", return_value=IDLE):
             runner.tick()
-        with mock.patch.object(team, "providers", return_value=()), mock.patch.object(team, "claim") as claim:
-            runner.tick()
-        claim.assert_not_called()
         failed = threading.Event()
         with (
             mock.patch.object(team, "claim", return_value=CLAIMED),
@@ -448,7 +454,7 @@ class RoutineSchedulerTests(unittest.TestCase):
         with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 9999}):
             runner.tick()
         self.assertEqual(runner.delay(1000.0), 30)
-        with mock.patch.object(team, "providers", return_value=()):
+        with mock.patch.object(team, "claim", return_value=IDLE):
             runner.tick()
         self.assertEqual(runner.delay(1000.0), 30)
         finished = threading.Event()
