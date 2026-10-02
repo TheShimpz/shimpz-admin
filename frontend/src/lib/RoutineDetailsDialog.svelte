@@ -4,7 +4,7 @@
   import { listChatHistory } from '$lib/chatHistory.js';
   import DialogAction from '$lib/DialogAction.svelte';
   import { locale } from '$lib/i18n.js';
-  import { listAssistantCatalog } from '$lib/localApi.js';
+  import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
     deleteRoutine,
@@ -31,7 +31,6 @@
   let busy = $state(false);
   let error = $state('');
   let confirming = $state(false);
-  let names = $state({});
   let recent = $state(null);
   let recentFailed = $state(false);
   let detailsRun = $state('');
@@ -47,9 +46,7 @@
   // Assistant names and this Routine's recent runs are read once, when the panel opens; neither is ever required.
   $effect(() => {
     let current = true;
-    listAssistantCatalog(fetch)
-      .then((catalog) => { if (current) names = Object.fromEntries(catalog.map((item) => [item.id, item.name])); })
-      .catch(() => {});
+    void loadAssistantNames(fetch);
     listChatHistory(fetch, teamId)
       .then(({ entries }) => {
         if (!current) return;
@@ -135,7 +132,7 @@
 
       <section aria-labelledby={`${id}-steps`}>
         <h3 id={`${id}-steps`}>{copy.plan.title}</h3>
-        <RoutinePlan steps={routine.steps} copy={copy.plan} {names} />
+        <RoutinePlan steps={routine.steps} copy={copy.plan} names={$assistantNames} />
       </section>
 
       <section aria-labelledby={`${id}-runs`}>

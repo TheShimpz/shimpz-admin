@@ -4279,6 +4279,7 @@ test.describe('Team Routines', () => {
     await page.reload();
     const created = page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' });
     await expect(created).toContainText('America/Sao_Paulo');
+    await created.getByText('Steps', { exact: true }).click();
     await expect(created.getByRole('list', { name: 'Steps' })).toContainText('List zones');
   });
 
@@ -4470,11 +4471,12 @@ test.describe('Team Routines', () => {
     await expect(transcript).toHaveCount(4);
     await expect(transcript.nth(0)).toContainText('2 scheduled runs were skipped.');
     await expect(transcript.nth(1)).toContainText('Failed (assistant-rpc-failed)');
-    await expect(transcript.nth(1)).toContainText('Actions: shimpz-cloudflare · list-zones');
-    await expect(transcript.nth(2)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
-    await expect(transcript.nth(3)).toContainText('Routine · Every day at 9, list my DNS zones');
+    await expect(transcript.nth(1)).toContainText('Actions: Shimpz Cloudflare · List zones');
+    await expect(transcript.nth(2)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
+    // Without a listed Routine, a row is named by the request it came from.
+    await expect(transcript.nth(3).getByRole('heading', { level: 3 })).toHaveText('Every day at 9, list my DNS zones');
     // A done row names the Actions the run carried out, never a model reply.
-    await expect(transcript.nth(3)).toContainText('Actions: shimpz-cloudflare · list-zones');
+    await expect(transcript.nth(3)).toContainText('Actions: Shimpz Cloudflare · List zones');
   });
 
   test('a held run is settled from its transcript row through the card Team opened, in its order', async ({ page }) => {
@@ -4539,8 +4541,8 @@ test.describe('Team Routines', () => {
     await expect(choices(1)).toHaveText(['Pause', 'Verify', 'Skip']);
     expect(answers).toEqual([]);
     // The step shown is the card's, and Skip's consequence is stated before it is chosen.
-    await expect(rows.nth(0)).toContainText('create-dns-record');
-    await expect(rows.nth(0)).toContainText('Later runs continue.');
+    await expect(rows.nth(0)).toContainText('Create DNS record');
+    await expect(rows.nth(0)).toContainText('later runs continue');
     // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
     await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
@@ -4819,7 +4821,7 @@ test.describe('Team Routines', () => {
     expect(answers).toEqual([approval, approval]);
 
     await rows.nth(0).getByRole('button', { name: 'Review' }).click();
-    await expect(rows.nth(0)).toContainText('Connect shimpz-cloudflare from the Team\'s Store, then continue the run.');
+    await expect(rows.nth(0)).toContainText('Connect Shimpz Cloudflare from the Team\'s Store, then continue the run.');
     expect(resumes).toEqual([]);
     await rows.nth(0).getByRole('button', { name: 'Continue the run' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('The run continued: waiting for another answer');
@@ -4892,8 +4894,8 @@ test.describe('Team Routines', () => {
     }];
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(2);
-    await expect(rows.nth(1)).toContainText('Waiting for your approval of replace-dns-record from shimpz-cloudflare.');
-    await expect(rows.nth(0)).toContainText('shimpz-cloudflare · list-zones');
+    await expect(rows.nth(1)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
+    await expect(rows.nth(0)).toContainText('Shimpz Cloudflare · List zones');
     await expect(composer).toHaveValue('A draft that must survive');
     // The Team's Routine tree shows the same run waiting.
     const navigation = await openTeamNavigation(page);
@@ -4913,7 +4915,7 @@ test.describe('Team Routines', () => {
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
-    await expect(rows.nth(1)).toContainText('shimpz-cloudflare · replace-dns-record');
+    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare · Replace DNS record');
     await expect(rows).toHaveCount(2);
     await expect(composer).toHaveValue('A draft that must survive');
   });

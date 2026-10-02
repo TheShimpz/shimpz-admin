@@ -1,7 +1,8 @@
 <script>
-  import { Button } from '@shimpz/frontend';
+  import { Button, Disclosure, TextAction } from '@shimpz/frontend';
 
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
@@ -11,6 +12,7 @@
     answerRoutineCard,
     answerRoutineChallenge,
     fillRoutineCopy,
+    humanizeId,
     minuteWords,
     openRoutineCard,
     openRoutineChallenge,
@@ -21,9 +23,9 @@
   } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message. It names the Routine by its quoted request and never carries an Action's raw input or result; it is
-  // not part of the Brain's conversation. A frozen run is answered here with chat's own approval dialog, and nothing
-  // runs until the Supervisor answers. A held or paused run offers its recovery card's three choices (ADR-0092).
+  // own message, as one card: the Routine's name and a neutral badge, the state in one sentence, and its actions. It
+  // never carries an Action's raw input or result, and it is not part of the Brain's conversation. A frozen run is
+  // answered here with chat's own approval dialog, and nothing runs until the Supervisor answers. A held or paused run offers its recovery card's three choices (ADR-0092).
   let { entry, copy, teamId, teamName } = $props();
 
   let challenge = $state(null);
@@ -65,15 +67,24 @@
     }
   }
   let detail = $derived(entry.detail);
-  let actions = $derived(
-    (detail.actions ?? []).map(([assistant, action]) => `${assistant} · ${action}`).join(', '),
+  // Assistants and Actions are named in words: the catalog's title, or the humanized id until it is read.
+  $effect(() => { void loadAssistantNames(fetch); });
+  function stepWords(assistant, action) {
+    return fillRoutineCopy(copy.plan.step, { assistant: $assistantNames[assistant] ?? humanizeId(assistant), action: humanizeId(action) });
+  }
+  let actions = $derived((detail.actions ?? []).map(([assistant, action]) => stepWords(assistant, action)).join(', '));
+  // The Routine's short name: as Team lists it now, as the notice defined it, or else its request.
+  let routineName = $derived(
+    listed?.routines.find((routine) => routine.routine_id === entry.routineId)?.name ?? detail.name ?? entry.quote,
   );
+  const BADGES = { 'user-skipped': 'userSkipped', 'scope-changed': 'scopeChanged' };
+  let badge = $derived(copy.badge[BADGES[entry.outcome] ?? entry.outcome]);
   let summary = $derived.by(() => {
     const run = copy.run;
     switch (entry.outcome) {
       case 'done': return run.done;
       case 'recovered': return run.recovered;
-      case 'held': return heldWords(card ?? detail);
+      case 'held': return run.heldTitle;
       case 'paused': return fillRoutineCopy(run.paused, { reason: run.pauseReasons[detail.reason] });
       case 'user-skipped': return run.userSkipped;
       case 'failed': return fillRoutineCopy(run.failed, { code: detail.code });
@@ -92,16 +103,20 @@
         });
       default:
         return fillRoutineCopy(detail.request_kind === 'human' ? run.frozenHuman : run.frozenIntegrations, {
-          assistant: detail.assistant_id,
-          action: detail.action,
+          assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
+          action: humanizeId(detail.action),
         });
     }
   });
-  // The step a card names is Team's current one, which a stale transcript row may not show.
-  function heldWords(step = detail) {
-    if (step.assistant_id === null) return copy.run.heldUnknown;
-    return fillRoutineCopy(copy.run.held, { assistant: step.assistant_id, action: step.action });
-  }
+  // Where a held or paused run stopped. The step a card names is Team's current one, which a stale row may not show.
+  let stopped = $derived.by(() => {
+    if (entry.outcome !== 'held' && entry.outcome !== 'paused') return '';
+    const step = card ?? detail;
+    if (step.assistant_id === null) return copy.run.stoppedUnknown;
+    return fillRoutineCopy(copy.run.stoppedAt, { step: stepWords(step.assistant_id, step.action) });
+  });
+  const HINTS = { verify: 'verifyHint', skip: 'skipHint', pause: 'pauseHint' };
+  const id = $props.id();
   function outcomeWords(status) {
     const run = copy.run;
     return {
@@ -254,47 +269,52 @@
     ended = answered.status !== 'frozen';
     challenge = null;
   }
-
-  let tone = $derived(
-    ['failed', 'denied'].includes(entry.outcome)
-      ? 'bad'
-      : ['frozen', 'held', 'paused', 'scope-changed'].includes(entry.outcome)
-        ? 'waiting'
-        : 'neutral',
-  );
 </script>
 
-<div class={['routine-run', tone]}>
-  <p class="label">{copy.run.label} · <span class="quote">{entry.quote}</span></p>
-  <p class="summary">{summary}</p>
+<div class="routine-run" role="group" aria-labelledby={`${id}-name`}>
+  <header class="head">
+    <h3 class="name" id={`${id}-name`} title={entry.quote}>{routineName}</h3>
+    <span class="badge">{badge}</span>
+    {#if entry.runId}
+      <TextAction class="details" onclick={() => (details = true)}>
+        {#snippet icon()}<svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"></path></svg>{/snippet}
+        {copy.details.open}
+      </TextAction>
+    {/if}
+  </header>
+  <p class="title">{summary}</p>
+  {#if stopped}<p class="body">{stopped}</p>{/if}
+  {#if actions}<p class="body">{fillRoutineCopy(copy.run.actions, { actions })}</p>{/if}
   {#if entry.outcome === 'created' || entry.outcome === 'changed'}
-    <RoutinePlan steps={detail.steps} copy={copy.plan} />
+    <Disclosure class="steps">
+      {#snippet summary()}{copy.plan.title}{/snippet}
+      <RoutinePlan steps={detail.steps} copy={copy.plan} names={$assistantNames} />
+    </Disclosure>
   {/if}
-  {#if actions}
-    <p class="actions">{fillRoutineCopy(copy.run.actions, { actions })}</p>
-  {/if}
-  {#if result}
-    <p class="result" role="status">{result}</p>
-  {/if}
+  {#if result}<p class="result" role="status">{result}</p>{/if}
   {#if recoverable}
     {#if card}
-      {#if entry.outcome === 'paused'}<p class="actions">{heldWords(card)}</p>{/if}
-      <!-- Pular's consequence is stated before any choice is made. -->
-      <p class="actions">{copy.card.skipConsequence}</p>
-      <p class="actions">{fillRoutineCopy(copy.card.recommended, { choice: copy.card[card.recommended] })}</p>
-      <div class="buttons" role="group" aria-label={copy.card.choices}>
+      <!-- Each choice states its own consequence beside it; the recommended one leads and is marked in words. -->
+      <div class="choices" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
-          <Button
-            size="sm"
-            variant={choice === card.recommended ? 'primary' : 'secondary'}
-            type="button"
-            disabled={working}
-            onclick={() => recover(choice)}
-          >{copy.card[choice]}</Button>
+          <div class="choice">
+            <Button
+              size="sm"
+              variant={choice === card.recommended ? 'primary' : 'secondary'}
+              type="button"
+              disabled={working}
+              aria-describedby={`${id}-${choice}`}
+              onclick={() => recover(choice)}
+            >{copy.card[choice]}</Button>
+            <p class="hint" id={`${id}-${choice}`}>
+              {#if choice === card.recommended}<span class="recommended">{copy.card.recommendedMark}</span>{/if}
+              {copy.card[HINTS[choice]]}
+            </p>
+          </div>
         {/each}
       </div>
     {:else if !working}
-      <div class="buttons">
+      <div class="actions">
         <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>
           {expired ? copy.card.reopen : copy.list.retry}
         </Button>
@@ -303,8 +323,8 @@
   {:else if entry.outcome !== 'frozen' || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this row when it is delivered. -->
   {:else if waitingIntegration}
-    <p class="actions">{fillRoutineCopy(copy.run.connect, { assistant: detail.assistant_id })}</p>
-    <div class="buttons">
+    <p class="body">{fillRoutineCopy(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
+    <div class="actions">
       <Button
         size="sm"
         type="button"
@@ -313,20 +333,15 @@
       >{working ? copy.run.working : copy.run.continue}</Button>
     </div>
   {:else}
-    <div class="buttons">
+    <div class="actions">
       <Button size="sm" type="button" disabled={working} onclick={review}>
         {working ? copy.run.working : copy.run.review}
       </Button>
     </div>
   {/if}
-  {#if entry.runId || resumable}
-    <div class="buttons">
-      {#if resumable}
-        <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>{copy.list.resume}</Button>
-      {/if}
-      {#if entry.runId}
-        <Button size="sm" variant="ghost" type="button" onclick={() => (details = true)}>{copy.details.open}</Button>
-      {/if}
+  {#if resumable}
+    <div class="actions">
+      <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>{copy.list.resume}</Button>
     </div>
   {/if}
 </div>
@@ -350,13 +365,22 @@
 {/if}
 
 <style>
-  .routine-run { display: grid; gap: var(--shimpz-space-1); }
-  .label { margin: 0; color: var(--shimpz-color-cyan); font: 700 0.7rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; overflow-wrap: anywhere; }
-  .quote { color: var(--shimpz-color-text-muted); letter-spacing: 0; text-transform: none; font-family: var(--shimpz-font-sans); font-weight: 600; }
-  .summary { margin: 0; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
-  .bad .summary { color: var(--shimpz-color-danger); }
-  .waiting .summary { color: var(--shimpz-color-yellow); }
-  .actions, .result { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+  /* One bordered card in neutral colors; cyan only marks the primary choice. */
+  .routine-run { display: grid; gap: var(--shimpz-space-2); max-width: 44rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); }
+  .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--shimpz-space-1) var(--shimpz-space-3); min-width: 0; }
+  .name { flex: 1 1 12rem; min-width: 0; margin: 0; overflow: hidden; color: var(--shimpz-color-text); font: 600 0.9rem/1.35 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
+  .badge { flex: none; padding: 0.1rem 0.45rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.7rem; line-height: 1.4; }
+  /* A quiet link-styled action: muted, in the body face, never the cyan of a primary action. */
+  .head :global(.details) { flex: none; gap: 0.3rem; min-height: 0; padding: 0; color: var(--shimpz-color-text-muted); font: 500 0.75rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-decoration: underline; text-transform: none; text-underline-offset: 0.2em; }
+  .head :global(.details:hover) { color: var(--shimpz-color-text); }
+  .head :global(.details svg) { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .title { margin: 0; color: var(--shimpz-color-text); line-height: 1.45; overflow-wrap: break-word; }
+  .body, .result { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: break-word; }
   .result { color: var(--shimpz-color-text); }
-  .buttons { display: flex; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-1); }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--shimpz-space-3); margin-block-start: var(--shimpz-space-1); }
+  .choice { display: grid; align-content: start; justify-items: start; gap: var(--shimpz-space-1); }
+  .hint { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.75rem; line-height: 1.4; }
+  .recommended { display: block; color: var(--shimpz-color-cyan); font: 700 0.62rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); }
+  @media (forced-colors: active) { .routine-run, .badge { border-color: CanvasText; } }
 </style>
