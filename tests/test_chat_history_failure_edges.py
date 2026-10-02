@@ -155,24 +155,20 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 "objective_assistant_ids": [],
                 "locale": "en",
             }
-            websocket = mock.AsyncMock()
-            with (
-                mock.patch.object(
-                    task_resume.history_delivery,
-                    "admit",
-                    new=mock.AsyncMock(side_effect=socket.history.HistoryUnavailableError("offline")),
-                ),
-                mock.patch.object(task_resume.lifecycle, "submit_resume") as prepare,
+            for error, status in (
+                (socket.history.HistoryUnavailableError("offline"), 503),
+                (task_resume.ExecutorSaturatedError("full"), 429),
             ):
-                await task_resume.dispatch(
-                    websocket,
-                    socket._Connection(),
-                    "team_1",
-                    frame,
-                    _resume_operations(),
-                )
-            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
-            prepare.assert_not_called()
+                websocket = mock.AsyncMock()
+                connection = socket._Connection()
+                with (
+                    mock.patch.object(task_resume.history_delivery, "admit", new=mock.AsyncMock(side_effect=error)),
+                    mock.patch.object(task_resume.lifecycle, "submit_resume") as prepare,
+                ):
+                    await task_resume.dispatch(websocket, connection, "team_1", frame, _resume_operations())
+                self.assertEqual(websocket.send_json.await_args.args[0]["status"], status)
+                self.assertIsNone(connection.admitted_history_id)
+                prepare.assert_not_called()
 
         asyncio.run(scenario())
 

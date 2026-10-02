@@ -6,11 +6,15 @@ import asyncio
 import logging
 from collections.abc import Mapping
 
+from chat.executor import BoundedThreadPoolExecutor, submit_in_context
 from history import context, store
 from team import bridge as team
 
 log = logging.getLogger("shimpz-admin")
 _enabled = False
+# Admission holds the lifecycle lock across a synchronous Team lookup, so it runs on its own small lane: a slow Team
+# response saturates only this lane, never the shared default executor that authentication also depends on.
+_ADMISSION = BoundedThreadPoolExecutor(max_workers=1, max_outstanding=4, thread_name_prefix="shimpz-history-admit")
 
 
 def configure(profile: str) -> None:
@@ -33,7 +37,9 @@ async def admit(team_id: str, message: object) -> str | None:
     if not _enabled:
         return None
     turn_id = store.new_turn_id()
-    committed = await asyncio.to_thread(_append_live_user, team_id, turn_id, message)
+    # A saturated lane raises ExecutorSaturatedError here, before any durable write.
+    future = submit_in_context(_ADMISSION, _append_live_user, team_id, turn_id, message)
+    committed = await asyncio.wrap_future(future)
     if not committed:
         raise store.HistoryUnavailableError("chat history user entry was not committed")
     return turn_id

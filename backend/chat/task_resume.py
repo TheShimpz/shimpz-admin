@@ -105,6 +105,9 @@ async def dispatch(
         # The window ends before the continuation row, so it still holds the original objective and the reply that
         # asked for a capability; the objective itself runs once, as this turn's message.
         conversation = await history_delivery.conversation(team_id, history_id)
+    except ExecutorSaturatedError:
+        await operations.send_event(websocket, operations.error_terminal(429, "Admin chat history capacity reached"))
+        return
     except history.HistoryUnavailableError, ValueError:
         await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
         return

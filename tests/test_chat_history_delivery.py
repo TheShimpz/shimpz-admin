@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextvars
 import sys
 import tempfile
 import threading
@@ -97,6 +99,49 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             worker.join(10)
         self.assertIsInstance(outcome.get("error"), socket.history.HistoryUnavailableError)
         self.assertEqual(socket.history.page("marketing")["entries"], [])
+
+    def test_saturated_history_admission_is_refused_without_borrowing_default_workers(self) -> None:
+        # Admission holds the lifecycle lock across a Team lookup. While a slow lookup blocks it, admissions must fill
+        # only the history lane, refuse the overflow before any durable write, and leave the default executor free.
+        delivery = socket.history_delivery
+        request = contextvars.ContextVar("history_admission_request", default=None)
+        committed: list[tuple[str, object]] = []
+
+        def append_user(_team_id: str, turn_id: str, _message: object) -> bool:
+            committed.append((turn_id, request.get()))
+            return True
+
+        async def scenario() -> None:
+            loop = asyncio.get_running_loop()
+            loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=1))
+            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": [], "locale": "en"}
+            request.set("supervisor-request")
+            queued = []
+            with (
+                mock.patch.object(delivery.team, "resolve_team_name", return_value="Marketing"),
+                mock.patch.object(socket.history, "append_user", side_effect=append_user),
+            ):
+                socket.history.LIFECYCLE_LOCK.acquire()
+                try:
+                    for _ in range(4):
+                        queued.append(asyncio.create_task(delivery.admit("team_1", "Hello")))
+                        await asyncio.sleep(0)
+                    websocket = mock.AsyncMock()
+                    connection = socket._Connection()
+                    admission = socket._admit_chat_payload(websocket, connection, "team_1", frame)
+                    self.assertIsNone(await asyncio.wait_for(admission, 5))
+                    refused = websocket.send_json.await_args.args[0]
+                    self.assertEqual((refused["type"], refused["status"]), ("error", 429))
+                    self.assertIsNone(connection.admitted_history_id)
+                    self.assertEqual(await asyncio.wait_for(asyncio.to_thread(lambda: "ran"), 5), "ran")
+                    self.assertEqual(committed, [])
+                finally:
+                    socket.history.LIFECYCLE_LOCK.release()
+                turns = await asyncio.wait_for(asyncio.gather(*queued), 10)
+            self.assertEqual(sorted(turn for turn, _request in committed), sorted(turns))
+            self.assertEqual({seen for _turn, seen in committed}, {"supervisor-request"})
+
+        asyncio.run(scenario())
 
     def test_terminal_reply_is_committed_before_socket_projection(self) -> None:
         async def scenario() -> None:

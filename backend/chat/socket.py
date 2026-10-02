@@ -610,6 +610,9 @@ async def _commit_user_history(
 ) -> bool:
     try:
         history_id = await history_delivery.admit(team_id, message)
+    except ExecutorSaturatedError:
+        await _send_event(websocket, _error_terminal(429, "Admin chat history capacity reached"))
+        return False
     except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat user history commit failed")
         await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
