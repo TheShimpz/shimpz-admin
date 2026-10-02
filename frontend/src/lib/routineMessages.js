@@ -81,6 +81,7 @@ export const routineMessages = {
       skipConsequence: "Skip ends this run without checking what it may have changed. Later runs continue.",
       policy: "Team held this step for a safety rule. It cannot be verified or retried.",
       unquiesced: "Team could not confirm the Action stopped. The run stays held.",
+      unclassified: "Team has no trusted record of how this step failed. It cannot be verified or retried.",
     },
     errors: {
       generic: 'The Routine request failed. Try again.',
@@ -171,6 +172,7 @@ export const routineMessages = {
       skipConsequence: "Pular encerra esta execução sem verificar o que ela pode ter mudado. As próximas execuções continuam.",
       policy: "O Time reteve este passo por uma regra de segurança. Ele não pode ser verificado nem repetido.",
       unquiesced: "O Time não conseguiu confirmar que a Action parou. A execução continua retida.",
+      unclassified: "O Time não tem registro confiável de como este passo falhou. Ele não pode ser verificado nem repetido.",
     },
     errors: {
       generic: 'O pedido da rotina falhou. Tente de novo.',
@@ -261,6 +263,7 @@ export const routineMessages = {
       skipConsequence: "Omitir termina esta ejecución sin comprobar lo que pudo haber cambiado. Las próximas ejecuciones continúan.",
       policy: "El Equipo retuvo este paso por una regla de seguridad. No se puede verificar ni reintentar.",
       unquiesced: "El Equipo no pudo confirmar que la Action se detuvo. La ejecución sigue retenida.",
+      unclassified: "El Equipo no tiene un registro fiable de cómo falló este paso. No se puede verificar ni reintentar.",
     },
     errors: {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
@@ -351,6 +354,7 @@ export const routineMessages = {
       skipConsequence: "跳过会结束此运行，且不检查它可能更改的内容。后续运行会继续。",
       policy: "团队因安全规则保留了此步骤。它无法被验证或重试。",
       unquiesced: "团队无法确认该 Action 已停止。此运行仍处于保留状态。",
+      unclassified: "团队没有此步骤如何失败的可信记录。它无法被验证或重试。",
     },
     errors: {
       generic: '例行任务请求失败。请重试。',
@@ -441,6 +445,7 @@ export const routineMessages = {
       skipConsequence: "Ignorer met fin à cette exécution sans vérifier ce qu’elle a pu modifier. Les prochaines exécutions continuent.",
       policy: "L’Équipe a retenu cette étape pour une règle de sécurité. Elle ne peut être ni vérifiée ni relancée.",
       unquiesced: "L’Équipe n’a pas pu confirmer que l’Action s’est arrêtée. L’exécution reste en attente.",
+      unclassified: "L’Équipe n’a aucune trace fiable de l’échec de cette étape. Elle ne peut être ni vérifiée ni relancée.",
     },
     errors: {
       generic: 'La demande de routine a échoué. Réessayez.',
@@ -531,6 +536,7 @@ export const routineMessages = {
       skipConsequence: "Überspringen beendet diese Ausführung, ohne zu prüfen, was sie geändert haben könnte. Spätere Ausführungen laufen weiter.",
       policy: "Das Team hat diesen Schritt wegen einer Sicherheitsregel angehalten. Er kann weder geprüft noch wiederholt werden.",
       unquiesced: "Das Team konnte nicht bestätigen, dass die Action gestoppt wurde. Die Ausführung bleibt angehalten.",
+      unclassified: "Das Team hat keinen verlässlichen Nachweis, wie dieser Schritt fehlschlug. Er kann weder geprüft noch wiederholt werden.",
     },
     errors: {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
@@ -621,6 +627,7 @@ export const routineMessages = {
       skipConsequence: "スキップするとこの実行を終了し、変更された可能性のある内容は確認しません。今後の実行は続きます。",
       policy: "チームは安全ルールによりこのステップを保留しました。確認も再試行もできません。",
       unquiesced: "チームは Action が停止したことを確認できませんでした。実行は保留のままです。",
+      unclassified: "チームにはこのステップの失敗について信頼できる記録がありません。確認も再試行もできません。",
     },
     errors: {
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
@@ -711,6 +718,7 @@ export const routineMessages = {
       skipConsequence: "يُنهي التخطي هذا التشغيل دون التحقق مما قد يكون غيّره. تستمر التشغيلات اللاحقة.",
       policy: "علّق الفريق هذه الخطوة بسبب قاعدة أمان. لا يمكن التحقق منها أو إعادة محاولتها.",
       unquiesced: "تعذّر على الفريق تأكيد توقف الـ Action. يبقى التشغيل معلّقًا.",
+      unclassified: "لا يملك الفريق سجلًا موثوقًا لكيفية فشل هذه الخطوة. لا يمكن التحقق منها أو إعادة محاولتها.",
     },
     errors: {
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',

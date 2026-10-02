@@ -340,7 +340,9 @@ export async function resumeRoutine(fetcher, teamId, routineId) {
 
 // A held run's recovery card (ADR-0092 section 7): exactly Verificar, Pular, and Pausar, the recommended one first.
 export const CARD_CHOICES = ['verify', 'skip', 'pause'];
-const CARD_VERDICTS = ['occurred', 'absent', 'none', 'inconclusive', 'unverifiable', 'exhausted', 'policy', 'unquiesced'];
+const CARD_VERDICTS = [
+  'occurred', 'absent', 'none', 'inconclusive', 'unverifiable', 'exhausted', 'policy', 'unquiesced', 'unclassified',
+];
 const CARD_RUN_STATUSES = ['recovered', 'held', 'frozen', 'failed', 'stopped'];
 
 function parseCard(body, teamId, incidentId) {

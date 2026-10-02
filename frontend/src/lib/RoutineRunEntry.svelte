@@ -107,7 +107,8 @@
   });
 
   function unresolvedWords(verdict) {
-    return { policy: copy.card.policy, unquiesced: copy.card.unquiesced }[verdict] ?? copy.card.unproven;
+    const words = { policy: copy.card.policy, unquiesced: copy.card.unquiesced, unclassified: copy.card.unclassified };
+    return words[verdict] ?? copy.card.unproven;
   }
 
   async function recover(choice) {

@@ -492,6 +492,7 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     ['verify', { ...answered, verdict: 'inconclusive', status: null }],
     ['verify', { ...answered, verdict: 'policy', status: null }],
     ['verify', { ...answered, verdict: 'unquiesced', status: null }],
+    ['verify', { ...answered, verdict: 'unclassified', status: null }],
   ]) {
     api = fetcher([[200, body]]);
     assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, card, choice), body);
