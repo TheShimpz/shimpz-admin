@@ -3,6 +3,7 @@
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { localizedChallenge } from './localizedRequest.js';
+import { capReply, routineLifecycleStart, routineRecoveryRoutes } from './routineScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -122,6 +123,17 @@ const STARTS = {
     routines: [{ ...ROUTINE_VIEW, paused: true }, WEEKLY_ROUTINE],
     runs: [FROZEN_RUN],
     incidents: [HELD_INCIDENT],
+  }),
+  // Every Routine notice in the transcript, a held run's recovery card, a paused Routine, a minute rollup, and a run's
+  // execution details (ADR-0092).
+  'routine-lifecycle': () => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart() }),
+  // A continuous request that names no daily cap asks for it; the answer creates the Routine.
+  'routine-cap': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    capQuestion: true,
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({
@@ -429,6 +441,9 @@ const PREVIEW_USAGE = Object.freeze({
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
+  if (state.capQuestion) {
+    return capReply(state, message, state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name);
+  }
   const recurring = /\b(every|daily|weekly|toda|todo|cada)\b/iu.test(message);
   return {
     type: 'done',
@@ -446,7 +461,7 @@ function chatReply(state, frame) {
 export function createScenario(name = 'ready') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
-  const state = { ...structuredClone(start()), history: [], sequence: 0 };
+  const state = { history: [], sequence: 0, ...structuredClone(start()) };
   return {
     name,
     respond({ method = 'GET', path, body = null }) {
@@ -488,7 +503,7 @@ export function createScenario(name = 'ready') {
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
-      return routineRoutes(state, method, path);
+      return routineRecoveryRoutes(state, method, path, body) ?? routineRoutes(state, method, path);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {

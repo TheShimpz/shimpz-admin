@@ -3,10 +3,24 @@ import test from 'node:test';
 
 import { renderClarification } from '../src/lib/clarification.js';
 import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
-import { parseRoutineRunEntry } from '../src/lib/routine.js';
+import {
+  answerRoutineCard,
+  listRoutines,
+  openRoutineCard,
+  parseRoutineRunEntry,
+  readRunDiagnostics,
+} from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
+
+// A fetch that answers from the scenario, as the preview installs it in the browser.
+function adapter(scenario) {
+  return async (path, init = {}) => {
+    const answer = scenario.respond({ method: init.method ?? 'GET', path, body: init.body ? JSON.parse(init.body) : null });
+    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
+  };
+}
 
 test('a scenario answers only what it declares and fails closed otherwise', () => {
   for (const name of SCENARIOS) {
@@ -226,4 +240,48 @@ test('the human-approval scenario renders its copy in the turn language and keep
   assert.deepEqual(scenario.chat.message({ type: 'sync', locale: 'pt' }), [{ type: 'sync-empty' }]);
   const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
   assert.ok(inventory.some((entry) => entry.assistant === portuguese.assistant.id));
+});
+
+test('the Routine lifecycle preview holds only rows, views, cards, and details the real parsers admit', async () => {
+  const scenario = createScenario('routine-lifecycle');
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const outcomes = entries.map((entry) => parseRoutineRunEntry(entry).outcome);
+  for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused']) {
+    assert.ok(outcomes.includes(outcome), outcome);
+  }
+  const listed = await listRoutines(adapter(scenario), 'marketing');
+  assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
+  assert.ok(listed.routines.some((routine) => routine.paused));
+  const [held, paused] = listed.incidents;
+  const card = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
+  assert.equal(card.recommended, 'verify');
+  assert.equal((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).recommended, 'pause');
+  // Verify walks through every unresolved verdict; Skip settles the held run.
+  const verdicts = [];
+  for (let index = 0; index < 5; index += 1) {
+    const fresh = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
+    verdicts.push((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, fresh, 'verify')).verdict);
+  }
+  assert.deepEqual(verdicts, ['inconclusive', 'policy', 'unquiesced', 'unclassified', 'exhausted']);
+  await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'skip');
+  assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
+  const failed = entries.find((entry) => entry.outcome === 'failed');
+  assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
+});
+
+test('the daily-cap preview asks its question, then creates the continuous Routine the answer names', () => {
+  const scenario = createScenario('routine-cap');
+  const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
+  const [asked] = scenario.chat.message(frame('Fique conferindo meus registros DNS sem parar'));
+  const event = parseChatEvent(asked, 'marketing', 'Marketing');
+  assert.equal(event.clarification.options.length, 3);
+  assert.equal(asked.reply, renderClarification(event.clarification));
+  const [done] = scenario.chat.message(frame(
+    'Fique conferindo meus registros DNS sem parar\n\nPergunta: Qual limite diário de execuções você prefere?\nResposta: Até 500 execuções por dia',
+  ));
+  assert.equal(done.clarification, null);
+  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.deepEqual(routines.map((routine) => routine.schedule), [{ kind: 'continuous', gap: 5, cap: 500 }]);
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  assert.equal(parseRoutineRunEntry(entries.at(-1)).detail.schedule.cap, 500);
 });
