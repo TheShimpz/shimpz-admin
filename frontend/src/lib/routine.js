@@ -408,6 +408,9 @@ function fill(template, values) {
   return template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? String(values[key]) : match));
 }
 
+// Weekday 0 is Monday in the Routine grammar.
+const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
 /** A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. */
 export function scheduleWords(schedule, copy, locale) {
   if (schedule.kind === 'hourly') {
@@ -421,11 +424,8 @@ export function scheduleWords(schedule, copy, locale) {
   }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
   if (schedule.kind === 'weekly') {
-    // 2024-01-01 was a Monday, weekday 0 in the Routine grammar.
-    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(
-      new Date(Date.UTC(2024, 0, 1 + schedule.weekday)),
-    );
-    return fill(copy.weekly, { weekday, time: schedule.time });
+    // Each locale names its weekdays itself, so the article agrees with the day ("Todo domingo", "Toda segunda-feira").
+    return fill(copy.weekly, { weekday: copy.weekdays[WEEKDAYS[schedule.weekday]], time: schedule.time });
   }
   return fill(copy.monthly, { day: schedule.day, time: schedule.time });
 }

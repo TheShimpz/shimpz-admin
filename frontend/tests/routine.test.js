@@ -245,11 +245,18 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords({ kind: 'hourly', every: 6 }, words, 'en'), 'Every 6 hours');
   assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'Every day at 09:00');
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
-  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda domingo às 09:00');
+  // Portuguese weekdays take their own article: Todo sábado and Todo domingo, Toda segunda-feira.
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Todo domingo às 09:00');
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda segunda-feira às 09:00');
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      assert.doesNotMatch(scheduleWords({ kind: 'weekly', weekday, time: '09:00' }, catalog.schedule, locale), /\{|undefined/, locale);
+    }
+  }
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
   // A continuous Routine's pause and cap are numbers in the viewer's locale.
   const continuous = { kind: 'continuous', gap: 5, cap: 1000 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Continuously, 5 s after each run, up to 1,000 runs a day');
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s after each run, up to 1,000 a day');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
