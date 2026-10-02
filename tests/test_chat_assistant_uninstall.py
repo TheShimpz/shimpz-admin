@@ -145,8 +145,12 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
         self.assertEqual(result, assistant_uninstall.UninstallResult(200, True))
         uninstall.assert_called_once_with("team_1", "shimpz-cloudflare")
 
-    def test_exact_team_absence_race_is_idempotent_success(self) -> None:
-        response = assistant_uninstall.team.TeamResponse(
+    def test_team_confirmed_absence_race_is_idempotent_success_and_a_404_is_not(self) -> None:
+        absent = assistant_uninstall.team.TeamResponse(
+            200,
+            {"assistant": "shimpz-cloudflare", "uninstalled": False, "trace_id": "c" * 32},
+        )
+        refused = assistant_uninstall.team.TeamResponse(
             404,
             {
                 "code": "assistant-not-allowlisted",
@@ -154,18 +158,20 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 "trace_id": "c" * 32,
             },
         )
-        with (
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_installed_assistants",
-                return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-            ),
-            mock.patch.object(assistant_uninstall.team, "uninstall_assistant", return_value=response),
+        for response, expected in (
+            (absent, assistant_uninstall.UninstallResult(200, False)),
+            (refused, assistant_uninstall.UninstallResult(404)),
         ):
-            self.assertEqual(
-                assistant_uninstall.uninstall(_proposal()),
-                assistant_uninstall.UninstallResult(200, False),
-            )
+            with (
+                self.subTest(status=response.status),
+                mock.patch.object(
+                    assistant_uninstall.team,
+                    "list_installed_assistants",
+                    return_value=_installed(("shimpz-cloudflare", "0.4.4")),
+                ),
+                mock.patch.object(assistant_uninstall.team, "uninstall_assistant", return_value=response),
+            ):
+                self.assertEqual(assistant_uninstall.uninstall(_proposal()), expected)
 
     def test_local_uninstall_rejects_retired_image_fields(self) -> None:
         image_id = "sha256:" + ("d" * 64)

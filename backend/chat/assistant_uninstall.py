@@ -52,8 +52,6 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
         )
     ):
         return UninstallResult(502)
-    if response.status == 404 and _is_exact_absence(response):
-        return UninstallResult(200, False)
     if not 200 <= response.status < 300:
         return UninstallResult(response.status)
     try:
@@ -65,18 +63,6 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
 
 def _trace_id(value: object) -> bool:
     return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
-
-
-def _is_exact_absence(response: team.TeamResponse) -> bool:
-    body = response.body
-    return (
-        isinstance(body, dict)
-        and set(body) == {"code", "error", "trace_id"}
-        and body.get("code") == "assistant-not-allowlisted"
-        and isinstance(body.get("error"), str)
-        and 1 <= len(body["error"]) <= 500
-        and _trace_id(body.get("trace_id"))
-    )
 
 
 def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
