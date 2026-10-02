@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/TheShimpz/shimpz-teams",
-  "commit": "a61d8ce24886ca963f2302be70042f71ba5bb965",
+  "commit": "33c9ec9c76a3215be4ab8ed82d1b49991317ce16",
   "path": "protocol/http/v1",
-  "tree": "1d52851302b58471ad252739c1496c9d6bc00335",
-  "contract_files_sha256": "d55eb54d5604be82211aee1cd536d00af37560e17b836c88b2215f090d508d63"
+  "tree": "31b22d78c513f3c33f2591211691bc7791866231",
+  "contract_files_sha256": "1d60af0140eb5a197906ab3b190940dab760a153dd4d568ba49dc126522259cf"
 }
