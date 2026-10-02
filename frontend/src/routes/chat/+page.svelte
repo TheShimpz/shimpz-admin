@@ -10,7 +10,7 @@
   import EffortMenu from '$lib/EffortMenu.svelte';
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
-  import { clarificationAnswer } from '$lib/clarification.js';
+  import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
@@ -232,17 +232,6 @@
   let visibleError = $derived(error || (contextFailed ? copy.loadFailed : ''));
   let visibleErrorDetail = $derived(error ? errorDetail : contextErrorDetail);
 
-  // A question card is offered only when its exchange still holds the exact user request it clarifies.
-  function clarifiedRequest(exchange) {
-    const { user, assistant } = exchange;
-    if (!assistant?.clarification || !user) return null;
-    if (user.historyId || assistant.historyId) {
-      const turn = (value) => value?.split(':')[0];
-      if (!user.historyId || !assistant.historyId || turn(user.historyId) !== turn(assistant.historyId)) return null;
-    }
-    return user.text;
-  }
-
   // Every interface language's labels, so an answer sent in one language still closes its question in another.
   const CLARIFY_LABELS = Object.values(messages)
     .map(({ clarify }) => ({ question: clarify?.questionLabel, answer: clarify?.answerLabel }))
@@ -258,39 +247,8 @@
     }
   }
 
-  // Each question is answered by at most one later message that is exactly its composed request: a live answer by the
-  // message it sent, and otherwise the nearest earlier open question it composes. `given` maps the question's exchange
-  // to that answer, and `sent` maps the answering exchange to the answer it shows.
-  let clarificationAnswers = $derived.by(() => {
-    const given = new Map();
-    const sent = new Map();
-    const exchangeOf = new Map(exchanges.map((exchange, index) => [exchange.assistant?.renderKey, index]));
-    const answer = (later, index) => {
-      if (index === undefined || index >= later || given.has(index)) return false;
-      const exchange = exchanges[index];
-      const original = clarifiedRequest(exchange);
-      if (original === null) return false;
-      const value = clarificationAnswer(
-        exchanges[later].user?.text,
-        original,
-        exchange.assistant.clarification.question,
-        CLARIFY_LABELS,
-      );
-      if (value === null) return false;
-      given.set(index, value);
-      sent.set(later, value);
-      return true;
-    };
-    exchanges.forEach((exchange, later) => {
-      const linked = exchange.user ? liveAnswers.get(exchange.user.renderKey) : undefined;
-      if (linked !== undefined) answer(later, exchangeOf.get(linked));
-    });
-    exchanges.forEach((exchange, later) => {
-      if (!exchange.user || sent.has(later)) return;
-      for (let index = later - 1; index >= 0 && !answer(later, index); index -= 1);
-    });
-    return { given, sent };
-  });
+  // Each question is answered by at most one later message that is exactly its composed request; see the module.
+  let clarificationAnswers = $derived(matchClarificationAnswers(exchanges, liveAnswers, CLARIFY_LABELS));
 
   // While the latest reply asks a question nobody answered, the composer waits for that answer; the card sends it.
   let questionOpen = $derived.by(() => {

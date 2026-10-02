@@ -4,8 +4,10 @@ import test from 'node:test';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import {
   clarificationAnswer,
+  clarifiedRequest,
   composeClarifiedRequest,
   MAX_COMPOSED_CHARS,
+  matchClarificationAnswers,
   parseClarification,
   renderClarification,
 } from '../src/lib/clarification.js';
@@ -127,4 +129,81 @@ test('done events and history replies carry the clarification only in its closed
   await assert.rejects(
     listChatHistory(page([{ id: `${turn}:user`, kind: 'message', role: 'user', text: 'Oi', clarification: ASKED }]), 'marketing'),
   );
+});
+
+function exchange(key, text, clarification = null, historyIds = {}) {
+  return {
+    user: { renderKey: `u${key}`, text, ...(historyIds.user ? { historyId: historyIds.user } : {}) },
+    assistant: {
+      renderKey: `a${key}`,
+      ...(clarification ? { clarification } : {}),
+      ...(historyIds.assistant ? { historyId: historyIds.assistant } : {}),
+    },
+  };
+}
+
+const ASK = 'Gerar o relatório';
+const answerTo = (answer) => composeClarifiedRequest(ASK, ASKED.question, answer, LABELS);
+
+test('a question card needs its exact user request from the same history turn', () => {
+  assert.equal(clarifiedRequest(exchange(0, ASK)), null);
+  assert.equal(clarifiedRequest({ assistant: { clarification: ASKED } }), null);
+  assert.equal(clarifiedRequest(exchange(0, ASK, ASKED)), ASK);
+  assert.equal(clarifiedRequest(exchange(0, ASK, ASKED, { user: '7:u', assistant: '7:a' })), ASK);
+  assert.equal(clarifiedRequest(exchange(0, ASK, ASKED, { user: '7:u', assistant: '8:a' })), null);
+  assert.equal(clarifiedRequest(exchange(0, ASK, ASKED, { assistant: '7:a' })), null);
+});
+
+test('an answer closes the nearest earlier unanswered question it composes', () => {
+  const history = [
+    exchange(0, ASK, ASKED),
+    exchange(1, ASK, ASKED),
+    exchange(2, 'unrelated'),
+    exchange(3, answerTo('Hoje')),
+    exchange(4, answerTo('Esta semana')),
+    exchange(5, answerTo('Hoje')),
+  ];
+  const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
+  assert.deepEqual([...given], [[1, 'Hoje'], [0, 'Esta semana']]);
+  assert.deepEqual([...sent], [[3, 'Hoje'], [4, 'Esta semana']]);
+});
+
+test('an answer skips questions it does not compose and never answers a later question', () => {
+  const other = { ...ASKED, question: 'Qual formato?' };
+  const history = [
+    exchange(0, ASK, ASKED),
+    exchange(1, ASK, other),
+    exchange(2, answerTo('Hoje')),
+    exchange(3, ASK, ASKED),
+  ];
+  const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
+  assert.deepEqual([...given], [[0, 'Hoje']]);
+  assert.deepEqual([...sent], [[2, 'Hoje']]);
+});
+
+test('an explicit live answer link wins over the nearest open question', () => {
+  const history = [
+    exchange(0, ASK, ASKED),
+    exchange(1, ASK, ASKED),
+    exchange(2, answerTo('Hoje')),
+    exchange(3, answerTo('Esta semana')),
+  ];
+  const { given, sent } = matchClarificationAnswers(history, new Map([['u2', 'a0']]), [LABELS]);
+  assert.deepEqual([...given], [[0, 'Hoje'], [1, 'Esta semana']]);
+  assert.deepEqual([...sent], [[2, 'Hoje'], [3, 'Esta semana']]);
+
+  const ignored = matchClarificationAnswers(
+    history,
+    new Map([['u0', 'a1'], ['u1', 'missing'], ['u2', 'a2']]),
+    [LABELS],
+  );
+  assert.deepEqual([...ignored.given], [[1, 'Hoje'], [0, 'Esta semana']]);
+});
+
+test('history without question cards matches nothing', () => {
+  const history = [exchange(0, ASK), exchange(1, answerTo('Hoje')), { assistant: { renderKey: 'a2' } }];
+  const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
+  assert.equal(given.size, 0);
+  assert.equal(sent.size, 0);
+  assert.equal(matchClarificationAnswers([], new Map(), [LABELS]).given.size, 0);
 });

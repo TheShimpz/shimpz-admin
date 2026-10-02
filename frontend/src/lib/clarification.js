@@ -93,3 +93,58 @@ export function clarificationAnswer(message, original, question, labelSets) {
   }
   return null;
 }
+
+/** The request a question card clarifies, or null unless its exchange still holds that exact user request. */
+export function clarifiedRequest(exchange) {
+  const { user, assistant } = exchange;
+  if (!assistant?.clarification || !user) return null;
+  if (user.historyId || assistant.historyId) {
+    const turn = (value) => value?.split(':')[0];
+    if (!user.historyId || !assistant.historyId || turn(user.historyId) !== turn(assistant.historyId)) return null;
+  }
+  return user.text;
+}
+
+/**
+ * Each question is answered by at most one later message that is exactly its composed request: a live answer by the
+ * message it sent (`liveAnswers` maps that user turn's render key to the answered assistant turn's render key), and
+ * otherwise the nearest earlier open question it composes. `given` maps the question's exchange index to that answer,
+ * and `sent` maps the answering exchange index to the answer it shows. One pass keeps the open questions, so a message
+ * is only checked against questions still waiting for an answer.
+ */
+export function matchClarificationAnswers(exchanges, liveAnswers, labelSets) {
+  const given = new Map();
+  const sent = new Map();
+  const originals = exchanges.map(clarifiedRequest);
+  const answer = (later, index) => {
+    const value = clarificationAnswer(
+      exchanges[later].user?.text,
+      originals[index],
+      exchanges[index].assistant.clarification.question,
+      labelSets,
+    );
+    if (value === null) return false;
+    given.set(index, value);
+    sent.set(later, value);
+    return true;
+  };
+  const exchangeOf = new Map(exchanges.map((exchange, index) => [exchange.assistant?.renderKey, index]));
+  exchanges.forEach((exchange, later) => {
+    const linked = exchange.user ? liveAnswers.get(exchange.user.renderKey) : undefined;
+    const index = linked === undefined ? undefined : exchangeOf.get(linked);
+    if (index !== undefined && index < later && !given.has(index) && originals[index] !== null) answer(later, index);
+  });
+  const open = [];
+  exchanges.forEach((exchange, later) => {
+    if (exchange.user && !sent.has(later)) {
+      for (let position = open.length - 1; position >= 0; position -= 1) {
+        if (answer(later, open[position])) {
+          open.splice(position, 1);
+          break;
+        }
+      }
+    }
+    if (originals[later] !== null && !given.has(later)) open.push(later);
+  });
+  return { given, sent };
+}
