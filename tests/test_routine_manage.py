@@ -108,6 +108,11 @@ class RoutineManageTests(unittest.TestCase):
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/{ID}/resume", {})
         with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": True})):
             self.assertEqual(manage.resume("team_1", ID).status, 502)
+        with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": True})) as call:
+            self.assertTrue(manage.pause("team_1", ID).body["paused"])
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/{ID}/pause", {})
+        with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": False})):
+            self.assertEqual(manage.pause("team_1", ID).status, 502)
         with self.call(answer({"team_id": "team_1", "run_id": "d" * 32, "stopped": True})):
             self.assertEqual(manage.stop("team_1", ID).status, 502)
         for error, expected in (
@@ -135,6 +140,7 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.answer_card("team_1", ID, []),
                 lambda: manage.resume("team_1", "x"),
                 lambda: manage.diagnostics("team_1", "../x"),
+                lambda: manage.pause("team_1", "x"),
             ):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
@@ -149,7 +155,7 @@ class RoutineRouteTests(unittest.TestCase):
         local = FastAPI()
         routine_http.register(local, "local", mock.AsyncMock())
         # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route.
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 10)
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 11)
         # The retired release of an uncertain run stays absent.
         self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
         self.assertFalse(any("proposals" in route.path for route in local.routes))
@@ -163,6 +169,7 @@ class RoutineRouteTests(unittest.TestCase):
             open_card=mock.Mock(return_value=ok),
             answer_card=mock.Mock(return_value=ok),
             diagnostics=mock.Mock(return_value=ok),
+            pause=mock.Mock(return_value=ok),
         ):
             chosen = {"nonce": "c" * 32, "choice": "pause"}
             responses = [
@@ -172,6 +179,7 @@ class RoutineRouteTests(unittest.TestCase):
                 asyncio.run(routine_http.routine_resume("team_1", ID)),
                 asyncio.run(routine_http.routine_card("team_1", ID)),
                 asyncio.run(routine_http.routine_diagnostics("team_1", ID)),
+                asyncio.run(routine_http.routine_pause("team_1", ID)),
                 asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen))),
             ]
             manage.answer_card.assert_called_once_with("team_1", ID, chosen)
