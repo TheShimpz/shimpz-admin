@@ -15,7 +15,10 @@ from protocol.http.v1 import payload as team_contract
 UNINSTALL_PROPOSAL_TTL_SECONDS = 120
 MAX_CAPABILITY_SHORTLIST = 8
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
-_SEARCH_SEPARATOR = re.compile(r"[^a-z0-9]+")
+_SPACELESS_RUN = re.compile(
+    "[\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff\u3005-\u3007\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff"
+    "\uf900-\ufaff\U00020000-\U0003ffff]+"
+)
 _PROPOSAL_ID = re.compile(r"^[0-9a-f]{32}$")
 _STOP_WORDS = frozenset(
     {
@@ -188,21 +191,34 @@ def capability_continuation(value: object) -> bool:
 
 
 def _search_text(value: str) -> str:
-    return " ".join(_SEARCH_SEPARATOR.sub(" ", _fold(value)).split())
+    """Fold text to space-separated words of letters, marks, and digits of any script.
+
+    A nonempty result is the only objective eligibility rule; scores computed from it rank candidates and never gate.
+    Runs of scripts written without spaces (Han, kana, Thai, Lao, Myanmar, Khmer) become words of their own.
+    """
+    folded = unicodedata.normalize("NFKC", _fold(value)).casefold()
+    words = "".join(character if unicodedata.category(character)[0] in "LMN" else " " for character in folded)
+    return " ".join(_SPACELESS_RUN.sub(lambda run: f" {run.group()} ", words).split())
+
+
+def _word_tokens(word: str) -> tuple[str, ...]:
+    if _SPACELESS_RUN.fullmatch(word):
+        return tuple(word[index : index + 2] for index in range(len(word) - 1)) or (word,)
+    return (word,) if len(word) > 1 and word not in _STOP_WORDS else ()
 
 
 def _tokens(*values: str) -> frozenset[str]:
-    return frozenset(
-        token
-        for value in values
-        for token in _search_text(value).split()
-        if len(token) > 1 and token not in _STOP_WORDS
-    )
+    return frozenset(token for value in values for word in _search_text(value).split() for token in _word_tokens(word))
 
 
 def _contains_phrase(message: str, value: str) -> bool:
+    """Match a whole phrase, requiring a word boundary only at an edge written in a spaced script."""
     phrase = _search_text(value)
-    return bool(phrase) and f" {phrase} " in f" {message} "
+    if not phrase:
+        return False
+    start = "" if _SPACELESS_RUN.match(phrase[0]) else r"(?<!\S)"
+    end = "" if _SPACELESS_RUN.match(phrase[-1]) else r"(?!\S)"
+    return re.search(start + re.escape(phrase) + end, message) is not None
 
 
 def _score_fields(

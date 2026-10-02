@@ -180,6 +180,58 @@ class AssistantProposalTests(unittest.TestCase):
                     ((), ()),
                 )
 
+    def test_objectives_in_any_script_reach_planning_within_the_bound(self) -> None:
+        exa = _candidate("shimpz-exa", name="Exa", summary="Search the web.", provider="", actions=("search-web",))
+        cloudflare = _candidate()
+        uninstall = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability(exa.assistant_id, exa.name, exa.summary, exa.actions), "0.1.1"
+        )
+        objectives = {
+            "zh": "帮我搜索本周最热门的人工智能新闻",
+            "ar": "ابحث لي عن أهم أخبار الذكاء الاصطناعي هذا الأسبوع",
+            "ja": "今週話題のAIニュースを調べてください",
+            "ru": "Найди самые обсуждаемые новости об ИИ за неделю",
+            "pt": "pesquisa pra mim as notícias de IA mais comentadas da semana",
+        }
+        for locale, objective in objectives.items():
+            with self.subTest(locale=locale):
+                self.assertEqual(
+                    assistant_proposal.capability_candidates(
+                        objective, (exa, cloudflare), installed_ids=frozenset(), enabled=()
+                    ),
+                    ((), (cloudflare, exa)),
+                )
+                self.assertEqual(assistant_proposal.install_shortlist(objective, (exa, cloudflare)), (cloudflare, exa))
+                self.assertEqual(assistant_proposal.uninstall_shortlist(objective, (uninstall,)), (uninstall,))
+
+    def test_cjk_objective_ranks_a_matching_assistant_name_into_an_overflowing_pool(self) -> None:
+        mail = _candidate("mail-helper", name="邮件助手", summary="Sends reviewed mail.", provider="")
+        notifiers = tuple(
+            _candidate(f"notifier-{index}", name=f"Notifier {index}", summary="发送通知", provider="")
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST - 1)
+        )
+        whatsapp = _candidate("whatsapp", name="WhatsApp", provider="whatsapp")
+        catalog = (whatsapp, *notifiers, mail)
+
+        self.assertEqual(
+            assistant_proposal.install_shortlist("请用邮件助手发送通知", catalog),
+            (mail, *notifiers),
+        )
+        self.assertEqual(assistant_proposal.install_shortlist("请发送通知", catalog), ())
+
+    def test_non_latin_cutoff_tie_above_the_bound_still_means_no_planning(self) -> None:
+        helpers = tuple(
+            _candidate(f"helper-{index}", name=f"Helper {index}", summary="Reviewed helper.", provider="")
+            for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
+        )
+        for objective in ("帮我搜索新闻", "ابحث عن الأخبار"):
+            with self.subTest(objective=objective):
+                self.assertEqual(
+                    assistant_proposal.capability_candidates(objective, helpers, installed_ids=frozenset(), enabled=()),
+                    ((), ()),
+                )
+                self.assertEqual(assistant_proposal.install_shortlist(objective, helpers), ())
+
     def test_overflowing_pool_keeps_the_strongest_signals_within_the_bound(self) -> None:
         senders = tuple(
             _candidate(

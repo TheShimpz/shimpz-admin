@@ -228,6 +228,9 @@ class AssistantProposalEdges(unittest.TestCase):
             70,
         )
 
+        self.assertFalse(assistant_proposal._contains_phrase("anything", "..."))
+        self.assertEqual(assistant_proposal._tokens("猫。a"), frozenset({"猫"}))
+
         catalog = tuple(
             _catalog_assistant(f"helper-{index}", provider="shared")
             for index in range(assistant_proposal.MAX_CAPABILITY_SHORTLIST + 1)
