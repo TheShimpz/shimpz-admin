@@ -306,10 +306,7 @@
               aria-describedby={`${id}-${choice}`}
               onclick={() => recover(choice)}
             >{copy.card[choice]}</Button>
-            <p class="hint" id={`${id}-${choice}`}>
-              {#if choice === card.recommended}<span class="recommended">{copy.card.recommendedMark}</span>{/if}
-              {copy.card[HINTS[choice]]}
-            </p>
+            <p class="hint" id={`${id}-${choice}`}>{#if choice === card.recommended}<span class="recommended">{copy.card.recommendedMark}</span>{/if}{copy.card[HINTS[choice]]}</p>
           </div>
         {/each}
       </div>
