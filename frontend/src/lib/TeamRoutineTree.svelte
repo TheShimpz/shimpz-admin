@@ -77,14 +77,16 @@
   ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
   /* The item is the shared Button with its chrome removed; hover and focus answer with the Team row's tint. */
   ul :global(.routine-item) { position: relative; isolation: isolate; display: flex; width: 100%; height: auto; min-height: 2.5rem; align-items: flex-start; justify-content: flex-start; gap: var(--shimpz-space-2); padding: 0.4rem var(--shimpz-space-3) 0.4rem var(--routine-indent); color: var(--shimpz-color-text-muted); background: transparent; border: 0; clip-path: none; box-shadow: none; text-align: start; text-transform: none; letter-spacing: normal; font: inherit; }
-  ul :global(.routine-item .button-content) { display: flex; min-width: 0; align-items: flex-start; gap: var(--shimpz-space-2); }
+  /* A fixed 16px status column, then the name, schedule, and any attention tag on one shared left edge. */
+  ul :global(.routine-item .button-content) { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 0 var(--shimpz-space-2); width: 100%; min-width: 0; }
+  ul :global(.routine-item .mark) { margin-block-start: 1px; }
   ul :global(.routine-item::before) { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   ul :global(.routine-item:hover), ul :global(.routine-item:focus-visible) { color: var(--shimpz-color-text); background: transparent; box-shadow: none; }
   ul :global(.routine-item:hover::before), ul :global(.routine-item:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
   ul :global(.routine-item:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; }
-  .text { display: grid; min-width: 0; gap: 1px; }
+  .text { display: grid; min-width: 0; gap: 2px; }
   .name { overflow: hidden; color: var(--shimpz-color-text); font: 500 0.82rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
   .meta { overflow: hidden; color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-  .flag { color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; }
+  .flag { justify-self: start; margin-block-start: 0.2rem; padding: 0.05rem 0.3rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font: 600 0.56rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 </style>

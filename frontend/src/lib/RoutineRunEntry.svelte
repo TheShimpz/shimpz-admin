@@ -5,6 +5,7 @@
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
+  import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
@@ -84,7 +85,7 @@
     switch (entry.outcome) {
       case 'done': return run.done;
       case 'recovered': return run.recovered;
-      case 'held': return run.heldTitle;
+      case 'held': return copy.card.reasonHeld;
       case 'paused': return fillRoutineCopy(run.paused, { reason: run.pauseReasons[detail.reason] });
       case 'user-skipped': return run.userSkipped;
       case 'failed': return fillRoutineCopy(run.failed, { code: detail.code });
@@ -108,13 +109,46 @@
         });
     }
   });
-  // Where a held or paused run stopped. The step a card names is Team's current one, which a stale row may not show.
-  let stopped = $derived.by(() => {
-    if (entry.outcome !== 'held' && entry.outcome !== 'paused') return '';
+  // Where a held or paused run stopped, and its place in the plan when the listed Routine names it exactly once. The
+  // step a card names is Team's current one, which a stale row may not show.
+  let situation = $derived.by(() => {
+    if (entry.outcome !== 'held' && entry.outcome !== 'paused') return null;
     const step = card ?? detail;
-    if (step.assistant_id === null) return copy.run.stoppedUnknown;
-    return fillRoutineCopy(copy.run.stoppedAt, { step: stepWords(step.assistant_id, step.action) });
+    if (step.assistant_id === null) return { step: '', position: '' };
+    const steps = listed?.routines.find((routine) => routine.routine_id === entry.routineId)?.steps ?? [];
+    const matches = steps.flatMap((item, index) => (
+      item.assistant === step.assistant_id && item.action === step.action ? [index + 1] : []
+    ));
+    return {
+      step: fillRoutineCopy(copy.plan.step, {
+        assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
+        action: humanizeId(step.action),
+      }).replace(' · ', ' › '),
+      position: matches.length === 1 ? fillRoutineCopy(copy.card.stepOf, { n: matches[0], total: steps.length }) : '',
+    };
   });
+  // Why the person decides: a held run's open question, or the reason its Routine paused, as one sentence.
+  let reason = $derived.by(() => {
+    if (entry.outcome === 'held') return copy.card.reasonHeld;
+    const words = copy.run.pauseReasons[detail.reason] ?? '';
+    return words.charAt(0).toLocaleUpperCase($locale) + words.slice(1);
+  });
+  // The status tag's icon: state color lives only on these small icons.
+  const TAG_ICONS = {
+    held: 'warning', paused: 'pause', 'scope-changed': 'pause', done: 'check', recovered: 'check', failed: 'failed',
+    denied: 'stop', stopped: 'stop', 'user-skipped': 'skip', skipped: 'skip', frozen: 'approval', created: 'plus',
+    changed: 'edit', healthy: 'activity',
+  };
+  const CHOICE_ICONS = { verify: 'verify', skip: 'skip', pause: 'pause' };
+  // The one mono line of a notice: what it changed or did, never a repeat of the name and badge in its header.
+  let line = $derived.by(() => {
+    if (entry.outcome === 'created' || entry.outcome === 'changed') {
+      return `${scheduleWords(detail.schedule, copy.schedule, $locale)} · ${detail.timezone}`;
+    }
+    if ((entry.outcome === 'done' || entry.outcome === 'recovered') && actions) return actions.replaceAll(' · ', ' › ');
+    return summary;
+  });
+  let actionsLine = $derived(line === summary && actions ? fillRoutineCopy(copy.run.actions, { actions }) : '');
   const HINTS = { verify: 'verifyHint', skip: 'skipHint', pause: 'pauseHint' };
   const id = $props.id();
   function outcomeWords(status) {
@@ -273,41 +307,69 @@
 
 <div class="routine-run" role="group" aria-labelledby={`${id}-name`}>
   <header class="head">
-    <h3 class="name" id={`${id}-name`} title={entry.quote}>{routineName}</h3>
-    <span class="badge">{badge}</span>
+    <RoutineIcon name="clock" />
+    <!-- The card's name labels its group; a heading here would skip a level inside the chat. -->
+    <p class="name" id={`${id}-name`} title={entry.quote}>{routineName}</p>
+    <span class={['tag', `tag--${TAG_ICONS[entry.outcome]}`]}><RoutineIcon name={TAG_ICONS[entry.outcome]} />{badge}</span>
     {#if entry.runId}
-      <TextAction class="details" onclick={() => (details = true)}>
-        {#snippet icon()}<svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"></path></svg>{/snippet}
-        {copy.details.open}
-      </TextAction>
+      <Button
+        class="details"
+        variant="ghost"
+        size="sm"
+        iconOnly
+        type="button"
+        aria-label={copy.details.open}
+        title={copy.details.open}
+        onclick={() => (details = true)}
+      ><RoutineIcon name="terminal" /></Button>
     {/if}
   </header>
-  <p class="title">{summary}</p>
-  {#if stopped}<p class="body">{stopped}</p>{/if}
-  {#if actions}<p class="body">{fillRoutineCopy(copy.run.actions, { actions })}</p>{/if}
-  {#if entry.outcome === 'created' || entry.outcome === 'changed'}
-    <Disclosure class="steps">
-      {#snippet summary()}{copy.plan.title}{/snippet}
-      <RoutinePlan steps={detail.steps} copy={copy.plan} names={$assistantNames} />
-    </Disclosure>
-  {/if}
-  {#if result}<p class="result" role="status">{result}</p>{/if}
+
+  <div class="body">
+    {#if situation}
+      <p class="line"><span class="prompt" aria-hidden="true">&gt;</span>
+        {#if situation.step}
+          <span class="key">{copy.card.stoppedLabel}</span>
+          <span class="value">{situation.step}</span>
+          {#if situation.position}<span class="muted">· {situation.position}</span>{/if}
+        {:else}
+          <span class="value">{copy.run.stoppedUnknown}</span>
+        {/if}
+      </p>
+      {#if situation.step}<p class="line muted"><RoutineIcon name="warning" />{copy.card.unknownEffect}</p>{/if}
+      <p class="reason">{reason}</p>
+    {:else}
+      <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{line}</span></p>
+      {#if actionsLine}<p class="line muted">{actionsLine}</p>{/if}
+    {/if}
+    {#if entry.outcome === 'created' || entry.outcome === 'changed'}
+      <Disclosure class="steps">
+        {#snippet summary()}<span class="steps-summary"><RoutineIcon name="chevron" />{copy.plan.title} · {detail.steps.length}</span>{/snippet}
+        <RoutinePlan steps={detail.steps} copy={copy.plan} names={$assistantNames} />
+      </Disclosure>
+    {/if}
+    {#if result}<p class="result" role="status">{result}</p>{/if}
+  </div>
+
   {#if recoverable}
     {#if card}
-      <!-- Each choice states its own consequence beside it; the recommended one leads and is marked in words. -->
-      <div class="choices" role="group" aria-label={copy.card.choices}>
+      <!-- One tile per choice, the recommended one first: its verb names it, its consequence describes it. -->
+      <div class="tiles" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
-          <div class="choice">
-            <Button
-              size="sm"
-              variant={choice === card.recommended ? 'primary' : 'secondary'}
-              type="button"
-              disabled={working}
-              aria-describedby={`${id}-${choice}`}
-              onclick={() => recover(choice)}
-            >{copy.card[choice]}</Button>
-            <p class="hint" id={`${id}-${choice}`}>{#if choice === card.recommended}<span class="recommended">{copy.card.recommendedMark}</span>{/if}{copy.card[HINTS[choice]]}</p>
-          </div>
+          <Button
+            class={['tile', choice === card.recommended && 'is-recommended']}
+            variant="ghost"
+            type="button"
+            disabled={working}
+            aria-label={copy.card[choice]}
+            aria-describedby={`${id}-${choice}`}
+            onclick={() => recover(choice)}
+          >
+            {#if choice === card.recommended}<span class="notch">{copy.card.recommendedMark}</span>{/if}
+            <RoutineIcon name={CHOICE_ICONS[choice]} />
+            <span class="verb">{copy.card[choice]}</span>
+            <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
+          </Button>
         {/each}
       </div>
     {:else if !working}
@@ -320,7 +382,7 @@
   {:else if entry.outcome !== 'frozen' || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this row when it is delivered. -->
   {:else if waitingIntegration}
-    <p class="body">{fillRoutineCopy(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
+    <p class="line muted">{fillRoutineCopy(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
     <div class="actions">
       <Button
         size="sm"
@@ -338,7 +400,9 @@
   {/if}
   {#if resumable}
     <div class="actions">
-      <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>{copy.list.resume}</Button>
+      <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>
+        {#snippet icon()}<RoutineIcon name="play" />{/snippet}{copy.list.resume}
+      </Button>
     </div>
   {/if}
 </div>
@@ -362,22 +426,115 @@
 {/if}
 
 <style>
-  /* One bordered card in neutral colors; cyan only marks the primary choice. */
-  .routine-run { display: grid; gap: var(--shimpz-space-2); max-width: 44rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); }
-  .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--shimpz-space-1) var(--shimpz-space-3); min-width: 0; }
-  .name { flex: 1 1 12rem; min-width: 0; margin: 0; overflow: hidden; color: var(--shimpz-color-text); font: 600 0.9rem/1.35 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
-  .badge { flex: none; padding: 0.1rem 0.45rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.7rem; line-height: 1.4; }
-  /* A quiet link-styled action: muted, in the body face, never the cyan of a primary action. */
-  .head :global(.details) { flex: none; gap: 0.3rem; min-height: 0; padding: 0; color: var(--shimpz-color-text-muted); font: 500 0.75rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-decoration: underline; text-transform: none; text-underline-offset: 0.2em; }
-  .head :global(.details:hover) { color: var(--shimpz-color-text); }
-  .head :global(.details svg) { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-  .title { margin: 0; color: var(--shimpz-color-text); line-height: 1.45; overflow-wrap: break-word; }
-  .body, .result { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: break-word; }
-  .result { color: var(--shimpz-color-text); }
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--shimpz-space-3); margin-block-start: var(--shimpz-space-1); }
-  .choice { display: grid; align-content: start; justify-items: start; gap: var(--shimpz-space-1); }
-  .hint { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.75rem; line-height: 1.4; }
-  .recommended { display: block; color: var(--shimpz-color-cyan); font: 700 0.62rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
-  .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); }
-  @media (forced-colors: active) { .routine-run, .badge { border-color: CanvasText; } }
+  /* One chamfered shell in neutrals: cyan marks only the recommended choice, and state color lives on small icons. */
+  .routine-run {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 44rem;
+    color: var(--shimpz-color-text);
+    background: var(--shimpz-color-surface-raised);
+    border: 1px solid var(--shimpz-color-border);
+    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
+  }
+  :global([dir="rtl"]) .routine-run { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--shimpz-space-2);
+    min-height: 2.6rem;
+    padding: 0.35rem var(--shimpz-space-2) 0.35rem var(--shimpz-space-4);
+    color: var(--shimpz-color-text-dim);
+    background: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 2px 3px);
+    border-block-end: 1px solid var(--shimpz-color-border);
+  }
+  .head { flex-wrap: wrap; }
+  .name { flex: 1 1 8rem; min-width: 0; margin: 0; overflow: hidden; color: var(--shimpz-color-text); font: 500 0.9rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
+  .tag {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.45rem;
+    color: var(--shimpz-color-text-muted);
+    border: 1px solid var(--shimpz-color-border);
+    font: 600 0.62rem/1.2 var(--shimpz-font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .tag :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
+  .tag--warning :global(.routine-icon) { color: var(--shimpz-color-yellow); }
+  .tag--failed :global(.routine-icon) { color: var(--shimpz-color-danger); }
+  .head :global(.details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
+  @container (max-width: 30rem) {
+    .tag { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
+    .head :global(.details) { order: 3; }
+  }
+  .body { display: grid; gap: 0.4rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); min-width: 0; }
+  /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
+  .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
+  .line > * + * { margin-inline-start: 0.5em; }
+  .line :global(.routine-icon) { width: 0.85rem; height: 0.85rem; margin-inline-end: 0.5em; vertical-align: -0.15em; }
+  .line.muted { color: var(--shimpz-color-text-muted); }
+  .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
+  .prompt { color: var(--shimpz-color-cyan); }
+  .key { color: var(--shimpz-color-text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
+  .value { color: var(--shimpz-color-text); }
+  .muted { color: var(--shimpz-color-text-muted); }
+  .reason { margin: 0.2rem 0 0; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.5; text-wrap: pretty; }
+  .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
+  .body :global(.steps) { border-block-start: 0; padding-block-start: 0.25rem; }
+  .body :global(.steps summary) { list-style: none; }
+  .body :global(.steps summary::-webkit-details-marker) { display: none; }
+  .steps-summary { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .steps-summary :global(.routine-icon) { width: 0.8rem; height: 0.8rem; transition: transform var(--shimpz-duration-fast) var(--shimpz-ease); }
+  :global([dir="rtl"]) .steps-summary :global(.routine-icon) { transform: scaleX(-1); }
+  .body :global(.steps[open] .routine-icon) { transform: rotate(90deg); }
+
+  /* Three equal tiles in one row; a narrow card stacks them. Each tile is one button: icon, verb, consequence. */
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--shimpz-space-3); padding: var(--shimpz-space-2) var(--shimpz-space-4) var(--shimpz-space-4); }
+  @container (max-width: 34rem) {
+    .tiles { grid-template-columns: minmax(0, 1fr); gap: var(--shimpz-space-3); }
+    .tiles :global(.tile.tile) { min-height: 0; }
+  }
+  .tiles :global(.tile) {
+    --button-color: var(--shimpz-color-text);
+    --button-bg: var(--shimpz-color-surface);
+    --button-border: var(--shimpz-color-border);
+    --button-hover-color: var(--shimpz-color-text);
+    --button-hover-bg: var(--shimpz-color-surface-high);
+    position: relative;
+    height: auto;
+    min-height: 5.75rem;
+    padding: var(--shimpz-space-3);
+    overflow: visible;
+    text-align: start;
+    text-transform: none;
+    letter-spacing: normal;
+    clip-path: none;
+    align-items: stretch;
+  }
+  .tiles :global(.tile .button-content) { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; align-content: start; justify-items: start; align-self: stretch; gap: 0.45rem 0.55rem; width: 100%; }
+  .tiles :global(.tile .routine-icon) { width: 1.1rem; height: 1.1rem; color: var(--shimpz-color-text-muted); }
+  .tiles :global(.tile:hover:not(:disabled)), .tiles :global(.tile:focus-visible) { border-color: var(--shimpz-color-cyan); }
+  .tiles :global(.tile.is-recommended) { --button-border: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
+  .tiles :global(.tile.is-recommended .routine-icon) { color: var(--shimpz-color-cyan); }
+  .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.76rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; white-space: normal; }
+  /* The recommendation is notched into the tile's top edge, cutting its border. */
+  .notch {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: var(--shimpz-space-3);
+    padding: 0 0.35rem;
+    color: var(--shimpz-color-cyan);
+    background: var(--shimpz-color-surface-raised);
+    font: 700 0.56rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transform: translateY(-50%);
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding: 0 var(--shimpz-space-4) var(--shimpz-space-4); }
+  @media (forced-colors: active) { .routine-run, .tag, .tiles :global(.tile) { border-color: CanvasText; } }
 </style>

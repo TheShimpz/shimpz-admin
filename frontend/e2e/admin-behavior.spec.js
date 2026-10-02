@@ -4279,7 +4279,7 @@ test.describe('Team Routines', () => {
     await page.reload();
     const created = page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' });
     await expect(created).toContainText('America/Sao_Paulo');
-    await created.getByText('Steps', { exact: true }).click();
+    await created.getByText(/^Steps/).click();
     await expect(created.getByRole('list', { name: 'Steps' })).toContainText('List zones');
   });
 
@@ -4474,9 +4474,9 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(1)).toContainText('Actions: Shimpz Cloudflare · List zones');
     await expect(transcript.nth(2)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
     // Without a listed Routine, a row is named by the request it came from.
-    await expect(transcript.nth(3).getByRole('heading', { level: 3 })).toHaveText('Every day at 9, list my DNS zones');
+    await expect(transcript.nth(3)).toHaveAccessibleName('Every day at 9, list my DNS zones');
     // A done row names the Actions the run carried out, never a model reply.
-    await expect(transcript.nth(3)).toContainText('Actions: Shimpz Cloudflare · List zones');
+    await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare › List zones');
   });
 
   test('a held run is settled from its transcript row through the card Team opened, in its order', async ({ page }) => {
@@ -4535,18 +4535,20 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     const choices = (index) => rows.nth(index).getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    const names = (index) => choices(index).evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
     await expect(rows).toHaveCount(2);
     // Each row shows exactly three choices, one action each, in the order of the card Team opened, before any answer.
-    await expect(choices(0)).toHaveText(['Verify', 'Skip', 'Pause']);
-    await expect(choices(1)).toHaveText(['Pause', 'Verify', 'Skip']);
+    await expect.poll(() => names(0)).toEqual(['Verify', 'Skip', 'Pause']);
+    await expect.poll(() => names(1)).toEqual(['Pause', 'Verify', 'Skip']);
     expect(answers).toEqual([]);
+    expect(await accessibilityViolations(page)).toEqual([]);
     // The step shown is the card's, and Skip's consequence is stated before it is chosen.
     await expect(rows.nth(0)).toContainText('Create DNS record');
     await expect(rows.nth(0)).toContainText('later runs continue');
     // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
     await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
-    await expect(choices(0)).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect.poll(() => names(0)).toEqual(['Verify', 'Skip', 'Pause']);
     await rows.nth(0).getByRole('button', { name: 'Skip' }).click();
     await expect(choices(0)).toHaveCount(0);
     await rows.nth(1).getByRole('button', { name: 'Pause' }).click();
@@ -4730,7 +4732,8 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const row = page.locator('.routine-run');
     const choices = row.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
-    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    const names = () => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+    await expect.poll(names).toEqual(['Verify', 'Skip', 'Pause']);
     // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
     await page.clock.runFor(300_000);
     await expect(choices).toHaveCount(0);
@@ -4738,9 +4741,9 @@ test.describe('Team Routines', () => {
     await page.clock.runFor(600_000);
     expect(opened).toBe(1);
     await row.getByRole('button', { name: 'Open the card again' }).click();
-    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect.poll(names).toEqual(['Verify', 'Skip', 'Pause']);
     await expect(row.getByRole('status')).toHaveCount(0);
-    await choices.filter({ hasText: 'Skip' }).click();
+    await row.getByRole('button', { name: 'Skip', exact: true }).click();
     // The answer carries the fresh card's nonce, never the expired one.
     expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'skip' }]);
   });
@@ -4895,7 +4898,7 @@ test.describe('Team Routines', () => {
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(1)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
-    await expect(rows.nth(0)).toContainText('Shimpz Cloudflare · List zones');
+    await expect(rows.nth(0)).toContainText('Shimpz Cloudflare › List zones');
     await expect(composer).toHaveValue('A draft that must survive');
     // The Team's Routine tree shows the same run waiting.
     const navigation = await openTeamNavigation(page);
@@ -4915,7 +4918,7 @@ test.describe('Team Routines', () => {
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
-    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare · Replace DNS record');
+    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare › Replace DNS record');
     await expect(rows).toHaveCount(2);
     await expect(composer).toHaveValue('A draft that must survive');
   });

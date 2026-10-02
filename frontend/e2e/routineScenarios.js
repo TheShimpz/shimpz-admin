@@ -96,13 +96,34 @@ const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
 // The continuous Routine created from chat, healthy and rolling its runs up per minute; a weekly Routine whose run is
 // held for recovery; a daily Routine its failures paused, which nothing holds; and a monthly one a person paused from
 // its card while its held run still waits for a decision.
+const UPDATE = {
+  id: 'update',
+  assistant: 'shimpz-cloudflare',
+  action: 'update-dns-record',
+  inputs: [{ member: 'record_id', source: 'step_output', step: 'records', pointer: '/records/0/id' }],
+  stored_inputs: ['api-token'],
+};
+const DELETE = {
+  id: 'delete',
+  assistant: 'shimpz-cloudflare',
+  action: 'delete-dns-record',
+  inputs: [{ member: 'record_id', source: 'step_output', step: 'records', pointer: '/records/2/id' }],
+  stored_inputs: ['api-token'],
+};
+
 function routines(locale) {
   const { names, quotes } = textFor(locale);
   return [
     { ...ROUTINE, routine_id: id('1'), schedule: { kind: 'continuous', gap: 5, cap: 500 } },
-    { ...ROUTINE, routine_id: id('2'), schedule: { kind: 'weekly', weekday: 6, time: '08:00' }, next_run_at: '2026-10-04T11:00:00Z' },
+    {
+      ...ROUTINE,
+      routine_id: id('2'),
+      steps: [...STEPS, UPDATE],
+      schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
+      next_run_at: '2026-10-04T11:00:00Z',
+    },
     { ...ROUTINE, routine_id: id('3'), schedule: { kind: 'daily', time: '09:00' }, paused: true },
-    { ...ROUTINE, routine_id: id('4'), schedule: { kind: 'monthly', day: 1, time: '10:00' }, paused: true },
+    { ...ROUTINE, routine_id: id('4'), steps: [...STEPS, DELETE], schedule: { kind: 'monthly', day: 1, time: '10:00' }, paused: true },
   ].map((routine, index) => ({ ...routine, name: names[index], quote: quotes[index] }));
 }
 
