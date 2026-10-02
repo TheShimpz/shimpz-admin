@@ -695,19 +695,46 @@ function requireLocale(locale) {
   return locale;
 }
 
+const SENT_NONCE_RE = /^[0-9a-f]{32}$/;
+
+/**
+ * The name of one logical send (ADR-0092): a fresh random nonce, which a retry or resend of the same message keeps,
+ * marked as a resend, so Admin reuses the identity it issued instead of granting a new one.
+ */
+export function newSendRequest() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return { nonce: Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''), resend: false };
+}
+
+function requireSendRequest(request) {
+  if (
+    !request || typeof request !== 'object' || Object.keys(request).sort().join() !== 'nonce,resend' ||
+    typeof request.nonce !== 'string' || !SENT_NONCE_RE.test(request.nonce) || typeof request.resend !== 'boolean'
+  ) throw new LocalApiError('Invalid chat request.');
+  return { nonce: request.nonce, resend: request.resend };
+}
+
 /**
  * Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in, with the
- * browser's timezone, which Team uses only as the default zone of a Routine the message creates (ADR-0092).
+ * browser's timezone, which Team uses only as the default zone of a Routine the message creates, and the name of its
+ * logical send (ADR-0092).
  */
-export function createChatFrame(teamId, turn, locale) {
+export function createChatFrame(teamId, turn, locale, request) {
   requireTeam(teamId);
-  return { type: 'chat', ...canonicalChatTurn(turn), locale: requireLocale(locale), timezone: browserTimezone() };
+  return {
+    type: 'chat',
+    ...canonicalChatTurn(turn),
+    locale: requireLocale(locale),
+    timezone: browserTimezone(),
+    request: requireSendRequest(request),
+  };
 }
 
 /** Build Local Admin's one-use resume frame without persisting the prior objective. */
-export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale) {
+export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale, request) {
   requireTeam(teamId);
   requireLocale(locale);
+  const sent = requireSendRequest(request);
   const current = canonicalChatTurn(turn);
   const objective = canonicalChatTurn(objectiveTurn);
   if (
@@ -727,6 +754,7 @@ export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale) {
     objective_assistant_ids: objective.assistant_ids,
     locale,
     timezone: browserTimezone(),
+    request: sent,
   };
 }
 

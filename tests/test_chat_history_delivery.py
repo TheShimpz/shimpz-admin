@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -48,15 +50,17 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "request": sent_request(),
             }
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
                 mock.patch.object(socket.history, "append_user", return_value=True) as append,
             ):
-                payload = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
+                payload, identity = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
             self.assertEqual(
                 payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
             )
+            self.assertEqual(identity["nonce"], frame["request"]["nonce"])
             self.assertEqual(connection.admitted_history_id, "a" * 32)
             append.assert_called_once_with("team_1", "a" * 32, "Hello")
 
@@ -70,7 +74,9 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 ),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):
-                self.assertIsNone(await socket._admit_chat_payload(websocket, connection, "team_1", frame))
+                # Another logical send: the browser names it with its own nonce.
+                another = {**frame, "request": sent_request()}
+                self.assertIsNone(await socket._admit_chat_payload(websocket, connection, "team_1", another))
             self.assertIsNone(connection.admitted_history_id)
             self.assertEqual(send.await_args.args[1]["status"], 503)
 

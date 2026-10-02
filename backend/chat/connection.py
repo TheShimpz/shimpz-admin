@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
-import secrets
 import threading
 import time
 from dataclasses import dataclass, field
@@ -16,8 +15,9 @@ from history import context as history_context
 from chat import lifecycle
 from protocol.http.v1 import payload as team_contract
 
-# A resend reuses its identity only while Team would still admit it, with room left for the turn itself.
-REQUEST_REUSE_SECONDS = team_contract.REQUEST_IDENTITY_SECONDS - 300
+# The sent messages whose identity a retry, resend, or reconnect may still reuse, across every connection.
+MAX_SENT_REQUESTS = 1024
+SENT_REQUEST_FIELDS = frozenset({"nonce", "resend"})
 
 
 @dataclass(slots=True)
@@ -54,8 +54,6 @@ class Connection:
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)
     pending_history_id: str | None = field(default=None, repr=False)
-    # The last sent message's Team, canonical payload, and request identity, kept so a resend reuses that identity.
-    sent_request: tuple[str, str, dict[str, object]] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,20 +76,53 @@ def remember_challenge(
     )
 
 
-def request_identity(connection: Connection, team_id: str, payload: dict[str, object]) -> dict[str, object]:
-    """The identity of one sent message: issued once, and kept when the same message is sent again (ADR-0081 resend).
+def canonical_sent_request(value: object) -> dict[str, object] | None:
+    """The browser's name for one logical send: a 32-hex nonce it keeps across retries, and whether this is a resend."""
+    if not isinstance(value, dict) or set(value) != SENT_REQUEST_FIELDS or type(value["resend"]) is not bool:
+        return None
+    nonce = value["nonce"]
+    if not isinstance(nonce, str) or team_contract.REQUEST_NONCE_RE.fullmatch(nonce) is None:
+        return None
+    return {"nonce": nonce, "resend": value["resend"]}
 
-    Team binds it to the Supervisor, the Team incarnation, and the message, so a Routine change the message carries
-    commits at most once; a resend after the identity's validity window is a new request.
+
+class RequestBook:
+    """The identity Admin issued for each logical send (ADR-0092), shared by every connection of this process.
+
+    A first send issues ``issued_at`` once for the browser's nonce; a retry, resend, or reconnect that names the same
+    nonce and the same message reuses it, exactly while Team's own freshness predicate admits it. A resend that is no
+    longer fresh, names an unknown nonce, or carries another message is refused, so an expired retry is never turned
+    into a new grant; a first send never reuses a nonce.
     """
-    now = int(time.time())
-    key = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    sent = connection.sent_request
-    if sent is not None and sent[:2] == (team_id, key) and now - sent[2]["issued_at"] < REQUEST_REUSE_SECONDS:
-        return sent[2]
-    identity = {"issued_at": now, "nonce": secrets.token_hex(16)}
-    connection.sent_request = (team_id, key, identity)
-    return identity
+
+    def __init__(self, clock=time.time) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._sent: dict[tuple[str, str], tuple[str, int]] = {}
+
+    def identity(self, team_id: str, sent: dict[str, object], payload: dict[str, object]) -> dict[str, object] | None:
+        now = int(self._clock())
+        key = (team_id, sent["nonce"])
+        commitment = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        with self._lock:
+            self._sent = {
+                name: value for name, value in self._sent.items() if team_contract.request_identity_fresh(value[1], now)
+            }
+            known = self._sent.get(key)
+            if sent["resend"]:
+                if known is None or known[0] != commitment:
+                    return None
+                return {"issued_at": known[1], "nonce": sent["nonce"]}
+            if known is not None:
+                return None
+            if len(self._sent) >= MAX_SENT_REQUESTS:
+                # The oldest identity gives way; a resend of it is then refused, never renewed.
+                del self._sent[min(self._sent, key=lambda name: self._sent[name][1])]
+            self._sent[key] = (commitment, now)
+        return {"issued_at": now, "nonce": sent["nonce"]}
+
+
+REQUESTS = RequestBook()
 
 
 def forget_challenge(connection: Connection) -> None:

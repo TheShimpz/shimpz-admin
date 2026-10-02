@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest import mock
 
+from sent_request import sent_request
 from tests.chat_socket_case import ChatWebSocketCase
 from tests.chat_socket_fixtures import Socket
 
@@ -44,6 +45,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "objective_assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
 
@@ -56,6 +58,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
@@ -125,6 +128,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "objective_assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
 
@@ -199,6 +203,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "objective_assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
 
@@ -241,6 +246,7 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
@@ -252,6 +258,7 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")

@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -135,6 +137,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "request": sent_request(),
             }
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
@@ -149,6 +152,34 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_chat_frame_names_its_logical_send_and_an_expired_resend_is_refused(self) -> None:
+        frame = {
+            "type": "chat",
+            "message": "Hello",
+            "files": [],
+            "assistant_ids": [],
+            "locale": "en",
+            "timezone": None,
+            "request": sent_request(resend=True),
+        }
+
+        async def scenario() -> None:
+            for candidate, status in (
+                ({key: value for key, value in frame.items() if key != "request"}, 400),
+                ({**frame, "request": {"nonce": "x", "resend": True}}, 400),
+                ({**frame, "locale": "pt-BR"}, 400),
+                (frame, 410),
+            ):
+                websocket = mock.AsyncMock()
+                with mock.patch.object(socket.history, "append_user") as append:
+                    self.assertIsNone(
+                        await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
+                    )
+                append.assert_not_called()
+                self.assertEqual(websocket.send_json.await_args.args[0]["status"], status)
+
+        asyncio.run(scenario())
+
     def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
         valid = {
             "type": "resume-task",
@@ -159,6 +190,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "objective_assistant_ids": [],
             "locale": "en",
             "timezone": None,
+            "request": sent_request(),
         }
 
         async def scenario() -> None:
@@ -166,16 +198,18 @@ class ChatSocketEdgeTests(unittest.TestCase):
             admitted = await task_resume.admit(
                 websocket,
                 socket._Connection(),
+                "team_1",
                 valid,
                 _resume_operations(),
             )
             self.assertEqual(
-                admitted,
+                admitted[:2],
                 (
                     {"message": valid["message"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
                     {"message": valid["objective"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
                 ),
             )
+            self.assertEqual(admitted[2]["nonce"], valid["request"]["nonce"])
             websocket.send_json.assert_not_awaited()
 
             invalid = (
@@ -188,6 +222,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 {**valid, "locale": None},
                 {**valid, "locale": "pt-BR"},
                 {**valid, "language_exemplar": "Lista minhas zonas"},
+                {key: value for key, value in valid.items() if key != "request"},
+                {**valid, "request": {"nonce": "x", "resend": False}},
             )
             for frame in invalid:
                 websocket.reset_mock()
@@ -195,6 +231,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     await task_resume.admit(
                         websocket,
                         socket._Connection(),
+                        "team_1",
                         frame,
                         _resume_operations(),
                     )
@@ -206,6 +243,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(active=socket._Turn(None, "chat")),
+                    "team_1",
                     valid,
                     _resume_operations(),
                 )
@@ -217,11 +255,19 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(pending_challenge_id="c" * 32),
+                    "team_1",
                     valid,
                     _resume_operations(),
                 )
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+
+            # The same logical send, sent again as a first send, is refused: its nonce is never renewed.
+            websocket.reset_mock()
+            self.assertIsNone(
+                await task_resume.admit(websocket, socket._Connection(), "team_1", valid, _resume_operations())
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 410)
 
             websocket.reset_mock()
             with mock.patch.object(socket.lifecycle, "submit_resume") as prepare:
@@ -247,6 +293,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "objective_assistant_ids": [],
             "locale": "en",
             "timezone": None,
+            "request": sent_request(),
         }
 
         async def scenario() -> None:
@@ -286,7 +333,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    frame,
+                    {**frame, "request": sent_request()},
                     _resume_operations(),
                 )
                 await connection.active.delivery
@@ -451,7 +498,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 websocket,
                 connection,
                 "team_1",
-                {"type": "chat", "message": "hi", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                {
+                    "type": "chat",
+                    "message": "hi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "request": sent_request(),
+                },
             )
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
@@ -459,7 +514,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 websocket,
                 connection,
                 "team_1",
-                {"type": "chat", "message": "hi", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                {
+                    "type": "chat",
+                    "message": "hi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "request": sent_request(),
+                },
             )
 
             with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
@@ -474,6 +537,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
 

@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
 from tests.mfa_helper import configure_supervisor
 
 from tests import chat_socket_fixtures
@@ -115,6 +116,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 await asyncio.sleep(0.3)
@@ -145,6 +147,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual(
@@ -239,6 +242,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 guidance = await websocket.next_json()
@@ -252,6 +256,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 inventory = await websocket.next_json()
@@ -268,6 +273,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 proposed = await resumed.next_json()
@@ -353,6 +359,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 proposed = await websocket.next_json()
@@ -366,6 +373,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "uninstalling")
@@ -380,6 +388,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -427,6 +436,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 proposed = await websocket.next_json()
@@ -440,6 +450,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 reproposed = await websocket.next_json()
@@ -483,6 +494,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 event = await websocket.next_json()
@@ -518,6 +530,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 event = await websocket.next_json()
@@ -551,6 +564,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 await websocket.send_json({"type": "stop"})
@@ -580,6 +594,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 await websocket.send_json(
@@ -590,6 +605,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["status"], 409)
@@ -629,6 +645,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 await websocket.disconnect()

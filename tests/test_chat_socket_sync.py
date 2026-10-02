@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
 from tests.mfa_helper import configure_supervisor
 
 from tests import chat_socket_fixtures
@@ -185,6 +186,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual(
@@ -442,6 +444,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 event = await websocket.next_json()

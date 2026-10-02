@@ -42,6 +42,7 @@
     createResumeTaskFrame,
     createStopFrame,
     createSyncFrame,
+    newSendRequest,
     listAssistantIntegrations,
     listAssistantStoredInputs,
     parseChatEvent,
@@ -97,6 +98,9 @@
   // again. Only a user message is retryable; a failed decision or a later unrelated error never offers a resend.
   let retryMessage = $state('');
   let lastSentMessage = '';
+  // The name of the logical send a retry repeats (ADR-0092): Admin reuses its identity and refuses an expired one.
+  let lastSentRequest = null;
+  let retryRequest = null;
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
@@ -294,7 +298,13 @@
 
   function retryLastTurn() {
     const message = retryMessage;
-    if (message) submitMessage(message, { projectUserTurn: false, retryable: true });
+    if (message && retryRequest) {
+      submitMessage(message, {
+        projectUserTurn: false,
+        retryable: true,
+        request: { nonce: retryRequest.nonce, resend: true },
+      });
+    }
   }
 
   function groupExchanges(values) {
@@ -1309,7 +1319,9 @@
       resetChallengeState();
       clearTurnInstalled();
       const failedMessage = lastSentMessage;
+      const failedRequest = lastSentRequest;
       lastSentMessage = '';
+      lastSentRequest = null;
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1326,13 +1338,16 @@
       } else {
         const projectedError = projectedChatError(incoming.status, incoming.detail);
         setError(projectedError.message, projectedError.detail);
-        retryMessage = retryable ? failedMessage : '';
+        // A send whose identity Admin refused as expired (410) is sent again only as a new message.
+        retryMessage = retryable && incoming.status !== 410 ? failedMessage : '';
+        retryRequest = failedRequest;
       }
       resetProgress();
     };
     active.onclose = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       lastSentMessage = '';
+      lastSentRequest = null;
       socket = null;
       socketReady = false;
       syncing = false;
@@ -1352,6 +1367,7 @@
     clearLifecycleIconCaptures();
     capabilityObjective = null;
     lastSentMessage = '';
+    lastSentRequest = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
@@ -1564,6 +1580,7 @@
     projectUserTurn = true,
     retryable = projectUserTurn,
     useCapabilityObjective = true,
+    request = newSendRequest(),
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
@@ -1598,11 +1615,11 @@
         assistant_ids: assistantIds,
       };
       if (resumable) {
-        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale);
+        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale, request);
         resumedObjective = resumable.message;
         capabilityObjective = null;
       } else {
-        frame = createChatFrame(teamId, currentTurn, $locale);
+        frame = createChatFrame(teamId, currentTurn, $locale, request);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -1625,6 +1642,7 @@
       // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
       // objective or the proposal was consumed, so neither is ever offered again.
       lastSentMessage = retryable && !resumable && !decisionPending ? normalized : '';
+      lastSentRequest = lastSentMessage ? request : null;
       if (useCapabilityObjective && !continuation) {
         capabilityObjective = {
           message: normalized,

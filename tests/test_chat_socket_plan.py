@@ -8,6 +8,7 @@ import json
 import threading
 from unittest import mock
 
+from sent_request import sent_request
 from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
@@ -47,6 +48,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
 
@@ -102,6 +104,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual(
@@ -160,6 +163,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
 
@@ -186,6 +190,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
@@ -217,6 +222,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -271,6 +277,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -318,6 +325,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -364,6 +372,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -405,6 +414,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")

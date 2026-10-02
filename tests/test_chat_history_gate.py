@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest import mock
 
+from sent_request import sent_request
 from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
@@ -40,6 +41,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
@@ -58,6 +60,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
@@ -97,6 +100,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")

@@ -63,8 +63,11 @@ _session_status = socket_boundary.session_status
 STATIC_ORIGINS = _configured_origins()
 _Turn = connection.Turn
 _Connection = connection.Connection
-_request_identity = connection.request_identity
 _SyncSnapshot = connection.SyncSnapshot
+_canonical_sent_request = connection.canonical_sent_request
+_REQUESTS = connection.REQUESTS
+# A retry, resend, or reconnect of a send whose identity Team would no longer admit is refused, never renewed.
+EXPIRED_SEND = "this message can no longer be sent again; send it as a new message"
 _error_terminal = projection.error_terminal
 _projected_event = projection.projected_event
 turn_terminal = projection.turn_terminal
@@ -576,16 +579,20 @@ async def _admit_chat_payload(
     connection: _Connection,
     team_id: str,
     frame: dict[str, object],
-) -> dict[str, object] | None:
-    if set(frame) != {"type", *team.CHAT_PAYLOAD_FIELDS}:
+) -> tuple[dict[str, object], dict[str, object]] | None:
+    """The admitted chat payload and the identity of its logical send, or None after an error terminal."""
+    if set(frame) != {"type", "request", *team.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
+            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, timezone, and request"),
         )
         return None
+    sent = _canonical_sent_request(frame["request"])
     try:
-        payload = team.canonical_chat_payload({key: value for key, value in frame.items() if key != "type"})
+        payload = team.canonical_chat_payload({key: frame[key] for key in team.CHAT_PAYLOAD_FIELDS})
     except team.TeamRequestError:
+        payload = None
+    if sent is None or payload is None:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
         return None
     if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
@@ -597,13 +604,17 @@ async def _admit_chat_payload(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
+    identity = _REQUESTS.identity(team_id, sent, payload)
+    if identity is None:
+        await _send_event(websocket, _error_terminal(410, EXPIRED_SEND))
+        return None
     admitted = lifecycle.reuses_history(connection, payload) or await _commit_user_history(
         websocket,
         connection,
         team_id,
         payload["message"],
     )
-    return payload if admitted else None
+    return (payload, identity) if admitted else None
 
 
 async def _commit_user_history(
@@ -634,9 +645,10 @@ async def _dispatch_chat(
     team_id: str,
     frame: dict[str, object],
 ) -> None:
-    payload = await _admit_chat_payload(websocket, connection, team_id, frame)
-    if payload is None:
+    admitted = await _admit_chat_payload(websocket, connection, team_id, frame)
+    if admitted is None:
         return
+    payload, identity = admitted
     if await lifecycle.resolve(websocket, connection, team_id, payload, _send_event):
         return
     try:
@@ -662,7 +674,7 @@ async def _dispatch_chat(
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
         conversation=conversation,
-        request=_request_identity(connection, team_id, payload),
+        request=identity,
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(

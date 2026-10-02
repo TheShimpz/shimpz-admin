@@ -791,7 +791,7 @@ async function routeReadyChat(page, {
         if (holdProgressStart) releaseProgressStart = sendProgress;
         else sendProgress();
         const completeReply = () => socket.send(JSON.stringify(terminalError
-          ? { type: 'error', status: 503, detail: 'synthetic runtime failure' }
+          ? { type: 'error', status: terminalError === true ? 503 : terminalError, detail: 'synthetic runtime failure' }
           : {
               type: 'done',
               team_id: 'marketing',
@@ -1254,7 +1254,21 @@ test('Try again resends only the latest failed message', async ({ page }) => {
   await expect(retry).toBeEnabled();
   await retry.click();
   await expect(retry).toBeEnabled();
-  expect(sentMessages(chat.chatFrames())).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
+  const frames = chat.chatFrames();
+  expect(sentMessages(frames)).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
+  // Each logical send has its own nonce; Try again repeats the failed send's nonce as a resend (ADR-0092).
+  expect(frames.map((frame) => frame.request.resend)).toEqual([false, false, true]);
+  expect(frames[0].request.nonce).not.toBe(frames[1].request.nonce);
+  expect(frames[2].request.nonce).toBe(frames[1].request.nonce);
+});
+
+test('a send Admin refuses as expired is never offered to be sent again', async ({ page }) => {
+  await routeReadyChat(page, { terminalError: 410 });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByText('HTTP 410', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
 test('an error delivered by a reconnect sync never offers to resend a finished request', async ({ page }) => {
@@ -2375,6 +2389,7 @@ test('resumes one prior capability objective after reconnect and installs its As
     objective_assistant_ids: [],
     locale: 'en',
     timezone: await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+    request: { nonce: expect.stringMatching(/^[0-9a-f]{32}$/), resend: false },
   });
   const persistedBrowserState = await page.evaluate(() => JSON.stringify({
     local: Object.entries(localStorage),

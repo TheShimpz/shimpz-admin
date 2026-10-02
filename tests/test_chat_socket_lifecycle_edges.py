@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -74,6 +76,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
                 delivery = connection.active.delivery
@@ -120,6 +123,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
                 delivery = connection.active.delivery
@@ -161,6 +165,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
                 delivery = connection.active.delivery
@@ -179,6 +184,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                     mock.AsyncMock(),
                 )
@@ -217,6 +223,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
                 await connection.active.delivery
@@ -250,6 +257,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
 
@@ -283,6 +291,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
 
@@ -320,6 +329,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "ja",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
 
@@ -335,7 +345,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             frames = (
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": []},
-                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "locale": None, "timezone": None},
+                {
+                    "type": "chat",
+                    "message": "oi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": None,
+                    "timezone": None,
+                    "request": sent_request(),
+                },
                 {
                     "type": "chat",
                     "message": "oi",
@@ -343,6 +361,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "pt-BR",
                     "timezone": None,
+                    "request": sent_request(),
                 },
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "language_exemplar": "oi"},
                 {
@@ -352,6 +371,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "assistant_ids": [],
                     "locale": "pt",
                     "timezone": None,
+                    "request": sent_request(),
                     "language_exemplar": "oi",
                 },
             )

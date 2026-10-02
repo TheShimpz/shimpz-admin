@@ -13,6 +13,7 @@ from functools import partial
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
 from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge, ordinary_route
 from tests.chat_socket_fixtures import Socket as _Socket
 from tests.mfa_helper import configure_supervisor
@@ -90,7 +91,15 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         websocket = _Socket(self.admin_app.app, token=self.token)
         self.assertTrue(self._accepted(await websocket.start()))
         await websocket.send_json(
-            {"type": "chat", "message": "Continue", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+            {
+                "type": "chat",
+                "message": "Continue",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": sent_request(),
+            }
         )
         challenge = await websocket.next_json()
         self.assertEqual(challenge["type"], "human-required")
@@ -369,6 +378,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     }
                 )
                 self.assertEqual(

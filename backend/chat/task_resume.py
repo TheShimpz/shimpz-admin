@@ -7,7 +7,7 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat.connection import Connection, Turn, request_identity
+from chat.connection import REQUESTS, Connection, Turn, canonical_sent_request
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -30,16 +30,21 @@ class Operations:
 
 
 def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
-    if set(frame) != {
-        "type",
-        "message",
-        "objective",
-        "files",
-        "assistant_ids",
-        "objective_assistant_ids",
-        "locale",
-        "timezone",
-    }:
+    if (
+        set(frame)
+        != {
+            "type",
+            "message",
+            "objective",
+            "files",
+            "assistant_ids",
+            "objective_assistant_ids",
+            "locale",
+            "timezone",
+            "request",
+        }
+        or canonical_sent_request(frame["request"]) is None
+    ):
         raise team.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
         {
@@ -72,9 +77,11 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
 async def admit(
     websocket: WebSocket,
     connection: Connection,
+    team_id: str,
     frame: dict[str, object],
     operations: Operations,
-) -> tuple[dict[str, object], dict[str, object]] | None:
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]] | None:
+    """The resumed turn's payload, its objective, and the identity of its logical send, or None after a terminal."""
     try:
         payloads = _canonical_payloads(frame)
     except team.TeamRequestError:
@@ -89,7 +96,14 @@ async def admit(
             operations.error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    return payloads
+    identity = REQUESTS.identity(team_id, canonical_sent_request(frame["request"]), payloads[1])
+    if identity is None:
+        await operations.send_event(
+            websocket,
+            operations.error_terminal(410, "this message can no longer be sent again; send it as a new message"),
+        )
+        return None
+    return (*payloads, identity)
 
 
 async def dispatch(
@@ -99,10 +113,10 @@ async def dispatch(
     frame: dict[str, object],
     operations: Operations,
 ) -> None:
-    admitted = await admit(websocket, connection, frame, operations)
+    admitted = await admit(websocket, connection, team_id, frame, operations)
     if admitted is None:
         return
-    payload, objective = admitted
+    payload, objective, identity = admitted
     try:
         history_id = await history_delivery.admit(team_id, payload["message"])
         # The window ends before the continuation row, so it still holds the original objective and the reply that
@@ -124,7 +138,7 @@ async def dispatch(
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
         conversation=conversation,
-        request=request_identity(connection, team_id, objective),
+        request=identity,
     )
     connection.admitted_history_id = None
     connection.active = turn

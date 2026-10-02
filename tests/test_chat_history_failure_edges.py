@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from sent_request import sent_request
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -90,6 +92,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "request": sent_request(),
                     },
                 )
                 delivery = connection.active.delivery
@@ -162,6 +165,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 "objective_assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "request": sent_request(),
             }
             websocket = mock.AsyncMock()
             with (
