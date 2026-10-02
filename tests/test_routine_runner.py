@@ -457,15 +457,51 @@ class RoutineSchedulerTests(unittest.TestCase):
         with mock.patch.object(team, "claim", return_value=IDLE):
             runner.tick()
         self.assertEqual(runner.delay(1000.0), 30)
-        finished = threading.Event()
+        finished, gate = threading.Event(), threading.Event()
         with (
-            mock.patch.object(team, "claim", return_value=CLAIMED),
-            mock.patch.object(team, "run", side_effect=lambda *_args: finished.set() or "done"),
+            mock.patch.object(team, "claim", side_effect=[CLAIMED, IDLE]),
+            mock.patch.object(team, "run", side_effect=lambda *_args: gate.wait(5) and (finished.set() or "done")),
         ):
             runner.tick()
+            gate.set()
             self.assertTrue(finished.wait(5))
             self.assertTrue(runner._wake.wait(5))
         self.assertEqual(runner.delay(time.time() + 60), scheduler.MIN_WAKE_SECONDS)
+
+    def test_one_wake_fills_every_free_slot_and_keeps_teams_hint_once_nothing_more_starts(self) -> None:
+        short = {**CLAIM, "team_id": "team_1", "run_id": "1" * 32}
+        long = {**CLAIM, "team_id": "team_2", "run_id": "2" * 32}
+        gates = {short["run_id"]: threading.Event(), long["run_id"]: threading.Event()}
+        ended = threading.Event()
+
+        def run(claimed, _identity):
+            gates[claimed["run_id"]].wait(5)
+            if claimed["run_id"] == short["run_id"]:
+                ended.set()
+            return "done"
+
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0, workers=2)
+        self.addCleanup(runner.close)
+        self.addCleanup(lambda: [gate.set() for gate in gates.values()])
+        claims = [{"run": short, "next_due_at": None}, {"run": long, "next_due_at": 1005}]
+        with (
+            mock.patch.object(team, "claim", side_effect=claims) as claim,
+            mock.patch.object(team, "run", side_effect=run),
+        ):
+            runner.tick()
+            # Both Teams start on one wake; with every slot busy nothing more is claimed and no stale hint polls.
+            self.assertEqual(claim.call_count, 2)
+            self.assertEqual(runner.delay(1000.0), 30)
+            runner.tick()
+            self.assertEqual(claim.call_count, 2)
+            gates[short["run_id"]].set()
+            self.assertTrue(ended.wait(5))
+            self.assertTrue(runner._wake.wait(5))
+        # The short Team's slot is free while the long Team runs on: the next claim's hint is kept.
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 1005}) as claim:
+            runner.tick()
+        claim.assert_called_once()
+        self.assertEqual(runner.delay(1000.0), 5)
 
     def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
         runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)
