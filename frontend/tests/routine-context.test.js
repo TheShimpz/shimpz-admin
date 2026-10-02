@@ -12,7 +12,17 @@ import {
 
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
+  name: 'Daily DNS zones',
   quote: 'Every day at 9, list my DNS zones',
+  steps: [
+    {
+      id: 'zones',
+      assistant: 'shimpz-cloudflare',
+      action: 'list-zones',
+      inputs: [{ member: 'page', source: 'literal', value: '1' }],
+      stored_inputs: ['api-token'],
+    },
+  ],
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],

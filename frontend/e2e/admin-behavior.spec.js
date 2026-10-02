@@ -4240,12 +4240,20 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(navigation.getByRole('group', { name: 'Routines' })
-      .getByRole('button', { name: /Every day at 9, list my DNS zones/ })).toHaveCount(1);
+    const node = navigation.getByRole('group', { name: 'Routines' })
+      .getByRole('button', { name: /Every day at 9, list my DNS zones/ });
+    await expect(node).toHaveCount(1);
+    // Its details let the Supervisor inspect the plan: each step's Action and its Stored Inputs by name only.
+    await node.click();
+    const steps = navigation.getByRole('list', { name: 'Steps' });
+    await expect(steps).toContainText('list-zones');
+    await expect(steps).toContainText('api-token');
 
     // The created notice is in the Team's transcript, with the browser's timezone the message was sent with.
     await page.reload();
-    await expect(page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' })).toContainText('America/Sao_Paulo');
+    const created = page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' });
+    await expect(created).toContainText('America/Sao_Paulo');
+    await expect(created.getByRole('list', { name: 'Steps' })).toContainText('list-zones');
   });
 
   test('a Team\'s Routines open as a tree under it, with deletion and release confirmed in place', async ({ page }) => {

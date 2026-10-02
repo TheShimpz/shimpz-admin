@@ -23,9 +23,21 @@ export const ASSISTANTS = [
   { id: 'whatsapp', title: 'WhatsApp' },
 ];
 
+export const ROUTINE_PLAN = [
+    {
+      id: 'zones',
+      assistant: 'shimpz-cloudflare',
+      action: 'list-zones',
+      inputs: [{ member: 'page', source: 'literal', value: '1' }],
+      stored_inputs: ['api-token'],
+    },
+  ];
+
 export const ROUTINE_VIEW = {
   routine_id: 'a'.repeat(32),
+  name: 'Daily DNS zones',
   quote: 'Every day at 9, list my DNS zones',
+  steps: ROUTINE_PLAN,
   schedule: { kind: 'daily', time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -244,7 +256,7 @@ function create(state, message, timezone) {
     created_at: '2026-10-01T12:00:00Z',
     detail: {
       name: 'Daily DNS zones',
-      actions: [['shimpz-cloudflare', 'list-zones']],
+      steps: ROUTINE_PLAN,
       schedule: routine.schedule,
       timezone: routine.timezone,
     },

@@ -17,6 +17,7 @@ import {
   newerRoutineEntries,
   parseRoutineRunEntry,
   parseRoutineView,
+  isSteps,
   parseRunView,
   resolveRoutineRun,
   resumeRoutineIntegrations,
@@ -84,9 +85,20 @@ test('a chat reply and its stored history never carry a retired Routine proposal
   await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: null }]), 'marketing'));
 });
 
+const PLAN = [
+    {
+      id: 'zones',
+      assistant: 'shimpz-cloudflare',
+      action: 'list-zones',
+      inputs: [{ member: 'page', source: 'literal', value: '1' }],
+      stored_inputs: ['api-token'],
+    },
+  ];
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
+  name: 'DNS semanal',
   quote: QUOTE,
+  steps: PLAN,
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -210,7 +222,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
 
 const DEFINED = {
   name: 'DNS semanal',
-  actions: [['shimpz-cloudflare', 'list-dns-records']],
+  steps: PLAN,
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
 };
@@ -272,8 +284,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, steps: [] } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, actions: [] } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, actions: Array(9).fill(DEFINED.actions[0]) } },
     { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, name: ' padded ' } },
     { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, name: 'x'.repeat(81) } },
     { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, schedule: { kind: 'daily' } } },
@@ -351,4 +363,53 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
   api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'frozen' }]]);
   assert.equal(await resumeRoutineIntegrations(api.fetch, 'team_1', run), 'frozen');
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/integrations`);
+});
+
+test('a Routine plan projection is admitted only in its closed, bounded form', () => {
+  const step = PLAN[0];
+  const later = {
+    id: 'records',
+    assistant: 'shimpz-cloudflare',
+    action: 'list-dns-records',
+    inputs: [
+      { member: 'day', source: 'run_clock', value: 'date' },
+      { member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/zones/0/id' },
+    ],
+    stored_inputs: [],
+  };
+  assert.equal(isSteps([step, later]), true);
+  for (const steps of [
+    [],
+    'zones',
+    [null],
+    Array(9).fill(step).map((item, index) => ({ ...item, id: `s${index}` })),
+    [step, step],
+    [{ ...step, id: 'Bad' }],
+    [{ ...step, assistant: 'Bad' }],
+    [{ ...step, action: 'Bad action' }],
+    [{ ...step, inputs: 'none' }],
+    [{ ...step, inputs: [null] }],
+    [{ ...step, inputs: [{ member: 'page', source: 'secret', value: '1' }] }],
+    [{ ...step, inputs: [{ member: 'page', source: 'literal', value: '1', extra: true }] }],
+    [{ ...step, inputs: [{ member: '', source: 'literal', value: '1' }] }],
+    [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'x'.repeat(121) }] }],
+    [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }],
+    [{ ...step, inputs: [{ member: 'b', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '1' }] }],
+    [step, { ...later, inputs: [{ member: 'day', source: 'run_clock', value: 'weekday' }] }],
+    [step, { ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'records', pointer: '/x' }] }],
+    [step, { ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: 'x' }] }],
+    [step, { ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: 7 }] }],
+    [step, { ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/'.repeat(257) }] }],
+    [step, { ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/​' }] }],
+    [{ ...step, stored_inputs: 'api-token' }],
+    [{ ...step, stored_inputs: Array(9).fill('a') }],
+    [{ ...step, stored_inputs: ['API token'] }],
+    [{ ...step, stored_inputs: [7] }],
+    [{ ...step, stored_inputs: ['b', 'a'] }],
+  ]) {
+    assert.equal(isSteps(steps), false, JSON.stringify(steps));
+  }
+  for (const invalid of [{ ...ROUTINE, steps: [] }, { ...ROUTINE, name: ' padded ' }, { ...ROUTINE, name: 'é' }]) {
+    assert.throws(() => parseRoutineView(invalid), RoutineError);
+  }
 });

@@ -5,6 +5,7 @@
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import Markdown from '$lib/Markdown.svelte';
+  import RoutinePlan from '$lib/RoutinePlan.svelte';
   import {
     answerRoutineChallenge,
     fillRoutineCopy,
@@ -149,6 +150,8 @@
   <p class="summary">{summary}</p>
   {#if entry.outcome === 'done'}
     <Markdown markdown={detail.reply} variant="chat" />
+  {:else if entry.outcome === 'created' || entry.outcome === 'changed'}
+    <RoutinePlan steps={detail.steps} copy={copy.plan} />
   {/if}
   {#if actions}
     <p class="actions">{fillRoutineCopy(copy.run.actions, { actions })}</p>

@@ -13,6 +13,7 @@
     stopRoutineRun,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
+  import RoutinePlan from '$lib/RoutinePlan.svelte';
 
   // One Team's Routines as a tree under its row (ADR-0086). A node opens in place with its schedule and runs in
   // progress; deleting a Routine and releasing an uncertain run each need an explicit confirmation here.
@@ -89,7 +90,8 @@
         {/if}
       </Button>
       <div class="detail" id={`routine-${routine.routine_id}`} hidden={!expanded}>
-        <p class="meta">{routine.timezone}</p>
+        <p class="meta">{routine.name} · {routine.timezone}</p>
+        <RoutinePlan steps={routine.steps} copy={copy.plan} />
         {#if routine.deleting}
           <p class="meta">{copy.list.deleting}</p>
         {:else if routine.needs_reconfirm}

@@ -57,6 +57,12 @@ export const routineMessages = {
       working: "Working…",
       failedOutcome: "failed",
     },
+    plan: {
+      title: "Steps",
+      clock: "each run's {format}",
+      fromStep: "from step {step}, {pointer}",
+      storedInputs: "Stored Action inputs: {names}",
+    },
     errors: {
       generic: 'The Routine request failed. Try again.',
       expired: 'This request expired. Review the run again.',
@@ -121,6 +127,12 @@ export const routineMessages = {
       continue: "Continuar a execução",
       working: "Processando…",
       failedOutcome: "falhou",
+    },
+    plan: {
+      title: "Etapas",
+      clock: "{format} de cada execução",
+      fromStep: "da etapa {step}, {pointer}",
+      storedInputs: "Dados armazenados das Actions: {names}",
     },
     errors: {
       generic: 'O pedido da rotina falhou. Tente de novo.',
@@ -187,6 +199,12 @@ export const routineMessages = {
       working: "Procesando…",
       failedOutcome: "falló",
     },
+    plan: {
+      title: "Pasos",
+      clock: "{format} de cada ejecución",
+      fromStep: "del paso {step}, {pointer}",
+      storedInputs: "Datos de Action almacenados: {names}",
+    },
     errors: {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
       expired: 'Esta solicitud caducó. Revisa la ejecución de nuevo.',
@@ -251,6 +269,12 @@ export const routineMessages = {
       continue: "继续运行",
       working: "处理中…",
       failedOutcome: "失败",
+    },
+    plan: {
+      title: "步骤",
+      clock: "每次运行的 {format}",
+      fromStep: "来自步骤 {step}，{pointer}",
+      storedInputs: "已存储的 Action 输入：{names}",
     },
     errors: {
       generic: '例行任务请求失败。请重试。',
@@ -317,6 +341,12 @@ export const routineMessages = {
       working: "Traitement…",
       failedOutcome: "échec",
     },
+    plan: {
+      title: "Étapes",
+      clock: "{format} de chaque exécution",
+      fromStep: "de l’étape {step}, {pointer}",
+      storedInputs: "Données d’Action stockées : {names}",
+    },
     errors: {
       generic: 'La demande de routine a échoué. Réessayez.',
       expired: 'Cette demande a expiré. Examinez de nouveau l’exécution.',
@@ -381,6 +411,12 @@ export const routineMessages = {
       continue: "Ausführung fortsetzen",
       working: "Wird verarbeitet…",
       failedOutcome: "fehlgeschlagen",
+    },
+    plan: {
+      title: "Schritte",
+      clock: "{format} jedes Laufs",
+      fromStep: "aus Schritt {step}, {pointer}",
+      storedInputs: "Gespeicherte Action-Eingaben: {names}",
     },
     errors: {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
@@ -447,6 +483,12 @@ export const routineMessages = {
       working: "処理中…",
       failedOutcome: "失敗",
     },
+    plan: {
+      title: "ステップ",
+      clock: "各実行の {format}",
+      fromStep: "ステップ {step} の {pointer}",
+      storedInputs: "保存済みの Action 入力: {names}",
+    },
     errors: {
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
       expired: 'このリクエストは期限切れです。実行をもう一度確認してください。',
@@ -511,6 +553,12 @@ export const routineMessages = {
       continue: "متابعة التشغيل",
       working: "جارٍ المعالجة…",
       failedOutcome: "فشل",
+    },
+    plan: {
+      title: "الخطوات",
+      clock: "{format} لكل تشغيل",
+      fromStep: "من الخطوة {step}، {pointer}",
+      storedInputs: "مدخلات Action المحفوظة: {names}",
     },
     errors: {
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',

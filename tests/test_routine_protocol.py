@@ -17,7 +17,15 @@ from protocol.http.v1 import supervisor
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
 DEFINED = {
     "name": "Weekly zones",
-    "actions": [["dns", "list-zones"]],
+    "steps": [
+        {
+            "id": "zones",
+            "assistant": "dns",
+            "action": "list-zones",
+            "inputs": [{"member": "page", "source": "literal", "value": "1"}],
+            "stored_inputs": [],
+        }
+    ],
     "schedule": {"kind": "daily", "time": "09:00"},
     "timezone": "UTC",
 }
@@ -90,7 +98,8 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             ("stopped", {"actions": [["dns", {"input": 1}]]}),
             ("stopped", {"actions": "dns"}),
             ("failed", {"code": "Bad Code", "actions": []}),
-            ("created", {**DEFINED, "actions": []}),
+            ("created", {**DEFINED, "steps": []}),
+            ("created", {**DEFINED, "steps": [{**DEFINED["steps"][0], "stored_inputs": ["API key"]}]}),
             ("changed", {**DEFINED, "input": {"zone": "example.com"}}),
         ):
             with self.subTest(outcome=outcome, detail=detail):
@@ -106,3 +115,16 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         ):
             with self.subTest(value=value), self.assertRaises(supervisor.SupervisorAssertionError):
                 supervisor.canonical_claims(value, audience=supervisor.ROUTINE_AUDIENCE)
+
+    def test_the_plan_projection_is_closed_and_its_previews_bounded(self) -> None:
+        self.assertEqual(routine_contract.literal_preview({"a": "x‮"}), '{"a":"x\\u202e"}')
+        self.assertEqual(len(routine_contract.literal_preview("y" * 300)), routine_contract.MAX_PREVIEW_CHARS)
+        step = DEFINED["steps"][0]
+        self.assertEqual(routine_contract.canonical_steps([step]), [step])
+        for steps in (
+            ["x"],
+            [{**step, "inputs": ["x"]}],
+            [{**step, "inputs": [{"member": "", "source": "literal", "value": "1"}]}],
+        ):
+            with self.subTest(steps=steps):
+                self.assertIsNone(routine_contract.canonical_steps(steps))

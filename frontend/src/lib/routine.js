@@ -101,10 +101,15 @@ function view(value, keys, valid) {
 
 /** One confirmed Routine as a Supervisor sees it. */
 export function parseRoutineView(value) {
-  const keys = ['routine_id', 'quote', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm', 'deleting'];
+  const keys = [
+    'routine_id', 'name', 'quote', 'steps', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm',
+    'deleting',
+  ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
     ID_RE.test(item.routine_id) &&
+    isName(item.name) &&
+    isSteps(item.steps) &&
     isQuote(item.quote) &&
     isSchedule(item.schedule) &&
     isTimezone(item.timezone) &&
@@ -112,6 +117,65 @@ export function parseRoutineView(value) {
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
     typeof item.deleting === 'boolean');
+}
+
+// A Routine plan's safe projection, mirroring Team's `routine.canonical_steps` (ADR-0092): each step's Action, every
+// input's source with a bounded literal preview, and the Stored Inputs its Action uses by name only.
+const MAX_PREVIEW_CHARS = 120;
+const MAX_STEP_INPUTS = 64;
+const MAX_STEP_STORED_INPUTS = 8;
+const STEP_ID_RE = /^[a-z][a-z0-9_-]{0,31}$/;
+const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
+const CLOCK_FORMATS = ['date', 'time', 'datetime', 'epoch_seconds'];
+const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u;
+const INPUT_KEYS = {
+  literal: ['member', 'source', 'value'],
+  run_clock: ['member', 'source', 'value'],
+  step_output: ['member', 'source', 'step', 'pointer'],
+};
+
+function plain(value, maximum) {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum && !PLAN_UNSAFE_RE.test(value);
+}
+
+function isInput(value, earlier) {
+  const keys = value && typeof value === 'object' && !Array.isArray(value) ? INPUT_KEYS[value.source] : undefined;
+  if (!keys || !exact(value, keys) || !plain(value.member, 128)) return false;
+  if (value.source === 'literal') return plain(value.value, MAX_PREVIEW_CHARS);
+  if (value.source === 'run_clock') return CLOCK_FORMATS.includes(value.value);
+  return earlier.includes(value.step) && typeof value.pointer === 'string' && value.pointer.length <= 256 &&
+    POINTER_RE.test(value.pointer) && !PLAN_UNSAFE_RE.test(value.pointer);
+}
+
+function isStep(value, earlier) {
+  if (!exact(value, ['id', 'assistant', 'action', 'inputs', 'stored_inputs'])) return false;
+  const { inputs, stored_inputs: stored } = value;
+  if (
+    typeof value.id !== 'string' || !STEP_ID_RE.test(value.id) || earlier.includes(value.id) ||
+    typeof value.assistant !== 'string' || !ASSISTANT_ID_RE.test(value.assistant) ||
+    typeof value.action !== 'string' || !ACTION_ID_RE.test(value.action) ||
+    !Array.isArray(inputs) || inputs.length > MAX_STEP_INPUTS || !inputs.every((item) => isInput(item, earlier)) ||
+    !Array.isArray(stored) || stored.length > MAX_STEP_STORED_INPUTS
+  ) return false;
+  const members = inputs.map((item) => item.member);
+  const sortedMembers = [...new Set(members)].sort();
+  const sortedStored = [...new Set(stored)].sort();
+  return (
+    JSON.stringify(members) === JSON.stringify(sortedMembers) &&
+    stored.every((item) => typeof item === 'string' && ASSISTANT_ID_RE.test(item)) &&
+    JSON.stringify(stored) === JSON.stringify(sortedStored)
+  );
+}
+
+/** Whether a value is a Routine plan's safe projection: one to eight ordered steps, each naming only earlier ones. */
+export function isSteps(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_STEPS) return false;
+  const earlier = [];
+  for (const step of value) {
+    if (!isStep(step, earlier)) return false;
+    earlier.push(step.id);
+  }
+  return true;
 }
 
 function isActions(value) {
@@ -323,22 +387,18 @@ const NOTICE_DETAILS = {
   denied: [['actions'], (detail) => isActions(detail.actions)],
   stopped: [['actions'], (detail) => isActions(detail.actions)],
   uncertain: [['actions'], (detail) => isActions(detail.actions)],
-  created: [['name', 'actions', 'schedule', 'timezone'], isDefinition],
-  changed: [['name', 'actions', 'schedule', 'timezone'], isDefinition],
+  created: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
+  changed: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
 };
 
 const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed'];
 
+function isName(value) {
+  return closedText(value, MAX_NAME_CHARS) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
+}
+
 function isDefinition(detail) {
-  return (
-    closedText(detail.name, MAX_NAME_CHARS) &&
-    !FORBIDDEN_RE.test(detail.name) &&
-    isActions(detail.actions) &&
-    detail.actions.length > 0 &&
-    detail.actions.length <= MAX_STEPS &&
-    isSchedule(detail.schedule) &&
-    isTimezone(detail.timezone)
-  );
+  return isName(detail.name) && isSteps(detail.steps) && isSchedule(detail.schedule) && isTimezone(detail.timezone);
 }
 
 function isAssistantList(value) {
