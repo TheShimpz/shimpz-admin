@@ -27,7 +27,7 @@ DIGEST = "sha256:" + ("a" * 64)
 
 
 def payload(message: str) -> dict[str, object]:
-    return {"message": message, "files": [], "assistant_ids": [], "locale": "en"}
+    return {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
 
 
 def response(

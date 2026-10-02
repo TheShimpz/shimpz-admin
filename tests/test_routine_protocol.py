@@ -15,6 +15,12 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import supervisor
 
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+DEFINED = {
+    "name": "Weekly zones",
+    "actions": [["dns", "list-zones"]],
+    "schedule": {"kind": "daily", "time": "09:00"},
+    "timezone": "UTC",
+}
 
 
 class RoutineProtocolMirrorTests(unittest.TestCase):
@@ -22,7 +28,6 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         families = {
             "routine_schedule": routine_contract.canonical_schedule,
             "routine_timezone": routine_contract.canonical_timezone,
-            "routine_change": routine_contract.canonical_routine_change,
         }
         for family, admit in families.items():
             for value in VECTORS[family]["valid"]:
@@ -35,8 +40,6 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             self.assertEqual(str(routine_contract.daily_rate(case["schedule"])), case["rate"])
         self.assertEqual(routine_contract.daily_rate({"kind": "hourly", "every": 5}), Fraction(24, 5))
         views = {
-            "proposal": routine_contract.canonical_proposal,
-            "preview": routine_contract.canonical_preview,
             "routine": routine_contract.canonical_routine_view,
             "run": routine_contract.canonical_run_view,
             "notice_batch": routine_contract.canonical_notice_batch,
@@ -75,6 +78,8 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             "stopped": {"actions": [["dns", "list-zones"]]},
             "uncertain": {"actions": [["dns", "replace-dns-record"]]},
             "frozen": {"request_kind": "human", "assistant_id": "dns", "action": "replace-dns-record"},
+            "created": DEFINED,
+            "changed": DEFINED,
         }
         self.assertEqual(set(valid), routine_contract.OUTCOMES)
         for outcome, detail in valid.items():
@@ -85,6 +90,8 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             ("stopped", {"actions": [["dns", {"input": 1}]]}),
             ("stopped", {"actions": "dns"}),
             ("failed", {"code": "Bad Code", "actions": []}),
+            ("created", {**DEFINED, "actions": []}),
+            ("changed", {**DEFINED, "input": {"zone": "example.com"}}),
         ):
             with self.subTest(outcome=outcome, detail=detail):
                 self.assertIsNone(routine_contract.canonical_notice_detail(outcome, detail))

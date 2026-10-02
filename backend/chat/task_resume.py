@@ -7,7 +7,7 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from chat.connection import Connection, Turn
+from chat.connection import Connection, Turn, request_identity
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -38,6 +38,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         "assistant_ids",
         "objective_assistant_ids",
         "locale",
+        "timezone",
     }:
         raise team.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
@@ -46,6 +47,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "files": frame["files"],
             "assistant_ids": frame["assistant_ids"],
             "locale": frame["locale"],
+            "timezone": frame["timezone"],
         }
     )
     objective = team.canonical_chat_payload(
@@ -54,6 +56,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "files": [],
             "assistant_ids": frame["objective_assistant_ids"],
             "locale": frame["locale"],
+            "timezone": frame["timezone"],
         }
     )
     if (
@@ -121,6 +124,7 @@ async def dispatch(
         lifecycle_stop=threading.Event(),
         history_id=connection.admitted_history_id,
         conversation=conversation,
+        request=request_identity(connection, team_id, objective),
     )
     connection.admitted_history_id = None
     connection.active = turn

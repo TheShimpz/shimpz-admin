@@ -41,13 +41,22 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
-            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": [], "locale": "en"}
+            frame = {
+                "type": "chat",
+                "message": "Hello",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+            }
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
                 mock.patch.object(socket.history, "append_user", return_value=True) as append,
             ):
                 payload = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
-            self.assertEqual(payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en"})
+            self.assertEqual(
+                payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+            )
             self.assertEqual(connection.admitted_history_id, "a" * 32)
             append.assert_called_once_with("team_1", "a" * 32, "Hello")
 
@@ -109,7 +118,6 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 "team_name": "Team 1",
                 "reply": "Done",
                 "clarification": None,
-                "routine_proposal": None,
             }
             with mock.patch.object(socket.history, "append_reply", return_value=True) as append:
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))
@@ -129,7 +137,6 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 "team_name": "Team 1",
                 "reply": "Done",
                 "clarification": None,
-                "routine_proposal": None,
             }
             with mock.patch.object(socket.history, "append_reply", return_value=False):
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))

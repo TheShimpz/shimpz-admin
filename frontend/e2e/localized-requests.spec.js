@@ -103,7 +103,7 @@ async function routeLocalizedTeam(page, { purpose = false } = {}) {
       team.pending = null;
       return [{
         type: 'done', team_id: 'marketing', team_name: 'Marketing', reply: `Done ${team.turns}.`,
-        clarification: null, routine_proposal: null,
+        clarification: null,
       }];
     }
     if (frame.type === 'chat' && !team.pending) {

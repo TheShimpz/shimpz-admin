@@ -11,10 +11,11 @@
     openRoutineChallenge,
     resumeRoutineIntegrations,
     routineErrorMessage,
+    scheduleWords,
   } from '$lib/routine.js';
 
-  // One Routine outcome in a Team's transcript (ADR-0086). It names the Routine by its quoted request and never
-  // carries an Action's raw input or result; it is not part of the Brain's conversation. A frozen run is answered
+  // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
+  // own message. It names the Routine by its quoted request and never carries an Action's raw input or result; it is not part of the Brain's conversation. A frozen run is answered
   // here with chat's own approval dialog, and nothing runs until the Supervisor answers.
   let { entry, copy, teamId, teamName } = $props();
 
@@ -42,6 +43,13 @@
       case 'uncertain': return run.uncertain;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
+      case 'created':
+      case 'changed':
+        return fillRoutineCopy(entry.outcome === 'created' ? run.created : run.changed, {
+          name: detail.name,
+          schedule: scheduleWords(detail.schedule, copy.schedule, $locale),
+          timezone: detail.timezone,
+        });
       default:
         return fillRoutineCopy(detail.request_kind === 'human' ? run.frozenHuman : run.frozenIntegrations, {
           assistant: detail.assistant_id,
@@ -177,9 +185,9 @@
     working={working || stale}
     onrespond={respond}
     ondismiss={() => (challenge = null)}
-    dismissLabel={copy.card.dismiss}
+    dismissLabel={copy.run.dismiss}
     onretry={() => (rejection = undefined)}
-    onexpire={() => { challenge = null; result = copy.errors.gone; }}
+    onexpire={() => { challenge = null; result = copy.errors.expired; }}
   />
 {/if}
 

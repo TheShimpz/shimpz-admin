@@ -17,8 +17,6 @@ def register(application: FastAPI, profile: str, authenticate: answer.Authentica
         return
     base = "/api/teams/{team_id}/routines"
     application.add_api_route(base, routines_list, methods=["GET"])
-    application.add_api_route(base, routine_confirm, methods=["POST"])
-    application.add_api_route(base + "/proposals/{proposal_id}/preview", routine_preview, methods=["POST"])
     application.add_api_route(base + "/{routine_id}", routine_delete, methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/resolve", routine_resolve, methods=["POST"])
@@ -34,16 +32,6 @@ def _no_store(response):
 
 def routines_list(team_id: str):
     return _no_store(team_http.response(lambda: manage.list_routines(team_id)))
-
-
-async def routine_preview(team_id: str, proposal_id: str, request: Request):
-    body = await team_http.bounded_json_object(request)
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.preview(team_id, proposal_id, body)))
-
-
-async def routine_confirm(team_id: str, request: Request):
-    body = await team_http.bounded_json_object(request)
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.confirm(team_id, body)))
 
 
 async def routine_delete(team_id: str, routine_id: str):

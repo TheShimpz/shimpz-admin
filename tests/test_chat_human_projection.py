@@ -83,6 +83,9 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
     return value
 
 
+REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
+
+
 class HumanChallengeProjectionTests(unittest.TestCase):
     def test_local_password_authentication_is_bounded_and_maps_authority_failure(self) -> None:
         self.assertEqual(
@@ -457,7 +460,13 @@ class HumanChallengeProjectionTests(unittest.TestCase):
     def test_a_chat_turn_admits_only_a_human_challenge_in_its_interface_language(self) -> None:
         request = _request("approval")
         inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
-        payload = {"message": "Publish", "files": [], "assistant_ids": ["shimpz-cloudflare"], "locale": "pt"}
+        payload = {
+            "message": "Publish",
+            "files": [],
+            "assistant_ids": ["shimpz-cloudflare"],
+            "locale": "pt",
+            "timezone": None,
+        }
         for locale, expected in (("pt", 428), ("en", 502)):
             controller = team.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))
             with (
@@ -466,7 +475,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 mock.patch.object(local.models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(team, "chat", return_value=controller),
             ):
-                self.assertEqual(local.turn("team_1", payload, ()).status, expected)
+                self.assertEqual(local.turn("team_1", payload, (), REQUEST).status, expected)
 
 
 if __name__ == "__main__":

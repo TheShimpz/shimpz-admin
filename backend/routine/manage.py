@@ -28,16 +28,6 @@ def _id(value: object, name: str) -> str:
     return value
 
 
-def _timezone(body: object, fields: set[str]) -> dict[str, object]:
-    if (
-        not isinstance(body, dict)
-        or set(body) != fields
-        or routine_contract.canonical_timezone(body["timezone"]) is None
-    ):
-        raise team.TeamRequestError("Routine request is invalid")
-    return body
-
-
 def _projected(
     response: team.TeamResponse, admit: Callable[[dict[str, object]], dict[str, object] | None]
 ) -> team.TeamResponse:
@@ -62,44 +52,11 @@ def _exact(fields: dict[str, Callable[[object], bool]]) -> Callable[[dict[str, o
     return admit
 
 
-def preview(team_id: object, proposal_id: object, body: object) -> team.TeamResponse:
-    """The confirmation card's live facts; a proposal that expired or was used is gone."""
-    canonical = team.canonical_team_id(team_id)
-    proposal = _id(proposal_id, "Routine proposal")
-    path = f"/v1/teams/{canonical}/routines/proposals/{proposal}/preview"
-    response = transport._call("POST", path, _timezone(body, {"timezone"}))
-
-    def admit(value: dict[str, object]) -> dict[str, object] | None:
-        # The card confirms exactly the proposal it previewed.
-        preview = routine_contract.canonical_preview(value)
-        return preview if preview is not None and preview["proposal_id"] == proposal else None
-
-    return _projected(response, admit)
-
-
-def confirm(team_id: object, body: object) -> team.TeamResponse:
-    """The Supervisor's confirmation: the only way a Routine is created or a cancellation is carried out."""
-    canonical = team.canonical_team_id(team_id)
-    body = _timezone(body, {"proposal_id", "timezone"})
-    _id(body["proposal_id"], "Routine proposal")
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines", body)
-
-    def admit(value: dict[str, object]) -> dict[str, object] | None:
-        if set(value) == {"team_id", "routine"} and value["team_id"] == canonical:
-            return value if routine_contract.canonical_routine_view(value["routine"]) is not None else None
-        # Confirming a cancel card deletes the Routine its proposal named.
-        return _deleted(canonical, None)(value)
-
-    return _projected(response, admit)
-
-
-def _deleted(team_id: str, routine_id: str | None) -> Callable[[dict[str, object]], dict[str, object] | None]:
+def _deleted(team_id: str, routine_id: str) -> Callable[[dict[str, object]], dict[str, object] | None]:
     return _exact(
         {
             "team_id": lambda value: value == team_id,
-            "routine_id": lambda value: (
-                isinstance(value, str) and _ID_RE.fullmatch(value) is not None and routine_id in (None, value)
-            ),
+            "routine_id": lambda value: value == routine_id,
             "deleted": lambda value: type(value) is bool,
         }
     )

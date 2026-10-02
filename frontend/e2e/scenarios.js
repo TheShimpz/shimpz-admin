@@ -23,21 +23,10 @@ export const ASSISTANTS = [
   { id: 'whatsapp', title: 'WhatsApp' },
 ];
 
-export const ROUTINE_PROPOSAL = {
-  proposal_id: 'c'.repeat(32),
-  op: 'propose',
-  quote: 'Every day at 9, list my DNS zones',
-  schedule: { kind: 'daily', time: '09:00' },
-  timezone: null,
-  routine_id: null,
-  assistant_ids: ['shimpz-cloudflare'],
-  expires_in: 900,
-};
-
 export const ROUTINE_VIEW = {
   routine_id: 'a'.repeat(32),
-  quote: ROUTINE_PROPOSAL.quote,
-  schedule: ROUTINE_PROPOSAL.schedule,
+  quote: 'Every day at 9, list my DNS zones',
+  schedule: { kind: 'daily', time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-01T12:00:00Z',
@@ -94,7 +83,6 @@ export function authenticatedLocalSession(overrides = {}) {
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
-const gone = () => ({ status: 404, json: { code: 'routine-proposal-unavailable' } });
 
 function hexId(prefix, sequence) {
   return `${prefix}${sequence.toString(16)}`.padStart(32, '0');
@@ -174,38 +162,9 @@ function providers() {
   }));
 }
 
-function routineRoutes(state, method, path, body) {
+function routineRoutes(state, method, path) {
   const base = '/api/teams/marketing/routines';
   if (path === base && method === 'GET') return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs });
-  if (path === base && method === 'POST') {
-    // A confirmation consumes its proposal once and creates a Routine with its own id.
-    const proposal = state.proposals.get(body?.proposal_id);
-    if (!proposal) return gone();
-    state.proposals.delete(body.proposal_id);
-    state.sequence += 1;
-    const routine = {
-      ...ROUTINE_VIEW,
-      routine_id: hexId('9', state.sequence),
-      quote: proposal.quote,
-      schedule: proposal.schedule,
-      timezone: body.timezone ?? 'UTC',
-    };
-    state.routines = [...state.routines, routine];
-    return ok({ team_id: 'marketing', routine });
-  }
-  const preview = path.match(/^\/api\/teams\/marketing\/routines\/proposals\/([0-9a-f]{32})\/preview$/);
-  if (preview && method === 'POST') {
-    const proposal = state.proposals.get(preview[1]);
-    if (!proposal) return gone();
-    return ok({
-      ...proposal,
-      timezone: body?.timezone ?? 'UTC',
-      next_runs: ['2026-10-01T12:00:00Z', '2026-10-02T12:00:00Z', '2026-10-03T12:00:00Z'],
-      daily_runs: '1',
-      max_daily_runs: 24,
-      fits: true,
-    });
-  }
   const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
   if (routine && method === 'DELETE') {
     state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
@@ -263,11 +222,34 @@ function otherTeamRoutes(state, method, path) {
   }[view]?.() ?? null;
 }
 
-function propose(state, message) {
+// A recurring request creates its Routine directly from the user's own message (ADR-0092), with a created notice.
+function create(state, message, timezone) {
   state.sequence += 1;
-  const proposal = { ...ROUTINE_PROPOSAL, proposal_id: hexId('c', state.sequence), quote: message.slice(0, 200) };
-  state.proposals.set(proposal.proposal_id, proposal);
-  return structuredClone(proposal);
+  const routine = {
+    ...ROUTINE_VIEW,
+    routine_id: hexId('9', state.sequence),
+    quote: message.slice(0, 200),
+    timezone: timezone ?? 'UTC',
+  };
+  state.routines = [...state.routines, routine];
+  const noticeId = hexId('7', state.sequence);
+  state.history = [...state.history, {
+    id: `${noticeId}:routine`,
+    kind: 'routine-run',
+    notice_id: noticeId,
+    routine_id: routine.routine_id,
+    quote: routine.quote,
+    run_id: null,
+    outcome: 'created',
+    created_at: '2026-10-01T12:00:00Z',
+    detail: {
+      name: 'Daily DNS zones',
+      actions: [['shimpz-cloudflare', 'list-zones']],
+      schedule: routine.schedule,
+      timezone: routine.timezone,
+    },
+    version: 1,
+  }];
 }
 
 export const CLARIFICATION = Object.freeze({
@@ -302,7 +284,6 @@ function clarifyReply(state, message) {
         .map((option, index) => `${index + 1}. ${option.label}${index === CLARIFICATION.default_index ? ' ✓' : ''} — ${option.description}`)
         .join('\n')}`,
       clarification: structuredClone(CLARIFICATION),
-      routine_proposal: null,
     };
   }
   if (state.clarify === 'fail-once') {
@@ -315,7 +296,6 @@ function clarifyReply(state, message) {
     team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
     reply: `Certo — sigo com **${answer}**. Preview reply for the chosen scope.`,
     clarification: null,
-    routine_proposal: null,
   };
 }
 
@@ -438,10 +418,9 @@ function chatReply(state, frame) {
     team_id: 'marketing',
     team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
     reply: recurring
-      ? 'I can run this on a schedule. Confirm it below to schedule it.'
+      ? (create(state, message, frame.timezone), 'Done: this Routine runs every day at 09:00.')
       : `Preview reply to: ${message}`,
     clarification: null,
-    routine_proposal: recurring ? propose(state, message) : null,
     usage: structuredClone(PREVIEW_USAGE),
   };
 }
@@ -450,7 +429,7 @@ function chatReply(state, frame) {
 export function createScenario(name = 'ready') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
-  const state = { ...structuredClone(start()), proposals: new Map(), sequence: 0 };
+  const state = { ...structuredClone(start()), history: [], sequence: 0 };
   return {
     name,
     respond({ method = 'GET', path, body = null }) {
@@ -483,14 +462,16 @@ export function createScenario(name = 'ready') {
         });
       }
       if (path === '/api/teams/marketing/files' && method === 'GET') return ok({ files: [] });
-      if (path === '/api/teams/marketing/chat/history' && method === 'GET') return ok({ entries: [], before: null });
+      if (path === '/api/teams/marketing/chat/history' && method === 'GET') {
+        return ok({ entries: state.history, before: null });
+      }
       if (path === '/api/teams/marketing/inference' && method === 'GET') {
         return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
       }
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
-      return routineRoutes(state, method, path, body);
+      return routineRoutes(state, method, path);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {
@@ -511,7 +492,6 @@ export function createScenario(name = 'ready') {
             team_name: state.teams.find((team) => team.team_id === teamId)?.team_name ?? teamId,
             reply: `Preview reply to: ${typeof frame.message === 'string' ? frame.message : ''}`,
             clarification: null,
-            routine_proposal: null,
             usage: structuredClone(PREVIEW_USAGE),
           }];
         }
@@ -533,7 +513,6 @@ export function createScenario(name = 'ready') {
                 confirm: 'Done — the DNS record was updated.',
               }[state.human] ?? 'Done — the search ran with your key.',
             clarification: null,
-            routine_proposal: null,
           }];
         }
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];

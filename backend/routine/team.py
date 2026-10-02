@@ -18,7 +18,8 @@ from protocol.http.v1 import routine as routine_contract
 
 RUN_TIMEOUT_SECONDS = 15 * 60
 _TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
+# "held": a compiled run Team holds as an incident for recovery (ADR-0092).
+RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen", "held"})
 # Team admits at most this many deliveries in one notice acknowledgment.
 MAX_ACK_DELIVERIES = 256
 

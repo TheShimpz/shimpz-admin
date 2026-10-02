@@ -85,7 +85,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Two zones are active.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -125,7 +124,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "First finished.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -140,7 +138,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Finished.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -286,7 +283,6 @@ class ChatHistoryTests(unittest.TestCase):
             "team_name": "Marketing",
             "reply": "Two zones are active.",
             "clarification": None,
-            "routine_proposal": None,
         }
         for clear in (lambda: history.clear_team("marketing"), history.clear_all):
             with self.subTest(clear=clear):
@@ -354,7 +350,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": reply,
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -411,7 +406,6 @@ class ChatHistoryTests(unittest.TestCase):
                         "team_name": "Sales",
                         "reply": "No",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 ),
             ),

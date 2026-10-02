@@ -246,7 +246,7 @@ def append_user(team_id: object, turn_id: object, message: object) -> bool:
 def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
-    fields = {"type", "team_id", "team_name", "reply", "clarification", "routine_proposal"}
+    fields = {"type", "team_id", "team_name", "reply", "clarification"}
     if not isinstance(event, Mapping) or set(event) - {"usage"} != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
@@ -260,12 +260,6 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored with its reply so a reload restores the same question card for the same turn.
         entry["clarification"] = clarification
-    if event["routine_proposal"] is not None:
-        proposal = routine_contract.canonical_proposal(event["routine_proposal"])
-        if proposal is None:
-            raise ValueError("chat history reply event is invalid")
-        # Stored so a reload restores the confirmation card; the Team decides whether it is still live.
-        entry["routine_proposal"] = proposal
     if "usage" in event:
         usage = team_contract.canonical_turn_usage(event["usage"])
         if usage is None:
@@ -506,10 +500,6 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             or clarification != payload["clarification"]
             or payload.get("text") != team_contract.render_clarification(clarification)
         ):
-            raise ValueError("invalid stored message")
-    if role == "assistant" and "routine_proposal" in payload:
-        expected.add("routine_proposal")
-        if routine_contract.canonical_proposal(payload["routine_proposal"]) != payload["routine_proposal"]:
             raise ValueError("invalid stored message")
     if role == "assistant" and "usage" in payload:
         expected.add("usage")

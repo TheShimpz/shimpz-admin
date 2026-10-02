@@ -6,7 +6,6 @@ import { parseChatEvent } from '../src/lib/localChat.js';
 import {
   answerRoutineChallenge,
   browserTimezone,
-  confirmRoutine,
   deleteRoutine,
   fillRoutineCopy,
   instantWords,
@@ -15,14 +14,10 @@ import {
   isTimezone,
   listRoutines,
   openRoutineChallenge,
-  parseRoutinePreview,
-  previewMatches,
-  parseRoutineProposal,
   newerRoutineEntries,
   parseRoutineRunEntry,
   parseRoutineView,
   parseRunView,
-  previewRoutine,
   resolveRoutineRun,
   resumeRoutineIntegrations,
   RoutineError,
@@ -33,55 +28,8 @@ import {
 import { routineMessages } from '../src/lib/routineMessages.js';
 
 // The same closed proposal Team's protocol vectors admit (ADR-0086).
-const PROPOSAL = {
-  proposal_id: 'c'.repeat(32),
-  op: 'propose',
-  quote: 'Toda segunda às 9h, confira o DNS',
-  schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
-  timezone: null,
-  routine_id: null,
-  assistant_ids: ['shimpz-cloudflare'],
-  expires_in: 900,
-};
-const CANCEL = {
-  proposal_id: 'd'.repeat(32),
-  op: 'cancel',
-  quote: 'pode parar o resumo diário',
-  schedule: null,
-  timezone: null,
-  routine_id: 'a'.repeat(32),
-  assistant_ids: [],
-  expires_in: 0,
-};
-
-test('admits exactly the closed proposal and cancel forms', () => {
-  assert.equal(parseRoutineProposal(null), null);
-  assert.deepEqual(parseRoutineProposal(PROPOSAL), PROPOSAL);
-  assert.deepEqual(parseRoutineProposal({ ...PROPOSAL, timezone: 'Europe/Lisbon' }).timezone, 'Europe/Lisbon');
-  assert.deepEqual(parseRoutineProposal(CANCEL), CANCEL);
-  const parsed = parseRoutineProposal(PROPOSAL);
-  parsed.schedule.time = '10:00';
-  assert.equal(PROPOSAL.schedule.time, '09:00');
-  for (const invalid of [
-    [],
-    { ...PROPOSAL, extra: 1 },
-    { ...PROPOSAL, proposal_id: 'x' },
-    { ...PROPOSAL, expires_in: 901 },
-    { ...PROPOSAL, expires_in: 1.5 },
-    { ...PROPOSAL, quote: ' padded ' },
-    { ...PROPOSAL, assistant_ids: [] },
-    { ...PROPOSAL, assistant_ids: ['b-x', 'a-x'] },
-    { ...PROPOSAL, assistant_ids: ['Bad'] },
-    { ...PROPOSAL, routine_id: 'a'.repeat(32) },
-    { ...PROPOSAL, timezone: '../etc' },
-    { ...PROPOSAL, schedule: { kind: 'daily' } },
-    { ...PROPOSAL, op: 'run' },
-    { ...CANCEL, schedule: { kind: 'daily', time: '09:00' } },
-    { ...CANCEL, routine_id: null },
-  ]) {
-    assert.throws(() => parseRoutineProposal(invalid), TypeError);
-  }
-});
+const QUOTE = 'Toda segunda às 9h, confira o DNS';
+const WEEKLY = { kind: 'weekly', weekday: 0, time: '09:00' };
 
 test('mirrors the schedule, quote, and timezone grammar', () => {
   for (const schedule of [
@@ -118,52 +66,28 @@ test('mirrors the schedule, quote, and timezone grammar', () => {
   assert.equal(isTimezone(null), false);
 });
 
-test('a chat reply and its stored history carry the proposal for the card', async () => {
+test('a chat reply and its stored history never carry a retired Routine proposal', async () => {
   const done = {
     type: 'done',
     team_id: 'team_1',
     team_name: 'Marketing',
-    reply: 'Posso agendar isso; confirme no cartão.',
+    reply: 'Pronto: toda segunda às 9h confiro o DNS.',
     clarification: null,
-    routine_proposal: PROPOSAL,
   };
-  assert.deepEqual(parseChatEvent(done, 'team_1', 'Marketing').routine_proposal, PROPOSAL);
-  assert.throws(() => parseChatEvent({ ...done, routine_proposal: { ...PROPOSAL, op: 'run' } }, 'team_1', 'Marketing'));
-  const { routine_proposal: _omitted, ...withoutProposal } = done;
-  assert.throws(() => parseChatEvent(withoutProposal, 'team_1', 'Marketing'));
+  assert.equal(Object.hasOwn(parseChatEvent(done, 'team_1', 'Marketing'), 'routine_proposal'), false);
+  assert.throws(() => parseChatEvent({ ...done, routine_proposal: null }, 'team_1', 'Marketing'));
 
   const turn = 'b'.repeat(32);
-  const reply = {
-    id: `${turn}:reply`,
-    kind: 'message',
-    role: 'assistant',
-    text: done.reply,
-    author: 'Marketing',
-    routine_proposal: PROPOSAL,
-  };
+  const reply = { id: `${turn}:reply`, kind: 'message', role: 'assistant', text: done.reply, author: 'Marketing' };
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
-  const history = await listChatHistory(page([reply]), 'marketing');
-  assert.deepEqual(history.entries[0].routineProposal, PROPOSAL);
+  assert.equal((await listChatHistory(page([reply]), 'marketing')).entries[0].text, done.reply);
   await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: null }]), 'marketing'));
-  await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: { ...PROPOSAL, expires_in: -1 } }]), 'marketing'));
-  await assert.rejects(
-    listChatHistory(page([{ id: `${turn}:user`, kind: 'message', role: 'user', text: 'Oi', routine_proposal: PROPOSAL }]), 'marketing'),
-  );
 });
 
-const PREVIEW = {
-  ...PROPOSAL,
-  timezone: 'America/Sao_Paulo',
-  next_runs: ['2026-10-05T12:00:00Z', '2026-10-12T12:00:00Z', '2026-10-19T12:00:00Z'],
-  daily_runs: '1/7',
-  max_daily_runs: 24,
-  fits: true,
-};
-const CANCEL_PREVIEW = { ...CANCEL, timezone: null, next_runs: [], daily_runs: null, max_daily_runs: null, fits: true };
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
-  quote: PROPOSAL.quote,
-  schedule: PROPOSAL.schedule,
+  quote: QUOTE,
+  schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
@@ -189,41 +113,7 @@ const UNCERTAIN = {
   actions: [['shimpz-cloudflare', 'replace-dns-record']],
 };
 
-test('a card confirms only a live preview of exactly its saved proposal', () => {
-  assert.equal(previewMatches(PROPOSAL, PREVIEW), true);
-  assert.equal(previewMatches({ ...PROPOSAL, timezone: 'America/Sao_Paulo' }, PREVIEW), true);
-  assert.equal(previewMatches(CANCEL, CANCEL_PREVIEW), true);
-  for (const drifted of [
-    { ...PREVIEW, proposal_id: 'f'.repeat(32) },
-    { ...PREVIEW, quote: 'Every hour, delete my DNS zones' },
-    { ...PREVIEW, schedule: { kind: 'hourly', every: 1 } },
-    { ...PREVIEW, assistant_ids: ['other-assistant'] },
-    { ...PREVIEW, op: 'cancel' },
-    { ...PREVIEW, routine_id: 'a'.repeat(32) },
-  ]) {
-    assert.equal(previewMatches(PROPOSAL, drifted), false);
-  }
-  assert.equal(previewMatches({ ...PROPOSAL, timezone: 'Europe/Lisbon' }, PREVIEW), false);
-});
-
-test('previews, Routines, and runs are admitted only in their closed views', () => {
-  assert.deepEqual(parseRoutinePreview(PREVIEW), PREVIEW);
-  assert.deepEqual(parseRoutinePreview(CANCEL_PREVIEW), CANCEL_PREVIEW);
-  for (const invalid of [
-    null,
-    { ...PROPOSAL },
-    { ...PREVIEW, next_runs: [] },
-    { ...PREVIEW, next_runs: [PREVIEW.next_runs[1], PREVIEW.next_runs[0]] },
-    { ...PREVIEW, next_runs: ['2026-02-30T12:00:00Z'] },
-    { ...PREVIEW, daily_runs: '1.5' },
-    { ...PREVIEW, max_daily_runs: 25 },
-    { ...PREVIEW, fits: 1 },
-    { ...PREVIEW, extra: 1 },
-    { ...PREVIEW, op: 'run' },
-    { ...CANCEL_PREVIEW, fits: false },
-  ]) {
-    assert.throws(() => parseRoutinePreview(invalid), RoutineError);
-  }
+test('Routines and runs are admitted only in their closed views', () => {
   assert.deepEqual(parseRoutineView(ROUTINE), ROUTINE);
   for (const invalid of [{ ...ROUTINE, quote: null }, { ...ROUTINE, deleting: 'no' }, { ...ROUTINE, assistant_ids: [] }]) {
     assert.throws(() => parseRoutineView(invalid), RoutineError);
@@ -255,24 +145,10 @@ function fetcher(responses) {
 }
 
 test('Routine requests go to exact Admin routes and admit only exact answers', async () => {
-  let api = fetcher([[200, PREVIEW]]);
-  assert.deepEqual(await previewRoutine(api.fetch, 'team_1', PROPOSAL.proposal_id, 'UTC'), PREVIEW);
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/proposals/${PROPOSAL.proposal_id}/preview`);
-  assert.deepEqual(JSON.parse(api.calls[0].init.body), { timezone: 'UTC' });
-  assert.equal(api.calls[0].init.headers['Content-Type'], 'application/json');
-
-  api = fetcher([[200, { team_id: 'team_1', routine: ROUTINE }], [200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: false }]]);
-  assert.deepEqual(await confirmRoutine(api.fetch, 'team_1', PROPOSAL.proposal_id, 'UTC'), { routine: ROUTINE });
-  assert.deepEqual(await confirmRoutine(api.fetch, 'team_1', CANCEL.proposal_id, 'UTC'), { deleted: false });
-
-  api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN] }]]);
+  let api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN] }]]);
   assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN] });
   assert.equal(api.calls[0].init.headers['Content-Type'], undefined);
 
-  await assert.rejects(
-    previewRoutine(fetcher([[200, { ...PREVIEW, proposal_id: 'f'.repeat(32) }]]).fetch, 'team_1', PROPOSAL.proposal_id, 'UTC'),
-    (error) => error.code === 'routine-response-invalid',
-  );
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: true }]]);
   assert.deepEqual(await deleteRoutine(api.fetch, 'team_1', ROUTINE.routine_id), { deleted: true });
   await assert.rejects(
@@ -289,7 +165,6 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
   for (const [call, responses] of [
     [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_2', routines: [], runs: [] }]]],
     [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_1', routines: Array(9).fill(ROUTINE), runs: [] }]]],
-    [(f) => confirmRoutine(f, 'team_1', PROPOSAL.proposal_id, 'UTC'), [[200, { team_id: 'team_1', deleted: 'yes', routine_id: ROUTINE.routine_id }]]],
     [(f) => stopRoutineRun(f, 'team_1', LEASED.run_id), [[200, { team_id: 'team_1', run_id: 'd'.repeat(32), stopped: true }]]],
   ]) {
     await assert.rejects(call(fetcher(responses).fetch), (error) => error.code === 'routine-response-invalid');
@@ -323,16 +198,22 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
-  assert.equal(routineErrorMessage(new RoutineError('routine-proposal-unavailable'), errors), errors.gone);
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
   assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
-  assert.equal(isTimezone(browserTimezone()), true);
+  const zone = browserTimezone();
+  assert.equal(zone === null || isTimezone(zone), true);
 });
 
+const DEFINED = {
+  name: 'DNS semanal',
+  actions: [['shimpz-cloudflare', 'list-dns-records']],
+  schedule: WEEKLY,
+  timezone: 'America/Sao_Paulo',
+};
 const RUN_ENTRY = {
   id: `${'b'.repeat(32)}:routine`,
   kind: 'routine-run',
@@ -367,6 +248,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'uncertain', detail: { actions: [] } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: DEFINED },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: DEFINED },
   ];
   for (const entry of valid) assert.equal(parseRoutineRunEntry(entry).outcome, entry.outcome);
   for (const invalid of [
@@ -388,6 +271,14 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [] } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: [] } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, detail: { missed: 0 } },
+    { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, actions: [] } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, actions: Array(9).fill(DEFINED.actions[0]) } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, name: ' padded ' } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, name: 'x'.repeat(81) } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, schedule: { kind: 'daily' } } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, timezone: '../etc' } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, detail: { ...DEFINED, input: { zone: 'example.com' } } },
   ]) {
     assert.throws(() => parseRoutineRunEntry(invalid), RoutineError);
   }

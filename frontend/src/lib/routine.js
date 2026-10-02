@@ -1,12 +1,11 @@
-// Team Routines (ADR-0086) as the browser admits them. Each parser mirrors Team's closed protocol view and throws on
-// any other shape; nothing here schedules or authorizes: a Routine exists only after a Supervisor confirms it.
+// Team Routines (ADR-0086, ADR-0092) as the browser admits them. Each parser mirrors Team's closed protocol view and
+// throws on any other shape; nothing here schedules or authorizes: Team creates a Routine from the user's own message.
 
 import { isLocale } from './locales.js';
 import { jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
 export const MAX_ASSISTANTS = 16;
-export const PROPOSAL_SECONDS = 900;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 const ID_RE = /^[0-9a-f]{32}$/;
 const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -31,10 +30,6 @@ function exact(value, keys) {
 
 function whole(value, low, high) {
   return Number.isInteger(value) && value >= low && value <= high;
-}
-
-function invalid() {
-  return new TypeError('invalid Routine proposal');
 }
 
 /** The user's quoted request: NFC, one line, trimmed, 1 to 500 characters. */
@@ -76,40 +71,7 @@ function isAssistants(value, minimum) {
   );
 }
 
-/** A chat turn's one-use Routine proposal for the confirmation card, or null when the turn proposed none. */
-export function parseRoutineProposal(value) {
-  if (value === null) return null;
-  const keys = ['proposal_id', 'op', 'quote', 'schedule', 'timezone', 'routine_id', 'assistant_ids', 'expires_in'];
-  if (!exact(value, keys) || typeof value.proposal_id !== 'string' || !ID_RE.test(value.proposal_id)) throw invalid();
-  if (!isQuote(value.quote) || !whole(value.expires_in, 0, PROPOSAL_SECONDS)) throw invalid();
-  const propose =
-    value.op === 'propose' &&
-    isSchedule(value.schedule) &&
-    (value.timezone === null || isTimezone(value.timezone)) &&
-    value.routine_id === null &&
-    isAssistants(value.assistant_ids, 1);
-  const cancel =
-    value.op === 'cancel' &&
-    value.schedule === null &&
-    value.timezone === null &&
-    typeof value.routine_id === 'string' &&
-    ID_RE.test(value.routine_id) &&
-    isAssistants(value.assistant_ids, 0);
-  if (!propose && !cancel) throw invalid();
-  return {
-    proposal_id: value.proposal_id,
-    op: value.op,
-    quote: value.quote,
-    schedule: value.schedule === null ? null : { ...value.schedule },
-    timezone: value.timezone,
-    routine_id: value.routine_id,
-    assistant_ids: [...value.assistant_ids],
-    expires_in: value.expires_in,
-  };
-}
-
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-const RATE_RE = /^(?:0|[1-9][0-9]*)(?:\/[1-9][0-9]*)?$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
 const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ROUTINES = 8;
@@ -135,59 +97,6 @@ function isInstant(value) {
 function view(value, keys, valid) {
   if (!exact(value, keys) || !valid(value)) throw new RoutineError('routine-response-invalid');
   return structuredClone(value);
-}
-
-/** Whether a live preview shows exactly the proposal a card saved; only then may the card confirm it. */
-export function previewMatches(proposal, preview) {
-  return (
-    preview.proposal_id === proposal.proposal_id &&
-    preview.op === proposal.op &&
-    preview.quote === proposal.quote &&
-    JSON.stringify(preview.schedule) === JSON.stringify(proposal.schedule) &&
-    preview.routine_id === proposal.routine_id &&
-    JSON.stringify(preview.assistant_ids) === JSON.stringify(proposal.assistant_ids) &&
-    (proposal.timezone === null || preview.timezone === proposal.timezone)
-  );
-}
-
-/** A proposal with its card's live facts: the timezone, the next runs, and the Team's daily run budget. */
-export function parseRoutinePreview(value) {
-  const facts = ['timezone', 'next_runs', 'daily_runs', 'max_daily_runs', 'fits'];
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !facts.every((key) => Object.hasOwn(value, key))) {
-    throw new RoutineError('routine-response-invalid');
-  }
-  const proposal = { ...value };
-  for (const key of facts) delete proposal[key];
-  let parsed;
-  try {
-    // The proposal's own keys are exact, so the preview holds exactly those and its facts.
-    parsed = parseRoutineProposal({ ...proposal, timezone: value.op === 'propose' ? null : value.timezone });
-  } catch {
-    throw new RoutineError('routine-response-invalid');
-  }
-  const runs = value.next_runs;
-  const valid = parsed.op === 'cancel'
-    ? value.timezone === null && Array.isArray(runs) && runs.length === 0 && value.daily_runs === null
-      && value.max_daily_runs === null && value.fits === true
-    : isTimezone(value.timezone) &&
-      Array.isArray(runs) &&
-      runs.length > 0 &&
-      runs.length <= 3 &&
-      runs.every(isInstant) &&
-      runs.every((item, index) => index === 0 || runs[index - 1] < item) &&
-      typeof value.daily_runs === 'string' &&
-      RATE_RE.test(value.daily_runs) &&
-      value.max_daily_runs === MAX_DAILY_RUNS &&
-      typeof value.fits === 'boolean';
-  if (!valid) throw new RoutineError('routine-response-invalid');
-  return {
-    ...parsed,
-    timezone: value.timezone,
-    next_runs: [...runs],
-    daily_runs: value.daily_runs,
-    max_daily_runs: value.max_daily_runs,
-    fits: value.fits,
-  };
 }
 
 /** One confirmed Routine as a Supervisor sees it. */
@@ -274,33 +183,10 @@ function opaque(value) {
   return value;
 }
 
-/** The browser's IANA timezone, used only when the user named none in the request. */
+/** The browser's IANA timezone, the default zone of a Routine a chat message creates, or null when it is unknown. */
 export function browserTimezone() {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return isTimezone(zone) ? zone : 'UTC';
-}
-
-export async function previewRoutine(fetcher, teamId, proposalId, timezone) {
-  const body = await request(fetcher, teamPath(teamId, `/proposals/${opaque(proposalId)}/preview`), {
-    method: 'POST',
-    body: JSON.stringify({ timezone }),
-  });
-  const preview = parseRoutinePreview(body);
-  // The card confirms exactly the proposal it previewed.
-  if (preview.proposal_id !== proposalId) throw new RoutineError('routine-response-invalid');
-  return preview;
-}
-
-/** Confirm a card: a proposal creates its Routine; a cancel card deletes one. */
-export async function confirmRoutine(fetcher, teamId, proposalId, timezone) {
-  const body = await request(fetcher, teamPath(teamId), {
-    method: 'POST',
-    body: JSON.stringify({ proposal_id: opaque(proposalId), timezone }),
-  });
-  if (exact(body, ['team_id', 'routine']) && body.team_id === teamId) {
-    return { routine: parseRoutineView(body.routine) };
-  }
-  return deleted(body, teamId);
+  return isTimezone(zone) ? zone : null;
 }
 
 function deleted(body, teamId, routineId = null) {
@@ -389,7 +275,6 @@ export function instantWords(value, locale, timeZone) {
 export function routineErrorMessage(error, copy) {
   const code = error instanceof RoutineError ? error.code : '';
   const byCode = {
-    'routine-proposal-unavailable': copy.gone,
     'team-context-changed': copy.changed,
     // The run's request no longer renders against the Team's reviewed Assistant; it stays frozen (ADR-0091).
     'human-request-invalid': copy.changed,
@@ -410,6 +295,8 @@ export { fill as fillRoutineCopy };
 const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const MAX_NOTICE_REPLY_CHARS = 16000;
 const MAX_NOTICE_QUESTION_CHARS = 240;
+const MAX_NAME_CHARS = 80;
+const MAX_STEPS = 8;
 
 function closedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
@@ -436,7 +323,23 @@ const NOTICE_DETAILS = {
   denied: [['actions'], (detail) => isActions(detail.actions)],
   stopped: [['actions'], (detail) => isActions(detail.actions)],
   uncertain: [['actions'], (detail) => isActions(detail.actions)],
+  created: [['name', 'actions', 'schedule', 'timezone'], isDefinition],
+  changed: [['name', 'actions', 'schedule', 'timezone'], isDefinition],
 };
+
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed'];
+
+function isDefinition(detail) {
+  return (
+    closedText(detail.name, MAX_NAME_CHARS) &&
+    !FORBIDDEN_RE.test(detail.name) &&
+    isActions(detail.actions) &&
+    detail.actions.length > 0 &&
+    detail.actions.length <= MAX_STEPS &&
+    isSchedule(detail.schedule) &&
+    isTimezone(detail.timezone)
+  );
+}
 
 function isAssistantList(value) {
   return (
@@ -462,7 +365,7 @@ export function parseRoutineRunEntry(value) {
     !ID_RE.test(value.routine_id) ||
     !isQuote(value.quote) ||
     (value.run_id !== null && value.run_id !== value.notice_id) ||
-    (value.run_id === null) !== ['skipped', 'scope-changed'].includes(value.outcome) ||
+    (value.run_id === null) !== ROUTINE_OUTCOMES.includes(value.outcome) ||
     !isInstant(value.created_at) ||
     !Number.isInteger(value.version) ||
     value.version < 1 ||

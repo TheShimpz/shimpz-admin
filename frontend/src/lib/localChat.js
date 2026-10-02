@@ -1,6 +1,6 @@
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
-import { parseRoutineProposal } from './routine.js';
+import { browserTimezone } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
@@ -695,10 +695,13 @@ function requireLocale(locale) {
   return locale;
 }
 
-/** Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in. */
+/**
+ * Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in, with the
+ * browser's timezone, which Team uses only as the default zone of a Routine the message creates (ADR-0092).
+ */
 export function createChatFrame(teamId, turn, locale) {
   requireTeam(teamId);
-  return { type: 'chat', ...canonicalChatTurn(turn), locale: requireLocale(locale) };
+  return { type: 'chat', ...canonicalChatTurn(turn), locale: requireLocale(locale), timezone: browserTimezone() };
 }
 
 /** Build Local Admin's one-use resume frame without persisting the prior objective. */
@@ -723,6 +726,7 @@ export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale) {
     assistant_ids: current.assistant_ids,
     objective_assistant_ids: objective.assistant_ids,
     locale,
+    timezone: browserTimezone(),
   };
 }
 
@@ -1186,11 +1190,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   }
   if (value.type === 'done') {
     let clarification = null;
-    let routineProposal = null;
     let usage = null;
     try {
       clarification = parseClarification(value.clarification);
-      routineProposal = parseRoutineProposal(value.routine_proposal);
       usage = parseTaskUsage(value.usage);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
@@ -1198,7 +1200,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     if (clarification && value.reply !== renderClarification(clarification)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
-    const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification', 'routine_proposal'];
+    const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
     // `usage` is optional: Team reports it only when a model call of the turn reported usage.
     if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
     if (
@@ -1220,7 +1222,6 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       team_name: value.team_name,
       reply: value.reply,
       clarification,
-      routine_proposal: routineProposal,
       ...(usage ? { usage } : {}),
     };
   }

@@ -12,7 +12,7 @@ const USAGE = {
     { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11_900, output_tokens: 580 },
   ],
 };
-const DONE = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null };
+const DONE = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null };
 
 function model(overrides = {}) {
   return { provider: 'openai', model: 'gpt-6-luna', input_tokens: 1, output_tokens: 1, ...overrides };

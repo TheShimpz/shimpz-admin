@@ -155,7 +155,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Fresh turn.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -179,7 +178,14 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
                 await websocket.send_json(
-                    {"type": "chat", "message": "Retry", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "Retry",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                    }
                 )
                 self.assertEqual(
                     await websocket.next_json(),
@@ -189,7 +195,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "Fresh turn.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
                 turn.assert_called_once()
@@ -206,7 +211,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Published.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -245,7 +249,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "Published.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
                 resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
@@ -276,7 +279,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "Team-authoritative.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -330,7 +332,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "late completion",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -434,7 +435,14 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "hello", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "hello",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                    }
                 )
                 event = await websocket.next_json()
                 with self.assertRaises(TimeoutError):
@@ -489,7 +497,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "hello",
                         "clarification": None,
-                        "routine_proposal": None,
                         "debug": sensitive_marker,
                     },
                 )

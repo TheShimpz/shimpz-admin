@@ -22,7 +22,6 @@ from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
-from history import context as history_context
 from history import delivery as history_delivery
 from history import store as history
 from team import bridge as team
@@ -64,6 +63,7 @@ _session_status = socket_boundary.session_status
 STATIC_ORIGINS = _configured_origins()
 _Turn = connection.Turn
 _Connection = connection.Connection
+_request_identity = connection.request_identity
 _SyncSnapshot = connection.SyncSnapshot
 _error_terminal = projection.error_terminal
 _projected_event = projection.projected_event
@@ -220,10 +220,10 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 def _submit_team_turn(
     team_id: str,
     payload: dict[str, object],
-    conversation: tuple[history_context.Entry, ...],
+    turn: _Turn,
 ) -> tuple[concurrent.futures.Future, asyncio.Queue[dict[str, object]]]:
     progress, report = _progress_channel()
-    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, conversation, report)
+    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, turn.conversation, turn.request, report)
     return future, progress
 
 
@@ -240,7 +240,7 @@ async def _continue_team_turn(
             connection.active = None
         return
     try:
-        future, progress = _submit_team_turn(team_id, payload, turn.conversation)
+        future, progress = _submit_team_turn(team_id, payload, turn)
     except ExecutorSaturatedError:
         await _send_terminal_once(websocket, connection, turn, _error_terminal(429, "local chat capacity reached"))
         if connection.active is turn:
@@ -580,7 +580,7 @@ async def _admit_chat_payload(
     if set(frame) != {"type", *team.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            _error_terminal(400, "chat frame requires message, files, assistant_ids, and locale"),
+            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
         )
         return None
     try:
@@ -662,6 +662,7 @@ async def _dispatch_chat(
         lifecycle_stop=threading.Event(),
         history_id=_take_history_id(connection),
         conversation=conversation,
+        request=_request_identity(connection, team_id, payload),
     )
     connection.active = turn
     turn.delivery = asyncio.create_task(

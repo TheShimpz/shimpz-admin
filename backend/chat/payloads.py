@@ -7,6 +7,7 @@ import re
 from team.transport import TeamRequestError
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import supervisor as supervisor_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -17,8 +18,9 @@ MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
 MAX_HUMAN_TEXT_CHARS = 16_000
 MAX_HUMAN_CHOICES = 32
 MAX_HUMAN_CHOICE_CHARS = 128
-# The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090).
-CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale"})
+# The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090), and `timezone`
+# the browser's IANA zone, the default zone of a Routine the message creates (ADR-0092), or null.
+CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale", "timezone"})
 
 
 def canonical_assistant_id(value: object) -> str:
@@ -35,24 +37,31 @@ def canonical_challenge_id(value: object) -> str:
 
 
 def canonical_team_chat_body(payload: object) -> dict[str, object]:
-    """Validate the Team chat body: the browser's chat fields plus Admin's server-derived conversation window."""
-    if not isinstance(payload, dict) or set(payload) != team_contract.CHAT_BODY_FIELDS:
-        raise TeamRequestError("Team chat requires message, files, assistant_ids, conversation, and locale")
+    """Validate the Team chat body: the browser's chat fields plus Admin's conversation window and request identity."""
+    if not isinstance(payload, dict) or set(payload) != team_contract.LOCAL_CHAT_BODY_FIELDS:
+        raise TeamRequestError("Team chat requires the chat fields, conversation, and request")
     conversation = team_contract.canonical_conversation(payload["conversation"])
     if conversation is None:
         raise TeamRequestError("conversation window is invalid")
+    request = team_contract.canonical_request_identity(payload["request"])
+    if request is None:
+        raise TeamRequestError("request identity is invalid")
     body = canonical_chat_payload({key: payload[key] for key in CHAT_PAYLOAD_FIELDS})
     body["conversation"] = conversation
+    body["request"] = request
     return body
 
 
 def canonical_chat_payload(payload: object) -> dict[str, object]:
     """Validate one explicit Assistant scope without treating an empty scope as all, in one interface language."""
     if not isinstance(payload, dict) or set(payload) != CHAT_PAYLOAD_FIELDS:
-        raise TeamRequestError("chat requires message, files, assistant_ids, and locale")
+        raise TeamRequestError("chat requires message, files, assistant_ids, locale, and timezone")
     locale = team_contract.canonical_locale(payload["locale"])
     if locale is None:
         raise TeamRequestError("locale must be one interface language")
+    timezone = payload["timezone"]
+    if timezone is not None and routine_contract.canonical_timezone(timezone) is None:
+        raise TeamRequestError("timezone must be one IANA zone name or null")
     message = payload["message"]
     if not isinstance(message, str) or not (message := message.strip()):
         raise TeamRequestError("message must be non-empty")
@@ -75,6 +84,7 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
         "files": canonical_files,
         "assistant_ids": canonical_assistant_ids,
         "locale": locale,
+        "timezone": timezone,
     }
 
 

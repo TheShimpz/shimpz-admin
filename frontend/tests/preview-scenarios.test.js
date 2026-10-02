@@ -3,14 +3,10 @@ import test from 'node:test';
 
 import { renderClarification } from '../src/lib/clarification.js';
 import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
+import { parseRoutineRunEntry } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
-
-function propose(scenario, message) {
-  const [done] = scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] });
-  return done.routine_proposal;
-}
 
 test('a scenario answers only what it declares and fails closed otherwise', () => {
   for (const name of SCENARIOS) {
@@ -35,36 +31,24 @@ test('scenarios never share state, and a caller cannot mutate one through a resp
   assert.equal(first.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });
 
-test('a chat proposal previews its own words and is consumed once into a distinct Routine', () => {
+test('a recurring chat request creates its Routine directly with a created notice and no card', () => {
   const scenario = createScenario('ready');
-  const [empty] = scenario.chat.message({ type: 'chat', message: 'List my DNS zones now', files: [], assistant_ids: [] });
-  assert.equal(empty.routine_proposal, null);
-  const daily = propose(scenario, 'Every day at 9, check my certificates');
-  const weekly = propose(scenario, 'Every Monday, list my DNS zones');
-  assert.notEqual(daily.proposal_id, weekly.proposal_id);
-
-  const preview = scenario.respond({
-    method: 'POST',
-    path: `${ROUTINES}/proposals/${daily.proposal_id}/preview`,
-    body: { timezone: 'America/Sao_Paulo' },
-  }).json;
-  assert.equal(preview.quote, 'Every day at 9, check my certificates');
-  assert.equal(preview.timezone, 'America/Sao_Paulo');
-
-  const created = [daily, weekly].map((proposal) => scenario.respond({
-    method: 'POST',
-    path: ROUTINES,
-    body: { proposal_id: proposal.proposal_id, timezone: 'UTC' },
-  }).json.routine);
-  assert.notEqual(created[0].routine_id, created[1].routine_id);
-  assert.equal(created[0].quote, daily.quote);
-  const reused = scenario.respond({ method: 'POST', path: ROUTINES, body: { proposal_id: daily.proposal_id } });
-  assert.equal(reused.status, 404);
-  assert.equal(
-    scenario.respond({ method: 'POST', path: `${ROUTINES}/proposals/${daily.proposal_id}/preview`, body: {} }).status,
-    404,
-  );
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 2);
+  const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
+  const [once] = scenario.chat.message(frame('List my DNS zones now'));
+  assert.equal(Object.hasOwn(once, 'routine_proposal'), false);
+  assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
+  scenario.chat.message(frame('Every day at 9, check my certificates'));
+  scenario.chat.message(frame('Every Monday, list my DNS zones'));
+  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.equal(routines.length, 2);
+  assert.notEqual(routines[0].routine_id, routines[1].routine_id);
+  assert.equal(routines[0].timezone, 'America/Sao_Paulo');
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const notices = entries.map(parseRoutineRunEntry);
+  assert.deepEqual(notices.map((notice) => notice.outcome), ['created', 'created']);
+  assert.equal(notices[0].quote, 'Every day at 9, check my certificates');
+  // There is no confirmation or preview route any more.
+  assert.equal(scenario.respond({ method: 'POST', path: ROUTINES, body: {} }), null);
 });
 
 test('runs are stopped or released by id, and the chat socket answers a sync', () => {

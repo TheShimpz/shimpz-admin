@@ -1,5 +1,5 @@
 import { parseClarification, renderClarification } from './clarification.js';
-import { parseRoutineProposal, parseRoutineRunEntry } from './routine.js';
+import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
@@ -88,7 +88,6 @@ function installAssistant(value, status) {
 function messageEntry(value, suffix, status) {
   const assistant = value.role === 'assistant';
   const clarified = assistant && Object.hasOwn(value, 'clarification');
-  const proposed = assistant && Object.hasOwn(value, 'routine_proposal');
   // What the turn consumed is kept with its reply only; it is the same closed shape as the done frame's.
   const used = assistant && Object.hasOwn(value, 'usage');
   const expected = assistant
@@ -99,19 +98,9 @@ function messageEntry(value, suffix, status) {
       'role',
       'text',
       ...(clarified ? ['clarification'] : []),
-      ...(proposed ? ['routine_proposal'] : []),
       ...(used ? ['usage'] : []),
     ]
     : ['id', 'kind', 'role', 'text'];
-  let routineProposal = null;
-  if (proposed) {
-    try {
-      routineProposal = parseRoutineProposal(value.routine_proposal);
-    } catch {
-      throw invalidHistory(status);
-    }
-    if (routineProposal === null) throw invalidHistory(status);
-  }
   let usage = null;
   if (used) {
     try {
@@ -146,7 +135,6 @@ function messageEntry(value, suffix, status) {
     ),
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
-    ...(routineProposal ? { routineProposal } : {}),
     ...(usage ? { usage } : {}),
   };
 }

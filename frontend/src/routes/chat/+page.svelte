@@ -12,7 +12,6 @@
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarificationAnswer } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
-  import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import { newerRoutineEntries } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
@@ -408,7 +407,6 @@
         text: entry.text,
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
-        ...(entry.routineProposal ? { routineProposal: entry.routineProposal } : {}),
         ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
       };
     }
@@ -1320,7 +1318,6 @@
           author: incoming.team_name,
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
-          ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
           ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
         }];
         clearError();
@@ -1969,13 +1966,6 @@
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
                     <Markdown markdown={assistantTurn.text} variant="chat" />
-                  {/if}
-                  {#if assistantTurn.routineProposal}
-                    <RoutineProposalCard
-                      teamId={selectedTeamId}
-                      proposal={assistantTurn.routineProposal}
-                      copy={$t('routine')}
-                    />
                   {/if}
                   {#if assistantTurn.installPlan}
                     <div

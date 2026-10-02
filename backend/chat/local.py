@@ -26,7 +26,6 @@ from team import bridge as team
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
-from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -34,9 +33,9 @@ MAX_REPLY_CHARS = 60_000
 MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal", "trace_id"})
+_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
 # A done event's public fields; a chat reply may carry one Routine proposal for the confirmation card (ADR-0086).
-DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal"})
+DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
@@ -668,12 +667,6 @@ def _project_turn(
         clarification = team_contract.canonical_clarification(clarification)
         if clarification is None or reply != team_contract.render_clarification(clarification):
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    proposal = response.body.get("routine_proposal")
-    if proposal is not None:
-        # Only a closed, one-use proposal reaches the card; the Team keeps its binding (ADR-0086).
-        proposal = routine_contract.canonical_proposal(proposal)
-        if proposal is None:
-            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     usage = response.body.get(USAGE_FIELD)
     if USAGE_FIELD in response.body:
         # What the turn consumed is presentation only; it must match the closed Team shape.
@@ -682,7 +675,7 @@ def _project_turn(
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = " ".join(
         (
-            f"{team_name} {reply} {_clarification_text(clarification)} {proposal['quote'] if proposal else ''}",
+            f"{team_name} {reply} {_clarification_text(clarification)}",
             *(f"{model['provider']} {model['model']}" for model in (usage["models"] if usage else ())),
         )
     )
@@ -705,7 +698,6 @@ def _project_turn(
             "team_name": team_name,
             "reply": reply,
             "clarification": clarification,
-            "routine_proposal": proposal,
             **({USAGE_FIELD: usage} if usage is not None else {}),
         },
     )
@@ -764,14 +756,16 @@ def turn(
     team_id: object,
     payload: object,
     conversation: tuple[conversation_context.Entry, ...],
+    request: dict[str, object],
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
 ) -> team.TeamResponse:
-    """Start one Team turn with the committed presentation history captured before its user row."""
+    """Start one Team turn with the committed history before its user row and the message's request identity."""
     wire = [{"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in conversation]
 
     def team_body(value: object) -> dict[str, object]:
         # A non-object browser payload reaches the Team body validator unchanged and fails closed there.
-        return team.canonical_team_chat_body({**value, "conversation": wire} if isinstance(value, dict) else value)
+        extra = {"conversation": wire, "request": request}
+        return team.canonical_team_chat_body({**value, **extra} if isinstance(value, dict) else value)
 
     # Team renders a new or already pending human request in the chat's interface language (ADR-0091).
     locale = payload.get("locale") if isinstance(payload, dict) else None

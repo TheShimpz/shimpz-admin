@@ -24,7 +24,6 @@ from routine import manage
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
 ROUTINE = VECTORS["routine"]["valid"][0]
 RUN = VECTORS["run"]["valid"][1]
-PREVIEW = VECTORS["preview"]["valid"][0]
 TRACE = "a" * 32
 ID = "c" * 32
 
@@ -52,29 +51,12 @@ class RoutineManageTests(unittest.TestCase):
         return mock.patch.object(transport, "_call", return_value=response)
 
     def test_each_answer_is_admitted_only_in_its_view_and_errors_carry_only_a_safe_code(self) -> None:
-        with self.call(answer(PREVIEW)) as call:
-            self.assertEqual(manage.preview("team_1", ID, {"timezone": "UTC"}).body, PREVIEW)
-        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/proposals/{ID}/preview", {"timezone": "UTC"})
-        for invalid in (
-            answer({**PREVIEW, "fits": "yes"}),
-            # A live preview of another proposal is never shown on this card.
-            answer({**PREVIEW, "proposal_id": "d" * 32}),
-            team.TeamResponse(200, {**PREVIEW, "trace_id": "not-a-trace"}),
-            team.TeamResponse(200, dict(PREVIEW)),
-        ):
-            with self.subTest(invalid=invalid), self.call(invalid):
-                self.assertEqual(
-                    manage.preview("team_1", ID, {"timezone": "UTC"}).body, {"code": "routine-response-invalid"}
-                )
-        with self.call(answer({"team_id": "team_1", "routine": ROUTINE})):
-            self.assertEqual(manage.confirm("team_1", {"proposal_id": ID, "timezone": "UTC"}).body["routine"], ROUTINE)
-        with self.call(answer({"team_id": "team_1", "routine_id": ID, "deleted": True})):
-            self.assertTrue(manage.confirm("team_1", {"proposal_id": ID, "timezone": "UTC"}).body["deleted"])
-        with self.call(answer({"team_id": "team_2", "routine": ROUTINE})):
-            self.assertEqual(manage.confirm("team_1", {"proposal_id": ID, "timezone": "UTC"}).status, 502)
         listed = {"team_id": "team_1", "routines": [ROUTINE], "runs": [RUN]}
         with self.call(answer(listed)):
             self.assertEqual(manage.list_routines("team_1").body, listed)
+        for untraced in (team.TeamResponse(200, dict(listed)), team.TeamResponse(200, {**listed, "trace_id": "x"})):
+            with self.subTest(untraced=untraced), self.call(untraced):
+                self.assertEqual(manage.list_routines("team_1").body, {"code": "routine-response-invalid"})
         for invalid in ({**listed, "runs": [{**RUN, "status": "running"}]}, {**listed, "routines": [ROUTINE] * 9}):
             with self.subTest(invalid=invalid), self.call(answer(invalid)):
                 self.assertEqual(manage.list_routines("team_1").status, 502)
@@ -106,11 +88,7 @@ class RoutineManageTests(unittest.TestCase):
     def test_requests_are_refused_before_reaching_team(self) -> None:
         with mock.patch.object(transport, "_call") as call:
             for refused in (
-                lambda: manage.preview("team_1", "x", {"timezone": "UTC"}),
-                lambda: manage.preview("team_1", ID, {"timezone": "../etc"}),
-                lambda: manage.preview("team_1", ID, {"timezone": "UTC", "extra": 1}),
-                lambda: manage.confirm("team_1", {"proposal_id": "x", "timezone": "UTC"}),
-                lambda: manage.confirm("Team 1", {"proposal_id": ID, "timezone": "UTC"}),
+                lambda: manage.list_routines("Team 1"),
                 lambda: manage.delete("team_1", "../x"),
                 lambda: manage.stop("team_1", "x"),
                 lambda: manage.resolve("team_1", ID, {"batch_fingerprint": "x"}),
@@ -128,21 +106,19 @@ class RoutineRouteTests(unittest.TestCase):
         self.assertEqual([route.path for route in hosted.routes if "routines" in route.path], [])
         local = FastAPI()
         routine_http.register(local, "local", mock.AsyncMock())
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 9)
+        # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route.
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 7)
+        self.assertFalse(any("proposals" in route.path for route in local.routes))
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,
             list_routines=mock.Mock(return_value=ok),
-            preview=mock.Mock(return_value=ok),
-            confirm=mock.Mock(return_value=ok),
             delete=mock.Mock(return_value=ok),
             stop=mock.Mock(return_value=ok),
             resolve=mock.Mock(return_value=ok),
         ):
             responses = [
                 routine_http.routines_list("team_1"),
-                asyncio.run(routine_http.routine_preview("team_1", ID, request({"timezone": "UTC"}))),
-                asyncio.run(routine_http.routine_confirm("team_1", request({"proposal_id": ID, "timezone": "UTC"}))),
                 asyncio.run(routine_http.routine_delete("team_1", ID)),
                 asyncio.run(routine_http.routine_stop("team_1", ID)),
                 asyncio.run(routine_http.routine_resolve("team_1", ID, request({"batch_fingerprint": "e" * 64}))),
