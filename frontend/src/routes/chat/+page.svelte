@@ -2056,6 +2056,11 @@
                       </div>
                     {/if}
                   {/if}
+                  {#if assistantTurn.usage}
+                    <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
+                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
+                    </p>
+                  {/if}
                   <ExecutionReceipt
                     events={assistantTurn.receipt ?? []}
                     label={copy.progressStagesExecuted}
@@ -2063,11 +2068,6 @@
                     teamName={assistantTurn.author}
                     {assistantNames}
                   />
-                  {#if assistantTurn.usage}
-                    <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
-                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
-                    </p>
-                  {/if}
                 </Message>
                 {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
                   <!-- An install that continues the requested task keeps showing that task's execution stages. -->
