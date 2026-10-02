@@ -52,6 +52,18 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
                     self.assertIsNone(admit(value))
             self.assertIsNone(admit(["not", "a", "view"]))
 
+    def test_run_diagnostics_admit_exactly_the_golden_vectors(self) -> None:
+        for value in VECTORS["routine_diagnostics"]["valid"]:
+            with self.subTest(value=value):
+                self.assertEqual(routine_contract.canonical_diagnostics(value), value)
+        for value in VECTORS["routine_diagnostics"]["invalid"]:
+            with self.subTest(value=value):
+                self.assertIsNone(routine_contract.canonical_diagnostics(value))
+        self.assertIsNone(routine_contract.canonical_failure([]))
+        self.assertIsNone(routine_contract.canonical_diagnostic([]))
+        self.assertFalse(routine_contract._diagnostic_text("lone \ud800 surrogate"))
+        self.assertFalse(routine_contract._diagnostic_text(7))
+
     def test_notice_details_are_closed_and_never_carry_action_data(self) -> None:
         valid = {
             "done": {"reply": "Updated."},
