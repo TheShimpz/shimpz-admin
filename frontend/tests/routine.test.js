@@ -10,6 +10,7 @@ import {
   deleteRoutine,
   fillRoutineCopy,
   instantWords,
+  minuteWords,
   isQuote,
   isSchedule,
   isTimezone,
@@ -22,6 +23,7 @@ import {
   parseRoutineView,
   isSteps,
   parseRunView,
+  readRunDiagnostics,
   resumeRoutine,
   resumeRoutineIntegrations,
   RoutineError,
@@ -245,15 +247,23 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords({ kind: 'hourly', every: 6 }, words, 'en'), 'Every 6 hours');
   assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'Every day at 09:00');
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
-  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda domingo às 09:00');
+  // Portuguese weekdays take their own article: Todo sábado and Todo domingo, Toda segunda-feira.
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Todo domingo às 09:00');
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda segunda-feira às 09:00');
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      assert.doesNotMatch(scheduleWords({ kind: 'weekly', weekday, time: '09:00' }, catalog.schedule, locale), /\{|undefined/, locale);
+    }
+  }
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
   // A continuous Routine's pause and cap are numbers in the viewer's locale.
   const continuous = { kind: 'continuous', gap: 5, cap: 1000 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Continuously, 5 s after each run, up to 1,000 runs a day');
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s after each run, up to 1,000 a day');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
+  assert.match(minuteWords('2026-10-05T12:01:00Z', 'en'), /:01/);
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
@@ -545,4 +555,66 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.incident_id, card, 'skip'),
     (error) => error.code === 'routine-card-stale' && error.status === 409,
   );
+});
+
+// Team's diagnostics view (ADR-0092 section 8), as its golden vectors state it.
+const ATTEMPT = Object.freeze({
+  operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+  attempt: 1,
+  assistant_id: 'shimpz-cloudflare',
+  action: 'replace-dns-record',
+  recorded_at: '2026-10-05T12:00:03Z',
+  failure: {
+    error_type: 'httpx.HTTPStatusError',
+    message: "Client error '404 Not Found' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'",
+    provider: 'api.cloudflare.com',
+    http_status: 404,
+    response_excerpt: '{"success":false,"errors":[{"code":7003}]}',
+    redacted: true,
+    truncated: false,
+  },
+  condition: null,
+});
+const RUN_ID = 'b'.repeat(32);
+
+test("a run's execution details admit exactly Team's diagnostics view for that run", async () => {
+  const transport = { ...ATTEMPT, attempt: 2, failure: null, condition: 'exit-status:1' };
+  for (const diagnostics of [[], [ATTEMPT], [ATTEMPT, transport]]) {
+    const api = fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: structuredClone(diagnostics) }]]);
+    assert.deepEqual(await readRunDiagnostics(api.fetch, 'team_1', RUN_ID), diagnostics);
+    assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${RUN_ID}/diagnostics`);
+  }
+  const failure = ATTEMPT.failure;
+  for (const diagnostic of [
+    { ...ATTEMPT, condition: 'timeout' },
+    { ...ATTEMPT, failure: null },
+    { ...ATTEMPT, operation_id: '6f1c2b8e-3a4d-1c5e-9f60-718293a4b5c6' },
+    { ...ATTEMPT, attempt: 65 },
+    { ...ATTEMPT, recorded_at: '2026-02-30T12:00:00Z' },
+    { ...ATTEMPT, failure: null, condition: 'stderr: secret' },
+    { ...ATTEMPT, failure: { ...failure, message: 'bidi \u202e override' } },
+    { ...ATTEMPT, failure: { ...failure, message: 'x'.repeat(2049) } },
+    { ...ATTEMPT, failure: { ...failure, message: 'lone \ud800' } },
+    { ...ATTEMPT, failure: { ...failure, http_status: 99 } },
+    { ...ATTEMPT, failure: { ...failure, provider: 'Not A Host' } },
+    { ...ATTEMPT, failure: { ...failure, raw: 'output' } },
+    { ...ATTEMPT, stdout: 'output' },
+  ]) {
+    await assert.rejects(
+      readRunDiagnostics(fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: [diagnostic] }]]).fetch, 'team_1', RUN_ID),
+      (error) => error.code === 'routine-response-invalid',
+      JSON.stringify(diagnostic).slice(0, 160),
+    );
+  }
+  for (const body of [
+    { team_id: 'team_1', run_id: 'd'.repeat(32), diagnostics: [] },
+    { team_id: 'team_2', run_id: RUN_ID, diagnostics: [] },
+    { team_id: 'team_1', run_id: RUN_ID, diagnostics: Array(33).fill(ATTEMPT) },
+  ]) {
+    await assert.rejects(
+      readRunDiagnostics(fetcher([[200, body]]).fetch, 'team_1', RUN_ID),
+      (error) => error.code === 'routine-response-invalid',
+    );
+  }
+  await assert.rejects(readRunDiagnostics(fetcher([]).fetch, 'team_1', '../x'), (error) => error.code === 'routine-request-invalid');
 });

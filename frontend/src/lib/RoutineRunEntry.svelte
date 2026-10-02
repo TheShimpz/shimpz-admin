@@ -5,12 +5,16 @@
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
+  import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
+  import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
     fillRoutineCopy,
+    minuteWords,
     openRoutineCard,
     openRoutineChallenge,
+    resumeRoutine,
     resumeRoutineIntegrations,
     routineErrorMessage,
     scheduleWords,
@@ -34,6 +38,32 @@
   // The held run's recovery card (ADR-0092): Team's own card, opened for this person and shown with its choices in
   // Team's order before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
   let card = $state(null);
+  // The run's execution details are read from Team only when the person opens them.
+  let details = $state(false);
+
+  // A row that left its Routine paused offers Resume while Team still lists the Routine as paused and no unresolved
+  // incident holds it; a held run is settled through its card first, and resuming never bypasses that (ADR-0092).
+  let listed = $derived($routineContext.get(teamId));
+  let resumable = $derived(
+    ['paused', 'user-skipped', 'failed'].includes(entry.outcome) &&
+      Boolean(listed?.routines.some((routine) => routine.routine_id === entry.routineId && routine.paused &&
+        !routine.deleting && !routine.needs_reconfirm)) &&
+      !listed.incidents.some((incident) => incident.routine_id === entry.routineId),
+  );
+
+  async function resume() {
+    working = true;
+    result = '';
+    try {
+      await resumeRoutine(fetch, teamId, entry.routineId);
+      result = copy.run.resumed;
+      await loadTeamRoutines(fetch, teamId);
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    } finally {
+      working = false;
+    }
+  }
   let detail = $derived(entry.detail);
   let actions = $derived(
     (detail.actions ?? []).map(([assistant, action]) => `${assistant} · ${action}`).join(', '),
@@ -50,7 +80,8 @@
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
-      case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs });
+      // A minute's rollup is dated by the minute it covers, in the viewer's own time.
+      case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs, minute: minuteWords(entry.createdAt, $locale) });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
       case 'created':
       case 'changed':
@@ -88,7 +119,25 @@
   let wanted = $state(true);
   let recoverable = $derived((entry.outcome === 'held' || entry.outcome === 'paused') && !ended);
 
+  // A card answers only within Team's lifetime for it; once that passes it is withdrawn here, and the person opens
+  // a fresh one on purpose, so an idle page never keeps opening cards.
+  let expired = $state(false);
+  $effect(() => {
+    if (!card) return;
+    const opened = card;
+    const timer = setTimeout(() => {
+      if (card !== opened) return;
+      card = null;
+      expired = true;
+      result = copy.card.expired;
+    }, opened.expires_in * 1000);
+    return () => clearTimeout(timer);
+  });
+
   async function openCard() {
+    // Reopening after an expiry clears only that notice; a verdict shown after an answer stays.
+    if (expired) result = '';
+    expired = false;
     try {
       card = await openRoutineCard(fetch, teamId, entry.runId);
     } catch (error) {
@@ -108,7 +157,12 @@
   });
 
   function unresolvedWords(verdict) {
-    const words = { policy: copy.card.policy, unquiesced: copy.card.unquiesced, unclassified: copy.card.unclassified };
+    const words = {
+      policy: copy.card.policy,
+      unquiesced: copy.card.unquiesced,
+      unclassified: copy.card.unclassified,
+      exhausted: copy.card.exhausted,
+    };
     return words[verdict] ?? copy.card.unproven;
   }
 
@@ -227,7 +281,8 @@
       {#if entry.outcome === 'paused'}<p class="actions">{heldWords(card)}</p>{/if}
       <!-- Pular's consequence is stated before any choice is made. -->
       <p class="actions">{copy.card.skipConsequence}</p>
-      <div class="buttons">
+      <p class="actions">{fillRoutineCopy(copy.card.recommended, { choice: copy.card[card.recommended] })}</p>
+      <div class="buttons" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
           <Button
             size="sm"
@@ -240,7 +295,9 @@
       </div>
     {:else if !working}
       <div class="buttons">
-        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>{copy.list.retry}</Button>
+        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>
+          {expired ? copy.card.reopen : copy.list.retry}
+        </Button>
       </div>
     {/if}
   {:else if entry.outcome !== 'frozen' || ended}
@@ -262,7 +319,21 @@
       </Button>
     </div>
   {/if}
+  {#if entry.runId || resumable}
+    <div class="buttons">
+      {#if resumable}
+        <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>{copy.list.resume}</Button>
+      {/if}
+      {#if entry.runId}
+        <Button size="sm" variant="ghost" type="button" onclick={() => (details = true)}>{copy.details.open}</Button>
+      {/if}
+    </div>
+  {/if}
 </div>
+
+{#if details}
+  <RoutineRunDetails {teamId} runId={entry.runId} copy={copy.details} errors={copy.errors} onclose={() => (details = false)} />
+{/if}
 
 {#if challenge}
   <AssistantHumanRequestDialog

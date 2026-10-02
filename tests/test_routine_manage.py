@@ -27,6 +27,7 @@ RUN = VECTORS["run"]["valid"][1]
 INCIDENT = VECTORS["incident"]["valid"][0]
 CARD = {**VECTORS["card"]["valid"][0], "incident_id": "c" * 32}
 ANSWERED = {**VECTORS["card_answer"]["valid"][0], "incident_id": "c" * 32}
+DIAGNOSTICS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_diagnostics"]["valid"]
 TRACE = "a" * 32
 ID = "c" * 32
 
@@ -90,6 +91,18 @@ class RoutineManageTests(unittest.TestCase):
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
         with self.call(answer({**ANSWERED, "status": "skipped"})):
             self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
+        # A run's execution details are admitted only in their sanitized view, for exactly the run asked for.
+        details = {**DIAGNOSTICS[1], "run_id": ID}
+        with self.call(answer(details)) as call:
+            self.assertEqual(manage.diagnostics("team_1", ID).body, details)
+        call.assert_called_once_with("GET", f"/v1/teams/team_1/routines/runs/{ID}/diagnostics")
+        for foreign in (
+            {**details, "run_id": "d" * 32},
+            {**details, "team_id": "team_2"},
+            {**details, "diagnostics": [{**details["diagnostics"][0], "raw_output": "secret"}]},
+        ):
+            with self.subTest(diagnostics=foreign), self.call(answer(foreign)):
+                self.assertEqual(manage.diagnostics("team_1", ID).status, 502)
         with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": False})) as call:
             self.assertFalse(manage.resume("team_1", ID).body["paused"])
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/{ID}/resume", {})
@@ -121,6 +134,7 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
                 lambda: manage.answer_card("team_1", ID, []),
                 lambda: manage.resume("team_1", "x"),
+                lambda: manage.diagnostics("team_1", "../x"),
             ):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
@@ -135,7 +149,7 @@ class RoutineRouteTests(unittest.TestCase):
         local = FastAPI()
         routine_http.register(local, "local", mock.AsyncMock())
         # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route.
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 9)
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 10)
         # The retired release of an uncertain run stays absent.
         self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
         self.assertFalse(any("proposals" in route.path for route in local.routes))
@@ -148,6 +162,7 @@ class RoutineRouteTests(unittest.TestCase):
             resume=mock.Mock(return_value=ok),
             open_card=mock.Mock(return_value=ok),
             answer_card=mock.Mock(return_value=ok),
+            diagnostics=mock.Mock(return_value=ok),
         ):
             chosen = {"nonce": "c" * 32, "choice": "pause"}
             responses = [
@@ -156,10 +171,12 @@ class RoutineRouteTests(unittest.TestCase):
                 asyncio.run(routine_http.routine_stop("team_1", ID)),
                 asyncio.run(routine_http.routine_resume("team_1", ID)),
                 asyncio.run(routine_http.routine_card("team_1", ID)),
+                asyncio.run(routine_http.routine_diagnostics("team_1", ID)),
                 asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen))),
             ]
             manage.answer_card.assert_called_once_with("team_1", ID, chosen)
             manage.open_card.assert_called_once_with("team_1", ID)
+            manage.diagnostics.assert_called_once_with("team_1", ID)
         for response in responses:
             self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
 

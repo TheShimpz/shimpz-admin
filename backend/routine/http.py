@@ -19,6 +19,7 @@ def register(application: FastAPI, profile: str, authenticate: answer.Authentica
     application.add_api_route(base, routines_list, methods=["GET"])
     application.add_api_route(base + "/{routine_id}", routine_delete, methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
+    application.add_api_route(base + "/runs/{run_id}/diagnostics", routine_diagnostics, methods=["GET"])
     application.add_api_route(base + "/{routine_id}/resume", routine_resume, methods=["POST"])
     application.add_api_route(base + "/incidents/{incident_id}/card", routine_card, methods=["POST"])
     application.add_api_route(base + "/incidents/{incident_id}/answer", routine_card_answer, methods=["POST"])
@@ -42,6 +43,10 @@ async def routine_delete(team_id: str, routine_id: str):
 
 async def routine_stop(team_id: str, run_id: str):
     return _no_store(await run_in_threadpool(team_http.response, lambda: manage.stop(team_id, run_id)))
+
+
+async def routine_diagnostics(team_id: str, run_id: str):
+    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.diagnostics(team_id, run_id)))
 
 
 async def routine_resume(team_id: str, routine_id: str):

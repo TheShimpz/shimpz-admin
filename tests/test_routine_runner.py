@@ -31,6 +31,8 @@ from protocol.http.v1 import supervisor as contract
 from routine import delivery, scheduler, team
 
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
+# Team's exact healthy-rollup delivery sequences and the transcript rows Admin must end with (ADR-0092 section 9).
+ROLLUPS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_rollup_delivery"]
 BATCH = VECTORS["notice_batch"]["valid"][0]
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
 CLAIMED = {"run": CLAIM, "next_due_at": None}
@@ -300,6 +302,30 @@ class RoutineTeamCallTests(unittest.TestCase):
                 self.assertRaises(team.RoutineTeamError),
             ):
                 team.run(CLAIM, identity)
+
+
+class RoutineRollupDeliveryTests(unittest.TestCase):
+    def test_teams_rollup_sequences_end_with_exactly_their_pinned_transcript_rows(self) -> None:
+        for name, case in ROLLUPS.items():
+            with tempfile.TemporaryDirectory() as directory, self.subTest(case=name):
+                acknowledged: list[dict[str, object]] = []
+                batches = [{"notices": batch, "more": False} for batch in case["deliveries"]]
+                with (
+                    mock.patch.object(history, "STORE_PATH", Path(directory) / "chat-history.sqlite3"),
+                    mock.patch.object(team, "notices", side_effect=batches),
+                    mock.patch.object(team, "acknowledge", side_effect=acknowledged.extend),
+                ):
+                    # Each delivery goes through the real transcript write before its exact versions are acknowledged.
+                    written = [delivery.deliver() for _batch in batches]
+                    entries = history.page("team_1")["entries"]
+                self.assertEqual(written, [len(batch) for batch in case["deliveries"]])
+                self.assertEqual(acknowledged, [item for batch in case["deliveries"] for item in batch])
+                rows = [
+                    [entry["id"].removesuffix(":routine"), entry["version"], entry["detail"]["runs"]]
+                    for entry in entries
+                    if entry["outcome"] == "healthy"
+                ]
+                self.assertEqual(rows, case["transcript"])
 
 
 class RoutineDeliveryTests(unittest.TestCase):

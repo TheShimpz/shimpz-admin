@@ -4444,10 +4444,11 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
+    const choices = (index) => rows.nth(index).getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect(rows).toHaveCount(2);
     // Each row shows exactly three choices, one action each, in the order of the card Team opened, before any answer.
-    await expect(rows.nth(0).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
-    await expect(rows.nth(1).getByRole('button')).toHaveText(['Pause', 'Verify', 'Skip']);
+    await expect(choices(0)).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect(choices(1)).toHaveText(['Pause', 'Verify', 'Skip']);
     expect(answers).toEqual([]);
     // The step shown is the card's, and Skip's consequence is stated before it is chosen.
     await expect(rows.nth(0)).toContainText('create-dns-record');
@@ -4455,11 +4456,11 @@ test.describe('Team Routines', () => {
     // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
     await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
-    await expect(rows.nth(0).getByRole('button')).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect(choices(0)).toHaveText(['Verify', 'Skip', 'Pause']);
     await rows.nth(0).getByRole('button', { name: 'Skip' }).click();
-    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await expect(choices(0)).toHaveCount(0);
     await rows.nth(1).getByRole('button', { name: 'Pause' }).click();
-    await expect(rows.nth(1).getByRole('button')).toHaveCount(0);
+    await expect(choices(1)).toHaveCount(0);
     expect(new Set(opened)).toEqual(new Set([held, paused]));
     // Every answer carries exactly the nonce of a card the row had shown, never one opened after the click.
     const nonces = opened.map((_id, index) => String(index + 1).repeat(32));
@@ -4467,6 +4468,191 @@ test.describe('Team Routines', () => {
     for (const answer of answers) expect(nonces).toContain(answer.nonce);
     const heldNonces = opened.flatMap((id, index) => (id === held ? [String(index + 1).repeat(32)] : []));
     expect(answers.slice(0, 2).map((answer) => answer.nonce)).toEqual(heldNonces.slice(0, 2));
+  });
+
+  test("a run's execution details are read for that run and shown only as text", async ({ page }) => {
+    const failed = 'c'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${failed}:routine`,
+          kind: 'routine-run',
+          notice_id: failed,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: failed,
+          outcome: 'failed',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { code: 'assistant-rpc-failed', actions: [] },
+          version: 1,
+        }],
+        before: null,
+      },
+    });
+    const requested = [];
+    const attempt = (number, failure, condition = null) => ({
+      operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+      attempt: number,
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+      recorded_at: '2026-10-01T12:00:03Z',
+      failure,
+      condition,
+    });
+    let answer = {
+      team_id: 'marketing',
+      run_id: failed,
+      diagnostics: [
+        attempt(1, {
+          error_type: 'httpx.HTTPStatusError',
+          message: '<img src=x onerror="window.leaked=1"> **not markdown**',
+          provider: 'api.cloudflare.com',
+          http_status: 404,
+          response_excerpt: '{"success":false}',
+          redacted: true,
+          truncated: false,
+        }),
+        attempt(2, null, 'exit-status:1'),
+      ],
+    };
+    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
+      requested.push(new URL(route.request().url()).pathname);
+      await route.fulfill({ json: answer });
+    });
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    await row.getByRole('button', { name: 'Execution details' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Execution details' });
+    await expect(dialog).toContainText('<img src=x onerror="window.leaked=1"> **not markdown**');
+    await expect(dialog).toContainText('The Action exited with status 1.');
+    await expect(dialog.locator('img, strong')).toHaveCount(0);
+    expect(await page.evaluate(() => window.leaked)).toBeUndefined();
+    expect(requested).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(dialog).toHaveCount(0);
+    // Details that name another run are refused, never shown.
+    answer = { ...answer, run_id: 'd'.repeat(32) };
+    await row.getByRole('button', { name: 'Execution details' }).click();
+    await expect(dialog).toContainText('The Routine request failed. Try again.');
+    await expect(dialog).not.toContainText('httpx.HTTPStatusError');
+  });
+
+  test('a Routine paused after its failures resumes from its transcript row, never past a held run', async ({ page }) => {
+    const failed = 'c'.repeat(32);
+    const row = (id, outcome, detail, routineId = ROUTINE_VIEW.routine_id) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: routineId,
+      quote: ROUTINE_VIEW.quote,
+      run_id: id,
+      outcome,
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version: 1,
+    });
+    const heldRoutine = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), paused: true };
+    await routeReadyChat(page, {
+      history: {
+        entries: [
+          row(failed, 'failed', { code: 'assistant-rpc-failed', actions: [] }),
+          row('f'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [] }, heldRoutine.routine_id),
+        ],
+        before: null,
+      },
+    });
+    let routines = [{ ...ROUTINE_VIEW, paused: true }, heldRoutine];
+    const incidents = [{
+      incident_id: '9'.repeat(32),
+      routine_id: heldRoutine.routine_id,
+      quote: heldRoutine.quote,
+      created_at: '2026-10-01T12:00:07Z',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+    }];
+    const resumed = [];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines, runs: [], incidents },
+    }));
+    await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
+      const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
+      resumed.push(routineId);
+      routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: false } : routine));
+      await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    // A Routine an unresolved incident still holds offers no Resume here; its card settles it first.
+    await expect(rows.nth(0).getByRole('button', { name: 'Resume' })).toBeVisible();
+    await expect(rows.nth(1).getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    await rows.nth(0).getByRole('button', { name: 'Resume' }).click();
+    await expect(rows.nth(0).getByRole('status')).toHaveText('Resumed. Its next run starts on schedule.');
+    await expect(rows.nth(0).getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
+  });
+
+  test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }) => {
+    const held = 'b'.repeat(32);
+    await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${held}:routine`,
+          kind: 'routine-run',
+          notice_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: held,
+          outcome: 'held',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+          version: 2,
+        }],
+        before: null,
+      },
+    });
+    let opened = 0;
+    const answers = [];
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+      opened += 1;
+      await route.fulfill({
+        json: {
+          team_id: 'marketing',
+          incident_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          revision: 1,
+          assistant_id: 'shimpz-cloudflare',
+          action: 'replace-dns-record',
+          nonce: String(opened).repeat(32),
+          expires_in: 300,
+          choices: ['verify', 'skip', 'pause'],
+          recommended: 'verify',
+        },
+      });
+    });
+    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+      answers.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: { team_id: 'marketing', incident_id: held, choice: 'skip', verdict: null, status: 'skipped' },
+      });
+    });
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    const choices = row.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
+    await page.clock.runFor(300_000);
+    await expect(choices).toHaveCount(0);
+    await expect(row.getByRole('status')).toHaveText('This recovery card expired.');
+    await page.clock.runFor(600_000);
+    expect(opened).toBe(1);
+    await row.getByRole('button', { name: 'Open the card again' }).click();
+    await expect(choices).toHaveText(['Verify', 'Skip', 'Pause']);
+    await expect(row.getByRole('status')).toHaveCount(0);
+    await choices.filter({ hasText: 'Skip' }).click();
+    // The answer carries the fresh card's nonce, never the expired one.
+    expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'skip' }]);
   });
 
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {
