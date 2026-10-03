@@ -369,7 +369,7 @@
   .note :global(.routine-icon--check) { color: var(--shimpz-color-cyan); }
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
-  .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding: 0.25rem 0.25rem 0.25rem 0.5rem; border-block-end: 1px solid var(--shimpz-color-border-subtle); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
+  .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding-block: 0.25rem; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .runs li :global(.routine-icon) { color: var(--shimpz-color-text-dim); width: 0.9rem; height: 0.9rem; }
   .runs li :global(.routine-icon--failed) { color: var(--shimpz-color-danger); }
   .runs li :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
