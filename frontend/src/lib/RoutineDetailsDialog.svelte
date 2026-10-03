@@ -301,7 +301,8 @@
   .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
-  .content { align-content: start; display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  /* Every page keeps one height so switching tabs does not resize the panel. */
+  .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   .label { margin: 0 0 0.35rem; color: var(--shimpz-color-text-dim); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   .quote { display: grid; gap: 0.25rem; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.5; overflow-wrap: break-word; }
   .quote .label { margin: 0; }
