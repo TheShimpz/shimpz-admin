@@ -118,7 +118,7 @@
    */
   .routine-run {
     --tone: var(--shimpz-color-text-dim);
-    --time-column: 2.5rem;
+    --time-column: 3.5rem;
     --head-line: 1.5rem;
     --rail-clearance: 0.1rem;
     position: relative;

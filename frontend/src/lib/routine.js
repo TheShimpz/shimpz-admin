@@ -1,6 +1,7 @@
 // Team Routines (ADR-0086, ADR-0092) as the browser admits them. Each parser mirrors Team's closed protocol view and
 // throws on any other shape; nothing here schedules or authorizes: Team creates a Routine from the user's own message.
 
+import { clockTime } from './chatDays.js';
 import { isLocale } from './locales.js';
 import { isInstant, jsonObject, TEAM_ID_RE } from './validate.js';
 
@@ -837,7 +838,7 @@ export function routineNotice(entry, { copy, locale, assistantName, steps = [] }
   return {
     tone: NOTICE_TONES[entry.outcome],
     status,
-    time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(entry.createdAt)),
+    time: clockTime(Date.parse(entry.createdAt), locale),
     lines,
     code: entry.outcome === 'failed' ? detail.code : '',
   };
