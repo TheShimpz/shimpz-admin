@@ -1,13 +1,12 @@
 <script>
   import { Button, Modal, Notice } from '@shimpz/frontend';
+  import { tick } from 'svelte';
 
   import { listChatHistory } from '$lib/chatHistory.js';
-  import DialogAction from '$lib/DialogAction.svelte';
   import { locale } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
-    deleteRoutine,
     clockWords,
     fillParts,
     fillRoutineCopy,
@@ -23,6 +22,7 @@
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
   import RoutineDecision from '$lib/RoutineDecision.svelte';
+  import RoutineDeletion from '$lib/RoutineDeletion.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
@@ -33,7 +33,8 @@
   // answered the panel returns to its usual pages and actions. Otherwise it shows three pages
   // behind a tab menu: its summary (what was asked, when it
   // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
-  // per action on every page: Pause or Resume, and Delete, which asks for a confirmation first.
+  // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
+  // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
   let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
 
   const id = $props.id();
@@ -41,6 +42,8 @@
   let busy = $state(false);
   let error = $state('');
   let confirming = $state(false);
+  let deleting = $state(false);
+  let deleteButton = $state();
   let recent = $state(null);
   let recentFailed = $state(false);
   let detailsRun = $state('');
@@ -153,25 +156,29 @@
     }
   }
 
-  async function remove() {
-    busy = true;
-    error = '';
-    try {
-      const { deleted } = await deleteRoutine(fetch, teamId, routine.routine_id);
-      if (deleted) {
-        dropTeamRoutine(teamId, routine.routine_id);
-        close();
-        ondeleted?.();
-        return;
-      }
-      // A run is still ending: Team keeps the Routine as being deleted until it has.
-      confirming = false;
-      await loadTeamRoutines(fetch, teamId).catch(() => {});
-    } catch (failure) {
-      error = routineErrorMessage(failure, copy.errors);
-    } finally {
-      busy = false;
+  async function removed(deleted) {
+    if (deleted) {
+      dropTeamRoutine(teamId, routine.routine_id);
+      close();
+      ondeleted?.();
+      return;
     }
+    // A run is still ending: Team keeps the Routine as being deleted until it has.
+    confirming = false;
+    await loadTeamRoutines(fetch, teamId).catch(() => {});
+  }
+
+  async function keep() {
+    confirming = false;
+    await tick();
+    deleteButton?.focus();
+  }
+
+  // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed.
+  function cancel(event) {
+    if (!confirming) return close(event);
+    event?.preventDefault();
+    if (!deleting) void keep();
   }
 
   // The tab menu follows the ARIA tabs pattern: arrow keys, Home, and End move between pages and select them.
@@ -198,18 +205,20 @@
   }
 </script>
 
-<Modal bind:element={dialog} class="routine-panel" size="lg" labelledBy={`${id}-title`} oncancel={close}>
-  <div class="frame">
+<Modal bind:element={dialog} class="routine-panel" size="lg" labelledBy={`${id}-title`} oncancel={cancel}>
+  <div class="frame" class:frame--deletion={confirming}>
     <header class="head">
-      <h2 id={`${id}-title`}>{routine.name}</h2>
-      {#if word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
-      <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
-        <RoutineIcon name="close" />
-      </Button>
+      <h2 id={`${id}-title`}>{confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}</h2>
+      {#if !confirming}
+        {#if word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
+        <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
+          <RoutineIcon name="close" />
+        </Button>
+      {/if}
     </header>
 
     <!-- A pending decision is the only thing the panel offers: no pages and no other action until it is answered. -->
-    {#if !pending}
+    {#if !pending && !confirming}
     <div class="bar">
     <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
       {#each PAGES as item (item.id)}
@@ -221,7 +230,7 @@
       {/each}
     </div>
     <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
-    {#if !routine.deleting && !confirming}
+    {#if !routine.deleting}
       <div class="actions">
         {#if routine.paused}
           <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
@@ -232,14 +241,17 @@
             aria-label={copy.panel.pause} title={copy.panel.pause}
             onclick={() => act(() => pauseRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="pause" /></Button>
         {/if}
-        <Button class="act act--delete" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+        <Button class="act act--delete" variant="ghost" size="sm" iconOnly type="button" disabled={busy} bind:element={deleteButton}
           aria-label={copy.list.delete} title={copy.list.delete} onclick={() => (confirming = true)}><RoutineIcon name="trash" /></Button>
       </div>
     {/if}
     </div>
     {/if}
 
-    {#if pending}
+    {#if confirming}
+      <RoutineDeletion {teamId} routineId={routine.routine_id} copy={copy.deletion} errors={copy.errors}
+        bind:busy={deleting} ondone={removed} oncancel={keep} />
+    {:else if pending}
       <div class="content decide">
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
@@ -299,16 +311,8 @@
         </ul>
       {/if}
 
-      {#if confirming}<Notice variant="warning">{copy.list.deleteConfirm}</Notice>{/if}
       {#if error}<Notice variant="error">{error}</Notice>{/if}
     </div>
-    {/if}
-
-    {#if confirming}
-      <footer class="foot">
-        <DialogAction kind="cancel" type="button" disabled={busy} onclick={() => (confirming = false)}>{copy.list.cancel}</DialogAction>
-        <DialogAction kind="danger" type="button" disabled={busy} onclick={remove}>{copy.list.delete}</DialogAction>
-      </footer>
     {/if}
   </div>
 </Modal>
@@ -331,6 +335,8 @@
     clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
     box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 68%);
   }
+  /* The deletion confirmation is the panel's header and one form under it. */
+  .frame--deletion { grid-template-rows: auto minmax(0, 1fr); }
   :global([dir="rtl"]) .frame { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
   .head {
     display: flex;
@@ -365,14 +371,14 @@
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   .bar { min-height: 2.5rem; }
+  /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
+  .content.decide { display: flex; flex-direction: column; padding-block-end: 0; --decision-inline: var(--shimpz-space-4); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
   .part { font-weight: 700; }
   .part--request { font-weight: inherit; }
-  /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
-  .content.decide { display: flex; flex-direction: column; padding-block-end: 0; --decision-inline: var(--shimpz-space-4); }
   /* The next run: a mono label over the instant, then how far off it is. */
   .next { display: grid; justify-items: start; gap: 0.3rem; margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -391,8 +397,6 @@
   .when { flex: none; color: var(--shimpz-color-text-dim); font-size: 0.72rem; }
   .runs :global(.run-details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   @media (max-width: 600px) { .when { display: none; } }
-  .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--shimpz-space-2); padding: var(--shimpz-space-3) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border); }
-  .foot > :global(:first-child) { margin-inline-end: auto; }
   @media (forced-colors: active) { .bar { border-color: CanvasText; } }
   /* On a phone the panel is a full-screen sheet. */
   @media (max-width: 600px) {

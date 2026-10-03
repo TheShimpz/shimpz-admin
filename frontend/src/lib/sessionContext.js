@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 function emptyContext() {
-  return { oauthCompletionMode: null, profile: null };
+  return { oauthCompletionMode: null, profile: null, passkeyRegistered: false };
 }
 
 export const sessionContext = writable(emptyContext());
@@ -17,5 +17,6 @@ export function setSessionContext(session) {
     throw new Error('invalid OAuth completion mode');
   }
   if (!['local', 'hosted'].includes(profile)) throw new Error('invalid Admin profile');
-  sessionContext.set({ oauthCompletionMode: mode, profile });
+  // Whether this address has a passkey is only a hint for what to offer first; Admin's own answer decides.
+  sessionContext.set({ oauthCompletionMode: mode, profile, passkeyRegistered: session?.passkey_registered === true });
 }

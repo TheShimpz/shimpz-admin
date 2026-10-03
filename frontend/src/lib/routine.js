@@ -89,11 +89,12 @@ export const MAX_ROLLUP_RUNS = 60 / MIN_CONTINUOUS_GAP_SECONDS;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
-  constructor(code, status = 0) {
+  constructor(code, status = 0, retryAfter = 0) {
     super(code);
     this.name = 'RoutineError';
     this.code = code;
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -256,7 +257,8 @@ async function request(fetcher, path, init = {}) {
   const body = await jsonObject(response);
   if (!response.ok) {
     const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
-    throw new RoutineError(code, response.status);
+    const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
+    throw new RoutineError(code, response.status, retryAfter);
   }
   return body;
 }
@@ -310,9 +312,33 @@ export async function listRoutines(fetcher, teamId) {
   };
 }
 
-export async function deleteRoutine(fetcher, teamId, routineId) {
+/**
+ * Deleting a Routine starts with the Supervisor password (ADR-0051). Admin answers with the second factors it accepts
+ * for this one Routine: always `totp`, and `passkey` with its options when this address has one.
+ */
+export async function beginRoutineDeletion(fetcher, teamId, routineId, password) {
+  if (typeof password !== 'string' || password.length < 1) throw new RoutineError('routine-request-invalid');
+  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/deletion`), {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+  const methods = body.methods;
+  const passkey = Array.isArray(methods) && methods.length === 2 && methods[0] === 'totp' && methods[1] === 'passkey';
+  const totpOnly = Array.isArray(methods) && methods.length === 1 && methods[0] === 'totp';
+  if (totpOnly && exact(body, ['methods'])) return { passkey: null };
+  if (passkey && exact(body, ['methods', 'passkey_options']) && body.passkey_options && typeof body.passkey_options === 'object') {
+    return { passkey: body.passkey_options };
+  }
+  throw new RoutineError('routine-response-invalid');
+}
+
+/** Spend the started deletion on exactly one second factor, `{ code }` or `{ credential }`; Admin then asks Team. */
+export async function deleteRoutine(fetcher, teamId, routineId, proof) {
+  const byCode = exact(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
+  const byPasskey = exact(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
+  if (!byCode && !byPasskey) throw new RoutineError('routine-request-invalid');
   return deleted(
-    await request(fetcher, teamPath(teamId, `/${opaque(routineId)}`), { method: 'DELETE' }),
+    await request(fetcher, teamPath(teamId, `/${opaque(routineId)}`), { method: 'DELETE', body: JSON.stringify(proof) }),
     teamId,
     routineId,
   );
@@ -745,7 +771,8 @@ export async function answerRoutineChallenge(fetcher, teamId, runId, frame) {
   }
   if (!response.ok) {
     const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
-    throw new RoutineError(code, response.status);
+    const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
+    throw new RoutineError(code, response.status, retryAfter);
   }
   return { status: resumed(body, teamId, runId) };
 }

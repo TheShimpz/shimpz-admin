@@ -39,7 +39,7 @@ test('scenarios never share state, and a caller cannot mutate one through a resp
   const first = createScenario('routines');
   const second = createScenario('routines');
   first.respond({ method: 'GET', path: ROUTINES }).json.routines[0].quote = 'changed';
-  first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}` });
+  first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}`, body: { code: '123456' } });
   const untouched = second.respond({ method: 'GET', path: ROUTINES }).json;
   assert.equal(untouched.routines.length, 2);
   assert.notEqual(untouched.routines[0].quote, 'changed');
@@ -306,4 +306,22 @@ test("every locale's Routine preview names and asks in that language, through th
     assert.equal(created.clarification, null, locale);
     assert.equal(asking.respond({ method: 'GET', path: ROUTINES }).json.routines[0].schedule.cap, 500, locale);
   }
+});
+
+test('the preview confirms a Routine deletion with a password and a code, and refuses the wrong ones', () => {
+  const scenario = createScenario('routines');
+  const routine = `${ROUTINES}/${'a'.repeat(32)}`;
+  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'wrong password' } }), {
+    status: 401,
+    json: { code: 'password-incorrect' },
+  });
+  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'any other' } }), {
+    status: 202,
+    json: { methods: ['totp'] },
+  });
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '000000' } }).json.code, 'code-incorrect');
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine }).json.code, 'authentication-expired');
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 2);
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '123456' } }).json.deleted, true);
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });

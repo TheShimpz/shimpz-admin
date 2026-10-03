@@ -1,6 +1,7 @@
 // Team Routine copy (ADR-0086, ADR-0092). A Routine is created or updated from the user's own chat message, and every
 // run asks for the authorizations its Actions declare.
 
+import { routineDeletionMessages } from './routineDeletionMessages.js';
 import { routineDetailsMessages } from './routineDetailsMessages.js';
 import { routinePanelMessages } from './routinePanelMessages.js';
 
@@ -20,7 +21,6 @@ export const routineMessages = {
       loading: 'Loading Routines…',
       needsReconfirm: 'Paused: its Assistants changed. Ask again in the chat to update it.',
       delete: 'Delete',
-      deleteConfirm: 'Delete this Routine? A run in progress is stopped.',
       resume: "Resume",
       stop: 'Stop',
       cancel: 'Cancel',
@@ -89,6 +89,7 @@ export const routineMessages = {
       reopen: "Open the card again",
     },
     details: routineDetailsMessages.en,
+    deletion: routineDeletionMessages.en,
     errors: {
       generic: 'The Routine request failed. Try again.',
       expired: 'This request expired. Review the run again.',
@@ -114,7 +115,6 @@ export const routineMessages = {
       loading: 'Carregando rotinas…',
       needsReconfirm: 'Pausada: seus Assistants mudaram. Peça de novo no chat para atualizá-la.',
       delete: 'Excluir',
-      deleteConfirm: 'Excluir esta rotina? Uma execução em andamento é interrompida.',
       resume: "Retomar",
       stop: 'Parar',
       cancel: 'Cancelar',
@@ -183,6 +183,7 @@ export const routineMessages = {
       reopen: "Abrir o cartão de novo",
     },
     details: routineDetailsMessages.pt,
+    deletion: routineDeletionMessages.pt,
     errors: {
       generic: 'O pedido da rotina falhou. Tente de novo.',
       expired: 'Este pedido expirou. Revise a execução de novo.',
@@ -208,7 +209,6 @@ export const routineMessages = {
       loading: 'Cargando rutinas…',
       needsReconfirm: 'En pausa: sus Assistants cambiaron. Pídela de nuevo en el chat para actualizarla.',
       delete: 'Eliminar',
-      deleteConfirm: '¿Eliminar esta rutina? Una ejecución en curso se detiene.',
       resume: "Reanudar",
       stop: 'Detener',
       cancel: 'Cancelar',
@@ -277,6 +277,7 @@ export const routineMessages = {
       reopen: "Abrir la tarjeta de nuevo",
     },
     details: routineDetailsMessages.es,
+    deletion: routineDeletionMessages.es,
     errors: {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
       expired: 'Esta solicitud caducó. Revisa la ejecución de nuevo.',
@@ -302,7 +303,6 @@ export const routineMessages = {
       loading: '正在加载例行任务…',
       needsReconfirm: '已暂停：其 Assistants 已更改。请在聊天中再次请求以更新。',
       delete: '删除',
-      deleteConfirm: '删除此例行任务？正在进行的运行会被停止。',
       resume: "恢复运行",
       stop: '停止',
       cancel: '取消',
@@ -371,6 +371,7 @@ export const routineMessages = {
       reopen: "重新打开卡片",
     },
     details: routineDetailsMessages.zh,
+    deletion: routineDeletionMessages.zh,
     errors: {
       generic: '例行任务请求失败。请重试。',
       expired: '此请求已过期。请重新查看这次运行。',
@@ -396,7 +397,6 @@ export const routineMessages = {
       loading: 'Chargement des routines…',
       needsReconfirm: 'En pause : ses Assistants ont changé. Redemandez-la dans le chat pour la mettre à jour.',
       delete: 'Supprimer',
-      deleteConfirm: 'Supprimer cette routine ? Une exécution en cours est arrêtée.',
       resume: "Reprendre",
       stop: 'Arrêter',
       cancel: 'Annuler',
@@ -465,6 +465,7 @@ export const routineMessages = {
       reopen: "Rouvrir la carte",
     },
     details: routineDetailsMessages.fr,
+    deletion: routineDeletionMessages.fr,
     errors: {
       generic: 'La demande de routine a échoué. Réessayez.',
       expired: 'Cette demande a expiré. Examinez de nouveau l’exécution.',
@@ -490,7 +491,6 @@ export const routineMessages = {
       loading: 'Routinen werden geladen…',
       needsReconfirm: 'Pausiert: Ihre Assistants haben sich geändert. Bitten Sie im Chat erneut, um sie zu aktualisieren.',
       delete: 'Löschen',
-      deleteConfirm: 'Diese Routine löschen? Eine laufende Ausführung wird gestoppt.',
       resume: "Fortsetzen",
       stop: 'Stoppen',
       cancel: 'Abbrechen',
@@ -559,6 +559,7 @@ export const routineMessages = {
       reopen: "Karte erneut öffnen",
     },
     details: routineDetailsMessages.de,
+    deletion: routineDeletionMessages.de,
     errors: {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
       expired: 'Diese Anfrage ist abgelaufen. Prüfen Sie den Lauf erneut.',
@@ -584,7 +585,6 @@ export const routineMessages = {
       loading: 'ルーティンを読み込んでいます…',
       needsReconfirm: '一時停止中：Assistants が変更されました。チャットで再度依頼して更新してください。',
       delete: '削除',
-      deleteConfirm: 'このルーティンを削除しますか？実行中の実行は停止されます。',
       resume: "再開",
       stop: '停止',
       cancel: 'キャンセル',
@@ -653,6 +653,7 @@ export const routineMessages = {
       reopen: "カードをもう一度開く",
     },
     details: routineDetailsMessages.ja,
+    deletion: routineDeletionMessages.ja,
     errors: {
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
       expired: 'このリクエストは期限切れです。実行をもう一度確認してください。',
@@ -678,7 +679,6 @@ export const routineMessages = {
       loading: 'جارٍ تحميل الروتينات…',
       needsReconfirm: 'متوقف مؤقتًا: تغيّرت Assistants الخاصة به. اطلبه مجددًا في المحادثة لتحديثه.',
       delete: 'حذف',
-      deleteConfirm: 'حذف هذا الروتين؟ يتوقف أي تشغيل جارٍ.',
       resume: "استئناف",
       stop: 'إيقاف',
       cancel: 'إلغاء',
@@ -747,6 +747,7 @@ export const routineMessages = {
       reopen: "افتح البطاقة مرة أخرى",
     },
     details: routineDetailsMessages.ar,
+    deletion: routineDeletionMessages.ar,
     errors: {
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',
       expired: 'انتهت صلاحية هذا الطلب. راجع التشغيل مرة أخرى.',
