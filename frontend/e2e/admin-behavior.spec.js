@@ -13,6 +13,9 @@ import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_VIEW, TEAMS } from './
 // the independent shell and boot contracts continue using the full worker pool.
 test.describe.configure({ mode: 'default' });
 
+// Every stored chat history row carries the UTC time Admin wrote it.
+const HISTORY_AT = '2026-10-01T12:00:00Z';
+
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
 );
@@ -902,9 +905,10 @@ test('opens Chat directly when the provider key already exists', async ({ page }
 
 const KEYLESS_HISTORY = {
   entries: [
-    { id: `${'c'.repeat(32)}:user`, kind: 'message', role: 'user', text: 'Summarize the launch plan' },
+    { id: `${'c'.repeat(32)}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Summarize the launch plan' },
     {
       id: `${'c'.repeat(32)}:reply`,
+      created_at: HISTORY_AT,
       kind: 'message',
       role: 'assistant',
       text: 'The launch plan has three milestones.',
@@ -1152,9 +1156,10 @@ test('the composer waits while the latest question is open and the card\'s answe
 // Two open questions come back from the history: the composer waits for the latest, and either card answers.
 function twoOpenQuestions(firstRequest, secondRequest) {
   return [['a'.repeat(32), firstRequest], ['b'.repeat(32), secondRequest]].flatMap(([turn, text]) => [
-    { id: `${turn}:user`, kind: 'message', role: 'user', text },
+    { id: `${turn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text },
     {
       id: `${turn}:reply`,
+      created_at: HISTORY_AT,
       kind: 'message',
       role: 'assistant',
       text: CLARIFICATION_REPLY,
@@ -1350,9 +1355,10 @@ test('an answer that would exceed one message is refused and nothing is sent', a
 test('a reloaded question stays bound to its own request', async ({ page }) => {
   const turn = 'd'.repeat(32);
   const asked = [
-    { id: `${turn}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
+    { id: `${turn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
     {
       id: `${turn}:reply`,
+      created_at: HISTORY_AT,
       kind: 'message',
       role: 'assistant',
       text: CLARIFICATION_REPLY,
@@ -1375,17 +1381,18 @@ test('a reloaded question answered in another language offers no second answer',
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${first}:user`, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
+        { id: `${first}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
         {
           id: `${first}:reply`,
+          created_at: HISTORY_AT,
           kind: 'message',
           role: 'assistant',
           text: CLARIFICATION_REPLY,
           author: 'Marketing',
           clarification: CLARIFICATION,
         },
-        { id: `${second}:user`, kind: 'message', role: 'user', text: composed },
-        { id: `${second}:reply`, kind: 'message', role: 'assistant', text: 'Here are this week’s models.', author: 'Marketing' },
+        { id: `${second}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: composed },
+        { id: `${second}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant', text: 'Here are this week’s models.', author: 'Marketing' },
       ],
       before: null,
     },
@@ -1657,9 +1664,10 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
   const chat = await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${secondTurn}:user`, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
+        { id: `${secondTurn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
         {
           id: `${secondTurn}:install`,
+          created_at: HISTORY_AT,
           kind: 'assistant-install',
           state: 'installed',
           assistants: [{
@@ -1673,6 +1681,7 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
         },
         {
           id: `${secondTurn}:reply`,
+          created_at: HISTORY_AT,
           kind: 'message',
           role: 'assistant',
           text: 'Your zone is example.com.',
@@ -1683,9 +1692,10 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
     },
     olderHistory: {
       entries: [
-        { id: `${firstTurn}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        { id: `${firstTurn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Install Cloudflare' },
         {
           id: `${firstTurn}:reply`,
+          created_at: HISTORY_AT,
           kind: 'message',
           role: 'assistant',
           text: 'I will install the required Assistant.',
@@ -1729,8 +1739,8 @@ function longHistory(prefix, count, before, { detail = true } = {}) {
     entries: Array.from({ length: count }, (_, index) => {
       const id = `${prefix}${String(index).padStart(31, '0')}`;
       return [
-        { id: `${id}:user`, kind: 'message', role: 'user', text: `${label} question ${index + 1}` },
-        { id: `${id}:reply`, kind: 'message', role: 'assistant',
+        { id: `${id}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: `${label} question ${index + 1}` },
+        { id: `${id}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant',
           text: detail ? `${label} answer ${index + 1}\n\n${'Detail line. '.repeat(20).trim()}` : `${label} answer ${index + 1}`,
           author: 'Marketing' },
       ];
@@ -1864,16 +1874,16 @@ test('keeps focus on a message link when older history arrives @browser-sensitiv
   const chat = await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${recent}:user`, kind: 'message', role: 'user', text: 'Show the current status' },
-        { id: `${recent}:reply`, kind: 'message', role: 'assistant',
+        { id: `${recent}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Show the current status' },
+        { id: `${recent}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant',
           text: 'Read the [current status](https://example.com/current).', author: 'Marketing' },
       ],
       before: cursor,
     },
     olderHistory: {
       entries: [
-        { id: `${earlier}:user`, kind: 'message', role: 'user', text: 'Show the earlier status' },
-        { id: `${earlier}:reply`, kind: 'message', role: 'assistant',
+        { id: `${earlier}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Show the earlier status' },
+        { id: `${earlier}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant',
           text: 'Earlier status is ready.', author: 'Marketing' },
       ],
       before: null,
@@ -1919,9 +1929,10 @@ test('restores the installed Assistant card after a successful OAuth return @bro
   const chat = await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
+        { id: `${turnId}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'List my Cloudflare DNS zones' },
         {
           id: `${turnId}:install`,
+          created_at: HISTORY_AT,
           kind: 'assistant-install',
           state: 'installed',
           assistants: [{
@@ -1969,9 +1980,10 @@ test('restores an already-installed Assistant result from durable history', asyn
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        { id: `${turnId}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Install Cloudflare' },
         {
           id: `${turnId}:install`,
+          created_at: HISTORY_AT,
           kind: 'assistant-install',
           state: 'installed',
           outcome: 'already-installed',
@@ -2001,9 +2013,10 @@ test('settles a failed Local install plan icon as unavailable instead of loading
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+        { id: `${turnId}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Install Cloudflare' },
         {
           id: `${turnId}:install`,
+          created_at: HISTORY_AT,
           kind: 'assistant-install',
           state: 'failed',
           status: 503,
@@ -2058,9 +2071,10 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${turnId}:user`, kind: 'message', role: 'user', text: 'Uninstall Cloudflare' },
+        { id: `${turnId}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Uninstall Cloudflare' },
         {
           id: `${turnId}:uninstall`,
+          created_at: HISTORY_AT,
           kind: 'assistant-uninstall',
           state: 'uninstalled',
           assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
@@ -3427,10 +3441,10 @@ test('a reply restored from history shows its usage line, and one stored without
   await routeReadyChat(page, {
     history: {
       entries: [
-        { id: `${first}:user`, kind: 'message', role: 'user', text: 'List my DNS zones' },
-        { id: `${first}:reply`, kind: 'message', role: 'assistant', text: 'Two zones.', author: 'Marketing', usage },
-        { id: `${second}:user`, kind: 'message', role: 'user', text: 'And the records?' },
-        { id: `${second}:reply`, kind: 'message', role: 'assistant', text: 'Four records.', author: 'Marketing' },
+        { id: `${first}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'List my DNS zones' },
+        { id: `${first}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant', text: 'Two zones.', author: 'Marketing', usage },
+        { id: `${second}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'And the records?' },
+        { id: `${second}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant', text: 'Four records.', author: 'Marketing' },
       ],
       before: null,
     },
@@ -5599,8 +5613,8 @@ test.describe('Team Routines', () => {
     const exchange = (prefix, index) => {
       const id = `${prefix}${String(index).padStart(31, '0')}`;
       return [
-        { id: `${id}:user`, kind: 'message', role: 'user', text: `Question ${prefix}${index}` },
-        { id: `${id}:reply`, kind: 'message', role: 'assistant', author: 'Marketing',
+        { id: `${id}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: `Question ${prefix}${index}` },
+        { id: `${id}:reply`, created_at: HISTORY_AT, kind: 'message', role: 'assistant', author: 'Marketing',
           text: `Answer ${prefix}${index}\n\n${'Detail line. '.repeat(30).trim()}` },
       ];
     };
