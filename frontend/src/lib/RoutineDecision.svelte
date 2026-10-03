@@ -21,8 +21,13 @@
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card with its three choices, or a frozen run's approval through chat's own dialog. Nothing runs until
   // the Supervisor answers. `onsettled` hears the outcome words once this decision is answered, and whether the same run
-  // was held again and so waits for a fresh decision.
-  let { teamId, teamName, runId, routineId, outcome, detail, copy, onsettled = () => {} } = $props();
+  // was held again and so waits for a fresh decision. With `onunavailable`, a card Team cannot open yet (a held run
+  // listed before its incident) keeps Retry here and lets the host refresh; without it, the decision simply ends.
+  let { teamId, teamName, runId, routineId, outcome, detail, copy, onsettled = () => {}, onunavailable = null } = $props();
+
+  // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
+  let mounted = true;
+  $effect(() => () => { mounted = false; });
 
   let challenge = $state(null);
   let rejection = $state(undefined);
@@ -88,7 +93,7 @@
 
   function finish(words, heldAgain = false) {
     ended = true;
-    onsettled(words, heldAgain);
+    if (mounted) onsettled(words, heldAgain);
   }
 
   // Set when a card is needed: at first, after each answer while the run is still held, and when the person retries
@@ -120,8 +125,9 @@
     } catch (error) {
       card = null;
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
-      if (error?.code === 'routine-incident-unavailable') finish('');
-      else result = routineErrorMessage(error, copy.errors);
+      if (error?.code !== 'routine-incident-unavailable') result = routineErrorMessage(error, copy.errors);
+      else if (!onunavailable) finish('');
+      else if (mounted) onunavailable();
     }
   }
 

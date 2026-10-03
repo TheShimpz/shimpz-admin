@@ -243,7 +243,8 @@
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
           <RoutineDecision {teamId} {teamName} runId={pending.runId} routineId={routine.routine_id}
-            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled} />
+            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
+            onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
         {/key}
         <!-- A run waiting for an approval can still be stopped without answering it. -->
         {#if pending.outcome === 'frozen'}
