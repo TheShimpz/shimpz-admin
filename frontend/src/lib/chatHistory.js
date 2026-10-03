@@ -1,3 +1,4 @@
+import { parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
@@ -90,6 +91,8 @@ function messageEntry(value, suffix, status) {
   const clarified = assistant && Object.hasOwn(value, 'clarification');
   // What the turn consumed is kept with its reply only; it is the same closed shape as the done frame's.
   const used = assistant && Object.hasOwn(value, 'usage');
+  // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
+  const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
   const expected = assistant
     ? [
       'author',
@@ -99,15 +102,16 @@ function messageEntry(value, suffix, status) {
       'text',
       ...(clarified ? ['clarification'] : []),
       ...(used ? ['usage'] : []),
+      ...(withheld ? ['restricted_actions'] : []),
     ]
     : ['id', 'kind', 'role', 'text'];
   let usage = null;
-  if (used) {
-    try {
-      usage = parseTaskUsage(value.usage);
-    } catch {
-      throw invalidHistory(status);
-    }
+  let restricted = null;
+  try {
+    if (used) usage = parseTaskUsage(value.usage);
+    if (withheld) restricted = parseRestrictedActions(value.restricted_actions);
+  } catch {
+    throw invalidHistory(status);
   }
   let clarification = null;
   if (clarified) {
@@ -136,6 +140,7 @@ function messageEntry(value, suffix, status) {
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
     ...(usage ? { usage } : {}),
+    ...(restricted ? { restricted_actions: restricted } : {}),
   };
 }
 
@@ -199,6 +204,8 @@ function guidanceEntry(value, suffix, status) {
     'assistant-install-target-required',
     'assistant-uninstall-target-required',
     'assistant-lifecycle-ambiguous',
+    'assistant-lifecycle-attachments',
+    'assistant-capability-attachments',
   ]);
   if (
     suffix !== 'guidance' ||

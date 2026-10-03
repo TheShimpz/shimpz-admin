@@ -1,3 +1,4 @@
+import { parseFileDisclosure, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { browserTimezone } from './routine.js';
@@ -1210,9 +1211,12 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (value.type === 'done') {
     let clarification = null;
     let usage = null;
+    let restricted = null;
     try {
       clarification = parseClarification(value.clarification);
       usage = parseTaskUsage(value.usage);
+      // The Actions Team withheld because the message's attachments were readable; never anything to run.
+      if (Object.hasOwn(value, 'restricted_actions')) restricted = parseRestrictedActions(value.restricted_actions);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
     }
@@ -1222,6 +1226,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
     // `usage` is optional: Team reports it only when a model call of the turn reported usage.
     if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
+    if (restricted) doneKeys.push('restricted_actions');
     if (
       !exactKeys(value, doneKeys) ||
       !TEAM_ID_RE.test(value.team_id) ||
@@ -1242,6 +1247,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       reply: value.reply,
       clarification,
       ...(usage ? { usage } : {}),
+      ...(restricted ? { restricted_actions: restricted } : {}),
     };
   }
   if (value.type === 'assistant-install-plan') {
@@ -1252,6 +1258,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       'assistant-install-target-required',
       'assistant-uninstall-target-required',
       'assistant-lifecycle-ambiguous',
+      'assistant-lifecycle-attachments',
+      'assistant-capability-attachments',
     ]);
     if (
       !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
@@ -1412,7 +1420,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     // Optional presentation beside the fingerprinted request (ADR-0090): the Brain's task-bound purpose and, only for
     // a Stored Input request, the key page its reviewed Assistant declared. The rendered copy, its concrete locale,
     // and the language pack's digest are required beside the canonical request (ADR-0091).
-    const optional = ['purpose', 'help_url'].filter((key) => Object.hasOwn(value, key));
+    // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
+    const optional = ['purpose', 'help_url', 'file'].filter((key) => Object.hasOwn(value, key));
     if (
       !exactKeys(value, [
         'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
@@ -1431,6 +1440,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     if (optional.includes('help_url') && (request.kind !== 'input:password' || request.stored_input === undefined)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
+    if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
     return {
       type: 'human-required',
       challenge_id: value.challenge_id,
@@ -1443,6 +1455,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       pack_digest: value.pack_digest,
       ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
       ...(optional.includes('help_url') ? { help_url: canonicalHelpUrl(value.help_url) } : {}),
+      ...(optional.includes('file') ? { file: parseFileDisclosure(value.file) } : {}),
     };
   }
   throw new LocalApiError('The local chat response is invalid.');
