@@ -297,7 +297,7 @@
         {#if failure.text}
           <Disclosure class="technical">
             {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
-            <div class="error">
+            <div class="technical-error">
               <p class="error-text">{failure.text}</p>
               {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
               {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
@@ -424,9 +424,9 @@
   .technical-summary { display: inline-flex; align-items: center; gap: 0.35rem; }
   .technical-summary :global(.routine-icon) { width: 0.8rem; height: 0.8rem; transition: transform var(--shimpz-duration-fast) var(--shimpz-ease); }
   .decision :global(.technical[open] .technical-summary .routine-icon) { transform: rotate(90deg); }
-  .error { display: grid; gap: 0.3rem; min-width: 0; }
+  .technical-error { display: grid; gap: 0.3rem; min-width: 0; }
   .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
+  .technical-error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
   /* The question heads the choice list it asks about. */
   .ask { margin: 0; padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3)) var(--shimpz-space-2); color: var(--shimpz-color-text); font: 600 0.95rem/1.35 var(--shimpz-font-sans); }
   .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
