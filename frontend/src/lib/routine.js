@@ -372,6 +372,29 @@ export function routineStatus(routine, runs = [], incidents = []) {
   return routine.schedule.kind === 'continuous' ? 'continuous' : 'healthy';
 }
 
+/**
+ * Each Routine status's tag tone: one border color per status, the same in every Routine surface. A healthy Routine
+ * has no tag.
+ */
+export const STATUS_TONES = Object.freeze({
+  recovery: 'danger',
+  deleting: 'danger',
+  reconfirm: 'warning',
+  paused: 'warning',
+  waiting: 'waiting',
+  running: 'accent',
+  continuous: 'accent',
+});
+
+/** A Routine notice's tag tone, matching the status it leaves its Routine in; other outcomes stay neutral. */
+export const OUTCOME_TONES = Object.freeze({
+  held: 'danger',
+  paused: 'warning',
+  'scope-changed': 'warning',
+  frozen: 'waiting',
+  healthy: 'accent',
+});
+
 /** Statuses that need the person, shown in words beside the Routine. */
 export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'waiting']);
 

@@ -4684,6 +4684,67 @@ test.describe('Team Routines', () => {
     expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
   });
 
+  test('decorations stay still while their control glitches on hover', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'hover is a pointer interaction');
+    const held = 'b'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${held}:routine`,
+          kind: 'routine-run',
+          notice_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: held,
+          outcome: 'held',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+          version: 2,
+        }],
+        before: null,
+      },
+    });
+    // A paused Routine with a held run: the Team's Routines button carries the attention dot.
+    await routeRoutines(page);
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        incident_id: held,
+        routine_id: ROUTINE_VIEW.routine_id,
+        revision: 1,
+        assistant_id: 'shimpz-cloudflare',
+        action: 'replace-dns-record',
+        nonce: '1'.repeat(32),
+        expires_in: 300,
+        choices: ['verify', 'skip', 'pause'],
+        recommended: 'verify',
+      },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    const recommended = row.getByRole('button', { name: 'Verify', exact: true });
+    await expect(recommended).toBeVisible();
+    const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
+    await expect(routines).toBeVisible();
+    // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
+    for (const [control, decoration] of [
+      [recommended, row.getByText('Recommended', { exact: true })],
+      [routines, page.locator('.routines-slot .attention')],
+    ]) {
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(400);
+      const before = await decoration.boundingBox();
+      expect(before).not.toBeNull();
+      await control.hover();
+      const during = [];
+      for (let sample = 0; sample < 8; sample += 1) {
+        during.push(await decoration.boundingBox());
+        await page.waitForTimeout(40);
+      }
+      for (const box of during) expect(box).toEqual(before);
+    }
+  });
+
   test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }) => {
     const held = 'b'.repeat(32);
     await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });

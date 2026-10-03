@@ -6,6 +6,7 @@
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineTag from '$lib/RoutineTag.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
@@ -15,6 +16,7 @@
     fillRoutineCopy,
     humanizeId,
     minuteWords,
+    OUTCOME_TONES,
     openRoutineCard,
     openRoutineChallenge,
     resumeRoutine,
@@ -310,7 +312,7 @@
     <RoutineIcon name="clock" />
     <!-- The card's name labels its group; a heading here would skip a level inside the chat. -->
     <p class="name" id={`${id}-name`} title={entry.quote}>{routineName}</p>
-    <span class={['tag', `tag--${TAG_ICONS[entry.outcome]}`]}><RoutineIcon name={TAG_ICONS[entry.outcome]} />{badge}</span>
+    <RoutineTag label={badge} icon={TAG_ICONS[entry.outcome]} tone={OUTCOME_TONES[entry.outcome] ?? 'neutral'} />
     {#if entry.runId}
       <Button
         class="details"
@@ -356,20 +358,23 @@
       <!-- One tile per choice, the recommended one first: its verb names it, its consequence describes it. -->
       <div class="tiles" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
+          <!-- The recommendation mark sits on the tile's static slot, not in the button its hover glitch animates. -->
+          <div class="tile-slot">
           <Button
             class={['tile', choice === card.recommended && 'is-recommended']}
             variant="ghost"
             type="button"
             disabled={working}
             aria-label={copy.card[choice]}
-            aria-describedby={`${id}-${choice}`}
+            aria-describedby={choice === card.recommended ? `${id}-recommended ${id}-${choice}` : `${id}-${choice}`}
             onclick={() => recover(choice)}
           >
-            {#if choice === card.recommended}<span class="notch">{copy.card.recommendedMark}</span>{/if}
             <RoutineIcon name={CHOICE_ICONS[choice]} />
             <span class="verb">{copy.card[choice]}</span>
             <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
           </Button>
+          {#if choice === card.recommended}<span class="notch" id={`${id}-recommended`} aria-hidden="true">{copy.card.recommendedMark}</span>{/if}
+          </div>
         {/each}
       </div>
     {:else if !working}
@@ -450,25 +455,9 @@
   }
   .head { flex-wrap: wrap; }
   .name { flex: 1 1 8rem; min-width: 0; margin: 0; overflow: hidden; color: var(--shimpz-color-text); font: 500 0.9rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
-  .tag {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.45rem;
-    color: var(--shimpz-color-text-muted);
-    border: 1px solid var(--shimpz-color-border);
-    font: 600 0.62rem/1.2 var(--shimpz-font-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .tag :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
-  .tag--warning :global(.routine-icon) { color: var(--shimpz-color-yellow); }
-  .tag--failed :global(.routine-icon) { color: var(--shimpz-color-danger); }
   .head :global(.details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   @container (max-width: 30rem) {
-    .tag { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
+    .head :global(.tag) { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
     .head :global(.details) { order: 3; }
   }
   .body { display: grid; gap: 0.4rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); min-width: 0; }
@@ -504,8 +493,8 @@
     --button-border: var(--shimpz-color-border);
     --button-hover-color: var(--shimpz-color-text);
     --button-hover-bg: var(--shimpz-color-surface-high);
-    position: relative;
-    height: auto;
+    width: 100%;
+    height: 100%;
     min-height: 5.75rem;
     padding: var(--shimpz-space-3);
     overflow: visible;
@@ -522,8 +511,10 @@
   .tiles :global(.tile.is-recommended .routine-icon) { color: var(--shimpz-color-cyan); }
   .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
   .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.76rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; white-space: normal; }
+  .tile-slot { position: relative; display: grid; min-width: 0; }
   /* The recommendation is notched into the tile's top edge, cutting its border. */
   .notch {
+    pointer-events: none;
     position: absolute;
     inset-block-start: 0;
     inset-inline-start: var(--shimpz-space-3);
@@ -536,5 +527,6 @@
     transform: translateY(-50%);
   }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding: 0 var(--shimpz-space-4) var(--shimpz-space-4); }
-  @media (forced-colors: active) { .routine-run, .tag, .tiles :global(.tile) { border-color: CanvasText; } }
+  .head :global(.tag--neutral.tag) :global(.routine-icon--failed) { color: var(--shimpz-color-danger); }
+  @media (forced-colors: active) { .routine-run, .tiles :global(.tile) { border-color: CanvasText; } }
 </style>

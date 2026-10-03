@@ -423,6 +423,8 @@
                 {#if routines && teamRoutines(team.id).routines.length > 0}
                   {@const attention = routinesNeedAttention(team.id)}
                   {@const routinesLabel = $t(attention ? 'teamNavigation.routinesAttention' : 'teamNavigation.routines', { team: team.name })}
+                  <!-- The attention dot sits beside the button, not in it, so the button's hover glitch never moves it. -->
+                  <span class="routines-slot">
                   <Button
                     class={['row-action', 'routines-action', 'glitch-host', treeOpen.has(team.id) && 'is-here']}
                     variant="ghost"
@@ -435,8 +437,9 @@
                     onclick={() => toggleTree(team.id)}
                   >
                     <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
-                    {#if attention}<span class="attention" aria-hidden="true"></span>{/if}
                   </Button>
+                  {#if attention}<span class="attention" aria-hidden="true"></span>{/if}
+                  </span>
                 {/if}
                 <TeamActionsMenu
                   label={$t('teamNavigation.actions', { team: team.name })}
@@ -533,7 +536,7 @@
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
-  .row :global(.routines-action) { position: relative; }
+  .routines-slot { position: relative; display: inline-flex; flex: none; }
   /* A Routine held, paused, or waiting to be asked again: a small yellow dot; the button's name says it in words. */
   .attention { position: absolute; inset-block-start: 0.45rem; inset-inline-end: 0.4rem; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--shimpz-color-yellow); box-shadow: 0 0 0.35rem var(--shimpz-color-yellow); pointer-events: none; }
   @media (forced-colors: active) { .attention { background: Highlight; box-shadow: none; } }
