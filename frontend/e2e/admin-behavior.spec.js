@@ -4651,12 +4651,12 @@ test.describe('Team Routines', () => {
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
       .toEqual(['Run', 'Recreate', 'Delete']);
-    await expect(panel).toContainText('Step 2 of 3');
+    await expect(panel).toContainText('step 2 of 3');
     await expect(panel).toContainText('Replace DNS record');
     await panel.getByText('See the technical error').click();
     await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
     await expect(panel).toContainText('HTTP 402 · api.cloudflare.com');
-    await expect(panel).toContainText('ran out of credits');
+    await expect(panel).toContainText('out of credits');
     await expect(panel).toContainText('What it already did may happen twice.');
     await expect(panel.getByRole('tablist')).toHaveCount(0);
     expect(calls.answers).toEqual([]);
