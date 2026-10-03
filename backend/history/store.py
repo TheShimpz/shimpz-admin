@@ -587,8 +587,7 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             raise ValueError("invalid stored message")
     if role == "user" and "files" in payload:
         expected.add("files")
-        if _file_references(payload["files"]) != payload["files"]:
-            raise ValueError("invalid stored message")
+        _file_references(payload["files"])
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")
     _text(
