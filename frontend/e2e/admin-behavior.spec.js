@@ -4005,7 +4005,7 @@ async function routeRoutines(
     runs = runs.filter((item) => item.run_id !== runId);
     await route.fulfill({ json: { team_id: 'marketing', run_id: runId, stopped: true } });
   });
-  // The held run's recovery card: Skip settles the incident, so the Routine stays only paused.
+  // The held run's recovery card: Skip settles the incident, so the Routine stays only paused; Pause keeps it held.
   await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
     const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
     await route.fulfill({
@@ -4027,10 +4027,9 @@ async function routeRoutines(
     const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
     const answer = route.request().postDataJSON();
     calls.answers.push(answer);
-    incidents = incidents.filter((item) => item.incident_id !== incidentId);
-    await route.fulfill({
-      json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, verdict: null, status: 'skipped' },
-    });
+    if (answer.choice === 'skip') incidents = incidents.filter((item) => item.incident_id !== incidentId);
+    const status = answer.choice === 'skip' ? 'skipped' : 'paused';
+    await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, verdict: null, status } });
   });
   return calls;
 }
@@ -4485,6 +4484,100 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
     await expect(panel.getByRole('status')).toContainText('Skipped.');
     expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'skip' }]);
+  });
+
+  test('pausing from a Routine\'s decision returns to its pages while the run stays held, and Delete stays offered', async ({ page }) => {
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page);
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect(panel.getByRole('group', { name: 'Recovery choices' })).toBeVisible();
+    // Deleting needs no answer to the pending decision.
+    await expect(panel.getByRole('button', { name: 'Delete' })).toBeVisible();
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Pause' }).click();
+    // The incident stays unresolved, yet the answered decision gives way to the Routine's pages.
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    await expect(panel.getByRole('status')).toContainText('Paused: you paused it.');
+    await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
+    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'pause' }]);
+  });
+
+  test('a Routine waiting for an approval is that decision in its panel, can be stopped, and a run held after approval asks again', async ({ page }) => {
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    let runs = [{
+      run_id: run,
+      routine_id: ROUTINE_VIEW.routine_id,
+      status: 'frozen',
+      scheduled_at: '2026-10-01T12:00:00Z',
+      request_kind: 'human',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+    }];
+    let incidents = [];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
+    }));
+    await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        run_id: run,
+        status: 'human-required',
+        challenge: {
+          type: 'human-required',
+          challenge_id: 'b'.repeat(32),
+          expires_in: 300,
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+          ...localizedChallenge(humanRequest('approval')),
+        },
+      },
+    }));
+    // Approving resumes the run, which Team then holds at a step whose effect is unknown.
+    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+      runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null }];
+      incidents = [{
+        incident_id: run,
+        routine_id: ROUTINE_VIEW.routine_id,
+        quote: ROUTINE_VIEW.quote,
+        created_at: '2026-10-01T12:01:07Z',
+        assistant_id: 'shimpz-cloudflare',
+        action: 'replace-dns-record',
+      }];
+      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'held' } });
+    });
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        incident_id: run,
+        routine_id: ROUTINE_VIEW.routine_id,
+        revision: 1,
+        assistant_id: 'shimpz-cloudflare',
+        action: 'replace-dns-record',
+        nonce: 'e'.repeat(32),
+        expires_in: 300,
+        choices: ['verify', 'skip', 'pause'],
+        recommended: 'verify',
+      },
+    }));
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect(panel).toContainText('Waiting for your approval of Replace DNS record');
+    await expect(panel.getByRole('button', { name: 'Stop' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Review' }).click();
+    await page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' }).getByRole('button', { name: 'Approve action' }).click();
+    // The same run, now held, opens its recovery decision instead of leaving the panel without one.
+    const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
+      .toEqual(['Verify', 'Skip', 'Pause']);
   });
 
   test('deleting one of several Routines leaves the others listed and focus on the Team\'s Routines', async ({ page }) => {

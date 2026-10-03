@@ -71,11 +71,18 @@
       ? { runId: frozen.run_id, outcome: 'frozen', detail: { request_kind: frozen.request_kind, assistant_id: frozen.assistant_id, action: frozen.action } }
       : null;
   });
-  // What the person's decision did, kept on the summary page once the panel leaves the decision.
+  // What the person's last answer did, kept on the page that follows it. An answered decision stays dismissed while its
+  // run waits the same way, as a paused one does; a run held again opens a fresh decision.
   let decided = $state('');
+  let dismissed = $state('');
+  let round = $state(0);
+  let decisionKey = $derived(decision ? `${decision.runId}:${decision.outcome}` : '');
+  let pending = $derived(decision && decisionKey !== dismissed ? decision : null);
 
-  async function settled(words) {
+  async function settled(words, heldAgain) {
     decided = words;
+    if (heldAgain) round += 1;
+    else dismissed = decisionKey;
     page = 'summary';
     await loadTeamRoutines(fetch, teamId).catch(() => {});
   }
@@ -200,15 +207,8 @@
       </Button>
     </header>
 
-    {#if decision}
-      <div class="content decide">
-        {#key decision.runId}
-          <RoutineDecision {teamId} {teamName} runId={decision.runId} routineId={routine.routine_id}
-            outcome={decision.outcome} detail={decision.detail} {copy} onsettled={settled} />
-        {/key}
-      </div>
-    {:else}
     <div class="bar">
+    {#if !pending}
     <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
       {#each PAGES as item (item.id)}
         <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
@@ -218,6 +218,7 @@
         </Button>
       {/each}
     </div>
+    {/if}
     <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
     {#if !routine.deleting && !confirming}
       <div class="actions">
@@ -236,6 +237,27 @@
     {/if}
     </div>
 
+
+    {#if pending}
+      <div class="content decide">
+        {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
+        {#key `${decisionKey}:${round}`}
+          <RoutineDecision {teamId} {teamName} runId={pending.runId} routineId={routine.routine_id}
+            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled} />
+        {/key}
+        <!-- A run waiting for an approval can still be stopped without answering it. -->
+        {#if pending.outcome === 'frozen'}
+          <div class="stop">
+            <Button variant="ghost" size="sm" type="button" disabled={busy}
+              onclick={() => act(() => stopRoutineRun(fetch, teamId, pending.runId))}>
+              {#snippet icon()}<RoutineIcon name="stop" />{/snippet}{copy.list.stop}
+            </Button>
+          </div>
+        {/if}
+        {#if confirming}<Notice variant="warning">{copy.list.deleteConfirm}</Notice>{/if}
+        {#if error}<Notice variant="error">{error}</Notice>{/if}
+      </div>
+    {:else}
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
       {#if page === 'summary'}
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
@@ -336,7 +358,7 @@
   /* The page menu starts at the panel's edge; the Routine's actions sit at its far end. */
   .bar { display: flex; align-items: center; gap: var(--shimpz-space-2); padding-inline-end: var(--shimpz-space-2); border-block-end: 1px solid var(--shimpz-color-border); }
   .tabs { display: flex; flex: 1 1 auto; min-width: 0; padding-block-start: 0.3rem; overflow-x: auto; }
-  .actions { display: flex; flex: none; gap: 0.15rem; }
+  .actions { display: flex; flex: none; gap: 0.15rem; margin-inline-start: auto; }
   .actions :global(.act.act) { --button-border: transparent; --button-color: var(--shimpz-color-cyan); --button-hover-color: var(--shimpz-color-cyan); }
   .actions :global(.act.act--delete) { --button-color: var(--shimpz-color-danger); --button-hover-color: var(--shimpz-color-danger); }
   .actions :global(.act.act--delete:hover:not(:disabled)) { box-shadow: none; }
@@ -353,6 +375,8 @@
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   /* The decision sits on the panel's own ground, which its recommendation notch cuts into. */
   .decide { --decision-ground: var(--shimpz-color-surface); }
+  .stop { display: flex; justify-content: flex-end; }
+  .bar { min-height: 2.5rem; }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */

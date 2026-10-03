@@ -20,7 +20,8 @@
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card with its three choices, or a frozen run's approval through chat's own dialog. Nothing runs until
-  // the Supervisor answers. `onsettled` hears the outcome words once the run has left this decision.
+  // the Supervisor answers. `onsettled` hears the outcome words once this decision is answered, and whether the same run
+  // was held again and so waits for a fresh decision.
   let { teamId, teamName, runId, routineId, outcome, detail, copy, onsettled = () => {} } = $props();
 
   let challenge = $state(null);
@@ -85,9 +86,9 @@
     }[status] ?? run.failedOutcome;
   }
 
-  function finish(words) {
+  function finish(words, heldAgain = false) {
     ended = true;
-    onsettled(words);
+    onsettled(words, heldAgain);
   }
 
   // Set when a card is needed: at first, after each answer while the run is still held, and when the person retries
@@ -153,7 +154,7 @@
       else if (answered.status === 'paused') result = fillRoutineCopy(run.paused, { reason: run.pauseReasons.person });
       else if (answered.status === null) result = unresolvedWords(answered.verdict);
       else result = fillRoutineCopy(run.continued, { outcome: outcomeWords(answered.status) });
-      if (answered.status !== null) finish(result);
+      if (answered.status !== null) finish(result, answered.status === 'held');
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
     } finally {
@@ -169,7 +170,7 @@
     try {
       const status = await action();
       result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(status) });
-      if (status !== 'frozen') finish(result);
+      if (status !== 'frozen') finish(result, status === 'held');
       waitingIntegration = false;
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
@@ -191,8 +192,9 @@
         $locale,
         (value) => parseChatEvent(value, teamId, teamName),
       );
-      if (opened.status === 'integrations-required') waitingIntegration = true;
-      else challenge = opened.challenge;
+      // Each opening replaces what the last one showed, so a stale challenge never keeps reopening the run.
+      waitingIntegration = opened.status === 'integrations-required';
+      challenge = waitingIntegration ? null : opened.challenge;
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
       challenge = null;
@@ -227,7 +229,7 @@
       return;
     }
     result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(answered.status) });
-    if (answered.status !== 'frozen') finish(result);
+    if (answered.status !== 'frozen') finish(result, answered.status === 'held');
     challenge = null;
   }
 </script>
