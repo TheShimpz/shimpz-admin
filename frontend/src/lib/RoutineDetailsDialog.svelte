@@ -15,7 +15,8 @@
     routineErrorMessage,
     routineStatus,
     scheduleWords,
-    STATUS_TONES,
+    STATUS_TAGS,
+    STATUS_WORDS,
     stopRoutineRun,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
@@ -24,8 +25,9 @@
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
 
-  // One Routine in full (ADR-0086, ADR-0092): what it does, when, how it stands, its recent runs with their execution
-  // details, and one action per button: Pause or Resume, Stop a run going now, and Delete after a confirmation.
+  // One Routine in full (ADR-0086, ADR-0092), as three pages behind a tab menu: its summary (what was asked, when it
+  // runs, and why it stopped), its steps, and its runs with their execution details. The footer keeps one action per
+  // button on every page: Pause or Resume, and Delete after a confirmation.
   let { teamId, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
 
   const id = $props.id();
@@ -36,14 +38,23 @@
   let recent = $state(null);
   let recentFailed = $state(false);
   let detailsRun = $state('');
+  let page = $state('summary');
+  const PAGES = [
+    { id: 'summary', icon: 'clock' },
+    { id: 'steps', icon: 'step' },
+    { id: 'runs', icon: 'terminal' },
+  ];
 
   let status = $derived(routineStatus(routine, runs, incidents));
   let live = $derived(runs.filter((run) => run.routine_id === routine.routine_id));
-  let held = $derived(status === 'recovery');
-  const STATUS_ICONS = {
-    recovery: 'warning', reconfirm: 'warning', waiting: 'warning', deleting: 'warning', paused: 'pause',
-    running: 'spinner', continuous: 'activity', healthy: 'clock',
-  };
+  let word = $derived(STATUS_WORDS[status]);
+  // Why a paused or failed Routine stopped, said once on its summary page.
+  let reason = $derived({
+    recovery: copy.panel.heldNote,
+    reconfirm: copy.list.needsReconfirm,
+    waiting: copy.panel.waitingNote,
+    deleting: copy.status.deleting,
+  }[status]);
 
   $effect(() => {
     if (dialog && !dialog.open) dialog.showModal();
@@ -79,9 +90,9 @@
       denied: run.denied,
       stopped: run.stopped,
       'user-skipped': copy.panel.skipped,
-      held: copy.status.recovery,
+      held: copy.status.failed,
       paused: copy.status.paused,
-      frozen: copy.status.waiting,
+      frozen: copy.panel.waitingApproval,
     }[entry.outcome] ?? entry.outcome;
   }
 
@@ -119,6 +130,23 @@
     }
   }
 
+  // The tab menu follows the ARIA tabs pattern: arrow keys, Home, and End move between pages and select them.
+  function moveTab(event) {
+    const last = PAGES.length - 1;
+    const index = PAGES.findIndex((item) => item.id === page);
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+    const next = {
+      [rtl ? 'ArrowLeft' : 'ArrowRight']: (index + 1) % PAGES.length,
+      [rtl ? 'ArrowRight' : 'ArrowLeft']: (index + last) % PAGES.length,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    page = PAGES[next].id;
+    document.getElementById(`${id}-tab-${page}`)?.focus();
+  }
+
   function close(event) {
     event?.preventDefault();
     dialog?.close();
@@ -131,43 +159,47 @@
     <header class="head">
       <RoutineIcon name="clock" />
       <h2 id={`${id}-title`}>{routine.name}</h2>
-      <RoutineTag label={copy.status[status]} icon={STATUS_ICONS[status]} tone={STATUS_TONES[status] ?? 'neutral'} />
+      {#if word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
       <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
         <RoutineIcon name="close" />
       </Button>
     </header>
 
-    <div class="content">
-      <p class="quote"><span class="label">{copy.panel.request}</span><span>{routine.quote}</span></p>
-      {#if held}<p class="note"><RoutineIcon name="warning" />{copy.panel.heldNote}</p>{/if}
-      {#if status === 'reconfirm'}<p class="note"><RoutineIcon name="warning" />{copy.list.needsReconfirm}</p>{/if}
+    <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
+      {#each PAGES as item (item.id)}
+        <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
+          aria-selected={page === item.id} aria-controls={`${id}-page`} tabindex={page === item.id ? 0 : -1}
+          onclick={() => (page = item.id)} onkeydown={moveTab}>
+          {#snippet icon()}<RoutineIcon name={item.icon} />{/snippet}{copy.panel[item.id]}
+        </Button>
+      {/each}
+    </div>
 
-      <div class="facts">
-        <section aria-labelledby={`${id}-schedule`}>
-          <h3 class="label" id={`${id}-schedule`}>{copy.panel.schedule}</h3>
-          <p class="value">{scheduleWords(routine.schedule, copy.schedule, $locale)}</p>
-          <p class="sub">{routine.timezone}</p>
-        </section>
-        {#if !ATTENTION_STATUSES.includes(status)}
-          <section aria-labelledby={`${id}-next`}>
-            <h3 class="label" id={`${id}-next`}>{copy.panel.next}</h3>
-            <p class="value">{instantWords(routine.next_run_at, $locale, routine.timezone)}</p>
+    <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
+      {#if page === 'summary'}
+        {#if reason}<p class="note"><RoutineIcon name="warning" />{reason}</p>{/if}
+        <p class="quote"><span class="label">{copy.panel.request}</span><span>{routine.quote}</span></p>
+        <div class="facts">
+          <section aria-labelledby={`${id}-schedule`}>
+            <h3 class="label" id={`${id}-schedule`}>{copy.panel.schedule}</h3>
+            <p class="value">{scheduleWords(routine.schedule, copy.schedule, $locale)}</p>
+            <p class="sub">{routine.timezone}</p>
           </section>
-        {/if}
-      </div>
-
-      <section aria-labelledby={`${id}-steps`}>
-        <h3 class="label" id={`${id}-steps`}>{copy.plan.title}</h3>
+          {#if !ATTENTION_STATUSES.includes(status)}
+            <section aria-labelledby={`${id}-next`}>
+              <h3 class="label" id={`${id}-next`}>{copy.panel.next}</h3>
+              <p class="value">{instantWords(routine.next_run_at, $locale, routine.timezone)}</p>
+            </section>
+          {/if}
+        </div>
+      {:else if page === 'steps'}
         <RoutinePlan steps={routine.steps} copy={copy.plan} names={$assistantNames} />
-      </section>
-
-      <section aria-labelledby={`${id}-runs`}>
-        <h3 class="label" id={`${id}-runs`}>{copy.panel.runs}</h3>
-        <ul class="runs">
+      {:else}
+        <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}
             <li>
               <RoutineIcon name={run.status === 'held' ? 'warning' : run.status === 'frozen' ? 'approval' : 'spinner'} />
-              <span class="run-what">{run.status === 'frozen' ? copy.status.waiting : run.status === 'held' ? copy.status.recovery : copy.status.running}</span>
+              <span class="run-what">{run.status === 'frozen' ? copy.panel.waitingApproval : run.status === 'held' ? copy.status.failed : copy.panel.runningNow}</span>
               {#if run.status !== 'held'}
                 <Button variant="ghost" size="sm" type="button" disabled={busy}
                   onclick={() => act(() => stopRoutineRun(fetch, teamId, run.run_id))}>
@@ -194,7 +226,7 @@
             {/each}
           {/if}
         </ul>
-      </section>
+      {/if}
 
       {#if confirming}<Notice variant="warning">{copy.list.deleteConfirm}</Notice>{/if}
       {#if error}<Notice variant="error">{error}</Notice>{/if}
@@ -235,7 +267,7 @@
     display: grid;
     max-height: calc(100dvh - 2rem);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     color: var(--shimpz-color-text);
     background: var(--shimpz-color-surface);
     border: 1px solid var(--shimpz-color-border);
@@ -256,7 +288,20 @@
   h2 { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font: 600 1rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; color: var(--shimpz-color-text); }
   .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   .head :global(.close) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
-  .content { display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  /* The page menu: mono labels on one rule, the selected page underlined in the panel's one accent. */
+  .tabs { display: flex; gap: var(--shimpz-space-1); padding: 0.3rem var(--shimpz-space-3) 0; overflow-x: auto; border-block-end: 1px solid var(--shimpz-color-border); }
+  .tabs :global(.tab) {
+    --button-color: var(--shimpz-color-text-dim);
+    --button-border: transparent;
+    --button-hover-bg: transparent;
+    clip-path: none;
+    box-shadow: none;
+  }
+  .tabs :global(.tab:hover:not(:disabled)) { color: var(--shimpz-color-text); border-color: transparent; box-shadow: none; }
+  .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
+  .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
+  .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
+  .content { align-content: start; display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   .label { margin: 0 0 0.35rem; color: var(--shimpz-color-text-dim); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   .quote { display: grid; gap: 0.25rem; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.5; overflow-wrap: break-word; }
   .quote .label { margin: 0; }
@@ -286,5 +331,8 @@
     :global(dialog.shimpz-modal.routine-panel) { width: 100dvw; max-width: none; height: 100dvh; max-height: none; margin: 0; }
     .frame { height: 100dvh; max-height: 100dvh; clip-path: none; }
   }
-  @media (forced-colors: active) { .frame, .note { border-color: CanvasText; } }
+  @media (forced-colors: active) {
+    .frame, .note { border-color: CanvasText; }
+    .tabs :global(.tab[aria-selected="true"]) { border-block-end: 2px solid Highlight; }
+  }
 </style>

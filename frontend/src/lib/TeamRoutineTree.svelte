@@ -3,7 +3,7 @@
   import { tick } from 'svelte';
 
   import { locale, t } from '$lib/i18n.js';
-  import { routineStatus, scheduleWords, STATUS_TONES } from '$lib/routine.js';
+  import { routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '$lib/routine.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
 
@@ -33,8 +33,8 @@
 <div bind:this={root} class="routine-list" role="group" aria-label={copy.list.open}>
   <ul>
     {#each routines as routine (routine.routine_id)}
-      {@const status = routineStatus(routine, runs, incidents)}
-      {@const tone = STATUS_TONES[status]}
+      {@const word = STATUS_WORDS[routineStatus(routine, runs, incidents)]}
+      {@const tone = STATUS_TAGS[word]?.tone}
       <li>
         <Button
           class="routine-item"
@@ -49,7 +49,7 @@
             <span class="name">{routine.name}</span>
             <span class="meta">{scheduleWords(routine.schedule, copy.schedule, $locale)}</span>
             <!-- The tinted clock shows the status; its words stay in the row's accessible name. -->
-            <span class="sr-only">{copy.status[status]}</span>
+            {#if word}<span class="sr-only">{copy.status[word]}</span>{/if}
           </span>
         </Button>
       </li>
@@ -82,7 +82,6 @@
   .mark--danger { color: color-mix(in srgb, var(--shimpz-color-danger) 60%, var(--shimpz-color-text-dim)); }
   .mark--warning { color: color-mix(in srgb, var(--shimpz-color-yellow) 55%, var(--shimpz-color-text-dim)); }
   .mark--accent { color: color-mix(in srgb, var(--shimpz-color-cyan) 60%, var(--shimpz-color-text-dim)); }
-  .mark--waiting { color: color-mix(in srgb, var(--shimpz-color-magenta) 60%, var(--shimpz-color-text-dim)); }
   ul :global(.routine-item::before) { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   ul :global(.routine-item:hover), ul :global(.routine-item:focus-visible) { color: var(--shimpz-color-text); background: transparent; box-shadow: none; }
   ul :global(.routine-item:hover::before), ul :global(.routine-item:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
