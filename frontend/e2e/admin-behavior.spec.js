@@ -4651,12 +4651,13 @@ test.describe('Team Routines', () => {
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
       .toEqual(['Run', 'Recreate', 'Delete']);
-    await expect(panel).toContainText('step 2 of 3');
+    await expect(panel).toContainText('Step 2 of 3');
     await expect(panel).toContainText('Replace DNS record');
-    await expect(panel.locator('blockquote')).toHaveText(CREDITS_MESSAGE);
+    await panel.getByText('See the technical error').click();
+    await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
     await expect(panel).toContainText('HTTP 402 · api.cloudflare.com');
     await expect(panel).toContainText('ran out of credits');
-    await expect(panel).toContainText('repeating a creation or a message can duplicate it');
+    await expect(panel).toContainText('What it already did may happen twice.');
     await expect(panel.getByRole('tablist')).toHaveCount(0);
     expect(calls.answers).toEqual([]);
     expect(await accessibilityViolations(page)).toEqual([]);
@@ -4955,7 +4956,8 @@ test.describe('Team Routines', () => {
     expect(await accessibilityViolations(page)).toEqual([]);
     // The step shown is the card's, with the error it returned as plain text.
     await expect(rows.nth(0)).toContainText('Create DNS record');
-    await expect(rows.nth(0).locator('blockquote')).toHaveText(CREDITS_MESSAGE);
+    await rows.nth(0).getByText('See the technical error').click();
+    await expect(rows.nth(0).locator('.error-text')).toHaveText(CREDITS_MESSAGE);
     await rows.nth(0).getByRole('button', { name: 'Run' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Set aside. The Routine runs again now.');
     await expect(choices(0)).toHaveCount(0);
@@ -5002,8 +5004,9 @@ test.describe('Team Routines', () => {
     }));
     await page.goto('/chat/?team=marketing');
     const row = page.locator('.routine-run');
-    await expect(row.locator('blockquote')).toHaveText(message);
-    await expect(row.locator('blockquote img')).toHaveCount(0);
+    await row.getByText('See the technical error').click();
+    await expect(row.locator('.error-text')).toHaveText(message);
+    await expect(row.locator('.error-text img')).toHaveCount(0);
     await expect(row).toContainText('shortened');
   });
 
