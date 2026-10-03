@@ -80,6 +80,11 @@ def list_routines(team_id: object) -> team.TeamResponse:
     return _projected(response, _exact(fields))
 
 
+def deletion_subject(team_id: object, routine_id: object) -> str:
+    """The one exact operation a Supervisor confirms before Admin asks Team to delete this Routine (ADR-0051)."""
+    return f"routine-delete:{team.canonical_team_id(team_id)}:{_id(routine_id, 'Routine')}"
+
+
 def delete(team_id: object, routine_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     routine = _id(routine_id, "Routine")

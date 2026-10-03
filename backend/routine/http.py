@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import local_auth
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
@@ -12,12 +13,18 @@ from protocol.http.v1 import websocket as chat_ws_common
 from routine import answer, manage
 
 
-def register(application: FastAPI, profile: str, authenticate: answer.Authenticate) -> None:
+def register(
+    application: FastAPI,
+    profile: str,
+    authenticate: answer.Authenticate,
+    confirmations: local_auth.Context,
+) -> None:
     if profile != "local":
         return
     base = "/api/teams/{team_id}/routines"
     application.add_api_route(base, routines_list, methods=["GET"])
-    application.add_api_route(base + "/{routine_id}", routine_delete, methods=["DELETE"])
+    application.add_api_route(base + "/{routine_id}/deletion", deletion_route(confirmations), methods=["POST"])
+    application.add_api_route(base + "/{routine_id}", delete_route(confirmations), methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/diagnostics", routine_diagnostics, methods=["GET"])
     application.add_api_route(base + "/{routine_id}/resume", routine_resume, methods=["POST"])
@@ -38,8 +45,49 @@ def routines_list(team_id: str):
     return _no_store(team_http.response(lambda: manage.list_routines(team_id)))
 
 
-async def routine_delete(team_id: str, routine_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.delete(team_id, routine_id)))
+def _deletion_subject(team_id: str, routine_id: str) -> str:
+    try:
+        return manage.deletion_subject(team_id, routine_id)
+    except team.TeamRequestError as exc:
+        raise HTTPException(status_code=400, detail="Routine is invalid") from exc
+
+
+def deletion_route(confirmations: local_auth.Context):
+    """Deleting a Routine starts with the Supervisor password, which offers the second factor bound to this Routine."""
+
+    async def routine_deletion(team_id: str, routine_id: str, request: Request):
+        async def begin() -> JSONResponse:
+            subject = _deletion_subject(team_id, routine_id)
+            try:
+                return await local_auth.begin_operation(request, confirmations, subject)
+            except local_auth.OperationRefusedError as exc:
+                return local_auth.operation_refusal(exc)
+
+        return await team_http.no_store(begin)
+
+    return routine_deletion
+
+
+def delete_route(confirmations: local_auth.Context):
+    """Team is asked to delete the Routine only once the second factor confirmed this exact Routine (ADR-0051)."""
+
+    async def routine_delete(team_id: str, routine_id: str, request: Request):
+        async def delete() -> JSONResponse:
+            subject = _deletion_subject(team_id, routine_id)
+            payload = await team_http.bounded_json_object(request)
+            try:
+                await run_in_threadpool(local_auth.confirm_operation, request, confirmations, subject, payload)
+            except local_auth.OperationRefusedError as exc:
+                response = local_auth.operation_refusal(exc)
+            else:
+                response = await run_in_threadpool(team_http.response, lambda: manage.delete(team_id, routine_id))
+            # The ticket is spent either way; a stale cookie would only be refused.
+            response.delete_cookie(local_auth.TICKET_COOKIE, path="/api/")
+            return response
+
+        return await team_http.no_store(delete)
+
+    return routine_delete
 
 
 async def routine_stop(team_id: str, run_id: str):

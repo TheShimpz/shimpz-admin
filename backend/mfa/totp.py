@@ -32,6 +32,8 @@ class Verification(Enum):
     INVALID = "invalid"
     LOCKED = "locked"
     EXPIRED = "expired"
+    # The factors changed after the password ticket was issued; the attempt is not evaluated or counted.
+    CHANGED = "changed"
 
 
 @dataclass(frozen=True, slots=True)
