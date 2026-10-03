@@ -156,7 +156,7 @@
   let failure = $derived.by(() => {
     if (!card) return null;
     if (card.evidence !== 'recorded') {
-      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail, known: false };
+      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail };
     }
     const item = card.diagnostic;
     const conditions = copy.details.conditions;
@@ -180,7 +180,6 @@
     return {
       title: cause === 'unknown' ? '' : copy.card.causeTitles[cause],
       cause: copy.card.causes[cause],
-      known: cause !== 'unknown',
       text,
       meta,
       redacted: Boolean(item.failure?.redacted),
@@ -283,7 +282,7 @@
   {#if situation}
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
-         stopped; then where; then the one next step; the literal error stays one click away. -->
+         stopped; then where; then its likely cause as a fact; the literal error stays one click away. -->
     <!-- The message: a host may bleed it to its own edges and draw its side lines (`--decision-message-*`). -->
     <div class="message">
     <div class="alert">
@@ -296,9 +295,10 @@
         <p class="where">{situation}</p>
       </div>
     </div>
-    {#if recoverable && failure}
+    {#if recoverable && failure && (failure.cause || failure.text)}
       <div class="body">
-        <p class={['next', failure.known && 'is-step']}>{#if failure.known}<RoutineIcon name="step" />{/if}{failure.cause}</p>
+        <!-- The likely cause is a fact, never advice: with several choices, the person picks one unsteered. -->
+        {#if failure.cause}<p class="cause">{failure.cause}</p>{/if}
         {#if failure.text}
           <Disclosure class="technical">
             {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
@@ -390,7 +390,7 @@
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
-  /* What happened: a warning badge beside the headline and where it stopped; the next step and the technical error
+  /* What happened: a warning badge beside the headline and where it stopped; the likely cause and the technical error
      sit under the headline's own edge. */
   .alert { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
   .badge {
@@ -415,10 +415,8 @@
   .title { margin: 0; color: var(--shimpz-color-text); font: 600 1.12rem/1.3 var(--shimpz-font-sans); text-wrap: balance; overflow-wrap: anywhere; }
   .where { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.45; overflow-wrap: anywhere; }
   .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.75rem + var(--shimpz-space-3)); }
-  .next { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
-  .next.is-step { color: var(--shimpz-color-text); }
-  .next :global(.routine-icon) { flex: none; width: 0.95rem; height: 0.95rem; margin-block-start: 0.2rem; color: var(--shimpz-color-cyan); }
-  :global([dir="rtl"]) .next :global(.routine-icon), :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
+  .cause { margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
+  :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
   /* The literal error, quiet and one click away. */
   .decision :global(.technical) { border-block-start: 0; padding-block-start: 0; }
   .decision :global(.technical summary) { list-style: none; color: var(--shimpz-color-text-dim); font: 500 0.78rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-transform: none; }
