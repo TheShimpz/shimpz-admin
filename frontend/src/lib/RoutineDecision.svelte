@@ -1,5 +1,5 @@
 <script>
-  import { Button } from '@shimpz/frontend';
+  import { Button, Disclosure } from '@shimpz/frontend';
 
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import { assistantNames } from '$lib/assistantNames.js';
@@ -156,7 +156,7 @@
   let failure = $derived.by(() => {
     if (!card) return null;
     if (card.evidence !== 'recorded') {
-      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail };
+      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail, known: false };
     }
     const item = card.diagnostic;
     const conditions = copy.details.conditions;
@@ -176,8 +176,10 @@
       ? [item.failure.http_status === null ? '' : `HTTP ${item.failure.http_status}`, item.failure.provider ?? '']
         .filter(Boolean).join(' · ')
       : '';
+    const cause = failureCause(item);
     return {
-      cause: copy.card.causes[failureCause(item)],
+      cause: copy.card.causes[cause],
+      known: cause !== 'unknown',
       text,
       meta,
       redacted: Boolean(item.failure?.redacted),
@@ -279,19 +281,26 @@
 <div class="decision">
   {#if situation}
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
-    <p class="lead"><RoutineIcon name="warning" />{reason}</p>
-    <p class="detail">{situation}</p>
+    <div class="head">
+      <p class="lead"><RoutineIcon name="warning" />{reason}</p>
+      <p class="where">{situation}</p>
+    </div>
     {#if recoverable && failure}
-      <!-- What the step returned: its likely cause in plain words, then the literal sanitized error as escaped text. -->
-      <p class="cause">{failure.cause}</p>
+      <!-- What the step returned: its likely cause in plain words, with the literal sanitized error one click away. -->
+      <div class="cause">
+        {#if failure.known}<span class="cause-label">{copy.card.causeTitle}</span>{/if}
+        <p>{failure.cause}</p>
+      </div>
       {#if failure.text}
-        <figure class="error">
-          <figcaption>{copy.card.errorTitle}</figcaption>
-          <blockquote>{failure.text}</blockquote>
-          {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
-          {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
-          {#if failure.truncated}<p class="meta">{copy.details.truncated}</p>{/if}
-        </figure>
+        <Disclosure class="technical">
+          {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
+          <div class="error">
+            <p class="error-text">{failure.text}</p>
+            {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
+            {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
+            {#if failure.truncated}<p class="meta">{copy.details.truncated}</p>{/if}
+          </div>
+        </Disclosure>
       {/if}
     {/if}
     {#if recoverable && card}<p class="ask">{copy.card.choose}</p>{/if}
@@ -380,13 +389,25 @@
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
-  .lead { display: flex; align-items: flex-start; gap: 0.55rem; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; }
+  /* What happened: a plain headline, then where, in mono. */
+  .head { display: grid; gap: 0.35rem; }
+  .lead { display: flex; align-items: flex-start; gap: 0.55rem; margin: 0; color: var(--shimpz-color-text); font: 600 1.02rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; }
   .lead :global(.routine-icon) { flex: none; width: 1.05rem; height: 1.05rem; margin-block-start: 0.15rem; color: var(--shimpz-color-yellow); }
-  .detail { margin: 0; max-width: 68ch; color: var(--shimpz-color-text-muted); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
-  .cause { margin: 0; max-width: 68ch; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
-  .error { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; min-width: 0; margin: 0; overflow: visible; }
-  .error figcaption { color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  .error blockquote { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); border-inline-start: 2px solid var(--shimpz-color-danger); background: var(--shimpz-color-surface-high); color: var(--shimpz-color-text); font: 400 0.78rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .where { margin: 0; padding-inline-start: 1.6rem; color: var(--shimpz-color-text-dim); font: 400 0.76rem/1.5 var(--shimpz-font-mono); overflow-wrap: anywhere; }
+  /* The likely cause is the one thing to read: a quiet framed note with a mono label. */
+  .cause { display: grid; gap: 0.3rem; margin-block-start: var(--shimpz-space-2); padding: var(--shimpz-space-3); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); }
+  .cause-label { color: var(--shimpz-color-yellow); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+  .cause p { margin: 0; max-width: 68ch; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
+  /* The literal error stays one click away. */
+  .decision :global(.technical) { border-block-start: 0; padding-block-start: 0; }
+  .decision :global(.technical summary) { list-style: none; }
+  .decision :global(.technical summary::-webkit-details-marker) { display: none; }
+  .technical-summary { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .technical-summary :global(.routine-icon) { width: 0.8rem; height: 0.8rem; transition: transform var(--shimpz-duration-fast) var(--shimpz-ease); }
+  :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
+  .decision :global(.technical[open] .technical-summary .routine-icon) { transform: rotate(90deg); }
+  .error { display: grid; gap: 0.3rem; min-width: 0; }
+  .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
   .ask { margin: var(--shimpz-space-2) 0 0; color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
