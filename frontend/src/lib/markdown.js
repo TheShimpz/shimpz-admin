@@ -15,16 +15,6 @@ export function escapeMarkdownText(value) {
   return String(value ?? '').replace(/[\\`*_[\]{}()<>#+\-.!|~]/gu, '\\$&');
 }
 
-/** One value of external copy as literal inline Markdown: its line breaks become spaces, so it never starts a block. */
-export function escapeMarkdownInline(value) {
-  return escapeMarkdownText(String(value ?? '').replace(/\s+/gu, ' ').trim());
-}
-
-/** One value of external copy as the literal content of an inline code span, which has no escapes of its own. */
-export function markdownCode(value) {
-  return String(value ?? '').replace(/[`\s]+/gu, ' ').trim();
-}
-
 // A span's content as displayed: each backslash escape stands for the character it escapes.
 function unescapeInline(text) {
   return text.replace(/\\(.)/gsu, '$1');
