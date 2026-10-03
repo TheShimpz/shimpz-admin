@@ -40,11 +40,11 @@ import {
   resumeRoutineIntegrations,
   RoutineError,
   routineErrorMessage,
-  routineNoticeMarkdown,
+  routineNotice,
   scheduleWords,
+  stepChain,
   stopRoutineRun,
 } from '../src/lib/routine.js';
-import { parseMarkdown } from '../src/lib/markdown.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
 
 // The same closed proposal Team's protocol vectors admit (ADR-0086).
@@ -439,89 +439,72 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing'));
 });
 
-// A notice as the chat shows it: its blocks, each paragraph or list item as its display text.
-function noticeBlocks(entry, options) {
-  const markdown = routineNoticeMarkdown(parseRoutineRunEntry(entry), {
-    name: 'Vigia de DNS', copy: routineMessages.pt, locale: 'pt', assistantName: () => 'Shimpz Cloudflare', ...options,
+// A notice as the transcript's timeline shows it, in Portuguese.
+function noticeShown(entry, options) {
+  return routineNotice(parseRoutineRunEntry(entry), {
+    copy: routineMessages.pt, locale: 'pt', assistantName: () => 'Shimpz Cloudflare', ...options,
   });
-  return parseMarkdown(markdown, { chatNotices: true }).map((block) => (block.type === 'list'
-    ? { list: block.items.map((item) => item.map((token) => token.text).join('')), ordered: block.ordered }
-    : block.inlines.map((token) => (token.type === 'text' ? token.text : `<${token.type}>${token.text}`)).join('')));
 }
 
-test('every Routine notice reads as natural sentences naming its Routine in bold, in the Admin language', () => {
+test('every Routine notice reads as a status phrase colored by meaning, its time, and one quiet detail line', () => {
+  const chain = 'Shimpz Cloudflare · List zones › List DNS records';
   const cases = [
     [{ outcome: 'done', detail: { actions: [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']] } },
-      ['<strong>Vigia de DNS concluiu: Shimpz Cloudflare › List zones e Shimpz Cloudflare › List DNS records.']],
+      ['healthy', 'concluída', [chain], '']],
     [{ outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } },
-      ['<strong>Vigia de DNS concluiu após uma recuperação: Shimpz Cloudflare › List zones.']],
-    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
-      ['<strong>Vigia de DNS falhou (<code>assistant-rpc-failed). A execução passou por Shimpz Cloudflare › List zones.']],
-    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [] } }, ['<strong>Vigia de DNS falhou (<code>assistant-rpc-failed).']],
-    [{ outcome: 'denied', detail: { actions: [] } }, ['Uma execução de <strong>Vigia de DNS foi negada.']],
-    [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } },
-      ['Uma execução de <strong>Vigia de DNS foi interrompida. A execução passou por Shimpz Cloudflare › List zones.']],
-    [{ outcome: 'held', detail: STEP }, ['Uma execução de <strong>Vigia de DNS parou com um erro.']],
-    [{ outcome: 'held', detail: STEP }, ['Uma execução de <strong>Vigia de DNS parou com um erro. Ela está esperando você.'], { waiting: true }],
-    [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['<strong>Vigia de DNS foi pausada: o limite de recuperação acabou.']],
-    [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'recreate' } },
-      ['Uma execução de <strong>Vigia de DNS foi deixada de lado, e a rotina foi recriada. O que essa execução pode ter alterado não foi conferido.']],
-    [{ outcome: 'skipped', run_id: null, detail: { missed: 1 } }, ['<strong>Vigia de DNS pulou 1 execução agendada.']],
-    [{ outcome: 'skipped', run_id: null, detail: { missed: 3 } }, ['<strong>Vigia de DNS pulou 3 execuções agendadas.']],
+      ['healthy', 'concluída após recuperação', ['Shimpz Cloudflare · List zones'], '']],
     [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } },
-      [`<strong>Vigia de DNS está rodando: 9 execuções concluídas no minuto das ${minuteWords(RUN_ENTRY.created_at, 'pt')}.`]],
-    [{ outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
-      ['<strong>Vigia de DNS foi pausada porque seus Assistants mudaram (Shimpz Cloudflare). Peça de novo no chat para atualizá-la.']],
+      ['healthy', 'em execução', [`9 execuções concluídas no minuto das ${minuteWords(RUN_ENTRY.created_at, 'pt')}`], '']],
+    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
+      ['danger', 'falhou', ['Shimpz Cloudflare · List zones'], 'assistant-rpc-failed']],
+    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [] } }, ['danger', 'falhou', [], 'assistant-rpc-failed']],
+    [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada', [], '']],
+    [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro', ['Shimpz Cloudflare · Replace DNS record'], '']],
+    // A held step the listed Routine holds exactly once is placed among its steps.
+    [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro', ['Etapa 2 de 2: Shimpz Cloudflare · Replace DNS record'], ''],
+      { steps: [PLAN[0], { ...PLAN[0], id: 'replace', action: 'replace-dns-record' }] }],
+    [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['waiting', 'pausada', ['O limite de recuperação acabou.'], '']],
     [{ outcome: 'frozen', detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' } },
-      ['<strong>Vigia de DNS está aguardando sua aprovação de Replace DNS record de Shimpz Cloudflare.']],
+      ['waiting', 'aguardando aprovação', ['Shimpz Cloudflare · Replace DNS record'], '']],
     [{ outcome: 'frozen', detail: { request_kind: 'integrations', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' } },
-      ['<strong>Vigia de DNS está aguardando você conectar Shimpz Cloudflare para Replace DNS record.']],
+      ['waiting', 'aguardando conexão', ['Shimpz Cloudflare · Replace DNS record'], '']],
+    [{ outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
+      ['waiting', 'pausada', ['Seus Assistants mudaram (Shimpz Cloudflare). Peça de novo no chat para atualizá-la.'], '']],
+    [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } },
+      ['neutral', 'interrompida', ['Shimpz Cloudflare · List zones'], '']],
+    [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'recreate' } },
+      ['neutral', 'deixada de lado', ['A rotina foi recriada. O que essa execução pode ter alterado não foi conferido.'], '']],
+    [{ outcome: 'skipped', run_id: null, detail: { missed: 1 } }, ['neutral', 'execuções perdidas', ['1 execução agendada não aconteceu'], '']],
+    [{ outcome: 'skipped', run_id: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas', ['3 execuções agendadas não aconteceram'], '']],
     [{ outcome: 'created', run_id: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 500 }, steps: [...PLAN, { ...PLAN[0], id: 'records', action: 'list-dns-records', inputs: [] }] } },
-      ['A rotina <strong>Vigia de DNS foi criada. Ela roda a cada 5 s após cada execução, até 500 por dia (America/Sao_Paulo), em 2 etapas:',
-        { list: ['Shimpz Cloudflare › List zones', 'Shimpz Cloudflare › List DNS records'], ordered: true }]],
+      ['neutral', 'criada', ['A cada 5 s após cada execução, até 500 por dia · America/Sao_Paulo', chain], '']],
     [{ outcome: 'changed', run_id: null, detail: DEFINED },
-      ['A rotina <strong>Vigia de DNS foi atualizada. Agora ela roda toda segunda-feira às 09:00 (America/Sao_Paulo), em 1 etapa:',
-        { list: ['Shimpz Cloudflare › List zones'], ordered: true }]],
+      ['neutral', 'atualizada', ['Toda segunda-feira às 09:00 · America/Sao_Paulo', 'Shimpz Cloudflare · List zones'], '']],
   ];
-  for (const [change, expected, options] of cases) {
-    // Bold covers the name alone; the rest of the sentence follows it as text.
-    assert.deepEqual(noticeBlocks({ ...RUN_ENTRY, ...change }, options), expected, change.outcome);
+  const time = new Intl.DateTimeFormat('pt', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(RUN_ENTRY.created_at));
+  for (const [change, [tone, status, lines, code], options] of cases) {
+    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }, options), { tone, status, time, lines, code }, change.outcome);
   }
-  // Every outcome has its sentences in every Admin language.
-  for (const catalog of Object.values(routineMessages)) {
+  // Every outcome has its status and detail words in every Admin language.
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.equal(typeof catalog.notice.waiting, 'string', locale);
     for (const [change] of cases) {
-      const markdown = routineNoticeMarkdown(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), {
-        name: 'N', copy: catalog, locale: 'en', assistantName: (id) => id,
-      });
-      assert.match(markdown, /\*\*N\*\*/u, change.outcome);
+      const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), { copy: catalog, locale, assistantName: (id) => id });
+      assert.ok(shown.status, `${locale} ${change.outcome}`);
+      assert.ok(shown.lines.every((line) => line && !/\{\w+\}/u.test(line)), `${locale} ${change.outcome}`);
     }
   }
 });
 
-test('a Routine notice keeps every interpolated value literal, so none can add a link, image, or block', () => {
-  const hostile = '[x](https://evil.test) ![i](https://evil.test/a.png) <img src=x onerror=alert(1)> **b** # _c_ `d` | e |';
-  const entries = [
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, timezone: 'Etc/GMT_x_' } },
-    { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare', 'exa'] } },
-  ];
-  for (const entry of entries) {
-    const markdown = routineNoticeMarkdown(parseRoutineRunEntry(entry), {
-      name: hostile, copy: routineMessages.en, locale: 'en', assistantName: () => `${hostile}\n\n# heading\n1. item`,
-    });
-    const blocks = parseMarkdown(markdown, { chatNotices: true });
-    const tokens = blocks.flatMap((block) => block.inlines ?? block.items.flat());
-    assert.equal(blocks.some((block) => !['paragraph', 'list'].includes(block.type)), false, entry.outcome);
-    assert.equal(tokens.some((token) => token.type === 'link' || token.type === 'emphasis'), false, entry.outcome);
-    assert.deepEqual(tokens.filter((token) => token.type === 'strong').map((token) => token.text), [hostile], entry.outcome);
-    assert.deepEqual(tokens.filter((token) => token.type === 'code').map((token) => token.text),
-      entry.outcome === 'failed' ? ['assistant-rpc-failed'] : [], entry.outcome);
-    assert.match(tokens.map((token) => token.text).join(''), /\[x\]\(https:\/\/evil\.test\) !\[i\]/u, entry.outcome);
-  }
-  const created = routineNoticeMarkdown(parseRoutineRunEntry(entries[1]), {
-    name: 'N', copy: routineMessages.en, locale: 'en', assistantName: () => 'A',
-  });
-  assert.match(created, /\(Etc\/GMT\\_x\\_\)/u);
+test('a notice names its Assistant once for steps that share it and again only where it changes', () => {
+  const name = (id) => ({ a: 'Alpha', b: 'Beta' })[id];
+  assert.equal(stepChain([['a', 'list-zones']], name), 'Alpha · List zones');
+  assert.equal(stepChain([['a', 'list-zones'], ['a', 'list-dns-records']], name), 'Alpha · List zones › List DNS records');
+  assert.equal(stepChain([['a', 'list-zones'], ['b', 'search'], ['a', 'update-dns-record']], name),
+    'Alpha · List zones › Beta · Search › Alpha · Update DNS record');
+  // A value that looks like markup stays the same characters; the transcript renders it as text.
+  const hostile = '[x](https://evil.test) <img src=x onerror=alert(1)> **b**';
+  assert.equal(stepChain([['a', 'list-zones']], () => hostile), `${hostile} · List zones`);
 });
 
 test('a re-read history page yields only Routine rows not yet shown at their version', () => {
@@ -736,7 +719,7 @@ test('a recorded failure is explained by its likely cause and never guessed from
       assert.ok(['undefined', 'string'].includes(typeof catalog.card.causes[cause]), `${locale} ${cause}`);
     }
     assert.equal(typeof catalog.card.causes.unknown, 'string', locale);
-    for (const choice of ['run', 'recreate', 'delete']) assert.equal(typeof catalog.notice.userSkipped[choice], 'string', locale);
+    for (const choice of ['run', 'recreate', 'delete']) assert.equal(typeof catalog.notice.setAside[choice], 'string', locale);
   }
 });
 

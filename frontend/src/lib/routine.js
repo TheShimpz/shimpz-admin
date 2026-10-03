@@ -2,7 +2,6 @@
 // throws on any other shape; nothing here schedules or authorizes: Team creates a Routine from the user's own message.
 
 import { isLocale } from './locales.js';
-import { escapeMarkdownInline, markdownCode } from './markdown.js';
 import { jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
@@ -760,62 +759,96 @@ function plural(forms, count, locale) {
   return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
 }
 
+// Each outcome's tone in the transcript's activity timeline: healthy (done, recovered, running), danger (failed, held,
+// denied), waiting (paused, frozen, scope changed), or neutral (created, updated, set aside, stopped, missed runs).
+const NOTICE_TONES = Object.freeze({
+  done: 'healthy',
+  recovered: 'healthy',
+  healthy: 'healthy',
+  failed: 'danger',
+  held: 'danger',
+  denied: 'danger',
+  paused: 'waiting',
+  frozen: 'waiting',
+  'scope-changed': 'waiting',
+  created: 'neutral',
+  changed: 'neutral',
+  'user-skipped': 'neutral',
+  stopped: 'neutral',
+  skipped: 'neutral',
+});
+
 /**
- * One Routine notice of a Team's transcript as a chat message in Markdown (ADR-0086): one or two sentences naming the
- * Routine in bold, and for a created or changed Routine its steps as a numbered list. Every value is escaped, so a
- * name, Assistant, Action, timezone, or code is always literal text; only the copy's own Markdown is ever parsed.
- * `name` is the Routine's name, `assistantName` names an Assistant id in words, and `waiting` says the run still
- * waits for the person.
+ * Ordered Assistant Actions as one line grouped by Assistant: "A · x › y" when every step shares A, otherwise
+ * "A · x › B · y", naming an Assistant again only where it changes.
  */
-export function routineNoticeMarkdown(entry, { name, copy, locale, assistantName, waiting = false }) {
+export function stepChain(steps, assistantName) {
+  return steps.map(([assistant, action], index) => {
+    const words = humanizeId(action);
+    return index > 0 && steps[index - 1][0] === assistant ? words : `${assistantName(assistant)} · ${words}`;
+  }).join(' › ');
+}
+
+/** A sentence's first letter in upper case for a locale. */
+function capitalized(value, locale) {
+  return value.charAt(0).toLocaleUpperCase(locale) + value.slice(1);
+}
+
+/**
+ * One Routine notice of a Team's transcript (ADR-0086) as an activity-timeline entry, in plain text only: its tone,
+ * a short status phrase, the notice's time of day in the viewer's own clock, detail lines, and an error code shown
+ * apart. `assistantName` names an Assistant id in words; `steps` are the listed Routine's current steps, which place
+ * a held step as "Step n of total" when exactly one step matches it.
+ */
+export function routineNotice(entry, { copy, locale, assistantName, steps = [] }) {
   const notice = copy.notice;
   const detail = entry.detail;
-  const text = escapeMarkdownInline;
-  const step = (assistant, action) => fill(notice.step, { assistant: text(assistantName(assistant)), action: text(humanizeId(action)) });
-  const actions = new Intl.ListFormat(locale, { type: 'conjunction' })
-    .format((detail.actions ?? []).map(([assistant, action]) => step(assistant, action)));
-  const values = { name: text(name), actions };
-  const through = actions ? ` ${fill(notice.through, { actions })}` : '';
-  const waits = waiting ? ` ${notice.waiting}` : '';
+  const step = (assistant, action) => stepChain([[assistant, action]], assistantName);
+  const chain = detail.actions?.length ? [stepChain(detail.actions, assistantName)] : [];
+  const status = {
+    'scope-changed': notice.status.scopeChanged,
+    'user-skipped': notice.status.userSkipped,
+    frozen: detail.request_kind === 'human' ? notice.status.frozenHuman : notice.status.frozenIntegrations,
+  }[entry.outcome] ?? notice.status[entry.outcome];
+  let lines = chain;
   switch (entry.outcome) {
     case 'created':
     case 'changed': {
       const schedule = scheduleWords(detail.schedule, copy.schedule, locale);
-      const lead = fill(plural(notice[entry.outcome], detail.steps.length, locale), {
-        ...values,
-        schedule: text(schedule.charAt(0).toLocaleLowerCase(locale) + schedule.slice(1)),
-        timezone: text(detail.timezone),
-        count: detail.steps.length,
-      });
-      const steps = detail.steps.map((item, index) => `${index + 1}. ${step(item.assistant, item.action)}`);
-      return `${lead}\n\n${steps.join('\n')}`;
+      lines = [`${schedule} · ${detail.timezone}`, stepChain(detail.steps.map((item) => [item.assistant, item.action]), assistantName)];
+      break;
     }
-    case 'done':
-    case 'recovered': return fill(notice[entry.outcome], values);
-    case 'held': return fill(notice.held, values) + waits;
-    case 'denied':
-    case 'stopped': return fill(notice[entry.outcome], values) + through;
-    case 'failed': return fill(notice.failed, { ...values, code: markdownCode(detail.code) }) + through;
-    case 'paused':
-      return fill(notice.paused, { ...values, reason: text(copy.run.pauseReasons[detail.reason] ?? '') }) + waits;
-    case 'user-skipped': return fill(notice.userSkipped[detail.choice], values);
-    case 'skipped': return fill(plural(notice.skipped, detail.missed, locale), { ...values, missed: detail.missed });
-    // A minute's rollup is dated by the minute it covers, in the viewer's own time.
     case 'healthy':
-      return fill(plural(notice.healthy, detail.runs, locale), {
-        ...values, runs: detail.runs, minute: text(minuteWords(entry.createdAt, locale)),
-      });
+      lines = [fill(plural(notice.healthy, detail.runs, locale), { runs: detail.runs, minute: minuteWords(entry.createdAt, locale) })];
+      break;
+    case 'skipped':
+      lines = [fill(plural(notice.skipped, detail.missed, locale), { missed: detail.missed })];
+      break;
+    case 'held': {
+      const matches = steps.flatMap((item, index) => (
+        item.assistant === detail.assistant_id && item.action === detail.action ? [index] : []
+      ));
+      const named = step(detail.assistant_id, detail.action);
+      lines = [matches.length === 1 ? fill(notice.stepOf, { n: matches[0] + 1, total: steps.length, step: named }) : named];
+      break;
+    }
+    case 'paused': lines = [capitalized(copy.run.pauseReasons[detail.reason] ?? '', locale)]; break;
+    case 'user-skipped': lines = [notice.setAside[detail.choice]]; break;
     case 'scope-changed':
-      return fill(notice.scopeChanged, {
-        ...values,
-        assistants: new Intl.ListFormat(locale, { type: 'conjunction' }).format(detail.assistants.map((id) => text(assistantName(id)))),
-      });
-    case 'frozen':
-      return fill(detail.request_kind === 'human' ? notice.frozenHuman : notice.frozenIntegrations, {
-        ...values, assistant: text(assistantName(detail.assistant_id)), action: text(humanizeId(detail.action)),
-      });
-    default: return '';
+      lines = [fill(notice.scopeChanged, {
+        assistants: new Intl.ListFormat(locale, { type: 'conjunction' }).format(detail.assistants.map(assistantName)),
+      })];
+      break;
+    case 'frozen': lines = [step(detail.assistant_id, detail.action)]; break;
+    default: break;
   }
+  return {
+    tone: NOTICE_TONES[entry.outcome],
+    status,
+    time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(entry.createdAt)),
+    lines,
+    code: entry.outcome === 'failed' ? detail.code : '',
+  };
 }
 
 /**

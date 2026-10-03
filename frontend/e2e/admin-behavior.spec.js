@@ -4367,12 +4367,14 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
 
-    // The created notice is a chat message in the Team's transcript, with the browser's timezone the message was sent
-    // with and its steps as a numbered list.
+    // The created notice is an entry of the Team's transcript, with the browser's timezone the message was sent with
+    // and its steps named by Assistant.
     await page.reload();
     const created = page.locator('.routine-run').filter({ hasText: 'Daily DNS zones' });
+    await expect(created).toHaveAccessibleName('Daily DNS zones');
+    await expect(created).toContainText('created');
     await expect(created).toContainText('America/Sao_Paulo');
-    await expect(created.getByRole('listitem')).toHaveText(['Shimpz Cloudflare › List zones']);
+    await expect(created).toContainText('Shimpz Cloudflare · List zones');
     await expect(created.getByRole('button')).toHaveCount(0);
   });
 
@@ -4935,22 +4937,26 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const transcript = page.locator('.routine-run');
     await expect(transcript).toHaveCount(4);
-    // Each notice says what happened in a sentence that names its Routine.
-    await expect(transcript.nth(0)).toContainText('skipped 2 scheduled runs');
-    await expect(transcript.nth(1)).toContainText('failed (assistant-rpc-failed)');
-    await expect(transcript.nth(1)).toContainText('Shimpz Cloudflare › List zones');
-    await expect(transcript.nth(2)).toContainText('waiting for your approval of Replace DNS record from Shimpz Cloudflare');
+    // Each notice names its Routine, says what happened in a short status, and adds one line of detail.
+    await expect(transcript.nth(0)).toContainText('missed runs');
+    await expect(transcript.nth(0)).toContainText('2 scheduled runs did not happen');
+    await expect(transcript.nth(1)).toContainText('failed');
+    await expect(transcript.nth(1)).toContainText('assistant-rpc-failed');
+    await expect(transcript.nth(1)).toContainText('Shimpz Cloudflare · List zones');
+    await expect(transcript.nth(2)).toContainText('awaiting approval');
+    await expect(transcript.nth(2)).toContainText('Shimpz Cloudflare · Replace DNS record');
     for (const index of [0, 1, 2]) await expect(transcript.nth(index)).toContainText('Every day at 9, list my DNS zones');
     // Without a listed Routine, a row is named by the request it came from.
     await expect(transcript.nth(3)).toHaveAccessibleName('Every day at 9, list my DNS zones');
     // A done row names the Actions the run carried out, never a model reply.
-    await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare › List zones');
+    await expect(transcript.nth(3)).toContainText('done');
+    await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare · List zones');
     // A row whose Routine Team does not list offers no action, not even its panel.
     await expect(transcript.getByRole('button')).toHaveCount(0);
   });
 
   test('a Routine notice shows every name it carries as literal text, never as a link, image, or element', async ({ page }) => {
-    // A request may be longer than a name, whose 80 characters still fit every kind of Markdown it could imitate.
+    // A request may be longer than a name, whose 80 characters still fit every kind of markup it could imitate.
     const hostile = '[x](https://evil.test) ![i](https://evil.test/a.png) <img src=x onerror=alert(1)> **b**';
     const name = '[x](https://e.test) ![i](https://e.test/a.png) <img src=x onerror=alert(1)>**b**';
     const listed = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name };
@@ -4998,9 +5004,9 @@ test.describe('Team Routines', () => {
       await expect(notice.getByRole('link')).toHaveCount(0);
       await expect(notice.getByRole('img')).toHaveCount(0);
       await expect(notice.getByRole('heading')).toHaveCount(0);
-      await expect(notice.locator('a, img, script, iframe, em')).toHaveCount(0);
-      // The name is one span of text, whatever Markdown it imitates.
-      await expect(notice.locator('strong')).toHaveText([shown]);
+      await expect(notice.locator('a, img, script, iframe, em, strong')).toHaveCount(0);
+      // The name is the notice's own name, whatever markup it imitates.
+      await expect(notice).toHaveAccessibleName(shown);
     }
     expect(dialogs).toEqual([]);
     expect(requests.filter((url) => /e(?:vil)?\.test/u.test(url))).toEqual([]);
@@ -5100,13 +5106,14 @@ test.describe('Team Routines', () => {
     await expect(rows).toHaveCount(2);
     // A transcript card decides nothing: no recovery choice, Resume, or execution details, only its Routine's panel.
     for (const index of [0, 1]) {
-      await expect(rows.nth(index).getByRole('button')).toHaveText(['Open Routine']);
+      await expect(rows.nth(index).getByRole('button')).toHaveAccessibleName('Open Routine');
       await expect(rows.nth(index).getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
     }
     // Each waiting notice says so until its run is settled.
     await expect(rows.nth(0)).toContainText('stopped with an error');
-    await expect(rows.nth(1)).toContainText('paused: its recovery budget is used up');
-    for (const index of [0, 1]) await expect(rows.nth(index)).toContainText('It is waiting for you.');
+    await expect(rows.nth(1)).toContainText('paused');
+    await expect(rows.nth(1)).toContainText('Its recovery budget is used up.');
+    for (const index of [0, 1]) await expect(rows.nth(index)).toContainText('Waiting for you');
     expect(opened).toEqual([]);
     expect(await accessibilityViolations(page)).toEqual([]);
 
@@ -5129,7 +5136,7 @@ test.describe('Team Routines', () => {
     await expect(panel).toHaveCount(0);
     await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
     await expect(rows.nth(0)).toBeFocused();
-    await expect(rows.nth(0)).not.toContainText('It is waiting for you.');
+    await expect(rows.nth(0)).not.toContainText('Waiting for you');
 
     // A refused Recreate says why and changes nothing; the next answer uses a freshly opened card.
     await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
@@ -5261,7 +5268,8 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     // A run that waits for nobody offers nothing in the transcript; its details are in its Routine's panel.
-    await expect(page.locator('.routine-run')).toContainText('Daily DNS zones failed (assistant-rpc-failed)');
+    await expect(page.locator('.routine-run')).toContainText('Daily DNS zones failed');
+    await expect(page.locator('.routine-run')).toContainText('assistant-rpc-failed');
     await expect(page.locator('.routine-run').getByRole('button')).toHaveCount(0);
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -5320,7 +5328,7 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     // No card resumes a Routine: the failed run's offers nothing, and the held one only opens its Routine's panel.
-    await expect(rows.nth(1).getByRole('button')).toHaveText(['Open Routine']);
+    await expect(rows.nth(1).getByRole('button')).toHaveAccessibleName('Open Routine');
     await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
     // A Routine an unresolved incident still holds offers no Resume: its panel is the recovery decision alone.
     await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
@@ -5467,7 +5475,7 @@ test.describe('Team Routines', () => {
     const rows = page.locator('.routine-run');
     await expect(rows).toHaveCount(2);
     // The card itself offers no Review: its one action opens the Routine's panel.
-    await expect(rows.nth(1).getByRole('button')).toHaveText(['Open Routine']);
+    await expect(rows.nth(1).getByRole('button')).toHaveAccessibleName('Open Routine');
     expect(openings).toEqual([]);
 
     await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
@@ -5551,8 +5559,9 @@ test.describe('Team Routines', () => {
     runs = [frozenRun(run, 'human')];
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(2);
-    await expect(rows.nth(1)).toContainText('Daily DNS zones is waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
-    await expect(rows.nth(0)).toContainText('Shimpz Cloudflare › List zones');
+    await expect(rows.nth(1)).toContainText('Daily DNS zones awaiting approval');
+    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare · Replace DNS record');
+    await expect(rows.nth(0)).toContainText('Shimpz Cloudflare · List zones');
     await expect(composer).toHaveValue('A draft that must survive');
     // The Team's Routines list shows the same run waiting.
     const navigation = await openTeamNavigation(page);
@@ -5577,7 +5586,8 @@ test.describe('Team Routines', () => {
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
-    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare › Replace DNS record');
+    await expect(rows.nth(1)).toContainText('done');
+    await expect(rows.nth(1)).toContainText('Shimpz Cloudflare · Replace DNS record');
     await expect(rows).toHaveCount(2);
     await expect(composer).toHaveValue('A draft that must survive');
   });

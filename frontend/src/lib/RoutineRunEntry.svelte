@@ -4,16 +4,17 @@
 
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
-  import Markdown from '$lib/Markdown.svelte';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
-  import { humanizeId, routineErrorMessage, routineNoticeMarkdown, routineStatus } from '$lib/routine.js';
+  import { humanizeId, routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message, as an ordinary chat message: one or two sentences naming the Routine in bold. It never carries an
-  // Action's raw input or result, and it is not part of the Brain's conversation. The message decides nothing: while
-  // its run waits for the person, its one action opens that Routine's panel, which is the decision itself.
-  let { entry, copy, teamId, teamName } = $props();
+  // own message, as one entry of an activity timeline: the Routine's name, a status phrase colored by meaning, and the
+  // notice's time, then one quiet line of detail. Consecutive notices share one thin rail (`joinAbove`, `joinBelow`).
+  // It never carries an Action's raw input or result, and it is not part of the Brain's conversation. Every name and
+  // value is plain text. The entry decides nothing: while its run waits for the person, its one action opens that
+  // Routine's panel, which is the decision itself.
+  let { entry, copy, teamId, teamName, joinAbove = false, joinBelow = false } = $props();
 
   let listed = $derived($routineContext.get(teamId));
   let routine = $derived(listed?.routines.find((item) => item.routine_id === entry.routineId && !item.deleting));
@@ -61,23 +62,41 @@
   let routineName = $derived(
     listed?.routines.find((item) => item.routine_id === entry.routineId)?.name ?? entry.detail.name ?? entry.quote,
   );
-  let message = $derived(routineNoticeMarkdown(entry, {
-    name: routineName,
+  let shown = $derived(routineNotice(entry, {
     copy,
     locale: $locale,
     assistantName: (id) => $assistantNames[id] ?? humanizeId(id),
-    waiting,
+    steps: routine?.steps ?? [],
   }));
+  let details = $derived(shown.lines.length || !shown.code ? shown.lines : ['']);
 </script>
 
-<div class="routine-run" role="group" aria-label={routineName} tabindex="-1" bind:this={notice}>
-  <Markdown markdown={message} variant="chat" />
-  {#if result}<p class="result" role="status">{result}</p>{/if}
+<div
+  class={['routine-run', `tone-${shown.tone}`, joinAbove && 'join-above', joinBelow && 'join-below']}
+  role="group"
+  aria-label={routineName}
+  tabindex="-1"
+  bind:this={notice}
+>
+  <span class="dot" aria-hidden="true"></span>
+  <p class="head">
+    <span class="lead"><span class="name">{routineName}</span> <span class="status">{shown.status}</span></span>
+    <time class="time" datetime={entry.createdAt}>{shown.time}</time>
+  </p>
+  {#each details as line, index (index)}
+    <p class="detail">
+      {line}{#if shown.code && index === details.length - 1}{line ? ' ' : ''}<code class="code">{shown.code}</code>{/if}
+    </p>
+  {/each}
   <!-- The button stays while the panel is open, so closing it returns focus here. -->
   {#if waiting || panel}
-    <Button class="open" size="sm" variant="ghost" type="button" aria-haspopup="dialog" disabled={opening}
-      onclick={openPanel}>{copy.run.open}</Button>
+    <p class="wait">
+      {#if waiting}<span class="waiting">{copy.notice.waiting}</span>{/if}
+      <Button class="open" size="sm" variant="ghost" type="button" aria-haspopup="dialog" disabled={opening}
+        onclick={openPanel}>{copy.run.open}<span class="chevron" aria-hidden="true">›</span></Button>
+    </p>
   {/if}
+  {#if result}<p class="result" role="status">{result}</p>{/if}
 </div>
 
 {#if panel && routine}
@@ -93,7 +112,145 @@
 {/if}
 
 <style>
-  /* A notice reads as a reply: the chat's own text, with its one action a quiet button below it. */
-  .routine-run { display: grid; justify-items: start; gap: var(--shimpz-space-2); min-width: 0; }
-  .result { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.85rem; line-height: 1.45; }
+  /*
+   * A timeline entry, never a card: a small status dot on a thin rail, the Routine's name and status on one line, and
+   * quieter detail below. The rail is two hairline segments that stop short of the dot, so consecutive notices read
+   * as one thread; the segment above reaches back across the gap between transcript exchanges.
+   */
+  .routine-run {
+    --tone: var(--shimpz-color-text-dim);
+    --rail-x: 0.3125rem;
+    --head-line: 1.5rem;
+    --dot: 0.4375rem;
+    position: relative;
+    display: grid;
+    justify-items: start;
+    gap: 0.125rem;
+    min-width: 0;
+    padding-inline-start: 1.5rem;
+    outline-offset: 4px;
+  }
+
+  .tone-healthy { --tone: var(--shimpz-color-cyan); }
+  .tone-danger { --tone: var(--shimpz-color-danger); }
+  .tone-waiting { --tone: var(--shimpz-color-yellow); }
+
+  .dot {
+    position: absolute;
+    inset-block-start: calc((var(--head-line) - var(--dot)) / 2);
+    inset-inline-start: calc(var(--rail-x) - var(--dot) / 2 + 0.5px);
+    width: var(--dot);
+    height: var(--dot);
+    background: var(--tone);
+    border-radius: 50%;
+  }
+
+  .join-above::before,
+  .join-below::after {
+    position: absolute;
+    inset-inline-start: var(--rail-x);
+    width: 1px;
+    background: var(--shimpz-color-border);
+    content: '';
+  }
+
+  /* Up to the previous notice, across the exchange gap; down to this entry's own bottom edge. */
+  .join-above::before {
+    inset-block-start: calc(-1 * var(--routine-rail-gap, 1.1rem));
+    height: calc(var(--routine-rail-gap, 1.1rem) + (var(--head-line) - var(--dot)) / 2 - 0.3125rem);
+  }
+
+  .join-below::after {
+    inset-block: calc((var(--head-line) + var(--dot)) / 2 + 0.3125rem) 0;
+  }
+
+  /* The name and status wrap as one phrase; the time keeps the first line's far end. */
+  .routine-run .head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: var(--shimpz-space-3);
+    width: 100%;
+    margin: 0;
+    color: var(--shimpz-color-text);
+    white-space: normal;
+    font-size: 0.95rem;
+    line-height: var(--head-line);
+  }
+
+  .lead { min-width: 0; overflow-wrap: anywhere; }
+
+  .name { font-weight: 600; }
+
+  .status {
+    color: var(--tone);
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .time {
+    color: var(--shimpz-color-text-dim);
+    font: 0.72rem/var(--head-line) var(--shimpz-font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
+  .routine-run .detail,
+  .routine-run .wait,
+  .routine-run .result {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: normal;
+  }
+
+  .routine-run .detail {
+    color: var(--shimpz-color-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .code {
+    display: inline-block;
+    padding: 0 0.375rem;
+    color: var(--shimpz-color-text-muted);
+    font: 0.72rem/1.45 var(--shimpz-font-mono);
+    vertical-align: 0.05em;
+    border: 1px solid var(--shimpz-color-border);
+    border-radius: 3px;
+  }
+
+  .routine-run .wait {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--shimpz-space-3);
+    margin-block-start: 0.125rem;
+  }
+
+  .waiting { color: var(--shimpz-color-yellow); }
+
+  /* The one action reads as a link: cyan words and a chevron, no frame. */
+  .wait :global(.shimpz-button.open) {
+    --button-color: var(--shimpz-color-cyan);
+    --button-border: transparent;
+    --button-hover-color: var(--shimpz-color-text);
+    --button-hover-bg: transparent;
+    --button-content-gap: 0.3em;
+    min-height: 1.5rem;
+    padding-inline: 0;
+    font: 500 0.85rem/1.5 var(--shimpz-font-sans);
+    letter-spacing: 0;
+    text-transform: none;
+    clip-path: none;
+  }
+
+  .wait :global(.shimpz-button.open:focus-visible) { outline-offset: 2px; }
+
+  :global([dir='rtl']) .chevron { display: inline-block; transform: scaleX(-1); }
+
+  .routine-run .result { color: var(--shimpz-color-text-dim); }
+
+  @media (max-width: 40rem) {
+    .routine-run .head { font-size: 0.9rem; }
+  }
 </style>
