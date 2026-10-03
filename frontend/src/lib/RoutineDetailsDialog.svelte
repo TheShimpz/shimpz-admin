@@ -22,15 +22,18 @@
     untilWords,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
+  import RoutineDecision from '$lib/RoutineDecision.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
 
-  // One Routine in full (ADR-0086, ADR-0092), as three pages behind a tab menu: its summary (what was asked, when it
+  // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision: a
+  // held run's recovery choices or a frozen run's approval, with what it needs to decide. Otherwise it shows three pages
+  // behind a tab menu: its summary (what was asked, when it
   // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which asks for a confirmation first.
-  let { teamId, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
+  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
 
   const id = $props.id();
   let dialog = $state();
@@ -52,13 +55,30 @@
   let status = $derived(routineStatus(routine, runs, incidents));
   let live = $derived(runs.filter((run) => run.routine_id === routine.routine_id));
   let word = $derived(STATUS_WORDS[status]);
-  // Why a paused or failed Routine stopped, said once on its summary page.
-  let reason = $derived({
-    recovery: copy.panel.heldNote,
-    reconfirm: copy.list.needsReconfirm,
-    waiting: copy.panel.waitingNote,
-    deleting: copy.status.deleting,
-  }[status]);
+  // Why a paused Routine waits for the chat or is going away, said once on its summary page.
+  let reason = $derived({ reconfirm: copy.list.needsReconfirm, deleting: copy.status.deleting }[status]);
+  // The run that waits for the person: a held run is its incident (the incident and the run share one id), a frozen
+  // run its approval. A held run Team lists before its incident names no step until its card does.
+  let decision = $derived.by(() => {
+    if (status === 'recovery') {
+      const incident = incidents.find((item) => item.routine_id === routine.routine_id);
+      const held = live.find((run) => run.status === 'held');
+      const source = incident ? { ...incident, run_id: incident.incident_id } : held;
+      return source ? { runId: source.run_id, outcome: 'held', detail: { assistant_id: source.assistant_id, action: source.action } } : null;
+    }
+    const frozen = status === 'waiting' ? live.find((run) => run.status === 'frozen') : null;
+    return frozen
+      ? { runId: frozen.run_id, outcome: 'frozen', detail: { request_kind: frozen.request_kind, assistant_id: frozen.assistant_id, action: frozen.action } }
+      : null;
+  });
+  // What the person's decision did, kept on the summary page once the panel leaves the decision.
+  let decided = $state('');
+
+  async function settled(words) {
+    decided = words;
+    page = 'summary';
+    await loadTeamRoutines(fetch, teamId).catch(() => {});
+  }
 
   $effect(() => {
     if (dialog && !dialog.open) dialog.showModal();
@@ -180,6 +200,14 @@
       </Button>
     </header>
 
+    {#if decision}
+      <div class="content decide">
+        {#key decision.runId}
+          <RoutineDecision {teamId} {teamName} runId={decision.runId} routineId={routine.routine_id}
+            outcome={decision.outcome} detail={decision.detail} {copy} onsettled={settled} />
+        {/key}
+      </div>
+    {:else}
     <div class="bar">
     <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
       {#each PAGES as item (item.id)}
@@ -210,16 +238,16 @@
 
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
       {#if page === 'summary'}
+        {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#if reason}<p class="note"><RoutineIcon name="warning" />{reason}</p>{/if}
         <p class="summary">
           {#each summary as part, index (index)}<span class={part.key && `part part--${part.key}`}>{part.text}</span>{/each}
         </p>
         {#if !ATTENTION_STATUSES.includes(status)}
           <p class="next">
-            <RoutineIcon name="step" />
             <span class="next-label">{copy.panel.next}</span>
-            <time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, routine.timezone)}</time>
-            {#if until}<span class="until">[{until}]</span>{/if}
+            <span><time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, routine.timezone)}</time>
+              {#if until}<span class="until">[{until}]</span>{/if}</span>
           </p>
         {/if}
       {:else if page === 'steps'}
@@ -261,6 +289,7 @@
       {#if confirming}<Notice variant="warning">{copy.list.deleteConfirm}</Notice>{/if}
       {#if error}<Notice variant="error">{error}</Notice>{/if}
     </div>
+    {/if}
 
     {#if confirming}
       <footer class="foot">
@@ -322,20 +351,22 @@
   .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
+  /* The decision sits on the panel's own ground, which its recommendation notch cuts into. */
+  .decide { --decision-ground: var(--shimpz-color-surface); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
   .part { font-weight: 700; }
   .part--request { font-weight: inherit; }
-  /* The next run on one rule-topped line: a cyan step mark, a mono label, the instant, and how far off it is. */
-  .next { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin: 0; padding-block-start: var(--shimpz-space-3); border-block-start: 1px dashed var(--shimpz-color-border); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
-  .next :global(.routine-icon) { width: 0.9rem; height: 0.9rem; color: var(--shimpz-color-cyan); }
+  /* The next run: a mono label over the instant, then how far off it is. */
+  .next { display: grid; justify-items: start; gap: 0.3rem; margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
   .next time { color: var(--shimpz-color-cyan); }
   .until { color: var(--shimpz-color-text-dim); }
   .note { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; padding: 0.55rem 0.7rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.8rem; line-height: 1.45; }
   .note :global(.routine-icon) { margin-block-start: 0.15rem; }
+  .note :global(.routine-icon--check) { color: var(--shimpz-color-cyan); }
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
   .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding: 0.25rem 0.25rem 0.25rem 0.5rem; border-block-end: 1px solid var(--shimpz-color-border-subtle); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }

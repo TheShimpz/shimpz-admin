@@ -3955,13 +3955,13 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 
 async function routeRoutines(
   page,
-  { others = [], listFailsAfterDelete = false, runEnding = false } = {},
+  { others = [], listFailsAfterDelete = false, runEnding = false, held = true } = {},
 ) {
-  const calls = { deletes: [], stops: [], resumes: [], pauses: [] };
-  // The Routine is paused, and an earlier run of it is held for recovery (ADR-0092).
+  const calls = { deletes: [], stops: [], resumes: [], pauses: [], answers: [] };
+  // The Routine is paused, and unless told otherwise an earlier run of it is held for recovery (ADR-0092).
   let routines = [{ ...ROUTINE_VIEW, paused: true }, ...others];
   let runs = [];
-  const incidents = [
+  let incidents = held ? [
     {
       incident_id: 'b'.repeat(32),
       routine_id: ROUTINE_VIEW.routine_id,
@@ -3970,7 +3970,7 @@ async function routeRoutines(
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
     },
-  ];
+  ] : [];
   await page.route('**/api/teams/marketing/routines', async (route) => {
     if (listFailsAfterDelete && calls.deletes.length > 0) {
       await route.fulfill({ status: 503, json: { code: 'team-unavailable' } });
@@ -4004,6 +4004,33 @@ async function routeRoutines(
     calls.stops.push(route.request().postDataJSON());
     runs = runs.filter((item) => item.run_id !== runId);
     await route.fulfill({ json: { team_id: 'marketing', run_id: runId, stopped: true } });
+  });
+  // The held run's recovery card: Skip settles the incident, so the Routine stays only paused.
+  await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+    const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
+    await route.fulfill({
+      json: {
+        team_id: 'marketing',
+        incident_id: incidentId,
+        routine_id: ROUTINE_VIEW.routine_id,
+        revision: 1,
+        assistant_id: 'shimpz-cloudflare',
+        action: 'replace-dns-record',
+        nonce: 'f'.repeat(32),
+        expires_in: 300,
+        choices: ['verify', 'skip', 'pause'],
+        recommended: 'verify',
+      },
+    });
+  });
+  await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+    const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
+    const answer = route.request().postDataJSON();
+    calls.answers.push(answer);
+    incidents = incidents.filter((item) => item.incident_id !== incidentId);
+    await route.fulfill({
+      json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, verdict: null, status: 'skipped' },
+    });
   });
   return calls;
 }
@@ -4348,7 +4375,7 @@ test.describe('Team Routines', () => {
       },
     });
     // The refresh after the deletion fails; the confirmed deletion must still leave the list.
-    const calls = await routeRoutines(page, { listFailsAfterDelete: true });
+    const calls = await routeRoutines(page, { listFailsAfterDelete: true, held: false });
     const diagnostics = [];
     await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
       diagnostics.push(new URL(route.request().url()).pathname);
@@ -4386,8 +4413,7 @@ test.describe('Team Routines', () => {
     await expect(item).toBeFocused();
     await item.click();
 
-    // Resume turns dispatch back on; the held run's incident still holds the Routine until its card settles it.
-    await expect(panel).toContainText('A run stopped partway through a step that may have changed something.');
+    // Resume turns dispatch back on, and Pause turns it off again.
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(calls.resumes).toEqual([{}]);
@@ -4422,7 +4448,7 @@ test.describe('Team Routines', () => {
 
   test('a Routine whose run is still ending stays listed as being deleted', async ({ page }) => {
     await routeReadyChat(page);
-    const calls = await routeRoutines(page, { runEnding: true });
+    const calls = await routeRoutines(page, { runEnding: true, held: false });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
@@ -4437,10 +4463,34 @@ test.describe('Team Routines', () => {
     expect(calls.deletes).toEqual(['DELETE']);
   });
 
+  test('a Routine waiting for a recovery decision opens as that decision and returns to its pages once answered', async ({ page }) => {
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page);
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    // The whole panel is the decision: where the run stopped, why it waits, and the card's three choices.
+    const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
+      .toEqual(['Verify', 'Skip', 'Pause']);
+    await expect(panel).toContainText('Replace DNS record');
+    await expect(panel.getByRole('tablist')).toHaveCount(0);
+    expect(calls.answers).toEqual([]);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Skip answers that card once; the panel goes back to its pages and says what the answer did.
+    await panel.getByRole('button', { name: 'Skip' }).click();
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    await expect(panel.getByRole('status')).toContainText('Skipped.');
+    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'skip' }]);
+  });
+
   test('deleting one of several Routines leaves the others listed and focus on the Team\'s Routines', async ({ page }) => {
     await routeReadyChat(page);
     const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check', quote: 'Every Monday, check my certificates' };
-    await routeRoutines(page, { others: [weekly] });
+    await routeRoutines(page, { others: [weekly], held: false });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
