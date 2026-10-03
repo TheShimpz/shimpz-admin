@@ -735,7 +735,13 @@ def _conversation_entry(event_key: object, payload: dict[str, object]) -> conver
         raise HistoryUnavailableError("chat history conversation entry is invalid") from None
     if not separator:
         raise HistoryUnavailableError("chat history conversation entry is invalid")
-    if suffix == "user" and payload.get("kind") == "message" and payload.get("role") == "user":
+    # Every projected row is plain, and a plain user row never carries file references.
+    if (
+        suffix == "user"
+        and payload.get("kind") == "message"
+        and payload.get("role") == "user"
+        and "files" not in payload
+    ):
         role, text = "user", payload.get("text")
     elif suffix == "reply" and payload.get("kind") == "message" and payload.get("role") == "assistant":
         role, text = "assistant", payload.get("text")

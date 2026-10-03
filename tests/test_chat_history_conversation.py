@@ -209,6 +209,18 @@ class ChatHistoryConversationTests(unittest.TestCase):
                 with self.assertRaises(history.HistoryUnavailableError):
                     history.page("marketing")
 
+    def test_the_projection_refuses_a_plain_row_carrying_files_as_the_page_does(self) -> None:
+        attached = history.new_turn_id()
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", attached, "Resuma o contrato.", files=[FILE]))
+        self.assertTrue(history.append_user("marketing", current, "E agora?"))
+        with sqlite3.connect(self.path) as database:
+            database.execute("UPDATE transcript SET provenance = 'plain' WHERE event_key = ?", (f"{attached}:user",))
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.conversation("marketing", current)
+
     def test_a_history_of_the_previous_schema_is_refused_not_upgraded(self) -> None:
         with sqlite3.connect(self.path) as database:
             database.execute("CREATE TABLE transcript (position INTEGER PRIMARY KEY)")
