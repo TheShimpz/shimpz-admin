@@ -363,6 +363,7 @@
     --decision-message-rule: 1px solid var(--shimpz-color-border);
     --choice-rule: 0;
     display: flex;
+    flex: 0 1 auto;
     flex-direction: column;
     padding-block-start: 0;
   }

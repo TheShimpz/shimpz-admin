@@ -42,10 +42,12 @@
           <RoutineIcon name="back" />
         </Button>
       {/if}
-      <h2 id={`${id}-title`}>
-        <span class="team">{team}</span> <span class="sep">›</span> <span class="main">{title}</span>
-      </h2>
-      {@render tag?.()}
+      <div class="title">
+        <h2 id={`${id}-title`}>
+          <span class="team">{team}</span> <span class="sep">›</span> <span class="main">{title}</span>
+        </h2>
+        {@render tag?.()}
+      </div>
       {#if closable}
         <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.close} title={copy.close} onclick={onclose}>
           <RoutineIcon name="close" />
@@ -83,18 +85,18 @@
   }
   .head:has(:global(.back)) { padding-inline-start: var(--shimpz-space-2); }
   /* The Team comes first in quiet mono capitals, then a cyan chevron, then the title itself; long names wrap. */
+  .title { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: var(--shimpz-space-2); }
   h2 { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.3 var(--shimpz-font-sans); overflow-wrap: anywhere; }
   .team { color: var(--shimpz-color-text-dim); font: 600 0.7rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; unicode-bidi: isolate; }
   .sep { color: color-mix(in srgb, var(--shimpz-color-cyan) 70%, var(--shimpz-color-text-dim)); font-weight: 400; }
   .main { unicode-bidi: isolate; }
   .head :global(.close), .head :global(.back) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   :global([dir="rtl"]) .head :global(.back .routine-icon) { transform: scaleX(-1); }
-  /* On a phone every Routine modal is a full-screen sheet. */
+  /* On a phone every Routine modal is a full-screen sheet, and a status tag sits under the title. */
   @media (max-width: 600px) {
-    .head { flex-wrap: wrap; }
-    h2 { flex-basis: 8rem; }
-    .head :global(.tag) { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
-    .head :global(.close) { order: 3; }
+    .head { align-items: flex-start; }
+    .title { flex-wrap: wrap; align-self: center; row-gap: 0.35rem; }
+    h2 { flex-basis: 100%; }
     :global(dialog.shimpz-modal.routine-modal) { width: 100dvw; max-width: none; height: 100dvh; max-height: none; margin: 0; }
     .frame { height: 100dvh; max-height: 100dvh; clip-path: none; }
   }
