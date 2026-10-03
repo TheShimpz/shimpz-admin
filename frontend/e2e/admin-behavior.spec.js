@@ -3957,7 +3957,7 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 // credits), and exactly Rodar, Recriar, and Excluir.
 const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'";
 
-function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dns-record' } = {}) {
+function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dns-record', failure = {} } = {}) {
   return {
     team_id: 'marketing',
     incident_id: incidentId,
@@ -3982,6 +3982,7 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
         response_excerpt: null,
         redacted: true,
         truncated: false,
+        ...failure,
       },
       condition: null,
     },
@@ -4974,6 +4975,36 @@ test.describe('Team Routines', () => {
     for (const answer of answers) expect(nonces).toContain(answer.nonce);
     const pausedNonces = opened.flatMap((id, index) => (id === paused ? [String(index + 1).repeat(32)] : []));
     expect(answers.slice(1).map((answer) => answer.nonce)).toEqual(pausedNonces.slice(0, 2));
+  });
+
+  test("a card's error is literal text, and a shortened one says it was shortened", async ({ page }) => {
+    const held = 'b'.repeat(32);
+    const message = '<img src=x onerror=alert(1)> Insufficient account credits';
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${held}:routine`,
+          kind: 'routine-run',
+          notice_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: held,
+          outcome: 'held',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+          version: 2,
+        }],
+        before: null,
+      },
+    });
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
+      json: recoveryCard(held, { failure: { message, truncated: true } }),
+    }));
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    await expect(row.locator('blockquote')).toHaveText(message);
+    await expect(row.locator('blockquote img')).toHaveCount(0);
+    await expect(row).toContainText('shortened');
   });
 
   test("a transcript card's Delete opens its Routine's panel in the deletion confirmation", async ({ page }) => {

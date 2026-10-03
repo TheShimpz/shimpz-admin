@@ -647,6 +647,9 @@ export function routineErrorMessage(error, copy) {
     'routine-recreate-refused': copy.recreateRefused,
     'routine-recreate-unavailable': copy.recreateUnavailable,
     'routine-recovery-stopped': copy.stopped,
+    // The Team cannot hold one more change right now; nothing changed, and it frees up on its own.
+    'routine-receipts-full': copy.unavailable,
+    'notices-full': copy.unavailable,
     'model-credential-missing': copy.credentialMissing,
     'routine-state-unavailable': copy.unavailable,
     'team-context-unavailable': copy.unavailable,

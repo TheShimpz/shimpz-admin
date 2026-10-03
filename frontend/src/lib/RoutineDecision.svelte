@@ -181,6 +181,7 @@
       text,
       meta,
       redacted: Boolean(item.failure?.redacted),
+      truncated: Boolean(item.failure?.truncated),
     };
   });
 
@@ -289,6 +290,7 @@
           <blockquote>{failure.text}</blockquote>
           {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
           {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
+          {#if failure.truncated}<p class="meta">{copy.details.truncated}</p>{/if}
         </figure>
       {/if}
     {/if}

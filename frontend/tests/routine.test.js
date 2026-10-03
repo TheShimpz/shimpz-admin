@@ -324,6 +324,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['routine-recreate-unavailable', 'recreateUnavailable'],
     ['routine-recovery-stopped', 'stopped'],
     ['model-credential-missing', 'credentialMissing'],
+    ['routine-receipts-full', 'unavailable'],
+    ['notices-full', 'unavailable'],
   ]) {
     assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
   }
