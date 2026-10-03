@@ -5592,6 +5592,63 @@ test.describe('Team Routines', () => {
     await expect(composer).toHaveValue('A draft that must survive');
   });
 
+  test('each day of the transcript opens with its date, which stays at the top while that day scrolls', async ({ page }) => {
+    // Noon in São Paulo on 1 October; a notice at 02:30 UTC that day is still the evening before for this viewer.
+    await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
+    const at = (row, createdAt) => ({ ...row, created_at: createdAt });
+    const exchange = (prefix, index) => {
+      const id = `${prefix}${String(index).padStart(31, '0')}`;
+      return [
+        { id: `${id}:user`, kind: 'message', role: 'user', text: `Question ${prefix}${index}` },
+        { id: `${id}:reply`, kind: 'message', role: 'assistant', author: 'Marketing',
+          text: `Answer ${prefix}${index}\n\n${'Detail line. '.repeat(30).trim()}` },
+      ];
+    };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const history = {
+      entries: [
+        // Rows stored before any dated one have no known day, so no header claims one.
+        ...exchange('a', 0),
+        at(routineRow('b'.repeat(32), 'done', done), '2026-09-29T15:00:00Z'),
+        ...Array.from({ length: 6 }, (_, index) => exchange('c', index)).flat(),
+        at(routineRow('d'.repeat(32), 'done', done), '2026-10-01T02:30:00Z'),
+        ...exchange('e', 0),
+        at(routineRow('f'.repeat(32), 'done', done), '2026-10-01T14:00:00Z'),
+      ],
+      before: null,
+    };
+    await routeReadyChat(page, { history, reply: 'Live answer' });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const turns = page.locator('.turns');
+    const days = turns.getByRole('heading', { level: 2 });
+    await expect(days).toHaveText(['September 29, 2026', 'Yesterday', 'Today']);
+    await expect(page.getByText('Question a0', { exact: true })).toBeAttached();
+
+    // A message sent now belongs to today, under the header already there.
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'Sent today');
+    await page.getByRole('button', { name: 'Send' }).click();
+    await expect(page.getByText('Live answer', { exact: true })).toBeVisible();
+    await expect(days).toHaveText(['September 29, 2026', 'Yesterday', 'Today']);
+
+    // Whatever is scrolled to the top of the transcript, the first thing there is its day's header.
+    const dayAtTop = (text) => turns.evaluate((element, anchor) => {
+      const target = [...element.querySelectorAll('p')].find((item) => item.textContent === anchor);
+      target.scrollIntoView({ block: 'start' });
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + (box.width / 2), box.top + 3)?.closest('h2');
+      return hit ? { day: hit.textContent, offset: Math.round(hit.getBoundingClientRect().top - box.top) } : null;
+    }, text);
+    await expect.poll(() => dayAtTop('Question c3')).toEqual({ day: 'September 29, 2026', offset: 0 });
+    await expect(page.getByText('Question c3', { exact: true })).toBeInViewport();
+    await expect.poll(() => dayAtTop('Question e0')).toEqual({ day: 'Yesterday', offset: 0 });
+    await expect.poll(() => dayAtTop('Sent today')).toEqual({ day: 'Today', offset: 0 });
+    await expect.poll(() => dayAtTop('Question a0')).toBeNull();
+  });
+
   test('Hosted offers no Routines', async ({ page }) => {
     await routeReadyChat(page, { hostedSession: true });
     // Even with Routines available to fetch, Hosted never asks for them.
