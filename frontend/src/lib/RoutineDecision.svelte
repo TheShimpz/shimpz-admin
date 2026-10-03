@@ -284,6 +284,8 @@
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
          stopped; then where; then the one next step; the literal error stays one click away. -->
+    <!-- The message: a host may bleed it to its own edges and draw its side lines (`--decision-message-*`). -->
+    <div class="message">
     <div class="alert">
       <!-- The badge wears the status's color (failed red, paused yellow) and the shared idle glitch. -->
       <span class={['badge', outcome === 'paused' ? 'badge--warning' : 'badge--danger']} data-shimpz-glitch="true" aria-hidden="true">
@@ -310,6 +312,7 @@
         {/if}
       </div>
     {/if}
+    </div>
 
   {:else}
     <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{reason}</span></p>
@@ -455,7 +458,16 @@
 
   /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
      and stacks one row per choice between hairlines. */
-  .spacer { flex: 1 0 var(--shimpz-space-2); }
+  .spacer { flex: 0 0 0; }
+  .message {
+    display: grid;
+    flex: 1 0 auto;
+    align-content: start;
+    gap: 0.4rem;
+    margin-inline: calc(-1 * var(--decision-message-bleed, 0px));
+    padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--shimpz-space-3);
+    box-shadow: var(--decision-message-sides, none);
+  }
   .choices {
     display: grid;
     justify-items: var(--decision-choices-justify, stretch);
