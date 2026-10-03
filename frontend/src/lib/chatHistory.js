@@ -291,27 +291,28 @@ export async function listChatHistory(fetcher, teamId, before = null) {
   return { entries, before: historyCursor(body.before, response.status) };
 }
 
-// The Runs page shows a Routine's latest few runs; it reads at most this many history pages to find them.
+// The Runs page shows a Routine's latest few runs; one search reads at most this many history pages to find them.
 export const RECENT_ROUTINE_RUNS = 5;
 export const MAX_ROUTINE_RUN_PAGES = 16;
 
 /**
- * A Routine's latest runs, newest first: history pages are read newest first, following each page's cursor, until
- * five of its runs are found, the history ends, or the page bound is reached, so unrelated chat never hides them.
+ * Up to `wanted` of a Routine's latest runs, newest first, from `before` (null for the newest history): pages are read
+ * newest first, following each page's cursor, until enough runs are found or the history ends. A search that reaches
+ * its page bound first returns the cursor it stopped at, so the person can continue it; otherwise `before` is null.
  */
-export async function recentRoutineRuns(fetcher, teamId, routineId) {
+export async function recentRoutineRuns(fetcher, teamId, routineId, { before = null, wanted = RECENT_ROUTINE_RUNS } = {}) {
   const runs = [];
-  let before = null;
+  let cursor = before;
   for (let page = 0; page < MAX_ROUTINE_RUN_PAGES; page += 1) {
-    const { entries, before: older } = await listChatHistory(fetcher, teamId, before);
+    const { entries, before: older } = await listChatHistory(fetcher, teamId, cursor);
     // A page lists its entries oldest first.
     for (const entry of [...entries].reverse()) {
       if (entry.kind !== 'routine-run' || entry.routineId !== routineId || !entry.runId) continue;
       runs.push(entry);
-      if (runs.length === RECENT_ROUTINE_RUNS) return runs;
+      if (runs.length === wanted) return { runs, before: null };
     }
-    if (older === null) break;
-    before = older;
+    if (older === null) return { runs, before: null };
+    cursor = older;
   }
-  return runs;
+  return { runs, before: cursor };
 }

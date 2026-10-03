@@ -330,22 +330,31 @@ test('a Routine\'s latest runs follow the history cursor past unrelated rows, ne
     requested.push(before);
     return response(200, pages[before]);
   };
-  const runs = await recentRoutineRuns(fetcher, 'marketing', routine);
-  assert.deepEqual(runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5']);
+  const found = await recentRoutineRuns(fetcher, 'marketing', routine);
+  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5']);
+  assert.equal(found.before, null);
   assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ']);
 
-  // A history that ends first yields what it has; an unrelated history is read only up to the page bound.
+  // A history that ends first yields what it has, with nothing left to search.
   requested.length = 0;
-  assert.deepEqual(await recentRoutineRuns(fetcher, 'marketing', other), [runRow('2'.repeat(32), other)].map((row) => ({
-    id: row.id, kind: 'routine-run', runId: row.run_id, routineId: other, quote: row.quote, outcome: 'done',
-    createdAt: AT, detail: { actions: [['shimpz-cloudflare', 'list-zones']] }, version: 1,
-  })));
+  const ended = await recentRoutineRuns(fetcher, 'marketing', other);
+  assert.deepEqual(ended.runs.map((entry) => entry.runId), ['2'.repeat(32)]);
+  assert.equal(ended.before, null);
   assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ', 'AAAAAAAAAAI']);
+  // A continued search starts at its cursor and stops once it found what was still wanted.
+  requested.length = 0;
+  const continued = await recentRoutineRuns(fetcher, 'marketing', routine, { before: 'AAAAAAAAAGQ', wanted: 2 });
+  assert.deepEqual(continued.runs.map((entry) => entry.runId[0]), ['7', '6']);
+  assert.deepEqual(requested, ['AAAAAAAAAGQ']);
+});
+
+test('a search for runs stops at its page bound with the cursor to continue from', async () => {
+  const routine = '9'.repeat(32);
   let reads = 0;
   const endless = async () => {
     reads += 1;
     return response(200, { entries: [chatRow(reads)], before: 'AAAAAAAAAMg' });
   };
-  assert.deepEqual(await recentRoutineRuns(endless, 'marketing', routine), []);
+  assert.deepEqual(await recentRoutineRuns(endless, 'marketing', routine), { runs: [], before: 'AAAAAAAAAMg' });
   assert.equal(reads, MAX_ROUTINE_RUN_PAGES);
 });

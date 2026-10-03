@@ -5443,7 +5443,48 @@ test.describe('Team Routines', () => {
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
     await expect(runs).not.toContainText('No runs yet.');
+    await expect(runs.getByRole('button', { name: 'Look for older runs' })).toHaveCount(0);
     expect(chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
+  });
+
+  test("a Routine's runs beyond one search's page bound are reached by continuing it, never reported absent", async ({ page }) => {
+    const pageOf = (start) => Array.from({ length: 64 }, (_, index) => ({
+      id: `${(start + index).toString(16).padStart(32, '0')}:user`,
+      created_at: '2026-10-02T09:00:00Z',
+      kind: 'message',
+      role: 'user',
+      text: `Unrelated message ${start + index + 1}`,
+    }));
+    const searched = [];
+    await routeReadyChat(page);
+    // Seventeen pages of newer unrelated chat, then the Routine's one run.
+    await page.route('**/api/teams/marketing/chat/history**', (route) => {
+      const before = new URL(route.request().url()).searchParams.get('before');
+      searched.push(before);
+      const index = before === null ? 0 : Number.parseInt(before.slice(-3, -1), 10);
+      const body = index < 17
+        ? { entries: pageOf(index * 64), before: `AAAAAAAA${String(index + 1).padStart(2, '0')}A` }
+        : { entries: [routineRow('d'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] })], before: null };
+      return route.fulfill({ json: body });
+    });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' });
+    const older = runs.getByRole('button', { name: 'Look for older runs' });
+    await expect(older).toBeVisible();
+    await expect(runs).not.toContainText('No runs yet.');
+    await older.click();
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
+    await expect(older).toHaveCount(0);
   });
 
   test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', async ({ page }) => {

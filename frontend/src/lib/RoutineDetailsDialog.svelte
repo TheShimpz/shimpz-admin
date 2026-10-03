@@ -2,7 +2,7 @@
   import { Button, Notice } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
-  import { recentRoutineRuns } from '$lib/chatHistory.js';
+  import { RECENT_ROUTINE_RUNS, recentRoutineRuns } from '$lib/chatHistory.js';
   import { locale } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
@@ -48,6 +48,9 @@
   let deleteButton = $state();
   let recent = $state(null);
   let recentFailed = $state(false);
+  // Where a search for runs stopped at its page bound, so the person can continue it; null once history is exhausted.
+  let olderRuns = $state(null);
+  let searchingOlder = $state(false);
   let detailsRun = $state('');
   let page = $state('summary');
   // The summary says the time now in the Routine's timezone, kept to the second while the panel is open.
@@ -110,10 +113,30 @@
     let current = true;
     void loadAssistantNames(fetch);
     recentRoutineRuns(fetch, teamId, routine.routine_id)
-      .then((runs) => { if (current) recent = runs; })
+      .then((found) => {
+        if (!current) return;
+        recent = found.runs;
+        olderRuns = found.before;
+      })
       .catch(() => { if (current) recentFailed = true; });
     return () => { current = false; };
   });
+
+  async function searchOlderRuns() {
+    searchingOlder = true;
+    try {
+      const found = await recentRoutineRuns(fetch, teamId, routine.routine_id, {
+        before: olderRuns,
+        wanted: RECENT_ROUTINE_RUNS - recent.length,
+      });
+      recent = [...recent, ...found.runs];
+      olderRuns = found.before;
+    } catch {
+      recentFailed = true;
+    } finally {
+      searchingOlder = false;
+    }
+  }
 
   const RUN_ICONS = {
     done: 'check', recovered: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
@@ -295,7 +318,7 @@
             <li class="sub">{copy.panel.runsUnavailable}</li>
           {:else if recent === null}
             <li class="sub" role="status">{copy.list.loading}</li>
-          {:else if recent.length === 0 && live.length === 0}
+          {:else if recent.length === 0 && live.length === 0 && olderRuns === null}
             <li class="sub">{copy.panel.noRuns}</li>
           {:else}
             {#each recent as entry (entry.id)}
@@ -307,6 +330,13 @@
                   onclick={() => (detailsRun = entry.runId)}><RoutineIcon name="terminal" /></Button>
               </li>
             {/each}
+            {#if olderRuns !== null}
+              <li>
+                <Button variant="ghost" size="sm" type="button" disabled={searchingOlder} onclick={searchOlderRuns}>
+                  {#snippet icon()}<RoutineIcon name="clock" />{/snippet}{copy.panel.olderRuns}
+                </Button>
+              </li>
+            {/if}
           {/if}
         </ul>
       {/if}
