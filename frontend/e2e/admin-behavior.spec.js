@@ -4778,7 +4778,7 @@ test.describe('Team Routines', () => {
     expect(await accessibilityViolations(page)).toEqual([]);
     // The step shown is the card's, and Skip's consequence is stated before it is chosen.
     await expect(rows.nth(0)).toContainText('Create DNS record');
-    await expect(rows.nth(0)).toContainText('later runs continue');
+    await expect(rows.nth(0)).toContainText('runs again at its next scheduled time');
     // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
     await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
     await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
@@ -4955,16 +4955,11 @@ test.describe('Team Routines', () => {
       },
     }));
     await page.goto('/chat/?team=marketing');
-    const row = page.locator('.routine-run');
-    const recommended = row.getByRole('button', { name: 'Verify', exact: true });
-    await expect(recommended).toBeVisible();
+    await expect(page.locator('.routine-run').getByRole('button', { name: 'Verify', exact: true })).toBeVisible();
     const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
     await expect(routines).toBeVisible();
     // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
-    for (const [control, decoration] of [
-      [recommended, row.getByText('Recommended', { exact: true })],
-      [routines, page.locator('.routines-slot .attention')],
-    ]) {
+    for (const [control, decoration] of [[routines, page.locator('.routines-slot .attention')]]) {
       await page.mouse.move(0, 0);
       await page.waitForTimeout(400);
       const before = await decoration.boundingBox();

@@ -43,36 +43,34 @@
   let card = $state(null);
 
   const id = $props.id();
-  const CHOICE_ICONS = { verify: 'verify', skip: 'skip', pause: 'pause' };
+  const CHOICE_ICONS = { verify: 'check', skip: 'skip', pause: 'pause' };
   const HINTS = { verify: 'verifyHint', skip: 'skipHint', pause: 'pauseHint' };
   let listed = $derived($routineContext.get(teamId));
   let recovery = $derived(outcome === 'held' || outcome === 'paused');
 
-  // Where a held or paused run stopped, and its place in the plan when the listed Routine names it exactly once. The
-  // step a card names is Team's current one, which a stale row may not show.
+  // Where a held or paused run stopped, as one sentence: its place in the plan when the listed Routine names that step
+  // exactly once. The step a card names is Team's current one, which a stale row may not show.
   let situation = $derived.by(() => {
-    if (!recovery) return null;
+    if (!recovery) return '';
     const step = card ?? detail;
-    if (step.assistant_id === null) return { step: '', position: '' };
+    if (step.assistant_id === null) return copy.run.stoppedUnknown;
     const steps = listed?.routines.find((routine) => routine.routine_id === routineId)?.steps ?? [];
     const matches = steps.flatMap((item, index) => (
       item.assistant === step.assistant_id && item.action === step.action ? [index + 1] : []
     ));
-    return {
-      step: fillRoutineCopy(copy.plan.step, {
-        assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
-        action: humanizeId(step.action),
-      }).replace(' · ', ' › '),
-      position: matches.length === 1 ? fillRoutineCopy(copy.card.stepOf, { n: matches[0], total: steps.length }) : '',
-    };
+    const words = fillRoutineCopy(copy.plan.step, {
+      assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
+      action: humanizeId(step.action),
+    }).replace(' · ', ' › ');
+    return matches.length === 1
+      ? fillRoutineCopy(copy.card.stoppedAt, { n: matches[0], total: steps.length, step: words })
+      : fillRoutineCopy(copy.card.stoppedAtStep, { step: words });
   });
-  // Why the person decides: a held run's open question, the reason its Routine paused, or the approval it waits for.
+  // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
+  // names the approval it waits for.
   let reason = $derived.by(() => {
-    if (outcome === 'held') return copy.card.reasonHeld;
-    if (outcome === 'paused') {
-      const words = copy.run.pauseReasons[detail.reason] ?? '';
-      return words.charAt(0).toLocaleUpperCase($locale) + words.slice(1);
-    }
+    if (outcome === 'held') return copy.card.heldLead;
+    if (outcome === 'paused') return fillRoutineCopy(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
     return fillRoutineCopy(detail.request_kind === 'human' ? copy.run.frozenHuman : copy.run.frozenIntegrations, {
       assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
       action: humanizeId(detail.action),
@@ -242,17 +240,10 @@
 
 <div class="decision">
   {#if situation}
-    <p class="line"><span class="prompt" aria-hidden="true">&gt;</span>
-      {#if situation.step}
-        <span class="key">{copy.card.stoppedLabel}</span>
-        <span class="value">{situation.step}</span>
-        {#if situation.position}<span class="muted">· {situation.position}</span>{/if}
-      {:else}
-        <span class="value">{copy.run.stoppedUnknown}</span>
-      {/if}
-    </p>
-    {#if situation.step}<p class="line muted"><RoutineIcon name="warning" />{copy.card.unknownEffect}</p>{/if}
-    <p class="reason">{reason}</p>
+    <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
+    <p class="lead"><RoutineIcon name="warning" />{reason}</p>
+    <p class="detail">{situation}</p>
+    {#if recoverable && card}<p class="ask">{copy.card.choose}</p>{/if}
   {:else}
     <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{reason}</span></p>
   {/if}
@@ -260,12 +251,12 @@
 
   {#if recoverable}
     {#if card}
-      <!-- One choice group that continues its host's frame to the edges: a segment per choice in Team's order, the
-           recommended one first. Each segment is one button (key, icon, verb, consequence); the recommendation is said
-           only to assistive technology. -->
+      <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, the
+           recommended one first. Each row is one button (icon, verb, what it does in plain words); the recommendation
+           is said only to assistive technology. -->
       <div class="spacer"></div>
       <div class="choices" role="group" aria-label={copy.card.choices}>
-        {#each card.choices as choice, index (choice)}
+        {#each card.choices as choice (choice)}
           <div class="segment">
             <Button
               class="choice"
@@ -276,9 +267,9 @@
               aria-describedby={choice === card.recommended ? `${id}-recommended ${id}-${choice}` : `${id}-${choice}`}
               onclick={() => recover(choice)}
             >
-              <span class="key" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
               <RoutineIcon name={CHOICE_ICONS[choice]} />
               <span class="verb">{copy.card[choice]}</span>
+              <span class="go" aria-hidden="true"><RoutineIcon name="chevron" /></span>
               <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
             </Button>
             {#if choice === card.recommended}<span class="sr-only" id={`${id}-recommended`}>{copy.card.recommendedMark}</span>{/if}
@@ -328,7 +319,7 @@
 {/if}
 
 <style>
-  /* Neutral terminal lines and one choice group: cyan marks only the recommended choice, and state color lives on small
+  /* One plain message and one choice list: cyan marks only the hovered choice, and state color lives on small
      icons. */
   .decision { container-type: inline-size; display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.4rem; min-width: 0; }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
@@ -338,29 +329,23 @@
   .line.muted { color: var(--shimpz-color-text-muted); }
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
-  .key { color: var(--shimpz-color-text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
   .value { color: var(--shimpz-color-text); }
-  .muted { color: var(--shimpz-color-text-muted); }
-  .reason { margin: 0.2rem 0 0; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.5; text-wrap: pretty; }
+  .lead { display: flex; align-items: flex-start; gap: 0.55rem; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; }
+  .lead :global(.routine-icon) { flex: none; width: 1.05rem; height: 1.05rem; margin-block-start: 0.15rem; color: var(--shimpz-color-yellow); }
+  .detail { margin: 0; max-width: 68ch; color: var(--shimpz-color-text-muted); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
+  .ask { margin: var(--shimpz-space-2) 0 0; color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
-  /* The choice group continues the host's frame: it reaches the host's edges (the host sets the insets it pads with),
-     sits below one rule, and splits into equal segments by hairlines; a narrow card stacks them. */
+  /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
+     and stacks one row per choice between hairlines. */
   .spacer { flex: 1 0 var(--shimpz-space-2); }
   .choices {
     display: grid;
-    grid-auto-columns: minmax(0, 1fr);
-    grid-auto-flow: column;
     margin-inline: calc(-1 * var(--decision-inline, 0px));
-    margin-block-end: calc(-1 * var(--decision-end, 0px));
     border-block-start: 1px solid var(--shimpz-color-border);
   }
-  @container (max-width: 34rem) { .choices { grid-auto-flow: row; } }
-  .segment { position: relative; display: grid; min-width: 0; }
-  .segment + .segment { border-inline-start: 1px solid var(--shimpz-color-border); }
-  @container (max-width: 34rem) {
-    .segment + .segment { border-inline-start: 0; border-block-start: 1px solid var(--shimpz-color-border); }
-  }
+  .segment { display: grid; min-width: 0; }
+  .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .segment :global(.choice) {
     --button-color: var(--shimpz-color-text);
     --button-bg: transparent;
@@ -368,24 +353,22 @@
     --button-hover-color: var(--shimpz-color-text);
     --button-hover-bg: var(--shimpz-color-surface-high);
     width: 100%;
-    height: 100%;
-    min-height: 5.5rem;
+    min-height: 0;
     padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3));
     text-align: start;
     text-transform: none;
     letter-spacing: normal;
     clip-path: none;
-    align-items: stretch;
   }
-  .segment :global(.choice:hover:not(:disabled)) { box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .segment :global(.choice:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; box-shadow: none; }
-  .segment :global(.choice .button-content) { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; align-content: start; justify-items: start; align-self: stretch; gap: 0.5rem 0.5rem; width: 100%; }
+  .segment :global(.choice .button-content) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; justify-items: start; gap: 0.35rem 0.6rem; width: 100%; }
   .segment :global(.choice .routine-icon) { width: 1rem; height: 1rem; color: var(--shimpz-color-text-muted); }
   .segment :global(.choice:hover:not(:disabled) .routine-icon) { color: var(--shimpz-color-cyan); }
-  .key { color: var(--shimpz-color-text-dim); font: 600 0.62rem/1 var(--shimpz-font-mono); letter-spacing: 0.06em; }
-  .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  /* The consequence stays readable: the hover glitch splits the verb, never this sentence. */
-  .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
+  .verb { font: 700 0.76rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .go { display: inline-flex; justify-self: end; }
+  :global([dir="rtl"]) .go :global(.routine-icon) { transform: scaleX(-1); }
+  /* What a choice does, in plain words; the hover glitch splits the verb, never this sentence. */
+  .hint { grid-column: 2 / 4; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
   @media (forced-colors: active) {
     .choices, .segment + .segment { border-color: CanvasText; }
