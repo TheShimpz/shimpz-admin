@@ -178,6 +178,7 @@
       : '';
     const cause = failureCause(item);
     return {
+      title: cause === 'unknown' ? '' : copy.card.causeTitles[cause],
       cause: copy.card.causes[cause],
       known: cause !== 'unknown',
       text,
@@ -281,29 +282,32 @@
 <div class="decision">
   {#if situation}
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
-    <div class="head">
-      <p class="lead"><RoutineIcon name="warning" />{reason}</p>
-      <p class="where">{situation}</p>
+    <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
+         stopped; then where; then the one next step; the literal error stays one click away. -->
+    <div class="alert">
+      <span class="badge" aria-hidden="true"><RoutineIcon name="warning" /></span>
+      <div class="alert-text">
+        <p class="title">{(recoverable && failure?.title) || reason}</p>
+        <p class="where">{situation}</p>
+      </div>
     </div>
     {#if recoverable && failure}
-      <!-- What the step returned: its likely cause in plain words, with the literal sanitized error one click away. -->
-      <div class="cause">
-        {#if failure.known}<span class="cause-label">{copy.card.causeTitle}</span>{/if}
-        <p>{failure.cause}</p>
+      <div class="body">
+        <p class={['next', failure.known && 'is-step']}>{#if failure.known}<RoutineIcon name="step" />{/if}{failure.cause}</p>
+        {#if failure.text}
+          <Disclosure class="technical">
+            {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
+            <div class="error">
+              <p class="error-text">{failure.text}</p>
+              {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
+              {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
+              {#if failure.truncated}<p class="meta">{copy.details.truncated}</p>{/if}
+            </div>
+          </Disclosure>
+        {/if}
       </div>
-      {#if failure.text}
-        <Disclosure class="technical">
-          {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
-          <div class="error">
-            <p class="error-text">{failure.text}</p>
-            {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
-            {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
-            {#if failure.truncated}<p class="meta">{copy.details.truncated}</p>{/if}
-          </div>
-        </Disclosure>
-      {/if}
     {/if}
-    {#if recoverable && card}<p class="ask">{copy.card.choose}</p>{/if}
+
   {:else}
     <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{reason}</span></p>
   {/if}
@@ -315,6 +319,7 @@
            recommended. Each row is one button (icon, verb, what it does in plain words). -->
       <div class="spacer"></div>
       <div class="choices" role="group" aria-label={copy.card.choices}>
+        <p class="ask">{copy.card.choose}</p>
         {#each card.choices as choice (choice)}
           <div class="segment">
             <Button
@@ -389,27 +394,42 @@
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
-  /* What happened: a plain headline, then where, in mono. */
-  .head { display: grid; gap: 0.35rem; }
-  .lead { display: flex; align-items: flex-start; gap: 0.55rem; margin: 0; color: var(--shimpz-color-text); font: 600 1.02rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; }
-  .lead :global(.routine-icon) { flex: none; width: 1.05rem; height: 1.05rem; margin-block-start: 0.15rem; color: var(--shimpz-color-yellow); }
-  .where { margin: 0; padding-inline-start: 1.6rem; color: var(--shimpz-color-text-dim); font: 400 0.76rem/1.5 var(--shimpz-font-mono); overflow-wrap: anywhere; }
-  /* The likely cause is the one thing to read: a quiet framed note with a mono label. */
-  .cause { display: grid; gap: 0.3rem; margin-block-start: var(--shimpz-space-2); padding: var(--shimpz-space-3); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); }
-  .cause-label { color: var(--shimpz-color-yellow); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
-  .cause p { margin: 0; max-width: 68ch; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
-  /* The literal error stays one click away. */
+  /* What happened: a warning badge beside the headline and where it stopped; the next step and the technical error
+     sit under the headline's own edge. */
+  .alert { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
+  .badge {
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    color: var(--shimpz-color-yellow);
+    background: color-mix(in srgb, var(--shimpz-color-yellow) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--shimpz-color-yellow) 45%, transparent);
+    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-sm)) 0, 100% var(--shimpz-cut-sm), 100% 100%, 0 100%);
+  }
+  .badge :global(.routine-icon) { width: 1.2rem; height: 1.2rem; }
+  .alert-text { display: grid; gap: 0.2rem; min-width: 0; }
+  .title { margin: 0; color: var(--shimpz-color-text); font: 600 1.12rem/1.3 var(--shimpz-font-sans); text-wrap: balance; overflow-wrap: anywhere; }
+  .where { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.5rem + var(--shimpz-space-3)); }
+  .next { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
+  .next.is-step { color: var(--shimpz-color-text); }
+  .next :global(.routine-icon) { flex: none; width: 0.95rem; height: 0.95rem; margin-block-start: 0.2rem; color: var(--shimpz-color-cyan); }
+  :global([dir="rtl"]) .next :global(.routine-icon), :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
+  /* The literal error, quiet and one click away. */
   .decision :global(.technical) { border-block-start: 0; padding-block-start: 0; }
-  .decision :global(.technical summary) { list-style: none; }
+  .decision :global(.technical summary) { list-style: none; color: var(--shimpz-color-text-dim); font: 500 0.78rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-transform: none; }
+  .decision :global(.technical summary:hover) { color: var(--shimpz-color-text); }
   .decision :global(.technical summary::-webkit-details-marker) { display: none; }
   .technical-summary { display: inline-flex; align-items: center; gap: 0.35rem; }
   .technical-summary :global(.routine-icon) { width: 0.8rem; height: 0.8rem; transition: transform var(--shimpz-duration-fast) var(--shimpz-ease); }
-  :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
   .decision :global(.technical[open] .technical-summary .routine-icon) { transform: rotate(90deg); }
   .error { display: grid; gap: 0.3rem; min-width: 0; }
   .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
-  .ask { margin: var(--shimpz-space-2) 0 0; color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  /* The question heads the choice list it asks about. */
+  .ask { margin: 0; padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3)) var(--shimpz-space-2); color: var(--shimpz-color-text); font: 600 0.95rem/1.35 var(--shimpz-font-sans); }
+  .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
   /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
@@ -437,14 +457,24 @@
     clip-path: none;
   }
   .segment :global(.choice:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; box-shadow: none; }
-  .segment :global(.choice .button-content) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; justify-items: start; gap: 0.35rem 0.6rem; width: 100%; }
+  /* The icon and the chevron sit in the middle of the whole row, beside the verb and its sentence. */
+  .segment :global(.choice .button-content) {
+    display: grid;
+    grid-template-areas: "icon verb go" "icon hint go";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    justify-items: start;
+    gap: 0.3rem 0.75rem;
+    width: 100%;
+  }
+  .segment :global(.choice .button-content > .routine-icon) { grid-area: icon; align-self: center; }
   .segment :global(.choice .routine-icon) { width: 1rem; height: 1rem; color: var(--shimpz-color-text-muted); }
   .segment :global(.choice:hover:not(:disabled) .routine-icon) { color: var(--shimpz-color-cyan); }
-  .verb { font: 700 0.76rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  .go { display: inline-flex; justify-self: end; }
+  .verb { grid-area: verb; font: 700 0.76rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .go { display: inline-flex; grid-area: go; align-self: center; justify-self: end; }
   :global([dir="rtl"]) .go :global(.routine-icon) { transform: scaleX(-1); }
   /* What a choice does, in plain words; the hover glitch splits the verb, never this sentence. */
-  .hint { grid-column: 2 / 4; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
+  .hint { grid-area: hint; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
   @media (forced-colors: active) {
     .choices, .segment + .segment { border-color: CanvasText; }
