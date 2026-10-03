@@ -378,15 +378,15 @@
   .bar { min-height: 2.5rem; }
   /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
   .content.decide {
-    --decision-inline: var(--shimpz-space-4);
-    --decision-ask-align: center;
-    --decision-list-border: 1px solid var(--shimpz-color-border);
+    --choice-inline: var(--shimpz-space-4);
+    --choice-ask-align: center;
+    --choice-list-border: 1px solid var(--shimpz-color-border);
     /* The panel's side lines run only beside the header and the message; the answers below are open. */
     --decision-message-bleed: var(--shimpz-space-4);
     --decision-message-top: var(--shimpz-space-4);
     --decision-message-sides: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
     --decision-message-rule: 1px solid var(--shimpz-color-border);
-    --decision-choices-rule: 0;
+    --choice-rule: 0;
     display: flex;
     flex-direction: column;
     padding-block-start: 0;
