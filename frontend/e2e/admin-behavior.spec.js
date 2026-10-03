@@ -4871,6 +4871,41 @@ test.describe('Team Routines', () => {
     await expect(button).toBeFocused();
   });
 
+  test('a Team\'s Routine list is searched by similar text and paged three at a time', async ({ page }) => {
+    await routeReadyChat(page);
+    const routine = (digit, name) => ({ ...ROUTINE_VIEW, routine_id: digit.repeat(32), name, quote: name });
+    await routeRoutines(page, {
+      held: false,
+      others: [routine('c', 'Certificate check'), routine('d', 'Monthly DNS cleanup'), routine('e', 'Weekly www update')],
+    });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+    const rows = list.getByRole('group', { name: 'Routines' }).getByRole('button');
+    // Four Routines show three per page, with the page said in words.
+    await expect(rows).toHaveCount(3);
+    await expect(list.getByText('Page 1 of 2')).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    await list.getByRole('button', { name: 'Next' }).click();
+    await expect(rows).toHaveCount(1);
+    await expect(list.getByText('Page 2 of 2')).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Next' })).toBeDisabled();
+    // A search with a typo still finds its Routine, from the first page; nothing similar says so.
+    const search = list.getByRole('searchbox', { name: 'Search Routines' });
+    await search.fill('certficate');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toHaveAccessibleName('Certificate check');
+    await expect(list.getByRole('navigation', { name: 'Routine pages' })).toHaveCount(0);
+    await search.fill('pizza delivery');
+    await expect(rows).toHaveCount(0);
+    await expect(list.getByRole('status')).toHaveText('No Routine looks like “pizza delivery”.');
+    await search.fill('');
+    await expect(rows).toHaveCount(3);
+    expect(await accessibilityViolations(page)).toEqual([]);
+  });
+
   test('Routine outcomes appear in the transcript, apart from the conversation', async ({ page }) => {
     const run = 'b'.repeat(32);
     const entry = (id, outcome, detail, runId = id) => ({

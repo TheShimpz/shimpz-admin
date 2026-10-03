@@ -1,7 +1,7 @@
 <script>
   import { tick } from 'svelte';
 
-  import ChoiceList from '$lib/ChoiceList.svelte';
+  import ChoiceBrowser from '$lib/ChoiceBrowser.svelte';
   import { locale, t } from '$lib/i18n.js';
   import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '$lib/routine.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
@@ -17,7 +17,7 @@
   let dialog = $state();
   let open = $state('');
   // The Routine the list puts focus on when it opens again.
-  let last = '';
+  let last = $state('');
   let opened = $derived(routines.find((routine) => routine.routine_id === open));
 
   let items = $derived(routines.map((routine) => {
@@ -71,13 +71,14 @@
   <RoutineModal bind:dialog class="routine-list" size="md" open title={fillRoutineCopy(copy.list.title, { team: teamName })}
     oncancel={close} onclose={close} onopen={focusList}>
     <div class="body">
-      <ChoiceList label={copy.list.open} variant="item" {items} onchoose={choose} />
+      <ChoiceBrowser label={copy.list.open} {items} copy={copy.list} initial={last} onchoose={choose} />
     </div>
   </RoutineModal>
 {/if}
 
 <style>
-  /* The list reaches the frame's edges, joined to the header that asks the question; it scrolls inside the modal when the Team has many. */
+  /* The search, the list, and its pages sit under the header that asks the question; the list reaches the frame's
+     edges and scrolls inside the modal when it is long. */
   .body {
     --choice-inline: var(--shimpz-space-4);
     --choice-ask-align: center;
@@ -88,6 +89,4 @@
     padding-block: 0 var(--shimpz-space-4);
     overflow: auto;
   }
-  /* The list starts right under the header, whose rule is the list's top edge. */
-  .body :global(.segment:first-child) { border-block-start: 0; }
 </style>
