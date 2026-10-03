@@ -37,7 +37,7 @@ def answer(body: dict[str, object], status: int = 200) -> team.TeamResponse:
     return team.TeamResponse(status, {**body, "trace_id": TRACE} if status < 300 else body)
 
 
-def request(payload: object) -> Request:
+def request(payload: object, application: object = None) -> Request:
     body = json.dumps(payload).encode()
     delivered = False
 
@@ -48,7 +48,8 @@ def request(payload: object) -> Request:
         return {"type": "http.request", "body": chunk, "more_body": False}
 
     headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
-    return Request({"type": "http", "method": "POST", "path": "/", "headers": headers, "query_string": b""}, receive)
+    scope = {"type": "http", "method": "POST", "path": "/", "headers": headers, "query_string": b""}
+    return Request({**scope, "app": application or FastAPI()}, receive)
 
 
 class RoutineManageTests(unittest.TestCase):
@@ -79,19 +80,6 @@ class RoutineManageTests(unittest.TestCase):
         with self.call(answer({"team_id": "team_1", "run_id": ID, "stopped": True})) as call:
             self.assertTrue(manage.stop("team_1", ID).body["stopped"])
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{ID}/stop", {})
-        # A recovery card and its answer are admitted only for exactly the Team and incident asked for.
-        with self.call(answer(CARD)) as call:
-            self.assertEqual(manage.open_card("team_1", ID).body, CARD)
-        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/card", {})
-        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "choices": []}):
-            with self.subTest(card=foreign), self.call(answer(foreign)):
-                self.assertEqual(manage.open_card("team_1", ID).status, 502)
-        chosen = {"nonce": CARD["nonce"], "choice": "verify"}
-        with self.call(answer(ANSWERED)) as call:
-            self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
-        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
-        with self.call(answer({**ANSWERED, "status": "skipped"})):
-            self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
         # A run's execution details are admitted only in their sanitized view, for exactly the run asked for.
         details = {**DIAGNOSTICS[1], "run_id": ID}
         with self.call(answer(details)) as call:
@@ -129,6 +117,47 @@ class RoutineManageTests(unittest.TestCase):
                 response = manage.delete("team_1", ID)
                 self.assertEqual((response.status, response.body), (expected[0], {"code": expected[1]}))
 
+    def test_a_card_and_its_answer_are_admitted_only_for_the_team_and_incident_asked_for(self) -> None:
+        # A recovery card and its answer are admitted only for exactly the Team and incident asked for.
+        with self.call(answer(CARD)) as call:
+            self.assertEqual(manage.open_card("team_1", ID).body, CARD)
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/card", {})
+        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "choices": []}):
+            with self.subTest(card=foreign), self.call(answer(foreign)):
+                self.assertEqual(manage.open_card("team_1", ID).status, 502)
+        # Rodar runs no model, so it never carries the model credential.
+        chosen = {"nonce": CARD["nonce"], "choice": "run"}
+        with self.call(answer(ANSWERED)) as call:
+            self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
+        call.assert_called_once_with(
+            "POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen, model_credential=None
+        )
+        with self.call(answer({**ANSWERED, "status": "recreated"})):
+            self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
+        # Recriar carries exactly the Team's model credential, which the Supervisor assertion then binds.
+        recreate = {"nonce": CARD["nonce"], "choice": "recreate"}
+        recreated = {**ANSWERED, "choice": "recreate", "status": "recreated"}
+        with (
+            mock.patch.object(manage.chat_local, "model_credential", return_value=("openai", "sk-test")) as key,
+            self.call(answer(recreated)) as call,
+        ):
+            self.assertEqual(manage.answer_card("team_1", ID, recreate).body, recreated)
+        key.assert_called_once_with("team_1")
+        call.assert_called_once_with(
+            "POST",
+            f"/v1/teams/team_1/routines/incidents/{ID}/answer",
+            recreate,
+            model_credential=("openai", "sk-test"),
+        )
+        # Without a stored key, Team is never asked and the person is told why.
+        missing = team.TeamResponse(409, {"code": "model-credential-missing"})
+        with (
+            mock.patch.object(manage.chat_local, "model_credential", return_value=missing),
+            self.call(answer(recreated)) as call,
+        ):
+            self.assertIs(manage.answer_card("team_1", ID, recreate), missing)
+        call.assert_not_called()
+
     def test_requests_are_refused_before_reaching_team(self) -> None:
         with mock.patch.object(transport, "_call") as call:
             for refused in (
@@ -136,8 +165,13 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.delete("team_1", "../x"),
                 lambda: manage.stop("team_1", "x"),
                 lambda: manage.open_card("team_1", "x"),
-                lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "skip"}),
+                lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "run"}),
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
+                # Excluir is the confirmed deletion route, and the retired choices are refused before Team.
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "delete"}),
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "verify"}),
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "skip"}),
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "pause"}),
                 lambda: manage.answer_card("team_1", ID, []),
                 lambda: manage.resume("team_1", "x"),
                 lambda: manage.diagnostics("team_1", "../x"),
@@ -173,7 +207,10 @@ class RoutineRouteTests(unittest.TestCase):
             diagnostics=mock.Mock(return_value=ok),
             pause=mock.Mock(return_value=ok),
         ):
-            chosen = {"nonce": "c" * 32, "choice": "pause"}
+            chosen = {"nonce": "c" * 32, "choice": "run"}
+            # A successful answer wakes the scheduler, so a Rodar run is claimed at once.
+            scheduled = FastAPI()
+            scheduled.state.routine_scheduler = mock.Mock()
             responses = [
                 routine_http.routines_list("team_1"),
                 asyncio.run(routine_http.routine_stop("team_1", ID)),
@@ -181,8 +218,9 @@ class RoutineRouteTests(unittest.TestCase):
                 asyncio.run(routine_http.routine_card("team_1", ID)),
                 asyncio.run(routine_http.routine_diagnostics("team_1", ID)),
                 asyncio.run(routine_http.routine_pause("team_1", ID)),
-                asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen))),
+                asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen, scheduled))),
             ]
+            scheduled.state.routine_scheduler.wake.assert_called_once_with()
             manage.answer_card.assert_called_once_with("team_1", ID, chosen)
             manage.open_card.assert_called_once_with("team_1", ID)
             manage.diagnostics.assert_called_once_with("team_1", ID)

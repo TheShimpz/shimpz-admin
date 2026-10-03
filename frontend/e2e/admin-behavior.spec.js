@@ -3953,12 +3953,58 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 });
 
 
+// A held run's card as Team opens it (ADR-0092 section 7): the step, its recorded failure (a Cloudflare account out of
+// credits), and exactly Rodar, Recriar, and Excluir.
+const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'";
+
+function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dns-record' } = {}) {
+  return {
+    team_id: 'marketing',
+    incident_id: incidentId,
+    routine_id: ROUTINE_VIEW.routine_id,
+    revision: 1,
+    assistant_id: 'shimpz-cloudflare',
+    action,
+    step: 2,
+    steps: 3,
+    evidence: 'recorded',
+    diagnostic: {
+      operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+      attempt: 1,
+      assistant_id: 'shimpz-cloudflare',
+      action,
+      recorded_at: '2026-10-01T12:01:05Z',
+      failure: {
+        error_type: 'httpx.HTTPStatusError',
+        message: CREDITS_MESSAGE,
+        provider: 'api.cloudflare.com',
+        http_status: 402,
+        response_excerpt: null,
+        redacted: true,
+        truncated: false,
+      },
+      condition: null,
+    },
+    nonce,
+    expires_in: 300,
+    choices: ['run', 'recreate', 'delete'],
+  };
+}
+
 // Admin's deletion ceremony (ADR-0051): the Supervisor password first, then one six-digit code; `000000` is wrong.
 const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
 
 async function routeRoutines(
   page,
-  { others = [], listFailsAfterDelete = false, runEnding = false, held = true, lockAfter = 0, passkey = false } = {},
+  {
+    others = [],
+    listFailsAfterDelete = false,
+    runEnding = false,
+    held = true,
+    lockAfter = 0,
+    passkey = false,
+    refuseRecreate = false,
+  } = {},
 ) {
   const calls = { begins: [], deletes: [], stops: [], resumes: [], pauses: [], answers: [] };
   let rejected = 0;
@@ -4021,6 +4067,8 @@ async function routeRoutines(
     routines = runEnding
       ? routines.map((routine) => (routine.routine_id === routineId ? { ...routine, deleting: true } : routine))
       : routines.filter((routine) => routine.routine_id !== routineId);
+    // Deleting a Routine sets its held runs aside (ADR-0092).
+    incidents = incidents.filter((item) => item.routine_id !== routineId);
     await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, deleted: !runEnding } });
   });
   await page.route('**/api/teams/marketing/routines/runs/*/stop', async (route) => {
@@ -4029,31 +4077,23 @@ async function routeRoutines(
     runs = runs.filter((item) => item.run_id !== runId);
     await route.fulfill({ json: { team_id: 'marketing', run_id: runId, stopped: true } });
   });
-  // The held run's recovery card: Skip settles the incident, so the Routine stays only paused; Pause keeps it held.
+  // The held run's card. Rodar and Recriar set the run aside and lift the pause, unless Recriar is refused.
   await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
     const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
-    await route.fulfill({
-      json: {
-        team_id: 'marketing',
-        incident_id: incidentId,
-        routine_id: ROUTINE_VIEW.routine_id,
-        revision: 1,
-        assistant_id: 'shimpz-cloudflare',
-        action: 'replace-dns-record',
-        nonce: 'f'.repeat(32),
-        expires_in: 300,
-        choices: ['verify', 'skip', 'pause'],
-        recommended: 'verify',
-      },
-    });
+    await route.fulfill({ json: recoveryCard(incidentId) });
   });
   await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
     const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
     const answer = route.request().postDataJSON();
     calls.answers.push(answer);
-    if (answer.choice === 'skip') incidents = incidents.filter((item) => item.incident_id !== incidentId);
-    const status = answer.choice === 'skip' ? 'skipped' : 'paused';
-    await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, verdict: null, status } });
+    if (answer.choice === 'recreate' && refuseRecreate) {
+      await route.fulfill({ status: 422, json: { code: 'routine-recreate-refused' } });
+      return;
+    }
+    incidents = incidents.filter((item) => item.incident_id !== incidentId);
+    routines = routines.map((routine) => ({ ...routine, paused: false }));
+    const status = answer.choice === 'run' ? 'requested' : 'recreated';
+    await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status } });
   });
   return calls;
 }
@@ -4592,51 +4632,77 @@ test.describe('Team Routines', () => {
     expect(calls.deletes).toEqual([{ code: '123456' }]);
   });
 
-  test('a Routine waiting for a recovery decision opens as that decision and returns to its pages once answered', async ({ page }) => {
+  async function openHeldPanel(page, options = {}) {
     await routeReadyChat(page);
-    const calls = await routeRoutines(page);
+    const calls = await routeRoutines(page, options);
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
     await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    // The whole panel is the decision: where the run stopped, why it waits, and the card's three choices.
+    return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
+  }
+
+  test('a Routine waiting for a recovery decision shows the step\'s error and returns to its pages once run', async ({ page }) => {
+    const { calls, panel } = await openHeldPanel(page);
+    // The whole panel is the decision: where the run stopped, the error the step returned and its likely cause, and
+    // exactly the card's three choices, each saying what it does before it is chosen.
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
-      .toEqual(['Verify', 'Skip', 'Pause']);
+      .toEqual(['Run', 'Recreate', 'Delete']);
+    await expect(panel).toContainText('step 2 of 3');
     await expect(panel).toContainText('Replace DNS record');
+    await expect(panel.locator('blockquote')).toHaveText(CREDITS_MESSAGE);
+    await expect(panel).toContainText('HTTP 402 · api.cloudflare.com');
+    await expect(panel).toContainText('ran out of credits');
+    await expect(panel).toContainText('repeating a creation or a message can duplicate it');
     await expect(panel.getByRole('tablist')).toHaveCount(0);
     expect(calls.answers).toEqual([]);
     expect(await accessibilityViolations(page)).toEqual([]);
-    // Skip answers that card once; the panel goes back to its pages and says what the answer did.
-    await panel.getByRole('button', { name: 'Skip' }).click();
+    // Run answers that card once; the panel goes back to its pages and says what the answer did.
+    await panel.getByRole('button', { name: 'Run' }).click();
     await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
-    await expect(panel.getByRole('status')).toContainText('Skipped.');
-    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'skip' }]);
+    await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
+    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'run' }]);
   });
 
-  test('a Routine\'s decision is the only thing its panel offers, and pausing from it returns to its pages and actions', async ({ page }) => {
-    await routeReadyChat(page);
-    const calls = await routeRoutines(page);
-    await page.goto('/chat/?team=marketing');
-    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    await expect(panel.getByRole('group', { name: 'Recovery choices' })).toBeVisible();
-    // Until it is answered, nothing else is offered: no pages, no Pause or Delete of the Routine.
+  test('Recreate rebuilds the Routine, and a refused Recreate changes nothing and offers a fresh card', async ({ page }) => {
+    const { calls, panel } = await openHeldPanel(page, { refuseRecreate: true });
+    const choices = panel.getByRole('group', { name: 'Recovery choices' });
+    await choices.getByRole('button', { name: 'Recreate' }).click();
+    await expect(panel.getByRole('status')).toHaveText(
+      'Your original request could not be made into this Routine again. Nothing changed; ask for it again in the chat.',
+    );
+    // The decision stays: a fresh card opens for the next answer.
+    await expect(choices.getByRole('button')).toHaveCount(3);
+    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'recreate' }]);
+  });
+
+  test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }) => {
+    const { calls, panel } = await openHeldPanel(page);
+    // Until it is answered, nothing else is offered: no pages and no Routine actions besides the card's own.
     await expect(panel.getByRole('tablist')).toHaveCount(0);
-    await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
     await expect(panel.getByRole('button')).toHaveCount(4);
-    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Pause' }).click();
-    // The incident stays unresolved, yet the answered decision gives way to the Routine's pages.
-    await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
-    await expect(panel.getByRole('status')).toContainText('Paused: you paused it.');
-    await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
-    await expect(panel.getByRole('button', { name: 'Delete' })).toBeVisible();
-    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'pause' }]);
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
+    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
+    const password = confirm.getByLabel('Supervisor password');
+    await expect(password).toBeFocused();
+    await expect(confirm.getByRole('button')).toHaveText(['Cancel', 'Delete']);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Cancel returns to the decision, focused on the Delete it came from.
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    const remove = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' });
+    await expect(remove).toBeFocused();
+    expect(calls.answers).toEqual([]);
+    await remove.click();
+    await password.fill(SUPERVISOR_PASSWORD);
+    await confirm.getByLabel('Six-digit code').fill('123456');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(panel).toHaveCount(0);
+    // Excluir is the confirmed deletion itself, never a card answer.
+    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    expect(calls.answers).toEqual([]);
   });
 
   test('a Routine waiting for an approval is that decision in its panel, and a run held after approval asks again', async ({ page }) => {
@@ -4684,18 +4750,7 @@ test.describe('Team Routines', () => {
       await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'held' } });
     });
     await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: {
-        team_id: 'marketing',
-        incident_id: run,
-        routine_id: ROUTINE_VIEW.routine_id,
-        revision: 1,
-        assistant_id: 'shimpz-cloudflare',
-        action: 'replace-dns-record',
-        nonce: 'e'.repeat(32),
-        expires_in: 300,
-        choices: ['verify', 'skip', 'pause'],
-        recommended: 'verify',
-      },
+      json: recoveryCard(run, { nonce: 'e'.repeat(32) }),
     }));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -4711,7 +4766,7 @@ test.describe('Team Routines', () => {
     // The same run, now held, opens its recovery decision instead of leaving the panel without one.
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
-      .toEqual(['Verify', 'Skip', 'Pause']);
+      .toEqual(['Run', 'Recreate', 'Delete']);
   });
 
   test('a held run listed before its incident keeps Retry in its panel until the card opens', async ({ page }) => {
@@ -4731,7 +4786,7 @@ test.describe('Team Routines', () => {
         await route.fulfill({ status: 404, json: { code: 'routine-incident-unavailable' } });
         return;
       }
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, routine_id: ROUTINE_VIEW.routine_id, revision: 1, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', nonce: 'e'.repeat(32), expires_in: 300, choices: ['verify', 'skip', 'pause'], recommended: 'verify' } });
+      await route.fulfill({ json: recoveryCard(run, { nonce: 'e'.repeat(32) }) });
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -4759,15 +4814,15 @@ test.describe('Team Routines', () => {
     }));
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       openings.push(route.request().url());
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, routine_id: ROUTINE_VIEW.routine_id, revision: 1, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', nonce: 'e'.repeat(32), expires_in: 300, choices: ['verify', 'skip', 'pause'], recommended: 'verify' } });
+      await route.fulfill({ json: recoveryCard(run, { nonce: 'e'.repeat(32) }) });
     });
-    // Verify proves the step absent and the run goes on to freeze for an approval, which the Team lists before the
-    // answer itself is delivered.
+    // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
+    // delivered.
     await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
       runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
       incidents = [];
       await answered;
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, choice: 'verify', verdict: 'absent', status: 'frozen' } });
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, choice: 'run', status: 'requested' } });
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -4775,7 +4830,7 @@ test.describe('Team Routines', () => {
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
     await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Verify' }).click();
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
     await page.clock.fastForward(15_000);
     await expect(panel.getByRole('button', { name: 'Review' })).toBeVisible();
     release();
@@ -4845,7 +4900,7 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare › List zones');
   });
 
-  test('a held run is settled from its transcript row through the card Team opened, in its order', async ({ page }) => {
+  test('a held run is settled from its transcript row through the card Team opened, with exact fresh nonces', async ({ page }) => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const row = (id, outcome, detail) => ({
@@ -4869,63 +4924,95 @@ test.describe('Team Routines', () => {
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
       opened.push(incidentId);
-      // The paused run's step has no verifier: Team recommends Pausar and puts it first.
-      const recommended = incidentId === paused ? 'pause' : 'verify';
-      await route.fulfill({
-        json: {
-          team_id: 'marketing',
-          incident_id: incidentId,
-          routine_id: ROUTINE_VIEW.routine_id,
-          revision: 1,
-          // Team's card names its current step, which the transcript row may not show yet.
-          assistant_id: 'shimpz-cloudflare',
-          action: incidentId === held ? 'create-dns-record' : 'replace-dns-record',
-          nonce: String(opened.length).repeat(32),
-          expires_in: 300,
-          choices: recommended === 'pause' ? ['pause', 'verify', 'skip'] : ['verify', 'skip', 'pause'],
-          recommended,
-        },
-      });
+      // Team's card names its current step, which the transcript row may not show yet.
+      const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
+      await route.fulfill({ json: recoveryCard(incidentId, { nonce: String(opened.length).repeat(32), action }) });
     });
+    // The paused run's first Recreate is refused; everything else settles its run.
     await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
       const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
       const answer = route.request().postDataJSON();
       answers.push(answer);
-      const result = {
-        verify: { verdict: 'inconclusive', status: null },
-        skip: { verdict: null, status: 'skipped' },
-        pause: { verdict: null, status: 'paused' },
-      }[answer.choice];
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, ...result } });
+      if (incidentId === paused && answers.filter((item) => item.choice === 'recreate').length === 1) {
+        await route.fulfill({ status: 422, json: { code: 'routine-recreate-refused' } });
+        return;
+      }
+      const status = answer.choice === 'run' ? 'requested' : 'recreated';
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status } });
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     const choices = (index) => rows.nth(index).getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     const names = (index) => choices(index).evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
     await expect(rows).toHaveCount(2);
-    // Each row shows exactly three choices, one action each, in the order of the card Team opened, before any answer.
-    await expect.poll(() => names(0)).toEqual(['Verify', 'Skip', 'Pause']);
-    await expect.poll(() => names(1)).toEqual(['Pause', 'Verify', 'Skip']);
+    // Each row shows exactly three choices, one action each, in Team's order, before any answer.
+    await expect.poll(() => names(0)).toEqual(['Run', 'Recreate', 'Delete']);
+    await expect.poll(() => names(1)).toEqual(['Run', 'Recreate', 'Delete']);
     expect(answers).toEqual([]);
+    // A decision is the row's only action: its execution details wait until it is answered.
+    await expect(rows.nth(0).getByRole('button', { name: 'Execution details' })).toHaveCount(0);
     expect(await accessibilityViolations(page)).toEqual([]);
-    // The step shown is the card's, and Skip's consequence is stated before it is chosen.
+    // The step shown is the card's, with the error it returned as plain text.
     await expect(rows.nth(0)).toContainText('Create DNS record');
-    await expect(rows.nth(0)).toContainText('runs again at its next scheduled time');
-    // Verify that proves nothing keeps the run held; the next answer uses a freshly opened card.
-    await rows.nth(0).getByRole('button', { name: 'Verify' }).click();
-    await expect(rows.nth(0).getByRole('status')).toHaveText('Team could not prove what happened. The run stays held.');
-    await expect.poll(() => names(0)).toEqual(['Verify', 'Skip', 'Pause']);
-    await rows.nth(0).getByRole('button', { name: 'Skip' }).click();
+    await expect(rows.nth(0).locator('blockquote')).toHaveText(CREDITS_MESSAGE);
+    await rows.nth(0).getByRole('button', { name: 'Run' }).click();
+    await expect(rows.nth(0).getByRole('status')).toHaveText('Set aside. The Routine runs again now.');
     await expect(choices(0)).toHaveCount(0);
-    await rows.nth(1).getByRole('button', { name: 'Pause' }).click();
+    // A refused Recreate says why and changes nothing; the next answer uses a freshly opened card.
+    await rows.nth(1).getByRole('button', { name: 'Recreate' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText(
+      'Your original request could not be made into this Routine again. Nothing changed; ask for it again in the chat.',
+    );
+    await expect.poll(() => names(1)).toEqual(['Run', 'Recreate', 'Delete']);
+    await rows.nth(1).getByRole('button', { name: 'Recreate' }).click();
+    await expect(rows.nth(1).getByRole('status')).toHaveText('Recreated from your original request. It now follows its schedule.');
     await expect(choices(1)).toHaveCount(0);
     expect(new Set(opened)).toEqual(new Set([held, paused]));
     // Every answer carries exactly the nonce of a card the row had shown, never one opened after the click.
     const nonces = opened.map((_id, index) => String(index + 1).repeat(32));
-    expect(answers.map((answer) => answer.choice)).toEqual(['verify', 'skip', 'pause']);
+    expect(answers.map((answer) => answer.choice)).toEqual(['run', 'recreate', 'recreate']);
     for (const answer of answers) expect(nonces).toContain(answer.nonce);
-    const heldNonces = opened.flatMap((id, index) => (id === held ? [String(index + 1).repeat(32)] : []));
-    expect(answers.slice(0, 2).map((answer) => answer.nonce)).toEqual(heldNonces.slice(0, 2));
+    const pausedNonces = opened.flatMap((id, index) => (id === paused ? [String(index + 1).repeat(32)] : []));
+    expect(answers.slice(1).map((answer) => answer.nonce)).toEqual(pausedNonces.slice(0, 2));
+  });
+
+  test("a transcript card's Delete opens its Routine's panel in the deletion confirmation", async ({ page }) => {
+    const held = 'b'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [{
+          id: `${held}:routine`,
+          kind: 'routine-run',
+          notice_id: held,
+          routine_id: ROUTINE_VIEW.routine_id,
+          quote: ROUTINE_VIEW.quote,
+          run_id: held,
+          outcome: 'held',
+          created_at: '2026-10-01T12:01:07Z',
+          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
+          version: 2,
+        }],
+        before: null,
+      },
+    });
+    const calls = await routeRoutines(page);
+    await page.goto('/chat/?team=marketing');
+    const row = page.locator('.routine-run');
+    await row.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
+    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
+    await expect(confirm.getByLabel('Supervisor password')).toBeFocused();
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Cancel returns to that Routine's panel, which is the same decision.
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' })).toBeFocused();
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
+    await confirm.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await confirm.getByLabel('Six-digit code').fill('123456');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
+    await expect(confirm).toHaveCount(0);
+    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    expect(calls.answers).toEqual([]);
   });
 
   test("a run's execution details are read for that run and shown only as text", async ({ page }) => {
@@ -5073,21 +5160,10 @@ test.describe('Team Routines', () => {
     // A paused Routine with a held run: the Team's Routines button carries the attention dot.
     await routeRoutines(page);
     await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: {
-        team_id: 'marketing',
-        incident_id: held,
-        routine_id: ROUTINE_VIEW.routine_id,
-        revision: 1,
-        assistant_id: 'shimpz-cloudflare',
-        action: 'replace-dns-record',
-        nonce: '1'.repeat(32),
-        expires_in: 300,
-        choices: ['verify', 'skip', 'pause'],
-        recommended: 'verify',
-      },
+      json: recoveryCard(held, { nonce: '1'.repeat(32) }),
     }));
     await page.goto('/chat/?team=marketing');
-    await expect(page.locator('.routine-run').getByRole('button', { name: 'Verify', exact: true })).toBeVisible();
+    await expect(page.locator('.routine-run').getByRole('button', { name: 'Run', exact: true })).toBeVisible();
     const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
     await expect(routines).toBeVisible();
     // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
@@ -5130,32 +5206,19 @@ test.describe('Team Routines', () => {
     const answers = [];
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       opened += 1;
-      await route.fulfill({
-        json: {
-          team_id: 'marketing',
-          incident_id: held,
-          routine_id: ROUTINE_VIEW.routine_id,
-          revision: 1,
-          assistant_id: 'shimpz-cloudflare',
-          action: 'replace-dns-record',
-          nonce: String(opened).repeat(32),
-          expires_in: 300,
-          choices: ['verify', 'skip', 'pause'],
-          recommended: 'verify',
-        },
-      });
+      await route.fulfill({ json: recoveryCard(held, { nonce: String(opened).repeat(32) }) });
     });
     await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
       answers.push(route.request().postDataJSON());
       await route.fulfill({
-        json: { team_id: 'marketing', incident_id: held, choice: 'skip', verdict: null, status: 'skipped' },
+        json: { team_id: 'marketing', incident_id: held, choice: 'run', status: 'requested' },
       });
     });
     await page.goto('/chat/?team=marketing');
     const row = page.locator('.routine-run');
     const choices = row.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     const names = () => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
-    await expect.poll(names).toEqual(['Verify', 'Skip', 'Pause']);
+    await expect.poll(names).toEqual(['Run', 'Recreate', 'Delete']);
     // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
     await page.clock.runFor(300_000);
     await expect(choices).toHaveCount(0);
@@ -5163,11 +5226,11 @@ test.describe('Team Routines', () => {
     await page.clock.runFor(600_000);
     expect(opened).toBe(1);
     await row.getByRole('button', { name: 'Open the card again' }).click();
-    await expect.poll(names).toEqual(['Verify', 'Skip', 'Pause']);
+    await expect.poll(names).toEqual(['Run', 'Recreate', 'Delete']);
     await expect(row.getByRole('status')).toHaveCount(0);
-    await row.getByRole('button', { name: 'Skip', exact: true }).click();
+    await row.getByRole('button', { name: 'Run', exact: true }).click();
     // The answer carries the fresh card's nonce, never the expired one.
-    expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'skip' }]);
+    expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
   });
 
   test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {

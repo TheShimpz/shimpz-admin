@@ -465,17 +465,33 @@ export function literalWords(preview) {
   }
 }
 
-// A held run's recovery card (ADR-0092 section 7): exactly Verificar, Pular, and Pausar, the recommended one first.
-export const CARD_CHOICES = ['verify', 'skip', 'pause'];
-const CARD_VERDICTS = [
-  'occurred', 'absent', 'none', 'inconclusive', 'unverifiable', 'exhausted', 'policy', 'unquiesced', 'unclassified',
-];
-const CARD_RUN_STATUSES = ['recovered', 'held', 'frozen', 'failed', 'stopped'];
+// A held run's recovery card (ADR-0092 section 7, amended 2026-10-02): exactly Rodar, Recriar, and Excluir, in this
+// order, none recommended. Team answers Rodar and Recriar; Excluir is the Routine's own confirmed deletion.
+export const CARD_CHOICES = ['run', 'recreate', 'delete'];
+export const CARD_ANSWERS = ['run', 'recreate'];
+const CARD_STATUSES = { run: 'requested', recreate: 'recreated' };
+const CARD_EVIDENCE = ['recorded', 'absent', 'unavailable'];
+
+function isCardStep(item) {
+  return whole(item.step, 1, MAX_STEPS) && whole(item.steps, item.step, MAX_STEPS);
+}
+
+// The held operation's latest diagnostic, exactly when Team recorded one, and only of the card's own step.
+function isCardEvidence(item) {
+  if (!CARD_EVIDENCE.includes(item.evidence) || (item.diagnostic === null) === (item.evidence === 'recorded')) {
+    return false;
+  }
+  return item.diagnostic === null || (
+    isDiagnostic(item.diagnostic) &&
+    item.diagnostic.assistant_id === item.assistant_id &&
+    item.diagnostic.action === item.action
+  );
+}
 
 function parseCard(body, teamId, incidentId) {
   const keys = [
-    'team_id', 'incident_id', 'routine_id', 'revision', 'assistant_id', 'action', 'nonce', 'expires_in', 'choices',
-    'recommended',
+    'team_id', 'incident_id', 'routine_id', 'revision', 'assistant_id', 'action', 'step', 'steps', 'evidence',
+    'diagnostic', 'nonce', 'expires_in', 'choices',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
@@ -486,14 +502,14 @@ function parseCard(body, teamId, incidentId) {
     item.revision >= 1 &&
     isHeldStep(item.assistant_id, item.action) &&
     item.assistant_id !== null &&
+    isCardStep(item) &&
+    isCardEvidence(item) &&
     typeof item.nonce === 'string' &&
     NONCE_RE.test(item.nonce) &&
     item.expires_in === 300 &&
     Array.isArray(item.choices) &&
     item.choices.length === CARD_CHOICES.length &&
-    CARD_CHOICES.every((choice) => item.choices.includes(choice)) &&
-    ['verify', 'pause'].includes(item.recommended) &&
-    item.choices[0] === item.recommended);
+    CARD_CHOICES.every((choice, index) => item.choices[index] === choice));
 }
 
 /** Open a held run's recovery card for the signed-in person; its nonce answers it once within five minutes. */
@@ -505,22 +521,47 @@ export async function openRoutineCard(fetcher, teamId, incidentId) {
   return parseCard(body, teamId, incidentId);
 }
 
-/** Answer an open card with exactly one choice; returns Verificar's verdict and how the run went on. */
+/** Answer an open card with Rodar or Recriar; returns what Team did. Excluir is the confirmed deletion instead. */
 export async function answerRoutineCard(fetcher, teamId, incidentId, card, choice) {
-  if (!CARD_CHOICES.includes(choice) || typeof card?.nonce !== 'string' || !NONCE_RE.test(card.nonce)) {
+  if (!CARD_ANSWERS.includes(choice) || typeof card?.nonce !== 'string' || !NONCE_RE.test(card.nonce)) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(fetcher, teamPath(teamId, `/incidents/${opaque(incidentId)}/answer`), {
     method: 'POST',
     body: JSON.stringify({ nonce: card.nonce, choice }),
   });
-  return view(body, ['team_id', 'incident_id', 'choice', 'verdict', 'status'], (item) => {
-    if (item.team_id !== teamId || item.incident_id !== incidentId || item.choice !== choice) return false;
-    if (choice === 'verify') {
-      return CARD_VERDICTS.includes(item.verdict) && (item.status === null || CARD_RUN_STATUSES.includes(item.status));
-    }
-    return item.verdict === null && item.status === (choice === 'skip' ? 'skipped' : 'paused');
-  });
+  return view(body, ['team_id', 'incident_id', 'choice', 'status'], (item) =>
+    item.team_id === teamId &&
+    item.incident_id === incidentId &&
+    item.choice === choice &&
+    item.status === CARD_STATUSES[choice]);
+}
+
+// Words that suggest what may have caused a failure, read only from Team's sanitized diagnostic. They choose the
+// plain explanation shown beside the literal error, never anything Team does: a guess, phrased as a possible cause.
+const CAUSE_WORDS = [
+  ['credits', /\b(credits?|quota|billing|balance|insufficient[ _]funds|payment required|out of funds)\b/i],
+  ['rateLimit', /\b(rate[ _-]?limit(ed)?|too many requests|throttl\w*)\b/i],
+  ['auth', /\b(unauthori[sz]ed|forbidden|permission|access denied|authentication|invalid (api[ _-]?)?(key|token)|expired token)\b/i],
+  ['timeout', /\b(timed? ?out|timeout|deadline exceeded)\b/i],
+  ['notFound', /\b(not found|does not exist|no such|could not route)\b/i],
+  ['invalid', /\b(invalid|validation|malformed|bad request|unprocessable)\b/i],
+];
+const CAUSE_STATUSES = { 402: 'credits', 429: 'rateLimit', 401: 'auth', 403: 'auth', 404: 'notFound', 410: 'notFound', 408: 'timeout', 504: 'timeout' };
+
+/** The likely cause of a card's recorded failure, for its plain explanation; `unknown` when nothing suggests one. */
+export function failureCause(diagnostic) {
+  if (!diagnostic) return 'unknown';
+  if (diagnostic.condition !== null) return diagnostic.condition === 'timeout' ? 'timeout' : 'assistant';
+  const { error_type: type, message, http_status: status, response_excerpt: excerpt } = diagnostic.failure;
+  const text = `${type} ${message} ${excerpt ?? ''}`;
+  // Billing words outrank a status: providers report an exhausted balance as 402, 403, or 429 alike.
+  if (CAUSE_WORDS[0][1].test(text)) return 'credits';
+  if (status !== null && CAUSE_STATUSES[status]) return CAUSE_STATUSES[status];
+  const matched = CAUSE_WORDS.find(([, words]) => words.test(text));
+  if (matched) return matched[0];
+  if (status === 400 || status === 422) return 'invalid';
+  return status !== null && status >= 500 ? 'provider' : 'unknown';
 }
 
 function fill(template, values) {
@@ -598,6 +639,15 @@ export function routineErrorMessage(error, copy) {
     'routine-incident-unavailable': copy.ended,
     'routine-card-expired': copy.expired,
     'routine-card-stale': copy.stale,
+    'routine-not-found': copy.ended,
+    'routine-busy': copy.busy,
+    'routine-workload-unquiesced': copy.stillRunning,
+    'routine-contracts-changed': copy.contractsChanged,
+    'routine-source-unavailable': copy.sourceUnavailable,
+    'routine-recreate-refused': copy.recreateRefused,
+    'routine-recreate-unavailable': copy.recreateUnavailable,
+    'routine-recovery-stopped': copy.stopped,
+    'model-credential-missing': copy.credentialMissing,
     'routine-state-unavailable': copy.unavailable,
     'team-context-unavailable': copy.unavailable,
   };
@@ -608,7 +658,7 @@ export { fill as fillRoutineCopy };
 
 const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const MAX_NAME_CHARS = 80;
-const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'person', 'policy', 'evidence'];
+const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'policy', 'evidence'];
 const MAX_STEPS = 8;
 
 function closedText(value, maximum) {
@@ -628,7 +678,11 @@ const NOTICE_DETAILS = {
     ['assistant_id', 'action', 'reason'],
     (detail) => isHeldStep(detail.assistant_id, detail.action) && PAUSE_REASONS.includes(detail.reason),
   ],
-  'user-skipped': [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
+  // A person set the held run aside: Rodar, Recriar, or the deletion of its Routine.
+  'user-skipped': [
+    ['assistant_id', 'action', 'choice'],
+    (detail) => isHeldStep(detail.assistant_id, detail.action) && CARD_CHOICES.includes(detail.choice),
+  ],
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
   healthy: [['runs'], (detail) => whole(detail.runs, 1, MAX_ROLLUP_RUNS)],
   'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],

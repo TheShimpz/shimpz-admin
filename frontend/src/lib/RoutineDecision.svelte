@@ -10,6 +10,7 @@
   import {
     answerRoutineCard,
     answerRoutineChallenge,
+    failureCause,
     fillRoutineCopy,
     humanizeId,
     openRoutineCard,
@@ -19,11 +20,24 @@
   } from '$lib/routine.js';
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
-  // recovery card with its three choices, or a frozen run's approval through chat's own dialog. Nothing runs until
-  // the Supervisor answers. `onsettled` hears the outcome words once this decision is answered, and whether the same run
-  // was held again and so waits for a fresh decision. With `onunavailable`, a card Team cannot open yet (a held run
-  // listed before its incident) keeps Retry here and lets the host refresh; without it, the decision simply ends.
-  let { teamId, teamName, runId, routineId, outcome, detail, copy, onsettled = () => {}, onunavailable = null } = $props();
+  // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.
+  // A card says which step stopped, the error it returned, and its likely cause in plain words, then offers exactly
+  // Rodar, Recriar, and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
+  // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
+  // so waits for a fresh decision. With `onunavailable`, a card Team cannot open yet (a held run listed before its
+  // incident) keeps Retry here and lets the host refresh; without it, the decision simply ends.
+  let {
+    teamId,
+    teamName,
+    runId,
+    routineId,
+    outcome,
+    detail,
+    copy,
+    onsettled = () => {},
+    onunavailable = null,
+    ondelete = () => {},
+  } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
   let mounted = true;
@@ -43,25 +57,26 @@
   let card = $state(null);
 
   const id = $props.id();
-  const CHOICE_ICONS = { verify: 'check', skip: 'skip', pause: 'pause' };
-  const HINTS = { verify: 'verifyHint', skip: 'skipHint', pause: 'pauseHint' };
+  const CHOICE_ICONS = { run: 'play', recreate: 'rebuild', delete: 'trash' };
+  const HINTS = { run: 'runHint', recreate: 'recreateHint', delete: 'deleteHint' };
   let listed = $derived($routineContext.get(teamId));
   let recovery = $derived(outcome === 'held' || outcome === 'paused');
 
-  // Where a held or paused run stopped, as one sentence: its place in the plan when the listed Routine names that step
-  // exactly once. The step a card names is Team's current one, which a stale row may not show.
+  // Where a held or paused run stopped, as one sentence: its place in the plan the run executed, which the card
+  // names; before the card opens, the listed Routine's place when it names that step exactly once.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;
     if (step.assistant_id === null) return copy.run.stoppedUnknown;
-    const steps = listed?.routines.find((routine) => routine.routine_id === routineId)?.steps ?? [];
-    const matches = steps.flatMap((item, index) => (
-      item.assistant === step.assistant_id && item.action === step.action ? [index + 1] : []
-    ));
     const words = fillRoutineCopy(copy.plan.step, {
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
+    if (card) return fillRoutineCopy(copy.card.stoppedAt, { n: card.step, total: card.steps, step: words });
+    const steps = listed?.routines.find((routine) => routine.routine_id === routineId)?.steps ?? [];
+    const matches = steps.flatMap((item, index) => (
+      item.assistant === step.assistant_id && item.action === step.action ? [index + 1] : []
+    ));
     return matches.length === 1
       ? fillRoutineCopy(copy.card.stoppedAt, { n: matches[0], total: steps.length, step: words })
       : fillRoutineCopy(copy.card.stoppedAtStep, { step: words });
@@ -137,28 +152,50 @@
     }
   });
 
-  function unresolvedWords(verdict) {
-    const words = {
-      policy: copy.card.policy,
-      unquiesced: copy.card.unquiesced,
-      unclassified: copy.card.unclassified,
-      exhausted: copy.card.exhausted,
+  // The error the held step returned, as Team recorded it: the literal text, never interpreted, and its likely cause.
+  let failure = $derived.by(() => {
+    if (!card) return null;
+    if (card.evidence !== 'recorded') {
+      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail };
+    }
+    const item = card.diagnostic;
+    const conditions = copy.details.conditions;
+    const exit = item.condition?.match(/^exit-status:(-?\d+)$/);
+    const text = item.failure
+      ? item.failure.message || item.failure.error_type
+      : exit
+        ? fillRoutineCopy(conditions.exit, { code: exit[1] })
+        : {
+          'stderr-output': conditions.stderr,
+          timeout: conditions.timeout,
+          'frame-invalid': conditions.frame,
+          'exit-unavailable': conditions.exitUnavailable,
+          'transport-failed': conditions.transport,
+        }[item.condition];
+    const meta = item.failure
+      ? [item.failure.http_status === null ? '' : `HTTP ${item.failure.http_status}`, item.failure.provider ?? '']
+        .filter(Boolean).join(' · ')
+      : '';
+    return {
+      cause: copy.card.causes[failureCause(item)],
+      text,
+      meta,
+      redacted: Boolean(item.failure?.redacted),
     };
-    return words[verdict] ?? copy.card.unproven;
-  }
+  });
 
   async function recover(choice) {
-    const answering = card;
+    if (choice === 'delete') {
+      // Excluir is the Routine's deletion, confirmed with the password and a second factor where the host shows it.
+      ondelete();
+      return;
+    }
     working = true;
     result = '';
     try {
-      const answered = await answerRoutineCard(fetch, teamId, runId, answering, choice);
-      const run = copy.run;
-      if (answered.status === 'skipped') result = run.userSkipped;
-      else if (answered.status === 'paused') result = fillRoutineCopy(run.paused, { reason: run.pauseReasons.person });
-      else if (answered.status === null) result = unresolvedWords(answered.verdict);
-      else result = fillRoutineCopy(run.continued, { outcome: outcomeWords(answered.status) });
-      if (answered.status !== null) finish(result, answered.status === 'held');
+      const answered = await answerRoutineCard(fetch, teamId, runId, card, choice);
+      result = answered.status === 'requested' ? copy.card.requested : copy.card.recreated;
+      finish(result);
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
     } finally {
@@ -243,6 +280,18 @@
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <p class="lead"><RoutineIcon name="warning" />{reason}</p>
     <p class="detail">{situation}</p>
+    {#if recoverable && failure}
+      <!-- What the step returned: its likely cause in plain words, then the literal sanitized error as escaped text. -->
+      <p class="cause">{failure.cause}</p>
+      {#if failure.text}
+        <figure class="error">
+          <figcaption>{copy.card.errorTitle}</figcaption>
+          <blockquote>{failure.text}</blockquote>
+          {#if failure.meta}<p class="meta">{failure.meta}</p>{/if}
+          {#if failure.redacted}<p class="meta">{copy.details.redacted}</p>{/if}
+        </figure>
+      {/if}
+    {/if}
     {#if recoverable && card}<p class="ask">{copy.card.choose}</p>{/if}
   {:else}
     <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{reason}</span></p>
@@ -251,9 +300,8 @@
 
   {#if recoverable}
     {#if card}
-      <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, the
-           recommended one first. Each row is one button (icon, verb, what it does in plain words); the recommendation
-           is said only to assistive technology. -->
+      <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, none
+           recommended. Each row is one button (icon, verb, what it does in plain words). -->
       <div class="spacer"></div>
       <div class="choices" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice (choice)}
@@ -264,7 +312,8 @@
               type="button"
               disabled={working}
               aria-label={copy.card[choice]}
-              aria-describedby={choice === card.recommended ? `${id}-recommended ${id}-${choice}` : `${id}-${choice}`}
+              aria-describedby={`${id}-${choice}`}
+              data-choice={choice}
               onclick={() => recover(choice)}
             >
               <RoutineIcon name={CHOICE_ICONS[choice]} />
@@ -272,7 +321,6 @@
               <span class="go" aria-hidden="true"><RoutineIcon name="chevron" /></span>
               <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
             </Button>
-            {#if choice === card.recommended}<span class="sr-only" id={`${id}-recommended`}>{copy.card.recommendedMark}</span>{/if}
           </div>
         {/each}
       </div>
@@ -333,6 +381,11 @@
   .lead { display: flex; align-items: flex-start; gap: 0.55rem; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; }
   .lead :global(.routine-icon) { flex: none; width: 1.05rem; height: 1.05rem; margin-block-start: 0.15rem; color: var(--shimpz-color-yellow); }
   .detail { margin: 0; max-width: 68ch; color: var(--shimpz-color-text-muted); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
+  .cause { margin: 0; max-width: 68ch; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.55; text-wrap: pretty; }
+  .error { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; min-width: 0; margin: 0; overflow: visible; }
+  .error figcaption { color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .error blockquote { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); border-inline-start: 2px solid var(--shimpz-color-danger); background: var(--shimpz-color-surface-high); color: var(--shimpz-color-text); font: 400 0.78rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
   .ask { margin: var(--shimpz-space-2) 0 0; color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 

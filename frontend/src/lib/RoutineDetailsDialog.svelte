@@ -1,6 +1,6 @@
 <script>
   import { Button, Modal, Notice } from '@shimpz/frontend';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { listChatHistory } from '$lib/chatHistory.js';
   import { locale } from '$lib/i18n.js';
@@ -35,13 +35,14 @@
   // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
-  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
+  // `confirm` opens the panel straight in its deletion confirmation, as a run card's Excluir does from the transcript.
+  let { teamId, teamName, routine, runs = [], incidents = [], copy, confirm = false, onclose, ondeleted } = $props();
 
   const id = $props.id();
   let dialog = $state();
   let busy = $state(false);
   let error = $state('');
-  let confirming = $state(false);
+  let confirming = $state(untrack(() => confirm));
   let deleting = $state(false);
   let deleteButton = $state();
   let recent = $state(null);
@@ -168,10 +169,11 @@
     await loadTeamRoutines(fetch, teamId).catch(() => {});
   }
 
+  // Canceling returns to the panel, or to the decision it was opened from, with focus on the Delete it came from.
   async function keep() {
     confirming = false;
     await tick();
-    deleteButton?.focus();
+    (deleteButton ?? dialog?.querySelector('[data-choice="delete"]'))?.focus();
   }
 
   // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed.
@@ -251,16 +253,19 @@
     {#if confirming}
       <RoutineDeletion {teamId} routineId={routine.routine_id} copy={copy.deletion} errors={copy.errors}
         bind:busy={deleting} ondone={removed} oncancel={keep} />
-    {:else if pending}
-      <div class="content decide">
+    {/if}
+    <!-- A decision stays mounted, hidden, under its own deletion confirmation, so Cancel returns to the same card. -->
+    {#if pending}
+      <div class="content decide" hidden={confirming}>
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
           <RoutineDecision {teamId} {teamName} runId={pending.runId} routineId={routine.routine_id}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
+            ondelete={() => (confirming = true)}
             onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
         {/key}
       </div>
-    {:else}
+    {:else if !confirming}
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
       {#if page === 'summary'}
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
@@ -375,6 +380,8 @@
   .content.decide { display: flex; flex-direction: column; padding-block-end: 0; --decision-inline: var(--shimpz-space-4); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */
+  .content.decide[hidden] { display: none; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
   .part { font-weight: 700; }

@@ -124,7 +124,7 @@ OPEN_API = frozenset(
 
 
 @asynccontextmanager
-async def _lifespan(_application: FastAPI):
+async def _lifespan(application: FastAPI):
     if profile.require() != ADMIN_PROFILE:
         raise RuntimeError("Admin profile changed after route registration")
     if ADMIN_PROFILE == "local":
@@ -136,6 +136,7 @@ async def _lifespan(_application: FastAPI):
             if initialized:
                 await asyncio.to_thread(_materialize_local_supervisor)
     scheduler = routine_scheduler.RoutineScheduler() if ADMIN_PROFILE == "local" else None
+    application.state.routine_scheduler = scheduler
     if scheduler is not None:
         scheduler.start()
     try:

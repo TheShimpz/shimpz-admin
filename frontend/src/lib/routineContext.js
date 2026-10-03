@@ -45,8 +45,8 @@ export function dropTeamRoutine(teamId, routineId) {
     return new Map(current).set(teamId, {
       routines: listed.routines.filter((routine) => routine.routine_id !== routineId),
       runs: listed.runs.filter((run) => run.routine_id !== routineId),
-      // A held run's incident outlives its deleted Routine and stays settleable through its card (ADR-0092).
-      incidents: listed.incidents,
+      // Deleting a Routine sets its held runs aside, so none of its incidents waits for a card any more (ADR-0092).
+      incidents: listed.incidents.filter((item) => item.routine_id !== routineId),
     });
   });
 }

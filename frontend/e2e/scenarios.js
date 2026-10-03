@@ -4,7 +4,7 @@
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { attachmentReply, fileApprovalChallenge, uploadFile } from './attachmentScenarios.js';
 import { localizedChallenge } from './localizedRequest.js';
-import { capReply, routineLifecycleStart, routineRecoveryRoutes } from './routineScenarios.js';
+import { capReply, routineLifecycleStart, routineRecoveryRoutes, setAside } from './routineScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -235,6 +235,10 @@ function routineRoutes(state, method, path, body) {
   }
   const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
   if (routine && method === 'DELETE') {
+    // Deleting a Routine sets each of its held runs aside, as Team does.
+    for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routine[1])) {
+      setAside(state, held.incident_id, 'delete');
+    }
     state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
     state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });

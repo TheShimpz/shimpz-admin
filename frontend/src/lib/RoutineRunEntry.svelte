@@ -4,6 +4,7 @@
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
   import RoutineDecision from '$lib/RoutineDecision.svelte';
+  import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
@@ -28,12 +29,26 @@
   const DECISIONS = ['held', 'paused', 'frozen'];
   let working = $state(false);
   let result = $state('');
+  // A card's Excluir opens this Routine's panel straight in its deletion confirmation, read fresh from Team first.
+  let deleting = $state(false);
+
+  async function confirmDeletion() {
+    result = '';
+    try {
+      const fresh = await loadTeamRoutines(fetch, teamId);
+      if (fresh.routines.some((routine) => routine.routine_id === entry.routineId && !routine.deleting)) deleting = true;
+      else result = copy.errors.ended;
+    } catch (error) {
+      result = routineErrorMessage(error, copy.errors);
+    }
+  }
   // The run's execution details are read from Team only when the person opens them.
   let details = $state(false);
 
   // A row that left its Routine paused offers Resume while Team still lists the Routine as paused and no unresolved
   // incident holds it; a held run is settled through its card first, and resuming never bypasses that (ADR-0092).
   let listed = $derived($routineContext.get(teamId));
+  let deletable = $derived(listed?.routines.find((routine) => routine.routine_id === entry.routineId && !routine.deleting));
   let resumable = $derived(
     ['paused', 'user-skipped', 'failed'].includes(entry.outcome) &&
       Boolean(listed?.routines.some((routine) => routine.routine_id === entry.routineId && routine.paused &&
@@ -72,7 +87,7 @@
     switch (entry.outcome) {
       case 'done': return run.done;
       case 'recovered': return run.recovered;
-      case 'user-skipped': return run.userSkipped;
+      case 'user-skipped': return run.userSkipped[detail.choice];
       case 'failed': return fillRoutineCopy(run.failed, { code: detail.code });
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
@@ -114,7 +129,8 @@
     <!-- The card's name labels its group; a heading here would skip a level inside the chat. -->
     <p class="name" id={`${id}-name`} title={entry.quote}>{routineName}</p>
     <RoutineTag label={badge} icon={TAG_ICONS[entry.outcome]} tone={OUTCOME_TONES[entry.outcome] ?? 'neutral'} />
-    {#if entry.runId}
+    <!-- A decision is the card's only action, so its execution details wait until it is answered. -->
+    {#if entry.runId && !DECISIONS.includes(entry.outcome)}
       <Button
         class="details"
         variant="ghost"
@@ -130,7 +146,8 @@
 
   <div class="body">
     {#if DECISIONS.includes(entry.outcome)}
-      <RoutineDecision {teamId} {teamName} runId={entry.runId} routineId={entry.routineId} outcome={entry.outcome} {detail} {copy} />
+      <RoutineDecision {teamId} {teamName} runId={entry.runId} routineId={entry.routineId} outcome={entry.outcome} {detail} {copy}
+        ondelete={confirmDeletion} />
     {:else}
       <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{line}</span></p>
       {#if actionsLine}<p class="line muted">{actionsLine}</p>{/if}
@@ -155,6 +172,20 @@
 
 {#if details}
   <RoutineRunDetails {teamId} runId={entry.runId} copy={copy.details} errors={copy.errors} onclose={() => (details = false)} />
+{/if}
+
+{#if deleting && deletable}
+  <RoutineDetailsDialog
+    {teamId}
+    {teamName}
+    routine={deletable}
+    runs={listed.runs.filter((run) => run.routine_id === deletable.routine_id)}
+    incidents={listed.incidents.filter((item) => item.routine_id === deletable.routine_id)}
+    {copy}
+    confirm
+    onclose={() => (deleting = false)}
+    ondeleted={() => (deleting = false)}
+  />
 {/if}
 
 <style>
