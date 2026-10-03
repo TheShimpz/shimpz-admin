@@ -105,7 +105,8 @@ export function formatFileSize(bytes, locale) {
   return new Intl.NumberFormat(locale, {
     style: 'unit',
     unit,
-    unitDisplay: 'short',
+    // A byte count reads compactly (5 B); larger units keep their short names (1.5 kB, 3 MB).
+    unitDisplay: unit === 'byte' ? 'narrow' : 'short',
     maximumFractionDigits: unit === 'byte' ? 0 : 1,
   }).format(bytes / scale);
 }

@@ -81,10 +81,10 @@ test('admits a file to the message only within every per-file and per-message bo
 });
 
 test('names sizes, kinds, and identifiers for people', () => {
-  assert.equal(formatFileSize(512, 'en'), '512 byte');
+  assert.equal(formatFileSize(512, 'en'), '512B');
   assert.equal(formatFileSize(1536, 'en'), '1.5 kB');
   assert.equal(formatFileSize(3 * MIB, 'en'), '3 MB');
-  assert.equal(formatFileSize(0, 'en'), '0 byte');
+  assert.equal(formatFileSize(0, 'en'), '0B');
   assert.deepEqual(
     ['image/png', 'image/gif', 'application/pdf', 'text/csv', 'application/json', 'application/zip', null]
       .map(attachmentKind),
