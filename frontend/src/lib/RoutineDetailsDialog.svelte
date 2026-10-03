@@ -260,7 +260,7 @@
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
           <RoutineDecision {teamId} {teamName} runId={pending.runId} routineId={routine.routine_id}
-            outcome={pending.outcome} detail={pending.detail} {copy} framed onsettled={settled}
+            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
             onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
         {/key}
@@ -376,8 +376,8 @@
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   .bar { min-height: 2.5rem; }
-  /* A decision fills the panel as two cards: its message and its choices. */
-  .content.decide { display: flex; flex-direction: column; min-height: 0; }
+  /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
+  .content.decide { display: flex; flex-direction: column; min-height: 0; padding-block-end: 0; --decision-inline: var(--shimpz-space-4); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */
