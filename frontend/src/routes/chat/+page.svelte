@@ -2176,6 +2176,8 @@
                       copy={$t('routine')}
                       teamId={selectedTeamId}
                       teamName={assistantTurn.author}
+                      joinAbove={!userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
+                      joinBelow={!exchanges[index + 1]?.user && Boolean(exchanges[index + 1]?.assistant?.routineRun)}
                     />
                   {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
@@ -2664,11 +2666,13 @@
   }
 
   .exchange {
+    /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
+    --routine-rail-gap: 1.1rem;
     display: grid;
     min-width: 0;
     align-content: start;
     gap: 0.65rem;
-    margin-block-start: 1.1rem;
+    margin-block-start: var(--routine-rail-gap);
   }
 
   .exchange:first-child {
