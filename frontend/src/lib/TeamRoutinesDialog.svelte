@@ -77,7 +77,7 @@
 {/if}
 
 <style>
-  /* The list reaches the frame's edges, under the header that asks the question; it scrolls inside the modal when the Team has many. */
+  /* The list reaches the frame's edges, joined to the header that asks the question; it scrolls inside the modal when the Team has many. */
   .body {
     --choice-inline: var(--shimpz-space-4);
     --choice-ask-align: center;
@@ -85,7 +85,9 @@
     --choice-list-border: 1px solid var(--shimpz-color-border);
     min-height: 0;
     padding-inline: var(--choice-inline);
-    padding-block: var(--shimpz-space-4);
+    padding-block: 0 var(--shimpz-space-4);
     overflow: auto;
   }
+  /* The list starts right under the header, whose rule is the list's top edge. */
+  .body :global(.segment:first-child) { border-block-start: 0; }
 </style>
