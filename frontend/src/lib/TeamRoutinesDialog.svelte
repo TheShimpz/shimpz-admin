@@ -71,13 +71,13 @@
   <RoutineModal bind:dialog class="routine-list" size="md" open title={fillRoutineCopy(copy.list.title, { team: teamName })}
     oncancel={close} onclose={close} onopen={focusList}>
     <div class="body">
-      <ChoiceList label={copy.list.open} title={copy.list.choose} variant="item" {items} onchoose={choose} />
+      <ChoiceList label={copy.list.open} variant="item" {items} onchoose={choose} />
     </div>
   </RoutineModal>
 {/if}
 
 <style>
-  /* The list reaches the frame's edges, under its question; it scrolls inside the modal when the Team has many. */
+  /* The list reaches the frame's edges, under the header that asks the question; it scrolls inside the modal when the Team has many. */
   .body {
     --choice-inline: var(--shimpz-space-4);
     --choice-ask-align: center;
@@ -85,7 +85,7 @@
     --choice-list-border: 1px solid var(--shimpz-color-border);
     min-height: 0;
     padding-inline: var(--choice-inline);
-    padding-block-end: var(--shimpz-space-4);
+    padding-block: var(--shimpz-space-4);
     overflow: auto;
   }
 </style>
