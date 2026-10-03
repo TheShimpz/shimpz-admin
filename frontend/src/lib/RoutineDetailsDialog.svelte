@@ -8,6 +8,7 @@
   import {
     ATTENTION_STATUSES,
     deleteRoutine,
+    clockWords,
     fillParts,
     fillRoutineCopy,
     instantWords,
@@ -40,7 +41,7 @@
   let recentFailed = $state(false);
   let detailsRun = $state('');
   let page = $state('summary');
-  // The summary says the time now in the Routine's timezone, kept to the minute while the panel is open.
+  // The summary says the time now in the Routine's timezone, kept to the second while the panel is open.
   let now = $state(Date.now());
   const PAGES = [
     { id: 'summary', icon: 'clock' },
@@ -64,14 +65,14 @@
   });
 
   $effect(() => {
-    const timer = setInterval(() => (now = Date.now()), 20_000);
+    const timer = setInterval(() => (now = Date.now()), 1_000);
     return () => clearInterval(timer);
   });
 
   let summary = $derived(fillParts(copy.panel.summaryLine, {
     request: routine.quote.replace(/[\s.。．!！]+$/u, ''),
     timezone: routine.timezone,
-    now: instantWords(now, $locale, routine.timezone),
+    now: clockWords(now, $locale, routine.timezone),
   }));
   let until = $derived(untilWords(routine.next_run_at, now, $locale));
 
@@ -217,7 +218,7 @@
           <p class="next">
             <RoutineIcon name="step" />
             <span class="next-label">{copy.panel.next}</span>
-            <time datetime={routine.next_run_at}>{instantWords(routine.next_run_at, $locale, routine.timezone)}</time>
+            <time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, routine.timezone)}</time>
             {#if until}<span class="until">[{until}]</span>{/if}
           </p>
         {/if}
@@ -323,10 +324,10 @@
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
-  /* One paragraph in the person's own words; the timezone and the time now read as data. */
+  /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
-  .part { font-family: var(--shimpz-font-mono); font-size: 0.82rem; color: var(--shimpz-color-text-muted); }
-  .part--request { font: inherit; color: inherit; }
+  .part { font-weight: 700; }
+  .part--request { font-weight: inherit; }
   /* The next run on one rule-topped line: a cyan step mark, a mono label, the instant, and how far off it is. */
   .next { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin: 0; padding-block-start: var(--shimpz-space-3); border-block-start: 1px dashed var(--shimpz-color-border); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next :global(.routine-icon) { width: 0.9rem; height: 0.9rem; color: var(--shimpz-color-cyan); }

@@ -30,6 +30,7 @@ import {
   routineStatus,
   STATUS_TAGS,
   STATUS_WORDS,
+  clockWords,
   fillParts,
   untilWords,
   readRunDiagnostics,
@@ -698,4 +699,6 @@ test('a Routine summary keeps each filled value apart and says how far off the n
   assert.equal(untilWords('2026-10-04T12:00:00Z', now, 'pt-BR'), 'depois de amanhã');
   assert.equal(untilWords('2026-10-02T12:00:00Z', now, 'en'), '');
   assert.equal(untilWords('2026-10-01T12:00:00Z', now, 'en'), '');
+  assert.equal(clockWords('2026-10-03T01:29:05Z', 'pt-BR', 'America/Sao_Paulo'), '02/Outubro/2026 22:29:05');
+  assert.equal(clockWords('2026-10-02T00:05:00Z', 'en', 'UTC'), '02/October/2026 00:05:00');
 });

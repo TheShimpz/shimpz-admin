@@ -19,7 +19,7 @@ export const routinePanelMessages = {
       storedInput: "Uses the saved key: {name}",
     },
     panel: {
-      summaryLine: "{request}, using the {timezone} timezone (now {now}).",
+      summaryLine: "{request}, using the {timezone} timezone ({now}).",
       next: "Next run",
       runs: "Runs",
       noRuns: "No runs yet.",
@@ -75,7 +75,7 @@ export const routinePanelMessages = {
       storedInput: "Usa a chave salva: {name}",
     },
     panel: {
-      summaryLine: "{request}, usando o timezone {timezone} (agora {now}).",
+      summaryLine: "{request}, usando o timezone {timezone} ({now}).",
       next: "Próxima execução",
       runs: "Execuções",
       noRuns: "Nenhuma execução ainda.",
@@ -131,7 +131,7 @@ export const routinePanelMessages = {
       storedInput: "Usa la clave guardada: {name}",
     },
     panel: {
-      summaryLine: "{request}, usando la zona horaria {timezone} (ahora {now}).",
+      summaryLine: "{request}, usando la zona horaria {timezone} ({now}).",
       next: "Próxima ejecución",
       runs: "Ejecuciones",
       noRuns: "Aún no hay ejecuciones.",
@@ -187,7 +187,7 @@ export const routinePanelMessages = {
       storedInput: "使用已保存的密钥：{name}",
     },
     panel: {
-      summaryLine: "{request}，使用时区 {timezone}（现在 {now}）。",
+      summaryLine: "{request}，使用时区 {timezone}（{now}）。",
       next: "下次运行",
       runs: "运行记录",
       noRuns: "还没有运行。",
@@ -243,7 +243,7 @@ export const routinePanelMessages = {
       storedInput: "Utilise la clé enregistrée : {name}",
     },
     panel: {
-      summaryLine: "{request}, avec le fuseau horaire {timezone} (maintenant {now}).",
+      summaryLine: "{request}, avec le fuseau horaire {timezone} ({now}).",
       next: "Prochaine exécution",
       runs: "Exécutions",
       noRuns: "Aucune exécution pour l’instant.",
@@ -299,7 +299,7 @@ export const routinePanelMessages = {
       storedInput: "Verwendet den gespeicherten Schlüssel: {name}",
     },
     panel: {
-      summaryLine: "{request}, in der Zeitzone {timezone} (jetzt {now}).",
+      summaryLine: "{request}, in der Zeitzone {timezone} ({now}).",
       next: "Nächste Ausführung",
       runs: "Ausführungen",
       noRuns: "Noch keine Ausführungen.",
@@ -355,7 +355,7 @@ export const routinePanelMessages = {
       storedInput: "保存済みのキーを使用：{name}",
     },
     panel: {
-      summaryLine: "{request}（タイムゾーン {timezone}、現在 {now}）。",
+      summaryLine: "{request}（タイムゾーン {timezone}、{now}）。",
       next: "次の実行",
       runs: "実行履歴",
       noRuns: "まだ実行はありません。",
@@ -411,7 +411,7 @@ export const routinePanelMessages = {
       storedInput: "يستخدم المفتاح المحفوظ: {name}",
     },
     panel: {
-      summaryLine: "{request}، باستخدام المنطقة الزمنية {timezone} (الآن {now}).",
+      summaryLine: "{request}، باستخدام المنطقة الزمنية {timezone} ({now}).",
       next: "التشغيل التالي",
       runs: "عمليات التشغيل",
       noRuns: "لا توجد عمليات تشغيل بعد.",
