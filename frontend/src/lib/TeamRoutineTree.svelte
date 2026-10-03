@@ -6,11 +6,10 @@
   import { routineStatus, scheduleWords, STATUS_TONES } from '$lib/routine.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import RoutineTag from '$lib/RoutineTag.svelte';
 
-  // One Team's Routines as a compact, monochrome list under its row (ADR-0086): each a neutral status mark, its short
-  // name, and when it runs. Words for its status appear only when it needs the person; the only accent is the dot on
-  // the Team's Routines button. Opening a Routine shows it in full in a panel.
+  // One Team's Routines as a compact list under its row (ADR-0086): each its clock, tinted by its status, its short
+  // name, and when it runs. The status is said in words only to assistive technology; the only other accent is the dot
+  // on the Team's Routines button. Opening a Routine shows it in full in a panel.
   let { teamId, routines = [], runs = [], incidents = [] } = $props();
 
   let copy = $derived($t('routine'));
@@ -49,11 +48,8 @@
           <span class="text">
             <span class="name">{routine.name}</span>
             <span class="meta">{scheduleWords(routine.schedule, copy.schedule, $locale)}</span>
-            {#if tone}
-              <span class="flag"><RoutineTag label={copy.status[status]} {tone} size="xs" /></span>
-            {:else}
-              <span class="sr-only">{copy.status[status]}</span>
-            {/if}
+            <!-- The tinted clock shows the status; its words stay in the row's accessible name. -->
+            <span class="sr-only">{copy.status[status]}</span>
           </span>
         </Button>
       </li>
@@ -94,6 +90,5 @@
   .text { display: grid; min-width: 0; gap: 2px; }
   .name { overflow: hidden; color: var(--shimpz-color-text); font: 500 0.82rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
   .meta { overflow: hidden; color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-  .flag { justify-self: start; margin-block-start: 0.2rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 </style>
