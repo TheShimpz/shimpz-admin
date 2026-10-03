@@ -28,8 +28,9 @@
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
 
-  // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision: a
-  // held run's recovery choices or a frozen run's approval, with what it needs to decide. Otherwise it shows three pages
+  // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
+  // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is
+  // answered the panel returns to its usual pages and actions. Otherwise it shows three pages
   // behind a tab menu: its summary (what was asked, when it
   // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which asks for a confirmation first.
@@ -207,8 +208,9 @@
       </Button>
     </header>
 
-    <div class="bar">
+    <!-- A pending decision is the only thing the panel offers: no pages and no other action until it is answered. -->
     {#if !pending}
+    <div class="bar">
     <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
       {#each PAGES as item (item.id)}
         <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
@@ -218,7 +220,6 @@
         </Button>
       {/each}
     </div>
-    {/if}
     <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
     {#if !routine.deleting && !confirming}
       <div class="actions">
@@ -236,7 +237,7 @@
       </div>
     {/if}
     </div>
-
+    {/if}
 
     {#if pending}
       <div class="content decide">
@@ -246,17 +247,6 @@
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
         {/key}
-        <!-- A run waiting for an approval can still be stopped without answering it. -->
-        {#if pending.outcome === 'frozen'}
-          <div class="stop">
-            <Button variant="ghost" size="sm" type="button" disabled={busy}
-              onclick={() => act(() => stopRoutineRun(fetch, teamId, pending.runId))}>
-              {#snippet icon()}<RoutineIcon name="stop" />{/snippet}{copy.list.stop}
-            </Button>
-          </div>
-        {/if}
-        {#if confirming}<Notice variant="warning">{copy.list.deleteConfirm}</Notice>{/if}
-        {#if error}<Notice variant="error">{error}</Notice>{/if}
       </div>
     {:else}
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
@@ -374,9 +364,6 @@
   .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
-  /* The decision sits on the panel's own ground, which its recommendation notch cuts into. */
-  .decide { --decision-ground: var(--shimpz-color-surface); }
-  .stop { display: flex; justify-content: flex-end; }
   .bar { min-height: 2.5rem; }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }

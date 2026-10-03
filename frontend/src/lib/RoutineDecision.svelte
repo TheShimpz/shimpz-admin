@@ -260,25 +260,27 @@
 
   {#if recoverable}
     {#if card}
-      <!-- One tile per choice, the recommended one first: its verb names it, its consequence describes it. -->
-      <div class="tiles" role="group" aria-label={copy.card.choices}>
-        {#each card.choices as choice (choice)}
-          <!-- The recommendation mark sits on the tile's static slot, not in the button its hover glitch animates. -->
-          <div class="tile-slot">
-          <Button
-            class={['tile', choice === card.recommended && 'is-recommended']}
-            variant="ghost"
-            type="button"
-            disabled={working}
-            aria-label={copy.card[choice]}
-            aria-describedby={choice === card.recommended ? `${id}-recommended ${id}-${choice}` : `${id}-${choice}`}
-            onclick={() => recover(choice)}
-          >
-            <RoutineIcon name={CHOICE_ICONS[choice]} />
-            <span class="verb">{copy.card[choice]}</span>
-            <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
-          </Button>
-          {#if choice === card.recommended}<span class="notch" id={`${id}-recommended`} aria-hidden="true">{copy.card.recommendedMark}</span>{/if}
+      <!-- One choice group: a segment per choice in Team's order, the recommended one first and lit. Each segment is
+           one button (key, icon, verb, consequence); the recommendation mark sits on the segment's static slot, outside
+           the button its hover glitch animates. -->
+      <div class="choices" role="group" aria-label={copy.card.choices}>
+        {#each card.choices as choice, index (choice)}
+          <div class={['segment', choice === card.recommended && 'is-recommended']}>
+            <Button
+              class="choice"
+              variant="ghost"
+              type="button"
+              disabled={working}
+              aria-label={copy.card[choice]}
+              aria-describedby={choice === card.recommended ? `${id}-recommended ${id}-${choice}` : `${id}-${choice}`}
+              onclick={() => recover(choice)}
+            >
+              <span class="key" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+              <RoutineIcon name={CHOICE_ICONS[choice]} />
+              <span class="verb">{copy.card[choice]}</span>
+              <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
+            </Button>
+            {#if choice === card.recommended}<span class="mark" id={`${id}-recommended`} aria-hidden="true">{copy.card.recommendedMark}</span>{/if}
           </div>
         {/each}
       </div>
@@ -325,7 +327,7 @@
 {/if}
 
 <style>
-  /* Neutral terminal lines and three tiles: cyan marks only the recommended choice, and state color lives on small
+  /* Neutral terminal lines and one choice group: cyan marks only the recommended choice, and state color lives on small
      icons. */
   .decision { container-type: inline-size; display: grid; gap: 0.4rem; min-width: 0; }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
@@ -341,51 +343,64 @@
   .reason { margin: 0.2rem 0 0; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.5; text-wrap: pretty; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
-  /* Three equal tiles in one row; a narrow card stacks them. Each tile is one button: icon, verb, consequence. */
-  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--shimpz-space-3); padding-block-start: var(--shimpz-space-3); }
-  @container (max-width: 34rem) {
-    .tiles { grid-template-columns: minmax(0, 1fr); gap: var(--shimpz-space-3); }
-    .tiles :global(.tile.tile) { min-height: 0; }
+  /* The choice group: one chamfered frame split into equal segments by hairlines; a narrow card stacks them. The
+     recommended segment carries the only cyan: a lit top edge, a faint wash, and its mark. */
+  .choices {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    margin-block-start: var(--shimpz-space-3);
+    background: var(--shimpz-color-surface-raised);
+    border: 1px solid var(--shimpz-color-border);
+    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
   }
-  .tiles :global(.tile) {
+  :global([dir="rtl"]) .choices { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
+  @container (max-width: 34rem) { .choices { grid-auto-flow: row; } }
+  .segment { position: relative; display: grid; min-width: 0; }
+  .segment + .segment { border-inline-start: 1px solid var(--shimpz-color-border); }
+  @container (max-width: 34rem) {
+    .segment + .segment { border-inline-start: 0; border-block-start: 1px solid var(--shimpz-color-border); }
+  }
+  .segment.is-recommended { background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent); box-shadow: inset 0 2px 0 var(--shimpz-color-cyan); }
+  .segment :global(.choice) {
     --button-color: var(--shimpz-color-text);
-    --button-bg: var(--shimpz-color-surface);
-    --button-border: var(--shimpz-color-border);
+    --button-bg: transparent;
+    --button-border: transparent;
     --button-hover-color: var(--shimpz-color-text);
     --button-hover-bg: var(--shimpz-color-surface-high);
     width: 100%;
     height: 100%;
-    min-height: 5.75rem;
-    padding: var(--shimpz-space-3);
-    overflow: visible;
+    min-height: 5.5rem;
+    padding: var(--shimpz-space-3) var(--shimpz-space-3) var(--shimpz-space-3);
     text-align: start;
     text-transform: none;
     letter-spacing: normal;
     clip-path: none;
     align-items: stretch;
   }
-  .tiles :global(.tile .button-content) { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; align-content: start; justify-items: start; align-self: stretch; gap: 0.45rem 0.55rem; width: 100%; }
-  .tiles :global(.tile .routine-icon) { width: 1.1rem; height: 1.1rem; color: var(--shimpz-color-text-muted); }
-  .tiles :global(.tile:hover:not(:disabled)), .tiles :global(.tile:focus-visible) { border-color: var(--shimpz-color-cyan); }
-  .tiles :global(.tile.is-recommended) { --button-border: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
-  .tiles :global(.tile.is-recommended .routine-icon) { color: var(--shimpz-color-cyan); }
-  .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
-  .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.76rem/1.4 var(--shimpz-font-sans); text-wrap: pretty; white-space: normal; }
-  .tile-slot { position: relative; display: grid; min-width: 0; }
-  /* The recommendation is notched into the tile's top edge, cutting its border; its ground is the card's own. */
-  .notch {
+  .segment :global(.choice:hover:not(:disabled)) { box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
+  .segment :global(.choice:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; box-shadow: none; }
+  .segment :global(.choice .button-content) { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; align-content: start; justify-items: start; align-self: stretch; gap: 0.5rem 0.5rem; width: 100%; }
+  .segment :global(.choice .routine-icon) { width: 1rem; height: 1rem; color: var(--shimpz-color-text-muted); }
+  .segment.is-recommended :global(.choice .routine-icon) { color: var(--shimpz-color-cyan); }
+  .key { color: var(--shimpz-color-text-dim); font: 600 0.62rem/1 var(--shimpz-font-mono); letter-spacing: 0.06em; }
+  .is-recommended .key { color: var(--shimpz-color-cyan); }
+  .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  /* The consequence stays readable: the hover glitch splits the verb, never this sentence. */
+  .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
+  .mark {
     pointer-events: none;
     position: absolute;
-    inset-block-start: 0;
-    inset-inline-start: var(--shimpz-space-3);
-    padding: 0 0.35rem;
+    inset-block-start: var(--shimpz-space-3);
+    inset-inline-end: var(--shimpz-space-3);
     color: var(--shimpz-color-cyan);
-    background: var(--decision-ground, var(--shimpz-color-surface-raised));
     font: 700 0.56rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    transform: translateY(-50%);
   }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
-  @media (forced-colors: active) { .tiles :global(.tile) { border-color: CanvasText; } }
+  @media (forced-colors: active) {
+    .choices, .segment + .segment { border-color: CanvasText; }
+    .segment.is-recommended { box-shadow: none; outline: 2px solid Highlight; outline-offset: -2px; }
+  }
 </style>
