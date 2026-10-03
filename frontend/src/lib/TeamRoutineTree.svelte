@@ -88,7 +88,7 @@
   ul :global(.routine-item:hover::before), ul :global(.routine-item:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
   ul :global(.routine-item:focus-visible) { outline: 2px solid var(--shimpz-color-yellow); outline-offset: -2px; }
   .text { display: grid; min-width: 0; gap: 2px; }
-  .name { overflow: hidden; color: var(--shimpz-color-text); font: 500 0.82rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
-  .meta { overflow: hidden; color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+  .name { color: var(--shimpz-color-text); font: 500 0.82rem/1.3 var(--shimpz-font-sans); overflow-wrap: anywhere; }
+  .meta { color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; overflow-wrap: anywhere; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 </style>

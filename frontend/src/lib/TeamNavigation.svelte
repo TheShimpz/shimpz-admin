@@ -507,7 +507,7 @@
   .team-navigation {
     --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
     /* Routine nodes align with the Team name; their guide line runs under the monogram's center. */
-    --routine-indent: calc(var(--shimpz-space-3) + 2.6rem);
+    --routine-indent: calc(var(--shimpz-space-3) + 0.5rem);
     --routine-guide: calc(var(--shimpz-space-3) + 0.95rem);
     --team-scanlines: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent) 2px 3px);
   }
