@@ -453,13 +453,10 @@
 
   /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
      and stacks one row per choice between hairlines. */
-  .spacer { flex: 0 0 var(--shimpz-space-3); }
-  /* The question and its answers are one tinted zone that closes the host, so no rule or empty band separates them
-     from the message above. */
+  .spacer { flex: 1 0 var(--shimpz-space-2); }
   .choices {
     display: grid;
     margin-inline: calc(-1 * var(--decision-inline, 0px));
-    background: color-mix(in srgb, var(--shimpz-color-text) 3%, transparent);
   }
   .segment { display: grid; min-width: 0; }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
