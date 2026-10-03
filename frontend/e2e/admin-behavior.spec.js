@@ -4355,7 +4355,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    const item = page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: /Daily DNS zones/ });
+    const item = page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: /Daily DNS zones/ });
     await expect(item).toHaveCount(1);
     // Its panel shows the plan: each step's Assistant and Action, and its saved keys by name only.
     await item.click();
@@ -4383,7 +4383,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     const button = navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' });
     // The modal's title names the Team the Routines belong to.
-    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing Routines' });
     await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(list).toHaveCount(0);
     await button.click();
@@ -4449,7 +4449,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing Routines' });
     const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
     await expect(item).toContainText('Every day at 09:00');
     await item.focus();
@@ -4556,7 +4556,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -4576,7 +4576,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
     const password = panel.getByLabel('Supervisor password');
@@ -4609,7 +4609,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -4644,7 +4644,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
   }
 
@@ -4763,7 +4763,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(panel).toContainText('Waiting for your approval of Replace DNS record');
     // Review is the one action besides going back to the list and closing the panel.
@@ -4799,7 +4799,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     // The decision is not dismissed: it waits for the person to try again, never reopening on its own.
     await panel.getByRole('button', { name: 'Retry' }).click();
@@ -4835,7 +4835,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
     await page.clock.fastForward(15_000);
@@ -4857,7 +4857,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     const button = navigation.getByRole('button', { name: /^Routines for Marketing/ });
     await button.click();
-    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -5430,7 +5430,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(page.getByRole('dialog', { name: 'Marketing › Routines' })).toContainText('Paused');
+    await expect(page.getByRole('dialog', { name: 'Marketing Routines' })).toContainText('Paused');
     await page.keyboard.press('Escape');
     if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
