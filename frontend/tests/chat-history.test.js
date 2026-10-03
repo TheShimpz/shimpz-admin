@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { listChatHistory } from '../src/lib/chatHistory.js';
+import { listChatHistory, MAX_ROUTINE_RUN_PAGES, recentRoutineRuns } from '../src/lib/chatHistory.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
 const TURN_A = 'a'.repeat(32);
@@ -294,3 +294,58 @@ test('a reloaded user message keeps the references of the files it carried, and 
   );
 });
 
+function runRow(noticeId, routineId) {
+  return {
+    id: `${noticeId}:routine`,
+    kind: 'routine-run',
+    notice_id: noticeId,
+    routine_id: routineId,
+    quote: 'Every day at 9, list my zones',
+    run_id: noticeId,
+    outcome: 'done',
+    created_at: AT,
+    detail: { actions: [['shimpz-cloudflare', 'list-zones']] },
+    version: 1,
+  };
+}
+
+function chatRow(index) {
+  return { id: `${index.toString(16).padStart(32, '0')}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Hi' };
+}
+
+test('a Routine\'s latest runs follow the history cursor past unrelated rows, newest first', async () => {
+  const routine = '9'.repeat(32);
+  const other = '8'.repeat(32);
+  const run = (digit) => runRow(digit.repeat(32), routine);
+  // Newest page first: 64 unrelated rows; then a page with two of its runs and another Routine's; then the rest.
+  const pages = {
+    null: { entries: Array.from({ length: 64 }, (_, index) => chatRow(index)), before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [run('1'), runRow('2'.repeat(32), other), run('3')], before: 'AAAAAAAAAGQ' },
+    AAAAAAAAAGQ: { entries: [run('4'), run('5'), run('6'), run('7')], before: 'AAAAAAAAAAI' },
+    AAAAAAAAAAI: { entries: [run('0')], before: null },
+  };
+  const requested = [];
+  const fetcher = async (url) => {
+    const before = new URL(url, 'http://admin').searchParams.get('before');
+    requested.push(before);
+    return response(200, pages[before]);
+  };
+  const runs = await recentRoutineRuns(fetcher, 'marketing', routine);
+  assert.deepEqual(runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5']);
+  assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ']);
+
+  // A history that ends first yields what it has; an unrelated history is read only up to the page bound.
+  requested.length = 0;
+  assert.deepEqual(await recentRoutineRuns(fetcher, 'marketing', other), [runRow('2'.repeat(32), other)].map((row) => ({
+    id: row.id, kind: 'routine-run', runId: row.run_id, routineId: other, quote: row.quote, outcome: 'done',
+    createdAt: AT, detail: { actions: [['shimpz-cloudflare', 'list-zones']] }, version: 1,
+  })));
+  assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ', 'AAAAAAAAAAI']);
+  let reads = 0;
+  const endless = async () => {
+    reads += 1;
+    return response(200, { entries: [chatRow(reads)], before: 'AAAAAAAAAMg' });
+  };
+  assert.deepEqual(await recentRoutineRuns(endless, 'marketing', routine), []);
+  assert.equal(reads, MAX_ROUTINE_RUN_PAGES);
+});

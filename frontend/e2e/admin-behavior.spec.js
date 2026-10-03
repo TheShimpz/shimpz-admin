@@ -5408,6 +5408,44 @@ test.describe('Team Routines', () => {
     await expect(dialog).not.toContainText('httpx.HTTPStatusError');
   });
 
+  test("a Routine's recent runs are found past a full page of newer unrelated chat", async ({ page }) => {
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const chat = Array.from({ length: 64 }, (_, index) => ({
+      id: `${index.toString(16).padStart(32, '0')}:user`,
+      created_at: '2026-10-02T09:00:00Z',
+      kind: 'message',
+      role: 'user',
+      text: `Unrelated message ${index + 1}`,
+    }));
+    const chatHistory = await routeReadyChat(page, {
+      history: { entries: chat, before: 'AAAAAAAAAMg' },
+      olderHistory: {
+        entries: [
+          routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [] }),
+          routineRow('d'.repeat(32), 'done', done),
+        ],
+        before: null,
+      },
+    });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' });
+    // Both runs sit behind the newest page; the panel follows the cursor to them, newest first.
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
+    await expect(runs.getByRole('listitem').first()).toContainText('Done');
+    await expect(runs).not.toContainText('No runs yet.');
+    expect(chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
+  });
+
   test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', async ({ page }) => {
     const failed = 'c'.repeat(32);
     const held = 'f'.repeat(32);

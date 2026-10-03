@@ -291,3 +291,27 @@ export async function listChatHistory(fetcher, teamId, before = null) {
   return { entries, before: historyCursor(body.before, response.status) };
 }
 
+// The Runs page shows a Routine's latest few runs; it reads at most this many history pages to find them.
+export const RECENT_ROUTINE_RUNS = 5;
+export const MAX_ROUTINE_RUN_PAGES = 16;
+
+/**
+ * A Routine's latest runs, newest first: history pages are read newest first, following each page's cursor, until
+ * five of its runs are found, the history ends, or the page bound is reached, so unrelated chat never hides them.
+ */
+export async function recentRoutineRuns(fetcher, teamId, routineId) {
+  const runs = [];
+  let before = null;
+  for (let page = 0; page < MAX_ROUTINE_RUN_PAGES; page += 1) {
+    const { entries, before: older } = await listChatHistory(fetcher, teamId, before);
+    // A page lists its entries oldest first.
+    for (const entry of [...entries].reverse()) {
+      if (entry.kind !== 'routine-run' || entry.routineId !== routineId || !entry.runId) continue;
+      runs.push(entry);
+      if (runs.length === RECENT_ROUTINE_RUNS) return runs;
+    }
+    if (older === null) break;
+    before = older;
+  }
+  return runs;
+}

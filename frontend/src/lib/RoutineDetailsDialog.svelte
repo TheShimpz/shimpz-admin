@@ -2,7 +2,7 @@
   import { Button, Notice } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
-  import { listChatHistory } from '$lib/chatHistory.js';
+  import { recentRoutineRuns } from '$lib/chatHistory.js';
   import { locale } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
@@ -109,14 +109,8 @@
   $effect(() => {
     let current = true;
     void loadAssistantNames(fetch);
-    listChatHistory(fetch, teamId)
-      .then(({ entries }) => {
-        if (!current) return;
-        recent = entries
-          .filter((entry) => entry.kind === 'routine-run' && entry.routineId === routine.routine_id && entry.runId)
-          .slice(-5)
-          .reverse();
-      })
+    recentRoutineRuns(fetch, teamId, routine.routine_id)
+      .then((runs) => { if (current) recent = runs; })
       .catch(() => { if (current) recentFailed = true; });
     return () => { current = false; };
   });
