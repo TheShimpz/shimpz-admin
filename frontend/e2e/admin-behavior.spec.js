@@ -4269,6 +4269,7 @@ test.describe('Team Routines', () => {
     // Its panel shows the plan: each step's Assistant and Action, and its saved keys by name only.
     await item.click();
     const panel = page.getByRole('dialog', { name: 'Daily DNS zones' });
+    await panel.getByRole('tab', { name: 'Steps' }).click();
     const steps = panel.getByRole('list', { name: 'Steps' });
     await expect(steps).toContainText('List zones');
     await expect(steps).toContainText('api-token');
@@ -4297,7 +4298,7 @@ test.describe('Team Routines', () => {
     await expect(button).toHaveAttribute('aria-expanded', 'true');
     // The item names the Routine, when it runs, and in words why it needs the person.
     const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
-    await expect(item).toContainText('Needs recovery');
+    await expect(item).toContainText('Failed');
     await button.click();
     await expect(list).toHaveCount(0);
     // From the keyboard: focus stays on the button while Enter and Space open and close the list.
@@ -4366,6 +4367,19 @@ test.describe('Team Routines', () => {
     await expect(panel).toContainText(ROUTINE_VIEW.quote);
     await expect(panel).toContainText('America/Sao_Paulo');
     expect(await accessibilityViolations(page)).toEqual([]);
+    // Its pages are tabs: arrow keys, Home, and End move between them and select them.
+    const summary = panel.getByRole('tab', { name: 'Summary' });
+    await expect(summary).toHaveAttribute('aria-selected', 'true');
+    await summary.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(panel.getByRole('tab', { name: 'Steps' })).toBeFocused();
+    await expect(panel.getByRole('list', { name: 'Steps' })).toBeVisible();
+    await page.keyboard.press('End');
+    await expect(panel.getByRole('tab', { name: 'Runs' })).toHaveAttribute('aria-selected', 'true');
+    await expect(panel.getByRole('list', { name: 'Runs' })).toBeVisible();
+    await page.keyboard.press('Home');
+    await expect(summary).toBeFocused();
+    await expect(panel).toContainText(ROUTINE_VIEW.quote);
     // Escape closes the panel and returns focus to the Routine it was opened from.
     await page.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
@@ -4373,7 +4387,7 @@ test.describe('Team Routines', () => {
     await item.click();
 
     // Resume turns dispatch back on; the held run's incident still holds the Routine until its card settles it.
-    await expect(panel).toContainText('A run of this Routine is held for recovery.');
+    await expect(panel).toContainText('A run stopped partway through a step that may have changed something.');
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(calls.resumes).toEqual([{}]);
@@ -4381,7 +4395,8 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('button', { name: 'Resume' })).toBeVisible();
     expect(calls.pauses).toEqual([{}]);
 
-    // A recent run opens its execution details.
+    // A recent run, on the Runs page, opens its execution details.
+    await panel.getByRole('tab', { name: 'Runs' }).click();
     await panel.getByRole('button', { name: 'Execution details' }).click();
     const details = page.getByRole('dialog', { name: 'Execution details' });
     await expect(details).toContainText('No failed attempts were recorded for this run.');
@@ -4965,7 +4980,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(navigation.getByRole('group', { name: 'Routines' })).toContainText('Waiting for an approval');
+    await expect(navigation.getByRole('group', { name: 'Routines' })).toContainText('Paused');
     if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
     await rows.nth(1).getByRole('button', { name: 'Review' }).click();

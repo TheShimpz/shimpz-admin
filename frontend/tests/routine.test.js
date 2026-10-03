@@ -28,6 +28,8 @@ import {
   humanizeId,
   literalWords,
   routineStatus,
+  STATUS_TAGS,
+  STATUS_WORDS,
   readRunDiagnostics,
   resumeRoutine,
   resumeRoutineIntegrations,
@@ -652,6 +654,19 @@ test("a Routine's status is its most urgent one", () => {
   assert.equal(routineStatus(routine, [run('held')]), 'recovery');
   assert.equal(routineStatus({ ...routine, deleting: true }, [], [incident]), 'deleting');
   assert.equal(routineStatus(routine, [{ ...run('leased'), routine_id: 'd'.repeat(32) }]), 'healthy');
+});
+
+test('a Routine shows the person only running, paused, or failed', () => {
+  assert.deepEqual(
+    Object.entries(STATUS_WORDS),
+    [
+      ['healthy', 'running'], ['continuous', 'running'], ['running', 'running'],
+      ['paused', 'paused'], ['waiting', 'paused'], ['reconfirm', 'paused'],
+      ['recovery', 'failed'],
+    ],
+  );
+  assert.equal(STATUS_WORDS.deleting, undefined);
+  assert.deepEqual(Object.keys(STATUS_TAGS), ['running', 'paused', 'failed']);
 });
 
 test('Pausar and Retomar admit only exactly that Routine in the asked state', async () => {

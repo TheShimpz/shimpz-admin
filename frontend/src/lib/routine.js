@@ -373,17 +373,25 @@ export function routineStatus(routine, runs = [], incidents = []) {
 }
 
 /**
- * Each Routine status's tag tone: one border color per status, the same in every Routine surface. A healthy Routine
- * has no tag.
+ * The one word a Routine's status shows the person: it is running, paused, or failed. Waiting for an approval and
+ * waiting to be asked again stop its dispatch, so they read as paused; a run held for recovery reads as failed. The
+ * panel names the reason beside the word. A Routine being deleted shows no word.
  */
-export const STATUS_TONES = Object.freeze({
-  recovery: 'danger',
-  deleting: 'danger',
-  reconfirm: 'warning',
-  paused: 'warning',
-  waiting: 'waiting',
-  running: 'accent',
-  continuous: 'accent',
+export const STATUS_WORDS = Object.freeze({
+  healthy: 'running',
+  continuous: 'running',
+  running: 'running',
+  paused: 'paused',
+  waiting: 'paused',
+  reconfirm: 'paused',
+  recovery: 'failed',
+});
+
+/** Each status word's tag tone and icon: one border color per word, the same in every Routine surface. */
+export const STATUS_TAGS = Object.freeze({
+  running: { tone: 'accent', icon: 'activity' },
+  paused: { tone: 'warning', icon: 'pause' },
+  failed: { tone: 'danger', icon: 'warning' },
 });
 
 /** A Routine notice's tag tone, matching the status it leaves its Routine in; other outcomes stay neutral. */
