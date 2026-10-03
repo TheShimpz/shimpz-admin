@@ -9,8 +9,9 @@
   import { humanizeId, routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message, as one entry of an activity timeline: the Routine's name, a status phrase colored by meaning, and the
-  // notice's time, then one quiet line of detail. Consecutive notices share one thin rail (`joinAbove`, `joinBelow`).
+  // own message, as one entry of an activity timeline: the notice's time on the timeline's rail, the Routine's name and a
+  // status phrase colored by meaning, then one quiet line of detail. Consecutive notices share one thin rail through
+  // their times (`joinAbove`, `joinBelow`).
   // It never carries an Action's raw input or result, and it is not part of the Brain's conversation. Every name and
   // value is plain text. The entry decides nothing: while its run waits for the person, its one action opens that
   // Routine's panel, which is the decision itself.
@@ -78,11 +79,8 @@
   tabindex="-1"
   bind:this={notice}
 >
-  <span class="dot" aria-hidden="true"></span>
-  <p class="head">
-    <span class="lead"><span class="name">{routineName}</span> <span class="status">{shown.status}</span></span>
-    <time class="time" datetime={entry.createdAt}>{shown.time}</time>
-  </p>
+  <p class="head"><span class="name">{routineName}</span> <span class="status">{shown.status}</span></p>
+  <time class="time" datetime={entry.createdAt}>{shown.time}</time>
   {#each details as line, index (index)}
     <p class="detail">
       {line}{#if shown.code && index === details.length - 1}{line ? ' ' : ''}<code class="code">{shown.code}</code>{/if}
@@ -113,21 +111,22 @@
 
 <style>
   /*
-   * A timeline entry, never a card: a small status dot on a thin rail, the Routine's name and status on one line, and
-   * quieter detail below. The rail is two hairline segments that stop short of the dot, so consecutive notices read
-   * as one thread; the segment above reaches back across the gap between transcript exchanges.
+   * A timeline entry, never a card: the notice's time sits on a thin rail at the start, the Routine's name and status
+   * read as one phrase beside it, and quieter detail follows. The rail is two hairline segments that stop short of the
+   * time, so consecutive notices read as one thread; the segment above reaches back across the gap between transcript
+   * exchanges.
    */
   .routine-run {
     --tone: var(--shimpz-color-text-dim);
-    --rail-x: 0.3125rem;
+    --time-column: 2.5rem;
     --head-line: 1.5rem;
-    --dot: 0.4375rem;
+    --rail-clearance: 0.1rem;
     position: relative;
     display: grid;
     justify-items: start;
     gap: 0.125rem;
     min-width: 0;
-    padding-inline-start: 1.5rem;
+    padding-inline-start: calc(var(--time-column) + var(--shimpz-space-3));
     outline-offset: 4px;
   }
 
@@ -135,20 +134,21 @@
   .tone-danger { --tone: var(--shimpz-color-danger); }
   .tone-waiting { --tone: var(--shimpz-color-yellow); }
 
-  .dot {
+  .time {
     position: absolute;
-    inset-block-start: calc((var(--head-line) - var(--dot)) / 2);
-    inset-inline-start: calc(var(--rail-x) - var(--dot) / 2 + 0.5px);
-    width: var(--dot);
-    height: var(--dot);
-    background: var(--tone);
-    border-radius: 50%;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: var(--time-column);
+    color: var(--shimpz-color-text-dim);
+    font: 0.72rem/var(--head-line) var(--shimpz-font-mono);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
   }
 
   .join-above::before,
   .join-below::after {
     position: absolute;
-    inset-inline-start: var(--rail-x);
+    inset-inline-start: calc(var(--time-column) / 2);
     width: 1px;
     background: var(--shimpz-color-border);
     content: '';
@@ -157,28 +157,23 @@
   /* Up to the previous notice, across the exchange gap; down to this entry's own bottom edge. */
   .join-above::before {
     inset-block-start: calc(-1 * var(--routine-rail-gap, 1.1rem));
-    height: calc(var(--routine-rail-gap, 1.1rem) + (var(--head-line) - var(--dot)) / 2 - 0.3125rem);
+    height: calc(var(--routine-rail-gap, 1.1rem) + var(--rail-clearance));
   }
 
   .join-below::after {
-    inset-block: calc((var(--head-line) + var(--dot)) / 2 + 0.3125rem) 0;
+    inset-block: calc(var(--head-line) - var(--rail-clearance)) 0;
   }
 
-  /* The name and status wrap as one phrase; the time keeps the first line's far end. */
+  /* The name and status wrap as one phrase. */
   .routine-run .head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    column-gap: var(--shimpz-space-3);
     width: 100%;
     margin: 0;
     color: var(--shimpz-color-text);
     white-space: normal;
     font-size: 0.95rem;
     line-height: var(--head-line);
+    overflow-wrap: anywhere;
   }
-
-  .lead { min-width: 0; overflow-wrap: anywhere; }
 
   .name { font-weight: 600; }
 
@@ -186,13 +181,6 @@
     color: var(--tone);
     font-size: 0.875rem;
     white-space: nowrap;
-  }
-
-  .time {
-    color: var(--shimpz-color-text-dim);
-    font: 0.72rem/var(--head-line) var(--shimpz-font-mono);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
   }
 
   .routine-run .detail,
