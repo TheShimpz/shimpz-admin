@@ -339,6 +339,22 @@ class RoutineDeleteConfirmationTests(unittest.TestCase):
                 self.assertEqual(factor_changed.called, expected[1]["code"] == "passkey-suspended")
         self.team_delete.assert_not_called()
 
+    def test_a_body_beyond_the_password_or_an_unconfigured_supervisor_is_refused(self) -> None:
+        path = f"/api/teams/{TEAM}/routines/{ROUTINE}/deletion"
+        for payload in ({}, {"password": PASSWORD, "code": "123456"}):
+            with self.subTest(payload=payload):
+                request = _request("POST", path, payload, origin=ORIGIN, cookies=self._cookies())
+                with self.assertRaises(local_auth.HTTPException) as refused:
+                    asyncio.run(self.begin_route(TEAM, ROUTINE, request))
+                self.assertEqual(refused.exception.status_code, 400)
+        with mock.patch.object(state, "authentication_state", return_value=auth.RECORD_STATE_RECOVERY_REQUIRED):
+            status, body, response = self.begin()
+        self.assertEqual(
+            (status, body, response.headers["Cache-Control"]), (409, {"code": "authentication-unavailable"}, "no-store")
+        )
+        self.assertEqual(self.ticket, "")
+        self.team_delete.assert_not_called()
+
     def test_a_passkey_challenge_failure_is_unavailable_not_silently_totp_only(self) -> None:
         with (
             mock.patch.object(local_auth, "passkey_registered", return_value=True),

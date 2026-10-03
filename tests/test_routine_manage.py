@@ -227,6 +227,20 @@ class RoutineRouteTests(unittest.TestCase):
         for response in responses:
             self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
 
+    def test_only_an_answered_card_wakes_the_scheduler_and_none_is_needed(self) -> None:
+        chosen = {"nonce": "c" * 32, "choice": "run"}
+        stale = team.TeamResponse(409, {"code": "routine-card-stale"})
+        scheduled = FastAPI()
+        scheduled.state.routine_scheduler = mock.Mock()
+        with mock.patch.object(manage, "answer_card", return_value=stale):
+            refused = asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen, scheduled)))
+        self.assertEqual((refused.status_code, refused.headers["Cache-Control"]), (409, "no-store"))
+        scheduled.state.routine_scheduler.wake.assert_not_called()
+        # An Admin without a running scheduler still answers the card; nothing is woken.
+        with mock.patch.object(manage, "answer_card", return_value=team.TeamResponse(200, {"ok": True})):
+            answered = asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen)))
+        self.assertEqual((answered.status_code, answered.headers["Cache-Control"]), (200, "no-store"))
+
 
 if __name__ == "__main__":
     unittest.main()
