@@ -528,6 +528,15 @@ export function instantWords(value, locale, timeZone) {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 }
 
+/** An instant as day/Month/year and a 24-hour clock to the second ("02/Outubro/2026 22:29:00") in a timezone. */
+export function clockWords(value, locale, timeZone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat(locale, {
+    day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone,
+  }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  const month = parts.month.charAt(0).toLocaleUpperCase(locale) + parts.month.slice(1);
+  return `${parts.day}/${month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 /** How far ahead an instant is, in the largest whole unit ("in 3 hours"); an instant already due has no words. */
 export function untilWords(value, now, locale) {
   const seconds = Math.round((new Date(value).getTime() - now) / 1000);
