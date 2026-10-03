@@ -3,9 +3,10 @@
   import { tick } from 'svelte';
 
   import { locale, t } from '$lib/i18n.js';
-  import { ATTENTION_STATUSES, routineStatus, scheduleWords } from '$lib/routine.js';
+  import { routineStatus, scheduleWords, STATUS_TONES } from '$lib/routine.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
-  import RoutineStatusMark from '$lib/RoutineStatusMark.svelte';
+  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineTag from '$lib/RoutineTag.svelte';
 
   // One Team's Routines as a compact, monochrome list under its row (ADR-0086): each a neutral status mark, its short
   // name, and when it runs. Words for its status appear only when it needs the person; the only accent is the dot on
@@ -34,7 +35,7 @@
   <ul>
     {#each routines as routine (routine.routine_id)}
       {@const status = routineStatus(routine, runs, incidents)}
-      {@const attention = ATTENTION_STATUSES.includes(status)}
+      {@const tone = STATUS_TONES[status]}
       <li>
         <Button
           class="routine-item"
@@ -44,12 +45,12 @@
           aria-haspopup="dialog"
           onclick={() => (open = routine.routine_id)}
         >
-          <RoutineStatusMark {status} />
+          <span class={['mark', tone && `mark--${tone}`]} aria-hidden="true"><RoutineIcon name="clock" /></span>
           <span class="text">
             <span class="name">{routine.name}</span>
             <span class="meta">{scheduleWords(routine.schedule, copy.schedule, $locale)}</span>
-            {#if attention}
-              <span class="flag">{copy.status[status]}</span>
+            {#if tone}
+              <span class="flag"><RoutineTag label={copy.status[status]} {tone} size="xs" /></span>
             {:else}
               <span class="sr-only">{copy.status[status]}</span>
             {/if}
@@ -79,7 +80,13 @@
   ul :global(.routine-item) { position: relative; isolation: isolate; display: flex; width: 100%; height: auto; min-height: 2.5rem; align-items: flex-start; justify-content: flex-start; gap: var(--shimpz-space-2); padding: 0.4rem var(--shimpz-space-3) 0.4rem var(--routine-indent); color: var(--shimpz-color-text-muted); background: transparent; border: 0; clip-path: none; box-shadow: none; text-align: start; text-transform: none; letter-spacing: normal; font: inherit; }
   /* A fixed 16px status column, then the name, schedule, and any attention tag on one shared left edge. */
   ul :global(.routine-item .button-content) { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 0 var(--shimpz-space-2); width: 100%; min-width: 0; }
-  ul :global(.routine-item .mark) { margin-block-start: 1px; }
+  /* Every row leads with the Team's clock glyph, smaller, faintly tinted by its status. */
+  .mark { display: inline-grid; width: 16px; height: 16px; margin-block-start: 1px; place-items: center; color: var(--shimpz-color-text-dim); }
+  .mark :global(.routine-icon) { width: 13px; height: 13px; }
+  .mark--danger { color: color-mix(in srgb, var(--shimpz-color-danger) 60%, var(--shimpz-color-text-dim)); }
+  .mark--warning { color: color-mix(in srgb, var(--shimpz-color-yellow) 55%, var(--shimpz-color-text-dim)); }
+  .mark--accent { color: color-mix(in srgb, var(--shimpz-color-cyan) 60%, var(--shimpz-color-text-dim)); }
+  .mark--waiting { color: color-mix(in srgb, var(--shimpz-color-magenta) 60%, var(--shimpz-color-text-dim)); }
   ul :global(.routine-item::before) { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   ul :global(.routine-item:hover), ul :global(.routine-item:focus-visible) { color: var(--shimpz-color-text); background: transparent; box-shadow: none; }
   ul :global(.routine-item:hover::before), ul :global(.routine-item:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
@@ -87,6 +94,6 @@
   .text { display: grid; min-width: 0; gap: 2px; }
   .name { overflow: hidden; color: var(--shimpz-color-text); font: 500 0.82rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
   .meta { overflow: hidden; color: var(--shimpz-color-text-dim); font-size: 0.72rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-  .flag { justify-self: start; margin-block-start: 0.2rem; padding: 0.05rem 0.3rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font: 600 0.56rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .flag { justify-self: start; margin-block-start: 0.2rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 </style>

@@ -15,12 +15,14 @@
     routineErrorMessage,
     routineStatus,
     scheduleWords,
+    STATUS_TONES,
     stopRoutineRun,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineTag from '$lib/RoutineTag.svelte';
 
   // One Routine in full (ADR-0086, ADR-0092): what it does, when, how it stands, its recent runs with their execution
   // details, and one action per button: Pause or Resume, Stop a run going now, and Delete after a confirmation.
@@ -129,7 +131,7 @@
     <header class="head">
       <RoutineIcon name="clock" />
       <h2 id={`${id}-title`}>{routine.name}</h2>
-      <span class={['tag', `tag--${STATUS_ICONS[status]}`]}><RoutineIcon name={STATUS_ICONS[status]} />{copy.status[status]}</span>
+      <RoutineTag label={copy.status[status]} icon={STATUS_ICONS[status]} tone={STATUS_TONES[status] ?? 'neutral'} />
       <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
         <RoutineIcon name="close" />
       </Button>
@@ -252,9 +254,7 @@
     border-block-end: 1px solid var(--shimpz-color-border);
   }
   h2 { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font: 600 1rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; color: var(--shimpz-color-text); }
-  .tag { display: inline-flex; flex: none; align-items: center; gap: 0.35rem; padding: 0.2rem 0.45rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font: 600 0.62rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-  .tag :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
-  .tag--warning :global(.routine-icon), .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
+  .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   .head :global(.close) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   .content { display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   .label { margin: 0 0 0.35rem; color: var(--shimpz-color-text-dim); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
@@ -281,10 +281,10 @@
   @media (max-width: 600px) {
     .head { flex-wrap: wrap; }
     h2 { flex-basis: 8rem; }
-    .tag { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
+    .head :global(.tag) { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
     .head :global(.close) { order: 3; }
     :global(dialog.shimpz-modal.routine-panel) { width: 100dvw; max-width: none; height: 100dvh; max-height: none; margin: 0; }
     .frame { height: 100dvh; max-height: 100dvh; clip-path: none; }
   }
-  @media (forced-colors: active) { .frame, .tag, .note { border-color: CanvasText; } }
+  @media (forced-colors: active) { .frame, .note { border-color: CanvasText; } }
 </style>
