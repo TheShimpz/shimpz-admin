@@ -25,7 +25,8 @@
   // Rodar, Recriar, and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
   // so waits for a fresh decision. With `onunavailable`, a card Team cannot open yet (a held run listed before its
-  // incident) keeps Retry here and lets the host refresh; without it, the decision simply ends.
+  // incident) keeps Retry here and lets the host refresh; without it, the decision simply ends. `framed` sets the
+  // message and the choices apart as two cards, for a host that is not itself a card.
   let {
     teamId,
     teamName,
@@ -37,6 +38,7 @@
     onsettled = () => {},
     onunavailable = null,
     ondelete = () => {},
+    framed = false,
   } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
@@ -284,6 +286,7 @@
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
          stopped; then where; then the one next step; the literal error stays one click away. -->
+    <div class={['message', framed && 'is-framed']}>
     <div class="alert">
       <!-- The badge wears the status's color (failed red, paused yellow) and the shared idle glitch. -->
       <span class={['badge', outcome === 'paused' ? 'badge--warning' : 'badge--danger']} data-shimpz-glitch="true" aria-hidden="true">
@@ -310,6 +313,7 @@
         {/if}
       </div>
     {/if}
+    </div>
 
   {:else}
     <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{reason}</span></p>
@@ -321,7 +325,7 @@
       <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, none
            recommended. Each row is one button (icon, verb, what it does in plain words). -->
       <div class="spacer"></div>
-      <div class="choices" role="group" aria-label={copy.card.choices}>
+      <div class={['choices', framed && 'is-framed']} role="group" aria-label={copy.card.choices}>
         <p class="ask">{copy.card.choose}</p>
         {#each card.choices as choice (choice)}
           <div class="segment">
@@ -454,6 +458,14 @@
   /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
      and stacks one row per choice between hairlines. */
   .spacer { flex: 0 0 var(--shimpz-space-3); }
+  /* Framed, the message and the choices are two chamfered cards with space between them. */
+  .message.is-framed, .choices.is-framed {
+    background: var(--shimpz-color-surface-raised);
+    border: 1px solid var(--shimpz-color-border);
+    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
+  }
+  :global([dir="rtl"]) .message.is-framed, :global([dir="rtl"]) .choices.is-framed { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
+  .message.is-framed { padding: var(--shimpz-space-4); }
   /* The question and its answers are one tinted zone that closes the host, so no rule or empty band separates them
      from the message above. */
   .choices {
@@ -461,6 +473,7 @@
     margin-inline: calc(-1 * var(--decision-inline, 0px));
     background: color-mix(in srgb, var(--shimpz-color-text) 3%, transparent);
   }
+  .choices.is-framed { --decision-inline: var(--shimpz-space-4); margin-inline: 0; }
   .segment { display: grid; min-width: 0; }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .segment :global(.choice) {
@@ -498,6 +511,6 @@
   .hint { grid-area: hint; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
   @media (forced-colors: active) {
-    .segment + .segment, .ask + .segment { border-color: CanvasText; }
+    .segment + .segment, .ask + .segment, .message.is-framed, .choices.is-framed { border-color: CanvasText; }
   }
 </style>
