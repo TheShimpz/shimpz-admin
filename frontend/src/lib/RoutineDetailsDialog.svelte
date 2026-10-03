@@ -26,8 +26,8 @@
   import RoutineTag from '$lib/RoutineTag.svelte';
 
   // One Routine in full (ADR-0086, ADR-0092), as three pages behind a tab menu: its summary (what was asked, when it
-  // runs, and why it stopped), its steps, and its runs with their execution details. The footer keeps one action per
-  // button on every page: Pause or Resume, and Delete after a confirmation.
+  // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
+  // per action on every page: Pause or Resume, and Delete, which asks for a confirmation first.
   let { teamId, routine, runs = [], incidents = [], copy, onclose, ondeleted } = $props();
 
   const id = $props.id();
@@ -165,6 +165,7 @@
       </Button>
     </header>
 
+    <div class="bar">
     <div class="tabs" role="tablist" aria-label={copy.panel.pages}>
       {#each PAGES as item (item.id)}
         <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
@@ -173,6 +174,23 @@
           {#snippet icon()}<RoutineIcon name={item.icon} />{/snippet}{copy.panel[item.id]}
         </Button>
       {/each}
+    </div>
+    <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
+    {#if !routine.deleting && !confirming}
+      <div class="actions">
+        {#if routine.paused}
+          <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+            aria-label={copy.list.resume} title={copy.list.resume}
+            onclick={() => act(() => resumeRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="play" /></Button>
+        {:else}
+          <Button class="act act--pause" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+            aria-label={copy.panel.pause} title={copy.panel.pause}
+            onclick={() => act(() => pauseRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="pause" /></Button>
+        {/if}
+        <Button class="act act--delete" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+          aria-label={copy.list.delete} title={copy.list.delete} onclick={() => (confirming = true)}><RoutineIcon name="trash" /></Button>
+      </div>
+    {/if}
     </div>
 
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
@@ -232,27 +250,12 @@
       {#if error}<Notice variant="error">{error}</Notice>{/if}
     </div>
 
-    <footer class="foot">
-      {#if confirming}
+    {#if confirming}
+      <footer class="foot">
         <DialogAction kind="cancel" type="button" disabled={busy} onclick={() => (confirming = false)}>{copy.list.cancel}</DialogAction>
         <DialogAction kind="danger" type="button" disabled={busy} onclick={remove}>{copy.list.delete}</DialogAction>
-      {:else if !routine.deleting}
-        <DialogAction kind="danger" variant="ghost" type="button" disabled={busy} onclick={() => (confirming = true)}>
-          {copy.list.delete}
-        </DialogAction>
-        {#if routine.paused}
-          <Button variant="secondary" type="button" disabled={busy}
-            onclick={() => act(() => resumeRoutine(fetch, teamId, routine.routine_id))}>
-            {#snippet icon()}<RoutineIcon name="play" />{/snippet}{copy.list.resume}
-          </Button>
-        {:else}
-          <Button variant="secondary" type="button" disabled={busy}
-            onclick={() => act(() => pauseRoutine(fetch, teamId, routine.routine_id))}>
-            {#snippet icon()}<RoutineIcon name="pause" />{/snippet}{copy.panel.pause}
-          </Button>
-        {/if}
-      {/if}
-    </footer>
+      </footer>
+    {/if}
   </div>
 </Modal>
 
@@ -289,7 +292,13 @@
   .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   .head :global(.close) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   /* The page menu: mono labels on one rule, the selected page underlined in the panel's one accent. */
-  .tabs { display: flex; gap: var(--shimpz-space-1); padding: 0.3rem var(--shimpz-space-3) 0; overflow-x: auto; border-block-end: 1px solid var(--shimpz-color-border); }
+  /* The page menu starts at the panel's edge; the Routine's actions sit at its far end. */
+  .bar { display: flex; align-items: center; gap: var(--shimpz-space-2); padding-inline-end: var(--shimpz-space-2); border-block-end: 1px solid var(--shimpz-color-border); }
+  .tabs { display: flex; flex: 1 1 auto; min-width: 0; padding-block-start: 0.3rem; overflow-x: auto; }
+  .actions { display: flex; flex: none; gap: 0.15rem; }
+  .actions :global(.act.act) { --button-border: transparent; --button-color: var(--shimpz-color-cyan); --button-hover-color: var(--shimpz-color-cyan); }
+  .actions :global(.act.act--delete) { --button-color: var(--shimpz-color-danger); --button-hover-color: var(--shimpz-color-danger); }
+  .actions :global(.act.act--delete:hover:not(:disabled)) { box-shadow: none; }
   .tabs :global(.tab) {
     --button-color: var(--shimpz-color-text-dim);
     --button-border: transparent;
@@ -323,6 +332,7 @@
   @media (max-width: 600px) { .when { display: none; } }
   .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--shimpz-space-2); padding: var(--shimpz-space-3) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border); }
   .foot > :global(:first-child) { margin-inline-end: auto; }
+  @media (forced-colors: active) { .bar { border-color: CanvasText; } }
   /* On a phone the panel is a full-screen sheet. */
   @media (max-width: 600px) {
     .head { flex-wrap: wrap; }
