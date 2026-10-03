@@ -392,8 +392,8 @@
     padding-block-start: 0;
   }
   .frame--deciding { border-inline-color: transparent; border-block-end-color: transparent; }
-  /* A decision narrows the panel to 70%, and its answers span that same width below the message. */
-  :global(dialog.shimpz-modal.routine-panel:has(.frame--deciding)) { --modal-max-width: calc(var(--shimpz-dialog-lg) * 0.7); }
+  /* A decision narrows the panel to about 80%, and its answers span that same width below the message. */
+  :global(dialog.shimpz-modal.routine-panel:has(.frame--deciding)) { --modal-max-width: calc(var(--shimpz-dialog-lg) * 0.805); }
   .frame--deciding .head { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
