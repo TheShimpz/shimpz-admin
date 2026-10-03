@@ -3,6 +3,7 @@
 
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import { assistantNames } from '$lib/assistantNames.js';
+  import ChoiceList from '$lib/ChoiceList.svelte';
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
@@ -56,7 +57,6 @@
   // before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
   let card = $state(null);
 
-  const id = $props.id();
   const CHOICE_ICONS = { run: 'play', recreate: 'rebuild', delete: 'trash' };
   const HINTS = { run: 'runHint', recreate: 'recreateHint', delete: 'deleteHint' };
   let listed = $derived($routineContext.get(teamId));
@@ -156,7 +156,7 @@
   let failure = $derived.by(() => {
     if (!card) return null;
     if (card.evidence !== 'recorded') {
-      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail, known: false };
+      return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail };
     }
     const item = card.diagnostic;
     const conditions = copy.details.conditions;
@@ -179,8 +179,8 @@
     const cause = failureCause(item);
     return {
       title: cause === 'unknown' ? '' : copy.card.causeTitles[cause],
-      cause: copy.card.causes[cause],
-      known: cause !== 'unknown',
+      // A cause with nothing to add beyond its title has no line of its own.
+      cause: copy.card.causes[cause] ?? '',
       text,
       meta,
       redacted: Boolean(item.failure?.redacted),
@@ -283,7 +283,7 @@
   {#if situation}
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
-         stopped; then where; then the one next step; the literal error stays one click away. -->
+         stopped; then where; then its likely cause as a fact; the literal error stays one click away. -->
     <!-- The message: a host may bleed it to its own edges and draw its side lines (`--decision-message-*`). -->
     <div class="message">
     <div class="alert">
@@ -296,9 +296,10 @@
         <p class="where">{situation}</p>
       </div>
     </div>
-    {#if recoverable && failure}
+    {#if recoverable && failure && (failure.cause || failure.text)}
       <div class="body">
-        <p class={['next', failure.known && 'is-step']}>{#if failure.known}<RoutineIcon name="step" />{/if}{failure.cause}</p>
+        <!-- The likely cause is a fact, never advice: with several choices, the person picks one unsteered. -->
+        {#if failure.cause}<p class="cause">{failure.cause}</p>{/if}
         {#if failure.text}
           <Disclosure class="technical">
             {#snippet summary()}<span class="technical-summary"><RoutineIcon name="chevron" />{copy.card.errorTitle}</span>{/snippet}
@@ -324,28 +325,18 @@
       <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, none
            recommended. Each row is one button (icon, verb, what it does in plain words). -->
       <div class="spacer"></div>
-      <div class="choices" role="group" aria-label={copy.card.choices}>
-        <p class="ask">{copy.card.choose}</p>
-        {#each card.choices as choice (choice)}
-          <div class="segment">
-            <Button
-              class="choice"
-              variant="ghost"
-              type="button"
-              disabled={working}
-              aria-label={copy.card[choice]}
-              aria-describedby={`${id}-${choice}`}
-              data-choice={choice}
-              onclick={() => recover(choice)}
-            >
-              <RoutineIcon name={CHOICE_ICONS[choice]} />
-              <span class="verb">{copy.card[choice]}</span>
-              <span class="go" aria-hidden="true"><RoutineIcon name="chevron" /></span>
-              <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
-            </Button>
-          </div>
-        {/each}
-      </div>
+      <ChoiceList
+        label={copy.card.choices}
+        title={copy.card.choose}
+        items={card.choices.map((choice) => ({
+          id: choice,
+          icon: CHOICE_ICONS[choice],
+          label: copy.card[choice],
+          description: copy.card[HINTS[choice]],
+        }))}
+        disabled={working}
+        onchoose={recover}
+      />
     {:else if !working}
       <div class="actions">
         <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>
@@ -400,7 +391,7 @@
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
-  /* What happened: a warning badge beside the headline and where it stopped; the next step and the technical error
+  /* What happened: a warning badge beside the headline and where it stopped; the likely cause and the technical error
      sit under the headline's own edge. */
   .alert { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
   .badge {
@@ -425,10 +416,8 @@
   .title { margin: 0; color: var(--shimpz-color-text); font: 600 1.12rem/1.3 var(--shimpz-font-sans); text-wrap: balance; overflow-wrap: anywhere; }
   .where { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.45; overflow-wrap: anywhere; }
   .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.75rem + var(--shimpz-space-3)); }
-  .next { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
-  .next.is-step { color: var(--shimpz-color-text); }
-  .next :global(.routine-icon) { flex: none; width: 0.95rem; height: 0.95rem; margin-block-start: 0.2rem; color: var(--shimpz-color-cyan); }
-  :global([dir="rtl"]) .next :global(.routine-icon), :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
+  .cause { margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
+  :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
   /* The literal error, quiet and one click away. */
   .decision :global(.technical) { border-block-start: 0; padding-block-start: 0; }
   .decision :global(.technical summary) { list-style: none; color: var(--shimpz-color-text-dim); font: 500 0.78rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-transform: none; }
@@ -440,24 +429,9 @@
   .technical-error { display: grid; gap: 0.3rem; min-width: 0; }
   .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .technical-error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
-  /* The question is the list's title, and each choice below answers it: a heading-sized line with a short cyan rule. */
-  .ask {
-    display: grid;
-    gap: 0.45rem;
-    margin: 0;
-    padding: var(--shimpz-space-4) var(--decision-inline, var(--shimpz-space-3)) var(--shimpz-space-3);
-    color: var(--shimpz-color-text);
-    font: 650 1.12rem/1.3 var(--shimpz-font-sans);
-    letter-spacing: -0.01em;
-    justify-items: var(--decision-ask-align, start);
-    text-align: var(--decision-ask-align, start);
-  }
-  .ask::after { content: ""; width: 2rem; height: 2px; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
-  .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
-  /* The choice list continues the host's frame: it reaches the host's edges (the host sets the inset it pads with)
-     and stacks one row per choice between hairlines. */
+  /* The message may reach its host's edges; the choice list below it does the same through `--choice-inline`. */
   .spacer { flex: 0 0 0; }
   .message {
     display: grid;
@@ -469,54 +443,5 @@
     box-shadow: var(--decision-message-sides, none);
     border-block-end: var(--decision-message-rule, 0);
   }
-  .choices {
-    display: grid;
-    justify-items: var(--decision-choices-justify, stretch);
-    margin-inline: calc(-1 * var(--decision-inline, 0px));
-    border-block-start: var(--decision-choices-rule, 1px solid var(--shimpz-color-border));
-  }
-  /* A host may narrow the question and its answers (`--decision-choices-width`) and frame the answers as one list
-     (`--decision-list-border`); a narrow card always gives them its full width. */
-  .ask, .segment { box-sizing: border-box; width: var(--decision-choices-width, auto); max-width: 100%; }
-  @container (max-width: 34rem) { .ask, .segment { width: auto; justify-self: stretch; } }
-  .segment { display: grid; min-width: 0; border-inline: var(--decision-list-border, 0); }
-  .segment:last-child { border-block-end: var(--decision-list-border, 0); }
-  .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
-  .segment :global(.choice) {
-    --button-color: var(--shimpz-color-text);
-    --button-bg: transparent;
-    --button-border: transparent;
-    --button-hover-color: var(--shimpz-color-text);
-    --button-hover-bg: var(--shimpz-color-surface-high);
-    width: 100%;
-    min-height: 0;
-    padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3));
-    text-align: start;
-    text-transform: none;
-    letter-spacing: normal;
-    clip-path: none;
-  }
-  .segment :global(.choice:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; box-shadow: none; }
-  /* The icon and the chevron sit in the middle of the whole row, beside the verb and its sentence. */
-  .segment :global(.choice .button-content) {
-    display: grid;
-    grid-template-areas: "icon verb go" "icon hint go";
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    justify-items: start;
-    gap: 0.3rem 0.75rem;
-    width: 100%;
-  }
-  .segment :global(.choice .button-content > .routine-icon) { grid-area: icon; align-self: center; }
-  .segment :global(.choice .routine-icon) { width: 1rem; height: 1rem; color: var(--shimpz-color-text-muted); }
-  .segment :global(.choice:hover:not(:disabled) .routine-icon) { color: var(--shimpz-color-cyan); }
-  .verb { grid-area: verb; font: 700 0.76rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  .go { display: inline-flex; grid-area: go; align-self: center; justify-self: end; }
-  :global([dir="rtl"]) .go :global(.routine-icon) { transform: scaleX(-1); }
-  /* What a choice does, in plain words; the hover glitch splits the verb, never this sentence. */
-  .hint { grid-area: hint; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
-  @media (forced-colors: active) {
-    .choices, .segment + .segment { border-color: CanvasText; }
-  }
 </style>

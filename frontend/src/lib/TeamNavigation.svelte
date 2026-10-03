@@ -9,7 +9,7 @@
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '$lib/routineContext.js';
   import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '$lib/teamContext.js';
-  import TeamRoutineTree from '$lib/TeamRoutineTree.svelte';
+  import TeamRoutinesDialog from '$lib/TeamRoutinesDialog.svelte';
 
   let {
     active = '',
@@ -40,13 +40,15 @@
     return `/assistants/?team=${encodeURIComponent(team.id)}`;
   }
 
-  // Which Teams show their Routine tree; the menu item exists only for a Team that has Routines.
-  let treeOpen = $state(new Set());
+  // The Team whose Routines modal is open; the menu item exists only for a Team that has Routines. Leaving it returns
+  // focus to that Team's Routines button, or to its actions once it has no Routine left.
+  let routinesOpen = $state('');
 
-  function toggleTree(teamId) {
-    const next = new Set(treeOpen);
-    if (!next.delete(teamId)) next.add(teamId);
-    treeOpen = next;
+  async function closeRoutines(teamId) {
+    routinesOpen = '';
+    await tick();
+    const row = list?.querySelector(`[data-team-row="${teamId}"]`);
+    (row?.querySelector('.routines-action') ?? row?.querySelector('[aria-haspopup="menu"]'))?.focus();
   }
 
   // Renaming edits the name in place: Enter or leaving the field saves it, Escape keeps the current name. One save runs
@@ -426,15 +428,15 @@
                   <!-- The attention dot sits beside the button, not in it, so the button's hover glitch never moves it. -->
                   <span class="routines-slot">
                   <Button
-                    class={['row-action', 'routines-action', 'glitch-host', treeOpen.has(team.id) && 'is-here']}
+                    class={['row-action', 'routines-action', 'glitch-host', routinesOpen === team.id && 'is-here']}
                     variant="ghost"
                     size="sm"
                     iconOnly
                     type="button"
                     aria-label={routinesLabel}
                     title={routinesLabel}
-                    aria-expanded={treeOpen.has(team.id)}
-                    onclick={() => toggleTree(team.id)}
+                    aria-haspopup="dialog"
+                    onclick={() => (routinesOpen = team.id)}
                   >
                     <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
                   </Button>
@@ -449,7 +451,7 @@
                   ondelete={() => ondelete(team)}
                   routinesLabel={$t('routine.list.open')}
                   onroutines={routines && teamRoutines(team.id).routines.length > 0
-                    ? () => toggleTree(team.id)
+                    ? () => (routinesOpen = team.id)
                     : null}
                   moveUpLabel={copy.moveUp}
                   moveDownLabel={copy.moveDown}
@@ -460,13 +462,14 @@
                 />
               </div>
             </div>
-            {#if routines && treeOpen.has(team.id) && teamRoutines(team.id).routines.length > 0}
-              <TeamRoutineTree
+            {#if routines && routinesOpen === team.id}
+              <TeamRoutinesDialog
                 teamId={team.id}
                 teamName={team.name}
                 routines={teamRoutines(team.id).routines}
                 runs={teamRoutines(team.id).runs}
                 incidents={teamRoutines(team.id).incidents}
+                onclose={() => closeRoutines(team.id)}
               />
             {/if}
           </li>
@@ -507,9 +510,6 @@
   .head svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   .team-navigation {
     --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
-    /* Routine nodes align with the Team name; their guide line runs under the monogram's center. */
-    --routine-indent: calc(var(--shimpz-space-3) + 0.5rem);
-    --routine-guide: calc(var(--shimpz-space-3) + 0.95rem);
     --team-scanlines: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent) 2px 3px);
   }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
