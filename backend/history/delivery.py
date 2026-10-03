@@ -24,22 +24,40 @@ def configure(profile: str) -> None:
     _enabled = profile == "local"
 
 
-def _append_live_user(team_id: str, turn_id: str, message: object, attached: bool) -> bool:
+class SelectedFileUnavailableError(RuntimeError):
+    """A file the message selected is no longer one of the Team's files."""
+
+
+def _file_references(team_id: str, file_ids: list[str]) -> list[dict[str, object]]:
+    """The Team's own metadata for each selected file, in the message's order; never the browser's word for it."""
+    if not file_ids:
+        return []
+    response = team.list_files(team_id)
+    if not 200 <= response.status < 300:
+        raise store.HistoryUnavailableError("the Team's files are unavailable")
+    stored = {item["id"]: item for item in response.body["files"]}
+    try:
+        return [{key: stored[file_id][key] for key in store.FILE_REFERENCE_KEYS} for file_id in file_ids]
+    except KeyError:
+        raise SelectedFileUnavailableError("a selected file is no longer stored") from None
+
+
+def _append_live_user(team_id: str, turn_id: str, message: object, file_ids: list[str]) -> bool:
     # Team deletion and Space reset hold the lifecycle lock across their Team call and transcript cleanup, so a user
     # row written here either precedes that cleanup or finds the Team gone: it never survives a completed deletion.
     with store.LIFECYCLE_LOCK:
         if isinstance(team.resolve_team_name(team_id), team.TeamResponse):
             raise store.HistoryUnavailableError("the Team is no longer available")
-        return store.append_user(team_id, turn_id, message, attached=attached)
+        return store.append_user(team_id, turn_id, message, files=_file_references(team_id, file_ids))
 
 
-async def admit(team_id: str, message: object, *, attached: bool = False) -> str | None:
-    """Admit one user message; ``attached`` marks a turn whose message carried attachments (ADR-0093)."""
+async def admit(team_id: str, message: object, *, files: list[str] | tuple[str, ...] = ()) -> str | None:
+    """Admit one user message with references to the files it selected (ADR-0093)."""
     if not _enabled:
         return None
     turn_id = store.new_turn_id()
     # A saturated lane raises ExecutorSaturatedError here, before any durable write.
-    future = submit_in_context(_ADMISSION, _append_live_user, team_id, turn_id, message, attached)
+    future = submit_in_context(_ADMISSION, _append_live_user, team_id, turn_id, message, list(files))
     committed = await asyncio.wrap_future(future)
     if not committed:
         raise store.HistoryUnavailableError("chat history user entry was not committed")

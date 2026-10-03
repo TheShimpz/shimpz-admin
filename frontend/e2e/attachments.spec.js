@@ -126,6 +126,23 @@ test('a file removed from the message is not sent with it', async ({ page }) => 
   expect(frame.files).toHaveLength(1);
 });
 
+test('a reloaded chat still shows which files each message carried', async ({ page }) => {
+  const { composer, attach, send } = await openChat(page, 'attachments');
+  await choose(page, attach, [textFile('notes.md'), textFile('brief.md')]);
+  await expect(attachmentList(page).locator('[aria-busy]')).toHaveCount(0);
+  await composer.fill('When does the contract renew?');
+  await send.click();
+  await expect(page.getByText('I read the 2 files you attached.', { exact: false })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText('I read the 2 files you attached.', { exact: false })).toBeVisible({ timeout: 20_000 });
+  const sent = page.getByRole('article', { name: messages.en.chatPage.you })
+    .filter({ hasText: 'When does the contract renew?' });
+  await expect(sent.getByRole('list', { name: EN.list }).getByRole('listitem')).toHaveText([/notes\.md/, /brief\.md/]);
+  // A saved record offers nothing to do with its files.
+  await expect(sent.getByRole('list', { name: EN.list }).getByRole('button')).toHaveCount(0);
+});
+
 test('removing a file never deletes it, and attaching the same file again reuses the stored copy', async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
   const deletions = [];

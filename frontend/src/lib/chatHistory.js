@@ -1,4 +1,4 @@
-import { parseRestrictedActions } from './attachments.js';
+import { parseFileReferences, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
@@ -94,6 +94,8 @@ function messageEntry(value, suffix, status) {
   const used = assistant && Object.hasOwn(value, 'usage');
   // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
   const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
+  // A user message keeps references to the files it carried, never their content.
+  const attached = !assistant && Object.hasOwn(value, 'files');
   const expected = assistant
     ? [
       'author',
@@ -105,12 +107,14 @@ function messageEntry(value, suffix, status) {
       ...(used ? ['usage'] : []),
       ...(withheld ? ['restricted_actions'] : []),
     ]
-    : ['id', 'kind', 'role', 'text'];
+    : ['id', 'kind', 'role', 'text', ...(attached ? ['files'] : [])];
   let usage = null;
   let restricted = null;
+  let files = null;
   try {
     if (used) usage = parseTaskUsage(value.usage);
     if (withheld) restricted = parseRestrictedActions(value.restricted_actions);
+    if (attached) files = parseFileReferences(value.files);
   } catch {
     throw invalidHistory(status);
   }
@@ -142,6 +146,7 @@ function messageEntry(value, suffix, status) {
     ...(clarification ? { clarification } : {}),
     ...(usage ? { usage } : {}),
     ...(restricted ? { restricted_actions: restricted } : {}),
+    ...(files ? { files } : {}),
   };
 }
 
@@ -285,3 +290,4 @@ export async function listChatHistory(fetcher, teamId, before = null) {
   }
   return { entries, before: historyCursor(body.before, response.status) };
 }
+

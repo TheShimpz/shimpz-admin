@@ -2,7 +2,7 @@
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
-import { attachmentReply, fileApprovalChallenge, uploadFile } from './attachmentScenarios.js';
+import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
 import { localizedChallenge } from './localizedRequest.js';
 import { capReply, routineLifecycleStart, routineRecoveryRoutes, setAside } from './routineScenarios.js';
 
@@ -595,7 +595,9 @@ export function createScenario(name = 'ready', locale = 'en') {
           }];
         }
         if (frame?.type === 'chat' && Array.isArray(frame.files) && frame.files.length) {
-          return [attachmentReply(state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name, frame)];
+          const reply = attachmentReply(state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name, frame);
+          recordAttachedTurn(state, frame, reply);
+          return [reply];
         }
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];

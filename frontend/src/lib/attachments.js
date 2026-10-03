@@ -159,6 +159,31 @@ export function parseFileDisclosure(value) {
 }
 
 /**
+ * The files a saved user message carried, as Admin's history keeps them (history/store.py FILE_REFERENCE_KEYS): one to
+ * eight distinct references, each only an id, literal name, media type, and size, never content. Anything else throws.
+ */
+export function parseFileReferences(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_ATTACHMENTS) {
+    throw new LocalApiError('The Team chat history is invalid.');
+  }
+  const references = value.map((item) => {
+    if (
+      !exactKeys(item, ['id', 'media_type', 'name', 'size']) ||
+      typeof item.id !== 'string' ||
+      !OPAQUE_ID_RE.test(item.id) ||
+      !canonicalFilename(item.name) ||
+      !canonicalMediaType(item.media_type) ||
+      !positiveSize(item.size, MAX_UPLOAD_BYTES)
+    ) throw new LocalApiError('The Team chat history is invalid.');
+    return { id: item.id, name: item.name, media_type: item.media_type, size: item.size };
+  });
+  if (new Set(references.map((item) => item.id)).size !== references.length) {
+    throw new LocalApiError('The Team chat history is invalid.');
+  }
+  return references;
+}
+
+/**
  * The Actions a completed turn withheld because readable attachment content was in it (Team
  * payload.canonical_restricted_actions): 1 to 16 distinct identities in identity order and the turn's total. It names
  * capabilities only and grants nothing.

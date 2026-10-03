@@ -254,3 +254,43 @@ test('a restored reply whose usage breaks the closed shape, or a user message wi
     );
   }
 });
+
+const FILE = { id: 'f'.repeat(32), name: 'contract.pdf', media_type: 'application/pdf', size: 2048 };
+
+test('a reloaded user message keeps the references of the files it carried, and nothing more', async () => {
+  const second = { id: 'e'.repeat(32), name: 'photo.png', media_type: 'image/png', size: 4096 };
+  const entry = {
+    id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Compare them.', files: [second, FILE],
+  };
+  const result = await listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+  assert.deepEqual(result.entries, [restored(entry)]);
+  assert.notEqual(result.entries[0].files, entry.files);
+
+  const invalid = [
+    [],
+    [FILE, FILE],
+    Array.from({ length: 9 }, (_, index) => ({ ...FILE, id: index.toString(16).repeat(32) })),
+    [{ ...FILE, sha256: 'ab'.repeat(32) }],
+    [{ ...FILE, id: 'not-an-id' }],
+    [{ ...FILE, name: '../contract.pdf' }],
+    [{ ...FILE, media_type: 'application/pdf; charset=binary' }],
+    [{ ...FILE, size: 0 }],
+    [{ ...FILE, size: 25 * 1024 * 1024 + 1 }],
+    'contract.pdf',
+  ];
+  for (const files of invalid) {
+    await assert.rejects(
+      listChatHistory(async () => response(200, { entries: [{ ...entry, files }], before: null }), 'marketing'),
+      LocalApiError,
+    );
+  }
+  // Only a user message carries files.
+  const reply = {
+    id: `${TURN_A}:reply`, created_at: AT, kind: 'message', role: 'assistant', text: 'Done.', author: 'Marketing',
+  };
+  await assert.rejects(
+    listChatHistory(async () => response(200, { entries: [{ ...reply, files: [FILE] }], before: null }), 'marketing'),
+    LocalApiError,
+  );
+});
+

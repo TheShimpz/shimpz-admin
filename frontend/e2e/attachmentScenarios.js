@@ -54,6 +54,36 @@ export function uploadFile(state, body) {
   };
 }
 
+/**
+ * What Admin's history keeps of a completed attached turn: the user row with the references of the files its message
+ * carried, as Team lists them, and the reply row, so a reload shows the same exchange.
+ */
+export function recordAttachedTurn(state, frame, reply) {
+  if (reply.type !== 'done') return;
+  state.sequence += 1;
+  const turn = `${'d'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`;
+  const at = '2026-10-03T12:00:00Z';
+  const files = frame.files.map((id) => {
+    const { name, media_type: type, size } = state.files.find((item) => item.id === id);
+    return { id, name, media_type: type, size };
+  });
+  const { reply: text, team_name: author, usage, restricted_actions: restricted } = reply;
+  state.history = [
+    ...state.history,
+    { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: frame.message, files },
+    {
+      id: `${turn}:reply`,
+      created_at: at,
+      kind: 'message',
+      role: 'assistant',
+      text,
+      author,
+      usage: structuredClone(usage),
+      restricted_actions: structuredClone(restricted),
+    },
+  ];
+}
+
 // Team's attachment guidance in the interface language the message was written in (Admin assistant_route.py).
 const LIFECYCLE_GUIDANCE = Object.freeze({
   en: "Attachments can't be used to install or remove Assistants. Send that request again without attachments.",

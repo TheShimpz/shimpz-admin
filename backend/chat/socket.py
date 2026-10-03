@@ -626,9 +626,12 @@ async def _commit_user_history(
     payload: dict[str, object],
 ) -> bool:
     try:
-        history_id = await history_delivery.admit(team_id, payload["message"], attached=bool(payload["files"]))
+        history_id = await history_delivery.admit(team_id, payload["message"], files=payload["files"])
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "Admin chat history capacity reached"))
+        return False
+    except history_delivery.SelectedFileUnavailableError:
+        await _send_event(websocket, _error_terminal(404, "selected file not found"))
         return False
     except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat user history commit failed")

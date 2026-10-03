@@ -24,10 +24,12 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
-# never enters a conversation projection (ADR-0093); every other row is `plain`.
+# never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
+# references of the files its message carried, exactly what the transcript shows of them and never their content.
 PROVENANCES = frozenset({"plain", "attached"})
+FILE_REFERENCE_KEYS = ("id", "name", "media_type", "size")
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
@@ -145,7 +147,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 7;
+        PRAGMA user_version = 8;
         """
     )
 
@@ -264,18 +266,48 @@ def append_routine_notice(notice: object) -> bool:
     return True
 
 
-def append_user(team_id: object, turn_id: object, message: object, *, attached: bool = False) -> bool:
-    """Admit one user message; a message that carried attachments marks its whole turn ``attached`` (ADR-0093)."""
+def _file_reference(value: object) -> dict[str, object]:
+    """One file a user message carried, as the transcript shows it: its id, literal name, media type, and size."""
+    if not isinstance(value, dict) or set(value) != set(FILE_REFERENCE_KEYS):
+        raise ValueError("chat history file reference is invalid")
+    size = value["size"]
+    if (
+        team_contract.canonical_file_id(value["id"]) is None
+        or team_contract.canonical_filename(value["name"]) != value["name"]
+        or not isinstance(value["media_type"], str)
+        or team_contract.canonical_media_type(value["media_type"]) != value["media_type"]
+        or isinstance(size, bool)
+        or not isinstance(size, int)
+        or not 1 <= size <= team_contract.MAX_FILE_UPLOAD_BYTES
+    ):
+        raise ValueError("chat history file reference is invalid")
+    return {key: value[key] for key in FILE_REFERENCE_KEYS}
+
+
+def _file_references(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list) or not 1 <= len(value) <= team_contract.MAX_CHAT_FILES:
+        raise ValueError("chat history file references are invalid")
+    references = [_file_reference(item) for item in value]
+    if len({item["id"] for item in references}) != len(references):
+        raise ValueError("chat history file references are invalid")
+    return references
+
+
+def append_user(team_id: object, turn_id: object, message: object, *, files: object = ()) -> bool:
+    """Admit one user message with the files it carried; files mark its whole turn ``attached`` (ADR-0093)."""
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     text = _text(message, team_contract.MAX_CHAT_MESSAGE_CHARS, "user message")
-    if type(attached) is not bool:
-        raise ValueError("chat history attachment provenance is invalid")
+    if not isinstance(files, list | tuple):
+        raise ValueError("chat history file references are invalid")
+    payload: dict[str, object] = {"kind": "message", "role": "user", "text": text}
+    if files:
+        payload["files"] = _file_references(list(files))
     return _append(
         canonical_team,
         f"{canonical_turn}:user",
-        {"kind": "message", "role": "user", "text": text},
-        provenance="attached" if attached else "plain",
+        payload,
+        provenance="attached" if "files" in payload else "plain",
     )
 
 
@@ -553,6 +585,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
         usage = team_contract.canonical_turn_usage(payload["usage"])
         if usage is None or usage != payload["usage"]:
             raise ValueError("invalid stored message")
+    if role == "user" and "files" in payload:
+        expected.add("files")
+        if _file_references(payload["files"]) != payload["files"]:
+            raise ValueError("invalid stored message")
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")
     _text(
@@ -637,20 +673,23 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
 def _page_rows(database: sqlite3.Connection, team_id: str, position: int | None) -> sqlite3.Cursor:
     if position is None:
         return database.execute(
-            "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? "
+            "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
             "ORDER BY position DESC LIMIT ?",
             (team_id, PAGE_ROWS + 1),
         )
     return database.execute(
-        "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? AND position < ? "
-        "ORDER BY position DESC LIMIT ?",
+        "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
+        "AND position < ? ORDER BY position DESC LIMIT ?",
         (team_id, position, PAGE_ROWS + 1),
     )
 
 
-def _page_entry(event_key: str, raw: object, created_at: object) -> dict[str, object]:
+def _page_entry(event_key: str, raw: object, provenance: object, created_at: object) -> dict[str, object]:
     payload = _decoded(raw)
     instant = _instant(created_at)
+    # A user row carries file references exactly when its turn is attached.
+    if payload.get("role") == "user" and ("files" in payload) != (provenance == "attached"):
+        raise HistoryUnavailableError("chat history entry provenance is invalid")
     # A Routine notice keeps its own instant in its closed shape; its row time must be that same instant.
     if payload["kind"] == "routine-run" and payload["created_at"] != instant:
         raise HistoryUnavailableError("chat history entry time is invalid")
@@ -669,11 +708,11 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     size = 0
     has_older = False
     with _database() as database, contextlib.closing(_page_rows(database, canonical_team, position)) as rows:
-        for row_position, event_key, raw, created_at in rows:
+        for row_position, event_key, raw, provenance, created_at in rows:
             if len(selected) == PAGE_ROWS:
                 has_older = True
                 break
-            entry = _page_entry(event_key, raw, created_at)
+            entry = _page_entry(event_key, raw, provenance, created_at)
             entry_size = len(raw.encode("utf-8")) + len(event_key) + len(created_at)
             if selected and size + entry_size > MAX_PAGE_BYTES:
                 has_older = True

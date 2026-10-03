@@ -5,6 +5,7 @@
   import AttachmentChip from '$lib/AttachmentChip.svelte';
   import {
     AttachmentUploadError,
+    attachmentKind,
     attachmentReadability,
     attachmentRefusal,
     MAX_ATTACHMENTS,
@@ -420,6 +421,18 @@
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
         ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
         ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
+        // A reloaded message shows the files it carried as it did when sent, from their saved references.
+        ...(entry.files
+          ? {
+            files: entry.files.map((file) => ({
+              key: file.id,
+              name: file.name,
+              size: file.size,
+              kind: attachmentKind(file.media_type),
+              note: '',
+            })),
+          }
+          : {}),
       };
     }
     if (entry.kind === 'guidance') {

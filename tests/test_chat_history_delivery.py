@@ -67,7 +67,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 [str(identity["issued_at"]), identity["nonce"]],
             )
             self.assertEqual(connection.admitted_history_id, "a" * 32)
-            append.assert_called_once_with("team_1", "a" * 32, "Hello", attached=False)
+            append.assert_called_once_with("team_1", "a" * 32, "Hello", files=[])
 
             connection = socket._Connection()
             with (
@@ -86,6 +86,65 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
             self.assertEqual(send.await_args.args[1]["status"], 503)
 
         asyncio.run(scenario())
+
+    def test_an_attached_message_is_admitted_with_the_teams_own_file_references(self) -> None:
+        delivery = socket.history_delivery
+        stored = [
+            {
+                "id": file_id,
+                "name": name,
+                "media_type": "text/plain",
+                "size": size,
+                "sha256": "e" * 64,
+                "created_at": 1_700_000_000,
+            }
+            for file_id, name, size in (("b" * 32, "b.txt", 2), ("a" * 32, "a.txt", 1), ("c" * 32, "c.txt", 3))
+        ]
+        listing = team.TeamResponse(200, {"team_id": "team_1", "files": stored})
+        with (
+            mock.patch.object(delivery.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(delivery.team, "list_files", return_value=listing) as list_files,
+        ):
+            asyncio.run(delivery.admit("team_1", "Compare", files=["a" * 32, "b" * 32]))
+            with self.assertRaises(delivery.SelectedFileUnavailableError):
+                asyncio.run(delivery.admit("team_1", "Missing", files=["d" * 32]))
+            list_files.return_value = team.TeamResponse(503, {"detail": "team unavailable"})
+            with self.assertRaises(socket.history.HistoryUnavailableError):
+                asyncio.run(delivery.admit("team_1", "Unavailable", files=["a" * 32]))
+        (entry,) = socket.history.page("team_1")["entries"]
+        # The message's order is kept, and only what the transcript shows of each file is stored.
+        self.assertEqual(
+            entry["files"],
+            [
+                {"id": "a" * 32, "name": "a.txt", "media_type": "text/plain", "size": 1},
+                {"id": "b" * 32, "name": "b.txt", "media_type": "text/plain", "size": 2},
+            ],
+        )
+
+    def test_a_message_naming_a_file_the_team_no_longer_holds_is_refused_before_any_work(self) -> None:
+        async def scenario() -> None:
+            websocket = mock.AsyncMock()
+            connection = socket._Connection()
+            frame = {
+                "type": "chat",
+                "message": "Summarize",
+                "files": ["d" * 32],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": None,
+            }
+            listing = team.TeamResponse(200, {"team_id": "team_1", "files": []})
+            with (
+                mock.patch.object(socket.history_delivery.team, "list_files", return_value=listing),
+                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
+            ):
+                self.assertIsNone(await socket._admit_chat_payload(websocket, connection, "team_1", frame))
+            self.assertEqual(send.await_args.args[1]["status"], 404)
+            self.assertIsNone(connection.admitted_history_id)
+
+        asyncio.run(scenario())
+        self.assertEqual(socket.history.page("team_1")["entries"], [])
 
     def test_an_admission_queued_behind_team_deletion_never_survives_it(self) -> None:
         # A user message is admitted while a Team deletion holds the lifecycle lock. Once deletion removed the Team
@@ -125,7 +184,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         request = contextvars.ContextVar("history_admission_request", default=None)
         committed: list[tuple[str, object]] = []
 
-        def append_user(_team_id: str, turn_id: str, _message: object, *, attached: bool = False) -> bool:
+        def append_user(_team_id: str, turn_id: str, _message: object, *, files: object = ()) -> bool:
             committed.append((turn_id, request.get()))
             return True
 

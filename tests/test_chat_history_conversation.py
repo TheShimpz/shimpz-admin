@@ -18,6 +18,8 @@ from history import context as conversation_context
 from history import delivery
 from history import store as history
 
+FILE = {"id": "f" * 32, "name": "contrato.pdf", "media_type": "application/pdf", "size": 2048}
+
 
 def _installed_event() -> dict[str, object]:
     return {
@@ -174,6 +176,47 @@ class ChatHistoryConversationTests(unittest.TestCase):
             ],
         )
 
+    def test_a_reloaded_attached_message_keeps_the_references_of_the_files_it_carried(self) -> None:
+        second = {"id": "e" * 32, "name": "foto.png", "media_type": "image/png", "size": 4096}
+        turn = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn, "Compare os dois.", files=[second, FILE]))
+        (entry,) = history.page("marketing")["entries"]
+        # The message keeps its files in order, as references only: no content, digest, or upload time.
+        self.assertEqual(entry["files"], [second, FILE])
+        self.assertEqual(set(entry), {"id", "kind", "role", "text", "files", "created_at"})
+        self.assertTrue(history.append_user("marketing", turn, "Compare os dois.", files=[second, FILE]))
+
+    def test_a_stored_file_reference_or_its_provenance_that_disagrees_fails_closed(self) -> None:
+        turn = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn, "Resuma.", files=[FILE]))
+        payload = '{"files":[%s],"kind":"message","role":"user","text":"Resuma."}'
+        tampered = (
+            (payload % '{"id":"x","media_type":"application/pdf","name":"a.pdf","size":1}', "attached"),
+            (
+                payload
+                % '{"id":"%s","media_type":"application/pdf","name":"a.pdf","size":1,"sha256":"%s"}'
+                % ("f" * 32, "e" * 64),
+                "attached",
+            ),
+            ('{"files":[],"kind":"message","role":"user","text":"Resuma."}', "attached"),
+            (payload % '{"id":"%s","media_type":"application/pdf","name":"a.pdf","size":1}' % ("f" * 32), "plain"),
+            ('{"kind":"message","role":"user","text":"Resuma."}', "attached"),
+        )
+        for stored, provenance in tampered:
+            with self.subTest(stored=stored, provenance=provenance):
+                with sqlite3.connect(self.path) as database:
+                    database.execute("UPDATE transcript SET payload = ?, provenance = ?", (stored, provenance))
+                with self.assertRaises(history.HistoryUnavailableError):
+                    history.page("marketing")
+
+    def test_a_history_of_the_previous_schema_is_refused_not_upgraded(self) -> None:
+        with sqlite3.connect(self.path) as database:
+            database.execute("CREATE TABLE transcript (position INTEGER PRIMARY KEY)")
+            database.execute("PRAGMA user_version = 7")
+        self.path.chmod(0o600)
+        with self.assertRaisesRegex(history.HistoryUnavailableError, "unsupported"):
+            history.page("marketing")
+
     def test_an_attached_turn_never_enters_the_projection_but_stays_in_the_history(self) -> None:
         done = {"type": "done", "team_id": "marketing", "team_name": "Marketing", "clarification": None}
         plain = history.new_turn_id()
@@ -182,9 +225,9 @@ class ChatHistoryConversationTests(unittest.TestCase):
         current = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", plain, "Quais zonas temos?"))
         self.assertTrue(history.append_reply("marketing", plain, {**done, "reply": "Duas zonas."}))
-        self.assertTrue(history.append_user("marketing", attached, "Resuma o contrato anexo.", attached=True))
+        self.assertTrue(history.append_user("marketing", attached, "Resuma o contrato anexo.", files=[FILE]))
         self.assertTrue(history.append_reply("marketing", attached, {**done, "reply": "O contrato diz X."}))
-        self.assertTrue(history.append_user("marketing", refused, "Instale isso.", attached=True))
+        self.assertTrue(history.append_user("marketing", refused, "Instale isso.", files=[FILE]))
         self.assertTrue(
             history.append_guidance(
                 "marketing", refused, "assistant-lifecycle-attachments", "Envie esse pedido de novo sem anexos."
@@ -203,9 +246,9 @@ class ChatHistoryConversationTests(unittest.TestCase):
         self.assertEqual(rows[f"{attached}:reply"], "attached")
         self.assertEqual(rows[f"{refused}:guidance"], "attached")
         self.assertEqual(rows[f"{plain}:reply"], "plain")
-        for invalid in (1, "yes", None):
-            with self.subTest(attached=invalid), self.assertRaises(ValueError):
-                history.append_user("marketing", history.new_turn_id(), "x", attached=invalid)
+        for invalid in (1, "yes", None, [{**FILE, "sha256": "e" * 64}], [FILE, FILE], [FILE] * 9):
+            with self.subTest(files=invalid), self.assertRaises(ValueError):
+                history.append_user("marketing", history.new_turn_id(), "x", files=invalid)
         with self.assertRaises(ValueError):
             history._append("marketing", f"{history.new_turn_id()}:user", {}, provenance="other")
         with sqlite3.connect(self.path) as database, self.assertRaises(sqlite3.IntegrityError):

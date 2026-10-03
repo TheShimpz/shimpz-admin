@@ -115,7 +115,8 @@ async def dispatch(
         return
     payload, objective, identity = admitted
     try:
-        history_id = await history_delivery.admit(team_id, payload["message"], attached=bool(payload["files"]))
+        # A resumed task never carries files, so its turn is never attached.
+        history_id = await history_delivery.admit(team_id, payload["message"])
         # The window ends before the continuation row, so it still holds the original objective and the reply that
         # asked for a capability; the objective itself runs once, as this turn's message.
         conversation = await history_delivery.conversation(team_id, history_id)
