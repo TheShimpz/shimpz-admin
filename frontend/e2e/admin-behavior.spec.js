@@ -4355,7 +4355,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    const item = navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: /Daily DNS zones/ });
+    const item = page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: /Daily DNS zones/ });
     await expect(item).toHaveCount(1);
     // Its panel shows the plan: each step's Assistant and Action, and its saved keys by name only.
     await item.click();
@@ -4375,36 +4375,36 @@ test.describe('Team Routines', () => {
     await expect(created.getByRole('list', { name: 'Steps' })).toContainText('List zones');
   });
 
-  test('a Team\'s own Routines button opens its list from pointer or keyboard and says when one needs attention', async ({ page }) => {
+  test('a Team\'s own Routines button opens its list in a modal from pointer or keyboard and says when one needs attention', async ({ page }) => {
     await routeReadyChat(page);
     // A paused Routine with a held run: the button's name says a Routine needs the person.
     await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     const button = navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' });
-    const list = navigation.getByRole('group', { name: 'Routines' });
-    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    // The modal's title names the Team the Routines belong to.
+    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
+    await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(list).toHaveCount(0);
     await button.click();
-    await expect(button).toHaveAttribute('aria-expanded', 'true');
-    // The item names the Routine, when it runs, and in words why it needs the person.
-    const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
-    await expect(item).toContainText('Failed');
-    await button.click();
+    // Each choice names the Routine, says when it runs, and in words why it needs the person; focus starts on it.
+    const item = list.getByRole('group', { name: 'Routines' }).getByRole('button', { name: ROUTINE_VIEW.name });
+    await expect(item).toHaveAccessibleDescription(/Every day at 09:00.*Failed/);
+    await expect(item).toBeFocused();
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Escape and Close each leave the list with focus back on the button, and the keyboard opens it again.
+    await page.keyboard.press('Escape');
     await expect(list).toHaveCount(0);
-    // From the keyboard: focus stays on the button while Enter and Space open and close the list.
-    await button.focus();
+    await expect(button).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(list).toHaveCount(1);
-    await expect(button).toBeFocused();
-    await page.keyboard.press(' ');
+    await expect(item).toBeFocused();
+    await list.getByRole('button', { name: 'Close' }).click();
     await expect(list).toHaveCount(0);
     await expect(button).toBeFocused();
-    // The Team's actions menu still offers the same list.
+    // The Team's actions menu offers the same list.
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(list).toHaveCount(1);
-    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await expect(item).toBeFocused();
   });
 
   test('a Team whose Routines are all running needs no attention, and a Team without Routines has no Routines button', async ({ page }) => {
@@ -4449,7 +4449,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = navigation.getByRole('group', { name: 'Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
     const item = list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) });
     await expect(item).toContainText('Every day at 09:00');
     await item.focus();
@@ -4471,8 +4471,12 @@ test.describe('Team Routines', () => {
     await page.keyboard.press('Home');
     await expect(summary).toBeFocused();
     await expect(panel).toContainText(ROUTINE_VIEW.quote);
-    // Escape closes the panel and returns focus to the Routine it was opened from.
+    // Escape and Back each return to the Team's list, focused on the Routine the panel was opened from.
     await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(item).toBeFocused();
+    await item.click();
+    await panel.getByRole('button', { name: 'Back to Routines' }).click();
     await expect(panel).toHaveCount(0);
     await expect(item).toBeFocused();
     await item.click();
@@ -4552,7 +4556,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = navigation.getByRole('group', { name: 'Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -4572,7 +4576,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
     const password = panel.getByLabel('Supervisor password');
@@ -4605,7 +4609,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = navigation.getByRole('group', { name: 'Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -4640,7 +4644,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
   }
 
@@ -4682,9 +4686,10 @@ test.describe('Team Routines', () => {
 
   test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }) => {
     const { calls, panel } = await openHeldPanel(page);
-    // Until it is answered, nothing else is offered: no pages and no Routine actions besides the card's own.
+    // Until it is answered, nothing else is offered: no pages and no Routine actions besides Back, Close, and the
+    // card's own.
     await expect(panel.getByRole('tablist')).toHaveCount(0);
-    await expect(panel.getByRole('button')).toHaveCount(4);
+    await expect(panel.getByRole('button')).toHaveCount(5);
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
     const password = confirm.getByLabel('Supervisor password');
@@ -4758,11 +4763,11 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(panel).toContainText('Waiting for your approval of Replace DNS record');
-    // Review is the one action besides closing the panel.
-    await expect(panel.getByRole('button')).toHaveCount(2);
+    // Review is the one action besides going back to the list and closing the panel.
+    await expect(panel.getByRole('button')).toHaveCount(3);
     await panel.getByRole('button', { name: 'Review' }).click();
     await page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' }).getByRole('button', { name: 'Approve action' }).click();
     // The same run, now held, opens its recovery decision instead of leaving the panel without one.
@@ -4794,7 +4799,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     // The decision is not dismissed: it waits for the person to try again, never reopening on its own.
     await panel.getByRole('button', { name: 'Retry' }).click();
@@ -4830,7 +4835,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await page.getByRole('dialog', { name: 'Marketing › Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
     await page.clock.fastForward(15_000);
@@ -4843,7 +4848,7 @@ test.describe('Team Routines', () => {
     expect(openings).toHaveLength(1);
   });
 
-  test('deleting one of several Routines leaves the others listed and focus on the Team\'s Routines', async ({ page }) => {
+  test('deleting one of several Routines returns to the Team\'s list of the others, which then returns focus to its button', async ({ page }) => {
     await routeReadyChat(page);
     const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check', quote: 'Every Monday, check my certificates' };
     await routeRoutines(page, { others: [weekly], held: false });
@@ -4852,7 +4857,7 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     const button = navigation.getByRole('button', { name: /^Routines for Marketing/ });
     await button.click();
-    const list = navigation.getByRole('group', { name: 'Routines' });
+    const list = page.getByRole('dialog', { name: 'Marketing › Routines' });
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
@@ -4860,7 +4865,9 @@ test.describe('Team Routines', () => {
     await panel.getByLabel('Six-digit code').fill('123456');
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) })).toHaveCount(0);
-    await expect(list.getByRole('button', { name: /Certificate check/ })).toHaveCount(1);
+    await expect(list.getByRole('button', { name: /Certificate check/ })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(list).toHaveCount(0);
     await expect(button).toBeFocused();
   });
 
@@ -5419,11 +5426,12 @@ test.describe('Team Routines', () => {
     await expect(rows.nth(1)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
     await expect(rows.nth(0)).toContainText('Shimpz Cloudflare › List zones');
     await expect(composer).toHaveValue('A draft that must survive');
-    // The Team's Routine tree shows the same run waiting.
+    // The Team's Routines list shows the same run waiting.
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
-    await expect(navigation.getByRole('group', { name: 'Routines' })).toContainText('Paused');
+    await expect(page.getByRole('dialog', { name: 'Marketing › Routines' })).toContainText('Paused');
+    await page.keyboard.press('Escape');
     if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
     await rows.nth(1).getByRole('button', { name: 'Review' }).click();
