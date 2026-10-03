@@ -7,6 +7,7 @@ import {
   answerRoutineCard,
   answerRoutineChallenge,
   browserTimezone,
+  beginRoutineDeletion,
   deleteRoutine,
   fillRoutineCopy,
   instantWords,
@@ -203,13 +204,15 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
   assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] });
   assert.equal(api.calls[0].init.headers['Content-Type'], undefined);
 
+  const CODE = { code: '123456' };
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: true }]]);
-  assert.deepEqual(await deleteRoutine(api.fetch, 'team_1', ROUTINE.routine_id), { deleted: true });
+  assert.deepEqual(await deleteRoutine(api.fetch, 'team_1', ROUTINE.routine_id, CODE), { deleted: true });
   await assert.rejects(
-    deleteRoutine(fetcher([[200, { team_id: 'team_1', routine_id: 'f'.repeat(32), deleted: true }]]).fetch, 'team_1', ROUTINE.routine_id),
+    deleteRoutine(fetcher([[200, { team_id: 'team_1', routine_id: 'f'.repeat(32), deleted: true }]]).fetch, 'team_1', ROUTINE.routine_id, CODE),
     (error) => error.code === 'routine-response-invalid',
   );
   assert.equal(api.calls[0].init.method, 'DELETE');
+  assert.equal(api.calls[0].init.body, JSON.stringify(CODE));
 
   api = fetcher([
     [200, { team_id: 'team_1', run_id: LEASED.run_id, stopped: true }],
@@ -231,17 +234,21 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
     await assert.rejects(call(fetcher(responses).fetch), (error) => error.code === 'routine-response-invalid');
   }
   await assert.rejects(
-    deleteRoutine(fetcher([[409, { code: 'routine-busy' }]]).fetch, 'team_1', ROUTINE.routine_id),
+    deleteRoutine(fetcher([[409, { code: 'routine-busy' }]]).fetch, 'team_1', ROUTINE.routine_id, CODE),
     (error) => error.code === 'routine-busy' && error.status === 409,
   );
   await assert.rejects(
-    deleteRoutine(fetcher([[500, { code: 'Not Safe' }]]).fetch, 'team_1', ROUTINE.routine_id),
+    deleteRoutine(fetcher([[500, { code: 'Not Safe' }]]).fetch, 'team_1', ROUTINE.routine_id, CODE),
     (error) => error.code === 'routine-request-failed',
   );
   for (const refused of [
     () => listRoutines(null, 'team_1'),
     () => listRoutines(fetcher([]).fetch, 'Team 1'),
-    () => deleteRoutine(fetcher([]).fetch, 'team_1', '../x'),
+    () => deleteRoutine(fetcher([]).fetch, 'team_1', '../x', CODE),
+    () => deleteRoutine(fetcher([]).fetch, 'team_1', ROUTINE.routine_id),
+    () => deleteRoutine(fetcher([]).fetch, 'team_1', ROUTINE.routine_id, { code: '12345' }),
+    () => deleteRoutine(fetcher([]).fetch, 'team_1', ROUTINE.routine_id, { code: '123456', credential: {} }),
+    () => beginRoutineDeletion(fetcher([]).fetch, 'team_1', ROUTINE.routine_id, ''),
     () => resumeRoutine(fetcher([]).fetch, 'team_1', 'x'),
     () => openRoutineCard(fetcher([]).fetch, 'team_1', 'x'),
     () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'approve'),
@@ -701,4 +708,30 @@ test('a Routine summary keeps each filled value apart and says how far off the n
   assert.equal(untilWords('2026-10-01T12:00:00Z', now, 'en'), '');
   assert.equal(clockWords('2026-10-03T01:29:05Z', 'pt-BR', 'America/Sao_Paulo'), '02/Outubro/2026 22:29:05');
   assert.equal(clockWords('2026-10-02T00:05:00Z', 'en', 'UTC'), '02/October/2026 00:05:00');
+});
+
+test('a Routine deletion starts with the password and admits only the factors Admin offers', async () => {
+  const path = `/api/teams/team_1/routines/${ROUTINE.routine_id}/deletion`;
+  let api = fetcher([[202, { methods: ['totp'] }]]);
+  assert.deepEqual(await beginRoutineDeletion(api.fetch, 'team_1', ROUTINE.routine_id, 'secret words'), { passkey: null });
+  assert.equal(api.calls[0].path, path);
+  assert.equal(api.calls[0].init.method, 'POST');
+  assert.equal(api.calls[0].init.body, JSON.stringify({ password: 'secret words' }));
+  const options = { challenge: 'abc' };
+  api = fetcher([[202, { methods: ['totp', 'passkey'], passkey_options: options }]]);
+  assert.deepEqual(await beginRoutineDeletion(api.fetch, 'team_1', ROUTINE.routine_id, 'secret words'), { passkey: options });
+  for (const body of [{ methods: ['passkey'] }, { methods: ['totp', 'passkey'] }, { methods: ['totp'], passkey_options: options }, {}]) {
+    await assert.rejects(
+      beginRoutineDeletion(fetcher([[202, body]]).fetch, 'team_1', ROUTINE.routine_id, 'secret words'),
+      (error) => error.code === 'routine-response-invalid',
+    );
+  }
+  await assert.rejects(
+    beginRoutineDeletion(fetcher([[429, { code: 'authentication-locked', retry_after: 42 }]]).fetch, 'team_1', ROUTINE.routine_id, 'x'),
+    (error) => error.code === 'authentication-locked' && error.status === 429 && error.retryAfter === 42,
+  );
+  await assert.rejects(
+    beginRoutineDeletion(fetcher([[429, { code: 'authentication-locked', retry_after: 1e9 }]]).fetch, 'team_1', ROUTINE.routine_id, 'x'),
+    (error) => error.retryAfter === 0,
+  );
 });

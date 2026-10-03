@@ -147,7 +147,7 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
-routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST)
+routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
 team_inference.register(app)
 team_assets.register(app)
 team_summary.register(app)

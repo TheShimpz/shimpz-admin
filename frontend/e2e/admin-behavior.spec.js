@@ -3953,11 +3953,15 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 });
 
 
+// Admin's deletion ceremony (ADR-0051): the Supervisor password first, then one six-digit code; `000000` is wrong.
+const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
+
 async function routeRoutines(
   page,
-  { others = [], listFailsAfterDelete = false, runEnding = false, held = true } = {},
+  { others = [], listFailsAfterDelete = false, runEnding = false, held = true, lockAfter = 0, passkey = false } = {},
 ) {
-  const calls = { deletes: [], stops: [], resumes: [], pauses: [], answers: [] };
+  const calls = { begins: [], deletes: [], stops: [], resumes: [], pauses: [], answers: [] };
+  let rejected = 0;
   // The Routine is paused, and unless told otherwise an earlier run of it is held for recovery (ADR-0092).
   let routines = [{ ...ROUTINE_VIEW, paused: true }, ...others];
   let runs = [];
@@ -3990,9 +3994,29 @@ async function routeRoutines(
     routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: true } : routine));
     await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: true } });
   });
+  await page.route('**/api/teams/marketing/routines/*/deletion', async (route) => {
+    const { password } = route.request().postDataJSON();
+    calls.begins.push(route.request().method());
+    if (password === SUPERVISOR_PASSWORD && !(lockAfter && rejected >= lockAfter)) {
+      const offer = passkey ? { methods: ['totp', 'passkey'], passkey_options: { challenge: 'Y2hhbGxlbmdl', allowCredentials: [], rpId: 'localhost', timeout: 180000, userVerification: 'required' } } : { methods: ['totp'] };
+      await route.fulfill({ status: 202, json: offer });
+      return;
+    }
+    rejected += password === SUPERVISOR_PASSWORD ? 0 : 1;
+    if (lockAfter && rejected >= lockAfter) {
+      await route.fulfill({ status: 429, json: { code: 'authentication-locked', retry_after: 42 } });
+      return;
+    }
+    await route.fulfill({ status: 401, json: { code: 'password-incorrect' } });
+  });
   await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
     const routineId = new URL(route.request().url()).pathname.split('/').at(-1);
-    calls.deletes.push(route.request().method());
+    const proof = route.request().postDataJSON();
+    calls.deletes.push(proof);
+    if (proof.code === '000000') {
+      await route.fulfill({ status: 401, json: { code: 'code-incorrect' } });
+      return;
+    }
     // While a run is still ending, Team keeps the Routine as deleting and answers false.
     routines = runEnding
       ? routines.map((routine) => (routine.routine_id === routineId ? { ...routine, deleting: true } : routine))
@@ -4429,16 +4453,51 @@ test.describe('Team Routines', () => {
     await details.getByRole('button', { name: 'Close' }).click();
     await expect(details).toHaveCount(0);
 
-    // Delete asks first; nothing is deleted until it is confirmed.
-    await panel.getByRole('button', { name: 'Delete' }).click();
-    await expect(panel).toContainText('Delete this Routine? A run in progress is stopped.');
+    // Delete turns the whole panel into its confirmation: no pages and no other action, only Cancel and Delete.
+    const trash = panel.getByRole('button', { name: 'Delete' });
+    await trash.click();
+    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
+    await expect(confirm).toContainText('It will never run again, and a run in progress is stopped.');
+    await expect(confirm.getByRole('tab')).toHaveCount(0);
+    await expect(confirm.getByRole('button')).toHaveText(['Cancel', 'Delete']);
+    const password = confirm.getByLabel('Supervisor password');
+    const sixDigits = confirm.getByLabel('Six-digit code');
+    await expect(password).toBeFocused();
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Cancel and Escape each return to the panel, focused on its Delete again; nothing was asked of Admin.
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    await expect(trash).toBeFocused();
+    await trash.click();
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    await expect(trash).toBeFocused();
+    expect(calls.begins).toEqual([]);
+
+    // A wrong password keeps the confirmation open with the error on the password, emptied and focused.
+    await trash.click();
+    await password.fill('not the passphrase');
+    await sixDigits.fill('123456');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
+    await expect(password).toHaveAccessibleDescription('The Supervisor password is incorrect.');
+    await expect(password).toHaveValue('');
+    await expect(password).toBeFocused();
     expect(calls.deletes).toEqual([]);
-    await panel.getByRole('button', { name: 'Cancel' }).click();
-    await panel.getByRole('button', { name: 'Delete' }).click();
-    await panel.getByRole('button', { name: 'Delete' }).click();
+    // A wrong code does the same for the code; the password stays for the next try.
+    await password.fill(SUPERVISOR_PASSWORD);
+    await sixDigits.fill('000000');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
+    await expect(sixDigits).toHaveAccessibleDescription(/That code was not accepted/);
+    await expect(sixDigits).toHaveValue('');
+    await expect(sixDigits).toBeFocused();
+    await expect(password).toHaveValue(SUPERVISOR_PASSWORD);
+    // The right password and code delete it, and the panel closes.
+    await sixDigits.fill('123456');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
     await expect(panel).toHaveCount(0);
     await expect(list).toHaveCount(0);
-    expect(calls.deletes).toEqual(['DELETE']);
+    expect(calls.begins).toEqual(['POST', 'POST', 'POST']);
+    expect(calls.deletes).toEqual([{ code: '000000' }, { code: '123456' }]);
     // With no Routines left, focus returns to the Team's actions, whose menu no longer offers Routines.
     await expect(navigation.getByRole('button', { name: 'Actions for Marketing' })).toBeFocused();
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
@@ -4456,10 +4515,81 @@ test.describe('Team Routines', () => {
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await panel.getByLabel('Six-digit code').fill('123456');
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(panel).toContainText('Being deleted');
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
     await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    expect(calls.deletes).toEqual(['DELETE']);
+    expect(calls.deletes).toEqual([{ code: '123456' }]);
+  });
+
+  test('a Routine deletion shows the shared sign-in lockout and deletes nothing', async ({ page }) => {
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page, { held: false, lockAfter: 2 });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    const password = panel.getByLabel('Supervisor password');
+    await panel.getByLabel('Six-digit code').fill('123456');
+    await password.fill('not the passphrase');
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(password).toHaveValue('');
+    await password.fill('still not it');
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('alert')).toHaveText('Too many attempts. Try again in 42 seconds.');
+    await password.fill(SUPERVISOR_PASSWORD);
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('alert')).toHaveText('Too many attempts. Try again in 42 seconds.');
+    expect(calls.deletes).toEqual([]);
+  });
+
+  test('a Routine deletion in flight cannot be dismissed, and a passkey the browser cancels deletes nothing', async ({ page }) => {
+    await page.addInitScript(() => {
+      navigator.credentials.get = () => Promise.reject(new DOMException('canceled', 'NotAllowedError'));
+    });
+    await routeReadyChat(page);
+    const calls = await routeRoutines(page, { held: false, passkey: true });
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const list = navigation.getByRole('group', { name: 'Routines' });
+    await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    // This address has a passkey, so it is offered beside the code; the code stays the default.
+    const confirmWith = panel.getByRole('group', { name: 'Confirm with' });
+    await expect(confirmWith.getByRole('radio', { name: 'Authenticator code' })).toBeChecked();
+    await confirmWith.getByRole('radio', { name: 'Passkey' }).check();
+    await expect(panel.getByLabel('Six-digit code')).toHaveCount(0);
+    await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('alert')).toHaveText('The passkey request was canceled or timed out.');
+    expect(calls.begins).toEqual(['POST']);
+    expect(calls.deletes).toEqual([]);
+
+    // With the code, the deletion is sent; while it is in flight neither Escape nor Cancel leaves the confirmation.
+    await confirmWith.getByRole('radio', { name: 'Authenticator code' }).check();
+    await panel.getByLabel('Six-digit code').fill('123456');
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('button', { name: 'Deleting…' })).toBeVisible();
+    release();
+    await expect(panel).toHaveCount(0);
+    expect(calls.deletes).toEqual([{ code: '123456' }]);
   });
 
   test('a Routine waiting for a recovery decision opens as that decision and returns to its pages once answered', async ({ page }) => {
@@ -4669,6 +4799,8 @@ test.describe('Team Routines', () => {
     await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await panel.getByLabel('Six-digit code').fill('123456');
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) })).toHaveCount(0);
     await expect(list.getByRole('button', { name: /Certificate check/ })).toHaveCount(1);

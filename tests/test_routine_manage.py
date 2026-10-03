@@ -15,6 +15,7 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+import local_auth
 from team import bridge as team
 from team import transport
 
@@ -150,12 +151,13 @@ class RoutineManageTests(unittest.TestCase):
 class RoutineRouteTests(unittest.TestCase):
     def test_routes_exist_only_on_local_and_are_never_cached(self) -> None:
         hosted = FastAPI()
-        routine_http.register(hosted, "hosted", mock.AsyncMock())
+        routine_http.register(hosted, "hosted", mock.AsyncMock(), local_auth.Context())
         self.assertEqual([route.path for route in hosted.routes if "routines" in route.path], [])
         local = FastAPI()
-        routine_http.register(local, "local", mock.AsyncMock())
-        # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route.
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 11)
+        routine_http.register(local, "local", mock.AsyncMock(), local_auth.Context())
+        # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route. Deleting one is
+        # the Supervisor's password route then the second-factor DELETE (ADR-0051).
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 12)
         # The retired release of an uncertain run stays absent.
         self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
         self.assertFalse(any("proposals" in route.path for route in local.routes))
@@ -174,7 +176,6 @@ class RoutineRouteTests(unittest.TestCase):
             chosen = {"nonce": "c" * 32, "choice": "pause"}
             responses = [
                 routine_http.routines_list("team_1"),
-                asyncio.run(routine_http.routine_delete("team_1", ID)),
                 asyncio.run(routine_http.routine_stop("team_1", ID)),
                 asyncio.run(routine_http.routine_resume("team_1", ID)),
                 asyncio.run(routine_http.routine_card("team_1", ID)),

@@ -204,7 +204,26 @@ function providers() {
   }));
 }
 
-function routineRoutes(state, method, path) {
+// Deleting a Routine (ADR-0051): any password but `wrong password` is the Supervisor's, then any six-digit code but
+// `000000` confirms it. The preview offers only the code, since it cannot answer a real passkey.
+function routineDeletion(method, path, body) {
+  const begin = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/deletion$/);
+  if (begin && method === 'POST') {
+    if (typeof body?.password !== 'string' || !body.password) return { status: 400, json: { detail: 'invalid' } };
+    if (body.password === 'wrong password') return { status: 401, json: { code: 'password-incorrect' } };
+    return { status: 202, json: { methods: ['totp'] } };
+  }
+  const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
+  if (routine && method === 'DELETE' && body?.code === '000000') return { status: 401, json: { code: 'code-incorrect' } };
+  if (routine && method === 'DELETE' && !/^[0-9]{6}$/.test(body?.code ?? '')) {
+    return { status: 401, json: { code: 'authentication-expired' } };
+  }
+  return null;
+}
+
+function routineRoutes(state, method, path, body) {
+  const deletion = routineDeletion(method, path, body);
+  if (deletion) return deletion;
   const base = '/api/teams/marketing/routines';
   if (path === base && method === 'GET') {
     return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs, incidents: state.incidents ?? [] });
@@ -526,7 +545,7 @@ export function createScenario(name = 'ready', locale = 'en') {
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
-      return routineRecoveryRoutes(state, method, path, body) ?? routineRoutes(state, method, path);
+      return routineRecoveryRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {

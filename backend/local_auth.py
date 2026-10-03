@@ -1,10 +1,12 @@
-"""Local Supervisor setup, MFA login, and passkey-management ceremonies."""
+"""Local Supervisor setup, MFA login, passkey-management, and operation-confirmation ceremonies."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import auth
@@ -120,10 +122,10 @@ async def _verify_password(password: object, context: Context) -> dict:
     return record
 
 
-def _ticket(request: Request, context: Context, purpose: str) -> tuple[str, tickets.Ticket]:
+def _ticket(request: Request, context: Context, purpose: str, subject: str = "") -> tuple[str, tickets.Ticket]:
     token = request.cookies.get(TICKET_COOKIE, "")
     try:
-        ticket = context.ticket_store.consume(token, purpose)
+        ticket = context.ticket_store.consume(token, purpose, subject)
     except tickets.TicketError:
         raise HTTPException(
             status_code=401,
@@ -145,12 +147,14 @@ def _bind_origin(origin: str | None) -> None:
             log.info("Local Admin browser origin replaced after MFA")
 
 
-def _complete_totp(code: object, *, enrollment: bool) -> None:
-    result = state.verify_totp(code, enrollment=enrollment)
+def _complete_totp(code: object, *, enrollment: bool, generation: int) -> None:
+    result = state.verify_totp(code, enrollment=enrollment, generation=generation)
     if result is totp.Verification.LOCKED:
         raise HTTPException(status_code=429, detail="verification code is temporarily locked")
     if result is totp.Verification.EXPIRED:
         raise HTTPException(status_code=409, detail="TOTP enrollment expired; enter the password again")
+    if result is totp.Verification.CHANGED:
+        raise HTTPException(status_code=409, detail="authentication factors changed; enter the password again")
     if result is not totp.Verification.ACCEPTED:
         raise HTTPException(status_code=401, detail="invalid verification code")
 
@@ -193,7 +197,7 @@ async def confirm_setup(request: Request, context: Context) -> JSONResponse:
     if set(payload) != {"code"}:
         raise HTTPException(status_code=400, detail="request body must contain only code")
     _token, ticket = _ticket(request, context, "totp-enrollment")
-    _complete_totp(payload["code"], enrollment=True)
+    _complete_totp(payload["code"], enrollment=True, generation=ticket.generation)
     _bind_origin(ticket.origin)
     context.factor_changed()
     response = _response({"ok": True, "method": "totp"})
@@ -241,8 +245,9 @@ async def confirm_login_totp(request: Request, context: Context) -> JSONResponse
     payload = await _json_object(request)
     if set(payload) != {"code"}:
         raise HTTPException(status_code=400, detail="request body must contain only code")
-    _token, ticket = _ticket(request, context, "login")
-    _complete_totp(payload["code"], enrollment=False)
+    token, ticket = _ticket(request, context, "login")
+    _discard_challenge(token, context)
+    _complete_totp(payload["code"], enrollment=False, generation=ticket.generation)
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "totp"})
     _set_session(response, state.get()["session_secret"], "totp", ticket.origin)
@@ -256,35 +261,47 @@ async def confirm_login_passkey(request: Request, context: Context) -> JSONRespo
     if set(payload) != {"credential"}:
         raise HTTPException(status_code=400, detail="request body must contain only credential")
     token, ticket = _ticket(request, context, "login")
-    try:
-        challenge = context.challenge_store.consume(token, "authentication")
-        if challenge.generation != ticket.generation or challenge.origin != ticket.origin:
-            raise passkeys.PasskeyConflictError("authentication factors changed; retry")
-        identifier = passkeys.credential_id(payload["credential"])
-        original = state.passkey_for_authentication(identifier, challenge.origin)
-        verified = passkeys.verify_authentication(challenge, payload["credential"], original)
-        secret, suspension_reason = state.commit_passkey_authentication(
-            original,
-            verified,
-            ticket.generation,
-            now=int(time.time()),
-        )
-    except passkeys.PasskeyConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    except passkeys.PasskeyUnavailableError:
-        raise HTTPException(status_code=401, detail="invalid passkey authentication") from None
+    secret, suspension_reason = _passkey_assertion(token, ticket, payload["credential"], context)
     if suspension_reason is not None:
-        context.factor_changed()
-        if suspension_reason == "counter-regression":
-            log.warning("Local Supervisor passkey suspended: counter-regression")
-        else:
-            log.warning("Local Supervisor passkey suspended: backup-identity-change")
+        _suspended(suspension_reason, context)
         raise HTTPException(status_code=401, detail="passkey was suspended; enter the password and use TOTP")
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "passkey"})
     _set_session(response, secret, "webauthn", ticket.origin)
     log.info("Local Supervisor login completed with a passkey")
     return response
+
+
+def _discard_challenge(token: str, context: Context) -> None:
+    """A ceremony completed with TOTP leaves no passkey challenge behind."""
+    with contextlib.suppress(passkeys.PasskeyError):
+        context.challenge_store.consume(token, "authentication")
+
+
+def _passkey_assertion(
+    token: str, ticket: tickets.Ticket, credential: object, context: Context
+) -> tuple[str, str | None]:
+    """Verify one UV assertion against the ticket's own challenge and commit it, or raise its closed outcome."""
+    try:
+        challenge = context.challenge_store.consume(token, "authentication")
+        if challenge.generation != ticket.generation or challenge.origin != ticket.origin:
+            raise passkeys.PasskeyConflictError("authentication factors changed; retry")
+        identifier = passkeys.credential_id(credential)
+        original = state.passkey_for_authentication(identifier, challenge.origin)
+        verified = passkeys.verify_authentication(challenge, credential, original)
+        return state.commit_passkey_authentication(original, verified, ticket.generation, now=int(time.time()))
+    except passkeys.PasskeyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except passkeys.PasskeyUnavailableError:
+        raise HTTPException(status_code=401, detail="invalid passkey authentication") from None
+
+
+def _suspended(reason: str, context: Context) -> None:
+    context.factor_changed()
+    if reason == "counter-regression":
+        log.warning("Local Supervisor passkey suspended: counter-regression")
+    else:
+        log.warning("Local Supervisor passkey suspended: backup-identity-change")
 
 
 def passkey_enrollment_available(origin: str | None) -> bool:
@@ -354,3 +371,148 @@ async def complete_passkey_registration(request: Request, context: Context) -> J
     _set_session(response, secret, "webauthn", origin)
     log.info("Local Supervisor passkey registered")
     return response
+
+
+class OperationRefusedError(Exception):
+    """One closed, secret-free reason a Supervisor operation confirmation was refused."""
+
+    def __init__(self, status: int, code: str, retry_after: int = 0) -> None:
+        super().__init__(code)
+        self.status = status
+        self.code = code
+        self.retry_after = retry_after
+
+
+def operation_refusal(error: OperationRefusedError) -> JSONResponse:
+    """The browser's view of a refusal: its code and, for a lockout, when to try again."""
+    body: dict[str, object] = {"code": error.code}
+    if error.retry_after:
+        body["retry_after"] = error.retry_after
+    response = _response(body, error.status)
+    if error.retry_after:
+        response.headers["Retry-After"] = str(error.retry_after)
+    return response
+
+
+def _operation_origin(request: Request) -> str:
+    """An operation is confirmed only from a browser origin Admin already admits, never one it would learn."""
+    try:
+        origin = _request_origin(request)
+    except HTTPException:
+        origin = None
+    if origin is None or (origin not in chat_socket.STATIC_ORIGINS and origin != state.browser_origin()):
+        raise OperationRefusedError(403, "authentication-origin-refused")
+    return origin
+
+
+def _operation_offer(token: str, origin: str, generation: int, context: Context) -> dict[str, object]:
+    if not passkey_registered(origin):
+        return {"methods": ["totp"]}
+    challenge = context.challenge_store.issue(token, "authentication", origin, generation)
+    options = passkeys.authentication_options(challenge, state.active_passkeys(origin))
+    return {"methods": ["totp", "passkey"], "passkey_options": options}
+
+
+# What reading or persisting the authentication state can raise; inside a ceremony each fails closed as unavailable.
+_STATE_FAILURES = (RuntimeError, ValueError, TypeError, KeyError, OSError)
+
+
+def _unavailable() -> OperationRefusedError:
+    log.warning("Supervisor operation confirmation is unavailable")
+    return OperationRefusedError(503, "authentication-unavailable")
+
+
+async def begin_operation(request: Request, context: Context, subject: str) -> JSONResponse:
+    """Verify the password for one exact operation and offer its second factor, as login does (ADR-0051)."""
+    payload = await _json_object(request)
+    if set(payload) != {"password"}:
+        raise HTTPException(status_code=400, detail="request body must contain only password")
+    try:
+        return await _begin_operation(request, context, subject, payload["password"])
+    except _STATE_FAILURES:
+        raise _unavailable() from None
+
+
+async def _begin_operation(request: Request, context: Context, subject: str, password: object) -> JSONResponse:
+    origin = _operation_origin(request)
+    if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
+        raise OperationRefusedError(409, "authentication-unavailable")
+    try:
+        await _verify_password(password, context)
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            retry_after = int((exc.headers or {}).get("Retry-After", "1"))
+            raise OperationRefusedError(429, "authentication-locked", retry_after) from None
+        raise OperationRefusedError(401, "password-incorrect") from None
+    generation = state.factor_generation()
+    try:
+        token = context.ticket_store.issue("operation", origin, generation, subject)
+    except tickets.TicketError:
+        raise _unavailable() from None
+    try:
+        body = _operation_offer(token, origin, generation, context)
+    except _STATE_FAILURES:
+        # The offer could not be made, so its ticket is spent before anyone could hold it.
+        with contextlib.suppress(tickets.TicketError):
+            context.ticket_store.consume(token, "operation", subject)
+        raise _unavailable() from None
+    response = _response(body, 202)
+    _set_ticket(response, token, origin)
+    return response
+
+
+def _operation_factor(payload: dict) -> tuple[str, object]:
+    if set(payload) == {"code"} and isinstance(payload["code"], str):
+        return "totp", payload["code"]
+    if set(payload) == {"credential"}:
+        return "passkey", payload["credential"]
+    raise HTTPException(status_code=400, detail="request body must contain only code or credential")
+
+
+# The login helpers' closed HTTP outcomes, as the operation's refusals: a 409 means the ticket's factors changed.
+_TOTP_REFUSALS = {401: (401, "code-incorrect"), 429: (429, "code-locked"), 409: (401, "authentication-expired")}
+_PASSKEY_REFUSALS = {401: (401, "passkey-failed"), 409: (401, "authentication-expired")}
+
+
+def _operation_second_factor(method: str, value: object, token: str, ticket: tickets.Ticket, context: Context) -> None:
+    refusals = _TOTP_REFUSALS if method == "totp" else _PASSKEY_REFUSALS
+    try:
+        if method == "totp":
+            _discard_challenge(token, context)
+            _complete_totp(value, enrollment=False, generation=ticket.generation)
+            return
+        _secret, suspension_reason = _passkey_assertion(token, ticket, value, context)
+    except HTTPException as exc:
+        raise OperationRefusedError(*refusals.get(exc.status_code, (503, "authentication-unavailable"))) from None
+    if suspension_reason is not None:
+        _suspended(suspension_reason, context)
+        raise OperationRefusedError(401, "passkey-suspended")
+
+
+def _confirmed(request: Request, context: Context, subject: str, method: str, value: object) -> None:
+    _operation_origin(request)
+    try:
+        token, ticket = _ticket(request, context, "operation", subject)
+    except HTTPException:
+        raise OperationRefusedError(401, "authentication-expired") from None
+    _operation_second_factor(method, value, token, ticket, context)
+    session = auth.verify_session(state.get().get("session_secret", ""), request.cookies.get(SESSION_COOKIE, ""))
+    if session is None:
+        raise OperationRefusedError(401, "authentication-expired")
+
+
+def confirm_operation[T](
+    request: Request, context: Context, subject: str, payload: dict, dispatch: Callable[[], T]
+) -> T:
+    """Spend the operation's one ticket on exactly one second factor, then dispatch the operation, or raise a refusal.
+
+    Nothing here issues a session or learns a browser origin. The request's own session is rechecked after the factor
+    and immediately before `dispatch`, in this same call, so a session revoked meanwhile never reaches the operation.
+    """
+    method, value = _operation_factor(payload)
+    try:
+        _confirmed(request, context, subject, method, value)
+    except _STATE_FAILURES:
+        raise _unavailable() from None
+    log.info("Supervisor operation confirmed with %s", "TOTP" if method == "totp" else "a passkey")
+    return dispatch()
