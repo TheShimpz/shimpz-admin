@@ -285,7 +285,10 @@
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
          stopped; then where; then the one next step; the literal error stays one click away. -->
     <div class="alert">
-      <span class="badge" aria-hidden="true"><RoutineIcon name="warning" /></span>
+      <!-- The badge wears the status's color (failed red, paused yellow) and the shared idle glitch. -->
+      <span class={['badge', outcome === 'paused' ? 'badge--warning' : 'badge--danger']} data-shimpz-glitch="true" aria-hidden="true">
+        <span><RoutineIcon name="warning" /></span>
+      </span>
       <div class="alert-text">
         <p class="title">{(recoverable && failure?.title) || reason}</p>
         <p class="where">{situation}</p>
@@ -396,22 +399,29 @@
   .value { color: var(--shimpz-color-text); }
   /* What happened: a warning badge beside the headline and where it stopped; the next step and the technical error
      sit under the headline's own edge. */
-  .alert { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
+  .alert { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
   .badge {
+    --badge-color: var(--shimpz-color-danger);
     display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2.75rem;
+    height: 2.75rem;
     place-items: center;
-    color: var(--shimpz-color-yellow);
-    background: color-mix(in srgb, var(--shimpz-color-yellow) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--shimpz-color-yellow) 45%, transparent);
-    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-sm)) 0, 100% var(--shimpz-cut-sm), 100% 100%, 0 100%);
+    color: var(--badge-color);
+    background:
+      repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--badge-color) 7%, transparent) 2px 3px),
+      color-mix(in srgb, var(--badge-color) 10%, transparent);
+    border: 1px solid var(--badge-color);
+    box-shadow: 0 0 0.9rem color-mix(in srgb, var(--badge-color) 28%, transparent);
+    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-sm) 100%, 0 calc(100% - var(--shimpz-cut-sm)));
   }
-  .badge :global(.routine-icon) { width: 1.2rem; height: 1.2rem; }
+  .badge--warning { --badge-color: var(--shimpz-color-yellow); }
+  .badge > span { display: grid; place-items: center; }
+  .badge :global(.routine-icon) { width: 1.25rem; height: 1.25rem; filter: drop-shadow(0 0 0.35rem color-mix(in srgb, var(--badge-color) 55%, transparent)); }
+  @media (forced-colors: active) { .badge { border-color: CanvasText; box-shadow: none; } }
   .alert-text { display: grid; gap: 0.2rem; min-width: 0; }
   .title { margin: 0; color: var(--shimpz-color-text); font: 600 1.12rem/1.3 var(--shimpz-font-sans); text-wrap: balance; overflow-wrap: anywhere; }
   .where { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.45; overflow-wrap: anywhere; }
-  .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.5rem + var(--shimpz-space-3)); }
+  .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.75rem + var(--shimpz-space-3)); }
   .next { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
   .next.is-step { color: var(--shimpz-color-text); }
   .next :global(.routine-icon) { flex: none; width: 0.95rem; height: 0.95rem; margin-block-start: 0.2rem; color: var(--shimpz-color-cyan); }
@@ -427,8 +437,17 @@
   .technical-error { display: grid; gap: 0.3rem; min-width: 0; }
   .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .technical-error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
-  /* The question heads the choice list it asks about. */
-  .ask { margin: 0; padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3)) var(--shimpz-space-2); color: var(--shimpz-color-text); font: 600 0.95rem/1.35 var(--shimpz-font-sans); }
+  /* The question is the list's title, and each choice below answers it: a heading-sized line with a short cyan rule. */
+  .ask {
+    display: grid;
+    gap: 0.45rem;
+    margin: 0;
+    padding: var(--shimpz-space-4) var(--decision-inline, var(--shimpz-space-3)) var(--shimpz-space-3);
+    color: var(--shimpz-color-text);
+    font: 650 1.12rem/1.3 var(--shimpz-font-sans);
+    letter-spacing: -0.01em;
+  }
+  .ask::after { content: ""; width: 2rem; height: 2px; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
   .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
