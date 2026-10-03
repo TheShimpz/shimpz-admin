@@ -260,12 +260,13 @@
 
   {#if recoverable}
     {#if card}
-      <!-- One choice group: a segment per choice in Team's order, the recommended one first and lit. Each segment is
-           one button (key, icon, verb, consequence); the recommendation mark sits on the segment's static slot, outside
-           the button its hover glitch animates. -->
+      <!-- One choice group that continues its host's frame to the edges: a segment per choice in Team's order, the
+           recommended one first. Each segment is one button (key, icon, verb, consequence); the recommendation is said
+           only to assistive technology. -->
+      <div class="spacer"></div>
       <div class="choices" role="group" aria-label={copy.card.choices}>
         {#each card.choices as choice, index (choice)}
-          <div class={['segment', choice === card.recommended && 'is-recommended']}>
+          <div class="segment">
             <Button
               class="choice"
               variant="ghost"
@@ -280,7 +281,7 @@
               <span class="verb">{copy.card[choice]}</span>
               <span class="hint" id={`${id}-${choice}`}>{copy.card[HINTS[choice]]}</span>
             </Button>
-            {#if choice === card.recommended}<span class="mark" id={`${id}-recommended`} aria-hidden="true">{copy.card.recommendedMark}</span>{/if}
+            {#if choice === card.recommended}<span class="sr-only" id={`${id}-recommended`}>{copy.card.recommendedMark}</span>{/if}
           </div>
         {/each}
       </div>
@@ -329,7 +330,7 @@
 <style>
   /* Neutral terminal lines and one choice group: cyan marks only the recommended choice, and state color lives on small
      icons. */
-  .decision { container-type: inline-size; display: grid; gap: 0.4rem; min-width: 0; }
+  .decision { container-type: inline-size; display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.4rem; min-width: 0; }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
   .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
   .line > * + * { margin-inline-start: 0.5em; }
@@ -343,25 +344,23 @@
   .reason { margin: 0.2rem 0 0; color: var(--shimpz-color-text); font-size: 0.88rem; line-height: 1.5; text-wrap: pretty; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
-  /* The choice group: one chamfered frame split into equal segments by hairlines; a narrow card stacks them. The
-     recommended segment carries the only cyan: a lit top edge, a faint wash, and its mark. */
+  /* The choice group continues the host's frame: it reaches the host's edges (the host sets the insets it pads with),
+     sits below one rule, and splits into equal segments by hairlines; a narrow card stacks them. */
+  .spacer { flex: 1 0 var(--shimpz-space-2); }
   .choices {
     display: grid;
     grid-auto-columns: minmax(0, 1fr);
     grid-auto-flow: column;
-    margin-block-start: var(--shimpz-space-3);
-    background: var(--shimpz-color-surface-raised);
-    border: 1px solid var(--shimpz-color-border);
-    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
+    margin-inline: calc(-1 * var(--decision-inline, 0px));
+    margin-block-end: calc(-1 * var(--decision-end, 0px));
+    border-block-start: 1px solid var(--shimpz-color-border);
   }
-  :global([dir="rtl"]) .choices { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
   @container (max-width: 34rem) { .choices { grid-auto-flow: row; } }
   .segment { position: relative; display: grid; min-width: 0; }
   .segment + .segment { border-inline-start: 1px solid var(--shimpz-color-border); }
   @container (max-width: 34rem) {
     .segment + .segment { border-inline-start: 0; border-block-start: 1px solid var(--shimpz-color-border); }
   }
-  .segment.is-recommended { background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent); box-shadow: inset 0 2px 0 var(--shimpz-color-cyan); }
   .segment :global(.choice) {
     --button-color: var(--shimpz-color-text);
     --button-bg: transparent;
@@ -371,7 +370,7 @@
     width: 100%;
     height: 100%;
     min-height: 5.5rem;
-    padding: var(--shimpz-space-3) var(--shimpz-space-3) var(--shimpz-space-3);
+    padding: var(--shimpz-space-3) var(--decision-inline, var(--shimpz-space-3));
     text-align: start;
     text-transform: none;
     letter-spacing: normal;
@@ -382,25 +381,13 @@
   .segment :global(.choice:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; box-shadow: none; }
   .segment :global(.choice .button-content) { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; align-content: start; justify-items: start; align-self: stretch; gap: 0.5rem 0.5rem; width: 100%; }
   .segment :global(.choice .routine-icon) { width: 1rem; height: 1rem; color: var(--shimpz-color-text-muted); }
-  .segment.is-recommended :global(.choice .routine-icon) { color: var(--shimpz-color-cyan); }
+  .segment :global(.choice:hover:not(:disabled) .routine-icon) { color: var(--shimpz-color-cyan); }
   .key { color: var(--shimpz-color-text-dim); font: 600 0.62rem/1 var(--shimpz-font-mono); letter-spacing: 0.06em; }
-  .is-recommended .key { color: var(--shimpz-color-cyan); }
   .verb { font: 700 0.74rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
   /* The consequence stays readable: the hover glitch splits the verb, never this sentence. */
   .hint { grid-column: 1 / -1; color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
-  .mark {
-    pointer-events: none;
-    position: absolute;
-    inset-block-start: var(--shimpz-space-3);
-    inset-inline-end: var(--shimpz-space-3);
-    color: var(--shimpz-color-cyan);
-    font: 700 0.56rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
   @media (forced-colors: active) {
     .choices, .segment + .segment { border-color: CanvasText; }
-    .segment.is-recommended { box-shadow: none; outline: 2px solid Highlight; outline-offset: -2px; }
   }
 </style>

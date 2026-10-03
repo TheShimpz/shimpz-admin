@@ -188,6 +188,9 @@
     .head :global(.details) { order: 3; }
   }
   .body { display: grid; gap: 0.4rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); min-width: 0; }
+  /* A decision's choice group closes the card along its bottom edge. */
+  .body:has(:global(.choices)) { padding-block-end: 0; }
+  .body { --decision-inline: var(--shimpz-space-4); }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
   .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
   .line > * + * { margin-inline-start: 0.5em; }
