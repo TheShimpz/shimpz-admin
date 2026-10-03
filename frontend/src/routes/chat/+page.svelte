@@ -1702,7 +1702,12 @@
         try {
           const stored = await uploadTeamFile(fetch, teamId, item.file, controller.signal);
           if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
-          updateAttachment(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
+          // Team keeps one copy of an identical file: one already in this message is not attached twice.
+          if (attachments.some((entry) => entry.key !== item.key && entry.id === stored.id)) {
+            attachments = attachments.filter((entry) => entry.key !== item.key);
+          } else {
+            updateAttachment(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
+          }
           attachmentFinished += 1;
         } catch (reason) {
           if (controller.signal.aborted || attachmentTeamId !== teamId) continue;

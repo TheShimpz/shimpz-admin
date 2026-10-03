@@ -126,6 +126,39 @@ test('a file removed from the message is not sent with it', async ({ page }) => 
   expect(frame.files).toHaveLength(1);
 });
 
+test('removing a file never deletes it, and attaching the same file again reuses the stored copy', async ({ page }) => {
+  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
+  const deletions = [];
+  const uploaded = [];
+  page.on('request', (request) => {
+    if (request.method() === 'DELETE') deletions.push(request.url());
+  });
+  page.on('response', async (response) => {
+    if (response.request().method() === 'POST' && response.url().endsWith('/api/teams/marketing/files')) {
+      uploaded.push((await response.json()).file.id);
+    }
+  });
+  const list = attachmentList(page);
+  await choose(page, attach, [textFile('keep.md')]);
+  await expect(list.locator('[aria-busy]')).toHaveCount(0);
+  await list.getByRole('button', { name: 'Remove keep.md from message' }).click();
+  await expect(list).toHaveCount(0);
+  // Chosen again, and once more while it is already in the message: the Team answers the same stored file.
+  await choose(page, attach, [textFile('keep.md')]);
+  await expect(list.locator('[aria-busy]')).toHaveCount(0);
+  await choose(page, attach, [textFile('keep.md')]);
+  await expect.poll(() => uploaded.length).toBe(3);
+  await expect(list.locator('[aria-busy]')).toHaveCount(0);
+  await expect(list.getByRole('listitem')).toHaveText([/keep\.md/]);
+  expect(new Set(uploaded).size).toBe(1);
+
+  await composer.fill('Read it again');
+  await send.click();
+  await expect(page.getByText('I read the file you attached.', { exact: false })).toBeVisible();
+  expect(chatMessages(scenario)[0].files).toEqual([uploaded[0]]);
+  expect(deletions).toEqual([]);
+});
+
 test('upload refusals are explained in plain words and leave nothing in the message', async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
   const alert = page.getByRole('alert');

@@ -13,7 +13,8 @@ function mediaType(value) {
 
 /**
  * POST /api/teams/marketing/files with one multipart `file` part, given as `{ file: { name, type, size } }`. A full
- * Team answers 507 like Team's quota; a name ending in `.refused` answers 400 like Admin's filename refusal.
+ * Team answers 507 like Team's quota; a name ending in `.refused` answers 400 like Admin's filename refusal. Like Team,
+ * an identical upload (here the same name, type, and size) reuses the stored file without charging the quota again.
  */
 export function uploadFile(state, body) {
   const file = body?.file;
@@ -24,20 +25,28 @@ export function uploadFile(state, body) {
     return { status: 507, json: { detail: 'Team storage quota exceeded', code: 'storage-quota-exceeded' } };
   }
   if (file.name.endsWith('.refused')) return { status: 400, json: { detail: 'filename is invalid' } };
-  state.sequence += 1;
-  state.usedBytes = (state.usedBytes ?? 0) + file.size;
+  state.files ??= [];
+  let stored = state.files.find((item) => (
+    item.name === file.name && item.media_type === mediaType(file.type) && item.size === file.size
+  ));
+  if (!stored) {
+    state.sequence += 1;
+    state.usedBytes = (state.usedBytes ?? 0) + file.size;
+    stored = {
+      id: `${'e'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`,
+      name: file.name,
+      media_type: mediaType(file.type),
+      size: file.size,
+      sha256: 'ab'.repeat(32),
+      created_at: 1_790_000_000 + state.sequence,
+    };
+    state.files = [...state.files, stored];
+  }
   return {
     status: 201,
     json: {
       team_id: 'marketing',
-      file: {
-        id: `${'e'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`,
-        name: file.name,
-        media_type: mediaType(file.type),
-        size: file.size,
-        sha256: 'ab'.repeat(32),
-        created_at: 1_790_000_000 + state.sequence,
-      },
+      file: { ...stored },
       used_bytes: state.usedBytes,
       limit_bytes: LIMIT_BYTES,
       remaining_bytes: LIMIT_BYTES - state.usedBytes,
