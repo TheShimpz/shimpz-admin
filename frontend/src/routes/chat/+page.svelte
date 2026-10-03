@@ -2158,7 +2158,7 @@
                 </Message>
               {/if}
               {#if assistantTurn}
-                <!-- A Routine row is its own card naming its Routine; the chat already is the Team's. -->
+                <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
                 <Message variant="assistant" author={assistantTurn.routineRun ? undefined : assistantTurn.author}>
                   {@const clarifiedOriginal = clarifiedRequest(exchange)}
                   {#if clarifiedOriginal !== null}
