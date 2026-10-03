@@ -208,7 +208,7 @@
 </script>
 
 <Modal bind:element={dialog} class="routine-panel" size="lg" labelledBy={`${id}-title`} oncancel={cancel}>
-  <div class="frame" class:frame--deletion={confirming}>
+  <div class="frame" class:frame--deletion={confirming} class:frame--deciding={Boolean(pending) && !confirming}>
     <header class="head">
       <h2 id={`${id}-title`}>{confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}</h2>
       {#if !confirming}
@@ -383,9 +383,16 @@
     --decision-choices-width: 70%;
     --decision-ask-align: center;
     --decision-list-border: 1px solid var(--shimpz-color-border);
+    /* The panel's side lines run only beside the header and the message; the answers below are open. */
+    --decision-message-bleed: var(--shimpz-space-4);
+    --decision-message-top: var(--shimpz-space-4);
+    --decision-message-sides: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
     display: flex;
     flex-direction: column;
+    padding-block-start: 0;
   }
+  .frame--deciding { border-inline-color: transparent; border-block-end-color: transparent; }
+  .frame--deciding .head { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */
