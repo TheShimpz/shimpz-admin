@@ -12,7 +12,7 @@ import {
   readRunDiagnostics,
 } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
-import { ROUTINE_TEXT } from '../e2e/routineScenarios.js';
+import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
 
@@ -273,6 +273,17 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
   assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
+});
+
+test('the Routine lifecycle preview spans the day before it opened and that day, oldest first', () => {
+  const { history } = routineLifecycleStart('pt', Date.parse('2026-10-03T15:00:00.400Z'));
+  const instants = history.map((entry) => Date.parse(entry.created_at));
+  assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
+  assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
+    ...Array(5).fill('2026-10-02'),
+    ...Array(4).fill('2026-10-03'),
+  ]);
+  for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);
 });
 
 test('the daily-cap preview asks its question, then creates the continuous Routine the answer names', () => {
