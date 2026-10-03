@@ -42,24 +42,22 @@ test('today and yesterday are relative words; older and later days are full date
   assert.equal(dayLabel('2026-10-01', today, 'de'), '1. Oktober 2026');
 });
 
-test('an exchange takes its first dated turn; undated history takes the day before it, or none', () => {
-  const at = (iso) => ({ routineRun: { createdAt: iso } });
-  const undated = { historyId: 'x' };
+test('an exchange takes its first turn\'s stored time, so every history row has a day', () => {
+  const at = (iso) => ({ historyId: 'x', createdAt: iso });
   const exchanges = [
-    { user: undated, assistant: undated },
-    { user: null, assistant: at('2026-10-01T12:00:00Z') },
-    { user: undated, assistant: undated },
-    { user: undated, assistant: at('2026-10-02T23:30:00Z') },
-    { user: null, assistant: at('2026-10-03T00:10:00Z') },
-    { user: undated, assistant: null },
+    { user: at('2026-09-30T18:00:00Z'), assistant: at('2026-09-30T18:00:04Z') },
+    { user: null, assistant: { ...at('2026-10-01T12:00:00Z'), routineRun: {} } },
+    // A reply written after midnight stays under the day its message was sent.
+    { user: at('2026-10-02T23:59:58Z'), assistant: at('2026-10-03T00:00:03Z') },
+    { user: at('2026-10-03T00:10:00Z'), assistant: null },
   ];
   const instantOf = turnInstants();
   assert.deepEqual(exchangeDays(exchanges, instantOf, 'UTC'), [
-    null, '2026-10-01', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-03',
+    '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03',
   ]);
   // The same transcript seen from São Paulo: 00:10 UTC is still the evening before.
   assert.deepEqual(exchangeDays(exchanges, instantOf, SAO_PAULO), [
-    null, '2026-10-01', '2026-10-01', '2026-10-02', '2026-10-02', '2026-10-02',
+    '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-02',
   ]);
   assert.deepEqual(exchangeDays([], instantOf, 'UTC'), []);
 });
@@ -67,9 +65,7 @@ test('an exchange takes its first dated turn; undated history takes the day befo
 test('a turn shown live keeps the time the page first showed it, through later updates', () => {
   let clock = Date.parse('2026-10-02T23:59:59Z');
   const instantOf = turnInstants(() => clock);
-  assert.equal(instantOf(null), null);
-  assert.equal(instantOf({ historyId: 'a:user', renderKey: 1 }), null);
-  assert.equal(instantOf({ historyId: 'a:routine', routineRun: { createdAt: '2026-10-01T12:00:00Z' } }),
+  assert.equal(instantOf({ historyId: 'a:user', renderKey: 1, createdAt: '2026-10-01T12:00:00Z' }),
     Date.parse('2026-10-01T12:00:00Z'));
   assert.equal(instantOf({ renderKey: 7, text: 'sent' }), Date.parse('2026-10-02T23:59:59Z'));
   clock += 60_000;
