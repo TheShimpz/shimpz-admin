@@ -212,7 +212,7 @@
   }
 </script>
 
-<RoutineModal bind:dialog class="routine-panel" team={teamName}
+<RoutineModal bind:dialog class="routine-panel"
   title={confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}
   frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
   open={Boolean(pending) && !confirming}

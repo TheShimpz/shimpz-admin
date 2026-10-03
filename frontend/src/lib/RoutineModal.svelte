@@ -4,16 +4,14 @@
   import { t } from '$lib/i18n.js';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
 
-  // The one shell of every Routine modal (ADR-0086): a chamfered frame under a scanline header whose title always names
-  // the Team first, quieter, then what the modal shows. `onback` adds a Back control before the title; `tag` renders
-  // beside it; `closable` keeps the Close control; without `team`, the title stands alone. `open` leaves the frame open
-  // below its header: no side or bottom edges, so the content draws its own. The modal opens as soon as it mounts, then
-  // `onopen` may place focus.
+  // The one shell of every Routine modal (ADR-0086): a chamfered frame under a scanline header with the modal's title.
+  // `onback` adds a Back control before the title; `tag` renders beside it; `closable` keeps the Close control. `open`
+  // leaves the frame open below its header: no side or bottom edges, so the content draws its own. The modal opens as
+  // soon as it mounts, then `onopen` may place focus.
   let {
     dialog = $bindable(),
     class: className = '',
     size = 'lg',
-    team,
     title,
     frameClass = '',
     open = false,
@@ -47,7 +45,7 @@
       {/if}
       <div class="title">
         <h2 id={`${id}-title`}>
-          {#if team}<span class="team">{team}</span> <span class="sep">›</span> {/if}<span class="main">{title}</span>
+          {title}
         </h2>
         {@render tag?.()}
       </div>
@@ -89,12 +87,9 @@
     border-block-end: 1px solid var(--shimpz-color-border);
   }
   .head:has(:global(.back)) { padding-inline-start: var(--shimpz-space-2); }
-  /* The Team comes first in quiet mono capitals, then a cyan chevron, then the title itself; long names wrap. */
+  /* Long titles wrap. */
   .title { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: var(--shimpz-space-2); }
   h2 { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.3 var(--shimpz-font-sans); overflow-wrap: anywhere; }
-  .team { color: var(--shimpz-color-text-dim); font: 600 0.7rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; unicode-bidi: isolate; }
-  .sep { color: color-mix(in srgb, var(--shimpz-color-cyan) 70%, var(--shimpz-color-text-dim)); font-weight: 400; }
-  .main { unicode-bidi: isolate; }
   .head :global(.close), .head :global(.back) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   :global([dir="rtl"]) .head :global(.back .routine-icon) { transform: scaleX(-1); }
   /* On a phone every Routine modal is a full-screen sheet, and a status tag sits under the title. */

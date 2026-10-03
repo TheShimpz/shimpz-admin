@@ -69,6 +69,7 @@
   @container (max-width: 34rem) { .ask, .segment { width: auto; justify-self: stretch; } }
   .segment { display: grid; min-width: 0; border-inline: var(--choice-list-border, 0); }
   .segment:last-child { border-block-end: var(--choice-list-border, 0); }
+  .segment:first-child { border-block-start: var(--choice-list-border, 0); }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
 
   /* The row: the shared Button without its chrome. Hover and keyboard focus light a cyan edge at its start, a faint
