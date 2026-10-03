@@ -4657,7 +4657,7 @@ test.describe('Team Routines', () => {
     await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
     await expect(panel).toContainText('HTTP 402 · api.cloudflare.com');
     await expect(panel).toContainText('out of credits');
-    await expect(panel).toContainText('What it already did may happen twice.');
+    await expect(panel).toContainText('What it already did may repeat.');
     await expect(panel.getByRole('tablist')).toHaveCount(0);
     expect(calls.answers).toEqual([]);
     expect(await accessibilityViolations(page)).toEqual([]);
