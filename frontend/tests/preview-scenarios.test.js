@@ -8,6 +8,7 @@ import {
   listRoutines,
   openRoutineCard,
   parseRoutineRunEntry,
+  failureCause,
   readRunDiagnostics,
 } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
@@ -254,18 +255,22 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
   assert.ok(listed.routines.some((routine) => routine.paused));
   const [held, paused] = listed.incidents;
+  // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
   const card = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
-  assert.equal(card.recommended, 'verify');
-  assert.equal((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).recommended, 'pause');
-  // Verify walks through every unresolved verdict; Skip settles the held run.
-  const verdicts = [];
-  for (let index = 0; index < 5; index += 1) {
-    const fresh = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
-    verdicts.push((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, fresh, 'verify')).verdict);
-  }
-  assert.deepEqual(verdicts, ['inconclusive', 'policy', 'unquiesced', 'unclassified', 'exhausted']);
-  await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'skip');
+  assert.deepEqual(card.choices, ['run', 'recreate', 'delete']);
+  assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
+  assert.equal(failureCause((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
+  // The monthly Routine's Recriar is refused and changes nothing; Rodar sets the weekly one's held run aside.
+  const refusedCard = await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id);
+  await assert.rejects(
+    answerRoutineCard(adapter(scenario), 'marketing', paused.incident_id, refusedCard, 'recreate'),
+    (error) => error.code === 'routine-recreate-refused',
+  );
+  assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
   assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
+  const rows = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
+  const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
+  assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
   assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
 });

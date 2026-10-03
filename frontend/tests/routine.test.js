@@ -5,6 +5,7 @@ import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 import {
   answerRoutineCard,
+  failureCause,
   answerRoutineChallenge,
   browserTimezone,
   beginRoutineDeletion,
@@ -142,6 +143,25 @@ const LEASED = {
 };
 const FROZEN = { ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' };
 const HELD = { ...LEASED, status: 'held' };
+// One recorded handled failure of a held step, in Team's sanitized diagnostic view (ADR-0092 section 8).
+const ATTEMPT_FAILURE = Object.freeze({
+  operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+  attempt: 1,
+  assistant_id: 'shimpz-cloudflare',
+  action: 'list-zones',
+  recorded_at: '2026-10-05T12:01:05Z',
+  failure: Object.freeze({
+    error_type: 'httpx.HTTPStatusError',
+    message: "Client error '402 Payment Required'",
+    provider: 'api.cloudflare.com',
+    http_status: 402,
+    response_excerpt: '{"success":false}',
+    redacted: false,
+    truncated: false,
+  }),
+  condition: null,
+});
+
 const INCIDENT = {
   incident_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
@@ -252,7 +272,12 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
     () => resumeRoutine(fetcher([]).fetch, 'team_1', 'x'),
     () => openRoutineCard(fetcher([]).fetch, 'team_1', 'x'),
     () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'approve'),
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'x' }, 'skip'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'x' }, 'run'),
+    // Excluir is the confirmed deletion, never a card answer; the retired choices are refused before any request.
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'delete'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'verify'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'skip'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'pause'),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
   }
@@ -290,6 +315,18 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('routine-card-expired'), errors), errors.expired);
   assert.equal(routineErrorMessage(new RoutineError('routine-card-stale'), errors), errors.stale);
   assert.equal(routineErrorMessage(new RoutineError('routine-incident-unavailable'), errors), errors.ended);
+  for (const [code, key] of [
+    ['routine-busy', 'busy'],
+    ['routine-workload-unquiesced', 'stillRunning'],
+    ['routine-contracts-changed', 'contractsChanged'],
+    ['routine-source-unavailable', 'sourceUnavailable'],
+    ['routine-recreate-refused', 'recreateRefused'],
+    ['routine-recreate-unavailable', 'recreateUnavailable'],
+    ['routine-recovery-stopped', 'stopped'],
+    ['model-credential-missing', 'credentialMissing'],
+  ]) {
+    assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
+  }
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   const zone = browserTimezone();
@@ -335,7 +372,9 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'policy' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { assistant_id: null, action: null, reason: 'evidence' } },
-    { ...RUN_ENTRY, outcome: 'user-skipped', detail: STEP },
+    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'run' } },
+    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'recreate' } },
+    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { assistant_id: null, action: null, choice: 'delete' } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 12 } },
@@ -509,7 +548,7 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
   }
 });
 
-test('a recovery card offers exactly Verificar, Pular, and Pausar and is answered once through exact answers', async () => {
+test('a recovery card shows its recorded failure, offers exactly Rodar, Recriar, and Excluir, and answers once', async () => {
   const card = {
     team_id: 'team_1',
     incident_id: INCIDENT.incident_id,
@@ -517,40 +556,45 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     revision: 2,
     assistant_id: 'shimpz-cloudflare',
     action: 'replace-dns-record',
+    step: 2,
+    steps: 3,
+    evidence: 'recorded',
+    diagnostic: { ...ATTEMPT_FAILURE, action: 'replace-dns-record' },
     nonce: 'c'.repeat(32),
     expires_in: 300,
-    choices: ['verify', 'skip', 'pause'],
-    recommended: 'verify',
+    choices: ['run', 'recreate', 'delete'],
   };
-  const answered = { team_id: 'team_1', incident_id: INCIDENT.incident_id, choice: 'verify', verdict: 'occurred', status: 'recovered' };
+  const answered = { team_id: 'team_1', incident_id: INCIDENT.incident_id, choice: 'run', status: 'requested' };
   let api = fetcher([[200, card], [200, answered]]);
   const opened = await openRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id);
   assert.deepEqual(opened, card);
-  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, opened, 'verify'), answered);
+  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, opened, 'run'), answered);
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/card`);
   assert.equal(api.calls[1].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/answer`);
-  assert.deepEqual(JSON.parse(api.calls[1].init.body), { nonce: card.nonce, choice: 'verify' });
-  const pausing = { ...card, choices: ['pause', 'verify', 'skip'], recommended: 'pause' };
-  assert.deepEqual(await openRoutineCard(fetcher([[200, pausing]]).fetch, 'team_1', INCIDENT.incident_id), pausing);
-  for (const [choice, body] of [
-    ['skip', { ...answered, choice: 'skip', verdict: null, status: 'skipped' }],
-    ['pause', { ...answered, choice: 'pause', verdict: null, status: 'paused' }],
-    ['verify', { ...answered, verdict: 'inconclusive', status: null }],
-    ['verify', { ...answered, verdict: 'policy', status: null }],
-    ['verify', { ...answered, verdict: 'unquiesced', status: null }],
-    ['verify', { ...answered, verdict: 'unclassified', status: null }],
-  ]) {
-    api = fetcher([[200, body]]);
-    assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, card, choice), body);
+  assert.deepEqual(JSON.parse(api.calls[1].init.body), { nonce: card.nonce, choice: 'run' });
+  const recreated = { ...answered, choice: 'recreate', status: 'recreated' };
+  api = fetcher([[200, recreated]]);
+  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, card, 'recreate'), recreated);
+  for (const evidence of ['absent', 'unavailable']) {
+    const plain = { ...card, evidence, diagnostic: null };
+    assert.deepEqual(await openRoutineCard(fetcher([[200, plain]]).fetch, 'team_1', INCIDENT.incident_id), plain);
   }
   for (const invalid of [
-    { ...card, choices: ['verify', 'skip', 'pause', 'other'] },
-    { ...card, choices: ['verify', 'approve', 'pause'] },
-    { ...card, choices: ['skip', 'verify', 'pause'] },
+    { ...card, choices: ['recreate', 'run', 'delete'] },
+    { ...card, choices: ['run', 'recreate'] },
+    { ...card, choices: ['verify', 'skip', 'pause'] },
+    { ...card, recommended: 'run' },
     { ...card, incident_id: 'd'.repeat(32) },
     { ...card, team_id: 'team_2' },
     { ...card, assistant_id: null, action: null },
     { ...card, expires_in: 600 },
+    { ...card, step: 4 },
+    { ...card, step: 0 },
+    { ...card, evidence: 'absent' },
+    { ...card, diagnostic: null },
+    // Never another step's error: the diagnostic must be of exactly the card's step.
+    { ...card, diagnostic: { ...card.diagnostic, action: 'list-zones' } },
+    { ...card, diagnostic: { ...card.diagnostic, failure: { ...card.diagnostic.failure, message: 'a\u202eb' } } },
   ]) {
     await assert.rejects(
       openRoutineCard(fetcher([[200, invalid]]).fetch, 'team_1', INCIDENT.incident_id),
@@ -558,10 +602,10 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     );
   }
   for (const [choice, body] of [
-    ['verify', { ...answered, status: 'skipped' }],
-    ['skip', { ...answered, choice: 'skip', verdict: null, status: 'paused' }],
-    ['pause', { ...answered, choice: 'skip', verdict: null, status: 'skipped' }],
-    ['verify', { ...answered, verdict: 'maybe' }],
+    ['run', { ...answered, status: 'recreated' }],
+    ['recreate', { ...recreated, status: 'requested' }],
+    ['run', { ...answered, choice: 'recreate' }],
+    ['run', { ...answered, verdict: null }],
   ]) {
     await assert.rejects(
       answerRoutineCard(fetcher([[200, body]]).fetch, 'team_1', INCIDENT.incident_id, card, choice),
@@ -569,9 +613,37 @@ test('a recovery card offers exactly Verificar, Pular, and Pausar and is answere
     );
   }
   await assert.rejects(
-    answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.incident_id, card, 'skip'),
+    answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.incident_id, card, 'run'),
     (error) => error.code === 'routine-card-stale' && error.status === 409,
   );
+});
+
+test('a recorded failure is explained by its likely cause and never guessed from nothing', () => {
+  const failure = (changes) => ({ ...ATTEMPT_FAILURE, failure: { ...ATTEMPT_FAILURE.failure, ...changes } });
+  const cases = [
+    [failure({ http_status: 402, message: 'Payment Required' }), 'credits'],
+    [failure({ http_status: 403, message: 'Your account has insufficient credits for this request' }), 'credits'],
+    [failure({ http_status: 429, message: 'You exceeded your current quota, check your billing' }), 'credits'],
+    [failure({ http_status: 429, message: 'Too Many Requests' }), 'rateLimit'],
+    [failure({ http_status: 401, message: 'Unauthorized' }), 'auth'],
+    [failure({ http_status: null, message: 'Invalid API token' }), 'auth'],
+    [failure({ http_status: 404, message: "Client error '404 Not Found'" }), 'notFound'],
+    [failure({ http_status: 504, message: 'Gateway Timeout' }), 'timeout'],
+    [failure({ http_status: 422, message: 'Unprocessable' }), 'invalid'],
+    [failure({ http_status: 400, message: 'zone_id must be 32 hex characters' }), 'invalid'],
+    [failure({ http_status: 503, message: 'Service Unavailable' }), 'provider'],
+    [failure({ http_status: null, message: 'Something odd happened' }), 'unknown'],
+    [{ ...ATTEMPT_FAILURE, failure: null, condition: 'timeout' }, 'timeout'],
+    [{ ...ATTEMPT_FAILURE, failure: null, condition: 'exit-status:1' }, 'assistant'],
+    [null, 'unknown'],
+  ];
+  for (const [diagnostic, cause] of cases) {
+    assert.equal(failureCause(diagnostic), cause, JSON.stringify(diagnostic?.failure ?? diagnostic));
+  }
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    for (const [, cause] of cases) assert.equal(typeof catalog.card.causes[cause], 'string', `${locale} ${cause}`);
+    for (const choice of ['run', 'recreate', 'delete']) assert.equal(typeof catalog.run.userSkipped[choice], 'string', locale);
+  }
 });
 
 // Team's diagnostics view (ADR-0092 section 8), as its golden vectors state it.

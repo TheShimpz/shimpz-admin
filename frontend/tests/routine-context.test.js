@@ -103,8 +103,8 @@ test('a removed Team, an ended session, or a confirmed deletion discards respons
   await settle(loaded);
   const beforeDeletion = loadTeamRoutines(api.fetch, 'marketing');
   dropTeamRoutine('marketing', ROUTINE.routine_id);
-  // A held run's incident outlives its deleted Routine.
-  const remaining = { routines: [OTHER], runs: [], incidents: [INCIDENT] };
+  // Deleting a Routine sets its held runs aside: none of its incidents waits for a card any more.
+  const remaining = { routines: [OTHER], runs: [], incidents: [] };
   assert.deepEqual(get(routineContext).get('marketing'), remaining);
   api.pending[4]([ROUTINE, OTHER], [RUN]);
   await settle(beforeDeletion);

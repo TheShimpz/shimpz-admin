@@ -1,6 +1,7 @@
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092): every Routine notice, a held
-// run's recovery card, a paused Routine, a minute rollup, a run's execution details, and the daily-cap question of a
-// continuous request. Pure data and state transitions; nothing here reaches a real Admin, Team, Brain, or provider.
+// run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
+// minute rollup, a run's execution details, and the daily-cap question of a continuous request. Pure data and state
+// transitions; nothing here reaches a real Admin, Team, Brain, or provider.
 
 const STEPS = Object.freeze([
   {
@@ -171,7 +172,7 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD]) {
     row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS }, { at: '2026-10-01T11:59:10Z' }),
     row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: '2026-10-01T12:00:00Z', version: 9 }),
     row(id('e'), HELD, 'recovered', { actions: ACTIONS }, { at: '2026-10-01T12:00:20Z' }),
-    row(id('f'), HELD, 'user-skipped', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record' }),
+    row(id('f'), HELD, 'user-skipped', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record', choice: 'run' }),
     row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [ACTIONS[0]] }, { version: 1 }),
     row(HELD_RUN, HELD, 'held', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record' }, { version: 2 }),
     row(PAUSED_RUN, PAUSED_HELD, 'paused', {
@@ -191,15 +192,27 @@ export function routineLifecycleStart(locale = 'en') {
   };
 }
 
-// Verificar walks through every unresolved verdict, so each of its explanations can be seen in turn.
-const VERDICTS = ['inconclusive', 'policy', 'unquiesced', 'unclassified', 'exhausted'];
+/** A person set a held run aside (Rodar, Recriar, or its Routine's deletion): its row says how; nothing was undone. */
+export function setAside(state, incidentId, choice) {
+  const held = (state.incidents ?? []).find((item) => item.incident_id === incidentId);
+  if (!held) return;
+  state.incidents = state.incidents.filter((item) => item.incident_id !== incidentId);
+  state.history = state.history.map((entry) => (entry.run_id === incidentId
+    ? {
+      ...entry,
+      outcome: 'user-skipped',
+      detail: { assistant_id: held.assistant_id, action: held.action, choice },
+      version: entry.version + 1,
+    }
+    : entry));
+}
 
 function card(state, incidentId) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
   state.cards = (state.cards ?? 0) + 1;
-  // The paused run's step has no verifier, so Team recommends Pausar and puts it first.
-  const recommended = incidentId === PAUSED_RUN ? 'pause' : 'verify';
+  const steps = state.routines.find((item) => item.routine_id === held.routine_id)?.steps ?? [];
+  const failed = diagnostics(incidentId).json.diagnostics.at(-1) ?? null;
   return {
     status: 200,
     json: {
@@ -209,60 +222,87 @@ function card(state, incidentId) {
       revision: 1,
       assistant_id: held.assistant_id,
       action: held.action,
+      step: Math.max(1, steps.findIndex((step) => step.action === held.action) + 1),
+      steps: Math.max(1, steps.length),
+      evidence: failed ? 'recorded' : 'absent',
+      diagnostic: failed,
       nonce: state.cards.toString(16).padStart(32, '0'),
       expires_in: 300,
-      choices: recommended === 'pause' ? ['pause', 'verify', 'skip'] : ['verify', 'skip', 'pause'],
-      recommended,
+      choices: ['run', 'recreate', 'delete'],
     },
   };
 }
 
+// Rodar sets the held run aside and starts the Routine again; Recriar rebuilds it from its original request. The
+// monthly Routine's original request no longer compiles, so its Recriar is refused and nothing changes.
 function answer(state, incidentId, body) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
   const choice = body?.choice;
-  const base = { team_id: 'marketing', incident_id: incidentId, choice };
-  if (choice === 'verify') {
-    state.verified = (state.verified ?? -1) + 1;
-    return { status: 200, json: { ...base, verdict: VERDICTS[state.verified % VERDICTS.length], status: null } };
+  if (choice !== 'run' && choice !== 'recreate') return { status: 400, json: { code: 'invalid-body' } };
+  if (choice === 'recreate' && incidentId === PAUSED_RUN) {
+    return { status: 422, json: { code: 'routine-recreate-refused' } };
   }
-  if (choice === 'skip') {
-    state.incidents = state.incidents.filter((item) => item.incident_id !== incidentId);
-    return { status: 200, json: { ...base, verdict: null, status: 'skipped' } };
+  setAside(state, incidentId, choice);
+  state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, paused: false } : item));
+  if (choice === 'recreate') {
+    const routine = state.routines.find((item) => item.routine_id === held.routine_id);
+    state.sequence = (state.sequence ?? 0) + 1;
+    const noticeId = `8${state.sequence.toString(16)}`.padStart(32, '0');
+    state.history = [...state.history, row(noticeId, routine, 'changed', defined(routine), { run: false })];
   }
-  if (choice === 'pause') {
-    state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, paused: true } : item));
-    return { status: 200, json: { ...base, verdict: null, status: 'paused' } };
-  }
-  return { status: 400, json: { code: 'invalid-body' } };
+  const status = choice === 'run' ? 'requested' : 'recreated';
+  return { status: 200, json: { team_id: 'marketing', incident_id: incidentId, choice, status } };
 }
 
-// The failed run's execution details: a handled failure whose text is shown escaped, then a transport condition.
+// Each held step's execution details. The weekly Routine's update hit a Cloudflare account out of credits; the monthly
+// Routine's delete was refused its permission; the failed run's attempts show a handled failure whose text is shown
+// escaped, then transport conditions.
 function diagnostics(runId) {
-  const attempt = (number, failure, condition) => ({
+  const attempt = (number, action, failure, condition) => ({
     operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
     attempt: number,
     assistant_id: 'shimpz-cloudflare',
-    action: runId === FAILED_RUN ? 'list-zones' : 'update-dns-record',
+    action,
     recorded_at: `2026-10-01T11:5${number}:03Z`,
     failure,
     condition,
   });
-  const items = runId === FAILED_RUN || runId === HELD_RUN
-    ? [
-      attempt(1, {
-        error_type: 'httpx.HTTPStatusError',
-        message: "Client error '404 Not Found' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]' <b>escaped</b>",
-        provider: 'api.cloudflare.com',
-        http_status: 404,
-        response_excerpt: '{"success":false,"errors":[{"code":7003,"message":"Could not route"}]}',
-        redacted: true,
-        truncated: false,
-      }, null),
-      attempt(2, null, 'exit-status:1'),
-      attempt(3, null, 'timeout'),
-    ]
-    : [];
+  const failure = (status, message, excerpt) => ({
+    error_type: 'httpx.HTTPStatusError',
+    message,
+    provider: 'api.cloudflare.com',
+    http_status: status,
+    response_excerpt: excerpt,
+    redacted: true,
+    truncated: false,
+  });
+  const url = 'https://api.cloudflare.com/client/v4/zones/[REDACTED]/dns_records/[REDACTED]';
+  const items = {
+    [HELD_RUN]: [
+      attempt(1, 'update-dns-record', failure(
+        402,
+        `Client error '402 Payment Required' for url '${url}'`,
+        '{"success":false,"errors":[{"code":10402,"message":"Insufficient account credits: add credits to continue"}]}',
+      ), null),
+    ],
+    [PAUSED_RUN]: [
+      attempt(1, 'delete-dns-record', failure(
+        403,
+        `Client error '403 Forbidden' for url '${url}'`,
+        '{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}',
+      ), null),
+    ],
+    [FAILED_RUN]: [
+      attempt(1, 'list-zones', failure(
+        404,
+        "Client error '404 Not Found' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]' <b>escaped</b>",
+        '{"success":false,"errors":[{"code":7003,"message":"Could not route"}]}',
+      ), null),
+      attempt(2, 'list-zones', null, 'exit-status:1'),
+      attempt(3, 'list-zones', null, 'timeout'),
+    ],
+  }[runId] ?? [];
   return { status: 200, json: { team_id: 'marketing', run_id: runId, diagnostics: items } };
 }
 
