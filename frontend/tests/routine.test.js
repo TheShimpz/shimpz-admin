@@ -643,7 +643,12 @@ test('a recorded failure is explained by its likely cause and never guessed from
     assert.equal(failureCause(diagnostic), cause, JSON.stringify(diagnostic?.failure ?? diagnostic));
   }
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    for (const [, cause] of cases) assert.equal(typeof catalog.card.causes[cause], 'string', `${locale} ${cause}`);
+    // Every cause has a title, or (unknown) a line; a cause states facts only, so it may add no line beyond its title.
+    for (const [, cause] of cases) {
+      assert.ok(cause === 'unknown' || typeof catalog.card.causeTitles[cause] === 'string', `${locale} ${cause}`);
+      assert.ok(['undefined', 'string'].includes(typeof catalog.card.causes[cause]), `${locale} ${cause}`);
+    }
+    assert.equal(typeof catalog.card.causes.unknown, 'string', locale);
     for (const choice of ['run', 'recreate', 'delete']) assert.equal(typeof catalog.run.userSkipped[choice], 'string', locale);
   }
 });

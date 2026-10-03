@@ -179,7 +179,8 @@
     const cause = failureCause(item);
     return {
       title: cause === 'unknown' ? '' : copy.card.causeTitles[cause],
-      cause: copy.card.causes[cause],
+      // A cause with nothing to add beyond its title has no line of its own.
+      cause: copy.card.causes[cause] ?? '',
       text,
       meta,
       redacted: Boolean(item.failure?.redacted),
