@@ -22,39 +22,48 @@
 <ol class="plan" aria-label={copy.title}>
   {#each steps as step, index (step.id)}
     <li>
-      <span class="number" aria-hidden="true">{index + 1}</span>
+      <span class="number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
       <div class="step">
-        <p class="action"><RoutineIcon name="step" /><span>{fillRoutineCopy(copy.step, { assistant: assistantName(step.assistant), action: humanizeId(step.action) }).replace(' · ', ' › ')}</span></p>
-        {#if step.inputs.length > 0}
-          <dl class="inputs">
-            {#each step.inputs as input (input.member)}
-              <div><dt>{humanizeId(input.member)}</dt><dd>{inputWords(input)}</dd></div>
+        <p class="head">
+          <span class="action">{humanizeId(step.action)}</span>
+          <span class="assistant">{assistantName(step.assistant)}</span>
+        </p>
+        {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
+          <div class="meta">
+            {#if step.inputs.length > 0}
+              <dl class="inputs">
+                {#each step.inputs as input (input.member)}
+                  <div><dt>{humanizeId(input.member)}</dt><dd>{inputWords(input)}</dd></div>
+                {/each}
+              </dl>
+            {/if}
+            {#each step.stored_inputs as name (name)}
+              <p class="stored" title={fillRoutineCopy(copy.storedInput, { name })}>
+                <RoutineIcon name="lock" /><span class="sr-only">{fillRoutineCopy(copy.storedInput, { name })}</span><span aria-hidden="true">{name}</span>
+              </p>
             {/each}
-          </dl>
+          </div>
         {/if}
-        {#each step.stored_inputs as name (name)}
-          <p class="stored"><RoutineIcon name="lock" />{fillRoutineCopy(copy.storedInput, { name })}</p>
-        {/each}
       </div>
     </li>
   {/each}
 </ol>
 
 <style>
-  /* Steps as a numbered column joined by a quiet rail; values in mono, saved keys behind a lock. */
-  .plan { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; font-size: 0.8rem; line-height: 1.45; }
-  li { position: relative; display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: 0.65rem; padding-block-end: var(--shimpz-space-3); }
-  li:not(:last-child)::before { content: ""; position: absolute; inset-block: 1.6rem 0.2rem; inset-inline-start: 0.75rem; border-inline-start: 1px solid var(--shimpz-color-border); }
-  .number { display: grid; width: 1.5rem; height: 1.5rem; place-items: center; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font: 600 0.68rem/1 var(--shimpz-font-mono); }
-  .step { display: grid; gap: 0.3rem; min-width: 0; padding-block-start: 0.1rem; }
-  .action { display: flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: break-word; }
-  .action :global(.routine-icon) { width: 0.8rem; height: 0.8rem; color: var(--shimpz-color-text-dim); }
-  :global([dir="rtl"]) .action :global(.routine-icon) { transform: scaleX(-1); }
-  .inputs { display: grid; gap: 2px; margin: 0; }
-  .inputs > div { display: flex; flex-wrap: wrap; gap: 0 0.5rem; }
-  dt { color: var(--shimpz-color-text-dim); }
+  /* Steps as plain rows: a mono number, the Action with its Assistant beside it, and one quiet line of what it uses. */
+  .plan { display: grid; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; line-height: 1.45; }
+  li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--shimpz-space-2); padding-block: 0.65rem; border-block-end: 1px solid var(--shimpz-color-border-subtle); }
+  li:first-child { padding-block-start: 0; }
+  .number { color: var(--shimpz-color-cyan); font: 600 0.72rem/1.6 var(--shimpz-font-mono); }
+  .step { display: grid; gap: 0.25rem; min-width: 0; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; margin: 0; }
+  .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
+  .assistant { color: var(--shimpz-color-text-dim); font-size: 0.74rem; }
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 1rem; color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
+  .inputs { display: contents; }
+  .inputs > div { display: flex; flex-wrap: wrap; gap: 0 0.4rem; min-width: 0; }
   dt::after { content: ":"; }
-  dd { margin: 0; min-width: 0; font-family: var(--shimpz-font-mono); font-size: 0.76rem; overflow-wrap: anywhere; }
-  .stored { display: flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--shimpz-color-text-muted); }
-  .stored :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
+  dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.74rem; overflow-wrap: anywhere; }
+  .stored { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
+  .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
 </style>
