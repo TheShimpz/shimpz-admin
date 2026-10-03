@@ -1,5 +1,5 @@
 <script>
-  import { Button, Modal, Notice } from '@shimpz/frontend';
+  import { Button, Notice } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
   import { listChatHistory } from '$lib/chatHistory.js';
@@ -26,6 +26,7 @@
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineModal from '$lib/RoutineModal.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
@@ -36,7 +37,8 @@
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
   // `confirm` opens the panel straight in its deletion confirmation, as a run card's Excluir does from the transcript.
-  let { teamId, teamName, routine, runs = [], incidents = [], copy, confirm = false, onclose, ondeleted } = $props();
+  // `onback` adds a Back control that returns to the list the panel was opened from; Escape then goes back as well.
+  let { teamId, teamName, routine, runs = [], incidents = [], copy, confirm = false, onclose, ondeleted, onback = null } = $props();
 
   const id = $props.id();
   let dialog = $state();
@@ -91,10 +93,6 @@
     page = 'summary';
     await loadTeamRoutines(fetch, teamId).catch(() => {});
   }
-
-  $effect(() => {
-    if (dialog && !dialog.open) dialog.showModal();
-  });
 
   $effect(() => {
     const timer = setInterval(() => (now = Date.now()), 1_000);
@@ -160,8 +158,8 @@
   async function removed(deleted) {
     if (deleted) {
       dropTeamRoutine(teamId, routine.routine_id);
-      close();
-      ondeleted?.();
+      dialog?.close();
+      (ondeleted ?? onclose)();
       return;
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
@@ -176,9 +174,10 @@
     (deleteButton ?? dialog?.querySelector('[data-choice="delete"]'))?.focus();
   }
 
-  // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed.
+  // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed; from the
+  // panel it goes back to the list it was opened from, if any, or closes it.
   function cancel(event) {
-    if (!confirming) return close(event);
+    if (!confirming) return onback ? back(event) : close(event);
     event?.preventDefault();
     if (!deleting) void keep();
   }
@@ -205,19 +204,21 @@
     dialog?.close();
     onclose();
   }
+
+  function back(event) {
+    event?.preventDefault();
+    dialog?.close();
+    onback();
+  }
 </script>
 
-<Modal bind:element={dialog} class="routine-panel" size="lg" labelledBy={`${id}-title`} oncancel={cancel}>
-  <div class="frame" class:frame--deletion={confirming} class:frame--deciding={Boolean(pending) && !confirming}>
-    <header class="head">
-      <h2 id={`${id}-title`}>{confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}</h2>
-      {#if !confirming}
-        {#if word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
-        <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
-          <RoutineIcon name="close" />
-        </Button>
-      {/if}
-    </header>
+<RoutineModal bind:dialog class="routine-panel" team={teamName}
+  title={confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}
+  frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
+  closable={!confirming} onback={onback && !confirming ? back : null} oncancel={cancel} onclose={close}>
+    {#snippet tag()}
+      {#if !confirming && word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
+    {/snippet}
 
     <!-- A pending decision is the only thing the panel offers: no pages and no other action until it is answered. -->
     {#if !pending && !confirming}
@@ -319,43 +320,17 @@
       {#if error}<Notice variant="error">{error}</Notice>{/if}
     </div>
     {/if}
-  </div>
-</Modal>
+</RoutineModal>
 
 {#if detailsRun}
   <RoutineRunDetails {teamId} runId={detailsRun} copy={copy.details} errors={copy.errors} onclose={() => (detailsRun = '')} />
 {/if}
 
 <style>
-  /* The panel speaks the card's language: a scanline header strip, mono section labels, neutral tags, cyan only on
-     the one primary action. */
-  .frame {
-    display: grid;
-    max-height: calc(100dvh - 2rem);
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    color: var(--shimpz-color-text);
-    background: var(--shimpz-color-surface);
-    border: 1px solid var(--shimpz-color-border);
-    clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
-    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 68%);
-  }
-  /* The deletion confirmation is the panel's header and one form under it. */
-  .frame--deletion { grid-template-rows: auto minmax(0, 1fr); }
-  :global([dir="rtl"]) .frame { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: var(--shimpz-space-2);
-    min-height: 3rem;
-    padding: 0.4rem var(--shimpz-space-2) 0.4rem var(--shimpz-space-4);
-    color: var(--shimpz-color-text-dim);
-    background: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 2px 3px);
-    border-block-end: 1px solid var(--shimpz-color-border);
-  }
-  h2 { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; font: 600 1rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; color: var(--shimpz-color-text); }
+  /* The panel's frame and header are the shared Routine modal's; its pages keep mono labels, neutral tags, and cyan
+     only on the one primary action. The deletion confirmation is the header and one form that fills the rest. */
+  :global(.routine-frame.frame.frame--deletion > .deletion) { flex: 1 1 auto; }
   .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
-  .head :global(.close) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   /* The page menu: mono labels on one rule, the selected page underlined in the panel's one accent. */
   /* The page menu starts at the panel's edge; the Routine's actions sit at its far end. */
   .bar { display: flex; align-items: center; gap: var(--shimpz-space-2); padding-inline-end: var(--shimpz-space-2); border-block-end: 1px solid var(--shimpz-color-border); }
@@ -391,12 +366,12 @@
     flex-direction: column;
     padding-block-start: 0;
   }
-  .frame--deciding { border-inline-color: transparent; border-block-end-color: transparent; }
+  :global(.routine-frame.frame.frame--deciding) { border-inline-color: transparent; border-block-end-color: transparent; }
   /* A decision narrows the panel to about 80%, and its answers span that same width below the message. */
   :global(dialog.shimpz-modal.routine-panel:has(.frame--deciding)) { --modal-max-width: calc(var(--shimpz-dialog-lg) * 0.805); }
-  .frame--deciding .head { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
+  :global(.routine-frame.frame.frame--deciding > .routine-head.head) { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
-  .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  .content { flex: 1 1 auto; align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */
   .content.decide[hidden] { display: none; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
@@ -422,17 +397,8 @@
   .runs :global(.run-details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   @media (max-width: 600px) { .when { display: none; } }
   @media (forced-colors: active) { .bar { border-color: CanvasText; } }
-  /* On a phone the panel is a full-screen sheet. */
-  @media (max-width: 600px) {
-    .head { flex-wrap: wrap; }
-    h2 { flex-basis: 8rem; }
-    .head :global(.tag) { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
-    .head :global(.close) { order: 3; }
-    :global(dialog.shimpz-modal.routine-panel) { width: 100dvw; max-width: none; height: 100dvh; max-height: none; margin: 0; }
-    .frame { height: 100dvh; max-height: 100dvh; clip-path: none; }
-  }
   @media (forced-colors: active) {
-    .frame, .note { border-color: CanvasText; }
+    .note { border-color: CanvasText; }
     .tabs :global(.tab[aria-selected="true"]) { border-block-end: 2px solid Highlight; }
   }
 </style>

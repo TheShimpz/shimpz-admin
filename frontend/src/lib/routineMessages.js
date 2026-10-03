@@ -19,6 +19,7 @@ export const routineMessages = {
     list: {
       open: 'Routines',
       loading: 'Loading Routines…',
+      back: 'Back to Routines',
       needsReconfirm: 'Paused: its Assistants changed. Ask again in the chat to update it.',
       delete: 'Delete',
       resume: "Resume",
@@ -144,6 +145,7 @@ export const routineMessages = {
     list: {
       open: 'Rotinas',
       loading: 'Carregando rotinas…',
+      back: 'Voltar às rotinas',
       needsReconfirm: 'Pausada: seus Assistants mudaram. Peça de novo no chat para atualizá-la.',
       delete: 'Excluir',
       resume: "Retomar",
@@ -269,6 +271,7 @@ export const routineMessages = {
     list: {
       open: 'Rutinas',
       loading: 'Cargando rutinas…',
+      back: 'Volver a las rutinas',
       needsReconfirm: 'En pausa: sus Assistants cambiaron. Pídela de nuevo en el chat para actualizarla.',
       delete: 'Eliminar',
       resume: "Reanudar",
@@ -394,6 +397,7 @@ export const routineMessages = {
     list: {
       open: '例行任务',
       loading: '正在加载例行任务…',
+      back: '返回例行任务',
       needsReconfirm: '已暂停：其 Assistants 已更改。请在聊天中再次请求以更新。',
       delete: '删除',
       resume: "恢复运行",
@@ -519,6 +523,7 @@ export const routineMessages = {
     list: {
       open: 'Routines',
       loading: 'Chargement des routines…',
+      back: 'Retour aux routines',
       needsReconfirm: 'En pause : ses Assistants ont changé. Redemandez-la dans le chat pour la mettre à jour.',
       delete: 'Supprimer',
       resume: "Reprendre",
@@ -644,6 +649,7 @@ export const routineMessages = {
     list: {
       open: 'Routinen',
       loading: 'Routinen werden geladen…',
+      back: 'Zurück zu den Routinen',
       needsReconfirm: 'Pausiert: Ihre Assistants haben sich geändert. Bitten Sie im Chat erneut, um sie zu aktualisieren.',
       delete: 'Löschen',
       resume: "Fortsetzen",
@@ -769,6 +775,7 @@ export const routineMessages = {
     list: {
       open: 'ルーティン',
       loading: 'ルーティンを読み込んでいます…',
+      back: 'ルーティンに戻る',
       needsReconfirm: '一時停止中：Assistants が変更されました。チャットで再度依頼して更新してください。',
       delete: '削除',
       resume: "再開",
@@ -894,6 +901,7 @@ export const routineMessages = {
     list: {
       open: 'الروتينات',
       loading: 'جارٍ تحميل الروتينات…',
+      back: 'العودة إلى الروتينات',
       needsReconfirm: 'متوقف مؤقتًا: تغيّرت Assistants الخاصة به. اطلبه مجددًا في المحادثة لتحديثه.',
       delete: 'حذف',
       resume: "استئناف",
