@@ -419,9 +419,12 @@ def pending_chat_integrations(team_id: object) -> TeamResponse:
     return _call("GET", f"/v1/teams/{canonical_id}/chat/integrations")
 
 
-def pending_chat_human(team_id: object) -> TeamResponse:
+def open_chat_human(team_id: object, locale: object) -> TeamResponse:
+    """Open the Team's pending human challenge with its request copy in one interface language (ADR-0091)."""
     canonical_id = canonical_team_id(team_id)
-    return _call("GET", f"/v1/teams/{canonical_id}/chat/human")
+    if team_contract.canonical_locale(locale) is None:
+        raise TeamRequestError("opening a human challenge requires one interface language")
+    return _call("POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": locale})
 
 
 def resume_chat_integrations(
@@ -495,6 +498,15 @@ def local_assistant_icon(image_id: object) -> TeamAssetResponse:
     return _call_asset(f"/v1/local-assistants/{digest.removeprefix('sha256:')}/icon")
 
 
+def local_assistant_summary(image_id: object, locale: object) -> TeamResponse:
+    """Return one exact unpublished image's summary in one interface language, read from its own pack."""
+    digest = canonical_source_digest(image_id)
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/summary/{canonical_locale}")
+
+
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"
@@ -507,6 +519,14 @@ def list_installed_assistants(team_id: object) -> TeamResponse:
 
 def assistant_icon(team_id: object, assistant_id: object) -> TeamAssetResponse:
     return _call_asset(f"{_assistant_path(team_id, assistant_id)}/icon")
+
+
+def assistant_summary(team_id: object, assistant_id: object, locale: object) -> TeamResponse:
+    """Return one installed Assistant's summary in one interface language, read from its binding's pack."""
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale}")
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:

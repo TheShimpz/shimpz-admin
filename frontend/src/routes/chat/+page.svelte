@@ -1,7 +1,17 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
-  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import AttachmentChip from '$lib/AttachmentChip.svelte';
+  import {
+    AttachmentUploadError,
+    attachmentReadability,
+    attachmentRefusal,
+    MAX_ATTACHMENTS,
+    uploadTeamFile,
+  } from '$lib/attachments.js';
+  import ComposerAttachments from '$lib/ComposerAttachments.svelte';
+  import RestrictedActionsNote from '$lib/RestrictedActionsNote.svelte';
   import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
@@ -12,8 +22,9 @@
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
-  import RoutineProposalCard from '$lib/RoutineProposalCard.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
+  import ChatDay from '$lib/ChatDay.svelte';
+  import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
   import { newerRoutineEntries } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
@@ -54,6 +65,17 @@
   let socketTeamId = $state('');
   let draft = $state('');
   let draftTeamId = '';
+  // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for. A Team change
+  // discards them, and an upload that answers for an earlier Team is ignored.
+  let attachments = $state([]);
+  let attachmentTeamId = '';
+  let attachmentError = $state('');
+  let attachmentInput = $state();
+  let attachmentDragging = $state(false);
+  let attachmentFinished = $state(0);
+  let attachmentUpload = null;
+  let attachmentPumping = false;
+  let nextAttachmentKey = 0;
   let turns = $state([]);
   let nextRenderKey = 0;
   let busy = $state(false);
@@ -98,6 +120,10 @@
   // again. Only a user message is retryable; a failed decision or a later unrelated error never offers a resend.
   let retryMessage = $state('');
   let lastSentMessage = '';
+  // The seal Admin gave the send a retry repeats (ADR-0092): Admin reuses its identity and refuses an expired one. A
+  // send Admin never sealed reached no Team, so its retry is simply a new send.
+  let lastSentRequest = null;
+  let retryRequest = null;
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
@@ -124,6 +150,8 @@
   let humanRejection = $state();
   let humanWorking = $state(false);
   let humanExpiredId = $state('');
+  // The interface language a reconciling sync asked Team to render the pending request in (ADR-0091).
+  let humanRelocalizing = $state('');
   let integrations = $state([]);
   let storedInputs = $state([]);
   let integrationsReady = $state(false);
@@ -149,6 +177,10 @@
   let storeCopy = $derived($t('store'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
+  // A request rendered in another language than the one selected now is never answered; a fresh one is requested.
+  let humanStale = $derived(Boolean(humanChallenge) && humanChallenge.locale !== $locale);
+  // While a reconciling sync is in flight Team may already have replaced the shown request, even after switching back.
+  let humanUnanswerable = $derived(humanStale || Boolean(humanRelocalizing));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -161,6 +193,11 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
+  // Each exchange's calendar day in the viewer's timezone (chatDays.js says which time an item carries); a header
+  // opens each day, and "today" moves at the viewer's midnight.
+  const instantOf = turnInstants();
+  let today = $state(calendarDay(Date.now()));
+  let days = $derived(exchangeDays(exchanges, instantOf));
   let installPlanWorking = $derived(turns.some((turn) => (
     ['planned', 'installing'].includes(turn.installPlan?.state)
   )));
@@ -173,6 +210,12 @@
   // A connection that is opening is about to sync, so the composer stays read-only from the history load through the
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
+  let attachCopy = $derived($t('attachments'));
+  let attachmentsPending = $derived(attachments.some((item) => item.state !== 'ready'));
+  let attachmentProgress = $derived.by(() => {
+    const pending = attachments.filter((item) => item.state !== 'ready').length;
+    return pending ? { current: attachmentFinished + 1, total: attachmentFinished + pending } : null;
+  });
   let composerBusy = $derived(
     busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
   );
@@ -255,10 +298,14 @@
     const last = exchanges.length - 1;
     return last >= 0 && clarifiedRequest(exchanges[last]) !== null && !clarificationAnswers.given.has(last);
   });
+  // Files join only a message that can be written now, for the Team whose Brain is ready to receive it.
+  let attachmentsUnavailable = $derived(
+    composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
+  );
 
   function retryLastTurn() {
     const message = retryMessage;
-    if (message) submitMessage(message, { projectUserTurn: false, retryable: true });
+    if (message) submitMessage(message, { projectUserTurn: false, retryable: true, request: retryRequest });
   }
 
   function groupExchanges(values) {
@@ -362,23 +409,22 @@
   }
 
   function historyTurn(entry, author) {
-    const renderKey = nextRenderKey++;
+    // Every stored row keeps the time Admin wrote it, which dates its day in the transcript.
+    const stored = { renderKey: nextRenderKey++, historyId: entry.id, createdAt: entry.createdAt };
     if (entry.kind === 'message') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: entry.role,
         text: entry.text,
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
-        ...(entry.routineProposal ? { routineProposal: entry.routineProposal } : {}),
         ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
+        ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
       };
     }
     if (entry.kind === 'guidance') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: 'assistant',
         text: escapeMarkdownText(entry.reply),
         author,
@@ -386,8 +432,7 @@
     }
     if (entry.kind === 'assistant-install') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: 'assistant',
         text: entry.state === 'installed'
           ? (entry.outcome === 'already-installed' ? copy.install.already : copy.install.complete)
@@ -405,11 +450,10 @@
       };
     }
     if (entry.kind === 'routine-run') {
-      return { renderKey, historyId: entry.id, role: 'assistant', text: '', author, routineRun: entry };
+      return { ...stored, role: 'assistant', text: '', author, routineRun: entry };
     }
     return {
-      renderKey,
-      historyId: entry.id,
+      ...stored,
       role: 'assistant',
       text: '',
       author,
@@ -554,6 +598,12 @@
       clearInterval(timer);
       document.removeEventListener('visibilitychange', shown);
     };
+  });
+
+  $effect(() => {
+    void today;
+    const timer = setTimeout(() => (today = calendarDay(Date.now())), untilNextDay(Date.now()) + 1_000);
+    return () => clearTimeout(timer);
   });
 
   function applyInstallPlanEvent(incoming, receipt) {
@@ -937,6 +987,7 @@
     humanRejection = undefined;
     humanWorking = false;
     humanExpiredId = '';
+    humanRelocalizing = '';
     integrationsDialogOpen = false;
     integrationsReady = false;
     integrationWorking = '';
@@ -1097,7 +1148,7 @@
       syncing = true;
       resetProgress();
       try {
-        active.send(JSON.stringify(createSyncFrame(expectedTeamId)));
+        active.send(JSON.stringify(createSyncFrame(expectedTeamId, $locale)));
       } catch {
         socket = null;
         socketReady = false;
@@ -1130,6 +1181,11 @@
         }
         if (incoming.type === 'human-required') {
           const challenge = incoming;
+          if (humanRelocalizing) {
+            // Admin opened the pending request in exactly the language the reconciling sync named.
+            if (challenge.locale !== humanRelocalizing) throw new Error('unexpected human request language');
+            humanRelocalizing = '';
+          }
           if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
           else {
             void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
@@ -1150,6 +1206,11 @@
             return;
           }
           humanRejection = incoming;
+          return;
+        }
+        if (incoming.type === 'sent') {
+          if (!busy) throw new Error('unexpected sent frame');
+          if (lastSentMessage) lastSentRequest = incoming.request;
           return;
         }
         if (incoming.type === 'progress') {
@@ -1173,6 +1234,14 @@
           syncing = false;
           resetProgress();
           clearTurnInstalled();
+          if (humanRelocalizing) {
+            // The request ended before it could be opened in the selected language.
+            busy = false;
+            stopping = false;
+            resetChallengeState();
+            setError(humanRequestCopy.expired);
+            return;
+          }
           if (humanExpiredId) {
             busy = false;
             stopping = false;
@@ -1291,7 +1360,9 @@
       resetChallengeState();
       clearTurnInstalled();
       const failedMessage = lastSentMessage;
+      const failedRequest = lastSentRequest;
       lastSentMessage = '';
+      lastSentRequest = null;
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1300,8 +1371,8 @@
           author: incoming.team_name,
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
-          ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
           ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
+          ...(incoming.restricted_actions ? { restricted: incoming.restricted_actions } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -1309,13 +1380,16 @@
       } else {
         const projectedError = projectedChatError(incoming.status, incoming.detail);
         setError(projectedError.message, projectedError.detail);
-        retryMessage = retryable ? failedMessage : '';
+        // A send whose identity Admin refused as expired (410) is sent again only as a new message.
+        retryMessage = retryable && incoming.status !== 410 ? failedMessage : '';
+        retryRequest = failedRequest;
       }
       resetProgress();
     };
     active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       lastSentMessage = '';
+      lastSentRequest = null;
       socket = null;
       socketReady = false;
       syncing = false;
@@ -1335,11 +1409,13 @@
   }
 
   function activateTeam(nextTeamId) {
+    if (attachmentTeamId !== nextTeamId) clearAttachments();
     closeSocket();
     clearTurnInstalled();
     clearLifecycleIconCaptures();
     capabilityObjective = null;
     lastSentMessage = '';
+    lastSentRequest = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
@@ -1547,11 +1623,154 @@
     }
   }
 
+  function attachmentRefusalText(reason, name) {
+    return $t(`attachments.errors.${reason}`, { name });
+  }
+
+  function clearAttachments() {
+    attachmentUpload?.controller.abort();
+    attachmentUpload = null;
+    attachments = [];
+    attachmentTeamId = '';
+    attachmentError = '';
+    attachmentDragging = false;
+  }
+
+  function removeAttachment(key) {
+    if (attachmentUpload?.key === key) attachmentUpload.controller.abort();
+    attachments = attachments.filter((item) => item.key !== key);
+    attachmentError = '';
+    composerInput?.focus();
+  }
+
+  function cancelAttachmentUploads() {
+    attachmentUpload?.controller.abort();
+    attachments = attachments.filter((item) => item.state === 'ready');
+    composerInput?.focus();
+  }
+
+  async function addAttachments(files) {
+    const teamId = chatTeamId;
+    if (!teamId || attachmentsUnavailable) return;
+    if (attachmentTeamId !== teamId) clearAttachments();
+    attachmentTeamId = teamId;
+    attachmentError = '';
+    for (const file of files) {
+      let readability = { kind: 'file', note: 'unreadable' };
+      if (file.size > 0) {
+        try {
+          readability = await attachmentReadability(file);
+        } catch {
+          if (attachmentTeamId === teamId) attachmentError = attachmentRefusalText('unavailable', file.name);
+          continue;
+        }
+      }
+      // A selection that finishes reading after a Team change belongs to no message.
+      if (attachmentTeamId !== teamId) return;
+      const refusal = attachmentRefusal(attachments, { size: file.size, ...readability });
+      if (refusal) {
+        attachmentError = attachmentRefusalText(refusal, file.name);
+        if (refusal === 'too-many') break;
+        continue;
+      }
+      attachments = [...attachments, {
+        key: nextAttachmentKey++,
+        file,
+        name: file.name,
+        size: file.size,
+        ...readability,
+        state: 'queued',
+      }];
+    }
+    void uploadAttachments();
+  }
+
+  function updateAttachment(key, patch) {
+    attachments = attachments.map((item) => (item.key === key ? { ...item, ...patch } : item));
+  }
+
+  async function uploadAttachments() {
+    if (attachmentPumping) return;
+    attachmentPumping = true;
+    try {
+      for (let item = attachments.find((entry) => entry.state === 'queued'); item;
+        item = attachments.find((entry) => entry.state === 'queued')) {
+        const teamId = attachmentTeamId;
+        const controller = new AbortController();
+        attachmentUpload = { key: item.key, controller };
+        updateAttachment(item.key, { state: 'uploading' });
+        try {
+          const stored = await uploadTeamFile(fetch, teamId, item.file, controller.signal);
+          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
+          updateAttachment(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
+          attachmentFinished += 1;
+        } catch (reason) {
+          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
+          attachments = attachments.filter((entry) => entry.key !== item.key);
+          attachmentFinished += 1;
+          attachmentError = attachmentRefusalText(
+            reason instanceof AttachmentUploadError ? reason.reason : 'failed',
+            item.name,
+          );
+        } finally {
+          if (attachmentUpload?.controller === controller) attachmentUpload = null;
+        }
+      }
+    } finally {
+      attachmentPumping = false;
+      attachmentFinished = 0;
+    }
+  }
+
+  function chooseAttachments() {
+    attachmentInput?.click();
+  }
+
+  function attachmentsChosen(event) {
+    const files = [...(event.currentTarget.files ?? [])];
+    event.currentTarget.value = '';
+    if (files.length) void addAttachments(files);
+  }
+
+  // Pasted files join the message; pasted text still lands in the draft as usual.
+  function pasteAttachments(event) {
+    const files = [...(event.clipboardData?.files ?? [])];
+    if (!files.length) return;
+    if (!event.clipboardData.getData('text/plain')) event.preventDefault();
+    void addAttachments(files);
+  }
+
+  function carriesFiles(event) {
+    return [...(event.dataTransfer?.types ?? [])].includes('Files');
+  }
+
+  function dragAttachments(event) {
+    if (!carriesFiles(event) || attachmentsUnavailable) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    attachmentDragging = true;
+  }
+
+  function leaveAttachments(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) attachmentDragging = false;
+  }
+
+  function dropAttachments(event) {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    attachmentDragging = false;
+    if (attachmentsUnavailable) return;
+    const files = [...(event.dataTransfer.files ?? [])];
+    if (files.length) void addAttachments(files);
+  }
+
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
     retryable = projectUserTurn,
     useCapabilityObjective = true,
+    request = null,
+    attached = [],
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
@@ -1570,7 +1789,9 @@
     const decisionPending = turns.some((turn) => turn.lifecycle?.state === 'proposed');
     clearTurnInstalled();
     const assistantIds = [...$teamContext.activeAssistantIds];
-    const continuation = useCapabilityObjective && capabilityContinuation(normalized);
+    const files = attached.map((item) => item.id);
+    // A message with attachments never resumes an objective nor becomes one: installs need an attachment-free request.
+    const continuation = useCapabilityObjective && files.length === 0 && capabilityContinuation(normalized);
     const sameAssistantIds = continuation && capabilityObjective
       ? assistantIds.length === capabilityObjective.assistant_ids.length &&
         assistantIds.every((assistantId, index) => (
@@ -1582,15 +1803,15 @@
     try {
       const currentTurn = {
         message: normalized,
-        files: [],
+        files,
         assistant_ids: assistantIds,
       };
       if (resumable) {
-        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale);
+        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale, request);
         resumedObjective = resumable.message;
         capabilityObjective = null;
       } else {
-        frame = createChatFrame(teamId, currentTurn, $locale);
+        frame = createChatFrame(teamId, currentTurn, $locale, request);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -1605,6 +1826,9 @@
         role: 'user',
         text: normalized,
         ...(resumedObjective ? { resumedObjective } : {}),
+        ...(files.length
+          ? { files: attached.map(({ key, name, size, kind, note }) => ({ key, name, size, kind, note })) }
+          : {}),
       }];
       void revealLatestExchange();
     }
@@ -1612,8 +1836,13 @@
       socket.send(JSON.stringify(frame));
       // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
       // objective or the proposal was consumed, so neither is ever offered again.
-      lastSentMessage = retryable && !resumable && !decisionPending ? normalized : '';
-      if (useCapabilityObjective && !continuation) {
+      // A message with attachments is never resent as text alone; its files are selected again.
+      lastSentMessage = retryable && !resumable && !decisionPending && files.length === 0 ? normalized : '';
+      // A resend keeps the seal it carries; a new send waits for the seal Admin returns.
+      lastSentRequest = lastSentMessage ? request : null;
+      if (files.length) {
+        capabilityObjective = null;
+      } else if (useCapabilityObjective && !continuation) {
         capabilityObjective = {
           message: normalized,
           files: [],
@@ -1657,9 +1886,14 @@
 
   function send(event) {
     event.preventDefault();
-    if (!questionOpen && submitMessage(draft)) {
+    if (attachmentsPending) return;
+    const attached = attachmentTeamId === chatTeamId ? attachments : [];
+    if (!questionOpen && submitMessage(draft, { attached })) {
       draft = '';
       promptHistoryIndex = -1;
+      attachments = [];
+      attachmentTeamId = '';
+      attachmentError = '';
     }
   }
 
@@ -1735,7 +1969,7 @@
   function respondToHuman(response) {
     const teamId = chatTeamId;
     const challenge = humanChallenge;
-    if (!teamId || !challenge || humanWorking || !socketReady || !socket) return;
+    if (!teamId || !challenge || humanUnanswerable || humanWorking || !socketReady || !socket) return;
     let frame;
     try {
       frame = createHumanResponseFrame(
@@ -1778,12 +2012,33 @@
     syncing = true;
     resetProgress();
     try {
-      socket.send(JSON.stringify(createSyncFrame(chatTeamId)));
+      socket.send(JSON.stringify(createSyncFrame(chatTeamId, $locale)));
     } catch {
       syncing = false;
       socket.close();
     }
   }
+
+  // A pending or restored request in another language than the one selected is replaced by a fresh challenge in the
+  // selected language before it can be answered. A reply that arrives after yet another switch is reconciled again.
+  function relocalizeHumanRequest(selected) {
+    humanRelocalizing = selected;
+    syncing = true;
+    try {
+      socket.send(JSON.stringify(createSyncFrame(chatTeamId, selected)));
+    } catch {
+      humanRelocalizing = '';
+      syncing = false;
+      socket.close();
+    }
+  }
+
+  $effect(() => {
+    const selected = $locale;
+    if (!humanStale || humanWorking || humanRelocalizing || syncing || !socketReady || !socket) return;
+    if (humanChallenge.challenge_id === humanExpiredId) return;
+    relocalizeHumanRequest(selected);
+  });
 
   function expireHumanRequest(challengeId) {
     if (humanChallenge?.challenge_id !== challengeId || humanExpiredId === challengeId) return;
@@ -1890,12 +2145,24 @@
               {/if}
             </div>
           {/if}
+          <!-- When a message was sent or a reply completed, to the second, in the viewer's timezone. -->
+          {#snippet turnTime(turn)}
+            {@const instant = instantOf(turn)}
+            <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
+          {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
+            {@const opensDay = days[index] !== days[index - 1]}
+            {#if opensDay}
+              <ChatDay day={days[index]} {today} locale={$locale} />
+            {/if}
+            <!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
+            {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
             <section class="exchange">
               {#if userTurn}
                 <Message variant="user" author={copy.you}>
+                  {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
                   {@const answer = clarificationAnswers.sent.get(index) ?? null}
                   {#if userTurn.resumedObjective}
                     <div class="resumed-task">
@@ -1908,10 +2175,22 @@
                   {:else}
                     <p>{userTurn.text}</p>
                   {/if}
+                  {#if userTurn.files}
+                    <ul class="message-attachments" aria-label={attachCopy.list}>
+                      {#each userTurn.files as file (file.key)}
+                        <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
+                      {/each}
+                    </ul>
+                  {/if}
                 </Message>
               {/if}
               {#if assistantTurn}
-                <Message variant="assistant" author={assistantTurn.author}>
+                <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
+                <Message
+                  variant="assistant"
+                  author={assistantTurn.routineRun ? undefined : assistantTurn.author}
+                  meta={assistantTurn.routineRun ? undefined : replyTime}
+                >
                   {@const clarifiedOriginal = clarifiedRequest(exchange)}
                   {#if clarifiedOriginal !== null}
                     <ClarificationCard
@@ -1928,18 +2207,14 @@
                       copy={$t('routine')}
                       teamId={selectedTeamId}
                       teamName={assistantTurn.author}
+                      joinAbove={!opensDay && !userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
+                      joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
+                        Boolean(exchanges[index + 1]?.assistant?.routineRun)}
                     />
                   {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
                   )}
                     <Markdown markdown={assistantTurn.text} variant="chat" />
-                  {/if}
-                  {#if assistantTurn.routineProposal}
-                    <RoutineProposalCard
-                      teamId={selectedTeamId}
-                      proposal={assistantTurn.routineProposal}
-                      copy={$t('routine')}
-                    />
                   {/if}
                   {#if assistantTurn.installPlan}
                     <div
@@ -2068,6 +2343,9 @@
                     teamName={assistantTurn.author}
                     {assistantNames}
                   />
+                  {#if assistantTurn.restricted}
+                    <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
+                  {/if}
                 </Message>
                 {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
                   <!-- An install that continues the requested task keeps showing that task's execution stages. -->
@@ -2117,7 +2395,15 @@
           </Notice>
         {/if}
 
-          <form class="composer" onsubmit={keyRequired ? saveProviderKey : send}>
+          <form
+            class="composer"
+            class:composer-dropping={attachmentDragging}
+            onsubmit={keyRequired ? saveProviderKey : send}
+            ondragenter={dragAttachments}
+            ondragover={dragAttachments}
+            ondragleave={leaveAttachments}
+            ondrop={dropAttachments}
+          >
             {#if (keyRequired || brainUnavailable) && $modelContext.error}
               <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
               <Notice class="brain-error" variant="error">
@@ -2155,6 +2441,16 @@
                 />
                 <p id="chat-provider-key-note" class="sr-only">{keyCopy.keyNote}</p>
               {:else}
+                <ComposerAttachments
+                  items={attachments}
+                  progress={attachmentProgress}
+                  error={attachmentError}
+                  oncancel={cancelAttachmentUploads}
+                  onremove={removeAttachment}
+                />
+                {#if attachmentDragging}
+                  <p class="composer-drop" aria-hidden="true">{attachCopy.drop}</p>
+                {/if}
                 <TextAreaField
                   id="chat-composer"
                   label={copy.send}
@@ -2166,9 +2462,34 @@
                   placeholder={questionOpen ? $t('clarify').answerFirst : placeholder}
                   disabled={composerBusy || questionOpen}
                   onkeydown={handleComposerKeydown}
+                  onpaste={pasteAttachments}
                 />
               {/if}
               <Toolbar class="composer-actions">
+              {#if !keyRequired}
+                <!-- Attaching comes first among the composer's tools; the picker accepts any file Team may keep. -->
+                <Button
+                  class="composer-attach"
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  onclick={chooseAttachments}
+                  disabled={attachmentsUnavailable || attachments.length >= MAX_ATTACHMENTS}
+                  aria-label={attachCopy.attach}
+                  title={attachCopy.attach}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15.5 7.5l-6.8 6.8a1.9 1.9 0 0 0 2.7 2.7l7.1-7.1a3.8 3.8 0 0 0-5.4-5.4l-7.3 7.3a5.7 5.7 0 0 0 8.1 8.1l5.6-5.6"></path>
+                  </svg>
+                </Button>
+                <FileInput
+                  bind:element={attachmentInput}
+                  id="chat-attachment-picker"
+                  multiple
+                  hidden
+                  onchange={attachmentsChosen}
+                />
+              {/if}
               <BrainMenu disabled={composerBusy || stopping} />
               <EffortMenu disabled={composerBusy || stopping} />
               {#if $sessionContext.profile === 'local'}
@@ -2214,7 +2535,7 @@
                   class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim() || attachmentsPending}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
@@ -2251,7 +2572,7 @@
           open={Boolean(humanChallenge) && humanChallenge?.challenge_id !== humanExpiredId}
           challenge={humanChallenge}
           rejection={humanRejection}
-          working={humanWorking}
+          working={humanWorking || humanUnanswerable}
           onrespond={respondToHuman}
           onretry={retryHumanAuthentication}
           onexpire={expireHumanRequest}
@@ -2337,6 +2658,9 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* A day header sticks flush with the top edge, over this padding; an exchange scrolled to the top stays below it. */
+    --chat-day-inset: -1rem;
+    scroll-padding-block-start: 2rem;
     padding-block: 1rem;
     padding-inline: max(
       var(--chat-rail-gutter),
@@ -2377,14 +2701,17 @@
   }
 
   .exchange {
+    /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
+    --routine-rail-gap: 1.1rem;
     display: grid;
     min-width: 0;
     align-content: start;
     gap: 0.65rem;
-    margin-block-start: 1.1rem;
+    margin-block-start: var(--routine-rail-gap);
   }
 
-  .exchange:first-child {
+  .exchange:first-child,
+  :global(.chat-day + .exchange) {
     margin-block-start: 0;
   }
 
@@ -2408,6 +2735,13 @@
     font: 500 0.68rem/1.4 var(--shimpz-font-mono);
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
+  }
+  /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
+  .turn-time {
+    font: 400 0.66rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .clarification-reply { display: grid; gap: 2px; margin: 0; }
   .reply-label {
@@ -2565,6 +2899,28 @@
 
   .composer-input:focus-within::before { width: 2.5rem; opacity: 1; }
 
+  /* Files dragged over the composer light its frame and name what dropping does. */
+  .composer-dropping .composer-input {
+    border-color: color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
+    border-style: dashed;
+  }
+
+  .composer-drop {
+    margin: 0;
+    padding: 0.5rem 1rem 0;
+    color: var(--shimpz-color-text-muted);
+    font: 400 0.75rem/1.4 var(--shimpz-font-mono);
+  }
+
+  .message-attachments {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    gap: 0.35rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
   .composer-input :global(.composer-field) { gap: 0; }
 
   .composer-input :global(.composer-field textarea),
@@ -2612,6 +2968,8 @@
   }
 
   /* Tool controls are bare icons: no frame, only their color reacts. */
+  .composer-input :global(.shimpz-button.composer-attach),
+  .composer-input :global(.shimpz-button.composer-attach:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations),
   .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)) {
     color: var(--shimpz-color-text-dim);
@@ -2621,6 +2979,7 @@
     box-shadow: none;
   }
 
+  .composer-input :global(.shimpz-button.composer-attach:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations[aria-expanded="true"]) {
     color: var(--shimpz-color-cyan);
@@ -2632,6 +2991,7 @@
   }
 
   .composer-input :global(.brain-trigger),
+  .composer-input :global(.composer-attach),
   .composer-input :global(.composer-integrations) {
     width: 2.25rem;
     height: 2.25rem;

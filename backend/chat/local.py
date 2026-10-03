@@ -26,7 +26,6 @@ from team import bridge as team
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
-from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -34,11 +33,14 @@ MAX_REPLY_CHARS = 60_000
 MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal", "trace_id"})
+_TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
 # A done event's public fields; a chat reply may carry one Routine proposal for the confirmation card (ADR-0086).
-DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "routine_proposal"})
+DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
+# The Actions a completed turn withheld for its attachment content, named for guidance only (ADR-0093).
+RESTRICTED_FIELD = "restricted_actions"
+_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -52,6 +54,7 @@ MAX_INTEGRATION_LABEL_CHARS = 80
 MAX_INTEGRATION_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
     "assistant-action-blocked": "Assistant Action execution is blocked until it is reinstalled",
+    "assistant-language-drift": "an installed Assistant's language pack changed; retry the message",
     "assistant-integration-challenge-expired": "the Assistant integration expired; retry the message",
     "assistant-integration-contract-invalid": "the Assistant integration contract changed; retry the message",
     "assistant-integration-state-unavailable": "Assistant integration state is unavailable",
@@ -78,6 +81,7 @@ _CHAT_ERROR_DETAILS = {
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
     "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
     "human-challenge-response-invalid": "the Assistant request for your input was invalid",
+    "human-request-invalid": "the Assistant request for your input changed; retry the message",
     "chat-challenge-response-invalid": "the Assistant challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
     "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
@@ -231,7 +235,7 @@ class PublicResponse(team.TeamResponse):
         if body.get("team_id") != team_id:
             return None
         event = None
-        if set(body) - {USAGE_FIELD} == DONE_FIELDS:
+        if set(body) - _OPTIONAL_DONE_FIELDS == DONE_FIELDS:
             event = {"type": "done", **body}
         return event
 
@@ -584,13 +588,12 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                 if action_id in seen_actions:
                     raise ValueError("duplicate integration Action")
                 seen_actions.add(action_id)
-                actions.append(
-                    {
-                        "id": action_id,
-                        "name": chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS),
-                        "summary": chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
-                    }
-                )
+                # The Action's name and summary are its Creator's English catalog text; the browser shows only its id.
+                chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS)
+                chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
+                actions.append({"id": action_id})
+            # Team's provider summary is English platform text; the browser words each provider per language.
+            chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
             requirements.append(
                 {
                     "assistant_id": assistant_id,
@@ -598,7 +601,6 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                     "integration_id": integration_id,
                     "provider": team.canonical_assistant_id(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
-                    "summary": chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS),
                     "scopes": scopes,
                     "actions": actions,
                 }
@@ -618,13 +620,20 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
     )
 
 
-def _project_pending_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
+def _project_pending_challenge(
+    response: team.TeamResponse,
+    team_id: str,
+    locale: str | None = None,
+) -> team.TeamResponse:
+    """Project a Team challenge; a human one requested in an interface language must be rendered in exactly it."""
     if response.body.get("status") == "integrations-required":
         return _project_integration_challenge(response, team_id)
     if response.body.get("status") == "human-required":
         try:
             body = human.project(response.body, team_id)
         except human.HumanChallengeError:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-challenge-response-invalid"})
+        if locale is not None and body["locale"] != locale:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-challenge-response-invalid"})
         return PublicResponse(response.status, body)
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
@@ -661,26 +670,26 @@ def _project_turn(
         clarification = team_contract.canonical_clarification(clarification)
         if clarification is None or reply != team_contract.render_clarification(clarification):
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    proposal = response.body.get("routine_proposal")
-    if proposal is not None:
-        # Only a closed, one-use proposal reaches the card; the Team keeps its binding (ADR-0086).
-        proposal = routine_contract.canonical_proposal(proposal)
-        if proposal is None:
-            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     usage = response.body.get(USAGE_FIELD)
     if USAGE_FIELD in response.body:
         # What the turn consumed is presentation only; it must match the closed Team shape.
         usage = team_contract.canonical_turn_usage(usage)
         if usage is None:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    restricted = None
+    if RESTRICTED_FIELD in response.body:
+        # The Actions withheld for attachment content are identities only; they must match the closed Team shape.
+        restricted = team_contract.canonical_restricted_actions(response.body[RESTRICTED_FIELD])
+        if restricted is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = " ".join(
         (
-            f"{team_name} {reply} {_clarification_text(clarification)} {proposal['quote'] if proposal else ''}",
+            f"{team_name} {reply} {_clarification_text(clarification)}",
             *(f"{model['provider']} {model['model']}" for model in (usage["models"] if usage else ())),
         )
     )
     if (
-        set(response.body) - {USAGE_FIELD} != _TURN_RESPONSE_FIELDS
+        set(response.body) - _OPTIONAL_DONE_FIELDS != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
         or not _valid_trace_id(response.body.get("trace_id"))
         or not _valid_team_name(team_name)
@@ -698,8 +707,8 @@ def _project_turn(
             "team_name": team_name,
             "reply": reply,
             "clarification": clarification,
-            "routine_proposal": proposal,
             **({USAGE_FIELD: usage} if usage is not None else {}),
+            **({RESTRICTED_FIELD: restricted} if restricted is not None else {}),
         },
     )
 
@@ -718,6 +727,7 @@ def _submit(
     request: Callable[..., team.TeamResponse],
     progress: Callable[[dict[str, object]], None],
     assurance: dict[str, str] | None = None,
+    locale: str | None = None,
 ) -> team.TeamResponse:
     with _admin_span(progress, "admin-preparation"):
         canonical_id = team.canonical_team_id(team_id)
@@ -742,7 +752,7 @@ def _submit(
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if response.status == HTTPStatus.PRECONDITION_REQUIRED:
-        return _project_pending_challenge(response, canonical_id)
+        return _project_pending_challenge(response, canonical_id, locale)
     if response.body.get("status") == "human-denied":
         return _project_human_denial(response, canonical_id)
     if not 200 <= response.status < 300:
@@ -756,16 +766,20 @@ def turn(
     team_id: object,
     payload: object,
     conversation: tuple[conversation_context.Entry, ...],
+    request: dict[str, object],
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
 ) -> team.TeamResponse:
-    """Start one Team turn with the committed presentation history captured before its user row."""
+    """Start one Team turn with the committed history before its user row and the message's request identity."""
     wire = [{"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in conversation]
 
     def team_body(value: object) -> dict[str, object]:
         # A non-object browser payload reaches the Team body validator unchanged and fails closed there.
-        return team.canonical_team_chat_body({**value, "conversation": wire} if isinstance(value, dict) else value)
+        extra = {"conversation": wire, "request": request}
+        return team.canonical_team_chat_body({**value, **extra} if isinstance(value, dict) else value)
 
-    return _submit(team_id, payload, team_body, team.chat, progress)
+    # Team renders a new or already pending human request in the chat's interface language (ADR-0091).
+    locale = payload.get("locale") if isinstance(payload, dict) else None
+    return _submit(team_id, payload, team_body, team.chat, progress, locale=locale)
 
 
 def resume_integrations(
@@ -831,11 +845,12 @@ def pending_integrations(team_id: object) -> team.TeamResponse:
     )
 
 
-def pending_human(team_id: object) -> team.TeamResponse:
+def open_human(team_id: object, locale: str) -> team.TeamResponse:
+    """The Team's pending human challenge rendered in the selected interface language, or that none is pending."""
     return _pending(
         team_id,
-        team.pending_chat_human,
-        _project_pending_challenge,
+        lambda canonical_id: team.open_chat_human(canonical_id, locale),
+        lambda response, canonical_id: _project_pending_challenge(response, canonical_id, locale),
         "human-challenge-response-invalid",
     )
 

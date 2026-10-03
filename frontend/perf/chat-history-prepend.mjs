@@ -71,10 +71,12 @@ function apiFixture(method, path) {
       release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
       ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
     }),
+    'GET /api/assistant-catalog': () => ({ version: 1, locale: 'en', assistants: [] }),
+    'GET /api/local-assistants': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
     'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
     'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
     'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
-    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [] }),
+    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
     'GET /api/teams/perf_team/inference': () => ({
       team_id: team.team_id, provider: provider.id, model: provider.default_model, effort: 'low',
     }),

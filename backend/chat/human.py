@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import math
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -48,12 +49,28 @@ RESPONSE_FIELDS = frozenset(
         "assistant",
         "action",
         "request",
+        "rendered",
+        "locale",
+        "pack_digest",
         "trace_id",
     }
 )
-# Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090).
-PRESENTATION_FIELDS = frozenset({"purpose", "help_url"})
+# Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090). `file` is
+# the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093).
+PRESENTATION_FIELDS = frozenset({"purpose", "help_url", "file"})
+AUTHORIZATION_KINDS = frozenset({"approval", *AUTH_KINDS})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
+# A copy field is a catalog reference (Assistant Spec v1, ADR-0091). Admin never holds the reviewed catalog, so it
+# admits each reference's closed shape and parameter grammar; Team alone resolves the declared message and parameters.
+MAX_REFERENCE_PARAMS = 8
+_MESSAGE_ID = re.compile(r"[0-9a-f]{64}\Z")
+_PARAM_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
+# Every `domain` value is also a `dns_name` value (an exact DNS record name), so one grammar admits both kinds.
+_DNS_NAME_PARAM = re.compile(r"[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)*\Z")
+_IDENTIFIER_PARAM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*\Z")
+MAX_INTEGER_PARAM = 10**15
+MAX_DNS_NAME_PARAM_CHARS = 253
+MAX_IDENTIFIER_PARAM_CHARS = 128
 log = logging.getLogger("shimpz-admin")
 
 
@@ -233,13 +250,24 @@ def project(body: object, team_id: str) -> dict[str, object]:
         "assistant": assistant,
         "action": action,
         "request": request,
+        **_localization(body, request),
         **_presentation(body, request),
     }
 
 
-def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, str]:
-    """The optional Brain-written purpose and the reviewed key page of a Stored Input request (ADR-0090)."""
-    presentation: dict[str, str] = {}
+def _localization(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
+    """The display copy of exactly the request's references, its concrete locale, and the pack (ADR-0091)."""
+    rendered = team_contract.canonical_rendered(body["rendered"], request)
+    locale = team_contract.canonical_locale(body["locale"])
+    pack_digest = team_contract.canonical_pack_digest(body["pack_digest"])
+    if rendered is None or locale is None or pack_digest is None:
+        raise HumanChallengeError("invalid human challenge localization")
+    return {"rendered": rendered, "locale": locale, "pack_digest": pack_digest}
+
+
+def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
+    """The optional Brain-written purpose, a Stored Input request's key page, and an authorization's file disclosure."""
+    presentation: dict[str, object] = {}
     if "purpose" in body:
         purpose = team_contract.canonical_purpose(body["purpose"])
         if purpose is None:
@@ -250,6 +278,12 @@ def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[s
         if help_url is None or request["kind"] != "input:password" or "stored_input" not in request:
             raise HumanChallengeError("invalid human challenge help URL")
         presentation["help_url"] = help_url
+    if "file" in body:
+        # The consent names exactly the file whose original bytes the approval delivers; the filename is literal data.
+        disclosed = team_contract.canonical_file_disclosure(body["file"])
+        if disclosed is None or request["kind"] not in AUTHORIZATION_KINDS:
+            raise HumanChallengeError("invalid human challenge file disclosure")
+        presentation["file"] = disclosed
     return presentation
 
 
@@ -281,7 +315,11 @@ def _request(value: object) -> dict[str, object]:
         raise HumanChallengeError("invalid human request")
     request = dict(value)
     fingerprint = request.pop("fingerprint", None)
-    if not isinstance(fingerprint, str) or not _fingerprint(request, fingerprint):
+    if (
+        not isinstance(fingerprint, str)
+        or team_contract.SHA256_RE.fullmatch(fingerprint) is None
+        or not _fingerprint(request, fingerprint)
+    ):
         raise HumanChallengeError("invalid human request fingerprint")
     kind = request.get("kind")
     ordinal = request.get("ordinal")
@@ -289,8 +327,8 @@ def _request(value: object) -> dict[str, object]:
         not isinstance(kind, str)
         or type(ordinal) is not int
         or not 0 <= ordinal < MAX_REQUESTS_PER_ACTION
-        or not _text(request.get("title"), 80)
-        or not _text(request.get("description"), 500)
+        or not _reference(request.get("title"))
+        or not _reference(request.get("description"))
         or not _kind(request, kind)
     ):
         raise HumanChallengeError("invalid human request")
@@ -333,7 +371,7 @@ def _length(request: dict[str, object], limit: int) -> bool:
     placeholder = request.get("placeholder")
     return (
         _input_base(request)
-        and (placeholder is None or _text(placeholder, 120))
+        and (placeholder is None or _reference(placeholder))
         and type(minimum) is int
         and type(maximum) is int
         and 0 <= minimum <= maximum <= limit
@@ -360,7 +398,7 @@ def _choices(request: dict[str, object], *, multiple: bool) -> bool:
 
 
 def _input_base(request: dict[str, object]) -> bool:
-    return type(request.get("required")) is bool and _text(request.get("label"), 80)
+    return type(request.get("required")) is bool and _reference(request.get("label"))
 
 
 def _option(value: object) -> bool:
@@ -368,8 +406,32 @@ def _option(value: object) -> bool:
         isinstance(value, dict)
         and set(value) == {"value", "label", "description"}
         and _text(value.get("value"), 128)
-        and _text(value.get("label"), 80)
-        and (value.get("description") is None or _text(value.get("description"), 160))
+        and _reference(value.get("label"))
+        and (value.get("description") is None or _reference(value.get("description")))
+    )
+
+
+def _reference(value: object) -> bool:
+    """One closed `{message, params}` catalog reference with bounded integer, DNS name, or identifier parameters."""
+    if not isinstance(value, dict) or set(value) != {"message", "params"}:
+        return False
+    message = value["message"]
+    params = value["params"]
+    return (
+        isinstance(message, str)
+        and _MESSAGE_ID.fullmatch(message) is not None
+        and isinstance(params, dict)
+        and len(params) <= MAX_REFERENCE_PARAMS
+        and all(_PARAM_NAME.fullmatch(name) is not None and _param(item) for name, item in params.items())
+    )
+
+
+def _param(value: object) -> bool:
+    if type(value) is int:
+        return 0 <= value < MAX_INTEGER_PARAM
+    return isinstance(value, str) and (
+        (len(value) <= MAX_DNS_NAME_PARAM_CHARS and _DNS_NAME_PARAM.fullmatch(value) is not None)
+        or (len(value) <= MAX_IDENTIFIER_PARAM_CHARS and _IDENTIFIER_PARAM.fullmatch(value) is not None)
     )
 
 

@@ -30,6 +30,11 @@ test('admits only Admin-projected OAuth completion modes', () => {
     );
   }
 
+  setSessionContext({ oauth_completion_mode: null, profile: 'local', passkey_registered: true });
+  assert.equal(get(sessionContext).passkeyRegistered, true);
+  setSessionContext({ oauth_completion_mode: null, profile: 'local', passkey_registered: 'yes' });
+  assert.equal(get(sessionContext).passkeyRegistered, false);
+
   clearSessionContext();
-  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null, profile: null });
+  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null, profile: null, passkeyRegistered: false });
 });

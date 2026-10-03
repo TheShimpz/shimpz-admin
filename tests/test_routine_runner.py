@@ -31,8 +31,12 @@ from protocol.http.v1 import supervisor as contract
 from routine import delivery, scheduler, team
 
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
+# Team's exact healthy-rollup delivery sequences and the transcript rows Admin must end with (ADR-0092 section 9).
+ROLLUPS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_rollup_delivery"]
 BATCH = VECTORS["notice_batch"]["valid"][0]
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
+CLAIMED = {"run": CLAIM, "next_due_at": None}
+IDLE = {"run": None, "next_due_at": None}
 TRACE = "a" * 32
 
 
@@ -162,11 +166,25 @@ class RoutineHistoryTests(unittest.TestCase):
                 {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
             )
         )
-        self.assertFalse(history.append_routine_notice({**done, "detail": {"reply": "Another reply."}}))
+        self.assertFalse(history.append_routine_notice({**done, "detail": {"actions": [["shimpz-cloudflare", "x"]]}}))
         entries = history.page("team_1")["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
         self.assertEqual(entries[-1]["quote"], done["quote"])
+        # A notice's row time is its own instant, never the moment Admin wrote it.
+        self.assertEqual([entry["created_at"] for entry in entries], [skipped["created_at"], done["created_at"]])
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET created_at = ? WHERE event_key = ?",
+                ("2000-01-01T00:00:00Z", f"{done['notice_id']}:routine"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("team_1")
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET created_at = ? WHERE event_key = ?",
+                (done["created_at"], f"{done['notice_id']}:routine"),
+            )
         turn = history.new_turn_id()
         self.assertTrue(history.append_user("team_1", turn, "Hello"))
         self.assertEqual(history.conversation("team_1", turn), ())
@@ -194,15 +212,17 @@ class RoutineHistoryTests(unittest.TestCase):
 
 class RoutineTeamCallTests(unittest.TestCase):
     def test_calls_admit_only_closed_answers(self) -> None:
-        with mock.patch.object(
-            models, "resolve_api_key", side_effect=lambda provider: "k" * 20 if provider == "openai" else None
+        # A claim holds no model key: a healthy compiled run needs none.
+        with (
+            mock.patch.object(models, "resolve_api_key") as resolve,
+            mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call,
         ):
-            self.assertEqual(team.providers(), ("openai",))
-        with mock.patch.object(transport, "_call", return_value=answer({"run": CLAIM})) as call:
-            self.assertEqual(team.claim(("openai",)), CLAIM)
-        call.assert_called_once_with("POST", "/v1/routines/claim", {"providers": ["openai"]})
-        with mock.patch.object(transport, "_call", return_value=answer({"run": None})):
-            self.assertIsNone(team.claim(("openai",)))
+            self.assertEqual(team.claim(), CLAIMED)
+        call.assert_called_once_with("POST", "/v1/routines/claim", {})
+        resolve.assert_not_called()
+        hinted = {"run": None, "next_due_at": 1790000300}
+        with mock.patch.object(transport, "_call", return_value=answer(hinted)):
+            self.assertEqual(team.claim(), hinted)
         with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
             self.assertEqual(team.notices(), BATCH)
         with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
@@ -212,10 +232,11 @@ class RoutineTeamCallTests(unittest.TestCase):
             {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
         )
         for response, action in (
-            (answer({"run": {**CLAIM, "provider": "other"}}), lambda: team.claim(("openai",))),
+            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim()),
+            (answer({"run": None}), lambda: team.claim()),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
-            (team_bridge.TeamResponse(200, {"run": None}), lambda: team.claim(("openai",))),
+            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim()),
             (answer({"code": "x"}, 503), team.notices),
             (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
         ):
@@ -269,11 +290,22 @@ class RoutineTeamCallTests(unittest.TestCase):
             self.assertEqual(team.run(CLAIM, identity), "done")
         bindings = stream.call_args.kwargs["bindings"]
         self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
+        # The signed segment names exactly the revision, plan, and mode the claim leased.
+        self.assertEqual(
+            stream.call_args.args[2],
+            {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"], "mode": CLAIM["mode"]},
+        )
         self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
         stream.call_args.kwargs["progress"]({"type": "progress"})
+        # Without a key the segment still runs, carrying no model credential; Team pauses a recovery it then needs.
+        with (
+            mock.patch.object(models, "resolve_api_key", return_value=None),
+            mock.patch.object(transport, "_call_stream", return_value=done) as stream,
+        ):
+            self.assertEqual(team.run(CLAIM, identity), "done")
+        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
         for key, response in (
-            (None, done),
             ("sk-test-0123456789", answer({"team_id": "team_2", "run_id": CLAIM["run_id"], "status": "done"})),
             ("sk-test-0123456789", answer({"team_id": "team_1", "run_id": CLAIM["run_id"], "status": "running"})),
         ):
@@ -284,6 +316,30 @@ class RoutineTeamCallTests(unittest.TestCase):
                 self.assertRaises(team.RoutineTeamError),
             ):
                 team.run(CLAIM, identity)
+
+
+class RoutineRollupDeliveryTests(unittest.TestCase):
+    def test_teams_rollup_sequences_end_with_exactly_their_pinned_transcript_rows(self) -> None:
+        for name, case in ROLLUPS.items():
+            with tempfile.TemporaryDirectory() as directory, self.subTest(case=name):
+                acknowledged: list[dict[str, object]] = []
+                batches = [{"notices": batch, "more": False} for batch in case["deliveries"]]
+                with (
+                    mock.patch.object(history, "STORE_PATH", Path(directory) / "chat-history.sqlite3"),
+                    mock.patch.object(team, "notices", side_effect=batches),
+                    mock.patch.object(team, "acknowledge", side_effect=acknowledged.extend),
+                ):
+                    # Each delivery goes through the real transcript write before its exact versions are acknowledged.
+                    written = [delivery.deliver() for _batch in batches]
+                    entries = history.page("team_1")["entries"]
+                self.assertEqual(written, [len(batch) for batch in case["deliveries"]])
+                self.assertEqual(acknowledged, [item for batch in case["deliveries"] for item in batch])
+                rows = [
+                    [entry["id"].removesuffix(":routine"), entry["version"], entry["detail"]["runs"]]
+                    for entry in entries
+                    if entry["outcome"] == "healthy"
+                ]
+                self.assertEqual(rows, case["transcript"])
 
 
 class RoutineDeliveryTests(unittest.TestCase):
@@ -366,7 +422,6 @@ class RoutineSchedulerTests(unittest.TestCase):
             mock.patch.object(state, "local_routine_identity", return_value=self.identity),
             mock.patch.object(supervisor, "materialize_routine_key"),
             mock.patch.object(delivery, "deliver", return_value=0),
-            mock.patch.object(team, "providers", return_value=("openai",)),
         ):
             patch.start()
             self.addCleanup(patch.stop)
@@ -384,7 +439,7 @@ class RoutineSchedulerTests(unittest.TestCase):
         runner = scheduler.RoutineScheduler(workers=1)
         self.addCleanup(runner.close)
         with (
-            mock.patch.object(team, "claim", return_value=CLAIM) as claim,
+            mock.patch.object(team, "claim", return_value=CLAIMED) as claim,
             mock.patch.object(team, "run", side_effect=run),
         ):
             runner.tick()
@@ -409,14 +464,11 @@ class RoutineSchedulerTests(unittest.TestCase):
         ):
             runner.tick()
         self.assertEqual(len(logged.output), 2)
-        with mock.patch.object(team, "claim", return_value=None):
+        with mock.patch.object(team, "claim", return_value=IDLE):
             runner.tick()
-        with mock.patch.object(team, "providers", return_value=()), mock.patch.object(team, "claim") as claim:
-            runner.tick()
-        claim.assert_not_called()
         failed = threading.Event()
         with (
-            mock.patch.object(team, "claim", return_value=CLAIM),
+            mock.patch.object(team, "claim", return_value=CLAIMED),
             mock.patch.object(
                 team,
                 "run",
@@ -429,6 +481,67 @@ class RoutineSchedulerTests(unittest.TestCase):
         while not runner._slots.acquire(blocking=False):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.01)
+
+    def test_a_hint_or_a_finished_run_wakes_the_next_tick_sooner_but_never_in_a_tight_loop(self) -> None:
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0)
+        self.addCleanup(runner.close)
+        self.assertEqual(runner.delay(1000.0), 30)
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 1010}):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 10)
+        # A hint already due waits the minimum, never zero; one beyond the interval waits the interval.
+        self.assertEqual(runner.delay(1020.0), scheduler.MIN_WAKE_SECONDS)
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 9999}):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 30)
+        with mock.patch.object(team, "claim", return_value=IDLE):
+            runner.tick()
+        self.assertEqual(runner.delay(1000.0), 30)
+        finished, gate = threading.Event(), threading.Event()
+        with (
+            mock.patch.object(team, "claim", side_effect=[CLAIMED, IDLE]),
+            mock.patch.object(team, "run", side_effect=lambda *_args: gate.wait(5) and (finished.set() or "done")),
+        ):
+            runner.tick()
+            gate.set()
+            self.assertTrue(finished.wait(5))
+            self.assertTrue(runner._wake.wait(5))
+        self.assertEqual(runner.delay(time.time() + 60), scheduler.MIN_WAKE_SECONDS)
+
+    def test_one_wake_fills_every_free_slot_and_keeps_teams_hint_once_nothing_more_starts(self) -> None:
+        short = {**CLAIM, "team_id": "team_1", "run_id": "1" * 32}
+        long = {**CLAIM, "team_id": "team_2", "run_id": "2" * 32}
+        gates = {short["run_id"]: threading.Event(), long["run_id"]: threading.Event()}
+        ended = threading.Event()
+
+        def run(claimed, _identity):
+            gates[claimed["run_id"]].wait(5)
+            if claimed["run_id"] == short["run_id"]:
+                ended.set()
+            return "done"
+
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0, workers=2)
+        self.addCleanup(runner.close)
+        self.addCleanup(lambda: [gate.set() for gate in gates.values()])
+        claims = [{"run": short, "next_due_at": None}, {"run": long, "next_due_at": 1005}]
+        with (
+            mock.patch.object(team, "claim", side_effect=claims) as claim,
+            mock.patch.object(team, "run", side_effect=run),
+        ):
+            runner.tick()
+            # Both Teams start on one wake; with every slot busy nothing more is claimed and no stale hint polls.
+            self.assertEqual(claim.call_count, 2)
+            self.assertEqual(runner.delay(1000.0), 30)
+            runner.tick()
+            self.assertEqual(claim.call_count, 2)
+            gates[short["run_id"]].set()
+            self.assertTrue(ended.wait(5))
+            self.assertTrue(runner._wake.wait(5))
+        # The short Team's slot is free while the long Team runs on: the next claim's hint is kept.
+        with mock.patch.object(team, "claim", return_value={"run": None, "next_due_at": 1005}) as claim:
+            runner.tick()
+        claim.assert_called_once()
+        self.assertEqual(runner.delay(1000.0), 5)
 
     def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
         runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)

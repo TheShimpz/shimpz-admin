@@ -101,7 +101,6 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "hello from the Team",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             try:
@@ -120,8 +119,13 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                     ) as websocket:
                         self.assertEqual(websocket.subprotocol, "shimpz.chat.v7")
                         await websocket.send(
-                            '{"type":"chat","message":"hello","files":[],"assistant_ids":[], "locale": "en"}'
+                            '{"type":"chat","message":"hello","files":[],"assistant_ids":[],'
+                            '"locale":"en","timezone":"America/Sao_Paulo",'
+                            '"request":null}'
                         )
+                        # The seal of the admitted send comes first; the browser keeps it to resend this send.
+                        sent = json.loads(await asyncio.wait_for(websocket.recv(), timeout=1))
+                        self.assertEqual((sent["type"], len(sent["request"].split("."))), ("sent", 3))
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
                             {
@@ -130,7 +134,6 @@ class ChatWebSocketRuntimeTests(unittest.TestCase):
                                 "team_name": "Marketing",
                                 "reply": "hello from the Team",
                                 "clarification": None,
-                                "routine_proposal": None,
                             },
                         )
                         with self.assertRaises(TimeoutError):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import threading
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -34,6 +35,9 @@ def _candidate(
 CLOUDFLARE = _candidate("cloudflare", "Cloudflare", "cloudflare", "configure-domain")
 WHATSAPP = _candidate("whatsapp", "WhatsApp", "whatsapp", "send-message")
 DOMAIN_HELPER = _candidate("domain-helper", "Domain Helper", "cloudflare", "inspect-domain")
+# An English turn reads the planning catalog itself, so its preparation never asks discovery for another language.
+ENGLISH_ONLY = mock.Mock(spec=store_catalog.StoreCatalog)
+ENGLISH_ONLY.get.side_effect = AssertionError("an English turn reads no localized catalog")
 
 
 def _installed(*items: tuple[str, str]):
@@ -70,8 +74,8 @@ def _registry(*items: tuple[str, tuple[str, ...]]):
     )
 
 
-def _payload(message: str, assistant_ids: tuple[str, ...] = ()) -> dict[str, object]:
-    return {"message": message, "files": [], "assistant_ids": list(assistant_ids)}
+def _payload(message: str, assistant_ids: tuple[str, ...] = (), locale: str = "en") -> dict[str, object]:
+    return {"message": message, "files": [], "assistant_ids": list(assistant_ids), "locale": locale}
 
 
 def _local_inventory(
@@ -290,7 +294,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         installed.assert_called_once_with("team_1")
         registry.assert_not_called()
         local_snapshots.assert_called_once_with()
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
 
     def test_empty_scope_rejects_invalid_installed_inventory_before_catalog(self) -> None:
         store = mock.Mock()
@@ -369,7 +373,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             )
 
         self.assertEqual(result, assistant_plan.Preparation())
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
         local_call.assert_called_once_with()
 
     def test_invalid_local_inventory_never_falls_back_to_publication(self) -> None:
@@ -462,7 +466,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertIsNotNone(result.plan)
         assert result.plan is not None
         self.assertEqual(result.plan.dispatch_ids, ("enabled", "whatsapp"))
-        store.get.assert_called_once_with()
+        store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
         local_call.assert_called_once_with()
         planner.assert_called_once()
 
@@ -507,26 +511,30 @@ class AssistantPlanPreparationTests(unittest.TestCase):
 
     def test_explicit_install_continues_a_requested_task_after_install_or_confirmation(self) -> None:
         payload = _payload("Instale o Cloudflare e configure meu domínio", ("whatsapp",))
-        fresh = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,), task_follows=True)
+        fresh = assistant_plan.prepare_install(
+            "team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,), ENGLISH_ONLY, task_follows=True
+        )
         self.assertFalse(fresh.plan.terminal)
         self.assertEqual(fresh.plan.dispatch_ids, ("cloudflare", "whatsapp"))
         self.assertTrue(
-            assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,)).plan.terminal
+            assistant_plan.prepare_install(
+                "team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,), ENGLISH_ONLY
+            ).plan.terminal
         )
         running = assistant_inventory.installed(_installed(("cloudflare", "running")))
         confirmed = assistant_plan.prepare_install(
-            "team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), task_follows=True
+            "team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), ENGLISH_ONLY, task_follows=True
         )
         self.assertEqual(confirmed.already_installed.dispatch_ids, ("cloudflare", "whatsapp"))
         self.assertEqual(
             assistant_plan.already_installed_event(confirmed.already_installed)["continuation"], "dispatch"
         )
-        only = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), running, (CLOUDFLARE,))
+        only = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), ENGLISH_ONLY)
         self.assertEqual(only.already_installed.dispatch_ids, ())
         crowded = _payload("x", tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_CHAT_ASSISTANTS)))
         self.assertEqual(
             assistant_plan.prepare_install(
-                "team_1", crowded, ("cloudflare",), running, (CLOUDFLARE,), task_follows=True
+                "team_1", crowded, ("cloudflare",), running, (CLOUDFLARE,), ENGLISH_ONLY, task_follows=True
             ),
             assistant_plan.Preparation(error_status=409),
         )
@@ -534,7 +542,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
     def test_explicit_install_rejects_invalid_structured_selections(self) -> None:
         payload = _payload("Instale o Cloudflare")
         self.assertEqual(
-            assistant_plan.prepare_install("team_1", payload, (), {}, (CLOUDFLARE,)),
+            assistant_plan.prepare_install("team_1", payload, (), {}, (CLOUDFLARE,), ENGLISH_ONLY),
             assistant_plan.Preparation(error_status=422),
         )
         self.assertEqual(
@@ -544,11 +552,12 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_PLAN_ASSISTANTS + 1)),
                 {},
                 (CLOUDFLARE,),
+                ENGLISH_ONLY,
             ),
             assistant_plan.Preparation(error_status=422),
         )
         self.assertEqual(
-            assistant_plan.prepare_install("team_1", payload, ("unknown",), {}, (CLOUDFLARE,)),
+            assistant_plan.prepare_install("team_1", payload, ("unknown",), {}, (CLOUDFLARE,), ENGLISH_ONLY),
             assistant_plan.Preparation(error_status=409),
         )
 
@@ -597,6 +606,119 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(len(assertions), 2)
         self.assertTrue(all(assertions))
         self.assertEqual(len(set(assertions)), 2)
+
+
+class LocalizedPlanSummaryTests(unittest.TestCase):
+    """A person reads each planned summary in the turn's language while planning stays on English (ADR-0091)."""
+
+    PORTUGUESE = replace(CLOUDFLARE, summary="Automação revisada do Cloudflare.")
+
+    @staticmethod
+    def _store(localized: tuple[store_catalog.CatalogAssistant, ...] | Exception) -> mock.Mock:
+        store = mock.Mock(spec=store_catalog.StoreCatalog)
+
+        def get(locale: str) -> tuple[store_catalog.CatalogAssistant, ...]:
+            if locale == store_catalog.PLANNING_LOCALE:
+                return (CLOUDFLARE,)
+            if isinstance(localized, Exception):
+                raise localized
+            return localized
+
+        store.get.side_effect = get
+        return store
+
+    def test_a_planned_publication_shows_discovery_summary_in_the_turn_language(self) -> None:
+        store = self._store((self.PORTUGUESE, replace(WHATSAPP, summary="Mensagens revisadas do WhatsApp.")))
+        planned = assistant_plan.team.TeamResponse(
+            200, {"team_id": "team_1", "status": "install-required", "assistant_ids": ["cloudflare"]}
+        )
+        with (
+            mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()),
+            mock.patch.object(assistant_plan.local, "capability_plan", return_value=planned) as planner,
+        ):
+            gap = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare", locale="pt"), store)
+        payload = _payload("Instale o Cloudflare", locale="pt")
+        fresh = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (CLOUDFLARE,), store)
+        running = assistant_inventory.installed(_installed(("cloudflare", "running")))
+        confirmed = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), store)
+
+        # The planner reads the canonical English summary; the person reads the Portuguese one.
+        self.assertEqual([item["summary"] for item in planner.call_args.args[2]], [CLOUDFLARE.summary])
+        for plan in (gap.plan, fresh.plan):
+            assert plan is not None
+            self.assertEqual(plan.assistants, (self.PORTUGUESE,))
+            self.assertEqual(
+                [item["summary"] for item in assistant_plan.initial_items(plan)], [self.PORTUGUESE.summary]
+            )
+        assert confirmed.already_installed is not None
+        self.assertEqual(
+            [item["summary"] for item in confirmed.already_installed.assistants], [self.PORTUGUESE.summary]
+        )
+        # One localized catalog read serves every planned publication.
+        store.get.reset_mock()
+        both = assistant_plan.prepare_install(
+            "team_1", payload, ("cloudflare", "whatsapp"), {}, (CLOUDFLARE, WHATSAPP), store
+        )
+        store.get.assert_called_once_with("pt")
+        assert both.plan is not None
+        self.assertEqual(
+            [assistant.summary for assistant in both.plan.assistants],
+            [self.PORTUGUESE.summary, "Mensagens revisadas do WhatsApp."],
+        )
+
+    def test_a_summary_that_cannot_be_shown_in_the_turn_language_fails_the_preparation(self) -> None:
+        payload = _payload("Instale o Cloudflare", locale="pt")
+        running = assistant_inventory.installed(_installed(("cloudflare", "running")))
+        refusals = {
+            "unavailable": store_catalog.CatalogUnavailableError("Store catalog is unavailable"),
+            "absent": (),
+            "another publication": (replace(self.PORTUGUESE, source_digest="sha256:" + "9" * 64),),
+            "another name": (replace(self.PORTUGUESE, name="Other"),),
+        }
+        for name, localized in refusals.items():
+            store = self._store(localized)
+            for installed in ({}, running):
+                with self.subTest(name, installed=bool(installed)):
+                    self.assertEqual(
+                        assistant_plan.prepare_install(
+                            "team_1", payload, ("cloudflare",), installed, (CLOUDFLARE,), store
+                        ),
+                        assistant_plan.Preparation(error_status=502),
+                    )
+
+    def test_a_staged_snapshot_shows_its_own_pack_summary_in_the_turn_language(self) -> None:
+        snapshot = local_catalog.primary(_local_inventory())[0]
+        payload = _payload("Instale o Cloudflare", locale="pt")
+        translated = assistant_plan.team.TeamResponse(
+            200, {"locale": "pt", "summary": "Automação local do Cloudflare.", "trace_id": "a" * 32}
+        )
+        with mock.patch.object(assistant_plan.team, "local_assistant_summary", return_value=translated) as summary:
+            fresh = assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (snapshot,), ENGLISH_ONLY)
+        english = assistant_plan.prepare_install(
+            "team_1", _payload("Install Cloudflare"), ("cloudflare",), {}, (snapshot,), ENGLISH_ONLY
+        )
+
+        summary.assert_called_once_with(snapshot.image_id, "pt")
+        assert fresh.plan is not None and english.plan is not None
+        self.assertEqual(fresh.plan.assistants, (replace(snapshot, summary="Automação local do Cloudflare."),))
+        self.assertEqual(english.plan.assistants, (snapshot,))
+        refusals = (
+            assistant_plan.team.TeamResponse(503, {"retry_after": 1}),
+            assistant_plan.team.TeamResponse(200, {"locale": "fr", "summary": "Résumé."}),
+            assistant_plan.team.TeamResponse(200, {"locale": "pt", "summary": " "}),
+            assistant_plan.team.TeamResponse(200, []),
+            assistant_plan.team.TeamRequestError("Team is unavailable"),
+        )
+        for refusal in refusals:
+            effect = {"side_effect": refusal} if isinstance(refusal, Exception) else {"return_value": refusal}
+            with (
+                self.subTest(refusal=refusal),
+                mock.patch.object(assistant_plan.team, "local_assistant_summary", **effect),
+            ):
+                self.assertEqual(
+                    assistant_plan.prepare_install("team_1", payload, ("cloudflare",), {}, (snapshot,), ENGLISH_ONLY),
+                    assistant_plan.Preparation(error_status=502),
+                )
 
 
 class AssistantPlanExecutionTests(unittest.TestCase):

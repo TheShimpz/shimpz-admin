@@ -30,7 +30,6 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Task complete.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -47,6 +46,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
@@ -81,7 +82,6 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Done.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -102,6 +102,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -112,7 +114,6 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Done.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
                 submit_plan.assert_not_called()
@@ -130,7 +131,6 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Tudo certo.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -155,7 +155,15 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "desinstale",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
 
                 self.assertEqual(
@@ -174,7 +182,15 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
                 await websocket.send_json(
-                    {"type": "chat", "message": "ok", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "ok",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 turn.assert_called_once()
@@ -204,6 +220,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -257,6 +275,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -303,6 +323,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -348,6 +370,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -388,6 +412,8 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")

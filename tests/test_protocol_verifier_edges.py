@@ -270,6 +270,23 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value.pop("rendered_copy")
+
+        def admitted_as_invalid(value: dict[str, object]) -> None:
+            value["rendered_copy"]["invalid"] = value["rendered_copy"]["valid"][:1]
+
+        def refused_as_valid(value: dict[str, object]) -> None:
+            value["rendered_copy"]["valid"] = value["rendered_copy"]["invalid"][:1]
+
+        for mutate in (missing, admitted_as_invalid, refused_as_valid):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_routine_vectors(self) -> None:
         def missing_schedules(value: dict[str, object]) -> None:
             value["routine_schedule"]["daily_rate"] = []
@@ -292,14 +309,14 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         def accepted_timezone(value: dict[str, object]) -> None:
             value["routine_timezone"]["invalid"] = ["UTC"]
 
-        def missing_changes(value: dict[str, object]) -> None:
-            value["routine_change"]["valid"] = []
+        def missing_identities(value: dict[str, object]) -> None:
+            value["chat_request_identity"]["valid"] = []
 
-        def rejected_change(value: dict[str, object]) -> None:
-            value["routine_change"]["valid"] = [{**value["routine_change"]["valid"][0], "extra": 1}]
+        def rejected_identity(value: dict[str, object]) -> None:
+            value["chat_request_identity"]["valid"] = [{**value["chat_request_identity"]["valid"][0], "extra": 1}]
 
-        def accepted_change(value: dict[str, object]) -> None:
-            value["routine_change"]["invalid"] = [value["routine_change"]["valid"][0]]
+        def accepted_identity(value: dict[str, object]) -> None:
+            value["chat_request_identity"]["invalid"] = [value["chat_request_identity"]["valid"][0]]
 
         def missing_routine_assertions(value: dict[str, object]) -> None:
             value["local_routine"]["invalid"] = []
@@ -321,9 +338,9 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             missing_timezones,
             rejected_timezone,
             accepted_timezone,
-            missing_changes,
-            rejected_change,
-            accepted_change,
+            missing_identities,
+            rejected_identity,
+            accepted_identity,
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
@@ -339,9 +356,25 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             value["routine_views"]["claim"]["valid"] = [{"run": None, "extra": 1}]
 
         def accepted_view(value: dict[str, object]) -> None:
-            value["routine_views"]["claim"]["invalid"] = [{"run": None}]
+            value["routine_views"]["claim"]["invalid"] = [{"run": None, "next_due_at": None}]
 
         for mutate in (missing_views, rejected_view, accepted_view):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
+                )
+
+    def test_rejects_missing_or_drifted_routine_diagnostics_vectors(self) -> None:
+        def missing_diagnostics(value: dict[str, object]) -> None:
+            value.pop("routine_diagnostics")
+
+        def rejected_diagnostics(value: dict[str, object]) -> None:
+            value["routine_diagnostics"]["valid"] = [{"team_id": "team_1", "run_id": "b" * 32}]
+
+        def accepted_diagnostics(value: dict[str, object]) -> None:
+            value["routine_diagnostics"]["invalid"] = [{"team_id": "team_1", "run_id": "b" * 32, "diagnostics": []}]
+
+        for mutate in (missing_diagnostics, rejected_diagnostics, accepted_diagnostics):
             with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
                 _execute(
                     HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)

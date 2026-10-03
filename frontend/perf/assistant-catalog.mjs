@@ -111,7 +111,7 @@ function apiBody(path, data) {
     model: modelCatalog.providers.find((provider) => provider.id === modelCatalog.default_provider).default_model,
   };
   if (path === `/api/teams/${teamId}/assistant-integrations`) return { integrations: [] };
-  if (path === '/api/assistant-catalog') return { version: 1, assistants: data.published };
+  if (path === '/api/assistant-catalog') return { version: 1, locale: 'en', assistants: data.published };
   if (path === '/api/local-assistants') return { assistants: data.local, trace_id: 'c'.repeat(32) };
   return null;
 }

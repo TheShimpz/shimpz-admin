@@ -18,10 +18,11 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge as team
 from team import transport
 from test_chat_human_projection import _fingerprinted, _request, _response
+from tests.localized_request import localization, rendered_for
 
 from chat import human
 from chat import local as chat_local
-from routine import answer
+from routine import answer, manage
 from routine import http as routine_http
 
 RUN = "d" * 32
@@ -64,8 +65,8 @@ class RoutineAnswerTests(unittest.TestCase):
 
     def open(self, kind: str = "approval") -> dict[str, object]:
         with mock.patch.object(transport, "_call", return_value=frozen(kind)) as call:
-            response = answer.open_challenge("team_1", RUN)
-        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{RUN}/challenge", {})
+            response = answer.open_challenge("team_1", RUN, {"locale": "en"})
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{RUN}/challenge", {"locale": "en"})
         self.assertEqual((response.status, response.body["status"]), (200, "human-required"))
         return response.body["challenge"]
 
@@ -77,7 +78,20 @@ class RoutineAnswerTests(unittest.TestCase):
 
     def test_an_opened_challenge_is_projected_like_chat_and_answered_once(self) -> None:
         challenge = self.open()
-        self.assertEqual(set(challenge), {"type", "challenge_id", "expires_in", "assistant", "action", "request"})
+        self.assertEqual(
+            set(challenge),
+            {
+                "type",
+                "challenge_id",
+                "expires_in",
+                "assistant",
+                "action",
+                "request",
+                "rendered",
+                "locale",
+                "pack_digest",
+            },
+        )
         frame = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": True}
         result, stream = self.respond(frame)
         self.assertEqual(result.body, {"team_id": "team_1", "run_id": RUN, "status": "done"})
@@ -91,17 +105,45 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual((again.status, again.body["code"]), (409, "human-request-expired"))
         stream.assert_not_called()
 
-    def test_an_opened_challenge_forwards_its_purpose_and_key_page(self) -> None:
+    def test_an_opened_challenge_forwards_its_localized_copy_purpose_and_key_page(self) -> None:
         request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
+        rendered = {
+            "title": "Chave do Exa",
+            "description": "Informe a chave da API do Exa.",
+            "label": "Chave",
+            "placeholder": "Cole a chave",
+        }
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
         help_url = "https://dashboard.exa.ai/api-keys"
-        body = {**_response(stored, purpose=purpose, help_url=help_url), "run_id": RUN}
-        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
-            response = answer.open_challenge("team_1", RUN)
+        body = {
+            **_response(stored, purpose=purpose, help_url=help_url, **localization(rendered, "pt")),
+            "run_id": RUN,
+        }
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)) as call:
+            response = answer.open_challenge("team_1", RUN, {"locale": "pt"})
+        self.assertEqual(call.call_args.args[2], {"locale": "pt"})
         challenge = response.body["challenge"]
         self.assertEqual((challenge["purpose"], challenge["help_url"]), (purpose, help_url))
         self.assertEqual(challenge["request"], stored)
+        self.assertEqual((challenge["rendered"], challenge["locale"]), (rendered, "pt"))
+        self.assertEqual(challenge["pack_digest"], body["pack_digest"])
+
+        # A Routine holds no file grant, so a challenge that discloses a file is refused (ADR-0093).
+        disclosed = {"id": "0" * 32, "name": "a.pdf", "media_type": "application/pdf", "size": 1, "sha256": "a" * 64}
+        approval = _request("approval")
+        filed = {
+            **_response(approval, **localization(rendered_for(approval), "pt")),
+            "run_id": RUN,
+            "file": disclosed,
+        }
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, filed)):
+            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
+
+        # A challenge rendered in another language than the opening named is refused and never remembered.
+        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
+            refused = answer.open_challenge("team_1", RUN, {"locale": "de"})
+        self.assertEqual(refused, manage._INVALID)
 
     def test_a_denial_ends_the_run_and_a_password_is_verified_here(self) -> None:
         self.open()
@@ -141,7 +183,9 @@ class RoutineAnswerTests(unittest.TestCase):
             # While A awaits authentication, another tab opens B, which cancels A at Team.
             replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
             with mock.patch.object(transport, "_call", return_value=replaced):
-                self.assertEqual(answer.open_challenge("team_1", RUN).body["challenge"]["challenge_id"], newer)
+                self.assertEqual(
+                    answer.open_challenge("team_1", RUN, {"locale": "en"}).body["challenge"]["challenge_id"], newer
+                )
             return human.AuthenticationResult("denied", attempts_remaining=2)
 
         rejected, stream = self.respond(dict(password), mock.AsyncMock(side_effect=other_tab_opens_meanwhile))
@@ -163,7 +207,7 @@ class RoutineAnswerTests(unittest.TestCase):
         async def other_tab_opens_and_answers(*_args):
             replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
             with mock.patch.object(transport, "_call", return_value=replaced):
-                answer.open_challenge("team_1", RUN)
+                answer.open_challenge("team_1", RUN, {"locale": "en"})
             self.assertIsNotNone(answer._take(("team_1", RUN, newer)))
             return human.AuthenticationResult("denied", attempts_remaining=1)
 
@@ -178,33 +222,60 @@ class RoutineAnswerTests(unittest.TestCase):
             team.TeamResponse(409, {"code": "routine-run-not-frozen", "trace_id": TRACE}),
         ):
             with self.subTest(response=response), mock.patch.object(transport, "_call", return_value=response):
-                self.assertNotEqual(answer.open_challenge("team_1", RUN).status, 200)
+                self.assertNotEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}).status, 200)
         waiting = team.TeamResponse(
             200, {"team_id": "team_1", "run_id": RUN, "status": "integrations-required", "trace_id": TRACE}
         )
         with mock.patch.object(transport, "_call", return_value=waiting):
-            self.assertEqual(answer.open_challenge("team_1", RUN).body["status"], "integrations-required")
+            self.assertEqual(
+                answer.open_challenge("team_1", RUN, {"locale": "en"}).body["status"], "integrations-required"
+            )
         with mock.patch.object(
             transport, "_call", return_value=team.TeamResponse(200, {**waiting.body, "run_id": "e" * 32})
         ):
-            self.assertEqual(answer.open_challenge("team_1", RUN).status, 502)
+            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}).status, 502)
         with self.assertRaises(team.TeamRequestError):
-            answer.open_challenge("team_1", "x")
+            answer.open_challenge("team_1", "x", {"locale": "en"})
         self.open()
         frame = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": True}
         result, _stream = self.respond(frame, resume=resumed(run="e" * 32))
         self.assertEqual(result.status, 502)
 
-    def test_an_integration_resume_needs_the_team_model_key(self) -> None:
+    def test_a_challenge_opens_only_in_one_closed_interface_language(self) -> None:
+        for body in ({}, {"locale": None}, {"locale": "pt-BR"}, {"locale": "PT"}, {"locale": "pt", "x": 1}, [], None):
+            with self.subTest(body=body), mock.patch.object(transport, "_call") as call:
+                with self.assertRaises(team.TeamRequestError):
+                    answer.open_challenge("team_1", RUN, body)
+                call.assert_not_called()
+
+    def test_team_refusals_of_an_opening_keep_their_safe_code(self) -> None:
+        for code in ("assistant-language-drift", "human-request-invalid", "team-context-changed"):
+            refused = team.TeamResponse(409, {"code": code, "detail": "must-not-cross", "trace_id": TRACE})
+            with self.subTest(code=code), mock.patch.object(transport, "_call", return_value=refused):
+                self.assertEqual(
+                    answer.open_challenge("team_1", RUN, {"locale": "pt"}), team.TeamResponse(409, {"code": code})
+                )
+
+    def test_an_integration_resume_carries_the_team_model_key_only_when_admin_holds_one(self) -> None:
         with mock.patch.object(transport, "_call_stream", return_value=resumed("frozen")) as stream:
             self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "frozen")
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{RUN}/integrations")
+        self.assertIsNotNone(stream.call_args.kwargs["bindings"].model_credential)
+        # A compiled run resumes without a key; Team pauses a recovery it then needs as unavailable.
         missing = team.TeamResponse(409, {"code": "model-credential-missing"})
         with (
             mock.patch.object(chat_local, "model_credential", return_value=missing),
+            mock.patch.object(transport, "_call_stream", return_value=resumed("done")) as stream,
+        ):
+            self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "done")
+        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
+        # Any other credential failure still refuses before Team is asked.
+        broken = team.TeamResponse(502, {"code": "model-credential-store-invalid"})
+        with (
+            mock.patch.object(chat_local, "model_credential", return_value=broken),
             mock.patch.object(transport, "_call_stream") as stream,
         ):
-            self.assertIs(answer.resume_integrations("team_1", RUN), missing)
+            self.assertIs(answer.resume_integrations("team_1", RUN), broken)
         stream.assert_not_called()
 
     def test_open_challenges_are_bounded_and_one_per_team(self) -> None:
@@ -259,15 +330,16 @@ class RoutineAnswerTests(unittest.TestCase):
         ok = team.TeamResponse(200, {"ok": True})
         with (
             mock.patch.object(answer, "answer", new=mock.AsyncMock(return_value=ok)) as answered,
-            mock.patch.object(answer, "open_challenge", return_value=ok),
+            mock.patch.object(answer, "open_challenge", return_value=ok) as opened,
             mock.patch.object(answer, "resume_integrations", return_value=ok),
         ):
             responses = [
                 asyncio.run(route("team_1", RUN, body_request({"type": "human-response"}))),
-                asyncio.run(routine_http.routine_challenge("team_1", RUN)),
+                asyncio.run(routine_http.routine_challenge("team_1", RUN, body_request({"locale": "ja"}))),
                 asyncio.run(routine_http.routine_integrations("team_1", RUN)),
             ]
         self.assertIs(answered.call_args.args[3], authenticate)
+        self.assertEqual(opened.call_args.args, ("team_1", RUN, {"locale": "ja"}))
         for response in responses:
             self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
         with (

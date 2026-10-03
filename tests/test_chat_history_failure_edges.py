@@ -83,12 +83,21 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "desinstale",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
                 delivery = connection.active.delivery
                 await delivery
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
-            send.assert_not_awaited()
+            # The only event of the turn's own is the seal of its admitted send.
+            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
 
             pending = socket._Connection(pending_challenge_id="a" * 32)
             with (
@@ -154,6 +163,8 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 "assistant_ids": [],
                 "objective_assistant_ids": [],
                 "locale": "en",
+                "timezone": None,
+                "request": None,
             }
             for error, status in (
                 (socket.history.HistoryUnavailableError("offline"), 503),

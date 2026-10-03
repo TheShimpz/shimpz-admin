@@ -18,7 +18,8 @@ from protocol.http.v1 import routine as routine_contract
 
 RUN_TIMEOUT_SECONDS = 15 * 60
 TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
-RUN_STATUSES = frozenset({"done", "failed", "denied", "uncertain", "stopped", "needs-input", "frozen"})
+# "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
+RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
 # Team admits at most this many deliveries in one notice acknowledgment.
 MAX_ACK_DELIVERIES = 256
 
@@ -37,34 +38,33 @@ def _answer(response: team.TeamResponse) -> dict[str, object]:
     return body
 
 
-def providers() -> tuple[str, ...]:
-    """The model providers Admin holds a key for; Team claims only a Team using one of them."""
-    return tuple(provider for provider in routine_contract.MODEL_PROVIDERS if models.resolve_api_key(provider))
+def claim() -> dict[str, object]:
+    """Lease at most one due run: ``run`` is None when nothing may start now, and ``next_due_at`` then hints when.
 
-
-def claim(held: tuple[str, ...]) -> dict[str, object] | None:
-    """Lease at most one due run; None when nothing may start now."""
-    body = routine_contract.canonical_claim(
-        _answer(transport._call("POST", "/v1/routines/claim", {"providers": list(held)}))
-    )
+    A healthy compiled run needs no model key, so a claim is never gated on one (ADR-0092).
+    """
+    body = routine_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {})))
     if body is None:
         raise RoutineTeamError("Routine claim is invalid")
-    return body["run"]
+    return body
 
 
 def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
-    """Run one segment of a claimed run under its lease; returns how the run stands afterwards."""
+    """Run one segment of a claimed run under its lease; returns how the run stands afterwards.
+
+    The Team's model key travels only when Admin holds one: a compiled run needs none, and without it a recovery
+    the run needs pauses as unavailable in Team instead of reasoning (ADR-0092).
+    """
     team_id, run_id = claimed["team_id"], claimed["run_id"]
     api_key = models.resolve_api_key(claimed["provider"])
-    if not api_key:
-        raise RoutineTeamError("the model key is unavailable")
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{team_id}/routines/runs/{run_id}/segment",
-        {},
+        # The signed segment names exactly the revision, plan, and mode its claim leased (ADR-0092).
+        {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"], "mode": claimed["mode"]},
         timeout=RUN_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings(
-            model_credential=(claimed["provider"], api_key),
+            model_credential=(claimed["provider"], api_key) if api_key else None,
             routine=(identity, claimed["lease_token"]),
         ),
         progress=lambda _event: None,

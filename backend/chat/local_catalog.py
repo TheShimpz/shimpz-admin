@@ -143,3 +143,18 @@ def primary(response: object) -> tuple[LocalAssistant, ...]:
         if current is None or (candidate.created_at, candidate.image_id) > (current.created_at, current.image_id):
             newest[candidate.assistant_id] = candidate
     return tuple(newest[assistant_id] for assistant_id in sorted(newest))
+
+
+def localized_summary(assistant: LocalAssistant, locale: str) -> str:
+    """One staged snapshot's summary in one interface language, read by Team from the snapshot's own pack (ADR-0091).
+
+    The summary is only what Team returns for exactly that language, never the English summary in its place.
+    """
+    response = team.local_assistant_summary(assistant.image_id, locale)
+    if not isinstance(response, team.TeamResponse) or response.status != 200 or not isinstance(response.body, dict):
+        raise ValueError("Local Assistant summary is unavailable")
+    body = {key: value for key, value in response.body.items() if key != "trace_id"}
+    summary = team_contract.canonical_snapshot_summary(body)
+    if summary is None or summary["locale"] != locale:
+        raise ValueError("Local Assistant summary is invalid")
+    return _text(summary["summary"], 160)

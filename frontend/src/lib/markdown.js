@@ -12,7 +12,21 @@ function textToken(text) {
 
 /** Preserve bounded external copy as literal text when it is placed in a Markdown message. */
 export function escapeMarkdownText(value) {
-  return String(value ?? '').replace(/[\\`*_[\]{}()<>#+\-.!|]/gu, '\\$&');
+  return String(value ?? '').replace(/[\\`*_[\]{}()<>#+\-.!|~]/gu, '\\$&');
+}
+
+// A span's content as displayed: each backslash escape stands for the character it escapes.
+function unescapeInline(text) {
+  return text.replace(/\\(.)/gsu, '$1');
+}
+
+// Where a span's closing marker is, skipping escaped characters, or -1.
+function closingMarker(input, marker, from) {
+  for (let index = from; index < input.length; index += 1) {
+    if (input[index] === '\\') index += 1;
+    else if (input.startsWith(marker, index)) return index;
+  }
+  return -1;
 }
 
 function appendText(tokens, text) {
@@ -59,9 +73,9 @@ export function parseInline(source) {
       ? '**'
       : input.startsWith('__', cursor) ? '__' : '';
     if (strongMarker) {
-      const end = input.indexOf(strongMarker, cursor + 2);
+      const end = closingMarker(input, strongMarker, cursor + 2);
       if (end > cursor + 2) {
-        tokens.push({ type: 'strong', text: input.slice(cursor + 2, end) });
+        tokens.push({ type: 'strong', text: unescapeInline(input.slice(cursor + 2, end)) });
         cursor = end + 2;
         continue;
       }
@@ -69,9 +83,9 @@ export function parseInline(source) {
 
     if (input[cursor] === '*' || input[cursor] === '_') {
       const marker = input[cursor];
-      const end = input.indexOf(marker, cursor + 1);
+      const end = closingMarker(input, marker, cursor + 1);
       if (end > cursor + 1) {
-        tokens.push({ type: 'emphasis', text: input.slice(cursor + 1, end) });
+        tokens.push({ type: 'emphasis', text: unescapeInline(input.slice(cursor + 1, end)) });
         cursor = end + 1;
         continue;
       }
@@ -81,7 +95,7 @@ export function parseInline(source) {
       const labelEnd = input.indexOf('](', cursor + 1);
       const hrefEnd = labelEnd === -1 ? -1 : input.indexOf(')', labelEnd + 2);
       if (labelEnd > cursor + 1 && hrefEnd > labelEnd + 2) {
-        const label = input.slice(cursor + 1, labelEnd);
+        const label = unescapeInline(input.slice(cursor + 1, labelEnd));
         const href = safeLink(input.slice(labelEnd + 2, hrefEnd).trim());
         if (href) tokens.push({ type: 'link', text: label, href });
         else appendText(tokens, label);

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import datetime
 import json
 import os
 import re
@@ -23,7 +24,10 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
+# A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
+# never enters a conversation projection (ADR-0093); every other row is `plain`.
+PROVENANCES = frozenset({"plain", "attached"})
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
@@ -32,11 +36,14 @@ MAX_GUIDANCE_REPLY_CHARS = 240
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _GUIDANCE_CODES = frozenset(
     {
         "assistant-install-target-required",
         "assistant-uninstall-target-required",
         "assistant-lifecycle-ambiguous",
+        "assistant-lifecycle-attachments",
+        "assistant-capability-attachments",
     }
 )
 _LOCK = threading.RLock()
@@ -72,6 +79,21 @@ def _text(value: object, maximum: int, field: str) -> str:
         or _CONTROL_RE.search(value) is not None
     ):
         raise ValueError(f"chat history {field} is invalid")
+    return value
+
+
+def _now() -> str:
+    """The current UTC instant in whole seconds, written ``YYYY-MM-DDTHH:MM:SSZ`` like a Routine notice's."""
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _instant(value: object) -> str:
+    if not isinstance(value, str) or _INSTANT_RE.fullmatch(value) is None:
+        raise HistoryUnavailableError("chat history entry time is invalid")
+    try:
+        datetime.datetime.fromisoformat(value)
+    except ValueError:
+        raise HistoryUnavailableError("chat history entry time is invalid") from None
     return value
 
 
@@ -111,17 +133,19 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT NOT NULL,
             event_key TEXT NOT NULL,
             payload TEXT NOT NULL,
+            provenance TEXT NOT NULL CHECK (provenance IN ('plain', 'attached')),
+            created_at TEXT NOT NULL,
             UNIQUE (team_id, event_key)
         );
         CREATE INDEX transcript_team_position ON transcript (team_id, position);
         CREATE INDEX transcript_team_conversation ON transcript (team_id, position)
-            WHERE substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply'
-            OR substr(event_key, -9) = ':guidance';
+            WHERE provenance = 'plain' AND (substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply'
+            OR substr(event_key, -9) = ':guidance');
         CREATE TABLE resumable_turn (
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 5;
+        PRAGMA user_version = 7;
         """
     )
 
@@ -163,22 +187,28 @@ def _append(
     *,
     anchor_turn: str | None = None,
     finish_turn: str | None = None,
+    provenance: str = "plain",
 ) -> bool:
     encoded = _encoded(payload)
+    if provenance not in PROVENANCES:
+        raise ValueError("chat history provenance is invalid")
     with _database() as database:
         # A turn's later event needs its user row in the same transaction: after Team deletion or Space reset cleared
         # the transcript, a delayed reply or outcome must not recreate that history.
-        if anchor_turn is not None and (
-            database.execute(
-                "SELECT 1 FROM transcript WHERE team_id = ? AND event_key = ?",
+        if anchor_turn is not None:
+            anchor = database.execute(
+                "SELECT provenance FROM transcript WHERE team_id = ? AND event_key = ?",
                 (team_id, f"{anchor_turn}:user"),
             ).fetchone()
-            is None
-        ):
-            return False
+            if anchor is None:
+                return False
+            # Every row of a turn keeps the provenance its message was admitted with.
+            provenance = anchor[0]
+        # A row's time is when Admin first wrote it; an idempotent repeat keeps that first time.
         cursor = database.execute(
-            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
-            (team_id, event_key, encoded),
+            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload, provenance, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (team_id, event_key, encoded, provenance, _now()),
         )
         committed = cursor.rowcount == 1
         if not committed:
@@ -226,28 +256,34 @@ def append_routine_notice(notice: object) -> bool:
             if stored["version"] == payload["version"]:
                 return existing[0] == encoded
             database.execute("DELETE FROM transcript WHERE team_id = ? AND event_key = ?", (team_id, event_key))
+        # A notice's row time is the notice's own instant, so its day and the time it shows agree.
         database.execute(
-            "INSERT INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)", (team_id, event_key, encoded)
+            "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) VALUES (?, ?, ?, 'plain', ?)",
+            (team_id, event_key, encoded, admitted["created_at"]),
         )
     return True
 
 
-def append_user(team_id: object, turn_id: object, message: object) -> bool:
+def append_user(team_id: object, turn_id: object, message: object, *, attached: bool = False) -> bool:
+    """Admit one user message; a message that carried attachments marks its whole turn ``attached`` (ADR-0093)."""
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     text = _text(message, team_contract.MAX_CHAT_MESSAGE_CHARS, "user message")
+    if type(attached) is not bool:
+        raise ValueError("chat history attachment provenance is invalid")
     return _append(
         canonical_team,
         f"{canonical_turn}:user",
         {"kind": "message", "role": "user", "text": text},
+        provenance="attached" if attached else "plain",
     )
 
 
 def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
-    fields = {"type", "team_id", "team_name", "reply", "clarification", "routine_proposal"}
-    if not isinstance(event, Mapping) or set(event) - {"usage"} != fields:
+    fields = {"type", "team_id", "team_name", "reply", "clarification"}
+    if not isinstance(event, Mapping) or set(event) - {"usage", "restricted_actions"} != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
@@ -260,18 +296,18 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored with its reply so a reload restores the same question card for the same turn.
         entry["clarification"] = clarification
-    if event["routine_proposal"] is not None:
-        proposal = routine_contract.canonical_proposal(event["routine_proposal"])
-        if proposal is None:
-            raise ValueError("chat history reply event is invalid")
-        # Stored so a reload restores the confirmation card; the Team decides whether it is still live.
-        entry["routine_proposal"] = proposal
     if "usage" in event:
         usage = team_contract.canonical_turn_usage(event["usage"])
         if usage is None:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
+    if "restricted_actions" in event:
+        restricted = team_contract.canonical_restricted_actions(event["restricted_actions"])
+        if restricted is None:
+            raise ValueError("chat history reply event is invalid")
+        # Stored so a reload shows the same guidance for the Actions the attachments withheld (ADR-0093).
+        entry["restricted_actions"] = restricted
     return _append(
         canonical_team, f"{canonical_turn}:reply", entry, anchor_turn=canonical_turn, finish_turn=canonical_turn
     )
@@ -384,7 +420,7 @@ def append_guidance(team_id: object, turn_id: object, code: object, reply: objec
 
 
 def _uninstall_assistant(value: object) -> dict[str, str]:
-    if not isinstance(value, Mapping) or set(value) != {"id", "name", "summary", "version"}:
+    if not isinstance(value, Mapping) or set(value) != {"id", "name", "version"}:
         raise ValueError("chat history uninstall Assistant is invalid")
     assistant_id = team_contract.canonical_assistant_id(value["id"])
     version = value["version"]
@@ -395,7 +431,6 @@ def _uninstall_assistant(value: object) -> dict[str, str]:
     return {
         "id": assistant_id,
         "name": chat_ws_common.public_text(value["name"], 80, field="Assistant name"),
-        "summary": chat_ws_common.public_text(value["summary"], 160, field="Assistant summary"),
         "version": version,
     }
 
@@ -508,9 +543,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             or payload.get("text") != team_contract.render_clarification(clarification)
         ):
             raise ValueError("invalid stored message")
-    if role == "assistant" and "routine_proposal" in payload:
-        expected.add("routine_proposal")
-        if routine_contract.canonical_proposal(payload["routine_proposal"]) != payload["routine_proposal"]:
+    if role == "assistant" and "restricted_actions" in payload:
+        expected.add("restricted_actions")
+        restricted = team_contract.canonical_restricted_actions(payload["restricted_actions"])
+        if restricted is None or restricted != payload["restricted_actions"]:
             raise ValueError("invalid stored message")
     if role == "assistant" and "usage" in payload:
         expected.add("usage")
@@ -601,14 +637,24 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
 def _page_rows(database: sqlite3.Connection, team_id: str, position: int | None) -> sqlite3.Cursor:
     if position is None:
         return database.execute(
-            "SELECT position, event_key, payload FROM transcript WHERE team_id = ? ORDER BY position DESC LIMIT ?",
+            "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? "
+            "ORDER BY position DESC LIMIT ?",
             (team_id, PAGE_ROWS + 1),
         )
     return database.execute(
-        "SELECT position, event_key, payload FROM transcript WHERE team_id = ? AND position < ? "
+        "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? AND position < ? "
         "ORDER BY position DESC LIMIT ?",
         (team_id, position, PAGE_ROWS + 1),
     )
+
+
+def _page_entry(event_key: str, raw: object, created_at: object) -> dict[str, object]:
+    payload = _decoded(raw)
+    instant = _instant(created_at)
+    # A Routine notice keeps its own instant in its closed shape; its row time must be that same instant.
+    if payload["kind"] == "routine-run" and payload["created_at"] != instant:
+        raise HistoryUnavailableError("chat history entry time is invalid")
+    return {"id": event_key, **payload, "created_at": instant}
 
 
 def page(team_id: object, *, before: object = None) -> dict[str, object]:
@@ -619,25 +665,25 @@ def page(team_id: object, *, before: object = None) -> dict[str, object]:
     """
     canonical_team = _team_id(team_id)
     position = _position(before)
-    selected: list[tuple[int, str, dict[str, object]]] = []
+    selected: list[tuple[int, dict[str, object]]] = []
     size = 0
     has_older = False
     with _database() as database, contextlib.closing(_page_rows(database, canonical_team, position)) as rows:
-        for row_position, event_key, raw in rows:
+        for row_position, event_key, raw, created_at in rows:
             if len(selected) == PAGE_ROWS:
                 has_older = True
                 break
-            payload = _decoded(raw)
-            entry_size = len(raw.encode("utf-8")) + len(event_key)
+            entry = _page_entry(event_key, raw, created_at)
+            entry_size = len(raw.encode("utf-8")) + len(event_key) + len(created_at)
             if selected and size + entry_size > MAX_PAGE_BYTES:
                 has_older = True
                 break
-            selected.append((row_position, event_key, payload))
+            selected.append((row_position, entry))
             size += entry_size
     if not selected:
         return {"entries": [], "before": None}
     oldest = selected[-1][0]
-    entries = [{"id": event_key, **payload} for _, event_key, payload in reversed(selected)]
+    entries = [entry for _, entry in reversed(selected)]
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
 
 
@@ -666,10 +712,11 @@ def _conversation_entry(event_key: object, payload: dict[str, object]) -> conver
 
 
 # The eligibility predicate repeats the partial index `transcript_team_conversation` exactly, so the projection
-# skips every Routine notice and other row between the anchor and the latest eligible entries.
+# skips every Routine notice, every row of a turn whose message carried attachments (ADR-0093), and every other row
+# between the anchor and the latest eligible entries. Lifecycle routing and the empty-checkpoint bridge both read it.
 CONVERSATION_QUERY = (
     "SELECT event_key, payload FROM transcript "
-    "WHERE team_id = ? AND position < ? AND "
+    "WHERE team_id = ? AND position < ? AND provenance = 'plain' AND "
     "(substr(event_key, -5) = ':user' OR substr(event_key, -6) = ':reply' "
     "OR substr(event_key, -9) = ':guidance') "
     "ORDER BY position DESC LIMIT ?"

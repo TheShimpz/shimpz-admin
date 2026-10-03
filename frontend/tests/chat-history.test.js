@@ -7,6 +7,12 @@ import { LocalApiError } from '../src/lib/localApi.js';
 const TURN_A = 'a'.repeat(32);
 const TURN_B = 'b'.repeat(32);
 const CURSOR = 'AAAAAAAAAAI';
+const AT = '2026-10-02T21:15:00Z';
+
+// The parsed entry carries the row's time as createdAt, the same name a Routine notice's time has.
+function restored({ created_at: createdAt, ...entry }) {
+  return { ...entry, createdAt };
+}
 
 function response(status, body) {
   return {
@@ -19,6 +25,7 @@ function response(status, body) {
 function installedEntry() {
   return {
     id: `${TURN_A}:install`,
+    created_at: AT,
     kind: 'assistant-install',
     state: 'installed',
     assistants: [{
@@ -36,10 +43,11 @@ test('loads one exact bounded Team chat history page', async () => {
   const calls = [];
   const body = {
     entries: [
-      { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'Install Cloudflare' },
+      { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Install Cloudflare' },
       installedEntry(),
       {
         id: `${TURN_B}:reply`,
+        created_at: AT,
         kind: 'message',
         role: 'assistant',
         text: 'Cloudflare is ready.',
@@ -47,6 +55,7 @@ test('loads one exact bounded Team chat history page', async () => {
       },
       {
         id: `${TURN_B}:guidance`,
+        created_at: AT,
         kind: 'guidance',
         code: 'assistant-install-target-required',
         reply: 'Which Assistant do you want to install?',
@@ -59,7 +68,7 @@ test('loads one exact bounded Team chat history page', async () => {
     return response(200, body);
   }, 'marketing');
 
-  assert.deepEqual(result, body);
+  assert.deepEqual(result, { entries: body.entries.map(restored), before: CURSOR });
   assert.deepEqual(calls, [{
     url: '/api/teams/marketing/chat/history',
     options: { cache: 'no-store', headers: { Accept: 'application/json' } },
@@ -85,11 +94,13 @@ test('loads older Team chat history with only an opaque cursor', async () => {
 });
 
 test('bounds history text by Unicode code points, as the Admin history counts it', async () => {
-  const reply = (author, text = 'Done.') => ({ id: `${TURN_B}:reply`, kind: 'message', role: 'assistant', text, author });
+  const reply = (author, text = 'Done.') => (
+    { id: `${TURN_B}:reply`, created_at: AT, kind: 'message', role: 'assistant', text, author }
+  );
   const load = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
   for (const character of ['界', '😀']) {
     const entry = reply(character.repeat(80), character.repeat(60_000));
-    assert.deepEqual((await load(entry)).entries, [entry]);
+    assert.deepEqual((await load(entry)).entries, [restored(entry)]);
     for (const invalid of [reply(character.repeat(81)), reply('Marketing', character.repeat(60_001))]) {
       await assert.rejects(load(invalid), (error) => error instanceof LocalApiError);
     }
@@ -103,7 +114,7 @@ test('loads the exact already-installed terminal outcome', async () => {
     'marketing',
   );
 
-  assert.deepEqual(result.entries, [entry]);
+  assert.deepEqual(result.entries, [restored(entry)]);
 });
 
 test('fails closed on malformed or secret-bearing chat history', async () => {
@@ -115,13 +126,22 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], status: 'pending' }] },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], name: 'Cloud\u202eFlare' }] },
     { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], summary: 'Line one\nLine two' }] },
-    { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'hello', author: 'Marketing' },
-    { id: `${TURN_A}:guidance`, kind: 'guidance', code: 'unknown', reply: 'Question?' },
+    { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'hello', author: 'Marketing' },
+    { id: `${TURN_A}:guidance`, created_at: AT, kind: 'guidance', code: 'unknown', reply: 'Question?' },
     {
       id: `${TURN_A}:uninstall`,
+      created_at: AT,
       kind: 'assistant-uninstall',
       state: 'failed',
       status: 200,
+      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.5' },
+    },
+    // Team's English registry summary is never stored or shown with an uninstall.
+    {
+      id: `${TURN_A}:uninstall`,
+      created_at: AT,
+      kind: 'assistant-uninstall',
+      state: 'cancelled',
       assistant: {
         id: 'shimpz-cloudflare',
         name: 'Shimpz Cloudflare',
@@ -139,13 +159,39 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
   await assert.rejects(
     listChatHistory(async () => response(200, {
       entries: [
-        { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'hello' },
-        { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'again' },
+        { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'hello' },
+        { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'again' },
       ],
       before: null,
     }), 'marketing'),
     (error) => error instanceof LocalApiError,
   );
+});
+
+test('every history row carries its exact UTC time, and a missing or malformed time fails closed', async () => {
+  const user = { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'hello' };
+  const load = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+  assert.equal((await load(user)).entries[0].createdAt, AT);
+  assert.equal(Object.hasOwn((await load(user)).entries[0], 'created_at'), false);
+  const { created_at: _, ...undated } = user;
+  for (const entry of [
+    undated,
+    { ...user, created_at: null },
+    { ...user, created_at: 1_759_441_200 },
+    { ...user, created_at: '2026-10-02' },
+    { ...user, created_at: '2026-10-02T21:15:00.000Z' },
+    { ...user, created_at: '2026-10-02T21:15:00+00:00' },
+    { ...user, created_at: '2026-02-30T21:15:00Z' },
+    { ...user, created_at: ' 2026-10-02T21:15:00Z' },
+    { ...installedEntry(), created_at: '2026-10-02 21:15:00' },
+    { ...replyEntry(), created_at: undefined },
+  ]) {
+    await assert.rejects(
+      load(entry),
+      (error) => error instanceof LocalApiError && error.message.includes('history is invalid'),
+      JSON.stringify(entry),
+    );
+  }
 });
 
 test('projects safe history service failures and rejects invalid requests', async () => {
@@ -167,7 +213,15 @@ const USAGE = {
 };
 
 function replyEntry(extra = {}) {
-  return { id: `${TURN_A}:reply`, kind: 'message', role: 'assistant', text: 'Done.', author: 'Marketing', ...extra };
+  return {
+    id: `${TURN_A}:reply`,
+    created_at: AT,
+    kind: 'message',
+    role: 'assistant',
+    text: 'Done.',
+    author: 'Marketing',
+    ...extra,
+  };
 }
 
 async function historyOf(entry) {
@@ -191,7 +245,7 @@ test('a restored reply whose usage breaks the closed shape, or a user message wi
     replyEntry({ usage: { ...USAGE, duration_ms: 86_400_001 } }),
     replyEntry({ usage: { ...USAGE, models: [{ ...model, provider: ['openai'] }] } }),
     replyEntry({ usage: { ...USAGE, models: [model, model] } }),
-    { id: `${TURN_A}:user`, kind: 'message', role: 'user', text: 'hello', usage: USAGE },
+    { id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'hello', usage: USAGE },
   ]) {
     await assert.rejects(
       historyOf(entry),

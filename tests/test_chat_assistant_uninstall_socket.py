@@ -114,6 +114,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await asyncio.sleep(0.3)
@@ -130,14 +132,11 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(proposed["expires_in"], 120)
                 self.assertEqual(
                     proposed["assistant"],
-                    {
-                        "id": "shimpz-cloudflare",
-                        "name": "Shimpz Cloudflare",
-                        "summary": "Manage Cloudflare zones and DNS records.",
-                        "version": "0.4.4",
-                    },
+                    {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.4"},
                 )
                 self.assertNotIn("source_digest", json.dumps(proposed))
+                # The registry summary is Team's English catalog text and the proposal never shows it.
+                self.assertNotIn("Manage Cloudflare zones and DNS records.", json.dumps(proposed))
 
                 await websocket.send_json(
                     {
@@ -146,6 +145,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -199,7 +200,6 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                             "team_name": "Marketing",
                             "reply": "Temos apenas Cloudflare/DNS.",
                             "clarification": None,
-                            "routine_proposal": None,
                         },
                     ),
                 ) as turn,
@@ -234,13 +234,29 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "desinstala ele", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "desinstala ele",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 guidance = await websocket.next_json()
                 self.assertEqual(guidance["reply"], reply)
 
                 await websocket.send_json(
-                    {"type": "chat", "message": "quais temos?", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "quais temos?",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 inventory = await websocket.next_json()
                 self.assertEqual(inventory["reply"], "Temos apenas Cloudflare/DNS.")
@@ -255,6 +271,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 proposed = await resumed.next_json()
@@ -339,6 +357,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 proposed = await websocket.next_json()
@@ -351,6 +371,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "uninstalling")
@@ -364,6 +386,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
@@ -410,6 +434,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 proposed = await websocket.next_json()
@@ -422,6 +448,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 reproposed = await websocket.next_json()
@@ -464,6 +492,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 event = await websocket.next_json()
@@ -498,6 +528,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 event = await websocket.next_json()
@@ -530,6 +562,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await websocket.send_json({"type": "stop"})
@@ -558,6 +592,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await websocket.send_json(
@@ -567,10 +603,12 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                await websocket.send_json({"type": "sync"})
+                await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
                 route.set_result(
                     self.assistant_route.Result(
@@ -605,6 +643,8 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await websocket.disconnect()

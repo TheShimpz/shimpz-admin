@@ -11,6 +11,18 @@ test('keeps external display copy literal inside a Markdown response', () => {
   assert.deepEqual(blocks[0].inlines, [{ type: 'text', text: source }]);
 });
 
+test('reads backslash escapes inside bold, emphasis, and link labels', () => {
+  assert.deepEqual(parseInline('**a\\*\\*b\\_** *c\\*d* [e\\]f](https://example.com/)'), [
+    { type: 'strong', text: 'a**b_' },
+    { type: 'text', text: ' ' },
+    { type: 'emphasis', text: 'c*d' },
+    { type: 'text', text: ' ' },
+    { type: 'link', text: 'e]f', href: 'https://example.com/' },
+  ]);
+  // An escaped closing marker does not close its span.
+  assert.equal(parseInline('**a\\** b').some((token) => token.type === 'strong'), false);
+});
+
 test('parses the small supported Markdown surface into a closed AST', () => {
   const blocks = parseMarkdown(`# Weather Guide
 

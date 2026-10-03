@@ -181,7 +181,7 @@
               <div class="requirement-copy">
                 <strong class="requirement-name"><bdi>{requirement.name}</bdi></strong>
                 <span><bdi>{requirement.assistant_name}</bdi></span>
-                <p>{requirement.summary}</p>
+                <p>{$t('assistantIntegrations.requirementSummary', { provider: requirementProvider })}</p>
                 <div class="chips">
                   {#each requirement.scopes as scope (scope)}<strong><bdi>{scope}</bdi></strong>{/each}
                 </div>

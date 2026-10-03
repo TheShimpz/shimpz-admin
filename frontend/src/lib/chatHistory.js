@@ -1,11 +1,13 @@
+import { parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
-import { parseRoutineProposal, parseRoutineRunEntry } from './routine.js';
+import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
   codePointLength,
   exactKeys,
+  isInstant,
   jsonObject,
   TEAM_ID_RE,
 } from './validate.js';
@@ -50,14 +52,13 @@ function assistantId(value, status) {
 }
 
 function publicAssistant(value, status) {
-  if (!exactKeys(value, ['id', 'name', 'summary', 'version'])) throw invalidHistory(status);
+  if (!exactKeys(value, ['id', 'name', 'version'])) throw invalidHistory(status);
   if (typeof value.version !== 'string' || !SEMANTIC_VERSION_RE.test(value.version)) {
     throw invalidHistory(status);
   }
   return {
     id: assistantId(value.id, status),
     name: publicText(value.name, 80, status),
-    summary: publicText(value.summary, 160, status),
     version: value.version,
   };
 }
@@ -89,9 +90,10 @@ function installAssistant(value, status) {
 function messageEntry(value, suffix, status) {
   const assistant = value.role === 'assistant';
   const clarified = assistant && Object.hasOwn(value, 'clarification');
-  const proposed = assistant && Object.hasOwn(value, 'routine_proposal');
   // What the turn consumed is kept with its reply only; it is the same closed shape as the done frame's.
   const used = assistant && Object.hasOwn(value, 'usage');
+  // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
+  const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
   const expected = assistant
     ? [
       'author',
@@ -100,26 +102,17 @@ function messageEntry(value, suffix, status) {
       'role',
       'text',
       ...(clarified ? ['clarification'] : []),
-      ...(proposed ? ['routine_proposal'] : []),
       ...(used ? ['usage'] : []),
+      ...(withheld ? ['restricted_actions'] : []),
     ]
     : ['id', 'kind', 'role', 'text'];
-  let routineProposal = null;
-  if (proposed) {
-    try {
-      routineProposal = parseRoutineProposal(value.routine_proposal);
-    } catch {
-      throw invalidHistory(status);
-    }
-    if (routineProposal === null) throw invalidHistory(status);
-  }
   let usage = null;
-  if (used) {
-    try {
-      usage = parseTaskUsage(value.usage);
-    } catch {
-      throw invalidHistory(status);
-    }
+  let restricted = null;
+  try {
+    if (used) usage = parseTaskUsage(value.usage);
+    if (withheld) restricted = parseRestrictedActions(value.restricted_actions);
+  } catch {
+    throw invalidHistory(status);
   }
   let clarification = null;
   if (clarified) {
@@ -147,8 +140,8 @@ function messageEntry(value, suffix, status) {
     ),
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
-    ...(routineProposal ? { routineProposal } : {}),
     ...(usage ? { usage } : {}),
+    ...(restricted ? { restricted_actions: restricted } : {}),
   };
 }
 
@@ -212,6 +205,8 @@ function guidanceEntry(value, suffix, status) {
     'assistant-install-target-required',
     'assistant-uninstall-target-required',
     'assistant-lifecycle-ambiguous',
+    'assistant-lifecycle-attachments',
+    'assistant-capability-attachments',
   ]);
   if (
     suffix !== 'guidance' ||
@@ -226,14 +221,24 @@ function guidanceEntry(value, suffix, status) {
   };
 }
 
+const ENTRY_PARSERS = {
+  message: messageEntry,
+  'assistant-install': installEntry,
+  'assistant-uninstall': uninstallEntry,
+  guidance: guidanceEntry,
+};
+
 function historyEntry(value, status) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidHistory(status);
   const match = typeof value.id === 'string' ? ENTRY_ID_RE.exec(value.id) : null;
   if (!match) throw invalidHistory(status);
-  if (value.kind === 'message') return messageEntry(value, match[2], status);
-  if (value.kind === 'assistant-install') return installEntry(value, match[2], status);
-  if (value.kind === 'assistant-uninstall') return uninstallEntry(value, match[2], status);
-  if (value.kind === 'guidance') return guidanceEntry(value, match[2], status);
+  const parse = Object.hasOwn(ENTRY_PARSERS, value.kind) ? ENTRY_PARSERS[value.kind] : null;
+  if (parse) {
+    // Every row carries the UTC time Admin wrote it; a Routine notice's is its own instant, checked in its shape.
+    const { created_at: createdAt, ...rest } = value;
+    if (!isInstant(createdAt)) throw invalidHistory(status);
+    return { ...parse(rest, match[2], status), createdAt };
+  }
   if (value.kind === 'routine-run' && match[2] === 'routine') {
     try {
       return parseRoutineRunEntry(value);

@@ -190,7 +190,7 @@ class AssistantPlanEdges(unittest.TestCase):
             ):
                 result = assistant_plan.prepare_capability(
                     "team_1",
-                    {"message": "send", "assistant_ids": []},
+                    {"message": "send", "assistant_ids": [], "locale": "en", "timezone": None},
                     catalog,
                 )
             self.assertEqual(result, assistant_plan.Preparation())

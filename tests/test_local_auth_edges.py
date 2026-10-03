@@ -145,6 +145,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
         for result, expected in (
             (totp.Verification.LOCKED, 429),
             (totp.Verification.EXPIRED, 409),
+            (totp.Verification.CHANGED, 409),
             (totp.Verification.INVALID, 401),
         ):
             with (
@@ -152,7 +153,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 mock.patch.object(local_auth.state, "verify_totp", return_value=result),
                 self.assertRaises(HTTPException) as totp_error,
             ):
-                local_auth._complete_totp("000000", enrollment=False)
+                local_auth._complete_totp("000000", enrollment=False, generation=2)
             self.assertEqual(totp_error.exception.status_code, expected)
 
     def test_setup_and_login_reject_wrong_fields_and_resume_exact_enrollment(self) -> None:

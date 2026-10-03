@@ -1,15 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { uploadTeamFile } from '../src/lib/attachments.js';
 import { renderClarification } from '../src/lib/clarification.js';
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
+import {
+  answerRoutineCard,
+  listRoutines,
+  openRoutineCard,
+  parseRoutineRunEntry,
+  failureCause,
+  readRunDiagnostics,
+} from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 
 const ROUTINES = '/api/teams/marketing/routines';
 
-function propose(scenario, message) {
-  const [done] = scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] });
-  return done.routine_proposal;
+// A fetch that answers from the scenario, as the preview installs it in the browser.
+function adapter(scenario) {
+  return async (path, init = {}) => {
+    const answer = scenario.respond({ method: init.method ?? 'GET', path, body: init.body ? JSON.parse(init.body) : null });
+    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
+  };
 }
 
 test('a scenario answers only what it declares and fails closed otherwise', () => {
@@ -28,52 +41,46 @@ test('scenarios never share state, and a caller cannot mutate one through a resp
   const first = createScenario('routines');
   const second = createScenario('routines');
   first.respond({ method: 'GET', path: ROUTINES }).json.routines[0].quote = 'changed';
-  first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}` });
+  first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}`, body: { code: '123456' } });
   const untouched = second.respond({ method: 'GET', path: ROUTINES }).json;
   assert.equal(untouched.routines.length, 2);
   assert.notEqual(untouched.routines[0].quote, 'changed');
   assert.equal(first.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });
 
-test('a chat proposal previews its own words and is consumed once into a distinct Routine', () => {
+test('a recurring chat request creates its Routine directly with a created notice and no card', () => {
   const scenario = createScenario('ready');
-  const [empty] = scenario.chat.message({ type: 'chat', message: 'List my DNS zones now', files: [], assistant_ids: [] });
-  assert.equal(empty.routine_proposal, null);
-  const daily = propose(scenario, 'Every day at 9, check my certificates');
-  const weekly = propose(scenario, 'Every Monday, list my DNS zones');
-  assert.notEqual(daily.proposal_id, weekly.proposal_id);
-
-  const preview = scenario.respond({
-    method: 'POST',
-    path: `${ROUTINES}/proposals/${daily.proposal_id}/preview`,
-    body: { timezone: 'America/Sao_Paulo' },
-  }).json;
-  assert.equal(preview.quote, 'Every day at 9, check my certificates');
-  assert.equal(preview.timezone, 'America/Sao_Paulo');
-
-  const created = [daily, weekly].map((proposal) => scenario.respond({
-    method: 'POST',
-    path: ROUTINES,
-    body: { proposal_id: proposal.proposal_id, timezone: 'UTC' },
-  }).json.routine);
-  assert.notEqual(created[0].routine_id, created[1].routine_id);
-  assert.equal(created[0].quote, daily.quote);
-  const reused = scenario.respond({ method: 'POST', path: ROUTINES, body: { proposal_id: daily.proposal_id } });
-  assert.equal(reused.status, 404);
-  assert.equal(
-    scenario.respond({ method: 'POST', path: `${ROUTINES}/proposals/${daily.proposal_id}/preview`, body: {} }).status,
-    404,
-  );
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 2);
+  const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
+  const [once] = scenario.chat.message(frame('List my DNS zones now'));
+  assert.equal(Object.hasOwn(once, 'routine_proposal'), false);
+  assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
+  scenario.chat.message(frame('Every day at 9, check my certificates'));
+  scenario.chat.message(frame('Every Monday, list my DNS zones'));
+  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.equal(routines.length, 2);
+  assert.notEqual(routines[0].routine_id, routines[1].routine_id);
+  assert.equal(routines[0].timezone, 'America/Sao_Paulo');
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const notices = entries.map(parseRoutineRunEntry);
+  assert.deepEqual(notices.map((notice) => notice.outcome), ['created', 'created']);
+  assert.equal(notices[0].quote, 'Every day at 9, check my certificates');
+  // There is no confirmation or preview route any more.
+  assert.equal(scenario.respond({ method: 'POST', path: ROUTINES, body: {} }), null);
 });
 
-test('runs are stopped or released by id, and the chat socket answers a sync', () => {
+test('runs are stopped by id, a paused Routine resumes, and the chat socket answers a sync', () => {
   const scenario = createScenario('routines');
   const stop = scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'f'.repeat(32)}/stop`, body: {} });
   assert.equal(stop.json.stopped, true);
-  const release = scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'b'.repeat(32)}/resolve`, body: {} });
-  assert.equal(release.json.resolved, true);
   assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.runs, []);
+  // The retired release of an uncertain run stays absent.
+  assert.equal(scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'b'.repeat(32)}/resolve`, body: {} }), null);
+  const listed = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.equal(listed.incidents.length, 1);
+  assert.equal(listed.routines[0].paused, true);
+  const resumed = scenario.respond({ method: 'POST', path: `${ROUTINES}/${'a'.repeat(32)}/resume`, body: {} });
+  assert.equal(resumed.json.paused, false);
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].paused, false);
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
 });
@@ -103,6 +110,8 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
       type: 'chat', message: 'Notícias de IA de hoje', files: [], assistant_ids: [], locale: 'pt',
     });
     const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
+    assert.equal(parsed.locale, 'pt');
+    assert.ok(parsed.purpose);
     assert.equal(parsed.help_url, 'https://dashboard.exa.ai/api-keys');
     assert.equal(parsed.request.stored_input, 'exa-api-key');
     const [done] = scenario.chat.message({
@@ -116,15 +125,24 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
 });
 
 test('a human request names an Assistant its Team inventory lists, so Admin opens it', () => {
-  for (const [name, kind] of [['human-request', 'input:password'], ['human-approval', 'approval']]) {
+  for (const [name, kind] of [
+    ['human-request', 'input:password'],
+    ['human-approval', 'input:choice'],
+    ['human-confirm', 'approval'],
+  ]) {
     const scenario = createScenario(name);
-    const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [] });
+    const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });
     const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
     const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
     assert.equal(parsed.type, 'human-required', name);
     assert.equal(parsed.request.kind, kind, name);
     assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id), name);
   }
+  // The Stored Input purpose was written in Portuguese, so an English challenge carries none.
+  const [stored] = createScenario('human-request').chat.message({
+    type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en',
+  });
+  assert.equal(parseChatEvent(stored, 'marketing', 'Marketing').purpose, undefined);
 });
 
 test('the Team order is saved only as an exact permutation of the listed Teams', () => {
@@ -200,4 +218,173 @@ test('every preview reply reports usage in the exact done-frame shape', () => {
     assert.equal(parsed.usage.models.length, 1, teamId);
     assert.equal(parsed.usage.duration_ms, 6240, teamId);
   }
+});
+
+test('the human-approval scenario renders its copy in the turn language and keeps canonical option values', () => {
+  const scenario = createScenario('human-approval');
+  const ask = (locale) => scenario.chat.message({
+    type: 'chat', message: 'Publish my DNS changes', files: [], assistant_ids: [], locale,
+  })[0];
+  const portuguese = parseChatEvent(ask('pt'), 'marketing', 'Marketing');
+  assert.equal(portuguese.locale, 'pt');
+  assert.equal(displayedHumanRequest(portuguese).title, 'Alterações de DNS a publicar: 3. Zona: example.com.');
+  const japanese = parseChatEvent(ask('ja'), 'marketing', 'Marketing');
+  assert.equal(japanese.locale, 'ja');
+  assert.equal(displayedHumanRequest(japanese).title, 'DNS changes to publish: 3. Zone: example.com.');
+  assert.deepEqual(portuguese.request, japanese.request);
+  // A sync reopens the pending request in the language it names, as Team does (ADR-0091).
+  const [reopened] = scenario.chat.message({ type: 'sync', locale: 'pt' });
+  assert.equal(parseChatEvent(reopened, 'marketing', 'Marketing').locale, 'pt');
+  assert.deepEqual(displayedHumanRequest(portuguese).options.map((option) => option.value), ['proxied', 'dns-only']);
+  const [done] = scenario.chat.message({
+    type: 'human-response', challenge_id: portuguese.challenge_id, decision: 'submit', value: 'dns-only',
+  });
+  assert.match(parseChatEvent(done, 'marketing', 'Marketing').reply, /dns-only/u);
+  assert.deepEqual(scenario.chat.message({ type: 'sync', locale: 'pt' }), [{ type: 'sync-empty' }]);
+  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+  assert.ok(inventory.some((entry) => entry.assistant === portuguese.assistant.id));
+});
+
+test('the Routine lifecycle preview holds only rows, views, cards, and details the real parsers admit', async () => {
+  const scenario = createScenario('routine-lifecycle');
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const outcomes = entries.map((entry) => parseRoutineRunEntry(entry).outcome);
+  for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused']) {
+    assert.ok(outcomes.includes(outcome), outcome);
+  }
+  const listed = await listRoutines(adapter(scenario), 'marketing');
+  assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
+  assert.ok(listed.routines.some((routine) => routine.paused));
+  const [held, paused] = listed.incidents;
+  // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
+  const card = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
+  assert.deepEqual(card.choices, ['run', 'recreate', 'delete']);
+  assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
+  assert.equal(failureCause((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
+  // The monthly Routine's Recriar is refused and changes nothing; Rodar sets the weekly one's held run aside.
+  const refusedCard = await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id);
+  await assert.rejects(
+    answerRoutineCard(adapter(scenario), 'marketing', paused.incident_id, refusedCard, 'recreate'),
+    (error) => error.code === 'routine-recreate-refused',
+  );
+  assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
+  assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
+  const rows = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
+  const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
+  assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
+  const failed = entries.find((entry) => entry.outcome === 'failed');
+  assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
+});
+
+test('the Routine lifecycle preview spans the day before it opened and that day, oldest first', () => {
+  const { history } = routineLifecycleStart('pt', Date.parse('2026-10-03T15:00:00.400Z'));
+  const instants = history.map((entry) => Date.parse(entry.created_at));
+  assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
+  assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
+    ...Array(5).fill('2026-10-02'),
+    ...Array(4).fill('2026-10-03'),
+  ]);
+  for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);
+});
+
+test('the daily-cap preview asks its question, then creates the continuous Routine the answer names', () => {
+  const scenario = createScenario('routine-cap', 'pt');
+  const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
+  const [asked] = scenario.chat.message(frame('Fique conferindo meus registros DNS sem parar'));
+  const event = parseChatEvent(asked, 'marketing', 'Marketing');
+  assert.equal(event.clarification.options.length, 3);
+  assert.equal(asked.reply, renderClarification(event.clarification));
+  const [done] = scenario.chat.message(frame(
+    'Fique conferindo meus registros DNS sem parar\n\nPergunta: Qual limite diário de execuções você prefere?\nResposta: Até 500 execuções por dia',
+  ));
+  assert.equal(done.clarification, null);
+  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  assert.deepEqual(routines.map((routine) => routine.schedule), [{ kind: 'continuous', gap: 5, cap: 500 }]);
+  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  assert.equal(parseRoutineRunEntry(entries.at(-1)).detail.schedule.cap, 500);
+});
+
+test("every locale's Routine preview names and asks in that language, through the real parsers", async () => {
+  for (const locale of Object.keys(ROUTINE_TEXT)) {
+    const scenario = createScenario('routine-lifecycle', locale);
+    const { routines } = await listRoutines(adapter(scenario), 'marketing');
+    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names, locale);
+    assert.deepEqual(routines.map((routine) => routine.quote), ROUTINE_TEXT[locale].quotes, locale);
+    const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+    for (const entry of entries) assert.ok(ROUTINE_TEXT[locale].quotes.includes(parseRoutineRunEntry(entry).quote), locale);
+    const asking = createScenario('routine-cap', locale);
+    const [asked] = asking.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].quotes[0], files: [], assistant_ids: [] });
+    const { clarification } = parseChatEvent(asked, 'marketing', 'Marketing');
+    assert.equal(clarification.question, ROUTINE_TEXT[locale].capQuestion, locale);
+    const [created] = asking.chat.message({
+      type: 'chat', message: `${ROUTINE_TEXT[locale].quotes[0]}\n\nQ: ${clarification.question}\nA: ${clarification.options[1].label}`,
+      files: [], assistant_ids: [],
+    });
+    assert.equal(created.clarification, null, locale);
+    assert.equal(asking.respond({ method: 'GET', path: ROUTINES }).json.routines[0].schedule.cap, 500, locale);
+  }
+});
+
+test('the attachment previews hold only uploads, replies, and approvals the real parsers admit', async () => {
+  const scenario = createScenario('attachments', 'pt');
+  const fetcher = async (path, init) => {
+    const file = init.body.get('file');
+    const answer = scenario.respond({
+      method: init.method,
+      path,
+      body: { file: { name: file.name, type: file.type, size: file.size } },
+    });
+    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
+  };
+  const notes = new File(['# notes'], 'notes.md', { type: 'text/markdown; charset=utf-8' });
+  const stored = await uploadTeamFile(fetcher, 'marketing', notes);
+  assert.equal(stored.media_type, 'text/markdown');
+  const second = await uploadTeamFile(fetcher, 'marketing', new File(['x'], 'raw', { type: '' }));
+  assert.equal(second.media_type, 'application/octet-stream');
+  assert.notEqual(second.id, stored.id);
+  await assert.rejects(uploadTeamFile(fetcher, 'marketing', new File(['x'], 'bad.refused')), { reason: 'invalid' });
+  assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/marketing/files', body: null }).status, 400);
+
+  const frame = (message) => ({ type: 'chat', message, files: [stored.id], assistant_ids: [], locale: 'pt' });
+  const [reply] = scenario.chat.message(frame('Quando o contrato renova?'));
+  assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').restricted_actions.total, 3);
+  const [guidance] = scenario.chat.message(frame('Instale o Assistant do WhatsApp'));
+  const parsed = parseChatEvent(guidance, 'marketing', 'Marketing');
+  assert.equal(parsed.code, 'assistant-lifecycle-attachments');
+  assert.match(parsed.reply, /sem anexos/);
+
+  const full = createScenario('attachments-full');
+  await assert.rejects(
+    uploadTeamFile(async (path, init) => {
+      const answer = full.respond({ method: init.method, path, body: { file: { name: 'a.md', type: '', size: 1 } } });
+      return { ok: false, status: answer.status, async json() { return answer.json; } };
+    }, 'marketing', notes),
+    { reason: 'quota' },
+  );
+
+  for (const locale of ['en', 'pt']) {
+    const approval = createScenario('attachment-approval', locale);
+    const [challenge] = approval.chat.message({ type: 'chat', message: 'Upload', files: [], assistant_ids: [], locale });
+    assert.equal(parseChatEvent(challenge, 'marketing', 'Marketing').file.name, 'Contract.pdf');
+    const [done] = approval.chat.message({ type: 'human-response', decision: 'submit' });
+    assert.match(done.reply, /Contract\.pdf/);
+  }
+});
+
+test('the preview confirms a Routine deletion with a password and a code, and refuses the wrong ones', () => {
+  const scenario = createScenario('routines');
+  const routine = `${ROUTINES}/${'a'.repeat(32)}`;
+  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'wrong password' } }), {
+    status: 401,
+    json: { code: 'password-incorrect' },
+  });
+  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'any other' } }), {
+    status: 202,
+    json: { methods: ['totp'] },
+  });
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '000000' } }).json.code, 'code-incorrect');
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine }).json.code, 'authentication-expired');
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 2);
+  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '123456' } }).json.deleted, true);
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });

@@ -43,12 +43,22 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "objective_assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
                 self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
                 await websocket.send_json(
-                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "cloudflare",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
                 context = route.call_args.args[2]
@@ -68,8 +78,10 @@ class ChatTaskResumeTests(ChatWebSocketCase):
         # The window ends before the continuation row, so it quotes the original objective and the capability reply;
         # the objective still reaches Team exactly once, as the turn's message.
         window = (
-            self.chat_socket.history_context.Entry("user", "Lista minhas zonas DNS no Cloudflare", False),
-            self.chat_socket.history_context.Entry("assistant", "Preciso do Assistant Cloudflare para isso.", False),
+            self.chat_socket.local.conversation_context.Entry("user", "Lista minhas zonas DNS no Cloudflare", False),
+            self.chat_socket.local.conversation_context.Entry(
+                "assistant", "Preciso do Assistant Cloudflare para isso.", False
+            ),
         )
 
         async def scenario() -> None:
@@ -82,7 +94,6 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Task complete.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -115,6 +126,8 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "objective_assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
@@ -128,6 +141,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
+                        "timezone": None,
                     },
                 )
                 turn.assert_called_once()
@@ -138,6 +152,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["already-enabled", "shimpz-cloudflare", "whatsapp"],
                         "locale": "en",
+                        "timezone": None,
                     },
                 )
                 self.assertEqual(turn.call_args.args[2], window)
@@ -186,6 +201,8 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": [],
                         "objective_assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
@@ -206,7 +223,7 @@ class ChatConversationWindowTests(ChatWebSocketCase):
         async def scenario() -> None:
             replies = iter(("Your zones are example.com.", "Done."))
 
-            def turn(_team_id, _payload, _conversation, _progress):
+            def turn(_team_id, _payload, _conversation, _request, _progress):
                 return self.chat_socket.local.PublicResponse(
                     200,
                     {
@@ -214,7 +231,6 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": next(replies),
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -222,11 +238,27 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                 websocket = Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "List my zones", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "List my zones",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.send_json(
-                    {"type": "chat", "message": "And the first one?", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "And the first one?",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.disconnect()

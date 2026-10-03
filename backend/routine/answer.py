@@ -80,10 +80,16 @@ def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object], int | No
     return (*entry, generation) if entry is not None and entry[0] > time.monotonic() else None
 
 
-def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
-    """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration."""
+def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamResponse:
+    """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration.
+
+    The browser names the Admin interface language, and Team renders the request copy in it (ADR-0091).
+    """
     canonical, run = _run(team_id, run_id)
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", {})
+    opening = routine_contract.canonical_challenge_open(body)
+    if opening is None:
+        raise team.TeamRequestError("Routine challenge opening is invalid")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
     if response.status != 200 or not isinstance(response.body, dict):
         return manage._projected(response, lambda _body: None)
     body = dict(response.body)
@@ -97,13 +103,28 @@ def open_challenge(team_id: object, run_id: object) -> team.TeamResponse:
         projected = human.project(body, canonical)
     except human.HumanChallengeError:
         return manage._INVALID
+    # A Routine holds no file grant, so its challenge never discloses one (ADR-0093).
+    if "file" in projected or projected["locale"] != opening["locale"]:
+        # Team renders the opening in exactly the language it names (ADR-0091); any other copy is not this opening.
+        return manage._INVALID
     deadline = time.monotonic() + projected["expires_in"]
     _remember((canonical, run, projected["challenge_id"]), deadline, projected["request"])
     challenge = {
         "type": "human-required",
         **{
             name: projected[name]
-            for name in ("challenge_id", "expires_in", "assistant", "action", "request", "purpose", "help_url")
+            for name in (
+                "challenge_id",
+                "expires_in",
+                "assistant",
+                "action",
+                "request",
+                "rendered",
+                "locale",
+                "pack_digest",
+                "purpose",
+                "help_url",
+            )
             if name in projected
         },
     }
@@ -127,7 +148,10 @@ def _resumed(response: team.TeamResponse, canonical: str, run: str) -> team.Team
 def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> team.TeamResponse:
     credential = chat_local.model_credential(canonical)
     if isinstance(credential, team.TeamResponse):
-        return credential
+        if credential.body != {"code": "model-credential-missing"}:
+            return credential
+        # A compiled run resumes without a key; a recovery it then needs pauses as unavailable in Team (ADR-0092).
+        credential = None
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",

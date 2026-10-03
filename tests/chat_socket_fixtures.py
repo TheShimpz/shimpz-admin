@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import hashlib
 import importlib
 import json
 import threading
 from unittest import mock
+
+from tests import localized_request
 
 TURN_ID = "a" * 32
 # How long a test waits for a frame or worker it expects. CI runs every lane on all processors, where a one-second
@@ -71,6 +72,7 @@ class Socket:
         self._task: asyncio.Task | None = None
         self._fail_send_type = fail_send_type
         self.send_failed = threading.Event()
+        self.seals: list[str] = []
 
     async def _send(self, message: dict) -> None:
         if message.get("type") == "websocket.send" and "text" in message:
@@ -78,6 +80,10 @@ class Socket:
             if event.get("type") == self._fail_send_type:
                 self.send_failed.set()
                 raise RuntimeError("simulated peer send failure")
+            if event.get("type") == "sent":
+                # The seal of each admitted send is kept apart, so a test reads the turn's own frames in order.
+                self.seals.append(event["request"])
+                return
         await self._outgoing.put(message)
 
     async def start(self) -> dict:
@@ -128,12 +134,8 @@ def integration_requirements() -> list[dict[str, object]]:
             "integration_id": "x-integration",
             "provider": "x",
             "name": "X integration",
-            "summary": "Lets approved Actions access the connected X integration.",
             "scopes": ["tweet.read", "tweet.write", "users.read", "offline.access"],
-            "actions": [
-                {"id": "profile-me", "name": "Read profile", "summary": "Read the connected X profile."},
-                {"id": "create-post", "name": "Create post", "summary": "Publish a post on X."},
-            ],
+            "actions": [{"id": "profile-me"}, {"id": "create-post"}],
         }
     ]
 
@@ -155,28 +157,21 @@ def integration_challenge(status: int = 428) -> object:
 
 def human_challenge(kind: str, status: int = 428) -> object:
     local_module = importlib.import_module("chat.local")
-    request: dict[str, object] = {
+    plain: dict[str, object] = {
         "kind": kind,
         "ordinal": 0,
         "title": "Confirm this Action",
         "description": "The Action is waiting for your response.",
     }
     if kind == "input:password":
-        request.update(
+        plain.update(
             label="API secret",
             required=True,
             placeholder="Enter the secret",
             min_length=1,
             max_length=1024,
         )
-    canonical = json.dumps(
-        request,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    request["fingerprint"] = hashlib.sha256(canonical).hexdigest()
+    request, rendered = localized_request.localize(plain)
     return local_module.PublicResponse(
         status,
         {
@@ -188,6 +183,7 @@ def human_challenge(kind: str, status: int = 428) -> object:
             "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.1"},
             "action": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
             "request": request,
+            **localized_request.localization(rendered),
         },
     )
 

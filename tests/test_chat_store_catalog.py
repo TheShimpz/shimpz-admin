@@ -71,12 +71,16 @@ class _Connection:
         self.closed = True
 
 
+def _validate(value: object) -> tuple[store_catalog.CatalogAssistant, ...]:
+    return store_catalog.validate_catalog(value, "en")
+
+
 class StoreCatalogTests(unittest.TestCase):
     def setUp(self) -> None:
         self.icon_cache = store_catalog.StoreIconCache()
 
     def test_projects_only_bounded_discovery_metadata(self) -> None:
-        result = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        result = _validate({"version": 1, "locale": "en", "assistants": [_assistant()]})
 
         self.assertEqual(
             result,
@@ -101,11 +105,11 @@ class StoreCatalogTests(unittest.TestCase):
         # Store and Developers admit up to 1,000 Assistants; Admin must consume every valid producer catalog.
         def catalog(count: int) -> dict[str, object]:
             assistants = [_assistant(assistant_id=f"assistant-{index:04d}") for index in range(count)]
-            return {"version": 1, "assistants": assistants}
+            return {"version": 1, "locale": "en", "assistants": assistants}
 
-        self.assertEqual(len(store_catalog.validate_catalog(catalog(1000))), 1000)
+        self.assertEqual(len(_validate(catalog(1000))), 1000)
         with self.assertRaisesRegex(ValueError, "catalog size is invalid"):
-            store_catalog.validate_catalog(catalog(1001))
+            _validate(catalog(1001))
 
     def test_admits_the_producer_action_count_and_no_more(self) -> None:
         # Developers' install protocol admits up to 128 Actions per Assistant.
@@ -113,12 +117,12 @@ class StoreCatalogTests(unittest.TestCase):
             actions = [
                 {"id": f"action-{index:03d}", "integrations": [], "human_requests": []} for index in range(count)
             ]
-            return {"version": 1, "assistants": [_assistant(actions=actions)]}
+            return {"version": 1, "locale": "en", "assistants": [_assistant(actions=actions)]}
 
-        (assistant,) = store_catalog.validate_catalog(catalog(128))
+        (assistant,) = _validate(catalog(128))
         self.assertEqual(len(assistant.actions), 128)
         with self.assertRaisesRegex(ValueError, "catalog Actions are invalid"):
-            store_catalog.validate_catalog(catalog(129))
+            _validate(catalog(129))
 
     def test_rejects_malformed_or_ambiguous_catalogs(self) -> None:
         mutations = (
@@ -135,10 +139,10 @@ class StoreCatalogTests(unittest.TestCase):
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate):
-                value = {"version": 1, "assistants": [_assistant()]}
+                value = {"version": 1, "locale": "en", "assistants": [_assistant()]}
                 mutate(value)
                 with self.assertRaises(ValueError):
-                    store_catalog.validate_catalog(value)
+                    _validate(value)
 
     def test_rejects_every_nested_catalog_authority_violation(self) -> None:
         mutations = (
@@ -171,10 +175,10 @@ class StoreCatalogTests(unittest.TestCase):
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate):
-                value = {"version": 1, "assistants": [_assistant()]}
+                value = {"version": 1, "locale": "en", "assistants": [_assistant()]}
                 mutate(value)
                 with self.assertRaises(ValueError):
-                    store_catalog.validate_catalog(value)
+                    _validate(value)
 
     def test_string_collection_bounds_are_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
@@ -183,7 +187,7 @@ class StoreCatalogTests(unittest.TestCase):
             store_catalog._strings(["same", "same"], 2, 8)
 
     def test_fetch_is_fixed_bounded_and_closes_the_connection(self) -> None:
-        body = json.dumps({"version": 1, "assistants": [_assistant()]}).encode()
+        body = json.dumps({"version": 1, "locale": "en", "assistants": [_assistant()]}).encode()
         connection = _Connection(_Response(body))
         called = None
 
@@ -192,7 +196,7 @@ class StoreCatalogTests(unittest.TestCase):
             called = (host, port, timeout)
             return connection
 
-        result = store_catalog.fetch_catalog(factory)
+        result = store_catalog.fetch_catalog("en", factory)
 
         self.assertEqual(
             called,
@@ -200,7 +204,7 @@ class StoreCatalogTests(unittest.TestCase):
         )
         self.assertEqual(
             connection.request_value,
-            ("GET", store_catalog.CATALOG_PATH, {"Accept": "application/json"}),
+            ("GET", f"{store_catalog.CATALOG_PATH}?locale=en", {"Accept": "application/json"}),
         )
         self.assertEqual(result[0].assistant_id, "shimpz-cloudflare")
         self.assertTrue(connection.closed)
@@ -220,14 +224,14 @@ class StoreCatalogTests(unittest.TestCase):
                     return selected
 
                 with self.assertRaises(store_catalog.CatalogUnavailableError):
-                    store_catalog.fetch_catalog(factory)
+                    store_catalog.fetch_catalog("en", factory)
                 self.assertTrue(connection.closed)
 
     def test_fetches_only_the_catalog_resolved_immutable_icon(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
-        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        catalog = store_catalog.StoreCatalog(loader=lambda _locale: assistants)
         connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
         called = None
 
@@ -264,13 +268,13 @@ class StoreCatalogTests(unittest.TestCase):
         catalog.get.return_value = ()
         with self.assertRaises(store_catalog.CatalogAssistantNotFoundError):
             store_catalog.fetch_assistant_icon("missing", catalog=catalog, cache=self.icon_cache)
-        catalog.get.assert_called_once_with()
+        catalog.get.assert_called_once_with("en")
 
     def test_icon_fetch_rejects_untrusted_status_type_length_and_contents(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
-        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        catalog = store_catalog.StoreCatalog(loader=lambda _locale: assistants)
         cases = [
             _Response(ICON_BYTES, status=302, content_type="image/png"),
             _Response(ICON_BYTES, content_type="text/html"),
@@ -302,8 +306,8 @@ class StoreCatalogTests(unittest.TestCase):
                 self.assertTrue(connection.closed)
 
     def test_icon_fetch_wraps_transport_failure_and_suppresses_close_failure(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
         with (
             mock.patch.object(store_catalog.CATALOG, "get", return_value=assistants),
@@ -317,7 +321,7 @@ class StoreCatalogTests(unittest.TestCase):
 
         connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
         connection.close = mock.Mock(side_effect=OSError("close failed"))
-        catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+        catalog = store_catalog.StoreCatalog(loader=lambda _locale: assistants)
         self.assertEqual(
             store_catalog.fetch_assistant_icon(
                 "shimpz-cloudflare",
@@ -329,8 +333,8 @@ class StoreCatalogTests(unittest.TestCase):
         )
 
     def test_icon_cache_reuses_verified_bytes_after_current_catalog_resolution(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
         catalog = mock.Mock(spec=store_catalog.StoreCatalog)
         catalog.get.return_value = assistants
@@ -355,8 +359,8 @@ class StoreCatalogTests(unittest.TestCase):
         )
 
     def test_icon_fetch_uses_the_production_catalog_and_cache_singletons(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
         catalog = mock.Mock(spec=store_catalog.StoreCatalog)
         catalog.get.return_value = assistants
@@ -379,8 +383,8 @@ class StoreCatalogTests(unittest.TestCase):
         self.assertEqual(factory.call_count, 1)
 
     def test_icon_cache_never_bypasses_current_catalog_absence_or_failure(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
         connection = _Connection(_Response(ICON_BYTES, content_type="image/png"))
         factory = mock.Mock(return_value=connection)
@@ -412,12 +416,11 @@ class StoreCatalogTests(unittest.TestCase):
         self.assertEqual(factory.call_count, 2)
 
     def test_icon_cache_keys_the_exact_catalog_publication(self) -> None:
-        first = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
-        )
-        second = store_catalog.validate_catalog(
+        first = _validate({"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]})
+        second = _validate(
             {
                 "version": 1,
+                "locale": "en",
                 "assistants": [_assistant(source_digest="sha256:" + ("c" * 64), icon_digest=VERIFIED_ICON_DIGEST)],
             }
         )
@@ -445,8 +448,8 @@ class StoreCatalogTests(unittest.TestCase):
         self.assertIn("/" + ("c" * 64) + "/", connections[1].request_value[1])
 
     def test_icon_cache_does_not_negative_cache_transport_or_admission_failure(self) -> None:
-        assistants = store_catalog.validate_catalog(
-            {"version": 1, "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
+        assistants = _validate(
+            {"version": 1, "locale": "en", "assistants": [_assistant(icon_digest=VERIFIED_ICON_DIGEST)]}
         )
         for factory in (
             mock.Mock(side_effect=OSError("offline")),
@@ -458,7 +461,7 @@ class StoreCatalogTests(unittest.TestCase):
             ),
         ):
             with self.subTest(factory=factory):
-                catalog = store_catalog.StoreCatalog(loader=lambda: assistants)
+                catalog = store_catalog.StoreCatalog(loader=lambda _locale: assistants)
                 cache = store_catalog.StoreIconCache()
                 for _ in range(2):
                     with self.assertRaises(store_catalog.CatalogUnavailableError):
@@ -500,14 +503,14 @@ class StoreCatalogTests(unittest.TestCase):
         oversized._headers.pop("Content-Length")
         connection = _Connection(oversized)
         with self.assertRaises(store_catalog.CatalogUnavailableError):
-            store_catalog.fetch_catalog(lambda *_args, **_kwargs: connection)
+            store_catalog.fetch_catalog("en", lambda *_args, **_kwargs: connection)
 
     def test_cache_expires_without_stale_fallback(self) -> None:
         now = [10.0]
         calls = 0
-        assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        assistant = _validate({"version": 1, "locale": "en", "assistants": [_assistant()]})
 
-        def loader():
+        def loader(_locale):
             nonlocal calls
             calls += 1
             if calls == 2:
@@ -515,46 +518,46 @@ class StoreCatalogTests(unittest.TestCase):
             return assistant
 
         catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: now[0])
-        self.assertIs(catalog.get(), assistant)
-        self.assertIs(catalog.get(), assistant)
+        self.assertIs(catalog.get("en"), assistant)
+        self.assertIs(catalog.get("en"), assistant)
         self.assertEqual(calls, 1)
         now[0] += store_catalog.CATALOG_TTL_SECONDS
         with self.assertRaises(store_catalog.CatalogUnavailableError):
-            catalog.get()
+            catalog.get("en")
         self.assertEqual(calls, 2)
         with self.assertRaises(store_catalog.CatalogUnavailableError):
-            catalog.get()
+            catalog.get("en")
         self.assertEqual(calls, 2)
         now[0] += store_catalog.CATALOG_TTL_SECONDS
-        self.assertIs(catalog.get(), assistant)
+        self.assertIs(catalog.get("en"), assistant)
         self.assertEqual(calls, 3)
 
     def test_cache_does_not_hold_its_state_lock_during_fetch(self) -> None:
-        assistant = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        assistant = _validate({"version": 1, "locale": "en", "assistants": [_assistant()]})
         started = threading.Event()
         release = threading.Event()
 
-        def loader():
+        def loader(_locale):
             started.set()
             self.assertTrue(release.wait(timeout=10))
             return assistant
 
         catalog = store_catalog.StoreCatalog(loader=loader)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            refresh = executor.submit(catalog.get)
+            refresh = executor.submit(catalog.get, "en")
             self.assertTrue(started.wait(timeout=10))
             # The cache state stays readable while the refresh is in flight.
-            self.assertIsNone(executor.submit(catalog._cached).result(timeout=5))
+            self.assertIsNone(executor.submit(catalog._cached, "en").result(timeout=5))
             release.set()
             self.assertIs(refresh.result(timeout=10), assistant)
 
     def test_concurrent_cold_reads_share_one_upstream_load(self) -> None:
-        assistants = store_catalog.validate_catalog({"version": 1, "assistants": [_assistant()]})
+        assistants = _validate({"version": 1, "locale": "en", "assistants": [_assistant()]})
         loads = 0
         entered = threading.Event()
         release = threading.Event()
 
-        def loader() -> tuple[store_catalog.CatalogAssistant, ...]:
+        def loader(_locale) -> tuple[store_catalog.CatalogAssistant, ...]:
             nonlocal loads
             loads += 1
             entered.set()
@@ -563,9 +566,9 @@ class StoreCatalogTests(unittest.TestCase):
 
         catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 100.0)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            first = pool.submit(catalog.get)
+            first = pool.submit(catalog.get, "en")
             self.assertTrue(entered.wait(timeout=10))
-            second = pool.submit(catalog.get)
+            second = pool.submit(catalog.get, "en")
             release.set()
             self.assertEqual((first.result(timeout=10), second.result(timeout=10)), (assistants, assistants))
         self.assertEqual(loads, 1)
@@ -575,7 +578,7 @@ class StoreCatalogTests(unittest.TestCase):
         entered = threading.Event()
         release = threading.Event()
 
-        def loader():
+        def loader(_locale):
             nonlocal loads
             loads += 1
             entered.set()
@@ -584,14 +587,61 @@ class StoreCatalogTests(unittest.TestCase):
 
         catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 10.0)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            first = pool.submit(catalog.get)
+            first = pool.submit(catalog.get, "en")
             self.assertTrue(entered.wait(timeout=10))
-            second = pool.submit(catalog.get)
+            second = pool.submit(catalog.get, "en")
             release.set()
             for reader in (first, second):
                 with self.assertRaises(store_catalog.CatalogUnavailableError):
                     reader.result(timeout=10)
         self.assertEqual(loads, 1)
+
+
+class LocalizedStoreCatalogTests(unittest.TestCase):
+    """The catalog is fetched and cached per interface language; only summaries differ (ADR-0091)."""
+
+    def test_admits_only_a_catalog_in_exactly_the_requested_locale(self) -> None:
+        portuguese = {"version": 1, "locale": "pt", "assistants": [_assistant(summary="Gerencia zonas revisadas.")]}
+        (assistant,) = store_catalog.validate_catalog(portuguese, "pt")
+        self.assertEqual(assistant.summary, "Gerencia zonas revisadas.")
+        for value, locale in (
+            (portuguese, "en"),
+            (portuguese, "it"),
+            ({"version": 1, "assistants": []}, "en"),
+            ({"version": 1, "locale": None, "assistants": []}, "en"),
+        ):
+            with self.subTest(locale=locale), self.assertRaisesRegex(ValueError, "catalog envelope is invalid"):
+                store_catalog.validate_catalog(value, locale)
+
+    def test_fetches_the_requested_locale_and_refuses_an_invalid_one_before_egress(self) -> None:
+        body = json.dumps({"version": 1, "locale": "ja", "assistants": [_assistant()]}).encode()
+        connection = _Connection(_Response(body))
+        result = store_catalog.fetch_catalog("ja", lambda *_args, **_kwargs: connection)
+        self.assertEqual(result[0].assistant_id, "shimpz-cloudflare")
+        self.assertEqual(connection.request_value[1], f"{store_catalog.CATALOG_PATH}?locale=ja")
+        factory = mock.Mock()
+        for locale in ("it", "", "en&x=1"):
+            with self.subTest(locale=locale), self.assertRaises(store_catalog.CatalogUnavailableError):
+                store_catalog.fetch_catalog(locale, factory)
+        factory.assert_not_called()
+
+    def test_caches_each_locale_independently_and_refuses_an_invalid_locale(self) -> None:
+        loads: list[str] = []
+
+        def loader(locale: str) -> tuple[store_catalog.CatalogAssistant, ...]:
+            loads.append(locale)
+            value = {"version": 1, "locale": locale, "assistants": [_assistant(summary=f"Summary {locale}.")]}
+            return store_catalog.validate_catalog(value, locale)
+
+        catalog = store_catalog.StoreCatalog(loader=loader, clock=lambda: 10.0)
+        self.assertEqual(catalog.get("en")[0].summary, "Summary en.")
+        self.assertEqual(catalog.get("pt")[0].summary, "Summary pt.")
+        self.assertEqual(catalog.get("en")[0].summary, "Summary en.")
+        self.assertEqual(catalog.get("pt")[0].summary, "Summary pt.")
+        self.assertEqual(loads, ["en", "pt"])
+        with self.assertRaises(store_catalog.CatalogUnavailableError):
+            catalog.get("pt-BR")
+        self.assertEqual(loads, ["en", "pt"])
 
 
 if __name__ == "__main__":

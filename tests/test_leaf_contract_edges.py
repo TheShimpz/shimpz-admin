@@ -23,6 +23,8 @@ from team import assets, bridge, transport
 
 from chat import local, payloads
 
+REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
+
 
 class AuthenticationEdgeTests(unittest.TestCase):
     def test_malformed_and_non_numeric_signed_sessions_fail_closed(self) -> None:
@@ -140,10 +142,16 @@ class AssetProjectionEdgeTests(unittest.TestCase):
 class PayloadEdgeTests(unittest.TestCase):
     def test_chat_payload_limits_and_duplicates_fail_closed(self) -> None:
         invalid = (
-            {"message": " ", "files": [], "assistant_ids": [], "locale": "en"},
-            {"message": "x" * (payloads.MAX_CHAT_MESSAGE_CHARS + 1), "files": [], "assistant_ids": [], "locale": "en"},
-            {"message": "ok", "files": "bad", "assistant_ids": [], "locale": "en"},
-            {"message": "ok", "files": ["a" * 32, "a" * 32], "assistant_ids": [], "locale": "en"},
+            {"message": " ", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+            {
+                "message": "x" * (payloads.MAX_CHAT_MESSAGE_CHARS + 1),
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+            },
+            {"message": "ok", "files": "bad", "assistant_ids": [], "locale": "en", "timezone": None},
+            {"message": "ok", "files": ["a" * 32, "a" * 32], "assistant_ids": [], "locale": "en", "timezone": None},
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
@@ -151,25 +159,25 @@ class PayloadEdgeTests(unittest.TestCase):
 
     def test_team_chat_body_admits_only_a_bounded_committed_window(self) -> None:
         entry = {"role": "user", "text": "Earlier", "truncated": False}
+        request = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
+        chat = {"files": [], "assistant_ids": [], "locale": "en", "timezone": "America/Sao_Paulo"}
         body = payloads.canonical_team_chat_body(
-            {"message": " ok ", "files": [], "assistant_ids": [], "locale": "en", "conversation": [entry]}
+            {"message": " ok ", **chat, "conversation": [entry], "request": request}
         )
-        self.assertEqual(
-            body, {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "conversation": [entry]}
-        )
+        self.assertEqual(body, {"message": "ok", **chat, "conversation": [entry], "request": request})
+        valid = {"message": "ok", **chat, "conversation": [entry], "request": request}
         invalid = (
             None,
-            {"message": "ok", "files": [], "assistant_ids": [], "locale": "en"},
-            {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "conversation": "bad"},
-            {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "conversation": [{"role": "user"}]},
-            {
-                "message": "ok",
-                "files": [],
-                "assistant_ids": [],
-                "locale": "en",
-                "conversation": [{**entry, "role": "system"}],
-            },
-            {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "conversation": [entry] * 9},
+            {"message": "ok", **chat},
+            {key: value for key, value in valid.items() if key != "request"},
+            {**valid, "conversation": "bad"},
+            {**valid, "conversation": [{"role": "user"}]},
+            {**valid, "conversation": [{**entry, "role": "system"}]},
+            {**valid, "conversation": [entry] * 9},
+            {**valid, "request": {"issued_at": 1, "nonce": "A" * 32}},
+            {**valid, "request": None},
+            {**valid, "timezone": "../etc"},
+            {**valid, "timezone": 3},
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
@@ -178,13 +186,15 @@ class PayloadEdgeTests(unittest.TestCase):
             payloads.canonical_chat_payload({"message": "ok", "files": []})
         for locale in (None, "EN", "it", 1):
             with self.subTest(locale=locale), self.assertRaises(transport.TeamRequestError):
-                payloads.canonical_chat_payload({"message": "ok", "files": [], "assistant_ids": [], "locale": locale})
+                payloads.canonical_chat_payload(
+                    {"message": "ok", "files": [], "assistant_ids": [], "locale": locale, "timezone": None}
+                )
         with self.assertRaises(transport.TeamRequestError):
             payloads.canonical_chat_payload(
                 {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "language_exemplar": "ok"}
             )
         with mock.patch.object(bridge, "chat") as chat, self.assertRaises(transport.TeamRequestError):
-            local.turn("team_1", ["not", "a", "payload"], ())
+            local.turn("team_1", ["not", "a", "payload"], (), REQUEST)
         chat.assert_not_called()
 
     def test_human_payload_shapes_fail_closed(self) -> None:

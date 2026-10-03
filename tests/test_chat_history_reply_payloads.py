@@ -74,7 +74,6 @@ class ChatHistoryReplyPayloadTests(unittest.TestCase):
             "team_id": "marketing",
             "team_name": "Marketing",
             "reply": "Qual período?\n\n1. Hoje\n2. Semana ✓ — Sete dias.",
-            "routine_proposal": None,
         }
         with self.assertRaises(ValueError):
             history.append_reply("marketing", turn_id, {**done, "reply": "Other text", "clarification": asked})
@@ -123,37 +122,20 @@ class ChatHistoryReplyPayloadTests(unittest.TestCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
-    def test_a_reply_keeps_its_closed_routine_proposal_for_reload(self) -> None:
-        proposal = {
-            "proposal_id": "c" * 32,
-            "op": "propose",
-            "quote": "Todo dia às 9, liste as zonas",
-            "schedule": {"kind": "daily", "time": "09:00"},
-            "timezone": None,
-            "routine_id": None,
-            "assistant_ids": ["shimpz-cloudflare"],
-            "expires_in": 900,
-        }
+    def test_a_reply_never_carries_a_retired_routine_proposal(self) -> None:
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Todo dia às 9, liste as zonas"))
         done = {
             "type": "done",
             "team_id": "marketing",
             "team_name": "Marketing",
-            "reply": "Posso agendar isso; confirme no cartão.",
+            "reply": "Pronto: todo dia às 9 listo as zonas.",
             "clarification": None,
         }
+        # A Routine is created from the message itself (ADR-0092); a reply with a proposal card is refused.
         with self.assertRaises(ValueError):
-            history.append_reply("marketing", turn_id, {**done, "routine_proposal": {**proposal, "op": "run"}})
-        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "routine_proposal": proposal}))
-        entry = history.page("marketing")["entries"][-1]
-        self.assertEqual(entry["routine_proposal"], proposal)
-        # A proposal never enters the Brain's conversation window; only the reply text does.
-        following = history.new_turn_id()
-        self.assertTrue(history.append_user("marketing", following, "Obrigado"))
-        window = history.conversation("marketing", following)
-        self.assertIn("Posso agendar isso; confirme no cartão.", repr(window))
-        self.assertNotIn(proposal["proposal_id"], repr(window))
+            history.append_reply("marketing", turn_id, {**done, "routine_proposal": None})
+        self.assertTrue(history.append_reply("marketing", turn_id, done))
         with sqlite3.connect(self.path) as database:
             database.execute(
                 "UPDATE transcript SET payload = ? WHERE event_key = ?",
@@ -164,11 +146,44 @@ class ChatHistoryReplyPayloadTests(unittest.TestCase):
                             "role": "assistant",
                             "text": "x",
                             "author": "Marketing",
-                            "routine_proposal": {**proposal, "expires_in": -1},
+                            "routine_proposal": {},
                         }
                     ),
                     f"{turn_id}:reply",
                 ),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
+    def test_a_reply_keeps_the_actions_its_attachments_withheld_for_reload(self) -> None:
+        restricted = {"actions": [{"assistant": "shimpz-cloudflare", "action": "list-zones"}], "total": 3}
+        turn_id = self._admitted()
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "The contract names two zones.",
+            "clarification": None,
+        }
+        for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", turn_id, {**done, "restricted_actions": invalid})
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "restricted_actions": restricted}))
+        entry = history.page("marketing")["entries"][-1]
+        self.assertEqual(entry["restricted_actions"], restricted)
+        tampered = self._admitted()
+        self.assertTrue(history.append_reply("marketing", tampered, done))
+        stored = {
+            "kind": "message",
+            "role": "assistant",
+            "text": "x",
+            "author": "Marketing",
+            "restricted_actions": {**restricted, "total": 0},
+        }
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (json.dumps(stored), f"{tampered}:reply"),
             )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
@@ -185,7 +200,6 @@ class ChatHistoryReplyPayloadTests(unittest.TestCase):
             "team_name": "Marketing",
             "reply": "Two zones are active.",
             "clarification": None,
-            "routine_proposal": None,
         }
         for invalid in (None, {**usage, "models": []}, {**usage, "duration_ms": 86_400_001}):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):

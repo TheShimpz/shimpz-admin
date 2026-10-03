@@ -432,13 +432,24 @@ def commit_passkey_authentication(
     return cast(tuple[str, str | None], _mutate(commit))
 
 
-def verify_totp(code: object, *, enrollment: bool, now: int | None = None) -> totp.Verification:
-    """Persist one TOTP attempt, activation, replay evidence, and session rotation."""
+def verify_totp(
+    code: object,
+    *,
+    enrollment: bool,
+    now: int | None = None,
+    generation: int | None = None,
+) -> totp.Verification:
+    """Persist one TOTP attempt, activation, replay evidence, and session rotation.
+
+    A ceremony passes the factor generation its password ticket was issued under, checked inside the same transaction.
+    """
     expected = auth.RECORD_STATE_ENROLLMENT_REQUIRED if enrollment else auth.RECORD_STATE_CONFIGURED
 
     def verify(data: dict) -> totp.Verification:
         if _authentication_state(data) != expected:
             raise totp.TotpStateError("TOTP ceremony is unavailable")
+        if generation is not None and data["factor_generation"] != generation:
+            return totp.Verification.CHANGED
         result = totp.verify(data["totp"], code, now)
         if result is totp.Verification.ACCEPTED and enrollment:
             data["factor_generation"] = int(data["factor_generation"]) + 1

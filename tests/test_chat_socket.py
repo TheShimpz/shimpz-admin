@@ -135,6 +135,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "files": [],
                     "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
                     "locale": "en",
+                    "timezone": None,
+                    "request": None,
                 },
                 {
                     "type": "chat",
@@ -142,6 +144,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "files": [],
                     "assistant_ids": [f"assistant-{index}" for index in range(17)],
                     "locale": "en",
+                    "timezone": None,
+                    "request": None,
                 },
                 {
                     "type": "chat",
@@ -149,6 +153,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "files": [],
                     "assistant_ids": ["Shimpz-Assistant"],
                     "locale": "en",
+                    "timezone": None,
+                    "request": None,
                 },
             )
             with mock.patch.object(self.chat_socket.local, "turn") as turn:
@@ -169,7 +175,15 @@ class ChatWebSocketTests(ChatWebSocketCase):
             self.admin_app.state._write(store)
             with mock.patch.object(self.chat_socket.local, "turn") as turn:
                 await websocket.send_json(
-                    {"type": "chat", "message": "must not run", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "must not run",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual(
                     await websocket.next_message(),
@@ -191,7 +205,15 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "must not run", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "must not run",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual(
                     await websocket.next_message(),
@@ -250,7 +272,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 started.set()
                 release.wait(timeout=2)
                 _emit_measured_progress(progress)
@@ -261,7 +283,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "late reply",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -279,11 +300,21 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
                 await websocket.send_json(
-                    {"type": "chat", "message": "second", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "second",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual(
                     await websocket.next_json(),
@@ -305,6 +336,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -316,8 +349,15 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 await websocket.disconnect()
                 turn_mock.assert_any_call(
                     "team_1",
-                    {"message": "first", "files": [], "assistant_ids": ["shimpz-cloudflare"], "locale": "en"},
+                    {
+                        "message": "first",
+                        "files": [],
+                        "assistant_ids": ["shimpz-cloudflare"],
+                        "locale": "en",
+                        "timezone": None,
+                    },
                     (),
+                    mock.ANY,
                     mock.ANY,
                 )
                 self.assertEqual(stop_mock.call_count, 1)
@@ -329,7 +369,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[-1]))
@@ -340,7 +380,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Natural terminal.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -364,6 +403,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -380,7 +421,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Natural terminal.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
                 with self.assertRaises(TimeoutError):
@@ -395,7 +435,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             finish_turn = threading.Event()
             finish_stop = threading.Event()
 
-            def turn(_team_id, _payload, _conversation, _progress):
+            def turn(_team_id, _payload, _conversation, _request, _progress):
                 started.set()
                 finish_turn.wait(timeout=2)
                 return self.chat_socket.local.PublicResponse(
@@ -405,7 +445,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Bounded terminal.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -431,6 +470,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -449,7 +490,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[0]))
@@ -460,7 +501,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "discard me",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -478,6 +518,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(started)
@@ -499,7 +541,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             started = threading.Event()
             release = threading.Event()
 
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 started.set()
                 progress(dict(_MEASURED_PROGRESS[0]))
                 release.wait(timeout=2)
@@ -510,7 +552,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "discard me",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -522,7 +563,15 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "running", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "running",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 await _wait_for_thread(started)
                 await _wait_for_thread(websocket.send_failed)
@@ -535,7 +584,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_progress_send_failure_does_not_stop_a_completed_turn(self) -> None:
         async def scenario() -> None:
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 progress(dict(_MEASURED_PROGRESS[0]))
                 return self.chat_socket.local.PublicResponse(
                     200,
@@ -544,7 +593,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "already committed",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -567,6 +615,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 await _wait_for_thread(websocket.send_failed)
@@ -594,6 +644,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
@@ -605,7 +657,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_turn_emits_fixed_progress_before_its_single_terminal(self) -> None:
         async def scenario() -> None:
-            def turn(_team_id, _payload, _conversation, progress):
+            def turn(_team_id, _payload, _conversation, _request, progress):
                 _emit_measured_progress(progress)
                 return self.chat_socket.local.PublicResponse(
                     200,
@@ -614,7 +666,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Done.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
 
@@ -628,6 +679,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
                 self.assertEqual(
@@ -642,7 +695,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "team_name": "Marketing",
                         "reply": "Done.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
                 await websocket.disconnect()

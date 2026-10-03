@@ -12,7 +12,7 @@ from http import HTTPStatus
 from team import bridge as team
 from team import transport
 
-from protocol.http.v1 import payload as team_contract
+from chat import local as chat_local
 from protocol.http.v1 import routine as routine_contract
 from routine import team as routine_team
 
@@ -23,16 +23,6 @@ def _id(value: object, name: str) -> str:
     if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
         raise team.TeamRequestError(f"{name} is invalid")
     return value
-
-
-def _timezone(body: object, fields: set[str]) -> dict[str, object]:
-    if (
-        not isinstance(body, dict)
-        or set(body) != fields
-        or routine_contract.canonical_timezone(body["timezone"]) is None
-    ):
-        raise team.TeamRequestError("Routine request is invalid")
-    return body
 
 
 def _projected(
@@ -59,46 +49,11 @@ def _exact(fields: dict[str, Callable[[object], bool]]) -> Callable[[dict[str, o
     return admit
 
 
-def preview(team_id: object, proposal_id: object, body: object) -> team.TeamResponse:
-    """The confirmation card's live facts; a proposal that expired or was used is gone."""
-    canonical = team.canonical_team_id(team_id)
-    proposal = _id(proposal_id, "Routine proposal")
-    path = f"/v1/teams/{canonical}/routines/proposals/{proposal}/preview"
-    response = transport._call("POST", path, _timezone(body, {"timezone"}))
-
-    def admit(value: dict[str, object]) -> dict[str, object] | None:
-        # The card confirms exactly the proposal it previewed.
-        preview = routine_contract.canonical_preview(value)
-        return preview if preview is not None and preview["proposal_id"] == proposal else None
-
-    return _projected(response, admit)
-
-
-def confirm(team_id: object, body: object) -> team.TeamResponse:
-    """The Supervisor's confirmation: the only way a Routine is created or a cancellation is carried out."""
-    canonical = team.canonical_team_id(team_id)
-    body = _timezone(body, {"proposal_id", "timezone"})
-    _id(body["proposal_id"], "Routine proposal")
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines", body)
-
-    def admit(value: dict[str, object]) -> dict[str, object] | None:
-        if set(value) == {"team_id", "routine"} and value["team_id"] == canonical:
-            return value if routine_contract.canonical_routine_view(value["routine"]) is not None else None
-        # Confirming a cancel card deletes the Routine its proposal named.
-        return _deleted(canonical, None)(value)
-
-    return _projected(response, admit)
-
-
-def _deleted(team_id: str, routine_id: str | None) -> Callable[[dict[str, object]], dict[str, object] | None]:
+def _deleted(team_id: str, routine_id: str) -> Callable[[dict[str, object]], dict[str, object] | None]:
     return _exact(
         {
             "team_id": lambda value: value == team_id,
-            "routine_id": lambda value: (
-                isinstance(value, str)
-                and routine_contract.ROUTINE_ID_RE.fullmatch(value) is not None
-                and routine_id in (None, value)
-            ),
+            "routine_id": lambda value: value == routine_id,
             "deleted": lambda value: type(value) is bool,
         }
     )
@@ -108,19 +63,24 @@ def list_routines(team_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines")
 
-    def items(admit: Callable[[object], object]) -> Callable[[object], bool]:
+    def items(admit: Callable[[object], object], bound: int) -> Callable[[object], bool]:
         return lambda value: (
-            isinstance(value, list)
-            and len(value) <= routine_contract.MAX_ROUTINES
-            and all(admit(item) is not None for item in value)
+            isinstance(value, list) and len(value) <= bound and all(admit(item) is not None for item in value)
         )
 
     fields = {
         "team_id": lambda value: value == canonical,
-        "routines": items(routine_contract.canonical_routine_view),
-        "runs": items(routine_contract.canonical_run_view),
+        "routines": items(routine_contract.canonical_routine_view, routine_contract.MAX_ROUTINES),
+        "runs": items(routine_contract.canonical_run_view, routine_contract.MAX_ROUTINES),
+        # Held runs' incidents, which outlive a deleted Routine, each settled through its recovery card (ADR-0092).
+        "incidents": items(routine_contract.canonical_incident_view, routine_contract.MAX_UNRESOLVED_INCIDENTS),
     }
     return _projected(response, _exact(fields))
+
+
+def deletion_subject(team_id: object, routine_id: object) -> str:
+    """The one exact operation a Supervisor confirms before Admin asks Team to delete this Routine (ADR-0051)."""
+    return f"routine-delete:{team.canonical_team_id(team_id)}:{_id(routine_id, 'Routine')}"
 
 
 def delete(team_id: object, routine_id: object) -> team.TeamResponse:
@@ -147,11 +107,81 @@ def stop(team_id: object, run_id: object) -> team.TeamResponse:
     return _run_decision(team_id, run_id, "stop", {}, "stopped")
 
 
-def resolve(team_id: object, run_id: object, body: object) -> team.TeamResponse:
-    """A Supervisor's informed resolution of an uncertain run's exact batch."""
-    fingerprint = (
-        body.get("batch_fingerprint") if isinstance(body, dict) and set(body) == {"batch_fingerprint"} else None
+def _bound(team_id: str, incident_id: str, admit: Callable[[object], dict[str, object] | None]):
+    """A card view that names exactly the Team and incident it was asked for."""
+
+    def bound(body: dict[str, object]) -> dict[str, object] | None:
+        admitted = admit(body)
+        if admitted is None or (admitted["team_id"], admitted["incident_id"]) != (team_id, incident_id):
+            return None
+        return admitted
+
+    return bound
+
+
+def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
+    """Open a held run's recovery card for the authenticated person (ADR-0092 section 7)."""
+    canonical = team.canonical_team_id(team_id)
+    incident = _id(incident_id, "Routine incident")
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/card", {})
+    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card))
+
+
+def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
+    """Answer one open recovery card once with Rodar or Recriar; Excluir is the Routine's confirmed deletion.
+
+    Recriar compiles the Routine again on the Team's model, so only it carries the Team's model credential, in the
+    private headers the Supervisor assertion binds; Rodar runs no model and carries none.
+    """
+    canonical = team.canonical_team_id(team_id)
+    incident = _id(incident_id, "Routine incident")
+    answer = routine_contract.canonical_card_answer_request(body)
+    if answer is None:
+        raise team.TeamRequestError("Routine card answer is invalid")
+    credential = None
+    if answer["choice"] == "recreate":
+        credential = chat_local.model_credential(canonical)
+        if isinstance(credential, team.TeamResponse):
+            return credential
+    response = transport._call(
+        "POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer, model_credential=credential
     )
-    if not isinstance(fingerprint, str) or team_contract.SHA256_RE.fullmatch(fingerprint) is None:
-        raise team.TeamRequestError("Routine resolution is invalid")
-    return _run_decision(team_id, run_id, "resolve", {"batch_fingerprint": fingerprint}, "resolved")
+    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
+
+
+def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
+    """One run's execution details (ADR-0092): Team's sanitized diagnostics, which the browser renders only as text."""
+    canonical = team.canonical_team_id(team_id)
+    run = _id(run_id, "Routine run")
+    response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/diagnostics")
+
+    def admit(body: dict[str, object]) -> dict[str, object] | None:
+        admitted = routine_contract.canonical_diagnostics(body)
+        return (
+            admitted if admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run) else None
+        )
+
+    return _projected(response, admit)
+
+
+def _set_paused(team_id: object, routine_id: object, paused: bool) -> team.TeamResponse:
+    canonical = team.canonical_team_id(team_id)
+    routine = _id(routine_id, "Routine")
+    action = "pause" if paused else "resume"
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/{routine}/{action}", {})
+    fields = {
+        "team_id": lambda value: value == canonical,
+        "routine_id": lambda value: value == routine,
+        "paused": lambda value: value is paused,
+    }
+    return _projected(response, _exact(fields))
+
+
+def resume(team_id: object, routine_id: object) -> team.TeamResponse:
+    """Turn a paused Routine's dispatch back on; an unresolved incident still holds it."""
+    return _set_paused(team_id, routine_id, False)
+
+
+def pause(team_id: object, routine_id: object) -> team.TeamResponse:
+    """Turn a Routine's dispatch off until it is resumed; a run already going finishes."""
+    return _set_paused(team_id, routine_id, True)

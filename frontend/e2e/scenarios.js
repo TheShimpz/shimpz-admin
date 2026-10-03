@@ -2,6 +2,9 @@
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { attachmentReply, fileApprovalChallenge, uploadFile } from './attachmentScenarios.js';
+import { localizedChallenge } from './localizedRequest.js';
+import { capReply, routineLifecycleStart, routineRecoveryRoutes, setAside } from './routineScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -18,30 +21,32 @@ const MAX_TEAMS = 128;
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 
 export const ASSISTANTS = [
-  { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare', summary: 'Safely manage Cloudflare DNS records through OAuth.' },
-  { id: 'whatsapp', title: 'WhatsApp', summary: 'Send reviewed WhatsApp messages.' },
+  { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
+  { id: 'whatsapp', title: 'WhatsApp' },
 ];
 
-export const ROUTINE_PROPOSAL = {
-  proposal_id: 'c'.repeat(32),
-  op: 'propose',
-  quote: 'Every day at 9, list my DNS zones',
-  schedule: { kind: 'daily', time: '09:00' },
-  timezone: null,
-  routine_id: null,
-  assistant_ids: ['shimpz-cloudflare'],
-  expires_in: 900,
-};
+export const ROUTINE_PLAN = [
+    {
+      id: 'zones',
+      assistant: 'shimpz-cloudflare',
+      action: 'list-zones',
+      inputs: [{ member: 'page', source: 'literal', value: '1' }],
+      stored_inputs: ['api-token'],
+    },
+  ];
 
 export const ROUTINE_VIEW = {
   routine_id: 'a'.repeat(32),
-  quote: ROUTINE_PROPOSAL.quote,
-  schedule: ROUTINE_PROPOSAL.schedule,
+  name: 'Daily DNS zones',
+  quote: 'Every day at 9, list my DNS zones',
+  steps: ROUTINE_PLAN,
+  schedule: { kind: 'daily', time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-01T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
+  paused: false,
 };
 
 const WEEKLY_ROUTINE = {
@@ -52,16 +57,14 @@ const WEEKLY_ROUTINE = {
   next_run_at: '2026-10-05T11:00:00Z',
 };
 
-const UNCERTAIN_RUN = {
-  run_id: 'b'.repeat(32),
+// A held run's unresolved incident (ADR-0092): its Routine is paused until a recovery card settles it.
+const HELD_INCIDENT = {
+  incident_id: 'b'.repeat(32),
   routine_id: ROUTINE_VIEW.routine_id,
-  status: 'uncertain',
-  scheduled_at: '2026-09-30T12:00:00Z',
-  request_kind: null,
-  assistant_id: null,
-  action: null,
-  batch_fingerprint: 'e'.repeat(64),
-  actions: [['shimpz-cloudflare', 'replace-dns-record']],
+  quote: ROUTINE_VIEW.quote,
+  created_at: '2026-09-30T12:01:07Z',
+  assistant_id: 'shimpz-cloudflare',
+  action: 'replace-dns-record',
 };
 
 const FROZEN_RUN = {
@@ -72,8 +75,6 @@ const FROZEN_RUN = {
   request_kind: 'human',
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
-  batch_fingerprint: null,
-  actions: [],
 };
 
 export function authenticatedLocalSession(overrides = {}) {
@@ -93,7 +94,6 @@ export function authenticatedLocalSession(overrides = {}) {
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
-const gone = () => ({ status: 404, json: { code: 'routine-proposal-unavailable' } });
 
 function hexId(prefix, sequence) {
   return `${prefix}${sequence.toString(16)}`.padStart(32, '0');
@@ -121,8 +121,20 @@ const STARTS = {
   routines: () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
-    routines: [ROUTINE_VIEW, WEEKLY_ROUTINE],
-    runs: [UNCERTAIN_RUN, FROZEN_RUN],
+    routines: [{ ...ROUTINE_VIEW, paused: true }, WEEKLY_ROUTINE],
+    runs: [FROZEN_RUN],
+    incidents: [HELD_INCIDENT],
+  }),
+  // Every Routine notice in the transcript, a held run's recovery card, a paused Routine, a minute rollup, and a run's
+  // execution details (ADR-0092).
+  'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
+  // A continuous request that names no daily cap asks for it; the answer creates the Routine.
+  'routine-cap': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    capQuestion: true,
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({
@@ -137,7 +149,7 @@ const STARTS = {
     teams: [TEAM],
     routines: [],
     runs: [],
-    human: true,
+    human: 'stored-input',
   }),
   'human-approval': () => ({
     session: authenticatedLocalSession(),
@@ -145,6 +157,33 @@ const STARTS = {
     routines: [],
     runs: [],
     human: 'approval',
+  }),
+  // A plain approval whose kicker names the Assistant while the Creator's own title stays.
+  'human-confirm': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'confirm',
+  }),
+  // Chat attachments (ADR-0093): files upload to the Team, and a reply to a message with files names the Actions
+  // Team withheld for them; an install request with files gets the attachment-free guidance.
+  attachments: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [] }),
+  // Every upload finds the Team's storage full.
+  'attachments-full': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    uploads: 'full',
+  }),
+  // An Action asks to receive the attached original; the approval names the file and its embedded metadata.
+  'attachment-approval': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'file',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
@@ -165,48 +204,49 @@ function providers() {
   }));
 }
 
-function routineRoutes(state, method, path, body) {
-  const base = '/api/teams/marketing/routines';
-  if (path === base && method === 'GET') return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs });
-  if (path === base && method === 'POST') {
-    // A confirmation consumes its proposal once and creates a Routine with its own id.
-    const proposal = state.proposals.get(body?.proposal_id);
-    if (!proposal) return gone();
-    state.proposals.delete(body.proposal_id);
-    state.sequence += 1;
-    const routine = {
-      ...ROUTINE_VIEW,
-      routine_id: hexId('9', state.sequence),
-      quote: proposal.quote,
-      schedule: proposal.schedule,
-      timezone: body.timezone ?? 'UTC',
-    };
-    state.routines = [...state.routines, routine];
-    return ok({ team_id: 'marketing', routine });
+// Deleting a Routine (ADR-0051): any password but `wrong password` is the Supervisor's, then any six-digit code but
+// `000000` confirms it. The preview offers only the code, since it cannot answer a real passkey.
+function routineDeletion(method, path, body) {
+  const begin = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/deletion$/);
+  if (begin && method === 'POST') {
+    if (typeof body?.password !== 'string' || !body.password) return { status: 400, json: { detail: 'invalid' } };
+    if (body.password === 'wrong password') return { status: 401, json: { code: 'password-incorrect' } };
+    return { status: 202, json: { methods: ['totp'] } };
   }
-  const preview = path.match(/^\/api\/teams\/marketing\/routines\/proposals\/([0-9a-f]{32})\/preview$/);
-  if (preview && method === 'POST') {
-    const proposal = state.proposals.get(preview[1]);
-    if (!proposal) return gone();
-    return ok({
-      ...proposal,
-      timezone: body?.timezone ?? 'UTC',
-      next_runs: ['2026-10-01T12:00:00Z', '2026-10-02T12:00:00Z', '2026-10-03T12:00:00Z'],
-      daily_runs: '1',
-      max_daily_runs: 24,
-      fits: true,
-    });
+  const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
+  if (routine && method === 'DELETE' && body?.code === '000000') return { status: 401, json: { code: 'code-incorrect' } };
+  if (routine && method === 'DELETE' && !/^[0-9]{6}$/.test(body?.code ?? '')) {
+    return { status: 401, json: { code: 'authentication-expired' } };
+  }
+  return null;
+}
+
+function routineRoutes(state, method, path, body) {
+  const deletion = routineDeletion(method, path, body);
+  if (deletion) return deletion;
+  const base = '/api/teams/marketing/routines';
+  if (path === base && method === 'GET') {
+    return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs, incidents: state.incidents ?? [] });
+  }
+  const resume = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/resume$/);
+  if (resume && method === 'POST') {
+    state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, paused: false } : item));
+    return ok({ team_id: 'marketing', routine_id: resume[1], paused: false });
   }
   const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
   if (routine && method === 'DELETE') {
+    // Deleting a Routine sets each of its held runs aside, as Team does.
+    for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routine[1])) {
+      setAside(state, held.incident_id, 'delete');
+    }
     state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
     state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
   }
-  const run = path.match(/^\/api\/teams\/marketing\/routines\/runs\/([0-9a-f]{32})\/(stop|resolve)$/);
+  const run = path.match(/^\/api\/teams\/marketing\/routines\/runs\/([0-9a-f]{32})\/stop$/);
   if (run && method === 'POST') {
     state.runs = state.runs.filter((item) => item.run_id !== run[1]);
-    return ok({ team_id: 'marketing', run_id: run[1], [run[2] === 'stop' ? 'stopped' : 'resolved']: true });
+    return ok({ team_id: 'marketing', run_id: run[1], stopped: true });
   }
   return null;
 }
@@ -250,15 +290,38 @@ function otherTeamRoutes(state, method, path) {
     inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }),
     'assistant-integrations': () => ok({ integrations: [] }),
     'assistant-stored-inputs': () => ok({ stored_inputs: [] }),
-    routines: () => ok({ team_id: teamId, routines: [], runs: [] }),
+    routines: () => ok({ team_id: teamId, routines: [], runs: [], incidents: [] }),
   }[view]?.() ?? null;
 }
 
-function propose(state, message) {
+// A recurring request creates its Routine directly from the user's own message (ADR-0092), with a created notice.
+function create(state, message, timezone) {
   state.sequence += 1;
-  const proposal = { ...ROUTINE_PROPOSAL, proposal_id: hexId('c', state.sequence), quote: message.slice(0, 200) };
-  state.proposals.set(proposal.proposal_id, proposal);
-  return structuredClone(proposal);
+  const routine = {
+    ...ROUTINE_VIEW,
+    routine_id: hexId('9', state.sequence),
+    quote: message.slice(0, 200),
+    timezone: timezone ?? 'UTC',
+  };
+  state.routines = [...state.routines, routine];
+  const noticeId = hexId('7', state.sequence);
+  state.history = [...state.history, {
+    id: `${noticeId}:routine`,
+    kind: 'routine-run',
+    notice_id: noticeId,
+    routine_id: routine.routine_id,
+    quote: routine.quote,
+    run_id: null,
+    outcome: 'created',
+    created_at: '2026-10-01T12:00:00Z',
+    detail: {
+      name: 'Daily DNS zones',
+      steps: ROUTINE_PLAN,
+      schedule: routine.schedule,
+      timezone: routine.timezone,
+    },
+    version: 1,
+  }];
 }
 
 export const CLARIFICATION = Object.freeze({
@@ -293,7 +356,6 @@ function clarifyReply(state, message) {
         .map((option, index) => `${index + 1}. ${option.label}${index === CLARIFICATION.default_index ? ' ✓' : ''} — ${option.description}`)
         .join('\n')}`,
       clarification: structuredClone(CLARIFICATION),
-      routine_proposal: null,
     };
   }
   if (state.clarify === 'fail-once') {
@@ -306,50 +368,111 @@ function clarifyReply(state, message) {
     team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
     reply: `Certo — sigo com **${answer}**. Preview reply for the chosen scope.`,
     clarification: null,
-    routine_proposal: null,
   };
 }
 
-// The human-request scenario pauses an Action for a Stored Input the Team does not hold yet (ADR-0090).
-const HUMAN_CHALLENGE = Object.freeze({
-  type: 'human-required',
-  challenge_id: 'b'.repeat(32),
-  expires_in: 180,
-  assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
-  action: { id: 'search-web', summary: 'Search the web with Exa.' },
-  purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.',
-  help_url: 'https://dashboard.exa.ai/api-keys',
-  request: {
-    kind: 'input:password',
-    ordinal: 0,
-    title: 'Exa API key',
-    description: 'Exa search uses your Exa API key. It is stored encrypted for this Team and reused.',
-    fingerprint: 'c'.repeat(64),
-    label: 'Exa API key',
-    required: true,
-    placeholder: 'Paste your Exa API key',
-    min_length: 1,
-    max_length: 128,
-    stored_input: 'exa-api-key',
+// The human-request scenario pauses an Action for a Stored Input the Team does not hold yet (ADR-0090). Its purpose is
+// written in Portuguese, so Team projects it only in a Portuguese challenge (ADR-0091).
+const STORED_INPUT_REQUEST = Object.freeze({
+  kind: 'input:password',
+  ordinal: 0,
+  title: 'Exa API key',
+  description: 'Exa search uses your Exa API key. It is stored encrypted for this Team and reused.',
+  fingerprint: 'c'.repeat(64),
+  label: 'Exa API key',
+  required: true,
+  placeholder: 'Paste your Exa API key',
+  min_length: 1,
+  max_length: 128,
+  stored_input: 'exa-api-key',
+});
+
+function storedInputChallenge(locale) {
+  return {
+    type: 'human-required',
+    challenge_id: 'b'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
+    action: { id: 'search-web', summary: 'Search the web with Exa.' },
+    ...(locale === 'pt' ? { purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.' } : {}),
+    help_url: 'https://dashboard.exa.ai/api-keys',
+    ...localizedChallenge(STORED_INPUT_REQUEST, { locale }),
+  };
+}
+
+// The human-approval scenario asks to choose how a DNS change is published. Team renders the Assistant's English copy
+// in the requested interface language (ADR-0091); this preview carries Portuguese text and English text otherwise.
+const APPROVAL_REQUEST = Object.freeze({
+  kind: 'input:choice',
+  ordinal: 0,
+  title: 'DNS changes to publish: 3. Zone: example.com.',
+  description: 'Choose how Shimpz Cloudflare publishes the reviewed records for example.com.',
+  fingerprint: 'c'.repeat(64),
+  label: 'Publishing mode',
+  required: true,
+  options: [
+    { value: 'proxied', label: 'Proxied', description: 'Route traffic through Cloudflare.' },
+    { value: 'dns-only', label: 'DNS only', description: null },
+  ],
+});
+const APPROVAL_COPY = Object.freeze({
+  pt: {
+    title: 'Alterações de DNS a publicar: 3. Zona: example.com.',
+    description: 'Escolha como o Shimpz Cloudflare publica os registros revisados de example.com.',
+    label: 'Modo de publicação',
+    options: [
+      { label: 'Com proxy', description: 'Encaminhar o tráfego pela Cloudflare.' },
+      { label: 'Somente DNS', description: null },
+    ],
   },
 });
 
-// An approval request, where the Creator's own title stays and the kicker names the Assistant.
-const APPROVAL_CHALLENGE = Object.freeze({
-  type: 'human-required',
-  challenge_id: 'd'.repeat(32),
-  expires_in: 180,
-  assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
-  action: { id: 'update-dns-record', summary: 'Update one DNS record.' },
-  purpose: 'To point your domain at the new server, I need to change one DNS record in Cloudflare.',
-  request: {
-    kind: 'approval',
-    ordinal: 0,
-    title: 'Publish reviewed DNS changes?',
-    description: 'Cloudflare will update the A record for www.example.com.',
-    fingerprint: 'e'.repeat(64),
-  },
+function approvalChallenge(locale) {
+  return {
+    type: 'human-required',
+    challenge_id: 'b'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+    action: { id: 'publish-dns', summary: 'Publish reviewed DNS changes.' },
+    ...localizedChallenge(APPROVAL_REQUEST, { locale, shown: APPROVAL_COPY[locale] ?? {} }),
+  };
+}
+
+// A plain approval request, where the Creator's own title stays and the kicker names the Assistant.
+const CONFIRM_REQUEST = Object.freeze({
+  kind: 'approval',
+  ordinal: 0,
+  title: 'Publish reviewed DNS changes?',
+  description: 'Cloudflare will update the A record for www.example.com.',
+  fingerprint: 'e'.repeat(64),
 });
+
+function confirmChallenge(locale) {
+  return {
+    type: 'human-required',
+    challenge_id: 'd'.repeat(32),
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
+    action: { id: 'update-dns-record', summary: 'Update one DNS record.' },
+    // The purpose was written in English, so Team projects it only in an English challenge (ADR-0091).
+    ...(locale === 'en'
+      ? { purpose: 'To point your domain at the new server, I need to change one DNS record in Cloudflare.' }
+      : {}),
+    ...localizedChallenge(CONFIRM_REQUEST, { locale }),
+  };
+}
+
+const HUMAN_CHALLENGES = Object.freeze({
+  approval: approvalChallenge,
+  confirm: confirmChallenge,
+  file: fileApprovalChallenge,
+  'stored-input': storedInputChallenge,
+});
+
+// The pending request in the language a chat or sync frame names, as Team reopens it.
+function humanChallenge(state, frame) {
+  return HUMAN_CHALLENGES[state.human](frame.locale ?? 'en');
+}
 
 // Every preview reply reports what its task used, like Team does: tokens per model and the turn's duration.
 const PREVIEW_USAGE = Object.freeze({
@@ -362,25 +485,28 @@ const PREVIEW_USAGE = Object.freeze({
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
+  if (state.capQuestion) {
+    return capReply(state, message, state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name);
+  }
   const recurring = /\b(every|daily|weekly|toda|todo|cada)\b/iu.test(message);
   return {
     type: 'done',
     team_id: 'marketing',
     team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
     reply: recurring
-      ? 'I can run this on a schedule. Confirm it below to schedule it.'
+      ? (create(state, message, frame.timezone), 'Done: this Routine runs every day at 09:00.')
       : `Preview reply to: ${message}`,
     clarification: null,
-    routine_proposal: recurring ? propose(state, message) : null,
     usage: structuredClone(PREVIEW_USAGE),
   };
 }
 
 /** A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. */
-export function createScenario(name = 'ready') {
+export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
-  const state = { ...structuredClone(start()), proposals: new Map(), sequence: 0 };
+  // A scenario's own texts, such as a Routine's name and request, are written in the interface language it starts in.
+  const state = { history: [], sequence: 0, locale, ...structuredClone(start(locale)) };
   return {
     name,
     respond({ method = 'GET', path, body = null }) {
@@ -406,21 +532,24 @@ export function createScenario(name = 'ready') {
           assistants: [
             { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' },
             // A human request names an installed Assistant; Admin refuses one the Team inventory does not list.
-            ...(state.human
+            ...(state.human === 'stored-input'
               ? [{ assistant: 'shimpz-exa', assistant_version: '0.1.1', status: 'running', provenance: 'published' }]
               : []),
           ],
         });
       }
       if (path === '/api/teams/marketing/files' && method === 'GET') return ok({ files: [] });
-      if (path === '/api/teams/marketing/chat/history' && method === 'GET') return ok({ entries: [], before: null });
+      if (path === '/api/teams/marketing/files' && method === 'POST') return uploadFile(state, body);
+      if (path === '/api/teams/marketing/chat/history' && method === 'GET') {
+        return ok({ entries: state.history, before: null });
+      }
       if (path === '/api/teams/marketing/inference' && method === 'GET') {
         return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
       }
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
-      return routineRoutes(state, method, path, body);
+      return routineRecoveryRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {
@@ -431,9 +560,9 @@ export function createScenario(name = 'ready') {
         return teamId && state.teams.some((team) => team.team_id === teamId) ? teamId : null;
       },
       message(frame, teamId = 'marketing') {
-        if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
         // Any Team but Marketing just echoes, so a Team picked in the preview chats without a scenario of its own.
         if (teamId !== 'marketing') {
+          if (frame?.type === 'sync') return [{ type: 'sync-empty' }];
           if (frame?.type !== 'chat') return [];
           return [{
             type: 'done',
@@ -441,21 +570,32 @@ export function createScenario(name = 'ready') {
             team_name: state.teams.find((team) => team.team_id === teamId)?.team_name ?? teamId,
             reply: `Preview reply to: ${typeof frame.message === 'string' ? frame.message : ''}`,
             clarification: null,
-            routine_proposal: null,
             usage: structuredClone(PREVIEW_USAGE),
           }];
         }
-        if (frame?.type === 'chat' && state.human === 'approval') return [structuredClone(APPROVAL_CHALLENGE)];
-        if (frame?.type === 'chat' && state.human) return [structuredClone(HUMAN_CHALLENGE)];
+        if (frame?.type === 'sync') return state.humanPending ? [humanChallenge(state, frame)] : [{ type: 'sync-empty' }];
+        if (frame?.type === 'chat' && state.human) {
+          state.humanPending = true;
+          return [humanChallenge(state, frame)];
+        }
         if (frame?.type === 'human-response') {
+          state.humanPending = false;
           return [{
             type: 'done',
             team_id: 'marketing',
             team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
-            reply: frame.decision === 'deny' ? 'Ok — I stopped that Action.' : 'Done — the search ran with your key.',
+            reply: frame.decision === 'deny'
+              ? 'Ok — I stopped that Action.'
+              : {
+                approval: `Done — published with ${frame.value}.`,
+                confirm: 'Done — the DNS record was updated.',
+                file: 'Done — Contract.pdf is in the R2 bucket “contracts”.',
+              }[state.human] ?? 'Done — the search ran with your key.',
             clarification: null,
-            routine_proposal: null,
           }];
+        }
+        if (frame?.type === 'chat' && Array.isArray(frame.files) && frame.files.length) {
+          return [attachmentReply(state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name, frame)];
         }
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];

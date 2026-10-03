@@ -43,15 +43,31 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
-            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": [], "locale": "en"}
+            frame = {
+                "type": "chat",
+                "message": "Hello",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": None,
+            }
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
                 mock.patch.object(socket.history, "append_user", return_value=True) as append,
             ):
-                payload = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
-            self.assertEqual(payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en"})
+                payload, identity = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
+            self.assertEqual(
+                payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+            )
+            # The browser receives the seal of exactly this send's identity.
+            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "sent")
+            self.assertEqual(
+                websocket.send_json.await_args.args[0]["request"].split(".")[:2],
+                [str(identity["issued_at"]), identity["nonce"]],
+            )
             self.assertEqual(connection.admitted_history_id, "a" * 32)
-            append.assert_called_once_with("team_1", "a" * 32, "Hello")
+            append.assert_called_once_with("team_1", "a" * 32, "Hello", attached=False)
 
             connection = socket._Connection()
             with (
@@ -63,7 +79,9 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 ),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):
-                self.assertIsNone(await socket._admit_chat_payload(websocket, connection, "team_1", frame))
+                # Another logical send: the browser names it with its own nonce.
+                another = dict(frame)
+                self.assertIsNone(await socket._admit_chat_payload(websocket, connection, "team_1", another))
             self.assertIsNone(connection.admitted_history_id)
             self.assertEqual(send.await_args.args[1]["status"], 503)
 
@@ -107,14 +125,22 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         request = contextvars.ContextVar("history_admission_request", default=None)
         committed: list[tuple[str, object]] = []
 
-        def append_user(_team_id: str, turn_id: str, _message: object) -> bool:
+        def append_user(_team_id: str, turn_id: str, _message: object, *, attached: bool = False) -> bool:
             committed.append((turn_id, request.get()))
             return True
 
         async def scenario() -> None:
             loop = asyncio.get_running_loop()
             loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=1))
-            frame = {"type": "chat", "message": "Hello", "files": [], "assistant_ids": [], "locale": "en"}
+            frame = {
+                "type": "chat",
+                "message": "Hello",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": None,
+            }
             request.set("supervisor-request")
             queued = []
             with (
@@ -154,7 +180,6 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 "team_name": "Team 1",
                 "reply": "Done",
                 "clarification": None,
-                "routine_proposal": None,
             }
             with mock.patch.object(socket.history, "append_reply", return_value=True) as append:
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))
@@ -174,7 +199,6 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
                 "team_name": "Team 1",
                 "reply": "Done",
                 "clarification": None,
-                "routine_proposal": None,
             }
             with mock.patch.object(socket.history, "append_reply", return_value=False):
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))

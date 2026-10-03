@@ -72,7 +72,6 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 "team_name": "Marketing",
                 "reply": "Completed.",
                 "clarification": None,
-                "routine_proposal": None,
             },
         )
         route = mock.patch.object(
@@ -91,7 +90,15 @@ class ChatWebSocketHumanTests(unittest.TestCase):
         websocket = _Socket(self.admin_app.app, token=self.token)
         self.assertTrue(self._accepted(await websocket.start()))
         await websocket.send_json(
-            {"type": "chat", "message": "Continue", "files": [], "assistant_ids": [], "locale": "en"}
+            {
+                "type": "chat",
+                "message": "Continue",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": None,
+            }
         )
         challenge = await websocket.next_json()
         self.assertEqual(challenge["type"], "human-required")
@@ -363,7 +370,15 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {"type": "chat", "message": "Continue", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "Continue",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual(
                     await websocket.next_json(),
@@ -391,7 +406,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 ),
                 mock.patch.object(
                     self.chat_socket.local,
-                    "pending_human",
+                    "open_human",
                     return_value=human_challenge("approval", status=200),
                 ),
                 mock.patch.object(
@@ -405,7 +420,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json({"type": "sync"})
+                await websocket.send_json({"type": "sync", "locale": "en"})
                 challenge = await websocket.next_json()
                 self.assertEqual(challenge["type"], "human-required")
                 resume.assert_not_called()

@@ -20,6 +20,7 @@ from chat.delivery import sync as sync_delivery
 from team import bridge as team
 from tests.chat_socket_fixtures import human_challenge
 
+from chat import connection as chat_connection
 from chat import human, local, socket, task_resume
 from tests import chat_socket_fixtures
 
@@ -128,7 +129,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
     def test_route_saturation_is_bounded(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            frame = {"type": "chat", "message": "hello", "files": [], "assistant_ids": [], "locale": "en"}
+            frame = {
+                "type": "chat",
+                "message": "hello",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "request": None,
+            }
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -142,6 +151,68 @@ class ChatSocketEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_chat_frame_names_its_logical_send_and_an_expired_resend_is_refused(self) -> None:
+        frame = {
+            "type": "chat",
+            "message": "Hello",
+            "files": [],
+            "assistant_ids": [],
+            "locale": "en",
+            "timezone": None,
+            "request": "1." + "a" * 32 + "." + "b" * 64,
+        }
+
+        async def scenario() -> None:
+            for candidate, status in (
+                ({key: value for key, value in frame.items() if key != "request"}, 400),
+                ({**frame, "request": {"nonce": "x", "resend": True}}, 400),
+                ({**frame, "locale": "pt-BR"}, 400),
+                (frame, 410),
+            ):
+                websocket = mock.AsyncMock()
+                with mock.patch.object(socket.history, "append_user") as append:
+                    self.assertIsNone(
+                        await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
+                    )
+                append.assert_not_called()
+                self.assertEqual(websocket.send_json.await_args.args[0]["status"], status)
+
+        asyncio.run(scenario())
+
+    def test_a_resend_through_the_socket_reuses_its_sealed_identity_only_while_fresh(self) -> None:
+        frame = {
+            "type": "chat",
+            "message": "Every day at 9, list my zones",
+            "files": [],
+            "assistant_ids": [],
+            "locale": "en",
+            "timezone": None,
+            "request": None,
+        }
+
+        async def admit(candidate, now):
+            websocket = mock.AsyncMock()
+            with (
+                mock.patch.object(chat_connection.time, "time", return_value=now),
+                mock.patch.object(socket.history, "append_user", return_value=True) as append,
+            ):
+                admitted = await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
+            return admitted, websocket.send_json.await_args.args[0], append
+
+        async def scenario() -> None:
+            (_payload, identity), sent, _append = await admit(frame, 1_000_000)
+            self.assertEqual(sent["type"], "sent")
+            resend = {**frame, "request": sent["request"]}
+            (_payload, again), _sent, _append = await admit(resend, 1_000_899)
+            self.assertEqual(again, identity)
+            # Expired, the original send is refused before any history row or Team turn exists.
+            refused, terminal, append = await admit(resend, 1_000_900)
+            self.assertIsNone(refused)
+            self.assertEqual(terminal["status"], 410)
+            append.assert_not_called()
+
+        asyncio.run(scenario())
+
     def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
         valid = {
             "type": "resume-task",
@@ -151,6 +222,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "assistant_ids": [],
             "objective_assistant_ids": [],
             "locale": "en",
+            "timezone": None,
+            "request": None,
         }
 
         async def scenario() -> None:
@@ -158,17 +231,19 @@ class ChatSocketEdgeTests(unittest.TestCase):
             admitted = await task_resume.admit(
                 websocket,
                 socket._Connection(),
+                "team_1",
                 valid,
                 _resume_operations(),
             )
             self.assertEqual(
-                admitted,
+                admitted[:2],
                 (
-                    {"message": valid["message"], "files": [], "assistant_ids": [], "locale": "en"},
-                    {"message": valid["objective"], "files": [], "assistant_ids": [], "locale": "en"},
+                    {"message": valid["message"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                    {"message": valid["objective"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
                 ),
             )
-            websocket.send_json.assert_not_awaited()
+            self.assertRegex(admitted[2]["nonce"], r"\A[0-9a-f]{32}\Z")
+            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "sent")
 
             invalid = (
                 {**valid, "extra": True},
@@ -180,6 +255,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 {**valid, "locale": None},
                 {**valid, "locale": "pt-BR"},
                 {**valid, "language_exemplar": "Lista minhas zonas"},
+                {key: value for key, value in valid.items() if key != "request"},
+                {**valid, "request": {"nonce": "x", "resend": False}},
             )
             for frame in invalid:
                 websocket.reset_mock()
@@ -187,6 +264,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     await task_resume.admit(
                         websocket,
                         socket._Connection(),
+                        "team_1",
                         frame,
                         _resume_operations(),
                     )
@@ -198,6 +276,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(active=socket._Turn(None, "chat")),
+                    "team_1",
                     valid,
                     _resume_operations(),
                 )
@@ -209,11 +288,20 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(pending_challenge_id="c" * 32),
+                    "team_1",
                     valid,
                     _resume_operations(),
                 )
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
+
+            # A resend whose seal Admin never issued is refused, never renewed.
+            websocket.reset_mock()
+            forged = {**valid, "request": "1." + "a" * 32 + "." + "b" * 64}
+            self.assertIsNone(
+                await task_resume.admit(websocket, socket._Connection(), "team_1", forged, _resume_operations())
+            )
+            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 410)
 
             websocket.reset_mock()
             with mock.patch.object(socket.lifecycle, "submit_resume") as prepare:
@@ -238,6 +326,8 @@ class ChatSocketEdgeTests(unittest.TestCase):
             "assistant_ids": [],
             "objective_assistant_ids": [],
             "locale": "en",
+            "timezone": None,
+            "request": None,
         }
 
         async def scenario() -> None:
@@ -256,7 +346,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     frame,
                     _resume_operations(),
                 )
-            objective = {"message": frame["objective"], "files": [], "assistant_ids": [], "locale": "en"}
+            objective = {
+                "message": frame["objective"],
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+            }
             prepare.assert_called_once_with("team_1", objective)
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
 
@@ -271,7 +367,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    frame,
+                    dict(frame),
                     _resume_operations(),
                 )
                 await connection.active.delivery
@@ -282,7 +378,13 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 "team_1",
                 objective,
                 mock.ANY,
-                fallback_payload={"message": frame["message"], "files": [], "assistant_ids": [], "locale": "en"},
+                fallback_payload={
+                    "message": frame["message"],
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                },
             )
 
         asyncio.run(scenario())
@@ -412,7 +514,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             websocket = mock.AsyncMock()
             connection = socket._Connection()
             with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
-                self.assertIsNone(await socket._load_sync_snapshot(websocket, connection, "team_1"))
+                self.assertIsNone(await socket._load_sync_snapshot(websocket, connection, "team_1", "en"))
             self.assertTrue(connection.sync_terminal_sent)
 
             turn = socket._Turn(None, "pending-stop")
@@ -423,14 +525,22 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNone(connection.active)
 
             connection = socket._Connection(sync_task=mock.Mock())
-            await socket._dispatch_sync(websocket, connection, "team_1")
+            await socket._dispatch_sync(websocket, connection, "team_1", "en")
 
             connection = socket._Connection(active=socket._Turn(None, "chat"))
             await socket._dispatch_chat(
                 websocket,
                 connection,
                 "team_1",
-                {"type": "chat", "message": "hi", "files": [], "assistant_ids": [], "locale": "en"},
+                {
+                    "type": "chat",
+                    "message": "hi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "request": None,
+                },
             )
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
@@ -438,7 +548,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 websocket,
                 connection,
                 "team_1",
-                {"type": "chat", "message": "hi", "files": [], "assistant_ids": [], "locale": "en"},
+                {
+                    "type": "chat",
+                    "message": "hi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "request": None,
+                },
             )
 
             with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
@@ -446,7 +564,15 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     websocket,
                     socket._Connection(),
                     "team_1",
-                    {"type": "chat", "message": "hi", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "hi",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
 
         asyncio.run(scenario())
@@ -500,11 +626,18 @@ class ChatSocketEdgeTests(unittest.TestCase):
             self.assertIsNotNone(pending.active)
 
             await socket._dispatch(websocket, socket._Connection(), "team_1", {"type": "bad"}, authenticate)
+            # A sync frame names exactly one interface language for a restored request (ADR-0091).
+            for frame in ({"type": "sync"}, {"type": "sync", "locale": "xx"}, {"type": "sync", "locale": None}):
+                await socket._dispatch(websocket, socket._Connection(), "team_1", frame, authenticate)
+                self.assertEqual(
+                    websocket.send_json.await_args.args[0],
+                    {"type": "error", "status": 400, "detail": "unsupported chat frame"},
+                )
             await socket._dispatch(
                 websocket,
                 socket._Connection(lifecycle=mock.sentinel.lifecycle),
                 "team_1",
-                {"type": "sync"},
+                {"type": "sync", "locale": "en"},
                 authenticate,
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
@@ -612,21 +745,21 @@ class ChatSocketEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             with mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=None)):
-                self.assertIsNone(await socket._load_sync_snapshot(websocket, socket._Connection(), "team_1"))
+                self.assertIsNone(await socket._load_sync_snapshot(websocket, socket._Connection(), "team_1", "en"))
 
             with mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(return_value=None)):
-                await socket._deliver_sync(websocket, socket._Connection(), "team_1")
+                await socket._deliver_sync(websocket, socket._Connection(), "team_1", "en")
 
             snapshot = socket._SyncSnapshot("human", object())
             with mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(return_value=snapshot)):
-                await socket._deliver_sync(websocket, socket._Connection(closed=True), "team_1")
+                await socket._deliver_sync(websocket, socket._Connection(closed=True), "team_1", "en")
 
             connection = socket._Connection()
             with (
                 mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(side_effect=RuntimeError)),
                 mock.patch.object(socket, "_send_sync_terminal_once", new=mock.AsyncMock(return_value=False)),
             ):
-                await socket._deliver_sync(websocket, connection, "team_1")
+                await socket._deliver_sync(websocket, connection, "team_1", "en")
             self.assertTrue(connection.closed)
 
         asyncio.run(scenario())
@@ -763,7 +896,6 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Completed.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             send_terminal.reset_mock()

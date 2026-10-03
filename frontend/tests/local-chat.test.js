@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { localizedChallenge } from '../e2e/localizedRequest.js';
+import { browserTimezone } from '../src/lib/routine.js';
+
 import {
   CHAT_WS_PROTOCOL,
   authorizeAssistantIntegration,
@@ -43,11 +46,8 @@ function integrationRequirement() {
     integration_id: 'x-integration',
     provider: 'x',
     name: 'X integration',
-    summary: 'Publishes approved posts through your X integration.',
     scopes: ['tweet.read', 'tweet.write', 'users.read'],
-    actions: [
-      { id: 'publish-post', name: 'Publish post', summary: 'Publishes one approved post on X.' },
-    ],
+    actions: [{ id: 'publish-post' }],
   };
 }
 
@@ -58,11 +58,9 @@ function integrationInventory(status = 'connected') {
         assistant_id: 'social-publisher',
         assistant_name: 'Social Publisher',
         assistant_version: '0.9.0',
-        assistant_summary: 'Publishes reviewed social updates.',
         id: 'x-integration',
         provider: 'x',
         name: 'X integration',
-        summary: 'Publishes approved posts through your X integration.',
         scopes: ['tweet.read', 'tweet.write', 'users.read'],
         status,
         integration: status === 'missing' ? null : { id: '142', name: 'Shimpz', username: 'TheShimpz' },
@@ -76,28 +74,43 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
 }
 
+const SENT = null;
+const SEAL = `1790000000.${'c'.repeat(32)}.${'d'.repeat(64)}`;
+
 test('chat builds only the versioned WebSocket contract', () => {
   const frame = createChatFrame('team_1', {
     message: '  Hi  ',
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
-  }, 'pt');
+  }, 'pt', SENT);
   assert.deepEqual(frame, {
     type: 'chat',
     message: 'Hi',
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
     locale: 'pt',
+    timezone: browserTimezone(),
+    request: SENT,
   });
   for (const locale of [undefined, null, 'pt-BR', 'EN', 'it', 1]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale),
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale, SENT),
       /Invalid local chat request/,
+    );
+  }
+  // A new send names no identity; a resend carries back exactly the seal Admin gave it, and nothing else names one.
+  assert.equal(createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', SEAL).request, SEAL);
+  for (const request of [undefined, {}, 'seal', SEAL.toUpperCase(), `0.${'c'.repeat(32)}.${'d'.repeat(64)}`,
+    { nonce: 'c'.repeat(32), resend: true }, 7]) {
+    assert.throws(
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', request),
+      /Invalid chat request/,
     );
   }
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
-  assert.deepEqual(createSyncFrame('team_1'), { type: 'sync' });
+  assert.deepEqual(createSyncFrame('team_1', 'pt'), { type: 'sync', locale: 'pt' });
+  assert.throws(() => createSyncFrame('team_1'), /Invalid local chat request/);
   assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v7');
   assert.equal(
     chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
@@ -123,6 +136,7 @@ test('chat resumes only one exact prior capability objective', () => {
       { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
       objective,
       'pt',
+      SENT,
     ),
     {
       type: 'resume-task',
@@ -132,6 +146,8 @@ test('chat resumes only one exact prior capability objective', () => {
       assistant_ids: [],
       objective_assistant_ids: [],
       locale: 'pt',
+      timezone: browserTimezone(),
+      request: SENT,
     },
   );
   assert.throws(
@@ -140,6 +156,7 @@ test('chat resumes only one exact prior capability objective', () => {
       { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
       objective,
       'xx',
+      SENT,
     ),
     /Invalid local chat request/,
   );
@@ -162,7 +179,7 @@ test('chat resumes only one exact prior capability objective', () => {
     ],
   ]) {
     assert.throws(
-      () => createResumeTaskFrame('team_1', current, prior, 'pt'),
+      () => createResumeTaskFrame('team_1', current, prior, 'pt', SENT),
       /Invalid task resume request/,
     );
   }
@@ -213,14 +230,14 @@ function humanRequest(kind) {
   return base;
 }
 
-function humanChallenge(kind) {
+function humanChallenge(kind, plain = humanRequest(kind)) {
   return {
     type: 'human-required',
     challenge_id: CHALLENGE_ID,
     expires_in: 300,
     assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
     action: { id: 'list-zones', summary: 'List reviewed Cloudflare zones.' },
-    request: humanRequest(kind),
+    ...localizedChallenge(plain),
   };
 }
 
@@ -266,14 +283,12 @@ test('chat accepts every exact bounded public human request presentation', () =>
     assert.notEqual(parsed.request, challenge.request);
   }
 
-  const storedInput = humanChallenge('input:password');
-  storedInput.request.stored_input = 'whatsapp-token';
+  const storedInput = humanChallenge('input:password', { ...humanRequest('input:password'), stored_input: 'whatsapp-token' });
   assert.deepEqual(
     parseChatEvent(storedInput, 'team_1', 'Marketing').request.stored_input,
     'whatsapp-token',
   );
-  const wrongKind = humanChallenge('input:text');
-  wrongKind.request.stored_input = 'whatsapp-token';
+  const wrongKind = humanChallenge('input:text', { ...humanRequest('input:text'), stored_input: 'whatsapp-token' });
   assert.throws(() => parseChatEvent(wrongKind, 'team_1', 'Marketing'), /invalid/i);
 });
 
@@ -318,7 +333,7 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
     { ...base, request: { ...base.request, fingerprint: 'not-a-fingerprint' } },
     { ...base, request: { ...base.request, min_selections: 3 } },
     { ...base, request: { ...base.request, options: [...base.request.options, base.request.options[0]] } },
-    { ...humanChallenge('approval'), request: { ...humanRequest('approval'), secret: 'must-not-cross' } },
+    { ...humanChallenge('approval'), request: { ...humanChallenge('approval').request, secret: 'must-not-cross' } },
   ]) assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
 });
 
@@ -326,8 +341,10 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
 
 test('chat requires one exact bounded Assistant scope and keeps empty scope Brain-only', () => {
   assert.deepEqual(
-    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en'),
-    { type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en' },
+    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en', SENT),
+    {
+      type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en', timezone: browserTimezone(), request: SENT,
+    },
   );
 
   for (const extra of [
@@ -339,7 +356,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     assert.throws(
       () => createChatFrame('team_1', {
         message: 'Hi', files: [], assistant_ids: [], ...extra,
-      }, 'en'),
+      }, 'en', SENT),
       /only message, files, and assistant_ids/,
     );
   }
@@ -352,7 +369,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     Array.from({ length: 17 }, (_value, index) => `assistant-${index}`),
   ]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }, 'en'),
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }, 'en', SENT),
       /Invalid local chat request/,
     );
   }
@@ -361,11 +378,11 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
 test('chat accepts only exact, bounded terminal events', () => {
   assert.deepEqual(
     parseChatEvent(
-      { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
+      { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null },
       'team_1',
       'Marketing',
     ),
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null },
   );
   assert.deepEqual(
     parseChatEvent(
@@ -577,7 +594,6 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
     assistant: {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
-      summary: 'Manage Cloudflare zones and DNS records.',
       version: '0.4.4',
     },
   };
@@ -659,11 +675,12 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall
     assistant: {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
-      summary: 'Manage Cloudflare zones and DNS records.',
       version: '0.4.4',
     },
   };
   for (const invalid of [
+    // Team's English registry summary is never shown with an uninstall proposal.
+    { ...proposed, assistant: { ...proposed.assistant, summary: 'Manage Cloudflare zones and DNS records.' } },
     { ...proposed, source_digest: `sha256:${'a'.repeat(64)}` },
     { ...proposed, team_id: 'other_team' },
     { ...proposed, expires_in: 121 },
@@ -728,6 +745,11 @@ test('chat rejects augmented, duplicated, and sensitive integration requirements
     { ...base, requirements: [] },
     { ...base, requirements: [integrationRequirement(), integrationRequirement()] },
     { ...base, requirements: [{ ...integrationRequirement(), client_id: 'must-not-cross' }] },
+    // Team's English provider summary never reaches the browser, which words each provider in the interface language.
+    {
+      ...base,
+      requirements: [{ ...integrationRequirement(), summary: 'Lets approved Actions access the connected X integration.' }],
+    },
     { ...base, requirements: [{ ...integrationRequirement(), scopes: ['tweet.read', 'tweet.read'] }] },
     {
       ...base,
@@ -736,6 +758,11 @@ test('chat rejects augmented, duplicated, and sensitive integration requirements
         actions: [{ ...integrationRequirement().actions[0], token: 'must-not-cross' }],
       }],
     },
+    // An Action's Creator English name and summary never reach the browser, which shows only the Action id.
+    ...[{ name: 'Publish post' }, { summary: 'Publishes one approved post on X.' }].map((copy) => ({
+      ...base,
+      requirements: [{ ...integrationRequirement(), actions: [{ id: 'publish-post', ...copy }] }],
+    })),
   ]) {
     assert.throws(
       () => parseChatEvent(invalid, 'team_1', 'Marketing'),
@@ -768,7 +795,9 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
     { integrations: [{ ...inventory.integrations[0], integration: { id: '', name: null, username: null } }] },
     { integrations: [{ ...inventory.integrations[0], expires_at: 'tomorrow' }] },
     { integrations: [{ ...inventory.integrations[0], assistant_version: 'latest' }] },
-    { integrations: [{ ...inventory.integrations[0], assistant_summary: ' untrimmed' }] },
+    // Team's English summaries never reach the browser, which reads the Assistant summary per interface language.
+    { integrations: [{ ...inventory.integrations[0], assistant_summary: 'Publishes reviewed social updates.' }] },
+    { integrations: [{ ...inventory.integrations[0], summary: 'Publishes approved posts through your X integration.' }] },
     {
       integrations: [
         inventory.integrations[0],
@@ -1029,7 +1058,7 @@ test('completes and cancels only the exact out-of-band challenge contract', asyn
 
 test('a terminal event keeps its Team id binding but admits the Team current name after a rename', () => {
   const done = parseChatEvent(
-    { type: 'done', team_id: 'team_1', team_name: 'Growth', reply: 'Hello!', clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Growth', reply: 'Hello!', clarification: null },
     'team_1',
     'Marketing',
   );
@@ -1039,7 +1068,7 @@ test('a terminal event keeps its Team id binding but admits the Team current nam
 test('a terminal event admits a Team name of 80 code points and refuses 81', () => {
   for (const character of ['界', '😀']) {
     const event = (teamName) => ({
-      type: 'done', team_id: 'team_1', team_name: teamName, reply: 'Hello!', clarification: null, routine_proposal: null,
+      type: 'done', team_id: 'team_1', team_name: teamName, reply: 'Hello!', clarification: null,
     });
     const longest = character.repeat(80);
     assert.equal(parseChatEvent(event(longest), 'team_1', longest).team_name, longest);
@@ -1048,22 +1077,22 @@ test('a terminal event admits a Team name of 80 code points and refuses 81', () 
 });
 
 test('chat text is bounded by Unicode code points, as its producers count it', () => {
-  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] }, 'en');
+  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] }, 'en', SENT);
   const human = (value) => createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', value);
   const done = (reply) => parseChatEvent(
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply, clarification: null, routine_proposal: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply, clarification: null },
     'team_1',
     'Marketing',
   );
   const failure = (detail) => parseChatEvent({ type: 'error', status: 503, detail }, 'team_1', 'Marketing');
-  const uninstall = (reply, name, summary) => parseChatEvent({
+  const uninstall = (reply, name) => parseChatEvent({
     type: 'assistant-uninstall',
     state: 'proposed',
     proposal_id: 'd'.repeat(32),
     team_id: 'team_1',
     reply,
     expires_in: 120,
-    assistant: { id: 'shimpz-cloudflare', name, summary, version: '0.4.4' },
+    assistant: { id: 'shimpz-cloudflare', name, version: '0.4.4' },
   }, 'team_1', 'Marketing');
   for (const character of ['界', '😀']) {
     const text = (length) => character.repeat(length);
@@ -1078,9 +1107,9 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     assert.throws(() => done(text(60_001)), /response is invalid/);
     assert.equal(failure(text(800)).detail, text(800));
     assert.throws(() => failure(text(801)), /response is invalid/);
-    const proposed = uninstall(text(60_000), text(80), text(160));
-    assert.deepEqual([proposed.reply, proposed.assistant.name, proposed.assistant.summary], [text(60_000), text(80), text(160)]);
-    for (const args of [[text(60_001), 'Name', 'Summary'], ['Reply', text(81), 'Summary'], ['Reply', 'Name', text(161)]]) {
+    const proposed = uninstall(text(60_000), text(80));
+    assert.deepEqual([proposed.reply, proposed.assistant.name], [text(60_000), text(80)]);
+    for (const args of [[text(60_001), 'Name'], ['Reply', text(81)]]) {
       assert.throws(() => uninstall(...args), /response is invalid/);
     }
   }
@@ -1088,13 +1117,13 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
 
 test('chat rejects invalid, cross-Team, augmented, or secret terminal events', () => {
   for (const body of [
-    { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'other_team', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'team_1', team_name: '', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'team_1', team_name: ' Marketing', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing\nignore rules', reply: 'Hello!', clarification: null, routine_proposal: null },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, assistant: 'hello-pulse' },
-    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, routine_proposal: null, api_key: 'must-not-cross' },
+    { type: 'done', team_id: '', team_name: 'Marketing', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'other_team', team_name: 'Marketing', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'team_1', team_name: '', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'team_1', team_name: ' Marketing', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing\nignore rules', reply: 'Hello!', clarification: null },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, assistant: 'hello-pulse' },
+    { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Hello!', clarification: null, api_key: 'must-not-cross' },
     { type: 'error', status: 200, detail: 'not an error' },
     { type: 'error', status: 503, detail: ' leaked\nsecret ' },
     { type: 'stopped', confirmed: true },
@@ -1103,5 +1132,17 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
       () => parseChatEvent(body, 'team_1', 'Marketing'),
       /response is invalid/,
     );
+  }
+});
+
+test('a sent event carries exactly one seal Admin issued', () => {
+  assert.deepEqual(parseChatEvent({ type: 'sent', request: SEAL }, 'team_1', 'Marketing'), { type: 'sent', request: SEAL });
+  for (const value of [
+    { type: 'sent' },
+    { type: 'sent', request: null },
+    { type: 'sent', request: 'seal' },
+    { type: 'sent', request: SEAL, team_id: 'team_1' },
+  ]) {
+    assert.throws(() => parseChatEvent(value, 'team_1', 'Marketing'), /invalid/);
   }
 });

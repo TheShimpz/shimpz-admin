@@ -45,7 +45,6 @@ class ChatInstallStateTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Olá.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -73,6 +72,8 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
@@ -84,7 +85,15 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 turn.assert_not_called()
 
                 await websocket.send_json(
-                    {"type": "chat", "message": "Olá", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "Olá",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
@@ -125,7 +134,6 @@ class ChatInstallStateTests(ChatWebSocketCase):
                     "team_name": "Marketing",
                     "reply": "Done.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
             with (
@@ -146,6 +154,8 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 
@@ -157,7 +167,15 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 turn.assert_not_called()
 
                 await websocket.send_json(
-                    {"type": "chat", "message": "liste as zonas", "files": [], "assistant_ids": [], "locale": "en"}
+                    {
+                        "type": "chat",
+                        "message": "liste as zonas",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    }
                 )
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
@@ -203,6 +221,8 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     }
                 )
 

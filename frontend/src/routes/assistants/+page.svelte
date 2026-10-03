@@ -1,6 +1,6 @@
 <script>
   import { page } from '$app/state';
-  import { getContext, onMount, tick } from 'svelte';
+  import { getContext, onMount, tick, untrack } from 'svelte';
   import { AssistantCard, Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
   import { showAdminNotice } from '$lib/adminNotice.js';
   import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
@@ -14,8 +14,12 @@
     safeApiError,
     uninstallAssistant,
   } from '$lib/localApi.js';
-  import { t } from '$lib/i18n.js';
-  import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '$lib/localAssistantIcons.js';
+  import { locale, t } from '$lib/i18n.js';
+  import {
+    loadLocalAssistantIcon,
+    loadLocalAssistantSummary,
+    loadPublicAssistantIcon,
+  } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
   import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
@@ -34,6 +38,8 @@
   let dialogMode = $state('install');
   let dialogAttempt = 0;
   let publicAssistants = $state([]);
+  // The interface language the presented public catalog was read in; its summaries show only while it is selected.
+  let publicCatalogLocale = $state('');
   let publicCatalogPhase = $state('loading');
   let publicCatalogError = $state('');
   let localSnapshots = $state([]);
@@ -45,6 +51,8 @@
   let localInstallDialogError = $state('');
   let pendingLocalSnapshot = $state(null);
   let pendingLocalSnapshots = $state([]);
+  // A staged snapshot's summary per interface language, read by Team from the snapshot's own pack (ADR-0091).
+  let localSummaries = $state({});
   let catalogIconUrls = $state({});
   // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
   let catalogIconFailures = $state({});
@@ -332,6 +340,29 @@
     showAssistantDialog();
   }
 
+  function localSummaryKey(language, snapshot) {
+    return `${language}:${snapshot.image_id}`;
+  }
+
+  // English is the snapshot's catalog summary itself; any other language shows only its pack translation.
+  function localSnapshotSummary(snapshot) {
+    return $locale === 'en' ? snapshot.summary : localSummaries[localSummaryKey($locale, snapshot)] ?? '';
+  }
+
+  async function loadLocalSummaries(snapshots, language, request, signal) {
+    if (language === 'en') return;
+    await Promise.allSettled(snapshots.map(async (snapshot) => {
+      const key = localSummaryKey(language, snapshot);
+      if (localSummaries[key]) return;
+      try {
+        const summary = await loadLocalAssistantSummary(fetch, snapshot.image_id, language, { signal });
+        if (request === catalogPresentationRequest) localSummaries[key] = summary;
+      } catch {
+        // An unavailable translation leaves the summary empty rather than showing another language.
+      }
+    }));
+  }
+
   function localIconKey(snapshot) {
     return `local:${snapshot.image_id}`;
   }
@@ -394,6 +425,7 @@
 
   async function loadCatalogPresentation() {
     const request = ++catalogPresentationRequest;
+    const language = $locale;
     catalogPresentationController?.abort();
     const controller = new AbortController();
     catalogPresentationController = controller;
@@ -407,7 +439,7 @@
 
     try {
       const [publicResult, localResult] = await Promise.allSettled([
-        listPublicAssistantCatalog(fetch, controller.signal),
+        listPublicAssistantCatalog(fetch, language, controller.signal),
         localProfile
           ? listLocalAssistantSnapshots(fetch, controller.signal)
           : Promise.resolve(localSnapshots),
@@ -452,6 +484,7 @@
       }
 
       publicAssistants = nextPublicAssistants;
+      publicCatalogLocale = language;
       publicCatalogPhase = nextPublicPhase;
       publicCatalogError = nextPublicError;
       if (localProfile) {
@@ -470,6 +503,12 @@
       if (request !== catalogPresentationRequest) return;
       initialViewReadiness?.settleAssistants?.();
 
+      const summaries = loadLocalSummaries(
+        groups.map((group) => group.primary),
+        language,
+        request,
+        controller.signal,
+      );
       const iconTimeout = globalThis.setTimeout(
         () => iconController.abort(),
         ICON_PRESENTATION_BUDGET_MS,
@@ -490,6 +529,7 @@
       }));
       globalThis.clearTimeout(iconTimeout);
       controller.signal.removeEventListener('abort', abortIcons);
+      await summaries;
     } finally {
       if (request === catalogPresentationRequest) catalogRefreshing = false;
     }
@@ -553,8 +593,13 @@
     }
   }
 
+  // The catalog and staged snapshot summaries follow the interface language and reload when it changes.
+  $effect(() => {
+    void $locale;
+    untrack(() => { void loadCatalogPresentation(); });
+  });
+
   onMount(() => {
-    void loadCatalogPresentation();
     return () => {
       catalogPresentationRequest += 1;
       catalogPresentationController?.abort();
@@ -598,7 +643,7 @@
         class="assistant-card local-assistant-card"
         name={group.primary.name}
         meta={group.primary.declared_creators.join(', ')}
-        summary={group.primary.summary}
+        summary={localSnapshotSummary(group.primary)}
         iconSrc={catalogIconUrls[localIconKey(group.primary)]}
         iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
         iconLoading="eager"
@@ -628,7 +673,7 @@
         class="assistant-card"
         name={assistant.name}
         meta={assistant.creators.join(', ')}
-        summary={assistant.summary}
+        summary={publicCatalogLocale === $locale ? assistant.summary : ''}
         iconSrc={catalogIconUrls[publicIconKey(assistant)]}
         iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
         iconLoading="eager"

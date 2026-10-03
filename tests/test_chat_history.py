@@ -47,7 +47,6 @@ def _uninstall_assistant() -> dict[str, str]:
     return {
         "id": "shimpz-cloudflare",
         "name": "Shimpz Cloudflare",
-        "summary": "Manage DNS records.",
         "version": "0.4.5",
     }
 
@@ -87,7 +86,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Two zones are active.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -108,6 +106,47 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertNotIn("plan_id", install)
         self.assertNotIn("continuation", install)
 
+    def test_every_row_carries_the_utc_time_admin_first_wrote_it(self) -> None:
+        self.assertRegex(history._now(), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        times = iter(f"2026-10-0{day}T23:59:5{second}Z" for day in (1, 2, 3) for second in range(10))
+        first, second = history.new_turn_id(), history.new_turn_id()
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "Two zones are active.",
+            "clarification": None,
+        }
+        with mock.patch.object(history, "_now", side_effect=lambda: next(times)):
+            self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
+            self.assertTrue(history.append_install("marketing", first, _installed_event()))
+            self.assertTrue(history.append_user("marketing", second, "List my DNS zones"))
+            self.assertTrue(history.append_reply("marketing", second, done))
+            # A repeated write of the same row is the same row: it keeps the time it was first written.
+            self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
+            self.assertTrue(history.append_reply("marketing", second, done))
+        self.assertEqual(
+            [(entry["id"].split(":")[1], entry["created_at"]) for entry in history.page("marketing")["entries"]],
+            [
+                ("user", "2026-10-01T23:59:50Z"),
+                ("install", "2026-10-01T23:59:51Z"),
+                ("user", "2026-10-01T23:59:52Z"),
+                ("reply", "2026-10-01T23:59:53Z"),
+            ],
+        )
+        with contextlib.closing(sqlite3.connect(self.path)) as database:
+            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 7)
+        self.assertEqual(history.SCHEMA_VERSION, 7)
+
+    def test_a_malformed_row_time_fails_closed(self) -> None:
+        history.append_user("marketing", history.new_turn_id(), "Private")
+        for stored in ("2026-02-30T00:00:00Z", "2026-10-03 00:00:00", "2026-10-03T00:00:00.000Z", "", 1759449600):
+            with contextlib.closing(sqlite3.connect(self.path)) as database:
+                database.execute("UPDATE transcript SET created_at = ?", (stored,))
+                database.commit()
+            with self.subTest(stored=stored), self.assertRaises(history.HistoryUnavailableError):
+                history.page("marketing")
+
     def test_correlates_concurrent_resumable_turns_by_challenge(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
@@ -127,7 +166,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "First finished.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -142,7 +180,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": "Finished.",
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -229,7 +266,6 @@ class ChatHistoryTests(unittest.TestCase):
         assistant = {
             "id": "shimpz-cloudflare",
             "name": "Shimpz Cloudflare",
-            "summary": "Manage DNS records.",
             "version": "0.4.5",
         }
         guidance = self._admitted()
@@ -289,7 +325,6 @@ class ChatHistoryTests(unittest.TestCase):
             "team_name": "Marketing",
             "reply": "Two zones are active.",
             "clarification": None,
-            "routine_proposal": None,
         }
         for clear in (lambda: history.clear_team("marketing"), history.clear_all):
             with self.subTest(clear=clear):
@@ -355,7 +390,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": reply,
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -449,7 +483,6 @@ class ChatHistoryTests(unittest.TestCase):
                     "team_name": "Marketing",
                     "reply": reply,
                     "clarification": None,
-                    "routine_proposal": None,
                 },
             )
         )
@@ -506,7 +539,6 @@ class ChatHistoryTests(unittest.TestCase):
                         "team_name": "Sales",
                         "reply": "No",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 ),
             ),
@@ -721,6 +753,17 @@ class ChatHistoryTests(unittest.TestCase):
                 ),
             ),
             (history._validate_stored_uninstall, ({"kind": "assistant-uninstall", "state": "working"},)),
+            # Team's English registry summary is never stored or shown with an uninstall.
+            (
+                history._validate_stored_uninstall,
+                (
+                    {
+                        "kind": "assistant-uninstall",
+                        "state": "cancelled",
+                        "assistant": {**assistant, "summary": "Manage DNS records."},
+                    },
+                ),
+            ),
             (
                 history._validate_stored_uninstall,
                 ({"kind": "assistant-uninstall", "state": "cancelled", "assistant": assistant, "extra": True},),

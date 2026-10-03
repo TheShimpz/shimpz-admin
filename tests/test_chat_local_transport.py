@@ -25,6 +25,9 @@ TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
 
 
+REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
+
+
 class _ControllerHandler(BaseHTTPRequestHandler):
     request: ClassVar[dict[str, object]] = {}
     response_mode: ClassVar[str] = "valid"
@@ -61,7 +64,6 @@ class _ControllerHandler(BaseHTTPRequestHandler):
                     "team_name": "Marketing",
                     "reply": "Hello!",
                     "clarification": None,
-                    "routine_proposal": None,
                     "trace_id": TRACE_ID,
                 },
             },
@@ -113,7 +115,9 @@ class PrivateChatTransportTests(unittest.TestCase):
                 "files": [],
                 "assistant_ids": ["shimpz-cloudflare"],
                 "locale": "en",
+                "timezone": None,
                 "conversation": [],
+                "request": REQUEST,
             },
             provider="openai",
             api_key=api_key,
@@ -129,7 +133,9 @@ class PrivateChatTransportTests(unittest.TestCase):
                 "files": [],
                 "assistant_ids": ["shimpz-cloudflare"],
                 "locale": "en",
+                "timezone": None,
                 "conversation": [],
+                "request": REQUEST,
             },
         )
         self.assertEqual(request["headers"]["x-shimpz-model-provider"], "openai")
@@ -167,7 +173,9 @@ class PrivateChatTransportTests(unittest.TestCase):
                     "files": files,
                     "assistant_ids": assistant_ids,
                     "locale": "en",
+                    "timezone": None,
                     "conversation": [],
+                    "request": REQUEST,
                 },
                 provider="openai",
                 api_key="sk-test-0123456789",
@@ -203,7 +211,15 @@ class PrivateChatTransportTests(unittest.TestCase):
                 events: list[dict[str, object]] = []
                 response = team.chat(
                     "team_1",
-                    {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "conversation": []},
+                    {
+                        "message": "Hello",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "conversation": [],
+                        "request": REQUEST,
+                    },
                     provider="openai",
                     api_key="sk-test-0123456789",
                     progress=events.append,

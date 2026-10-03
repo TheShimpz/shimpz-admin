@@ -67,7 +67,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "uninstall", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "uninstall",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
                 delivery = connection.active.delivery
                 await delivery
@@ -80,7 +88,8 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "reply": "Which installed Assistant do you want to uninstall?",
                 },
             )
-            send.assert_not_awaited()
+            # The only event of the turn's own is the seal of its admitted send.
+            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
             route.assert_called_once()
 
         asyncio.run(scenario())
@@ -112,6 +121,8 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     },
                 )
                 delivery = connection.active.delivery
@@ -146,7 +157,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "desinstale",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
                 delivery = connection.active.delivery
                 await delivery
@@ -157,7 +176,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "olá", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "olá",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                     mock.AsyncMock(),
                 )
             self.assertFalse(connection.ignore_idle_stop_once)
@@ -194,6 +221,8 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "files": [],
                         "assistant_ids": [],
                         "locale": "en",
+                        "timezone": None,
+                        "request": None,
                     },
                 )
                 await connection.active.delivery
@@ -220,7 +249,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "desinstale", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "desinstale",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
 
             self.assertEqual(send.await_args.args[-1]["status"], 503)
@@ -246,7 +283,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": "cloudflare", "files": [], "assistant_ids": [], "locale": "en"},
+                    {
+                        "type": "chat",
+                        "message": "cloudflare",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
 
             self.assertIs(connection.assistant_reference, reference)
@@ -265,7 +310,6 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                         "team_name": "Marketing",
                         "reply": "Done.",
                         "clarification": None,
-                        "routine_proposal": None,
                     },
                 )
             )
@@ -277,7 +321,15 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {"type": "chat", "message": message, "files": [], "assistant_ids": [], "locale": "ja"},
+                    {
+                        "type": "chat",
+                        "message": message,
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "ja",
+                        "timezone": None,
+                        "request": None,
+                    },
                 )
 
             turn = connection.active
@@ -292,8 +344,24 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             frames = (
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": []},
-                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "locale": None},
-                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "locale": "pt-BR"},
+                {
+                    "type": "chat",
+                    "message": "oi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": None,
+                    "timezone": None,
+                    "request": None,
+                },
+                {
+                    "type": "chat",
+                    "message": "oi",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "pt-BR",
+                    "timezone": None,
+                    "request": None,
+                },
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "language_exemplar": "oi"},
                 {
                     "type": "chat",
@@ -301,6 +369,8 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                     "files": [],
                     "assistant_ids": [],
                     "locale": "pt",
+                    "timezone": None,
+                    "request": None,
                     "language_exemplar": "oi",
                 },
             )

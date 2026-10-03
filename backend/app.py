@@ -43,6 +43,8 @@ from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
 from team import order as team_order
+from team import snapshots as team_snapshots
+from team import summary as team_summary
 
 import browser
 from action import stored_input as action_stored_input
@@ -122,7 +124,7 @@ OPEN_API = frozenset(
 
 
 @asynccontextmanager
-async def _lifespan(_application: FastAPI):
+async def _lifespan(application: FastAPI):
     if profile.require() != ADMIN_PROFILE:
         raise RuntimeError("Admin profile changed after route registration")
     if ADMIN_PROFILE == "local":
@@ -134,6 +136,7 @@ async def _lifespan(_application: FastAPI):
             if initialized:
                 await asyncio.to_thread(_materialize_local_supervisor)
     scheduler = routine_scheduler.RoutineScheduler() if ADMIN_PROFILE == "local" else None
+    application.state.routine_scheduler = scheduler
     if scheduler is not None:
         scheduler.start()
     try:
@@ -145,13 +148,10 @@ async def _lifespan(_application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 platform_release.register(app, ADMIN_PROFILE)
-routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST)
+routine_http.register(app, ADMIN_PROFILE, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
 team_inference.register(app)
-app.add_api_route(
-    "/api/teams/{team_id}/assistants/{assistant_id}/icon",
-    team_assets.assistant_icon,
-    methods=["GET"],
-)
+team_assets.register(app)
+team_summary.register(app)
 app.add_api_route(
     "/api/assistant-catalog",
     chat_assets.assistant_catalog,
@@ -913,15 +913,6 @@ async def oauth_cloudflare_callback(request: Request):
     return _OAUTH_CHAT_REDIRECT()
 
 
-@app.get("/api/assistants")
-def assistants_list():
-    return _team_response(team.list_assistants)
-
-
-def local_assistants_list():
-    return _team_response(team.list_local_assistants)
-
-
 @app.get("/api/teams/{team_id}/assistants")
 def team_assistants_list(team_id: str):
     return _team_response(lambda: team.list_installed_assistants(team_id))
@@ -944,13 +935,8 @@ async def team_local_assistant_install(team_id: str, request: Request):
     )
 
 
+team_snapshots.register(app, ADMIN_PROFILE)
 if ADMIN_PROFILE == "local":
-    app.add_api_route("/api/local-assistants", local_assistants_list, methods=["GET"])
-    app.add_api_route(
-        "/api/local-assistants/{image_hash}/icon",
-        team_assets.local_assistant_icon,
-        methods=["GET"],
-    )
     app.add_api_route(
         "/api/teams/{team_id}/assistants/local",
         team_local_assistant_install,

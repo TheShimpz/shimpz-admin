@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
+from tests.localized_request import localization, localize, reference, rendered_for
 
 from chat import human, local
 
@@ -30,6 +31,10 @@ def _fingerprinted(request: dict[str, object]) -> dict[str, object]:
         separators=(",", ":"),
     ).encode()
     return {**request, "fingerprint": hashlib.sha256(canonical).hexdigest()}
+
+
+def _canonical(request: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in request.items() if key != "fingerprint"}
 
 
 def _request(kind: str) -> dict[str, object]:
@@ -58,7 +63,7 @@ def _request(kind: str) -> dict[str, object]:
         )
         if kind == "input:choices":
             base.update(min_selections=1, max_selections=2)
-    return _fingerprinted(base)
+    return localize(base)[0]
 
 
 def _response(request: dict[str, object], **overrides: object) -> dict[str, object]:
@@ -71,10 +76,14 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
         "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.1"},
         "action": {"id": "list-zones", "summary": "List reviewed Cloudflare zones."},
         "request": request,
+        **localization(rendered_for(request)),
         "trace_id": TRACE_ID,
     }
     value.update(overrides)
     return value
+
+
+REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 
 class HumanChallengeProjectionTests(unittest.TestCase):
@@ -165,7 +174,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 )
 
     def test_a_stored_input_password_request_projects_its_identifier(self) -> None:
-        request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
+        request = _canonical(_request("input:password"))
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
         projected = local._project_pending_challenge(team.TeamResponse(428, _response(stored)), "team_1")
         self.assertEqual(projected.status, 428)
@@ -178,7 +187,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             rejected.websocket_event("team_1")["detail"],
             "human-challenge-response-invalid: the Assistant request for your input was invalid",
         )
-        text = {key: value for key, value in _request("input:text").items() if key != "fingerprint"}
+        text = _canonical(_request("input:text"))
         for invalid in (
             _fingerprinted({**request, "stored_input": "Exa_Key"}),
             _fingerprinted({**request, "stored_input": None}),
@@ -191,7 +200,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 )
 
     def test_purpose_and_a_stored_input_key_page_project_beside_the_fingerprinted_request(self) -> None:
-        request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
+        request = _canonical(_request("input:password"))
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
         help_url = "https://dashboard.exa.ai/api-keys"
@@ -231,10 +240,142 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
+    def test_an_authorization_projects_the_file_its_approval_delivers_and_nothing_else_does(self) -> None:
+        disclosed = {
+            "id": "0123456789abcdef0123456789abcdef",
+            "name": "Relatório de março.pdf",
+            "media_type": "application/pdf",
+            "size": 482113,
+            "sha256": "a" * 64,
+        }
+        for kind in ("approval", "auth:totp"):
+            projected = local._project_pending_challenge(
+                team.TeamResponse(428, _response(_request(kind), file=disclosed)), "team_1"
+            )
+            self.assertEqual(projected.websocket_event("team_1")["file"], disclosed)
+        plain = local._project_pending_challenge(team.TeamResponse(428, _response(_request("approval"))), "team_1")
+        self.assertNotIn("file", plain.body)
+        for body in (
+            _response(_request("approval"), file={**disclosed, "size": 8 * 1024 * 1024 + 1}),
+            _response(_request("approval"), file={**disclosed, "name": "a/b.pdf"}),
+            _response(_request("approval"), file={**disclosed, "content": "withheld"}),
+            _response(_request("approval"), file=None),
+            _response(_request("input:text"), file=disclosed),
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+
+    def test_rendered_copy_locale_and_pack_project_beside_the_canonical_request(self) -> None:
+        request, rendered = localize(
+            {
+                "kind": "input:choice",
+                "ordinal": 0,
+                "title": "Choose mode",
+                "description": "Select how the record should be published.",
+                "label": "Mode",
+                "required": True,
+                "options": [
+                    {"value": "proxied", "label": "Proxied", "description": "Route traffic through Cloudflare."},
+                    {"value": "dns-only", "label": "DNS only", "description": None},
+                ],
+            }
+        )
+        rendered = {
+            "title": "Escolha o modo",
+            "description": "Selecione como o registro deve ser publicado.",
+            "label": "Modo",
+            "options": [
+                {"label": "Com proxy", "description": "Encaminhar o tráfego pela Cloudflare."},
+                {"label": "Somente DNS", "description": None},
+            ],
+        }
+        body = _response(request, **localization(rendered, "pt"))
+        projected = local._project_pending_challenge(team.TeamResponse(428, body), "team_1")
+        event = projected.websocket_event("team_1")
+        self.assertEqual(event["request"], request)
+        self.assertEqual(event["rendered"], rendered)
+        self.assertEqual((event["locale"], event["pack_digest"]), ("pt", body["pack_digest"]))
+        self.assertEqual([option["value"] for option in event["request"]["options"]], ["proxied", "dns-only"])
+
+        first, second = rendered["options"]
+        invalid = (
+            {key: value for key, value in body.items() if key != "rendered"},
+            {key: value for key, value in body.items() if key != "locale"},
+            {key: value for key, value in body.items() if key != "pack_digest"},
+            {**body, "locale": None},
+            {**body, "locale": "pt-BR"},
+            {**body, "pack_digest": "sha256:" + "A" * 64},
+            {**body, "rendered": {**rendered, "placeholder": None}},
+            {**body, "rendered": {**rendered, "title": "x" * 81}},
+            {**body, "rendered": {**rendered, "title": " Escolha"}},
+            {**body, "rendered": {**rendered, "options": rendered["options"][:1]}},
+            {**body, "rendered": {**rendered, "options": [first, {"label": "Só DNS", "description": "x"}]}},
+            {**body, "rendered": {**rendered, "options": [{**first, "value": "proxied"}, second]}},
+        )
+        for value in invalid:
+            with self.subTest(body=value):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, value), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+
+    def test_copy_references_admit_only_their_closed_shape_and_parameter_grammar(self) -> None:
+        plain = _canonical(_request("approval"))
+        admitted = (
+            reference("Delete {count} records in {zone}.", count=0, zone="example.com"),
+            reference("Rotate {key}.", key="Key_1.a:b-c"),
+            reference("Publish {count}.", count=10**15 - 1),
+            reference("Eight {a}", **{f"p{index}": index for index in range(8)}),
+        )
+        for title in admitted:
+            with self.subTest(title=title):
+                request = _fingerprinted({**plain, "title": title})
+                self.assertEqual(human.project(_response(request), "team_1")["request"]["title"], title)
+        refused = (
+            "Need your decision",
+            None,
+            {"message": reference("x")["message"]},
+            {**reference("x"), "text": "x"},
+            {"message": "A" * 64, "params": {}},
+            {"message": "a" * 63, "params": {}},
+            {"message": 1, "params": {}},
+            {"message": reference("x")["message"], "params": []},
+            reference("Nine", **{f"p{index}": index for index in range(9)}),
+            reference("Bad name", Zone="example.com"),
+            reference("Bad name", _zone="example.com"),
+            reference("Count", count=True),
+            reference("Count", count=-1),
+            reference("Count", count=10**15),
+            reference("Count", count=1.0),
+            reference("Prose", value="two words"),
+            reference("Long", value="a" * 129),
+            reference("Domain", zone=("a" * 63 + ".") * 4 + "com"),
+            reference("Nested", value={"a": 1}),
+        )
+        for title in refused:
+            with self.subTest(title=title):
+                request = _fingerprinted({**plain, "title": title})
+                with self.assertRaises(human.HumanChallengeError):
+                    human.project(_response(request), "team_1")
+
+    def test_team_refusals_of_a_changed_request_reach_the_browser_as_safe_codes(self) -> None:
+        for code, detail in (
+            ("assistant-language-drift", "an installed Assistant's language pack changed; retry the message"),
+            ("human-request-invalid", "the Assistant request for your input changed; retry the message"),
+            ("team-context-changed", "the Team capabilities changed; retry"),
+        ):
+            with self.subTest(code=code):
+                refused = local._safe_error(team.TeamResponse(409, {"code": code, "detail": "must-not-cross"}))
+                event = refused.websocket_event("team_1")
+                self.assertEqual(event, {"type": "error", "status": 409, "detail": f"{code}: {detail}"})
+
     def test_tampered_or_augmented_challenges_fail_without_reflection(self) -> None:
         request = _request("input:select")
         tampered = dict(request)
-        tampered["title"] = "Changed after review"
+        tampered["title"] = reference("Changed after review")
         private = _response(request)
         private["access_token"] = "must-not-cross"
         invalid = (
@@ -242,6 +383,9 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             private,
             _response(tampered),
             _response({**request, "fingerprint": "0" * 64}),
+            # A non-hex fingerprint fails as an invalid challenge instead of raising in the digest comparison.
+            _response({**request, "fingerprint": "\u00e9" * 64}),
+            _response({**request, "fingerprint": "A" * 64}),
             _response({**request, "options": [request["options"][0], request["options"][0]]}),
             _response(request, expires_in=True),
             _response(
@@ -268,7 +412,11 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             _response(_request("approval"), action=None),
             _response(_request("approval"), action={"id": "Bad", "summary": "summary"}),
             _response(None),
-            _response(_fingerprinted({"kind": "unknown", "ordinal": 0, "title": "Title", "description": "Text"})),
+            _response(
+                _fingerprinted(
+                    {"kind": "unknown", "ordinal": 0, "title": reference("Title"), "description": reference("Text")}
+                )
+            ),
         )
         for body in invalid_bodies:
             with self.assertRaises(human.HumanChallengeError):
@@ -276,13 +424,13 @@ class HumanChallengeProjectionTests(unittest.TestCase):
 
         duplicate = _request("input:select")
         duplicate["options"] = [duplicate["options"][0], duplicate["options"][0]]
-        duplicate = _fingerprinted({key: value for key, value in duplicate.items() if key != "fingerprint"})
+        duplicate = _fingerprinted(_canonical(duplicate))
         with self.assertRaises(human.HumanChallengeError):
             human.project(_response(duplicate), "team_1")
 
         invalid_options = _request("input:select")
         invalid_options["options"] = []
-        invalid_options = _fingerprinted({key: value for key, value in invalid_options.items() if key != "fingerprint"})
+        invalid_options = _fingerprinted(_canonical(invalid_options))
         with self.assertRaises(human.HumanChallengeError):
             human.project(_response(invalid_options), "team_1")
 
@@ -315,18 +463,47 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         self.assertFalse(human.browser_value({"kind": "unknown"}, True))
         self.assertFalse(human._browser_choices({}, None))
 
-    def test_pending_human_is_team_bound_and_none_is_closed(self) -> None:
-        pending = team.TeamResponse(200, _response(_request("approval")))
-        with mock.patch.object(team, "pending_chat_human", return_value=pending):
-            projected = local.pending_human("team_1")
-        self.assertEqual(projected.body["status"], "human-required")
+    def test_opened_human_is_team_bound_in_the_requested_language_and_none_is_closed(self) -> None:
+        request = _request("approval")
+        pending = team.TeamResponse(200, _response(request, **localization(rendered_for(request), "pt")))
+        with mock.patch.object(team, "open_chat_human", return_value=pending) as opened:
+            projected = local.open_human("team_1", "pt")
+        self.assertEqual((projected.body["status"], projected.body["locale"]), ("human-required", "pt"))
+        opened.assert_called_once_with("team_1", "pt")
+
+        # A challenge rendered in another language than the one Admin asked for is refused (ADR-0091).
+        with mock.patch.object(team, "open_chat_human", return_value=pending):
+            self.assertEqual(
+                local.open_human("team_1", "de"),
+                team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+            )
 
         none = team.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
-        with mock.patch.object(team, "pending_chat_human", return_value=none):
+        with mock.patch.object(team, "open_chat_human", return_value=none):
             self.assertEqual(
-                local.pending_human("team_1"),
+                local.open_human("team_1", "pt"),
                 team.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
+
+    def test_a_chat_turn_admits_only_a_human_challenge_in_its_interface_language(self) -> None:
+        request = _request("approval")
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        payload = {
+            "message": "Publish",
+            "files": [],
+            "assistant_ids": ["shimpz-cloudflare"],
+            "locale": "pt",
+            "timezone": None,
+        }
+        for locale, expected in (("pt", 428), ("en", 502)):
+            controller = team.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))
+            with (
+                self.subTest(locale=locale),
+                mock.patch.object(team, "get_inference", return_value=inference),
+                mock.patch.object(local.models, "resolve_api_key", return_value="sk-test-0123456789"),
+                mock.patch.object(team, "chat", return_value=controller),
+            ):
+                self.assertEqual(local.turn("team_1", payload, (), REQUEST).status, expected)
 
 
 if __name__ == "__main__":
