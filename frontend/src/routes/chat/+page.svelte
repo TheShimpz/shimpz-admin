@@ -23,6 +23,8 @@
   import { clarificationAnswer } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
+  import ChatDay from '$lib/ChatDay.svelte';
+  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '$lib/chatDays.js';
   import { newerRoutineEntries } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
@@ -180,6 +182,11 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
+  // Each exchange's calendar day in the viewer's timezone (chatDays.js says which time an item carries); a header
+  // opens each day, and "today" moves at the viewer's midnight.
+  const instantOf = turnInstants();
+  let today = $state(calendarDay(Date.now()));
+  let days = $derived(exchangeDays(exchanges, instantOf));
   let installPlanWorking = $derived(turns.some((turn) => (
     ['planned', 'installing'].includes(turn.installPlan?.state)
   )));
@@ -625,6 +632,12 @@
       clearInterval(timer);
       document.removeEventListener('visibilitychange', shown);
     };
+  });
+
+  $effect(() => {
+    void today;
+    const timer = setTimeout(() => (today = calendarDay(Date.now())), untilNextDay(Date.now()) + 1_000);
+    return () => clearTimeout(timer);
   });
 
   function applyInstallPlanEvent(incoming, receipt) {
@@ -2133,6 +2146,10 @@
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
+            {@const opensDay = days[index] !== null && days[index] !== days[index - 1]}
+            {#if opensDay}
+              <ChatDay day={days[index]} {today} locale={$locale} />
+            {/if}
             <section class="exchange">
               {#if userTurn}
                 <Message variant="user" author={copy.you}>
@@ -2176,8 +2193,9 @@
                       copy={$t('routine')}
                       teamId={selectedTeamId}
                       teamName={assistantTurn.author}
-                      joinAbove={!userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
-                      joinBelow={!exchanges[index + 1]?.user && Boolean(exchanges[index + 1]?.assistant?.routineRun)}
+                      joinAbove={!opensDay && !userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
+                      joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
+                        Boolean(exchanges[index + 1]?.assistant?.routineRun)}
                     />
                   {:else if !assistantTurn.installPlan && (
                     !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
@@ -2626,6 +2644,9 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* A day header sticks flush with the top edge, over this padding; an exchange scrolled to the top stays below it. */
+    --chat-day-inset: -1rem;
+    scroll-padding-block-start: 2rem;
     padding-block: 1rem;
     padding-inline: max(
       var(--chat-rail-gutter),
@@ -2675,7 +2696,8 @@
     margin-block-start: var(--routine-rail-gap);
   }
 
-  .exchange:first-child {
+  .exchange:first-child,
+  :global(.chat-day + .exchange) {
     margin-block-start: 0;
   }
 

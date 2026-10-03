@@ -164,31 +164,40 @@ function defined(routine) {
 
 const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']];
 
-// The transcript, oldest first: one row of every Routine notice the owner validates.
-function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD]) {
+// The transcript, oldest first: one row of every Routine notice the owner validates. Its rows span the day before the
+// preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
+function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
+  const second = 1_000;
+  const opened = Math.floor(now / second) * second;
+  const at = (offset) => new Date(opened + offset * second).toISOString().replace('.000Z', 'Z');
+  const yesterday = (offset) => at(offset - 86_400);
   return [
-    row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: '2026-10-01T11:58:00Z' }),
-    row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: '2026-10-01T11:58:30Z' }),
-    row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS }, { at: '2026-10-01T11:59:10Z' }),
-    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: '2026-10-01T12:00:00Z', version: 9 }),
-    row(id('e'), HELD, 'recovered', { actions: ACTIONS }, { at: '2026-10-01T12:00:20Z' }),
-    row(id('f'), HELD, 'user-skipped', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record', choice: 'run' }),
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [ACTIONS[0]] }, { version: 1 }),
-    row(HELD_RUN, HELD, 'held', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record' }, { version: 2 }),
+    row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: yesterday(-120) }),
+    row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: yesterday(-90) }),
+    row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS }, { at: yesterday(-50) }),
+    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: yesterday(0), version: 9 }),
+    row(id('e'), HELD, 'recovered', { actions: ACTIONS }, { at: yesterday(20) }),
+    row(id('f'), HELD, 'user-skipped', {
+      assistant_id: 'shimpz-cloudflare', action: 'update-dns-record', choice: 'run',
+    }, { at: at(-150) }),
+    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [ACTIONS[0]] }, { at: at(-120), version: 1 }),
+    row(HELD_RUN, HELD, 'held', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record' }, {
+      at: at(-90), version: 2,
+    }),
     row(PAUSED_RUN, PAUSED_HELD, 'paused', {
       assistant_id: 'shimpz-cloudflare', action: 'delete-dns-record', reason: 'exhausted',
-    }, { version: 3 }),
+    }, { at: at(-60), version: 3 }),
   ];
 }
 
-export function routineLifecycleStart(locale = 'en') {
+export function routineLifecycleStart(locale = 'en', now = Date.now()) {
   const listed = routines(locale);
   const [, HELD, , PAUSED_HELD] = listed;
   return {
     routines: listed,
     runs: [],
     incidents: [incident(HELD_RUN, HELD, 'update-dns-record'), incident(PAUSED_RUN, PAUSED_HELD, 'delete-dns-record')],
-    history: history(listed),
+    history: history(listed, now),
   };
 }
 
