@@ -75,12 +75,18 @@ def delete_route(confirmations: local_auth.Context):
         async def delete() -> JSONResponse:
             subject = _deletion_subject(team_id, routine_id)
             payload = await team_http.bounded_json_object(request)
+            # One worker confirms and then dispatches, so nothing runs between the session recheck and Team's request.
             try:
-                await run_in_threadpool(local_auth.confirm_operation, request, confirmations, subject, payload)
+                response = await run_in_threadpool(
+                    local_auth.confirm_operation,
+                    request,
+                    confirmations,
+                    subject,
+                    payload,
+                    lambda: team_http.response(lambda: manage.delete(team_id, routine_id)),
+                )
             except local_auth.OperationRefusedError as exc:
                 response = local_auth.operation_refusal(exc)
-            else:
-                response = await run_in_threadpool(team_http.response, lambda: manage.delete(team_id, routine_id))
             # The ticket is spent either way; a stale cookie would only be refused.
             response.delete_cookie(local_auth.TICKET_COOKIE, path="/api/")
             return response

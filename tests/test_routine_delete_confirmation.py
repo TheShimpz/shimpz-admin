@@ -238,6 +238,53 @@ class RoutineDeleteConfirmationTests(unittest.TestCase):
         self.assertEqual((status, body), (401, {"code": "authentication-expired"}))
         self.team_delete.assert_not_called()
 
+    def test_a_session_revoked_while_the_factor_is_checked_never_reaches_team(self) -> None:
+        self.begin()
+        verify = state.verify_totp
+
+        def accept_then_log_out(*args, **kwargs):
+            result = verify(*args, **kwargs)
+            state._write({**state.get(), "session_secret": auth.new_secret()})
+            return result
+
+        with mock.patch.object(state, "verify_totp", side_effect=accept_then_log_out):
+            status, body, _ = self.delete({"code": self.code()})
+        self.assertEqual((status, body), (401, {"code": "authentication-expired"}))
+        self.team_delete.assert_not_called()
+
+    def test_authentication_state_failures_are_unavailable_at_every_step(self) -> None:
+        def unreadable(*_args, **_kwargs):
+            raise OSError("unreadable store")
+
+        with mock.patch.object(state, "authentication_state", side_effect=unreadable):
+            status, body, response = self.begin()
+        self.assertEqual(
+            (status, body, response.headers["Cache-Control"]), (503, {"code": "authentication-unavailable"}, "no-store")
+        )
+        with (
+            mock.patch.object(local_auth, "passkey_registered", return_value=True),
+            mock.patch.object(state, "active_passkeys", side_effect=unreadable),
+        ):
+            status, body, response = self.begin()
+        self.assertEqual((status, body), (503, {"code": "authentication-unavailable"}))
+        self.assertNotIn("set-cookie", response.headers)
+
+        # Reading the ticket's factor generation, then the session after an accepted code.
+        for target, at in (("factor_generation", LATER), ("get", LATER + 30)):
+            with self.subTest(target=target):
+                self.begin()
+                current = self.code(at)
+                with (
+                    mock.patch.object(local_auth.state, target, side_effect=unreadable),
+                    self.assertLogs("shimpz-admin", level="WARNING"),
+                ):
+                    status, body, response = self.delete({"code": current})
+                self.assertEqual(
+                    (status, body, response.headers["Cache-Control"]),
+                    (503, {"code": "authentication-unavailable"}, "no-store"),
+                )
+        self.team_delete.assert_not_called()
+
     def test_verification_failures_and_bad_bodies_fail_closed(self) -> None:
         self.begin()
         with mock.patch.object(state, "verify_totp", side_effect=totp.TotpStateError("broken")):

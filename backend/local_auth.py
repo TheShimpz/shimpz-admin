@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import auth
@@ -412,16 +413,32 @@ def _operation_offer(token: str, origin: str, generation: int, context: Context)
     return {"methods": ["totp", "passkey"], "passkey_options": options}
 
 
+# What reading or persisting the authentication state can raise; inside a ceremony each fails closed as unavailable.
+_STATE_FAILURES = (RuntimeError, ValueError, TypeError, KeyError, OSError)
+
+
+def _unavailable() -> OperationRefusedError:
+    log.warning("Supervisor operation confirmation is unavailable")
+    return OperationRefusedError(503, "authentication-unavailable")
+
+
 async def begin_operation(request: Request, context: Context, subject: str) -> JSONResponse:
     """Verify the password for one exact operation and offer its second factor, as login does (ADR-0051)."""
     payload = await _json_object(request)
     if set(payload) != {"password"}:
         raise HTTPException(status_code=400, detail="request body must contain only password")
+    try:
+        return await _begin_operation(request, context, subject, payload["password"])
+    except _STATE_FAILURES:
+        raise _unavailable() from None
+
+
+async def _begin_operation(request: Request, context: Context, subject: str, password: object) -> JSONResponse:
     origin = _operation_origin(request)
     if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
         raise OperationRefusedError(409, "authentication-unavailable")
     try:
-        await _verify_password(payload["password"], context)
+        await _verify_password(password, context)
     except HTTPException as exc:
         if exc.status_code == 429:
             retry_after = int((exc.headers or {}).get("Retry-After", "1"))
@@ -431,13 +448,14 @@ async def begin_operation(request: Request, context: Context, subject: str) -> J
     try:
         token = context.ticket_store.issue("operation", origin, generation, subject)
     except tickets.TicketError:
-        raise OperationRefusedError(503, "authentication-unavailable") from None
+        raise _unavailable() from None
     try:
         body = _operation_offer(token, origin, generation, context)
-    except passkeys.PasskeyError:
+    except _STATE_FAILURES:
+        # The offer could not be made, so its ticket is spent before anyone could hold it.
         with contextlib.suppress(tickets.TicketError):
             context.ticket_store.consume(token, "operation", subject)
-        raise OperationRefusedError(503, "authentication-unavailable") from None
+        raise _unavailable() from None
     response = _response(body, 202)
     _set_ticket(response, token, origin)
     return response
@@ -466,21 +484,12 @@ def _operation_second_factor(method: str, value: object, token: str, ticket: tic
         _secret, suspension_reason = _passkey_assertion(token, ticket, value, context)
     except HTTPException as exc:
         raise OperationRefusedError(*refusals.get(exc.status_code, (503, "authentication-unavailable"))) from None
-    except RuntimeError, ValueError, TypeError, KeyError, OSError:
-        log.warning("Supervisor operation confirmation is unavailable")
-        raise OperationRefusedError(503, "authentication-unavailable") from None
     if suspension_reason is not None:
         _suspended(suspension_reason, context)
         raise OperationRefusedError(401, "passkey-suspended")
 
 
-def confirm_operation(request: Request, context: Context, subject: str, payload: dict) -> str:
-    """Spend the operation's one ticket on exactly one second factor; return the method, or raise a refusal.
-
-    Nothing here issues a session or learns a browser origin. A caller dispatches the operation only after this returns,
-    and only while the request's own session is still the current one.
-    """
-    method, value = _operation_factor(payload)
+def _confirmed(request: Request, context: Context, subject: str, method: str, value: object) -> None:
     _operation_origin(request)
     try:
         token, ticket = _ticket(request, context, "operation", subject)
@@ -490,5 +499,20 @@ def confirm_operation(request: Request, context: Context, subject: str, payload:
     session = auth.verify_session(state.get().get("session_secret", ""), request.cookies.get(SESSION_COOKIE, ""))
     if session is None:
         raise OperationRefusedError(401, "authentication-expired")
+
+
+def confirm_operation[T](
+    request: Request, context: Context, subject: str, payload: dict, dispatch: Callable[[], T]
+) -> T:
+    """Spend the operation's one ticket on exactly one second factor, then dispatch the operation, or raise a refusal.
+
+    Nothing here issues a session or learns a browser origin. The request's own session is rechecked after the factor
+    and immediately before `dispatch`, in this same call, so a session revoked meanwhile never reaches the operation.
+    """
+    method, value = _operation_factor(payload)
+    try:
+        _confirmed(request, context, subject, method, value)
+    except _STATE_FAILURES:
+        raise _unavailable() from None
     log.info("Supervisor operation confirmed with %s", "TOTP" if method == "totp" else "a passkey")
-    return method
+    return dispatch()
