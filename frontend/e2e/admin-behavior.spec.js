@@ -4486,7 +4486,7 @@ test.describe('Team Routines', () => {
     expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'skip' }]);
   });
 
-  test('pausing from a Routine\'s decision returns to its pages while the run stays held, and Delete stays offered', async ({ page }) => {
+  test('a Routine\'s decision is the only thing its panel offers, and pausing from it returns to its pages and actions', async ({ page }) => {
     await routeReadyChat(page);
     const calls = await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
@@ -4496,17 +4496,20 @@ test.describe('Team Routines', () => {
     await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(panel.getByRole('group', { name: 'Recovery choices' })).toBeVisible();
-    // Deleting needs no answer to the pending decision.
-    await expect(panel.getByRole('button', { name: 'Delete' })).toBeVisible();
+    // Until it is answered, nothing else is offered: no pages, no Pause or Delete of the Routine.
+    await expect(panel.getByRole('tablist')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    await expect(panel.getByRole('button')).toHaveCount(4);
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Pause' }).click();
     // The incident stays unresolved, yet the answered decision gives way to the Routine's pages.
     await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
     await expect(panel.getByRole('status')).toContainText('Paused: you paused it.');
     await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Delete' })).toBeVisible();
     expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'pause' }]);
   });
 
-  test('a Routine waiting for an approval is that decision in its panel, can be stopped, and a run held after approval asks again', async ({ page }) => {
+  test('a Routine waiting for an approval is that decision in its panel, and a run held after approval asks again', async ({ page }) => {
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     let runs = [{
@@ -4571,7 +4574,8 @@ test.describe('Team Routines', () => {
     await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(panel).toContainText('Waiting for your approval of Replace DNS record');
-    await expect(panel.getByRole('button', { name: 'Stop' })).toBeVisible();
+    // Review is the one action besides closing the panel.
+    await expect(panel.getByRole('button')).toHaveCount(2);
     await panel.getByRole('button', { name: 'Review' }).click();
     await page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' }).getByRole('button', { name: 'Approve action' }).click();
     // The same run, now held, opens its recovery decision instead of leaving the panel without one.
