@@ -115,7 +115,14 @@ test('done events and history replies carry the clarification only in its closed
   assert.throws(() => parseChatEvent(done, 'team_1', 'Marketing'));
 
   const turn = 'a'.repeat(32);
-  const reply = { id: `${turn}:reply`, kind: 'message', role: 'assistant', text: rendered, author: 'Marketing' };
+  const reply = {
+    id: `${turn}:reply`,
+    created_at: '2026-10-02T21:15:00Z',
+    kind: 'message',
+    role: 'assistant',
+    text: rendered,
+    author: 'Marketing',
+  };
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
   const history = await listChatHistory(page([{ ...reply, clarification: ASKED }]), 'marketing');
   assert.deepEqual(history.entries[0].clarification, ASKED);
@@ -125,6 +132,8 @@ test('done events and history replies carry the clarification only in its closed
   }
   await assert.rejects(listChatHistory(page([{ ...reply, text: 'Other text', clarification: ASKED }]), 'marketing'));
   await assert.rejects(
-    listChatHistory(page([{ id: `${turn}:user`, kind: 'message', role: 'user', text: 'Oi', clarification: ASKED }]), 'marketing'),
+    listChatHistory(page([{
+      id: `${turn}:user`, created_at: reply.created_at, kind: 'message', role: 'user', text: 'Oi', clarification: ASKED,
+    }]), 'marketing'),
   );
 });

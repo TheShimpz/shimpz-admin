@@ -3,6 +3,7 @@ export const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export const OPAQUE_ID_RE = /^[0-9a-f]{32}$/;
 export const TRACE_ID_RE = OPAQUE_ID_RE;
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 const MAX_TEAM_NAME_CHARS = 80;
 
@@ -17,6 +18,14 @@ export class LocalApiError extends Error {
     this.name = 'LocalApiError';
     this.status = status;
   }
+}
+
+/** A real UTC instant in whole seconds, written YYYY-MM-DDTHH:MM:SSZ. */
+export function isInstant(value) {
+  // Date.parse rolls impossible dates such as February 30 forward, so the instant must round-trip exactly.
+  if (typeof value !== 'string' || !INSTANT_RE.test(value)) return false;
+  const time = Date.parse(value);
+  return !Number.isNaN(time) && new Date(time).toISOString().replace('.000Z', 'Z') === value;
 }
 
 export async function jsonObject(response) {

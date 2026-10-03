@@ -2,7 +2,7 @@
 // throws on any other shape; nothing here schedules or authorizes: Team creates a Routine from the user's own message.
 
 import { isLocale } from './locales.js';
-import { jsonObject, TEAM_ID_RE } from './validate.js';
+import { isInstant, jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
 export const MAX_ASSISTANTS = 16;
@@ -75,7 +75,6 @@ function isAssistants(value, minimum) {
   );
 }
 
-const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const NONCE_RE = /^[0-9a-f]{32}$/;
 const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ROUTINES = 8;
@@ -96,13 +95,6 @@ export class RoutineError extends Error {
     this.status = status;
     this.retryAfter = retryAfter;
   }
-}
-
-function isInstant(value) {
-  // Date.parse rolls impossible dates such as February 30 forward, so the instant must round-trip exactly.
-  if (typeof value !== 'string' || !INSTANT_RE.test(value)) return false;
-  const time = Date.parse(value);
-  return !Number.isNaN(time) && new Date(time).toISOString().replace('.000Z', 'Z') === value;
 }
 
 function view(value, keys, valid) {

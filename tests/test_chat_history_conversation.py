@@ -210,7 +210,8 @@ class ChatHistoryConversationTests(unittest.TestCase):
             history._append("marketing", f"{history.new_turn_id()}:user", {}, provenance="other")
         with sqlite3.connect(self.path) as database, self.assertRaises(sqlite3.IntegrityError):
             database.execute(
-                "INSERT INTO transcript (team_id, event_key, payload, provenance) VALUES ('m', 'k', '{}', 'other')"
+                "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) "
+                "VALUES ('m', 'k', '{}', 'other', '2026-10-03T12:00:00Z')"
             )
 
     def test_conversation_projection_keeps_only_the_newest_eight_eligible_entries(self) -> None:

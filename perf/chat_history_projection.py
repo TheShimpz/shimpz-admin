@@ -21,6 +21,7 @@ from history import context, store
 TEAM = "marketing"
 OTHER_TEAM = "other_team"
 SAMPLES = 100
+CREATED_AT = "2026-10-03T12:00:00Z"
 LONG_TEXT = "e\u0301🙂" * 1_600
 LONG_NFC_TEXT = "é🙂A" * 1_600
 LONG_ASCII_TEXT = "A" * len(LONG_TEXT)
@@ -55,23 +56,23 @@ def _public_encoding_matches(path: Path) -> None:
     store.STORE_PATH = path.with_name("direct.sqlite3")
     with store._database() as database:
         database.executemany(
-            "INSERT INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
+            "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) VALUES (?, ?, ?, 'plain', ?)",
             (
-                (TEAM, f"{prior}:user", _user_payload(LONG_TEXT)),
-                (TEAM, f"{anchor}:user", _user_payload("Current")),
+                (TEAM, f"{prior}:user", _user_payload(LONG_TEXT), CREATED_AT),
+                (TEAM, f"{anchor}:user", _user_payload("Current"), CREATED_AT),
             ),
         )
     if store.conversation(TEAM, anchor) != public:
         raise ConfoundedMeasurementError("direct fixture differs from public append")
 
 
-def _rows(eligible: int, long_text: str | None, anchor: str) -> Iterator[tuple[str, str, str]]:
-    yield OTHER_TEAM, f"{_turn(100_000)}:user", _user_payload("Other Team only")
+def _rows(eligible: int, long_text: str | None, anchor: str) -> Iterator[tuple[str, str, str, str]]:
+    yield OTHER_TEAM, f"{_turn(100_000)}:user", _user_payload("Other Team only"), CREATED_AT
     for index in range(eligible):
         text = long_text if long_text is not None else f"Question {index}"
-        yield TEAM, f"{_turn(index)}:user", _user_payload(text)
-    yield OTHER_TEAM, f"{anchor}:user", _user_payload("Other Team current")
-    yield TEAM, f"{anchor}:user", _user_payload("Current")
+        yield TEAM, f"{_turn(index)}:user", _user_payload(text), CREATED_AT
+    yield OTHER_TEAM, f"{anchor}:user", _user_payload("Other Team current"), CREATED_AT
+    yield TEAM, f"{anchor}:user", _user_payload("Current"), CREATED_AT
 
 
 def _expected(eligible: int, long_text: str | None) -> tuple[context.Entry, ...]:
@@ -111,11 +112,11 @@ def _case(path: Path, name: str, eligible: int, long_text: str | None) -> dict[s
     anchor = _turn(eligible)
     with store._database() as database:
         database.executemany(
-            "INSERT INTO transcript (team_id, event_key, payload) VALUES (?, ?, ?)",
+            "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) VALUES (?, ?, ?, 'plain', ?)",
             _rows(eligible, long_text, anchor),
         )
         version = database.execute("PRAGMA user_version").fetchone()[0]
-    if version != store.SCHEMA_VERSION or version != 5:
+    if version != store.SCHEMA_VERSION or version != 7:
         raise ConfoundedMeasurementError("history schema changed")
     expected = _expected(eligible, long_text)
     first_ms = _timed(anchor, expected)

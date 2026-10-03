@@ -1,12 +1,10 @@
 // Calendar days of the chat transcript, in the viewer's own timezone, for the day headers above each day's first item.
 //
 // Which day an item belongs to:
-// - A Routine notice carries its own `created_at`; that instant is its day.
-// - An item that arrived while this page was open (a message sent, a reply, an install or uninstall outcome) has no
-//   stored time, so its time is when the page first showed it.
-// - A chat history row other than a Routine notice stores no time (Admin keeps none), so it takes the day of the
-//   nearest dated item before it; history rows before any dated item have no known day and get no header.
-// An exchange (a message and the reply under it) stays whole under the day of its first dated item.
+// - A chat history row carries the time Admin wrote it (a Routine notice's is the notice's own); that is its day.
+// - An item that arrived while this page was open (a message sent, a reply, an install or uninstall outcome) is not
+//   yet a history row here, so its time is when the page first showed it.
+// An exchange (a message and the reply under it) stays whole under the day of its first item.
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;
@@ -35,30 +33,19 @@ function dayNumber(day) {
   return Date.UTC(Number(year), Number(month) - 1, Number(date)) / DAY_MS;
 }
 
-/**
- * Each exchange's calendar day: its first dated turn's, else the nearest earlier exchange's, else null.
- * `instantOf(turn)` answers a turn's instant in milliseconds, or null when it has none.
- */
+/** Each exchange's calendar day: its first turn's. `instantOf(turn)` answers a turn's instant in milliseconds. */
 export function exchangeDays(exchanges, instantOf, timeZone) {
-  let carried = null;
-  return exchanges.map((exchange) => {
-    const turns = [exchange.user, exchange.assistant].filter(Boolean);
-    const instant = turns.map(instantOf).find((value) => Number.isFinite(value));
-    carried = calendarDay(instant, timeZone) ?? carried;
-    return carried;
-  });
+  return exchanges.map((exchange) => calendarDay(instantOf(exchange.user ?? exchange.assistant), timeZone));
 }
 
 /**
- * The instant of each transcript turn: a Routine notice's own time, the moment the page first showed a turn that is
- * not from history, or null for any other history row. A shown turn keeps its first time across later updates.
+ * The instant of each transcript turn: a history row's stored time, else the moment the page first showed it. A shown
+ * turn keeps its first time across later updates.
  */
 export function turnInstants(now = () => Date.now()) {
   const shown = new Map();
   return (turn) => {
-    if (!turn) return null;
-    if (turn.routineRun) return Date.parse(turn.routineRun.createdAt);
-    if (turn.historyId) return null;
+    if (turn.createdAt) return Date.parse(turn.createdAt);
     if (!shown.has(turn.renderKey)) shown.set(turn.renderKey, now());
     return shown.get(turn.renderKey);
   };

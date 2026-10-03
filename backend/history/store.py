@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import datetime
 import json
 import os
 import re
@@ -22,7 +23,7 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`.
 PROVENANCES = frozenset({"plain", "attached"})
@@ -35,6 +36,7 @@ _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SEMANTIC_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _GUIDANCE_CODES = frozenset(
     {
         "assistant-install-target-required",
@@ -80,6 +82,21 @@ def _text(value: object, maximum: int, field: str) -> str:
     return value
 
 
+def _now() -> str:
+    """The current UTC instant in whole seconds, written ``YYYY-MM-DDTHH:MM:SSZ`` like a Routine notice's."""
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _instant(value: object) -> str:
+    if not isinstance(value, str) or _INSTANT_RE.fullmatch(value) is None:
+        raise HistoryUnavailableError("chat history entry time is invalid")
+    try:
+        datetime.datetime.fromisoformat(value)
+    except ValueError:
+        raise HistoryUnavailableError("chat history entry time is invalid") from None
+    return value
+
+
 def _private_file(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -117,6 +134,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             event_key TEXT NOT NULL,
             payload TEXT NOT NULL,
             provenance TEXT NOT NULL CHECK (provenance IN ('plain', 'attached')),
+            created_at TEXT NOT NULL,
             UNIQUE (team_id, event_key)
         );
         CREATE INDEX transcript_team_position ON transcript (team_id, position);
@@ -127,7 +145,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 6;
+        PRAGMA user_version = 7;
         """
     )
 
@@ -186,9 +204,11 @@ def _append(
                 return False
             # Every row of a turn keeps the provenance its message was admitted with.
             provenance = anchor[0]
+        # A row's time is when Admin first wrote it; an idempotent repeat keeps that first time.
         cursor = database.execute(
-            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload, provenance) VALUES (?, ?, ?, ?)",
-            (team_id, event_key, encoded, provenance),
+            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload, provenance, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (team_id, event_key, encoded, provenance, _now()),
         )
         committed = cursor.rowcount == 1
         if not committed:
@@ -236,9 +256,10 @@ def append_routine_notice(notice: object) -> bool:
             if stored["version"] == payload["version"]:
                 return existing[0] == encoded
             database.execute("DELETE FROM transcript WHERE team_id = ? AND event_key = ?", (team_id, event_key))
+        # A notice's row time is the notice's own instant, so its day and the time it shows agree.
         database.execute(
-            "INSERT INTO transcript (team_id, event_key, payload, provenance) VALUES (?, ?, ?, 'plain')",
-            (team_id, event_key, encoded),
+            "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) VALUES (?, ?, ?, 'plain', ?)",
+            (team_id, event_key, encoded, admitted["created_at"]),
         )
     return True
 
@@ -613,35 +634,45 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators[payload["kind"]](payload)
 
 
+def _page_entry(event_key: str, raw: object, created_at: object) -> dict[str, object]:
+    payload = _decoded(raw)
+    instant = _instant(created_at)
+    # A Routine notice keeps its own instant in its closed shape; its row time must be that same instant.
+    if payload["kind"] == "routine-run" and payload["created_at"] != instant:
+        raise HistoryUnavailableError("chat history entry time is invalid")
+    return {"id": event_key, **payload, "created_at": instant}
+
+
 def page(team_id: object, *, before: object = None) -> dict[str, object]:
     canonical_team = _team_id(team_id)
     position = _position(before)
     with _database() as database:
         if position is None:
             rows = database.execute(
-                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? ORDER BY position DESC LIMIT ?",
+                "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? "
+                "ORDER BY position DESC LIMIT ?",
                 (canonical_team, PAGE_ROWS + 1),
             ).fetchall()
         else:
             rows = database.execute(
-                "SELECT position, event_key, payload FROM transcript WHERE team_id = ? AND position < ? "
+                "SELECT position, event_key, payload, created_at FROM transcript WHERE team_id = ? AND position < ? "
                 "ORDER BY position DESC LIMIT ?",
                 (canonical_team, position, PAGE_ROWS + 1),
             ).fetchall()
-    selected: list[tuple[int, str, dict[str, object]]] = []
+    selected: list[tuple[int, dict[str, object]]] = []
     size = 0
-    for row_position, event_key, raw in rows[:PAGE_ROWS]:
-        payload = _decoded(raw)
-        entry_size = len(raw.encode("utf-8")) + len(event_key)
+    for row_position, event_key, raw, created_at in rows[:PAGE_ROWS]:
+        entry = _page_entry(event_key, raw, created_at)
+        entry_size = len(raw.encode("utf-8")) + len(event_key) + len(created_at)
         if selected and size + entry_size > MAX_PAGE_BYTES:
             break
-        selected.append((row_position, event_key, payload))
+        selected.append((row_position, entry))
         size += entry_size
     if not selected:
         return {"entries": [], "before": None}
     oldest = selected[-1][0]
     has_older = len(selected) < len(rows)
-    entries = [{"id": event_key, **payload} for _, event_key, payload in reversed(selected)]
+    entries = [entry for _, entry in reversed(selected)]
     return {"entries": entries, "before": _cursor(oldest) if has_older else None}
 
 

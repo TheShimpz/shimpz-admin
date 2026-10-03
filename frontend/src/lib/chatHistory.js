@@ -7,6 +7,7 @@ import {
   ASSISTANT_ID_RE,
   codePointLength,
   exactKeys,
+  isInstant,
   jsonObject,
   TEAM_ID_RE,
 } from './validate.js';
@@ -220,14 +221,24 @@ function guidanceEntry(value, suffix, status) {
   };
 }
 
+const ENTRY_PARSERS = {
+  message: messageEntry,
+  'assistant-install': installEntry,
+  'assistant-uninstall': uninstallEntry,
+  guidance: guidanceEntry,
+};
+
 function historyEntry(value, status) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidHistory(status);
   const match = typeof value.id === 'string' ? ENTRY_ID_RE.exec(value.id) : null;
   if (!match) throw invalidHistory(status);
-  if (value.kind === 'message') return messageEntry(value, match[2], status);
-  if (value.kind === 'assistant-install') return installEntry(value, match[2], status);
-  if (value.kind === 'assistant-uninstall') return uninstallEntry(value, match[2], status);
-  if (value.kind === 'guidance') return guidanceEntry(value, match[2], status);
+  const parse = Object.hasOwn(ENTRY_PARSERS, value.kind) ? ENTRY_PARSERS[value.kind] : null;
+  if (parse) {
+    // Every row carries the UTC time Admin wrote it; a Routine notice's is its own instant, checked in its shape.
+    const { created_at: createdAt, ...rest } = value;
+    if (!isInstant(createdAt)) throw invalidHistory(status);
+    return { ...parse(rest, match[2], status), createdAt };
+  }
   if (value.kind === 'routine-run' && match[2] === 'routine') {
     try {
       return parseRoutineRunEntry(value);

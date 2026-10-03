@@ -440,11 +440,11 @@
   }
 
   function historyTurn(entry, author) {
-    const renderKey = nextRenderKey++;
+    // Every stored row keeps the time Admin wrote it, which dates its day in the transcript.
+    const stored = { renderKey: nextRenderKey++, historyId: entry.id, createdAt: entry.createdAt };
     if (entry.kind === 'message') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: entry.role,
         text: entry.text,
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
@@ -455,8 +455,7 @@
     }
     if (entry.kind === 'guidance') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: 'assistant',
         text: escapeMarkdownText(entry.reply),
         author,
@@ -464,8 +463,7 @@
     }
     if (entry.kind === 'assistant-install') {
       return {
-        renderKey,
-        historyId: entry.id,
+        ...stored,
         role: 'assistant',
         text: entry.state === 'installed'
           ? (entry.outcome === 'already-installed' ? copy.install.already : copy.install.complete)
@@ -483,11 +481,10 @@
       };
     }
     if (entry.kind === 'routine-run') {
-      return { renderKey, historyId: entry.id, role: 'assistant', text: '', author, routineRun: entry };
+      return { ...stored, role: 'assistant', text: '', author, routineRun: entry };
     }
     return {
-      renderKey,
-      historyId: entry.id,
+      ...stored,
       role: 'assistant',
       text: '',
       author,
@@ -2146,7 +2143,7 @@
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
-            {@const opensDay = days[index] !== null && days[index] !== days[index - 1]}
+            {@const opensDay = days[index] !== days[index - 1]}
             {#if opensDay}
               <ChatDay day={days[index]} {today} locale={$locale} />
             {/if}

@@ -106,7 +106,14 @@ test('a chat reply and its stored history never carry a retired Routine proposal
   assert.throws(() => parseChatEvent({ ...done, routine_proposal: null }, 'team_1', 'Marketing'));
 
   const turn = 'b'.repeat(32);
-  const reply = { id: `${turn}:reply`, kind: 'message', role: 'assistant', text: done.reply, author: 'Marketing' };
+  const reply = {
+    id: `${turn}:reply`,
+    created_at: '2026-10-02T21:15:00Z',
+    kind: 'message',
+    role: 'assistant',
+    text: done.reply,
+    author: 'Marketing',
+  };
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
   assert.equal((await listChatHistory(page([reply]), 'marketing')).entries[0].text, done.reply);
   await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: null }]), 'marketing'));

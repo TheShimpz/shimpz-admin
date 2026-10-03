@@ -18,6 +18,7 @@ import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 
 const MIB = 1024 * 1024;
+const HISTORY_AT = '2026-10-02T21:15:00Z';
 const FILE_ID = 'f'.repeat(32);
 const SHA = 'a'.repeat(64);
 const RESTRICTED = {
@@ -262,12 +263,19 @@ test('a completed turn and its restored reply keep the Actions withheld for atta
     );
   }
 
-  const reply = { id: `${'a'.repeat(32)}:reply`, kind: 'message', role: 'assistant', text: 'Read.', author: 'Marketing' };
+  const reply = {
+    id: `${'a'.repeat(32)}:reply`,
+    created_at: HISTORY_AT,
+    kind: 'message',
+    role: 'assistant',
+    text: 'Read.',
+    author: 'Marketing',
+  };
   const history = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
   assert.deepEqual((await history({ ...reply, restricted_actions: RESTRICTED })).entries[0].restricted_actions, RESTRICTED);
   for (const entry of [
     { ...reply, restricted_actions: { ...RESTRICTED, total: 0 } },
-    { id: `${'a'.repeat(32)}:user`, kind: 'message', role: 'user', text: 'hi', restricted_actions: RESTRICTED },
+    { id: `${'a'.repeat(32)}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'hi', restricted_actions: RESTRICTED },
   ]) await assert.rejects(history(entry), /history is invalid/);
 });
 
@@ -279,7 +287,10 @@ test('both attachment guidance codes are admitted live and from history', async 
       code,
     );
     const page = await listChatHistory(
-      async () => response(200, { entries: [{ id: `${'a'.repeat(32)}:guidance`, kind: 'guidance', code, reply }], before: null }),
+      async () => response(200, {
+        entries: [{ id: `${'a'.repeat(32)}:guidance`, created_at: HISTORY_AT, kind: 'guidance', code, reply }],
+        before: null,
+      }),
       'marketing',
     );
     assert.equal(page.entries[0].code, code);

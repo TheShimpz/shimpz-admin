@@ -171,6 +171,20 @@ class RoutineHistoryTests(unittest.TestCase):
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
         self.assertEqual(entries[-1]["quote"], done["quote"])
+        # A notice's row time is its own instant, never the moment Admin wrote it.
+        self.assertEqual([entry["created_at"] for entry in entries], [skipped["created_at"], done["created_at"]])
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET created_at = ? WHERE event_key = ?",
+                ("2000-01-01T00:00:00Z", f"{done['notice_id']}:routine"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("team_1")
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET created_at = ? WHERE event_key = ?",
+                (done["created_at"], f"{done['notice_id']}:routine"),
+            )
         turn = history.new_turn_id()
         self.assertTrue(history.append_user("team_1", turn, "Hello"))
         self.assertEqual(history.conversation("team_1", turn), ())
