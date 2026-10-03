@@ -2,6 +2,7 @@
 // throws on any other shape; nothing here schedules or authorizes: Team creates a Routine from the user's own message.
 
 import { isLocale } from './locales.js';
+import { escapeMarkdownInline, markdownCode } from './markdown.js';
 import { jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
@@ -420,15 +421,6 @@ export const STATUS_TAGS = Object.freeze({
   failed: { tone: 'danger', icon: 'warning' },
 });
 
-/** A Routine notice's tag tone, matching the status it leaves its Routine in; other outcomes stay neutral. */
-export const OUTCOME_TONES = Object.freeze({
-  held: 'danger',
-  paused: 'warning',
-  'scope-changed': 'warning',
-  frozen: 'waiting',
-  healthy: 'accent',
-});
-
 /** Statuses that need the person, shown in words beside the Routine. */
 export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'waiting']);
 
@@ -761,6 +753,69 @@ export function parseRoutineRunEntry(value) {
     detail: structuredClone(value.detail),
     version: value.version,
   };
+}
+
+// The words of a count: one form for exactly one, the other for any other number.
+function plural(forms, count, locale) {
+  return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
+}
+
+/**
+ * One Routine notice of a Team's transcript as a chat message in Markdown (ADR-0086): one or two sentences naming the
+ * Routine in bold, and for a created or changed Routine its steps as a numbered list. Every value is escaped, so a
+ * name, Assistant, Action, timezone, or code is always literal text; only the copy's own Markdown is ever parsed.
+ * `name` is the Routine's name, `assistantName` names an Assistant id in words, and `waiting` says the run still
+ * waits for the person.
+ */
+export function routineNoticeMarkdown(entry, { name, copy, locale, assistantName, waiting = false }) {
+  const notice = copy.notice;
+  const detail = entry.detail;
+  const text = escapeMarkdownInline;
+  const step = (assistant, action) => fill(notice.step, { assistant: text(assistantName(assistant)), action: text(humanizeId(action)) });
+  const actions = new Intl.ListFormat(locale, { type: 'conjunction' })
+    .format((detail.actions ?? []).map(([assistant, action]) => step(assistant, action)));
+  const values = { name: text(name), actions };
+  const through = actions ? ` ${fill(notice.through, { actions })}` : '';
+  const waits = waiting ? ` ${notice.waiting}` : '';
+  switch (entry.outcome) {
+    case 'created':
+    case 'changed': {
+      const schedule = scheduleWords(detail.schedule, copy.schedule, locale);
+      const lead = fill(plural(notice[entry.outcome], detail.steps.length, locale), {
+        ...values,
+        schedule: text(schedule.charAt(0).toLocaleLowerCase(locale) + schedule.slice(1)),
+        timezone: text(detail.timezone),
+        count: detail.steps.length,
+      });
+      const steps = detail.steps.map((item, index) => `${index + 1}. ${step(item.assistant, item.action)}`);
+      return `${lead}\n\n${steps.join('\n')}`;
+    }
+    case 'done':
+    case 'recovered': return fill(notice[entry.outcome], values);
+    case 'held': return fill(notice.held, values) + waits;
+    case 'denied':
+    case 'stopped': return fill(notice[entry.outcome], values) + through;
+    case 'failed': return fill(notice.failed, { ...values, code: markdownCode(detail.code) }) + through;
+    case 'paused':
+      return fill(notice.paused, { ...values, reason: text(copy.run.pauseReasons[detail.reason] ?? '') }) + waits;
+    case 'user-skipped': return fill(notice.userSkipped[detail.choice], values);
+    case 'skipped': return fill(plural(notice.skipped, detail.missed, locale), { ...values, missed: detail.missed });
+    // A minute's rollup is dated by the minute it covers, in the viewer's own time.
+    case 'healthy':
+      return fill(plural(notice.healthy, detail.runs, locale), {
+        ...values, runs: detail.runs, minute: text(minuteWords(entry.createdAt, locale)),
+      });
+    case 'scope-changed':
+      return fill(notice.scopeChanged, {
+        ...values,
+        assistants: new Intl.ListFormat(locale, { type: 'conjunction' }).format(detail.assistants.map((id) => text(assistantName(id)))),
+      });
+    case 'frozen':
+      return fill(detail.request_kind === 'human' ? notice.frozenHuman : notice.frozenIntegrations, {
+        ...values, assistant: text(assistantName(detail.assistant_id)), action: text(humanizeId(detail.action)),
+      });
+    default: return '';
+  }
 }
 
 /**
