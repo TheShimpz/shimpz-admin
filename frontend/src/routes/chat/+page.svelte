@@ -1,7 +1,17 @@
 <script>
   import { flushSync, onMount, tick } from 'svelte';
-  import { AssistantIcon, Button, ChatTask, EmptyState, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
+  import AttachmentChip from '$lib/AttachmentChip.svelte';
+  import {
+    AttachmentUploadError,
+    attachmentReadability,
+    attachmentRefusal,
+    MAX_ATTACHMENTS,
+    uploadTeamFile,
+  } from '$lib/attachments.js';
+  import ComposerAttachments from '$lib/ComposerAttachments.svelte';
+  import RestrictedActionsNote from '$lib/RestrictedActionsNote.svelte';
   import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
@@ -53,6 +63,17 @@
   let socketTeamId = $state('');
   let draft = $state('');
   let draftTeamId = '';
+  // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for. A Team change
+  // discards them, and an upload that answers for an earlier Team is ignored.
+  let attachments = $state([]);
+  let attachmentTeamId = '';
+  let attachmentError = $state('');
+  let attachmentInput = $state();
+  let attachmentDragging = $state(false);
+  let attachmentFinished = $state(0);
+  let attachmentUpload = null;
+  let attachmentPumping = false;
+  let nextAttachmentKey = 0;
   let turns = $state([]);
   let nextRenderKey = 0;
   let busy = $state(false);
@@ -171,6 +192,12 @@
   // A connection that is opening is about to sync, so the composer stays read-only from the history load through the
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
+  let attachCopy = $derived($t('attachments'));
+  let attachmentsPending = $derived(attachments.some((item) => item.state !== 'ready'));
+  let attachmentProgress = $derived.by(() => {
+    const pending = attachments.filter((item) => item.state !== 'ready').length;
+    return pending ? { current: attachmentFinished + 1, total: attachmentFinished + pending } : null;
+  });
   let composerBusy = $derived(
     busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
   );
@@ -295,6 +322,10 @@
     const last = exchanges.length - 1;
     return last >= 0 && clarifiedRequest(exchanges[last]) !== null && !clarificationAnswers.given.has(last);
   });
+  // Files join only a message that can be written now, for the Team whose Brain is ready to receive it.
+  let attachmentsUnavailable = $derived(
+    composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
+  );
 
   function retryLastTurn() {
     const message = retryMessage;
@@ -412,6 +443,7 @@
         ...(entry.role === 'assistant' ? { author: entry.author } : {}),
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
         ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
+        ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
       };
     }
     if (entry.kind === 'guidance') {
@@ -1330,6 +1362,7 @@
           receipt,
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
           ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
+          ...(incoming.restricted_actions ? { restricted: incoming.restricted_actions } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -1361,6 +1394,7 @@
   }
 
   function activateTeam(nextTeamId) {
+    if (attachmentTeamId !== nextTeamId) clearAttachments();
     closeSocket();
     clearTurnInstalled();
     clearLifecycleIconCaptures();
@@ -1574,12 +1608,154 @@
     }
   }
 
+  function attachmentRefusalText(reason, name) {
+    return $t(`attachments.errors.${reason}`, { name });
+  }
+
+  function clearAttachments() {
+    attachmentUpload?.controller.abort();
+    attachmentUpload = null;
+    attachments = [];
+    attachmentTeamId = '';
+    attachmentError = '';
+    attachmentDragging = false;
+  }
+
+  function removeAttachment(key) {
+    if (attachmentUpload?.key === key) attachmentUpload.controller.abort();
+    attachments = attachments.filter((item) => item.key !== key);
+    attachmentError = '';
+    composerInput?.focus();
+  }
+
+  function cancelAttachmentUploads() {
+    attachmentUpload?.controller.abort();
+    attachments = attachments.filter((item) => item.state === 'ready');
+    composerInput?.focus();
+  }
+
+  async function addAttachments(files) {
+    const teamId = chatTeamId;
+    if (!teamId || attachmentsUnavailable) return;
+    if (attachmentTeamId !== teamId) clearAttachments();
+    attachmentTeamId = teamId;
+    attachmentError = '';
+    for (const file of files) {
+      let readability = { kind: 'file', note: 'unreadable' };
+      if (file.size > 0) {
+        try {
+          readability = await attachmentReadability(file);
+        } catch {
+          if (attachmentTeamId === teamId) attachmentError = attachmentRefusalText('unavailable', file.name);
+          continue;
+        }
+      }
+      // A selection that finishes reading after a Team change belongs to no message.
+      if (attachmentTeamId !== teamId) return;
+      const refusal = attachmentRefusal(attachments, { size: file.size, ...readability });
+      if (refusal) {
+        attachmentError = attachmentRefusalText(refusal, file.name);
+        if (refusal === 'too-many') break;
+        continue;
+      }
+      attachments = [...attachments, {
+        key: nextAttachmentKey++,
+        file,
+        name: file.name,
+        size: file.size,
+        ...readability,
+        state: 'queued',
+      }];
+    }
+    void uploadAttachments();
+  }
+
+  function updateAttachment(key, patch) {
+    attachments = attachments.map((item) => (item.key === key ? { ...item, ...patch } : item));
+  }
+
+  async function uploadAttachments() {
+    if (attachmentPumping) return;
+    attachmentPumping = true;
+    try {
+      for (let item = attachments.find((entry) => entry.state === 'queued'); item;
+        item = attachments.find((entry) => entry.state === 'queued')) {
+        const teamId = attachmentTeamId;
+        const controller = new AbortController();
+        attachmentUpload = { key: item.key, controller };
+        updateAttachment(item.key, { state: 'uploading' });
+        try {
+          const stored = await uploadTeamFile(fetch, teamId, item.file, controller.signal);
+          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
+          updateAttachment(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
+          attachmentFinished += 1;
+        } catch (reason) {
+          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
+          attachments = attachments.filter((entry) => entry.key !== item.key);
+          attachmentFinished += 1;
+          attachmentError = attachmentRefusalText(
+            reason instanceof AttachmentUploadError ? reason.reason : 'failed',
+            item.name,
+          );
+        } finally {
+          if (attachmentUpload?.controller === controller) attachmentUpload = null;
+        }
+      }
+    } finally {
+      attachmentPumping = false;
+      attachmentFinished = 0;
+    }
+  }
+
+  function chooseAttachments() {
+    attachmentInput?.click();
+  }
+
+  function attachmentsChosen(event) {
+    const files = [...(event.currentTarget.files ?? [])];
+    event.currentTarget.value = '';
+    if (files.length) void addAttachments(files);
+  }
+
+  // Pasted files join the message; pasted text still lands in the draft as usual.
+  function pasteAttachments(event) {
+    const files = [...(event.clipboardData?.files ?? [])];
+    if (!files.length) return;
+    if (!event.clipboardData.getData('text/plain')) event.preventDefault();
+    void addAttachments(files);
+  }
+
+  function carriesFiles(event) {
+    return [...(event.dataTransfer?.types ?? [])].includes('Files');
+  }
+
+  function dragAttachments(event) {
+    if (!carriesFiles(event) || attachmentsUnavailable) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    attachmentDragging = true;
+  }
+
+  function leaveAttachments(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) attachmentDragging = false;
+  }
+
+  function dropAttachments(event) {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    attachmentDragging = false;
+    if (attachmentsUnavailable) return;
+    const files = [...(event.dataTransfer.files ?? [])];
+    if (files.length) void addAttachments(files);
+  }
+
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
     retryable = projectUserTurn,
     useCapabilityObjective = true,
     request = null,
+    attached = [],
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
     const normalized = message.trim();
@@ -1598,7 +1774,9 @@
     const decisionPending = turns.some((turn) => turn.lifecycle?.state === 'proposed');
     clearTurnInstalled();
     const assistantIds = [...$teamContext.activeAssistantIds];
-    const continuation = useCapabilityObjective && capabilityContinuation(normalized);
+    const files = attached.map((item) => item.id);
+    // A message with attachments never resumes an objective nor becomes one: installs need an attachment-free request.
+    const continuation = useCapabilityObjective && files.length === 0 && capabilityContinuation(normalized);
     const sameAssistantIds = continuation && capabilityObjective
       ? assistantIds.length === capabilityObjective.assistant_ids.length &&
         assistantIds.every((assistantId, index) => (
@@ -1610,7 +1788,7 @@
     try {
       const currentTurn = {
         message: normalized,
-        files: [],
+        files,
         assistant_ids: assistantIds,
       };
       if (resumable) {
@@ -1633,6 +1811,9 @@
         role: 'user',
         text: normalized,
         ...(resumedObjective ? { resumedObjective } : {}),
+        ...(files.length
+          ? { files: attached.map(({ key, name, size, kind, note }) => ({ key, name, size, kind, note })) }
+          : {}),
       }];
       void revealLatestExchange();
     }
@@ -1640,10 +1821,13 @@
       socket.send(JSON.stringify(frame));
       // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
       // objective or the proposal was consumed, so neither is ever offered again.
-      lastSentMessage = retryable && !resumable && !decisionPending ? normalized : '';
+      // A message with attachments is never resent as text alone; its files are selected again.
+      lastSentMessage = retryable && !resumable && !decisionPending && files.length === 0 ? normalized : '';
       // A resend keeps the seal it carries; a new send waits for the seal Admin returns.
       lastSentRequest = lastSentMessage ? request : null;
-      if (useCapabilityObjective && !continuation) {
+      if (files.length) {
+        capabilityObjective = null;
+      } else if (useCapabilityObjective && !continuation) {
         capabilityObjective = {
           message: normalized,
           files: [],
@@ -1687,9 +1871,14 @@
 
   function send(event) {
     event.preventDefault();
-    if (!questionOpen && submitMessage(draft)) {
+    if (attachmentsPending) return;
+    const attached = attachmentTeamId === chatTeamId ? attachments : [];
+    if (!questionOpen && submitMessage(draft, { attached })) {
       draft = '';
       promptHistoryIndex = -1;
+      attachments = [];
+      attachmentTeamId = '';
+      attachmentError = '';
     }
   }
 
@@ -1959,6 +2148,13 @@
                   {:else}
                     <p>{userTurn.text}</p>
                   {/if}
+                  {#if userTurn.files}
+                    <ul class="message-attachments" aria-label={attachCopy.list}>
+                      {#each userTurn.files as file (file.key)}
+                        <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
+                      {/each}
+                    </ul>
+                  {/if}
                 </Message>
               {/if}
               {#if assistantTurn}
@@ -2107,6 +2303,9 @@
                     teamName={assistantTurn.author}
                     {assistantNames}
                   />
+                  {#if assistantTurn.restricted}
+                    <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
+                  {/if}
                   {#if assistantTurn.usage}
                     <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
                       {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
@@ -2161,7 +2360,15 @@
           </Notice>
         {/if}
 
-          <form class="composer" onsubmit={keyRequired ? saveProviderKey : send}>
+          <form
+            class="composer"
+            class:composer-dropping={attachmentDragging}
+            onsubmit={keyRequired ? saveProviderKey : send}
+            ondragenter={dragAttachments}
+            ondragover={dragAttachments}
+            ondragleave={leaveAttachments}
+            ondrop={dropAttachments}
+          >
             {#if (keyRequired || brainUnavailable) && $modelContext.error}
               <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
               <Notice class="brain-error" variant="error">
@@ -2199,6 +2406,16 @@
                 />
                 <p id="chat-provider-key-note" class="sr-only">{keyCopy.keyNote}</p>
               {:else}
+                <ComposerAttachments
+                  items={attachments}
+                  progress={attachmentProgress}
+                  error={attachmentError}
+                  oncancel={cancelAttachmentUploads}
+                  onremove={removeAttachment}
+                />
+                {#if attachmentDragging}
+                  <p class="composer-drop" aria-hidden="true">{attachCopy.drop}</p>
+                {/if}
                 <TextAreaField
                   id="chat-composer"
                   label={copy.send}
@@ -2210,9 +2427,34 @@
                   placeholder={questionOpen ? $t('clarify').answerFirst : placeholder}
                   disabled={composerBusy || questionOpen}
                   onkeydown={handleComposerKeydown}
+                  onpaste={pasteAttachments}
                 />
               {/if}
               <Toolbar class="composer-actions">
+              {#if !keyRequired}
+                <!-- Attaching comes first among the composer's tools; the picker accepts any file Team may keep. -->
+                <Button
+                  class="composer-attach"
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  onclick={chooseAttachments}
+                  disabled={attachmentsUnavailable || attachments.length >= MAX_ATTACHMENTS}
+                  aria-label={attachCopy.attach}
+                  title={attachCopy.attach}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15.5 7.5l-6.8 6.8a1.9 1.9 0 0 0 2.7 2.7l7.1-7.1a3.8 3.8 0 0 0-5.4-5.4l-7.3 7.3a5.7 5.7 0 0 0 8.1 8.1l5.6-5.6"></path>
+                  </svg>
+                </Button>
+                <FileInput
+                  bind:element={attachmentInput}
+                  id="chat-attachment-picker"
+                  multiple
+                  hidden
+                  onchange={attachmentsChosen}
+                />
+              {/if}
               <BrainMenu disabled={composerBusy || stopping} />
               <EffortMenu disabled={composerBusy || stopping} />
               {#if $sessionContext.profile === 'local'}
@@ -2258,7 +2500,7 @@
                   class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim()}
+                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim() || attachmentsPending}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
@@ -2609,6 +2851,28 @@
 
   .composer-input:focus-within::before { width: 2.5rem; opacity: 1; }
 
+  /* Files dragged over the composer light its frame and name what dropping does. */
+  .composer-dropping .composer-input {
+    border-color: color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
+    border-style: dashed;
+  }
+
+  .composer-drop {
+    margin: 0;
+    padding: 0.5rem 1rem 0;
+    color: var(--shimpz-color-text-muted);
+    font: 400 0.75rem/1.4 var(--shimpz-font-mono);
+  }
+
+  .message-attachments {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    gap: 0.35rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
   .composer-input :global(.composer-field) { gap: 0; }
 
   .composer-input :global(.composer-field textarea),
@@ -2656,6 +2920,8 @@
   }
 
   /* Tool controls are bare icons: no frame, only their color reacts. */
+  .composer-input :global(.shimpz-button.composer-attach),
+  .composer-input :global(.shimpz-button.composer-attach:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations),
   .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)) {
     color: var(--shimpz-color-text-dim);
@@ -2665,6 +2931,7 @@
     box-shadow: none;
   }
 
+  .composer-input :global(.shimpz-button.composer-attach:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations:hover:not(:disabled)),
   .composer-input :global(.shimpz-button.composer-integrations[aria-expanded="true"]) {
     color: var(--shimpz-color-cyan);
@@ -2676,6 +2943,7 @@
   }
 
   .composer-input :global(.brain-trigger),
+  .composer-input :global(.composer-attach),
   .composer-input :global(.composer-integrations) {
     width: 2.25rem;
     height: 2.25rem;

@@ -6,6 +6,8 @@
     PromptDialog,
     TextLink,
   } from '@shimpz/frontend';
+  import AttachmentChip from '$lib/AttachmentChip.svelte';
+  import { attachmentKind, identifierName } from '$lib/attachments.js';
   import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
   import { displayedHumanRequest } from '$lib/localChat.js';
@@ -53,6 +55,17 @@
   let scope = $derived(
     !rejected && !isStoredInput && challenge?.purpose && request?.description !== challenge.purpose
       ? request?.description ?? ''
+      : '',
+  );
+  // An authorization request may name the one original file its approved Action receives, with any metadata embedded
+  // in it; the person sees exactly that file before authorizing (ADR-0093).
+  let disclosedFile = $derived(rejected ? null : challenge?.file ?? null);
+  let fileDisclosure = $derived(
+    disclosedFile
+      ? $t('attachments.consent.disclosure', {
+          action: identifierName(challenge?.action?.id),
+          assistant: challenge?.assistant?.name ?? '',
+        })
       : '',
   );
   // Team sends a key page only for a Stored Input request, copied from its reviewed Assistant's declaration.
@@ -248,6 +261,19 @@
       <p class="request-scope">{scope}</p>
     {/if}
 
+    {#if disclosedFile}
+      <div class="request-file">
+        <ul aria-label={$t('attachments.consent.file')}>
+          <AttachmentChip
+            name={disclosedFile.name}
+            size={disclosedFile.size}
+            kind={attachmentKind(disclosedFile.media_type)}
+          />
+        </ul>
+        <p>{fileDisclosure}</p>
+      </div>
+    {/if}
+
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
         <Notice variant="error">
@@ -305,5 +331,8 @@
   .request-lead { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
   .request-scope { max-width: 58ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.84rem; line-height: 1.55; }
   .clock { margin-inline-start: auto; color: var(--shimpz-color-text-muted); font: 500 0.7rem/1.45 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .request-file { display: grid; gap: 0.4rem; max-width: 58ch; }
+  .request-file ul { margin: 0; padding: 0; list-style: none; }
+  .request-file p { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; line-height: 1.55; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
 </style>

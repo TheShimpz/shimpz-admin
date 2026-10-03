@@ -1,3 +1,4 @@
+import { attachmentMessages } from './attachmentMessages.js';
 import { humanRequestMessages } from './humanRequestMessages.js';
 import { routineMessages } from './routineMessages.js';
 
@@ -467,6 +468,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.en,
     routine: routineMessages.en,
+    attachments: attachmentMessages.en,
     teamNavigation: {
       label: "Teams",
       newTeam: "New Team",
@@ -870,6 +872,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.pt,
     routine: routineMessages.pt,
+    attachments: attachmentMessages.pt,
     teamNavigation: {
       label: "Times",
       newTeam: "Novo Time",
@@ -1273,6 +1276,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.es,
     routine: routineMessages.es,
+    attachments: attachmentMessages.es,
     teamNavigation: {
       label: "Equipos",
       newTeam: "Nuevo Equipo",
@@ -1676,6 +1680,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.zh,
     routine: routineMessages.zh,
+    attachments: attachmentMessages.zh,
     teamNavigation: {
       label: "团队",
       newTeam: "新建团队",
@@ -2079,6 +2084,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.fr,
     routine: routineMessages.fr,
+    attachments: attachmentMessages.fr,
     teamNavigation: {
       label: "Équipes",
       newTeam: "Nouvelle Équipe",
@@ -2482,6 +2488,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.de,
     routine: routineMessages.de,
+    attachments: attachmentMessages.de,
     teamNavigation: {
       label: "Teams",
       newTeam: "Neues Team",
@@ -2885,6 +2892,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ja,
     routine: routineMessages.ja,
+    attachments: attachmentMessages.ja,
     teamNavigation: {
       label: "チーム",
       newTeam: "新しいチーム",
@@ -3288,6 +3296,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ar,
     routine: routineMessages.ar,
+    attachments: attachmentMessages.ar,
     teamNavigation: {
       label: "الفرق",
       newTeam: "فريق جديد",

@@ -2,16 +2,31 @@
 // anything a scenario does not declare fails closed.
 import { createScenario } from './scenarios.js';
 
+// A JSON body as the scenario reads it, or a multipart upload as its one `file` part's name, type, and size.
+async function requestBody(request) {
+  const type = (await request.headerValue('content-type')) ?? '';
+  if (type.startsWith('multipart/form-data')) {
+    const form = await new Response(request.postDataBuffer(), { headers: { 'content-type': type } })
+      .formData()
+      .catch(() => null);
+    const parts = form ? [...form.entries()] : [];
+    const [name, file] = parts[0] ?? [];
+    return parts.length === 1 && name === 'file' && file instanceof File
+      ? { file: { name: file.name, type: file.type, size: file.size } }
+      : null;
+  }
+  try {
+    return request.postDataJSON();
+  } catch {
+    return null;
+  }
+}
+
 export async function routeScenario(page, name = 'ready') {
   const scenario = createScenario(name);
-  await page.route('**/api/**', (route) => {
+  await page.route('**/api/**', async (route) => {
     const request = route.request();
-    let body = null;
-    try {
-      body = request.postDataJSON();
-    } catch {
-      body = null;
-    }
+    const body = await requestBody(request);
     const answer = scenario.respond({ method: request.method(), path: new URL(request.url()).pathname, body });
     return route.fulfill(answer
       ? { status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.json) }

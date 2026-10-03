@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { uploadTeamFile } from '../src/lib/attachments.js';
 import { renderClarification } from '../src/lib/clarification.js';
 import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
 import {
@@ -305,5 +306,51 @@ test("every locale's Routine preview names and asks in that language, through th
     });
     assert.equal(created.clarification, null, locale);
     assert.equal(asking.respond({ method: 'GET', path: ROUTINES }).json.routines[0].schedule.cap, 500, locale);
+  }
+});
+
+test('the attachment previews hold only uploads, replies, and approvals the real parsers admit', async () => {
+  const scenario = createScenario('attachments', 'pt');
+  const fetcher = async (path, init) => {
+    const file = init.body.get('file');
+    const answer = scenario.respond({
+      method: init.method,
+      path,
+      body: { file: { name: file.name, type: file.type, size: file.size } },
+    });
+    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
+  };
+  const notes = new File(['# notes'], 'notes.md', { type: 'text/markdown; charset=utf-8' });
+  const stored = await uploadTeamFile(fetcher, 'marketing', notes);
+  assert.equal(stored.media_type, 'text/markdown');
+  const second = await uploadTeamFile(fetcher, 'marketing', new File(['x'], 'raw', { type: '' }));
+  assert.equal(second.media_type, 'application/octet-stream');
+  assert.notEqual(second.id, stored.id);
+  await assert.rejects(uploadTeamFile(fetcher, 'marketing', new File(['x'], 'bad.refused')), { reason: 'invalid' });
+  assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/marketing/files', body: null }).status, 400);
+
+  const frame = (message) => ({ type: 'chat', message, files: [stored.id], assistant_ids: [], locale: 'pt' });
+  const [reply] = scenario.chat.message(frame('Quando o contrato renova?'));
+  assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').restricted_actions.total, 3);
+  const [guidance] = scenario.chat.message(frame('Instale o Assistant do WhatsApp'));
+  const parsed = parseChatEvent(guidance, 'marketing', 'Marketing');
+  assert.equal(parsed.code, 'assistant-lifecycle-attachments');
+  assert.match(parsed.reply, /sem anexos/);
+
+  const full = createScenario('attachments-full');
+  await assert.rejects(
+    uploadTeamFile(async (path, init) => {
+      const answer = full.respond({ method: init.method, path, body: { file: { name: 'a.md', type: '', size: 1 } } });
+      return { ok: false, status: answer.status, async json() { return answer.json; } };
+    }, 'marketing', notes),
+    { reason: 'quota' },
+  );
+
+  for (const locale of ['en', 'pt']) {
+    const approval = createScenario('attachment-approval', locale);
+    const [challenge] = approval.chat.message({ type: 'chat', message: 'Upload', files: [], assistant_ids: [], locale });
+    assert.equal(parseChatEvent(challenge, 'marketing', 'Marketing').file.name, 'Contract.pdf');
+    const [done] = approval.chat.message({ type: 'human-response', decision: 'submit' });
+    assert.match(done.reply, /Contract\.pdf/);
   }
 });

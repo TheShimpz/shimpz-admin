@@ -2,6 +2,7 @@
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { attachmentReply, fileApprovalChallenge, uploadFile } from './attachmentScenarios.js';
 import { localizedChallenge } from './localizedRequest.js';
 import { capReply, routineLifecycleStart, routineRecoveryRoutes } from './routineScenarios.js';
 
@@ -164,6 +165,25 @@ const STARTS = {
     routines: [],
     runs: [],
     human: 'confirm',
+  }),
+  // Chat attachments (ADR-0093): files upload to the Team, and a reply to a message with files names the Actions
+  // Team withheld for them; an install request with files gets the attachment-free guidance.
+  attachments: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [] }),
+  // Every upload finds the Team's storage full.
+  'attachments-full': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    uploads: 'full',
+  }),
+  // An Action asks to receive the attached original; the approval names the file and its embedded metadata.
+  'attachment-approval': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    human: 'file',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
   setup: () => ({
@@ -422,6 +442,7 @@ function confirmChallenge(locale) {
 const HUMAN_CHALLENGES = Object.freeze({
   approval: approvalChallenge,
   confirm: confirmChallenge,
+  file: fileApprovalChallenge,
   'stored-input': storedInputChallenge,
 });
 
@@ -495,6 +516,7 @@ export function createScenario(name = 'ready', locale = 'en') {
         });
       }
       if (path === '/api/teams/marketing/files' && method === 'GET') return ok({ files: [] });
+      if (path === '/api/teams/marketing/files' && method === 'POST') return uploadFile(state, body);
       if (path === '/api/teams/marketing/chat/history' && method === 'GET') {
         return ok({ entries: state.history, before: null });
       }
@@ -544,9 +566,13 @@ export function createScenario(name = 'ready', locale = 'en') {
               : {
                 approval: `Done — published with ${frame.value}.`,
                 confirm: 'Done — the DNS record was updated.',
+                file: 'Done — Contract.pdf is in the R2 bucket “contracts”.',
               }[state.human] ?? 'Done — the search ran with your key.',
             clarification: null,
           }];
+        }
+        if (frame?.type === 'chat' && Array.isArray(frame.files) && frame.files.length) {
+          return [attachmentReply(state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name, frame)];
         }
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];
