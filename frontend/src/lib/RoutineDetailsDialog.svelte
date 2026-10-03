@@ -108,11 +108,14 @@
   }));
   let until = $derived(untilWords(routine.next_run_at, now, $locale));
 
+  // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
+  let routineId = $derived(routine.routine_id);
+
   // Assistant names and this Routine's recent runs are read once, when the panel opens; neither is ever required.
   $effect(() => {
     let current = true;
     void loadAssistantNames(fetch);
-    recentRoutineRuns(fetch, teamId, routine.routine_id)
+    recentRoutineRuns(fetch, teamId, routineId)
       .then((found) => {
         if (!current) return;
         recent = found.runs;
@@ -125,7 +128,7 @@
   async function searchOlderRuns() {
     searchingOlder = true;
     try {
-      const found = await recentRoutineRuns(fetch, teamId, routine.routine_id, {
+      const found = await recentRoutineRuns(fetch, teamId, routineId, {
         before: olderRuns,
         wanted: RECENT_ROUTINE_RUNS - recent.length,
       });

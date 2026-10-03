@@ -5467,9 +5467,12 @@ test.describe('Team Routines', () => {
         : { entries: [routineRow('d'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] })], before: null };
       return route.fulfill({ json: body });
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    let routineReads = 0;
+    await page.route('**/api/teams/marketing/routines', (route) => {
+      routineReads += 1;
+      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+    });
+    await page.clock.install();
     await page.goto('/chat/?team=marketing');
     await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
     const navigation = await openTeamNavigation(page);
@@ -5485,6 +5488,14 @@ test.describe('Team Routines', () => {
     await older.click();
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
     await expect(older).toHaveCount(0);
+    // The chat's periodic refresh replaces the Routine's details; the runs found so far stay.
+    const reads = routineReads;
+    const searches = searched.length;
+    await page.clock.runFor(16_000);
+    await expect.poll(() => routineReads).toBeGreaterThan(reads);
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
+    await expect(older).toHaveCount(0);
+    expect(searched.slice(searches).filter((before) => before !== null)).toEqual([]);
   });
 
   test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', async ({ page }) => {
