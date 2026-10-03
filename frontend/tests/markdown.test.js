@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { escapeMarkdownText, parseInline, parseMarkdown } from '../src/lib/markdown.js';
+import {
+  escapeMarkdownInline,
+  escapeMarkdownText,
+  markdownCode,
+  parseInline,
+  parseMarkdown,
+} from '../src/lib/markdown.js';
 
 test('keeps external display copy literal inside a Markdown response', () => {
   const source = '# Assistant [docs](https://example.com) `code` **bold** | value';
@@ -9,6 +15,63 @@ test('keeps external display copy literal inside a Markdown response', () => {
 
   assert.deepEqual(blocks.map((block) => block.type), ['paragraph']);
   assert.deepEqual(blocks[0].inlines, [{ type: 'text', text: source }]);
+});
+
+// Every display node of a parsed message, flattened, so a test can say none of them is a link, heading, or list.
+function nodes(blocks) {
+  return blocks.flatMap((block) => [block, ...(block.inlines ?? []), ...(block.items ?? []).flat()]);
+}
+
+const HOSTILE_VALUES = [
+  '[x](https://evil.test) ![i](https://evil.test/a.png) <img src=x onerror=alert(1)> **b**',
+  '*em* _em_ __strong__ `code` ~~strike~~ \\ \\* | a | b |',
+  '# heading', '## heading', '- item', '+ item', '* item', '1. item', '2) item', '> quote', '```', '~~~',
+  ':error[notice]', '<https://evil.test>', 'https://evil.test', '| a | b |\n| --- | --- |', 'a\n\n# b\n- c\n1. d',
+  'x*', 'x\\', '\\*', '***', '[', ']', '(', ')', '!',
+];
+
+test('keeps any external value literal inline, inside bold, at a line start, and across its own line breaks', () => {
+  for (const value of HOSTILE_VALUES) {
+    const shown = value.replace(/\s+/gu, ' ').trim();
+    for (const template of ['**{v}** done.', '{v}', 'Lead:\n\n1. {v}\n2. {v}']) {
+      const blocks = parseMarkdown(template.replaceAll('{v}', escapeMarkdownInline(value)), { chatNotices: true });
+      const types = nodes(blocks).map((node) => node.type);
+      assert.equal(types.some((type) => ['link', 'heading', 'code', 'notice', 'table', 'emphasis'].includes(type)), false, value);
+      assert.equal(blocks.filter((block) => block.type === 'list').length, template.includes('1.') ? 1 : 0, value);
+      assert.equal(blocks.length, template.includes('1.') ? 2 : 1, value);
+      if (template.startsWith('**')) {
+        assert.deepEqual(blocks[0].inlines, [{ type: 'strong', text: shown }, { type: 'text', text: ' done.' }], value);
+      } else if (template === '{v}') {
+        assert.deepEqual(blocks[0].inlines, [{ type: 'text', text: shown }], value);
+      } else {
+        assert.deepEqual(blocks[1].items, [[{ type: 'text', text: shown }], [{ type: 'text', text: shown }]], value);
+      }
+    }
+  }
+});
+
+test('escapes every Markdown punctuation character and keeps a code span to one literal line', () => {
+  assert.equal(escapeMarkdownInline('[]()!*_`#<>|~\\{}+-.'), '\\[\\]\\(\\)\\!\\*\\_\\`\\#\\<\\>\\|\\~\\\\\\{\\}\\+\\-\\.');
+  assert.equal(escapeMarkdownInline('  a\n\tb  '), 'a b');
+  assert.equal(markdownCode('a`b\nc'), 'a b c');
+  const blocks = parseMarkdown(`failed (\`${markdownCode('x` [l](https://evil.test) `y')}\`).`);
+  assert.deepEqual(blocks[0].inlines, [
+    { type: 'text', text: 'failed (' },
+    { type: 'code', text: 'x [l](https://evil.test) y' },
+    { type: 'text', text: ').' },
+  ]);
+});
+
+test('reads backslash escapes inside bold, emphasis, and link labels', () => {
+  assert.deepEqual(parseInline('**a\\*\\*b\\_** *c\\*d* [e\\]f](https://example.com/)'), [
+    { type: 'strong', text: 'a**b_' },
+    { type: 'text', text: ' ' },
+    { type: 'emphasis', text: 'c*d' },
+    { type: 'text', text: ' ' },
+    { type: 'link', text: 'e]f', href: 'https://example.com/' },
+  ]);
+  // An escaped closing marker does not close its span.
+  assert.equal(parseInline('**a\\** b').some((token) => token.type === 'strong'), false);
 });
 
 test('parses the small supported Markdown surface into a closed AST', () => {
