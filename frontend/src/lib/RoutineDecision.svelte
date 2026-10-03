@@ -457,7 +457,6 @@
   .choices {
     display: grid;
     margin-inline: calc(-1 * var(--decision-inline, 0px));
-    border-block-start: 1px solid var(--shimpz-color-border);
   }
   .segment { display: grid; min-width: 0; }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
@@ -496,6 +495,6 @@
   .hint { grid-area: hint; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
   @media (forced-colors: active) {
-    .choices, .segment + .segment { border-color: CanvasText; }
+    .segment + .segment, .ask + .segment { border-color: CanvasText; }
   }
 </style>
