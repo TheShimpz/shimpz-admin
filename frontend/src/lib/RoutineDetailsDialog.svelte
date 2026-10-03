@@ -215,6 +215,7 @@
 <RoutineModal bind:dialog class="routine-panel" team={teamName}
   title={confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}
   frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
+  open={Boolean(pending) && !confirming}
   closable={!confirming} onback={onback && !confirming ? back : null} oncancel={cancel} onclose={close}>
     {#snippet tag()}
       {#if !confirming && word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
@@ -367,10 +368,8 @@
     flex-direction: column;
     padding-block-start: 0;
   }
-  :global(.routine-frame.frame.frame--deciding) { border-inline-color: transparent; border-block-end-color: transparent; }
   /* A decision narrows the panel to about 80%, and its answers span that same width below the message. */
   :global(dialog.shimpz-modal.routine-panel:has(.frame--deciding)) { --modal-max-width: calc(var(--shimpz-dialog-lg) * 0.805); }
-  :global(.routine-frame.frame.frame--deciding > .routine-head.head) { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { flex: 1 1 auto; align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
   /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */

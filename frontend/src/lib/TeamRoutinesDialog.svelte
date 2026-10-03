@@ -3,7 +3,7 @@
 
   import ChoiceList from '$lib/ChoiceList.svelte';
   import { locale, t } from '$lib/i18n.js';
-  import { routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '$lib/routine.js';
+  import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '$lib/routine.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineModal from '$lib/RoutineModal.svelte';
 
@@ -68,7 +68,7 @@
     ondeleted={() => (routines.length === 0 ? onclose() : (open = ''))}
   />
 {:else}
-  <RoutineModal bind:dialog class="routine-list" size="md" team={teamName} title={copy.list.open}
+  <RoutineModal bind:dialog class="routine-list" size="md" open title={fillRoutineCopy(copy.list.title, { team: teamName })}
     oncancel={close} onclose={close} onopen={focusList}>
     <div class="body">
       <ChoiceList label={copy.list.open} title={copy.list.choose} variant="item" {items} onchoose={choose} />
@@ -82,8 +82,10 @@
     --choice-inline: var(--shimpz-space-4);
     --choice-ask-align: center;
     --choice-rule: 0;
+    --choice-list-border: 1px solid var(--shimpz-color-border);
     min-height: 0;
     padding-inline: var(--choice-inline);
+    padding-block-end: var(--shimpz-space-4);
     overflow: auto;
   }
 </style>

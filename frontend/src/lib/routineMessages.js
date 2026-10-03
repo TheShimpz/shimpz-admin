@@ -18,6 +18,7 @@ export const routineMessages = {
     },
     list: {
       open: 'Routines',
+      title: "{team} Routines",
       loading: 'Loading Routines…',
       back: 'Back to Routines',
       choose: 'Which Routine do you want to open?',
@@ -141,6 +142,7 @@ export const routineMessages = {
     },
     list: {
       open: 'Rotinas',
+      title: "Rotinas do {team}",
       loading: 'Carregando rotinas…',
       back: 'Voltar às rotinas',
       choose: 'Qual rotina você quer abrir?',
@@ -264,6 +266,7 @@ export const routineMessages = {
     },
     list: {
       open: 'Rutinas',
+      title: "Rutinas de {team}",
       loading: 'Cargando rutinas…',
       back: 'Volver a las rutinas',
       choose: '¿Qué rutina quieres abrir?',
@@ -387,6 +390,7 @@ export const routineMessages = {
     },
     list: {
       open: '例行任务',
+      title: "{team} 的例行任务",
       loading: '正在加载例行任务…',
       back: '返回例行任务',
       choose: '你想打开哪个例行任务？',
@@ -510,6 +514,7 @@ export const routineMessages = {
     },
     list: {
       open: 'Routines',
+      title: "Routines de {team}",
       loading: 'Chargement des routines…',
       back: 'Retour aux routines',
       choose: 'Quelle routine voulez-vous ouvrir ?',
@@ -633,6 +638,7 @@ export const routineMessages = {
     },
     list: {
       open: 'Routinen',
+      title: "Routinen von {team}",
       loading: 'Routinen werden geladen…',
       back: 'Zurück zu den Routinen',
       choose: 'Welche Routine möchtest du öffnen?',
@@ -756,6 +762,7 @@ export const routineMessages = {
     },
     list: {
       open: 'ルーティン',
+      title: "{team} のルーティン",
       loading: 'ルーティンを読み込んでいます…',
       back: 'ルーティンに戻る',
       choose: 'どのルーティンを開きますか？',
@@ -879,6 +886,7 @@ export const routineMessages = {
     },
     list: {
       open: 'الروتينات',
+      title: "روتينات {team}",
       loading: 'جارٍ تحميل الروتينات…',
       back: 'العودة إلى الروتينات',
       choose: 'أي روتين تريد فتحه؟',

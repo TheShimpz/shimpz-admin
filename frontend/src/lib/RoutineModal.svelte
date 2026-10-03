@@ -6,7 +6,9 @@
 
   // The one shell of every Routine modal (ADR-0086): a chamfered frame under a scanline header whose title always names
   // the Team first, quieter, then what the modal shows. `onback` adds a Back control before the title; `tag` renders
-  // beside it; `closable` keeps the Close control. The modal opens as soon as it mounts, then `onopen` may place focus.
+  // beside it; `closable` keeps the Close control; without `team`, the title stands alone. `open` leaves the frame open
+  // below its header: no side or bottom edges, so the content draws its own. The modal opens as soon as it mounts, then
+  // `onopen` may place focus.
   let {
     dialog = $bindable(),
     class: className = '',
@@ -14,6 +16,7 @@
     team,
     title,
     frameClass = '',
+    open = false,
     closable = true,
     onback = null,
     oncancel,
@@ -35,7 +38,7 @@
 </script>
 
 <Modal bind:element={dialog} class={['routine-modal', className]} {size} labelledBy={`${id}-title`} {oncancel}>
-  <div class={['frame', 'routine-frame', frameClass]}>
+  <div class={['frame', 'routine-frame', open && 'frame--open', frameClass]}>
     <header class="head routine-head">
       {#if onback}
         <Button class="back" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.back} title={copy.back} onclick={onback}>
@@ -44,7 +47,7 @@
       {/if}
       <div class="title">
         <h2 id={`${id}-title`}>
-          <span class="team">{team}</span> <span class="sep">›</span> <span class="main">{title}</span>
+          {#if team}<span class="team">{team}</span> <span class="sep">›</span> {/if}<span class="main">{title}</span>
         </h2>
         {@render tag?.()}
       </div>
@@ -71,6 +74,8 @@
     clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
     box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 68%);
   }
+  .frame--open { border-inline-color: transparent; border-block-end-color: transparent; }
+  .frame--open > .head { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   :global([dir="rtl"]) .frame { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
   .head {
     display: flex;
