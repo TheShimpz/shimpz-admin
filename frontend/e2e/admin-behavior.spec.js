@@ -5610,18 +5610,20 @@ test.describe('Team Routines', () => {
     // Noon in São Paulo on 1 October; a row written at 02:30 UTC that day is still the evening before for this viewer.
     await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
     const at = (row, createdAt) => ({ ...row, created_at: createdAt });
+    // Each reply is stored nine seconds after its message.
+    const later = (iso) => new Date(Date.parse(iso) + 9_000).toISOString().replace('.000Z', 'Z');
     const exchange = (prefix, index, createdAt) => {
       const id = `${prefix}${String(index).padStart(31, '0')}`;
       return [
         { id: `${id}:user`, created_at: createdAt, kind: 'message', role: 'user', text: `Question ${prefix}${index}` },
-        { id: `${id}:reply`, created_at: createdAt, kind: 'message', role: 'assistant', author: 'Marketing',
+        { id: `${id}:reply`, created_at: later(createdAt), kind: 'message', role: 'assistant', author: 'Marketing',
           text: `Answer ${prefix}${index}\n\n${'Detail line. '.repeat(30).trim()}` },
       ];
     };
     const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
     const history = {
       entries: [
-        ...exchange('a', 0, '2026-09-29T14:00:00Z'),
+        ...exchange('a', 0, '2026-09-29T14:00:05Z'),
         at(routineRow('b'.repeat(32), 'done', done), '2026-09-29T15:00:00Z'),
         ...[0, 1, 2].flatMap((index) => exchange('c', index, `2026-09-29T2${index}:00:00Z`)),
         // Yesterday holds only stored messages: each row's own time gives it a day, with no Routine notice to borrow.
@@ -5643,6 +5645,16 @@ test.describe('Team Routines', () => {
     await expect(days).toHaveText(DAYS);
     // The first stored message opens its own day.
     await expect(turns.locator('h2 + .exchange').first()).toContainText('Question a0');
+    // Every message shows when it was sent and every reply when it was completed, to the second, in the viewer's
+    // timezone; a Routine notice shows its own time to the second on its rail.
+    const timeOf = (text) => turns.locator('article', { hasText: text }).locator('time');
+    await expect(timeOf('Question a0')).toHaveText('11:00:05');
+    await expect(timeOf('Question a0')).toHaveAttribute('datetime', '2026-09-29T14:00:05Z');
+    await expect(timeOf('Answer a0')).toHaveText('11:00:14');
+    await expect(timeOf('Answer a0')).toHaveAttribute('datetime', '2026-09-29T14:00:14Z');
+    await expect(timeOf('Question c5')).toHaveText('23:30:00');
+    await expect(timeOf('Answer c5')).toHaveText('23:30:09');
+    await expect(turns.locator('.routine-run time').first()).toHaveText('12:00:00');
 
     // A message sent now belongs to today, under the header already there.
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -5650,6 +5662,13 @@ test.describe('Team Routines', () => {
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByText('Live answer', { exact: true })).toBeVisible();
     await expect(days).toHaveText(DAYS);
+    // A message sent and a reply completed while the page is open show the times the page saw them.
+    const sent = await timeOf('Sent today').getAttribute('datetime');
+    const answered = await timeOf('Live answer').getAttribute('datetime');
+    expect(Date.parse(sent)).toBeGreaterThanOrEqual(Date.parse('2026-10-01T15:00:00Z'));
+    expect(Date.parse(answered)).toBeGreaterThanOrEqual(Date.parse(sent));
+    await expect(timeOf('Sent today')).toHaveText(/^12:\d{2}:\d{2}$/);
+    await expect(timeOf('Live answer')).toHaveText(/^12:\d{2}:\d{2}$/);
 
     // Whatever is scrolled to the top of the transcript, the first thing there is its day's header.
     const dayAtTop = (text) => turns.evaluate((element, anchor) => {

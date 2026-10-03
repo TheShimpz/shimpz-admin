@@ -1,24 +1,31 @@
-// Calendar days of the chat transcript, in the viewer's own timezone, for the day headers above each day's first item.
+// Calendar days and times of the chat transcript, in the viewer's own timezone: the day headers above each day's
+// first item and the time on each message.
 //
-// Which day an item belongs to:
-// - A chat history row carries the time Admin wrote it (a Routine notice's is the notice's own); that is its day.
+// Which instant an item has:
+// - A chat history row carries the time Admin wrote it (a Routine notice's is the notice's own): a message when it
+//   was sent, a reply when it was completed.
 // - An item that arrived while this page was open (a message sent, a reply, an install or uninstall outcome) is not
 //   yet a history row here, so its time is when the page first showed it.
 // An exchange (a message and the reply under it) stays whole under the day of its first item.
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;
-const keyFormats = new Map();
+const formats = new Map();
 
-function keyFormat(timeZone) {
-  const zone = timeZone ?? '';
-  let format = keyFormats.get(zone);
+// One formatter per use, locale, and timezone: a transcript formats every item's day and time on each render.
+function cachedFormat(use, locale, timeZone, options) {
+  const key = `${use} ${locale} ${timeZone ?? ''}`;
+  let format = formats.get(key);
   if (!format) {
-    // en-CA writes a calendar date as YYYY-MM-DD, the same order the key keeps.
-    format = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone });
-    keyFormats.set(zone, format);
+    format = new Intl.DateTimeFormat(locale, { ...options, timeZone });
+    formats.set(key, format);
   }
   return format;
+}
+
+function keyFormat(timeZone) {
+  // en-CA writes a calendar date as YYYY-MM-DD, the same order the key keeps.
+  return cachedFormat('day', 'en-CA', timeZone, { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 /** The calendar day (YYYY-MM-DD) an instant falls on in a timezone (the viewer's when omitted), or null. */
@@ -49,6 +56,17 @@ export function turnInstants(now = () => Date.now()) {
     if (!shown.has(turn.renderKey)) shown.set(turn.renderKey, now());
     return shown.get(turn.renderKey);
   };
+}
+
+/** An instant's time of day to the second on a 24-hour clock ("14:03:07"), in the Admin locale's digits. */
+export function clockTime(instant, locale, timeZone) {
+  return cachedFormat('clock', locale, timeZone, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    .format(instant);
+}
+
+/** An instant as a `<time datetime>` value: UTC to the second, the form a stored row's time has. */
+export function instantValue(instant) {
+  return new Date(instant).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 function capitalized(text, locale) {

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { calendarDay, dayLabel, exchangeDays, turnInstants, untilNextDay } from '../src/lib/chatDays.js';
+import {
+  calendarDay, clockTime, dayLabel, exchangeDays, instantValue, turnInstants, untilNextDay,
+} from '../src/lib/chatDays.js';
 import { LOCALES } from '../src/lib/locales.js';
 
 const SAO_PAULO = 'America/Sao_Paulo';
@@ -76,6 +78,24 @@ test('a turn shown live keeps the time the page first showed it, through later u
   // A reply after midnight stays under the day its message was sent.
   assert.deepEqual(days, ['2026-10-02']);
   assert.ok(turnInstants()({ renderKey: 1 }) <= Date.now());
+});
+
+test('a message time is its clock to the second, in the viewer timezone and the Admin locale', () => {
+  const instant = Date.parse('2026-10-03T02:30:07Z');
+  assert.equal(clockTime(instant, 'pt', 'UTC'), '02:30:07');
+  assert.equal(clockTime(instant, 'pt', SAO_PAULO), '23:30:07');
+  assert.equal(clockTime(instant, 'en', TOKYO), '11:30:07');
+  // A 24-hour clock even where the locale would write 12 hours; midnight is 00, never 24.
+  assert.equal(clockTime(Date.parse('2026-10-02T15:04:05Z'), 'en', 'UTC'), '15:04:05');
+  assert.equal(clockTime(Date.parse('2026-10-03T00:00:09Z'), 'de', 'UTC'), '00:00:09');
+  assert.equal(clockTime(instant, 'ar', 'UTC'), new Intl.DateTimeFormat('ar', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'UTC',
+  }).format(instant));
+  for (const { code } of LOCALES) assert.ok(clockTime(instant, code, 'UTC').length >= 8, code);
+  assert.match(clockTime(Date.now(), 'pt'), /^\d{2}:\d{2}:\d{2}$/);
+  // The machine-readable time is UTC to the second, the same form a stored row carries.
+  assert.equal(instantValue(Date.parse('2026-10-03T02:30:07Z')), '2026-10-03T02:30:07Z');
+  assert.equal(instantValue(Date.parse('2026-10-03T02:30:07.999Z')), '2026-10-03T02:30:07Z');
 });
 
 test('today changes at the next local midnight', () => {

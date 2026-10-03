@@ -24,7 +24,7 @@
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ChatDay from '$lib/ChatDay.svelte';
-  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '$lib/chatDays.js';
+  import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
   import { newerRoutineEntries } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
@@ -2140,6 +2140,11 @@
               {/if}
             </div>
           {/if}
+          <!-- When a message was sent or a reply completed, to the second, in the viewer's timezone. -->
+          {#snippet turnTime(turn)}
+            {@const instant = instantOf(turn)}
+            <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
+          {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
@@ -2147,9 +2152,12 @@
             {#if opensDay}
               <ChatDay day={days[index]} {today} locale={$locale} />
             {/if}
+            <!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
+            {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
             <section class="exchange">
               {#if userTurn}
                 <Message variant="user" author={copy.you}>
+                  {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
                   {@const answer = clarificationAnswers.sent.get(index) ?? null}
                   {#if userTurn.resumedObjective}
                     <div class="resumed-task">
@@ -2173,7 +2181,11 @@
               {/if}
               {#if assistantTurn}
                 <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
-                <Message variant="assistant" author={assistantTurn.routineRun ? undefined : assistantTurn.author}>
+                <Message
+                  variant="assistant"
+                  author={assistantTurn.routineRun ? undefined : assistantTurn.author}
+                  meta={assistantTurn.routineRun ? undefined : replyTime}
+                >
                   {@const clarifiedOriginal = clarifiedRequest(exchange)}
                   {#if clarifiedOriginal !== null}
                     <ClarificationCard
@@ -2718,6 +2730,13 @@
     font: 500 0.68rem/1.4 var(--shimpz-font-mono);
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
+  }
+  /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
+  .turn-time {
+    font: 400 0.66rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .clarification-reply { display: grid; gap: 2px; margin: 0; }
   .reply-label {

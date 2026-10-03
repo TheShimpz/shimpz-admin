@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { clockTime } from '../src/lib/chatDays.js';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
 import {
@@ -488,7 +489,9 @@ test('every Routine notice reads as a status phrase colored by meaning, its time
     [{ outcome: 'changed', run_id: null, detail: DEFINED },
       ['neutral', 'atualizada', ['Toda segunda-feira às 09:00 · America/Sao_Paulo', 'Shimpz Cloudflare · List zones'], '']],
   ];
-  const time = new Intl.DateTimeFormat('pt', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(RUN_ENTRY.created_at));
+  const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
+  // The notice keeps its seconds (created at 12:01:07 UTC).
+  assert.match(time, /^\d{2}:01:07$/);
   for (const [change, [tone, status, lines, code], options] of cases) {
     assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }, options), { tone, status, time, lines, code }, change.outcome);
   }
