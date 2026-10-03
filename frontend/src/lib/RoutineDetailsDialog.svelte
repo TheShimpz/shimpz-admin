@@ -387,6 +387,8 @@
     --decision-message-bleed: var(--shimpz-space-4);
     --decision-message-top: var(--shimpz-space-4);
     --decision-message-sides: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
+    --decision-message-rule: 1px solid var(--shimpz-color-border);
+    --decision-choices-rule: 0;
     display: flex;
     flex-direction: column;
     padding-block-start: 0;

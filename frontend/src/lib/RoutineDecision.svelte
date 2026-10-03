@@ -467,12 +467,13 @@
     margin-inline: calc(-1 * var(--decision-message-bleed, 0px));
     padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--shimpz-space-3);
     box-shadow: var(--decision-message-sides, none);
+    border-block-end: var(--decision-message-rule, 0);
   }
   .choices {
     display: grid;
     justify-items: var(--decision-choices-justify, stretch);
     margin-inline: calc(-1 * var(--decision-inline, 0px));
-    border-block-start: 1px solid var(--shimpz-color-border);
+    border-block-start: var(--decision-choices-rule, 1px solid var(--shimpz-color-border));
   }
   /* A host may narrow the question and its answers (`--decision-choices-width`) and frame the answers as one list
      (`--decision-list-border`); a narrow card always gives them its full width. */
