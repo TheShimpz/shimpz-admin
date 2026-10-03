@@ -463,6 +463,7 @@
             {#if routines && treeOpen.has(team.id) && teamRoutines(team.id).routines.length > 0}
               <TeamRoutineTree
                 teamId={team.id}
+                teamName={team.name}
                 routines={teamRoutines(team.id).routines}
                 runs={teamRoutines(team.id).runs}
                 incidents={teamRoutines(team.id).incidents}

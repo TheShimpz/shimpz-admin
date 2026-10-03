@@ -10,7 +10,7 @@
   // One Team's Routines as a compact list under its row (ADR-0086): each its clock, tinted by its status, its short
   // name, and when it runs. The status is said in words only to assistive technology; the only other accent is the dot
   // on the Team's Routines button. Opening a Routine shows it in full in a panel.
-  let { teamId, routines = [], runs = [], incidents = [] } = $props();
+  let { teamId, teamName, routines = [], runs = [], incidents = [] } = $props();
 
   let copy = $derived($t('routine'));
   let open = $state('');
@@ -60,6 +60,7 @@
 {#if opened}
   <RoutineDetailsDialog
     {teamId}
+    {teamName}
     routine={opened}
     runs={runs.filter((run) => run.routine_id === opened.routine_id)}
     incidents={incidents.filter((item) => item.routine_id === opened.routine_id)}

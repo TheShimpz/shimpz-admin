@@ -50,9 +50,9 @@
 </ol>
 
 <style>
-  /* Steps as plain rows: a mono number, the Action with its Assistant beside it, and one quiet line of what it uses. */
+  /* Steps as plain rows without rules: a mono number, the Action with its Assistant beside it, and one quiet line of what it uses. */
   .plan { display: grid; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; line-height: 1.45; }
-  li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--shimpz-space-2); padding-block: 0.65rem; border-block-end: 1px solid var(--shimpz-color-border-subtle); }
+  li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--shimpz-space-2); padding-block: 0.5rem; }
   li:first-child { padding-block-start: 0; }
   .number { color: var(--shimpz-color-cyan); font: 600 0.72rem/1.6 var(--shimpz-font-mono); }
   .step { display: grid; gap: 0.25rem; min-width: 0; }
