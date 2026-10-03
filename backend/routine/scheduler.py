@@ -52,6 +52,11 @@ class RoutineScheduler:
             self._thread.join(timeout=10)
         self._workers.shutdown(wait=False, cancel_futures=True)
 
+    def wake(self) -> None:
+        """Claim soon: a person's Rodar made a Routine due now."""
+        self._due_at = time.time()
+        self._wake.set()
+
     def delay(self, now: float) -> float:
         """Seconds until the next tick: the reconciliation interval with jitter, or sooner for a hinted due run."""
         delay = self._interval + secrets.randbelow(int(self._jitter * 1000) + 1) / 1000

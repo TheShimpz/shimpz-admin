@@ -118,9 +118,12 @@ async def routine_card(team_id: str, incident_id: str):
 
 async def routine_card_answer(team_id: str, incident_id: str, request: Request):
     body = await team_http.bounded_json_object(request)
-    return _no_store(
-        await run_in_threadpool(team_http.response, lambda: manage.answer_card(team_id, incident_id, body))
-    )
+    response = await run_in_threadpool(team_http.response, lambda: manage.answer_card(team_id, incident_id, body))
+    # An answer made the Routine due again (Rodar now): the scheduler claims at once, not at its next interval.
+    scheduler = getattr(request.app.state, "routine_scheduler", None)
+    if response.status_code == 200 and scheduler is not None:
+        scheduler.wake()
+    return _no_store(response)
 
 
 async def routine_challenge(team_id: str, run_id: str, request: Request):

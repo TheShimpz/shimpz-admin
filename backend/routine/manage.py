@@ -13,6 +13,7 @@ from http import HTTPStatus
 from team import bridge as team
 from team import transport
 
+from chat import local as chat_local
 from protocol.http.v1 import routine as routine_contract
 
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
@@ -130,13 +131,24 @@ def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
 
 
 def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
-    """Answer one open recovery card once with Verificar, Pular, or Pausar."""
+    """Answer one open recovery card once with Rodar or Recriar; Excluir is the Routine's confirmed deletion.
+
+    Recriar compiles the Routine again on the Team's model, so only it carries the Team's model credential, in the
+    private headers the Supervisor assertion binds; Rodar runs no model and carries none.
+    """
     canonical = team.canonical_team_id(team_id)
     incident = _id(incident_id, "Routine incident")
     answer = routine_contract.canonical_card_answer_request(body)
     if answer is None:
         raise team.TeamRequestError("Routine card answer is invalid")
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
+    credential = None
+    if answer["choice"] == "recreate":
+        credential = chat_local.model_credential(canonical)
+        if isinstance(credential, team.TeamResponse):
+            return credential
+    response = transport._call(
+        "POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer, model_credential=credential
+    )
     return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
 
 
