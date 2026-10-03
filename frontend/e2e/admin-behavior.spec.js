@@ -4580,6 +4580,78 @@ test.describe('Team Routines', () => {
       .toEqual(['Verify', 'Skip', 'Pause']);
   });
 
+  test('a held run listed before its incident keeps Retry in its panel until the card opens', async ({ page }) => {
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null }];
+    let incidents = [];
+    const openings = [];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
+    }));
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+      openings.push(route.request().url());
+      // Team has not indexed the incident at the first opening; it is listed from then on.
+      if (openings.length === 1) {
+        incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, quote: ROUTINE_VIEW.quote, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
+        await route.fulfill({ status: 404, json: { code: 'routine-incident-unavailable' } });
+        return;
+      }
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, routine_id: ROUTINE_VIEW.routine_id, revision: 1, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', nonce: 'e'.repeat(32), expires_in: 300, choices: ['verify', 'skip', 'pause'], recommended: 'verify' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    // The decision is not dismissed: it waits for the person to try again, never reopening on its own.
+    await panel.getByRole('button', { name: 'Retry' }).click();
+    await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')).toHaveCount(3);
+    expect(openings).toHaveLength(2);
+  });
+
+  test('an answer that arrives after its Routine moved on never dismisses the newer decision', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null }];
+    let incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, quote: ROUTINE_VIEW.quote, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
+    let release;
+    const answered = new Promise((resolve) => { release = resolve; });
+    const openings = [];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
+    }));
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+      openings.push(route.request().url());
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, routine_id: ROUTINE_VIEW.routine_id, revision: 1, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', nonce: 'e'.repeat(32), expires_in: 300, choices: ['verify', 'skip', 'pause'], recommended: 'verify' } });
+    });
+    // Verify proves the step absent and the run goes on to freeze for an approval, which the Team lists before the
+    // answer itself is delivered.
+    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
+      incidents = [];
+      await answered;
+      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, choice: 'verify', verdict: 'absent', status: 'frozen' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await navigation.getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Verify' }).click();
+    await page.clock.fastForward(15_000);
+    await expect(panel.getByRole('button', { name: 'Review' })).toBeVisible();
+    release();
+    // The late answer belonged to the held decision; the approval it led to stays in front of the person.
+    await page.clock.fastForward(1_000);
+    await expect(panel.getByRole('button', { name: 'Review' })).toBeVisible();
+    await expect(panel.getByRole('tablist')).toHaveCount(0);
+    expect(openings).toHaveLength(1);
+  });
+
   test('deleting one of several Routines leaves the others listed and focus on the Team\'s Routines', async ({ page }) => {
     await routeReadyChat(page);
     const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check', quote: 'Every Monday, check my certificates' };
