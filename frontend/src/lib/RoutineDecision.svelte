@@ -446,6 +446,8 @@
     color: var(--shimpz-color-text);
     font: 650 1.12rem/1.3 var(--shimpz-font-sans);
     letter-spacing: -0.01em;
+    justify-items: var(--decision-ask-align, start);
+    text-align: var(--decision-ask-align, start);
   }
   .ask::after { content: ""; width: 2rem; height: 2px; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
   .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
@@ -456,10 +458,16 @@
   .spacer { flex: 1 0 var(--shimpz-space-2); }
   .choices {
     display: grid;
+    justify-items: var(--decision-choices-justify, stretch);
     margin-inline: calc(-1 * var(--decision-inline, 0px));
     border-block-start: 1px solid var(--shimpz-color-border);
   }
-  .segment { display: grid; min-width: 0; }
+  /* A host may narrow the question and its answers (`--decision-choices-width`) and frame the answers as one list
+     (`--decision-list-border`); a narrow card always gives them its full width. */
+  .ask, .segment { box-sizing: border-box; width: var(--decision-choices-width, auto); max-width: 100%; }
+  @container (max-width: 34rem) { .ask, .segment { width: auto; justify-self: stretch; } }
+  .segment { display: grid; min-width: 0; border-inline: var(--decision-list-border, 0); }
+  .segment:last-child { border-block-end: var(--decision-list-border, 0); }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .segment :global(.choice) {
     --button-color: var(--shimpz-color-text);
