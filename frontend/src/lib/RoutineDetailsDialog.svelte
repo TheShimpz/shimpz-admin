@@ -371,6 +371,8 @@
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
   .part { font-weight: 700; }
   .part--request { font-weight: inherit; }
+  /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
+  .content.decide { display: flex; flex-direction: column; padding-block-end: 0; --decision-inline: var(--shimpz-space-4); }
   /* The next run: a mono label over the instant, then how far off it is. */
   .next { display: grid; justify-items: start; gap: 0.3rem; margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
