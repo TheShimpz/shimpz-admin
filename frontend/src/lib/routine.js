@@ -528,6 +528,22 @@ export function instantWords(value, locale, timeZone) {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 }
 
+/** How far ahead an instant is, in the largest whole unit ("in 3 hours"); an instant already due has no words. */
+export function untilWords(value, now, locale) {
+  const seconds = Math.round((new Date(value).getTime() - now) / 1000);
+  if (!(seconds > 0)) return '';
+  const [unit, size] = [['day', 86_400], ['hour', 3_600], ['minute', 60], ['second', 1]].find(([, step]) => seconds >= step);
+  return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(Math.round(seconds / size), unit);
+}
+
+/** A copy template as ordered parts, each value part keyed by its placeholder so it can be styled on its own. */
+export function fillParts(template, values) {
+  return template.split(/(\{\w+\})/u).filter(Boolean).map((part) => {
+    const key = /^\{(\w+)\}$/u.exec(part)?.[1];
+    return key && key in values ? { text: String(values[key]), key } : { text: part, key: '' };
+  });
+}
+
 /** The time of day a minute starts, for the viewer's locale and timezone. */
 export function minuteWords(value, locale) {
   return new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(value));

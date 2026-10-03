@@ -30,6 +30,8 @@ import {
   routineStatus,
   STATUS_TAGS,
   STATUS_WORDS,
+  fillParts,
+  untilWords,
   readRunDiagnostics,
   resumeRoutine,
   resumeRoutineIntegrations,
@@ -679,4 +681,21 @@ test('Pausar and Retomar admit only exactly that Routine in the asked state', as
     pauseRoutine(fetcher([[200, { team_id: 'team_1', routine_id: routineId, paused: false }]]).fetch, 'team_1', routineId),
     (error) => error.code === 'routine-response-invalid',
   );
+});
+
+test('a Routine summary keeps each filled value apart and says how far off the next run is', () => {
+  assert.deepEqual(fillParts('{request}, in {timezone} ({missing}).', { request: 'Check DNS', timezone: 'UTC' }), [
+    { text: 'Check DNS', key: 'request' },
+    { text: ', in ', key: '' },
+    { text: 'UTC', key: 'timezone' },
+    { text: ' (', key: '' },
+    { text: '{missing}', key: '' },
+    { text: ').', key: '' },
+  ]);
+  const now = Date.parse('2026-10-02T12:00:00Z');
+  assert.equal(untilWords('2026-10-02T15:00:00Z', now, 'en'), 'in 3 hours');
+  assert.equal(untilWords('2026-10-02T12:00:30Z', now, 'en'), 'in 30 seconds');
+  assert.equal(untilWords('2026-10-04T12:00:00Z', now, 'pt-BR'), 'depois de amanhã');
+  assert.equal(untilWords('2026-10-02T12:00:00Z', now, 'en'), '');
+  assert.equal(untilWords('2026-10-01T12:00:00Z', now, 'en'), '');
 });

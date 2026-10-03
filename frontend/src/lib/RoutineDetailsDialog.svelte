@@ -8,16 +8,17 @@
   import {
     ATTENTION_STATUSES,
     deleteRoutine,
+    fillParts,
     fillRoutineCopy,
     instantWords,
     pauseRoutine,
     resumeRoutine,
     routineErrorMessage,
     routineStatus,
-    scheduleWords,
     STATUS_TAGS,
     STATUS_WORDS,
     stopRoutineRun,
+    untilWords,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
@@ -39,6 +40,8 @@
   let recentFailed = $state(false);
   let detailsRun = $state('');
   let page = $state('summary');
+  // The summary says the time now in the Routine's timezone, kept to the minute while the panel is open.
+  let now = $state(Date.now());
   const PAGES = [
     { id: 'summary', icon: 'clock' },
     { id: 'steps', icon: 'step' },
@@ -59,6 +62,18 @@
   $effect(() => {
     if (dialog && !dialog.open) dialog.showModal();
   });
+
+  $effect(() => {
+    const timer = setInterval(() => (now = Date.now()), 20_000);
+    return () => clearInterval(timer);
+  });
+
+  let summary = $derived(fillParts(copy.panel.summaryLine, {
+    request: routine.quote.replace(/[\s.。．!！]+$/u, ''),
+    timezone: routine.timezone,
+    now: instantWords(now, $locale, routine.timezone),
+  }));
+  let until = $derived(untilWords(routine.next_run_at, now, $locale));
 
   // Assistant names and this Routine's recent runs are read once, when the panel opens; neither is ever required.
   $effect(() => {
@@ -157,7 +172,6 @@
 <Modal bind:element={dialog} class="routine-panel" size="lg" labelledBy={`${id}-title`} oncancel={close}>
   <div class="frame">
     <header class="head">
-      <RoutineIcon name="clock" />
       <h2 id={`${id}-title`}>{routine.name}</h2>
       {#if word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
       <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.list.close} title={copy.list.close} onclick={close}>
@@ -196,20 +210,17 @@
     <div class="content" id={`${id}-page`} role="tabpanel" aria-labelledby={`${id}-tab-${page}`} tabindex="0">
       {#if page === 'summary'}
         {#if reason}<p class="note"><RoutineIcon name="warning" />{reason}</p>{/if}
-        <p class="quote"><span class="label">{copy.panel.request}</span><span>{routine.quote}</span></p>
-        <div class="facts">
-          <section aria-labelledby={`${id}-schedule`}>
-            <h3 class="label" id={`${id}-schedule`}>{copy.panel.schedule}</h3>
-            <p class="value">{scheduleWords(routine.schedule, copy.schedule, $locale)}</p>
-            <p class="sub">{routine.timezone}</p>
-          </section>
-          {#if !ATTENTION_STATUSES.includes(status)}
-            <section aria-labelledby={`${id}-next`}>
-              <h3 class="label" id={`${id}-next`}>{copy.panel.next}</h3>
-              <p class="value">{instantWords(routine.next_run_at, $locale, routine.timezone)}</p>
-            </section>
-          {/if}
-        </div>
+        <p class="summary">
+          {#each summary as part, index (index)}<span class={part.key && `part part--${part.key}`}>{part.text}</span>{/each}
+        </p>
+        {#if !ATTENTION_STATUSES.includes(status)}
+          <p class="next">
+            <RoutineIcon name="step" />
+            <span class="next-label">{copy.panel.next}</span>
+            <time datetime={routine.next_run_at}>{instantWords(routine.next_run_at, $locale, routine.timezone)}</time>
+            {#if until}<span class="until">[{until}]</span>{/if}
+          </p>
+        {/if}
       {:else if page === 'steps'}
         <RoutinePlan steps={routine.steps} copy={copy.plan} names={$assistantNames} />
       {:else}
@@ -312,14 +323,18 @@
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   /* Every page keeps one height so switching tabs does not resize the panel. */
   .content { align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
-  .label { margin: 0 0 0.35rem; color: var(--shimpz-color-text-dim); font: 600 0.62rem/1.3 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
-  .quote { display: grid; gap: 0.25rem; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.5; overflow-wrap: break-word; }
-  .quote .label { margin: 0; }
+  /* One paragraph in the person's own words; the timezone and the time now read as data. */
+  .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
+  .part { font-family: var(--shimpz-font-mono); font-size: 0.82rem; color: var(--shimpz-color-text-muted); }
+  .part--request { font: inherit; color: inherit; }
+  /* The next run on one rule-topped line: a cyan step mark, a mono label, the instant, and how far off it is. */
+  .next { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin: 0; padding-block-start: var(--shimpz-space-3); border-block-start: 1px dashed var(--shimpz-color-border); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
+  .next :global(.routine-icon) { width: 0.9rem; height: 0.9rem; color: var(--shimpz-color-cyan); }
+  .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .next time { color: var(--shimpz-color-cyan); }
+  .until { color: var(--shimpz-color-text-dim); }
   .note { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; padding: 0.55rem 0.7rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.8rem; line-height: 1.45; }
   .note :global(.routine-icon) { margin-block-start: 0.15rem; }
-  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--shimpz-space-4); }
-  section { min-width: 0; }
-  .value { margin: 0; font: 400 0.84rem/1.45 var(--shimpz-font-mono); overflow-wrap: break-word; }
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
   .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding: 0.25rem 0.25rem 0.25rem 0.5rem; border-block-end: 1px solid var(--shimpz-color-border-subtle); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
