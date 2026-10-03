@@ -4942,27 +4942,75 @@ test.describe('Team Routines', () => {
     await expect(transcript.nth(3)).toHaveAccessibleName('Every day at 9, list my DNS zones');
     // A done row names the Actions the run carried out, never a model reply.
     await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare › List zones');
+    // A row whose Routine Team does not list offers no action, not even its panel.
+    await expect(transcript.getByRole('button')).toHaveCount(0);
   });
 
-  test('a held run is settled from its transcript row through the card Team opened, with exact fresh nonces', async ({ page }) => {
-    const held = 'b'.repeat(32);
-    const paused = 'c'.repeat(32);
-    const row = (id, outcome, detail) => ({
+  // A Routine row of the transcript (ADR-0086), for one listed Routine.
+  function routineRow(id, outcome, detail, { routine = ROUTINE_VIEW, version = 1 } = {}) {
+    return {
       id: `${id}:routine`,
       kind: 'routine-run',
       notice_id: id,
-      routine_id: ROUTINE_VIEW.routine_id,
-      quote: ROUTINE_VIEW.quote,
+      routine_id: routine.routine_id,
+      quote: routine.quote,
       run_id: id,
       outcome,
       created_at: '2026-10-01T12:01:07Z',
       detail,
-      version: 2,
-    });
+      version,
+    };
+  }
+
+  // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
+  function heldIncident(id, routine = ROUTINE_VIEW) {
+    return {
+      incident_id: id,
+      routine_id: routine.routine_id,
+      quote: routine.quote,
+      created_at: '2026-10-01T12:00:07Z',
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+    };
+  }
+
+  // A run of `routine` frozen for the person's answer.
+  function frozenRun(id, requestKind, routine = ROUTINE_VIEW) {
+    return {
+      run_id: id,
+      routine_id: routine.routine_id,
+      status: 'frozen',
+      scheduled_at: '2026-10-01T12:00:00Z',
+      request_kind: requestKind,
+      assistant_id: 'shimpz-cloudflare',
+      action: 'replace-dns-record',
+    };
+  }
+
+  function choiceNames(panel) {
+    return panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+  }
+
+  test('a held run is settled in the panel its transcript card opens, through the card Team opened, with exact fresh nonces', async ({ page }) => {
+    const held = 'b'.repeat(32);
+    const paused = 'c'.repeat(32);
+    const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit', quote: 'Every Monday, audit my DNS' };
     const step = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' };
     await routeReadyChat(page, {
-      history: { entries: [row(held, 'held', step), row(paused, 'paused', { ...step, reason: 'exhausted' })], before: null },
+      history: {
+        entries: [
+          routineRow(held, 'held', step, { version: 2 }),
+          routineRow(paused, 'paused', { ...step, reason: 'exhausted' }, { routine: audit, version: 2 }),
+        ],
+        before: null,
+      },
     });
+    let routines = [{ ...ROUTINE_VIEW, paused: true }, { ...audit, paused: true }];
+    let incidents = [heldIncident(held), heldIncident(paused, audit)];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines, runs: [], incidents },
+    }));
     const opened = [];
     const answers = [];
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
@@ -4972,7 +5020,7 @@ test.describe('Team Routines', () => {
       const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
       await route.fulfill({ json: recoveryCard(incidentId, { nonce: String(opened.length).repeat(32), action }) });
     });
-    // The paused run's first Recreate is refused; everything else settles its run.
+    // The paused run's first Recreate is refused; everything else settles its run and lifts its Routine's pause.
     await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
       const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
       const answer = route.request().postDataJSON();
@@ -4981,39 +5029,59 @@ test.describe('Team Routines', () => {
         await route.fulfill({ status: 422, json: { code: 'routine-recreate-refused' } });
         return;
       }
+      const settled = incidents.find((item) => item.incident_id === incidentId);
+      incidents = incidents.filter((item) => item !== settled);
+      routines = routines.map((routine) => (routine.routine_id === settled.routine_id ? { ...routine, paused: false } : routine));
       const status = answer.choice === 'run' ? 'requested' : 'recreated';
       await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status } });
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
-    const choices = (index) => rows.nth(index).getByRole('group', { name: 'Recovery choices' }).getByRole('button');
-    const names = (index) => choices(index).evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
     await expect(rows).toHaveCount(2);
-    // Each row shows exactly three choices, one action each, in Team's order, before any answer.
-    await expect.poll(() => names(0)).toEqual(['Run', 'Recreate', 'Delete']);
-    await expect.poll(() => names(1)).toEqual(['Run', 'Recreate', 'Delete']);
+    // A transcript card decides nothing: no recovery choice, Resume, or execution details, only its Routine's panel.
+    for (const index of [0, 1]) {
+      await expect(rows.nth(index).getByRole('button')).toHaveText(['Open Routine']);
+      await expect(rows.nth(index).getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
+    }
+    await expect(rows.nth(0)).toContainText('This run stopped with an error.');
+    await expect(rows.nth(1)).toContainText('Paused: its recovery budget is used up.');
+    expect(opened).toEqual([]);
+    expect(await accessibilityViolations(page)).toEqual([]);
+
+    const open = rows.nth(0).getByRole('button', { name: 'Open Routine' });
+    await open.click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    // The panel shows exactly the card's three choices, one action each, in Team's order, before any answer.
+    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Recreate', 'Delete']);
     expect(answers).toEqual([]);
-    // A decision is the row's only action: its execution details wait until it is answered.
-    await expect(rows.nth(0).getByRole('button', { name: 'Execution details' })).toHaveCount(0);
     expect(await accessibilityViolations(page)).toEqual([]);
     // The step shown is the card's, with the error it returned as plain text.
-    await expect(rows.nth(0)).toContainText('Create DNS record');
-    await rows.nth(0).getByText('See the technical error').click();
-    await expect(rows.nth(0).locator('.error-text')).toHaveText(CREDITS_MESSAGE);
-    await rows.nth(0).getByRole('button', { name: 'Run' }).click();
-    await expect(rows.nth(0).getByRole('status')).toHaveText('Set aside. The Routine runs again now.');
-    await expect(choices(0)).toHaveCount(0);
+    await expect(panel).toContainText('Create DNS record');
+    await panel.getByText('See the technical error').click();
+    await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
+    await panel.getByRole('button', { name: 'Run' }).click();
+    await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
+    await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
+    // Closing the panel returns to the card, which no longer waits for anything.
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await expect(rows.nth(0)).toBeFocused();
+
     // A refused Recreate says why and changes nothing; the next answer uses a freshly opened card.
-    await rows.nth(1).getByRole('button', { name: 'Recreate' }).click();
-    await expect(rows.nth(1).getByRole('status')).toHaveText(
+    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
+    const auditPanel = page.getByRole('dialog', { name: audit.name });
+    await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await auditPanel.getByRole('button', { name: 'Recreate' }).click();
+    await expect(auditPanel.getByRole('status')).toHaveText(
       'Your original request could not be made into this Routine again. Nothing changed; ask for it again in the chat.',
     );
-    await expect.poll(() => names(1)).toEqual(['Run', 'Recreate', 'Delete']);
-    await rows.nth(1).getByRole('button', { name: 'Recreate' }).click();
-    await expect(rows.nth(1).getByRole('status')).toHaveText('Recreated from your original request. It now follows its schedule.');
-    await expect(choices(1)).toHaveCount(0);
+    await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await auditPanel.getByRole('button', { name: 'Recreate' }).click();
+    await expect(auditPanel.getByRole('status')).toContainText('Recreated from your original request. It now follows its schedule.');
+    await expect(auditPanel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
     expect(new Set(opened)).toEqual(new Set([held, paused]));
-    // Every answer carries exactly the nonce of a card the row had shown, never one opened after the click.
+    // Every answer carries exactly the nonce of a card the panel had shown, never one opened after the click.
     const nonces = opened.map((_id, index) => String(index + 1).repeat(32));
     expect(answers.map((answer) => answer.choice)).toEqual(['run', 'recreate', 'recreate']);
     for (const answer of answers) expect(nonces).toContain(answer.nonce);
@@ -5026,61 +5094,58 @@ test.describe('Team Routines', () => {
     const message = '<img src=x onerror=alert(1)> Insufficient account credits';
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${held}:routine`,
-          kind: 'routine-run',
-          notice_id: held,
-          routine_id: ROUTINE_VIEW.routine_id,
-          quote: ROUTINE_VIEW.quote,
-          run_id: held,
-          outcome: 'held',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
-          version: 2,
-        }],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, { version: 2 })],
         before: null,
       },
     });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, paused: true }], runs: [], incidents: [heldIncident(held)] },
+    }));
     await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
       json: recoveryCard(held, { failure: { message, truncated: true } }),
     }));
     await page.goto('/chat/?team=marketing');
-    const row = page.locator('.routine-run');
-    await row.getByText('See the technical error').click();
-    await expect(row.locator('.error-text')).toHaveText(message);
-    await expect(row.locator('.error-text img')).toHaveCount(0);
-    await expect(row).toContainText('shortened');
+    await page.locator('.routine-run').getByRole('button', { name: 'Open Routine' }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByText('See the technical error').click();
+    await expect(panel.locator('.error-text')).toHaveText(message);
+    await expect(panel.locator('.error-text img')).toHaveCount(0);
+    await expect(panel).toContainText('shortened');
   });
 
-  test("a transcript card's Delete opens its Routine's panel in the deletion confirmation", async ({ page }) => {
+  test("a transcript card opens its Routine's panel, whose Delete asks for the deletion confirmation", async ({ page }) => {
     const held = 'b'.repeat(32);
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${held}:routine`,
-          kind: 'routine-run',
-          notice_id: held,
-          routine_id: ROUTINE_VIEW.routine_id,
-          quote: ROUTINE_VIEW.quote,
-          run_id: held,
-          outcome: 'held',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
-          version: 2,
-        }],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, { version: 2 })],
         before: null,
       },
     });
     const calls = await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
     const row = page.locator('.routine-run');
-    await row.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
+    const open = row.getByRole('button', { name: 'Open Routine' });
+    await expect(open).toHaveAttribute('aria-haspopup', 'dialog');
+    // Escape and Close each leave the panel with focus back on the card's button, and nothing was answered.
+    await open.click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(open).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(open).toBeFocused();
+
+    await open.click();
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
     await expect(confirm.getByLabel('Supervisor password')).toBeFocused();
     expect(await accessibilityViolations(page)).toEqual([]);
     // Cancel returns to that Routine's panel, which is the same decision.
     await confirm.getByRole('button', { name: 'Cancel' }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' })).toBeFocused();
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
     await confirm.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
@@ -5089,27 +5154,18 @@ test.describe('Team Routines', () => {
     await expect(confirm).toHaveCount(0);
     expect(calls.deletes).toEqual([{ code: '123456' }]);
     expect(calls.answers).toEqual([]);
+    // The deleted Routine is no longer listed, so its card offers nothing.
+    await expect(row.getByRole('button')).toHaveCount(0);
   });
 
-  test("a run's execution details are read for that run and shown only as text", async ({ page }) => {
+  test("a run's execution details are read for that run in its Routine's panel and shown only as text", async ({ page }) => {
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
-      history: {
-        entries: [{
-          id: `${failed}:routine`,
-          kind: 'routine-run',
-          notice_id: failed,
-          routine_id: ROUTINE_VIEW.routine_id,
-          quote: ROUTINE_VIEW.quote,
-          run_id: failed,
-          outcome: 'failed',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { code: 'assistant-rpc-failed', actions: [] },
-          version: 1,
-        }],
-        before: null,
-      },
+      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [] })], before: null },
     });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
     const requested = [];
     const attempt = (number, failure, condition = null) => ({
       operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
@@ -5141,8 +5197,17 @@ test.describe('Team Routines', () => {
       await route.fulfill({ json: answer });
     });
     await page.goto('/chat/?team=marketing');
-    const row = page.locator('.routine-run');
-    await row.getByRole('button', { name: 'Execution details' }).click();
+    // A run that waits for nobody offers nothing in the transcript; its details are in its Routine's panel.
+    await expect(page.locator('.routine-run')).toContainText('Failed (assistant-rpc-failed)');
+    await expect(page.locator('.routine-run').getByRole('button')).toHaveCount(0);
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runDetails = panel.getByRole('button', { name: 'Execution details' });
+    await runDetails.click();
     const dialog = page.getByRole('dialog', { name: 'Execution details' });
     await expect(dialog).toContainText('<img src=x onerror="window.leaked=1"> **not markdown**');
     await expect(dialog).toContainText('The Action exited with status 1.');
@@ -5154,44 +5219,28 @@ test.describe('Team Routines', () => {
     await expect(dialog).toHaveCount(0);
     // Details that name another run are refused, never shown.
     answer = { ...answer, run_id: 'd'.repeat(32) };
-    await row.getByRole('button', { name: 'Execution details' }).click();
+    await runDetails.click();
     await expect(dialog).toContainText('The Routine request failed. Try again.');
     await expect(dialog).not.toContainText('httpx.HTTPStatusError');
   });
 
-  test('a Routine paused after its failures resumes from its transcript row, never past a held run', async ({ page }) => {
+  test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', async ({ page }) => {
     const failed = 'c'.repeat(32);
-    const row = (id, outcome, detail, routineId = ROUTINE_VIEW.routine_id) => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: routineId,
-      quote: ROUTINE_VIEW.quote,
-      run_id: id,
-      outcome,
-      created_at: '2026-10-01T12:01:07Z',
-      detail,
-      version: 1,
-    });
-    const heldRoutine = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), paused: true };
+    const held = 'f'.repeat(32);
+    const heldRoutine = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit', paused: true };
     await routeReadyChat(page, {
       history: {
         entries: [
-          row(failed, 'failed', { code: 'assistant-rpc-failed', actions: [] }),
-          row('f'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [] }, heldRoutine.routine_id),
+          routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [] }),
+          routineRow(held, 'paused', {
+            assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', reason: 'exhausted',
+          }, { routine: heldRoutine }),
         ],
         before: null,
       },
     });
     let routines = [{ ...ROUTINE_VIEW, paused: true }, heldRoutine];
-    const incidents = [{
-      incident_id: '9'.repeat(32),
-      routine_id: heldRoutine.routine_id,
-      quote: heldRoutine.quote,
-      created_at: '2026-10-01T12:00:07Z',
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-    }];
+    const incidents = [heldIncident(held, heldRoutine)];
     const resumed = [];
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
       json: { team_id: 'marketing', routines, runs: [], incidents },
@@ -5202,14 +5251,29 @@ test.describe('Team Routines', () => {
       routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, paused: false } : routine));
       await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
     });
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
+      json: recoveryCard(held, { nonce: '1'.repeat(32) }),
+    }));
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
-    // A Routine an unresolved incident still holds offers no Resume here; its card settles it first.
-    await expect(rows.nth(0).getByRole('button', { name: 'Resume' })).toBeVisible();
-    await expect(rows.nth(1).getByRole('button', { name: 'Resume' })).toHaveCount(0);
-    await rows.nth(0).getByRole('button', { name: 'Resume' }).click();
-    await expect(rows.nth(0).getByRole('status')).toHaveText('Resumed. Its next run starts on schedule.');
-    await expect(rows.nth(0).getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    // No card resumes a Routine: the failed run's offers nothing, and the held one only opens its Routine's panel.
+    await expect(rows.nth(1).getByRole('button')).toHaveText(['Open Routine']);
+    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    // A Routine an unresolved incident still holds offers no Resume: its panel is the recovery decision alone.
+    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
+    const heldPanel = page.getByRole('dialog', { name: heldRoutine.name });
+    await expect.poll(() => choiceNames(heldPanel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await expect(heldPanel.getByRole('button', { name: 'Resume' })).toHaveCount(0);
+    await heldPanel.getByRole('button', { name: 'Close' }).click();
+    await expect(heldPanel).toHaveCount(0);
+
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Resume' }).click();
+    await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
   });
 
@@ -5218,28 +5282,14 @@ test.describe('Team Routines', () => {
     const held = 'b'.repeat(32);
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${held}:routine`,
-          kind: 'routine-run',
-          notice_id: held,
-          routine_id: ROUTINE_VIEW.routine_id,
-          quote: ROUTINE_VIEW.quote,
-          run_id: held,
-          outcome: 'held',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
-          version: 2,
-        }],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, { version: 2 })],
         before: null,
       },
     });
     // A paused Routine with a held run: the Team's Routines button carries the attention dot.
     await routeRoutines(page);
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: recoveryCard(held, { nonce: '1'.repeat(32) }),
-    }));
     await page.goto('/chat/?team=marketing');
-    await expect(page.locator('.routine-run').getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+    await expect(page.locator('.routine-run').getByRole('button', { name: 'Open Routine' })).toBeVisible();
     const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
     await expect(routines).toBeVisible();
     // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
@@ -5263,21 +5313,13 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${held}:routine`,
-          kind: 'routine-run',
-          notice_id: held,
-          routine_id: ROUTINE_VIEW.routine_id,
-          quote: ROUTINE_VIEW.quote,
-          run_id: held,
-          outcome: 'held',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
-          version: 2,
-        }],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, { version: 2 })],
         before: null,
       },
     });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, paused: true }], runs: [], incidents: [heldIncident(held)] },
+    }));
     let opened = 0;
     const answers = [];
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
@@ -5291,41 +5333,38 @@ test.describe('Team Routines', () => {
       });
     });
     await page.goto('/chat/?team=marketing');
-    const row = page.locator('.routine-run');
-    const choices = row.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
-    const names = () => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
-    await expect.poll(names).toEqual(['Run', 'Recreate', 'Delete']);
+    await page.locator('.routine-run').getByRole('button', { name: 'Open Routine' }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
+    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Recreate', 'Delete']);
     // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
     await page.clock.runFor(300_000);
     await expect(choices).toHaveCount(0);
-    await expect(row.getByRole('status')).toHaveText('This recovery card expired.');
+    await expect(panel.getByRole('status')).toHaveText('This recovery card expired.');
     await page.clock.runFor(600_000);
     expect(opened).toBe(1);
-    await row.getByRole('button', { name: 'Open the card again' }).click();
-    await expect.poll(names).toEqual(['Run', 'Recreate', 'Delete']);
-    await expect(row.getByRole('status')).toHaveCount(0);
-    await row.getByRole('button', { name: 'Run', exact: true }).click();
+    await panel.getByRole('button', { name: 'Open the card again' }).click();
+    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Recreate', 'Delete']);
+    await expect(panel.getByRole('status')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Run', exact: true }).click();
     // The answer carries the fresh card's nonce, never the expired one.
     expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
   });
 
-  test('a frozen run is approved from its transcript row with the chat approval dialog', async ({ page }) => {
+  test('a frozen run is approved in the panel its transcript card opens, with the chat approval dialog', async ({ page }) => {
     const run = 'd'.repeat(32);
-    const frozenRow = (id, requestKind) => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: 'a'.repeat(32),
-      quote: 'Every day at 9, list my DNS zones',
-      run_id: id,
-      outcome: 'frozen',
-      created_at: '2026-10-01T12:01:07Z',
-      detail: { request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' },
-      version: 1,
-    });
+    const waiting = 'e'.repeat(32);
+    const audit = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Weekly DNS audit', quote: 'Every Monday, audit my DNS' };
+    const frozenRow = (id, requestKind, routine) => routineRow(id, 'frozen', {
+      request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record',
+    }, { routine });
     await routeReadyChat(page, {
-      history: { entries: [frozenRow('e'.repeat(32), 'integrations'), frozenRow(run, 'human')], before: null },
+      history: { entries: [frozenRow(waiting, 'integrations', audit), frozenRow(run, 'human', ROUTINE_VIEW)], before: null },
     });
+    let runs = [frozenRun(waiting, 'integrations', audit), frozenRun(run, 'human')];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW, audit], runs, incidents: [] },
+    }));
     const answers = [];
     const resumes = [];
     const openings = [];
@@ -5354,41 +5393,52 @@ test.describe('Team Routines', () => {
       answers.push(route.request().postDataJSON());
       // The first approval resumes a run that freezes again for its next approval; the second completes it.
       const status = answers.length === 1 ? 'frozen' : 'done';
+      if (status === 'done') runs = runs.filter((item) => item.run_id !== run);
       await route.fulfill({ json: { team_id: 'marketing', run_id: run, status } });
     });
     await page.route('**/api/teams/marketing/routines/runs/*/integrations', async (route) => {
       resumes.push(route.request().method());
-      await route.fulfill({ json: { team_id: 'marketing', run_id: 'e'.repeat(32), status: 'frozen' } });
+      await route.fulfill({ json: { team_id: 'marketing', run_id: waiting, status: 'frozen' } });
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     await expect(rows).toHaveCount(2);
+    // The card itself offers no Review: its one action opens the Routine's panel.
+    await expect(rows.nth(1).getByRole('button')).toHaveText(['Open Routine']);
+    expect(openings).toEqual([]);
 
-    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Review' }).click();
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await expect(dialog).toBeVisible();
     // Dismissing answers nothing: the run stays frozen and can be reviewed again.
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await panel.getByRole('button', { name: 'Review' }).click();
     await dialog.getByRole('button', { name: 'Not now' }).click();
     await expect(dialog).toBeHidden();
     expect(answers).toEqual([]);
     const approval = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true };
-    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await panel.getByRole('button', { name: 'Review' }).click();
     await dialog.getByRole('button', { name: 'Approve action' }).click();
-    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: waiting for another answer');
-    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await expect(panel.getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    await panel.getByRole('button', { name: 'Review' }).click();
     await dialog.getByRole('button', { name: 'Approve action' }).click();
-    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: Done');
-    await expect(rows.nth(1).getByRole('button', { name: 'Review' })).toHaveCount(0);
+    await expect(panel.getByRole('status')).toContainText('The run continued: Done');
+    await expect(panel.getByRole('button', { name: 'Review' })).toHaveCount(0);
     expect(answers).toEqual([approval, approval]);
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(rows.nth(1).getByRole('button')).toHaveCount(0);
 
-    await rows.nth(0).getByRole('button', { name: 'Review' }).click();
-    await expect(rows.nth(0)).toContainText('Connect Shimpz Cloudflare from the Team\'s Store, then continue the run.');
+    await rows.nth(0).getByRole('button', { name: 'Open Routine' }).click();
+    const auditPanel = page.getByRole('dialog', { name: audit.name });
+    await auditPanel.getByRole('button', { name: 'Review' }).click();
+    await expect(auditPanel).toContainText('Connect Shimpz Cloudflare from the Team\'s Store, then continue the run.');
     expect(resumes).toEqual([]);
-    await rows.nth(0).getByRole('button', { name: 'Continue the run' }).click();
-    await expect(rows.nth(0).getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    await auditPanel.getByRole('button', { name: 'Continue the run' }).click();
+    await expect(auditPanel.getByRole('status')).toHaveText('The run continued: waiting for another answer');
     expect(resumes).toEqual(['POST']);
     // Every opening names the interface language the request copy is rendered in (ADR-0091).
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
@@ -5397,20 +5447,8 @@ test.describe('Team Routines', () => {
   test('a Routine notice delivered after the chat opened becomes reviewable without a reload', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
-    const row = (id, outcome, detail, version) => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: ROUTINE_VIEW.routine_id,
-      quote: ROUTINE_VIEW.quote,
-      run_id: id,
-      outcome,
-      created_at: '2026-10-01T12:01:07Z',
-      detail,
-      version,
-    });
-    const earlier = row('c'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] }, 1);
-    const frozen = row(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }, 1);
+    const earlier = routineRow('c'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] });
+    const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' });
     let history = { entries: [earlier], before: null };
     let runs = [];
     await routeReadyChat(page, { history });
@@ -5447,15 +5485,7 @@ test.describe('Team Routines', () => {
 
     // The scheduler delivers a frozen run while the conversation is open.
     history = { entries: [earlier, frozen], before: null };
-    runs = [{
-      run_id: run,
-      routine_id: ROUTINE_VIEW.routine_id,
-      status: 'frozen',
-      scheduled_at: '2026-10-01T12:00:00Z',
-      request_kind: 'human',
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-    }];
+    runs = [frozenRun(run, 'human')];
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(1)).toContainText('Waiting for your approval of Replace DNS record from Shimpz Cloudflare.');
@@ -5469,11 +5499,15 @@ test.describe('Team Routines', () => {
     await page.keyboard.press('Escape');
     if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
-    await rows.nth(1).getByRole('button', { name: 'Review' }).click();
+    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Review' }).click();
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await dialog.getByRole('button', { name: 'Approve action' }).click();
-    await expect(rows.nth(1).getByRole('status')).toHaveText('The run continued: Done');
+    await expect(panel.getByRole('status')).toContainText('The run continued: Done');
     expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
 
     // The run's newer version replaces its row instead of adding another; the draft is still there.
     const published = { actions: [['shimpz-cloudflare', 'replace-dns-record']] };
@@ -5652,6 +5686,22 @@ test('a frozen Routine run opens in the interface language and answers with the 
       before: null,
     },
   });
+  await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+    json: {
+      team_id: 'marketing',
+      routines: [ROUTINE_VIEW],
+      runs: [{
+        run_id: run,
+        routine_id: ROUTINE_VIEW.routine_id,
+        status: 'frozen',
+        scheduled_at: '2026-10-01T12:00:00Z',
+        request_kind: 'human',
+        assistant_id: 'shimpz-cloudflare',
+        action: 'replace-dns-record',
+      }],
+      incidents: [],
+    },
+  }));
   const openings = [];
   const answers = [];
   await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, async (route) => {
@@ -5685,8 +5735,9 @@ test('a frozen Routine run opens in the interface language and answers with the 
     await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
   });
   await page.goto('/chat/?team=marketing');
-  const row = page.locator('.routine-run');
-  await row.getByRole('button', { name: 'Revisar' }).click();
+  // The card opens its Routine's panel in the interface language; the panel offers the review.
+  await page.locator('.routine-run').getByRole('button', { name: 'Abrir rotina' }).click();
+  await page.getByRole('dialog', { name: ROUTINE_VIEW.name }).getByRole('button', { name: 'Revisar' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Publicar as alterações de DNS revisadas?' });
   await expect(dialog).toContainText('O Shimpz Cloudflare pausou antes de continuar esta Ação exata.');

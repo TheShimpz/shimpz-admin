@@ -1,84 +1,83 @@
 <script>
   import { Button, Disclosure } from '@shimpz/frontend';
+  import { tick } from 'svelte';
 
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
-  import RoutineDecision from '$lib/RoutineDecision.svelte';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
-  import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
   import {
     fillRoutineCopy,
     humanizeId,
     minuteWords,
     OUTCOME_TONES,
-    resumeRoutine,
     routineErrorMessage,
+    routineStatus,
     scheduleWords,
   } from '$lib/routine.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message, as one card: the Routine's name and a neutral badge, the state in one sentence, and its actions. It
-  // never carries an Action's raw input or result, and it is not part of the Brain's conversation. A held, paused, or
-  // frozen run carries the decision it waits for, the same one its Routine's panel offers.
+  // own message, as one card: the Routine's name and a neutral badge, and the state in one sentence. It never carries
+  // an Action's raw input or result, and it is not part of the Brain's conversation. The card decides nothing: while
+  // its run waits for the person, its one action opens that Routine's panel, which is the decision itself.
   let { entry, copy, teamId, teamName } = $props();
 
-  const DECISIONS = ['held', 'paused', 'frozen'];
-  let working = $state(false);
-  let result = $state('');
-  // A card's Excluir opens this Routine's panel straight in its deletion confirmation, read fresh from Team first.
-  let deleting = $state(false);
-
-  async function confirmDeletion() {
-    result = '';
-    try {
-      const fresh = await loadTeamRoutines(fetch, teamId);
-      if (fresh.routines.some((routine) => routine.routine_id === entry.routineId && !routine.deleting)) deleting = true;
-      else result = copy.errors.ended;
-    } catch (error) {
-      result = routineErrorMessage(error, copy.errors);
-    }
-  }
-  // The run's execution details are read from Team only when the person opens them.
-  let details = $state(false);
-
-  // A row that left its Routine paused offers Resume while Team still lists the Routine as paused and no unresolved
-  // incident holds it; a held run is settled through its card first, and resuming never bypasses that (ADR-0092).
   let listed = $derived($routineContext.get(teamId));
-  let deletable = $derived(listed?.routines.find((routine) => routine.routine_id === entry.routineId && !routine.deleting));
-  let resumable = $derived(
-    ['paused', 'user-skipped', 'failed'].includes(entry.outcome) &&
-      Boolean(listed?.routines.some((routine) => routine.routine_id === entry.routineId && routine.paused &&
-        !routine.deleting && !routine.needs_reconfirm)) &&
-      !listed.incidents.some((incident) => incident.routine_id === entry.routineId),
-  );
+  let routine = $derived(listed?.routines.find((item) => item.routine_id === entry.routineId && !item.deleting));
+  // The run waits for the person while its Routine's panel shows its decision: a held or paused run until its
+  // incident is settled, a frozen run until its approval is answered.
+  let waiting = $derived.by(() => {
+    if (!routine) return false;
+    const status = routineStatus(routine, listed.runs, listed.incidents);
+    if (entry.outcome === 'held' || entry.outcome === 'paused') return status === 'recovery';
+    return entry.outcome === 'frozen' && status === 'waiting' &&
+      listed.runs.some((run) => run.run_id === entry.runId && run.status === 'frozen');
+  });
 
-  async function resume() {
-    working = true;
+  let card = $state();
+  let panel = $state(false);
+  let opening = $state(false);
+  let result = $state('');
+
+  // The panel opens on the Routine as Team lists it now; a run that stopped waiting meanwhile says so instead.
+  async function openPanel() {
+    opening = true;
     result = '';
     try {
-      await resumeRoutine(fetch, teamId, entry.routineId);
-      result = copy.run.resumed;
       await loadTeamRoutines(fetch, teamId);
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);
+      return;
     } finally {
-      working = false;
+      opening = false;
     }
+    if (waiting) panel = true;
+    else result = copy.errors.ended;
   }
+
+  // Closing the panel returns focus to the button that opened it, or to the card once its run no longer waits.
+  async function closePanel() {
+    panel = false;
+    await tick();
+    (card?.querySelector('.open') ?? card)?.focus();
+  }
+
   let detail = $derived(entry.detail);
   // Assistants and Actions are named in words: the catalog's title, or the humanized id until it is read.
   $effect(() => { void loadAssistantNames(fetch); });
+  function assistantWords(assistant) {
+    return $assistantNames[assistant] ?? humanizeId(assistant);
+  }
   function stepWords(assistant, action) {
-    return fillRoutineCopy(copy.plan.step, { assistant: $assistantNames[assistant] ?? humanizeId(assistant), action: humanizeId(action) });
+    return fillRoutineCopy(copy.plan.step, { assistant: assistantWords(assistant), action: humanizeId(action) });
   }
   let actions = $derived((detail.actions ?? []).map(([assistant, action]) => stepWords(assistant, action)).join(', '));
   // The Routine's short name: as Team lists it now, as the notice defined it, or else its request.
   let routineName = $derived(
-    listed?.routines.find((routine) => routine.routine_id === entry.routineId)?.name ?? detail.name ?? entry.quote,
+    listed?.routines.find((item) => item.routine_id === entry.routineId)?.name ?? detail.name ?? entry.quote,
   );
   const BADGES = { 'user-skipped': 'userSkipped', 'scope-changed': 'scopeChanged' };
   let badge = $derived(copy.badge[BADGES[entry.outcome] ?? entry.outcome]);
@@ -92,6 +91,14 @@
       case 'denied': return run.denied;
       case 'stopped': return run.stopped;
       case 'skipped': return fillRoutineCopy(run.skipped, { missed: detail.missed });
+      // What a waiting run waits for, in one plain sentence; the decision itself is in the Routine's panel.
+      case 'held': return copy.card.heldLead;
+      case 'paused': return fillRoutineCopy(run.paused, { reason: run.pauseReasons[detail.reason] ?? '' });
+      case 'frozen':
+        return fillRoutineCopy(detail.request_kind === 'human' ? run.frozenHuman : run.frozenIntegrations, {
+          assistant: assistantWords(detail.assistant_id),
+          action: humanizeId(detail.action),
+        });
       // A minute's rollup is dated by the minute it covers, in the viewer's own time.
       case 'healthy': return fillRoutineCopy(run.healthy, { runs: detail.runs, minute: minuteWords(entry.createdAt, $locale) });
       case 'scope-changed': return fillRoutineCopy(run.scopeChanged, { assistants: detail.assistants.join(', ') });
@@ -123,35 +130,17 @@
   const id = $props.id();
 </script>
 
-<div class="routine-run" role="group" aria-labelledby={`${id}-name`}>
+<div class="routine-run" role="group" aria-labelledby={`${id}-name`} tabindex="-1" bind:this={card}>
   <header class="head">
     <RoutineIcon name="clock" />
     <!-- The card's name labels its group; a heading here would skip a level inside the chat. -->
     <p class="name" id={`${id}-name`} title={entry.quote}>{routineName}</p>
     <RoutineTag label={badge} icon={TAG_ICONS[entry.outcome]} tone={OUTCOME_TONES[entry.outcome] ?? 'neutral'} />
-    <!-- A decision is the card's only action, so its execution details wait until it is answered. -->
-    {#if entry.runId && !DECISIONS.includes(entry.outcome)}
-      <Button
-        class="details"
-        variant="ghost"
-        size="sm"
-        iconOnly
-        type="button"
-        aria-label={copy.details.open}
-        title={copy.details.open}
-        onclick={() => (details = true)}
-      ><RoutineIcon name="terminal" /></Button>
-    {/if}
   </header>
 
   <div class="body">
-    {#if DECISIONS.includes(entry.outcome)}
-      <RoutineDecision {teamId} {teamName} runId={entry.runId} routineId={entry.routineId} outcome={entry.outcome} {detail} {copy}
-        ondelete={confirmDeletion} />
-    {:else}
-      <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{line}</span></p>
-      {#if actionsLine}<p class="line muted">{actionsLine}</p>{/if}
-    {/if}
+    <p class="line"><span class="prompt" aria-hidden="true">&gt;</span><span class="value">{line}</span></p>
+    {#if actionsLine}<p class="line muted">{actionsLine}</p>{/if}
     {#if entry.outcome === 'created' || entry.outcome === 'changed'}
       <Disclosure class="steps">
         {#snippet summary()}<span class="steps-summary"><RoutineIcon name="chevron" />{copy.plan.title} · {detail.steps.length}</span>{/snippet}
@@ -161,37 +150,30 @@
     {#if result}<p class="result" role="status">{result}</p>{/if}
   </div>
 
-  {#if resumable}
+  <!-- The button stays while the panel is open, so closing it returns focus here. -->
+  {#if waiting || panel}
     <div class="actions">
-      <Button size="sm" variant="secondary" type="button" disabled={working} onclick={resume}>
-        {#snippet icon()}<RoutineIcon name="play" />{/snippet}{copy.list.resume}
-      </Button>
+      <Button class="open" size="sm" variant="secondary" type="button" aria-haspopup="dialog" disabled={opening}
+        onclick={openPanel}>{copy.run.open}</Button>
     </div>
   {/if}
 </div>
 
-{#if details}
-  <RoutineRunDetails {teamId} runId={entry.runId} copy={copy.details} errors={copy.errors} onclose={() => (details = false)} />
-{/if}
-
-{#if deleting && deletable}
+{#if panel && routine}
   <RoutineDetailsDialog
     {teamId}
     {teamName}
-    routine={deletable}
-    runs={listed.runs.filter((run) => run.routine_id === deletable.routine_id)}
-    incidents={listed.incidents.filter((item) => item.routine_id === deletable.routine_id)}
+    {routine}
+    runs={listed.runs.filter((run) => run.routine_id === routine.routine_id)}
+    incidents={listed.incidents.filter((item) => item.routine_id === routine.routine_id)}
     {copy}
-    confirm
-    onclose={() => (deleting = false)}
-    ondeleted={() => (deleting = false)}
+    onclose={closePanel}
   />
 {/if}
 
 <style>
   /* One chamfered shell in neutrals: state color lives on small icons. */
   .routine-run {
-    container-type: inline-size;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     max-width: 44rem;
@@ -213,23 +195,13 @@
   }
   .head { flex-wrap: wrap; }
   .name { flex: 1 1 8rem; min-width: 0; margin: 0; overflow: hidden; color: var(--shimpz-color-text); font: 500 0.9rem/1.3 var(--shimpz-font-sans); text-overflow: ellipsis; white-space: nowrap; }
-  .head :global(.details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
-  @container (max-width: 30rem) {
-    .head :global(.tag) { order: 4; margin-inline-start: calc(1rem + var(--shimpz-space-2)); }
-    .head :global(.details) { order: 3; }
-  }
   .body { display: grid; gap: 0.4rem; padding: var(--shimpz-space-3) var(--shimpz-space-4); min-width: 0; }
-  /* A decision's choice group closes the card along its bottom edge. */
-  .body:has(:global(.choices)) { padding-block-end: 0; }
-  .body { --choice-inline: var(--shimpz-space-4); }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
   .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
   .line > * + * { margin-inline-start: 0.5em; }
-  .line :global(.routine-icon) { width: 0.85rem; height: 0.85rem; margin-inline-end: 0.5em; vertical-align: -0.15em; }
   .line.muted { color: var(--shimpz-color-text-muted); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
-  .muted { color: var(--shimpz-color-text-muted); }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
   .body :global(.steps) { border-block-start: 0; padding-block-start: 0.25rem; }
   .body :global(.steps summary) { list-style: none; }

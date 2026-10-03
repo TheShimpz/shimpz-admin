@@ -1,6 +1,6 @@
 <script>
   import { Button, Notice } from '@shimpz/frontend';
-  import { tick, untrack } from 'svelte';
+  import { tick } from 'svelte';
 
   import { listChatHistory } from '$lib/chatHistory.js';
   import { locale } from '$lib/i18n.js';
@@ -36,15 +36,14 @@
   // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
-  // `confirm` opens the panel straight in its deletion confirmation, as a run card's Excluir does from the transcript.
   // `onback` adds a Back control that returns to the list the panel was opened from; Escape then goes back as well.
-  let { teamId, teamName, routine, runs = [], incidents = [], copy, confirm = false, onclose, ondeleted, onback = null } = $props();
+  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted, onback = null } = $props();
 
   const id = $props.id();
   let dialog = $state();
   let busy = $state(false);
   let error = $state('');
-  let confirming = $state(untrack(() => confirm));
+  let confirming = $state(false);
   let deleting = $state(false);
   let deleteButton = $state();
   let recent = $state(null);
