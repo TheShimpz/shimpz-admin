@@ -77,6 +77,9 @@
   let attachmentUpload = null;
   let attachmentPumping = false;
   let nextAttachmentKey = 0;
+  // Selections whose files are still being read; each blocks sending until its files join the message or are refused.
+  let attachmentInspections = $state([]);
+  let nextAttachmentInspection = 0;
   let turns = $state([]);
   let nextRenderKey = 0;
   let busy = $state(false);
@@ -214,7 +217,9 @@
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let attachCopy = $derived($t('attachments'));
-  let attachmentsPending = $derived(attachments.some((item) => item.state !== 'ready'));
+  let attachmentsPending = $derived(
+    attachmentInspections.length > 0 || attachments.some((item) => item.state !== 'ready'),
+  );
   let attachmentProgress = $derived.by(() => {
     const pending = attachments.filter((item) => item.state !== 'ready').length;
     return pending ? { current: attachmentFinished + 1, total: attachmentFinished + pending } : null;
@@ -1660,6 +1665,7 @@
     attachmentUpload?.controller.abort();
     attachmentUpload = null;
     attachments = [];
+    attachmentInspections = [];
     attachmentTeamId = '';
     attachmentError = '';
     attachmentDragging = false;
@@ -1675,6 +1681,7 @@
   function cancelAttachmentUploads() {
     attachmentUpload?.controller.abort();
     attachments = attachments.filter((item) => item.state === 'ready');
+    attachmentInspections = [];
     composerInput?.focus();
   }
 
@@ -1684,32 +1691,40 @@
     if (attachmentTeamId !== teamId) clearAttachments();
     attachmentTeamId = teamId;
     attachmentError = '';
-    for (const file of files) {
-      let readability = { kind: 'file', note: 'unreadable' };
-      if (file.size > 0) {
-        try {
-          readability = await attachmentReadability(file);
-        } catch {
-          if (attachmentTeamId === teamId) attachmentError = attachmentRefusalText('unavailable', file.name);
+    // The selection blocks sending before its first read, so a message never leaves without a file still being read.
+    const inspection = nextAttachmentInspection++;
+    attachmentInspections = [...attachmentInspections, inspection];
+    const current = () => attachmentTeamId === teamId && attachmentInspections.includes(inspection);
+    try {
+      for (const file of files) {
+        let readability = { kind: 'file', note: 'unreadable' };
+        if (file.size > 0) {
+          try {
+            readability = await attachmentReadability(file);
+          } catch {
+            if (current()) attachmentError = attachmentRefusalText('unavailable', file.name);
+            continue;
+          }
+        }
+        // A selection that finishes reading after a Team change or a cancel belongs to no message.
+        if (!current()) return;
+        const refusal = attachmentRefusal(attachments, { size: file.size, ...readability });
+        if (refusal) {
+          attachmentError = attachmentRefusalText(refusal, file.name);
+          if (refusal === 'too-many') break;
           continue;
         }
+        attachments = [...attachments, {
+          key: nextAttachmentKey++,
+          file,
+          name: file.name,
+          size: file.size,
+          ...readability,
+          state: 'queued',
+        }];
       }
-      // A selection that finishes reading after a Team change belongs to no message.
-      if (attachmentTeamId !== teamId) return;
-      const refusal = attachmentRefusal(attachments, { size: file.size, ...readability });
-      if (refusal) {
-        attachmentError = attachmentRefusalText(refusal, file.name);
-        if (refusal === 'too-many') break;
-        continue;
-      }
-      attachments = [...attachments, {
-        key: nextAttachmentKey++,
-        file,
-        name: file.name,
-        size: file.size,
-        ...readability,
-        state: 'queued',
-      }];
+    } finally {
+      attachmentInspections = attachmentInspections.filter((entry) => entry !== inspection);
     }
     void uploadAttachments();
   }

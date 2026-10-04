@@ -235,6 +235,72 @@ test('cancelling stops the uploads in flight and sending waits for none of them'
   expect(held).toHaveLength(1);
 });
 
+// Holds every file read the page starts once `holdAttachmentReads` is set, until `releaseAttachmentReads` runs; the
+// release settles after the held reads and the work they resume have finished.
+async function holdFileReads(page) {
+  await page.addInitScript(() => {
+    const read = Blob.prototype.arrayBuffer;
+    const held = [];
+    window.heldAttachmentReads = () => held.length;
+    window.releaseAttachmentReads = async () => {
+      await Promise.all(held.splice(0).map((release) => release()));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    Blob.prototype.arrayBuffer = function arrayBuffer() {
+      if (!window.holdAttachmentReads) return read.call(this);
+      return new Promise((resolve) => held.push(() => {
+        const bytes = read.call(this);
+        resolve(bytes);
+        return bytes;
+      }));
+    };
+  });
+}
+
+test('a message waits for a file that is still being read and leaves with it', async ({ page }) => {
+  await holdFileReads(page);
+  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
+  await page.evaluate(() => { window.holdAttachmentReads = true; });
+  await choose(page, attach, [textFile('late.md')]);
+  await expect.poll(() => page.evaluate(() => window.heldAttachmentReads())).toBe(1);
+  await composer.fill('Read this');
+  await composer.press('Enter');
+  await expect(send).toBeDisabled();
+  await expect(composer).toHaveValue('Read this');
+
+  await page.evaluate(() => window.releaseAttachmentReads());
+  await expect(attachmentList(page).getByRole('listitem')).toHaveCount(1);
+  await expect(attachmentList(page).locator('[aria-busy]')).toHaveCount(0);
+  await composer.press('Enter');
+  await expect(composer).toHaveValue('');
+  await expect.poll(() => chatMessages(scenario).length).toBe(1);
+  const [frame] = chatMessages(scenario);
+  expect(frame.message).toBe('Read this');
+  expect(frame.files).toHaveLength(1);
+});
+
+test('cancelling while a file is still being read leaves it out of the message', async ({ page }) => {
+  await holdFileReads(page);
+  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
+  await choose(page, attach, [textFile('first.md')]);
+  await expect(attachmentList(page).locator('[aria-busy]')).toHaveCount(0);
+  await page.evaluate(() => { window.holdAttachmentReads = true; });
+  await choose(page, attach, [textFile('second.md'), textFile('third.md')]);
+  await expect.poll(() => page.evaluate(() => window.heldAttachmentReads())).toBe(1);
+  await page.evaluate(() => window.releaseAttachmentReads());
+  // second.md waits for its upload while third.md is still being read.
+  await expect(attachmentList(page).getByRole('listitem')).toHaveCount(2);
+  await expect.poll(() => page.evaluate(() => window.heldAttachmentReads())).toBe(1);
+  await page.getByRole('button', { name: EN.cancelUpload }).click();
+  await page.evaluate(() => window.releaseAttachmentReads());
+  await expect(attachmentList(page).getByRole('listitem')).toHaveCount(1);
+  await composer.fill('Hello');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.getByText('I read the file you attached.', { exact: false })).toBeVisible();
+  expect(chatMessages(scenario)[0].files).toHaveLength(1);
+});
+
 async function selectTeam(page, name) {
   if (page.viewportSize().width <= 820) {
     await page.getByRole('button', { name: 'Open the Team list' }).click();
