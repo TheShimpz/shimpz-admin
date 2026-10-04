@@ -16,6 +16,7 @@ import supervisor
 from team import transport
 
 from protocol.http.v1 import progress as progress_contract
+from protocol.http.v1 import routine as routine_contract
 
 
 class _Response:
@@ -156,6 +157,34 @@ class TeamTransportEdgeTests(unittest.TestCase):
         empty = _Response(headers={"Content-Type": "application/json"}, body=b"")
         self.assertEqual(transport._decode_response(empty), {})
 
+    def test_only_a_call_given_its_own_allowance_reads_past_the_json_response_cap(self) -> None:
+        allowance = routine_contract.MAX_ROUTINE_LIST_BYTES
+
+        def call(body: bytes, declared: bool, **kwargs) -> int:
+            headers = {"Content-Type": "application/json"}
+            if declared:
+                headers["Content-Length"] = str(len(body))
+            _Connection.response = _Response(headers=headers, body=body)
+            with (
+                mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
+                mock.patch.object(transport, "_team_token", return_value="token"),
+                mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
+            ):
+                return transport._call("GET", "/v1/teams/team_1/routines", **kwargs).status
+
+        self.addCleanup(setattr, _Connection, "response", _Response())
+        above = b'{"x":"' + b"y" * transport.MAX_JSON_RESPONSE_BYTES + b'"}'
+        at = b'{"x":"' + b"y" * (allowance - 8) + b'"}'
+        over = b'{"x":"' + b"y" * (allowance - 7) + b'"}'
+        self.assertEqual((len(at), len(over)), (allowance, allowance + 1))
+        # Whether the length is declared or only read, the default cap holds and the allowance admits up to its bound.
+        for declared in (True, False):
+            with self.subTest(declared=declared):
+                self.assertEqual(call(above, declared), 502)
+                self.assertEqual(call(above, declared, max_response_bytes=allowance), 200)
+                self.assertEqual(call(at, declared, max_response_bytes=allowance), 200)
+                self.assertEqual(call(over, declared, max_response_bytes=allowance), 502)
+
     def test_request_status_close_and_private_credential_fail_closed(self) -> None:
         with (
             mock.patch.object(transport, "_team_token", return_value="token"),
@@ -177,14 +206,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
     def test_each_request_preflight_failure_is_a_closed_gateway_error(self) -> None:
         with mock.patch.object(transport, "_endpoint", side_effect=OSError("invalid")):
             self.assertEqual(
-                transport._request(
-                    "GET",
-                    "/v1/teams",
-                    None,
-                    content_type=None,
-                    filename=None,
-                    timeout=1,
-                ).status,
+                transport._request("GET", "/v1/teams", transport._Entity(None, None), timeout=1).status,
                 HTTPStatus.BAD_GATEWAY,
             )
             self.assertEqual(transport._request_asset("GET", "/icon").status, HTTPStatus.BAD_GATEWAY)

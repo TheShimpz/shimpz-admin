@@ -65,6 +65,15 @@ class TeamRequestError(ValueError):
     """The browser supplied an invalid id or request body; no Team call was made."""
 
 
+@dataclass(frozen=True, slots=True)
+class _Entity:
+    """A request's body with its media type and, for an uploaded file, its name."""
+
+    body: bytes | None
+    content_type: str | None
+    filename: str | None = None
+
+
 @dataclass(frozen=True)
 class TeamResponse:
     status: int
@@ -248,7 +257,7 @@ def _endpoint() -> tuple[str, int]:
         raise OSError("invalid team endpoint") from exc
 
 
-def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
+def _decode_response(response: http.client.HTTPResponse, max_bytes: int = MAX_JSON_RESPONSE_BYTES) -> dict[str, object]:
     if response.status == 204:
         raw_length = response.getheader("Content-Length")
         if raw_length not in {None, "0"} or response.read(1):
@@ -265,11 +274,11 @@ def _decode_response(response: http.client.HTTPResponse) -> dict[str, object]:
             length = int(raw_length)
         except ValueError as exc:
             raise OSError("invalid team response") from exc
-        if length < 0 or length > MAX_JSON_RESPONSE_BYTES:
+        if length < 0 or length > max_bytes:
             raise OSError("invalid team response")
 
-    raw = response.read(MAX_JSON_RESPONSE_BYTES + 1)
-    if len(raw) > MAX_JSON_RESPONSE_BYTES:
+    raw = response.read(max_bytes + 1)
+    if len(raw) > max_bytes:
         raise OSError("invalid team response")
     if not raw:
         return {}
@@ -344,22 +353,21 @@ def _request_headers(
 def _request(
     method: str,
     path: str,
-    body: bytes | None,
+    entity: _Entity,
     *,
-    content_type: str | None,
-    filename: str | None,
     timeout: int,
     bindings: _RequestBindings = _NO_BINDINGS,
+    max_response_bytes: int = MAX_JSON_RESPONSE_BYTES,
 ) -> TeamResponse:
     try:
         host, port = _endpoint()
         headers = _request_headers(
             method,
             path,
-            body,
+            entity.body,
             accept="application/json",
-            content_type=content_type,
-            filename=filename,
+            content_type=entity.content_type,
+            filename=entity.filename,
             bindings=bindings,
         )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
@@ -370,11 +378,11 @@ def _request(
         # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
         # socket would require serialization and could retain an authenticated connection across
         # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
-        connection.request(method, path, body=body, headers=headers)
+        connection.request(method, path, body=entity.body, headers=headers)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
             raise OSError("invalid team status")
-        result = TeamResponse(response.status, _decode_response(response))
+        result = TeamResponse(response.status, _decode_response(response, max_response_bytes))
     except OSError, UnicodeError, http.client.HTTPException:
         # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
         log.warning("team request failed (%s)", method)
@@ -524,19 +532,18 @@ def _call(
     payload: object | None = None,
     *,
     timeout: int = CONTROL_TIMEOUT_SECONDS,
-    max_body_bytes: int = MAX_JSON_BODY_BYTES,
     model_credential: tuple[str, str] | None = None,
     decision_key: str | None = None,
+    max_response_bytes: int = MAX_JSON_RESPONSE_BYTES,
 ) -> TeamResponse:
-    body = _encode_payload(payload, max_bytes=max_body_bytes)
+    body = _encode_payload(payload)
     return _request(
         method,
         path,
-        body,
-        content_type="application/json" if body is not None else None,
-        filename=None,
+        _Entity(body, "application/json" if body is not None else None),
         timeout=timeout,
         bindings=_RequestBindings(model_credential, decision_key=decision_key),
+        max_response_bytes=max_response_bytes,
     )
 
 
@@ -578,11 +585,4 @@ def _call_raw(
 ) -> TeamResponse:
     if not isinstance(body, bytes) or not isinstance(filename, str) or not isinstance(media_type, str):
         raise TeamRequestError("raw file request is invalid")
-    return _request(
-        method,
-        path,
-        body,
-        content_type=media_type,
-        filename=filename,
-        timeout=timeout,
-    )
+    return _request(method, path, _Entity(body, media_type, filename), timeout=timeout)
