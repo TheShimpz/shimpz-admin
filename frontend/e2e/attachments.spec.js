@@ -301,6 +301,25 @@ test('cancelling while a file is still being read leaves it out of the message',
   expect(chatMessages(scenario)[0].files).toHaveLength(1);
 });
 
+test('the first file of a message can be cancelled while its read stalls, and the message leaves without it', async ({ page }) => {
+  await holdFileReads(page);
+  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
+  await page.evaluate(() => { window.holdAttachmentReads = true; });
+  await choose(page, attach, [textFile('stalled.md')]);
+  await expect.poll(() => page.evaluate(() => window.heldAttachmentReads())).toBe(1);
+  await composer.fill('Hello');
+  await expect(send).toBeDisabled();
+
+  await page.getByRole('button', { name: EN.cancelUpload }).click();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => chatMessages(scenario).length).toBe(1);
+  expect(chatMessages(scenario)[0].files ?? []).toHaveLength(0);
+  // The read that finishes after the cancel belongs to no message.
+  await page.evaluate(() => window.releaseAttachmentReads());
+  await expect(attachmentList(page).getByRole('listitem')).toHaveCount(0);
+});
+
 async function selectTeam(page, name) {
   if (page.viewportSize().width <= 820) {
     await page.getByRole('button', { name: 'Open the Team list' }).click();

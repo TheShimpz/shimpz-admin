@@ -2495,6 +2495,7 @@
                 <ComposerAttachments
                   items={attachments}
                   progress={attachmentProgress}
+                  reading={attachmentInspections.length > 0}
                   error={attachmentError}
                   oncancel={cancelAttachmentUploads}
                   onremove={removeAttachment}

@@ -3,11 +3,12 @@
   import AttachmentChip from '$lib/AttachmentChip.svelte';
   import { t } from '$lib/i18n.js';
 
-  // The message's files above its text: each chip, the upload in progress with its one cancel, the last refusal in
-  // plain words, and the reminder that files are read only in this message (ADR-0093).
+  // The message's files above its text: each chip, the files still being read or uploaded with their one cancel, the
+  // last refusal in plain words, and the reminder that files are read only in this message (ADR-0093).
   let {
     items = [],
     progress = null,
+    reading = false,
     error = '',
     oncancel = () => {},
     onremove = () => {},
@@ -16,7 +17,7 @@
   let copy = $derived($t('attachments'));
 </script>
 
-{#if items.length || error}
+{#if items.length || error || progress || reading}
   <div class="composer-attachments">
     {#if items.length}
       <ul class="attachment-list" aria-label={copy.list}>
@@ -32,9 +33,13 @@
         {/each}
       </ul>
     {/if}
-    {#if progress}
+    {#if progress || reading}
       <div class="attachment-progress">
-        <span role="status">{$t('attachments.uploading', { current: String(progress.current), total: String(progress.total) })}</span>
+        <span role="status">
+          {progress
+            ? $t('attachments.uploading', { current: String(progress.current), total: String(progress.total) })
+            : copy.reading}
+        </span>
         <Button variant="ghost" size="compact" type="button" onclick={oncancel}>{copy.cancelUpload}</Button>
       </div>
     {/if}
