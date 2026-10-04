@@ -5842,6 +5842,74 @@ test.describe('Team Routines', () => {
     await expect(composer).toHaveValue('A draft that must survive');
   });
 
+  test('Routine notices written behind more than one page of newer history while the chat was away still arrive', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const earlier = routineRow('c'.repeat(32), 'done', done);
+    const gap = routineRow('d'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [] });
+    const newest = routineRow('e'.repeat(32), 'done', done);
+    const unrelated = (start, count) => Array.from({ length: count }, (_, index) => ({
+      id: `${(start + index).toString(16).padStart(32, '0')}:user`,
+      created_at: '2026-10-01T12:00:00Z',
+      kind: 'message',
+      role: 'user',
+      text: `Unrelated message ${start + index + 1}`,
+    }));
+    // Admin's history by cursor: what the chat opened with, then what was written while it was away.
+    let pages = { null: { entries: [earlier], before: null } };
+    const requested = [];
+    await routeReadyChat(page);
+    await page.route('**/api/teams/marketing/chat/history**', (route) => {
+      const before = new URL(route.request().url()).searchParams.get('before');
+      requested.push(before);
+      return route.fulfill({ json: pages[before] });
+    });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    await expect(rows).toHaveCount(1);
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, 'A draft that must survive');
+
+    // A notice, then more than a page of other rows, then another notice: the refresh reads back to the opening row.
+    pages = {
+      null: { entries: [...unrelated(10, 63), newest], before: 'AAAAAAAAAMg' },
+      AAAAAAAAAMg: { entries: [earlier, gap, ...unrelated(0, 10)], before: null },
+    };
+    requested.length = 0;
+    await page.clock.fastForward(15_000);
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(1)).toContainText('assistant-rpc-failed');
+    await expect(rows.nth(2)).toContainText('Shimpz Cloudflare · List zones');
+    expect(requested).toEqual([null, 'AAAAAAAAAMg']);
+    // The next refresh finds nothing new on the newest page and reads no further.
+    requested.length = 0;
+    await page.clock.fastForward(15_000);
+    await expect.poll(() => requested).toEqual([null]);
+    await expect(rows).toHaveCount(3);
+
+    // More was written than one refresh reads: the transcript starts again from the newest rows, as a reload shows them,
+    // and earlier history continues from where the refresh stopped, down to the notice written in between.
+    const behind = routineRow('f'.repeat(32), 'done', done);
+    const cursor = (index) => `AAAAAAAA${String(index).padStart(2, '0')}A`;
+    pages = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [
+      index === 0 ? 'null' : cursor(index),
+      { entries: unrelated(1000 + (8 - index) * 64, 64), before: cursor(index + 1) },
+    ]));
+    pages[cursor(8)] = { entries: [newest, behind], before: null };
+    requested.length = 0;
+    await page.clock.fastForward(15_000);
+    await expect(page.getByText(`Unrelated message ${1000 + 8 * 64 + 64}`, { exact: true })).toBeVisible();
+    await expect(rows).toHaveCount(0);
+    expect(requested).toEqual([null, ...Array.from({ length: 7 }, (_, index) => cursor(index + 1))]);
+    await page.locator('.turns').evaluate((element) => { element.scrollTop = 0; });
+    await expect(rows).toHaveCount(2);
+    expect(requested.at(-1)).toBe(cursor(8));
+    await expect(composer).toHaveValue('A draft that must survive');
+  });
+
   test('each day of the transcript opens with its date, which stays at the top while that day scrolls', async ({ page }) => {
     // Noon in São Paulo on 1 October; a row written at 02:30 UTC that day is still the evening before for this viewer.
     await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });

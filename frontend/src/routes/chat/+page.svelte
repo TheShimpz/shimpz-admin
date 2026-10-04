@@ -16,7 +16,7 @@
   import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
-  import { listChatHistory } from '$lib/chatHistory.js';
+  import { historyMark, historySince, listChatHistory } from '$lib/chatHistory.js';
   import BrainMenu from '$lib/BrainMenu.svelte';
   import EffortMenu from '$lib/EffortMenu.svelte';
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
@@ -173,6 +173,8 @@
   let olderHistoryFailed = $state(false);
   let historySentinel = $state();
   let historyGeneration = 0;
+  // The mark of every newest history row this conversation has read, so a refresh reads only the rows written since.
+  let historySeen = new Set();
 
   let copy = $derived($t('chatPage'));
   let storeCopy = $derived($t('store'));
@@ -489,6 +491,7 @@
       if (!team) throw new Error(copy.loadFailed);
       turns = page.entries.map((entry) => historyTurn(entry, team.name));
       historyBefore = page.before;
+      historySeen = new Set(page.entries.map(historyMark));
       historyLoading = false;
       connectSocket(teamId);
       if (turns.length > 0) await revealLatestExchange({ instant: true });
@@ -554,10 +557,13 @@
   }
 
   // Admin delivers Routine notices on its own schedule (ADR-0086), so while a Local Team's conversation is open and the
-  // page is visible, that Team's Routine list and newest history page are re-read at a modest interval and when the
-  // page becomes visible again. Only Routine rows merge into the transcript, by identity and version: a new row, or a
-  // newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the draft,
-  // and the reader's place stay as they are; a reader already at the end follows the new row.
+  // page is visible, that Team's Routine list and the history written since it was last read are re-read at a modest
+  // interval and when the page becomes visible again: pages newest first, back to the newest row already read. Only
+  // Routine rows merge into the transcript, by identity and version: a new row, or a newer version of a shown one,
+  // moves to the end as a reload would show it. The rest of the conversation, the draft, and the reader's place stay as
+  // they are; a reader already at the end follows the new row. When more was written than one refresh reads (a page
+  // hidden for long), the transcript starts again from what it read, as a reload shows it, and earlier history
+  // continues from where the refresh stopped, through every row written in between.
   const ROUTINE_REFRESH_MS = 15_000;
   const FOLLOW_SLACK = 48;
   let routineRefreshing = false;
@@ -574,14 +580,23 @@
     try {
       loadTeamRoutines(fetch, teamId).catch(() => {});
       if (!routineMergeIdle()) return;
-      const page = await listChatHistory(fetch, teamId);
+      const since = await historySince(fetch, teamId, historySeen);
       if (generation !== historyGeneration || chatTeamId !== teamId || !routineMergeIdle()) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
+      if (!team) return;
+      if (since.before !== null) {
+        turns = since.entries.map((entry) => historyTurn(entry, team.name));
+        historyBefore = since.before;
+        historySeen = new Set(since.entries.map(historyMark));
+        await revealLatestExchange({ instant: true });
+        return;
+      }
+      for (const entry of since.entries) historySeen.add(historyMark(entry));
       const shown = new Map(
         turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
       );
-      const arrived = newerRoutineEntries(shown, page.entries);
-      if (!team || arrived.length === 0) return;
+      const arrived = newerRoutineEntries(shown, since.entries);
+      if (arrived.length === 0) return;
       const viewport = turnsViewport;
       const following = Boolean(viewport) &&
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
@@ -1440,6 +1455,7 @@
     turns = [];
     busy = false;
     historyBefore = null;
+    historySeen = new Set();
     historyWorking = false;
     olderHistoryArmed = false;
     olderHistoryFailed = false;
