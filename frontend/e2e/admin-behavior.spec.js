@@ -5498,6 +5498,28 @@ test.describe('Team Routines', () => {
     expect(searched.slice(searches).filter((before) => before !== null)).toEqual([]);
   });
 
+  test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }) => {
+    const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 12 } };
+    const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
+    await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [continuous], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(continuous.name) }).click();
+    const panel = page.getByRole('dialog', { name: continuous.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' });
+    // Newest first, each minute with how many runs it finished; a rollup is no single run with details to open.
+    await expect(runs.getByRole('listitem').nth(0)).toContainText('1 run finished');
+    await expect(runs.getByRole('listitem').nth(1)).toContainText('12 runs finished');
+    await expect(runs).not.toContainText('No runs yet.');
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(0);
+  });
+
   test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', async ({ page }) => {
     const failed = 'c'.repeat(32);
     const held = 'f'.repeat(32);

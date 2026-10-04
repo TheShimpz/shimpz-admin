@@ -10,6 +10,7 @@
     clockWords,
     fillParts,
     fillRoutineCopy,
+    healthyRunsWords,
     instantWords,
     pauseRoutine,
     resumeRoutine,
@@ -142,7 +143,7 @@
   }
 
   const RUN_ICONS = {
-    done: 'check', recovered: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
+    done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
     held: 'warning', paused: 'pause', frozen: 'approval',
   };
 
@@ -158,6 +159,7 @@
       held: copy.status.failed,
       paused: copy.status.paused,
       frozen: copy.panel.waitingApproval,
+      healthy: healthyRunsWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
     }[entry.outcome] ?? entry.outcome;
   }
 
@@ -329,8 +331,11 @@
                 <RoutineIcon name={RUN_ICONS[entry.outcome] ?? 'clock'} />
                 <span class="run-what">{outcomeWords(entry)}</span>
                 <span class="when">{instantWords(entry.createdAt, $locale, routine.timezone)}</span>
-                <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
-                  onclick={() => (detailsRun = entry.runId)}><RoutineIcon name="terminal" /></Button>
+                <!-- A rollup of a continuous Routine's healthy runs is no run of its own, so it has no execution details. -->
+                {#if entry.runId}
+                  <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
+                    onclick={() => (detailsRun = entry.runId)}><RoutineIcon name="terminal" /></Button>
+                {/if}
               </li>
             {/each}
             {#if olderRuns !== null}

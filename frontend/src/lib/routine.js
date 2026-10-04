@@ -752,6 +752,11 @@ function plural(forms, count, locale) {
   return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
 }
 
+/** How many healthy runs one rollup of a continuous Routine counts, in words. */
+export function healthyRunsWords(forms, runs, locale) {
+  return fill(plural(forms, runs, locale), { runs });
+}
+
 // Each outcome's tone in the transcript's activity timeline: healthy (done, recovered, running), danger (failed, held,
 // denied), waiting (paused, frozen, scope changed), or neutral (created, updated, set aside, stopped, missed runs).
 const NOTICE_TONES = Object.freeze({

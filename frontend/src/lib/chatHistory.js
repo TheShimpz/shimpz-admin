@@ -291,9 +291,16 @@ export async function listChatHistory(fetcher, teamId, before = null) {
   return { entries, before: historyCursor(body.before, response.status) };
 }
 
-// The Runs page shows a Routine's latest few runs; one search reads at most this many history pages to find them.
+// The Runs page shows a Routine's latest few runs; one search reads at most this many history pages to find them. A
+// continuous Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry.
 export const RECENT_ROUTINE_RUNS = 5;
 export const MAX_ROUTINE_RUN_PAGES = 16;
+
+/** Whether a history entry is one of this Routine's runs, or a rollup of its healthy continuous runs. */
+export function isRoutineRun(entry, routineId) {
+  return entry.kind === 'routine-run' && entry.routineId === routineId &&
+    (entry.runId !== null || entry.outcome === 'healthy');
+}
 
 /**
  * Up to `wanted` of a Routine's latest runs, newest first, from `before` (null for the newest history): pages are read
@@ -307,7 +314,7 @@ export async function recentRoutineRuns(fetcher, teamId, routineId, { before = n
     const { entries, before: older } = await listChatHistory(fetcher, teamId, cursor);
     // A page lists its entries oldest first.
     for (const entry of [...entries].reverse()) {
-      if (entry.kind !== 'routine-run' || entry.routineId !== routineId || !entry.runId) continue;
+      if (!isRoutineRun(entry, routineId)) continue;
       runs.push(entry);
       if (runs.length === wanted) return { runs, before: null };
     }

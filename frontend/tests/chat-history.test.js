@@ -358,3 +358,23 @@ test('a search for runs stops at its page bound with the cursor to continue from
   assert.deepEqual(await recentRoutineRuns(endless, 'marketing', routine), { runs: [], before: 'AAAAAAAAAMg' });
   assert.equal(reads, MAX_ROUTINE_RUN_PAGES);
 });
+
+test('a continuous Routine\'s healthy rollups count as its runs, with no run of their own', async () => {
+  const routine = '9'.repeat(32);
+  const rollup = (digit, runs) => ({
+    ...runRow(digit.repeat(32), routine),
+    run_id: null,
+    outcome: 'healthy',
+    detail: { runs },
+  });
+  const missed = { ...runRow('c'.repeat(32), routine), run_id: null, outcome: 'skipped', detail: { missed: 2 } };
+  const page = { entries: [missed, rollup('1', 12), runRow('2'.repeat(32), routine), rollup('3', 4)], before: null };
+  const found = await recentRoutineRuns(async () => response(200, page), 'marketing', routine);
+  // The rollups and the run are found newest first; a notice of missed runs is no run.
+  assert.deepEqual(found.runs.map((entry) => [entry.outcome, entry.runId, entry.detail.runs ?? null]), [
+    ['healthy', null, 4],
+    ['done', '2'.repeat(32), null],
+    ['healthy', null, 12],
+  ]);
+  assert.equal(found.before, null);
+});
