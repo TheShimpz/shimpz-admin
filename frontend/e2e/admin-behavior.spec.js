@@ -5447,7 +5447,7 @@ test.describe('Team Routines', () => {
     expect(chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
   });
 
-  test("a Routine's runs beyond one search's page bound are reached by continuing it, never reported absent", async ({ page }) => {
+  test("a Routine's runs beyond one search's page bound are reached by continuing it, and a run that ends joins them", async ({ page }) => {
     const pageOf = (start) => Array.from({ length: 64 }, (_, index) => ({
       id: `${(start + index).toString(16).padStart(32, '0')}:user`,
       created_at: '2026-10-02T09:00:00Z',
@@ -5456,21 +5456,34 @@ test.describe('Team Routines', () => {
       text: `Unrelated message ${start + index + 1}`,
     }));
     const searched = [];
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    // A run that ends while the panel is open is written after the newest unrelated message.
+    let delivered = null;
     await routeReadyChat(page);
     // Seventeen pages of newer unrelated chat, then the Routine's one run.
     await page.route('**/api/teams/marketing/chat/history**', (route) => {
       const before = new URL(route.request().url()).searchParams.get('before');
       searched.push(before);
       const index = before === null ? 0 : Number.parseInt(before.slice(-3, -1), 10);
+      const newest = delivered ? [...pageOf(0).slice(1), delivered] : pageOf(0);
       const body = index < 17
-        ? { entries: pageOf(index * 64), before: `AAAAAAAA${String(index + 1).padStart(2, '0')}A` }
-        : { entries: [routineRow('d'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] })], before: null };
+        ? { entries: index === 0 ? newest : pageOf(index * 64), before: `AAAAAAAA${String(index + 1).padStart(2, '0')}A` }
+        : { entries: [routineRow('d'.repeat(32), 'done', done)], before: null };
       return route.fulfill({ json: body });
     });
     let routineReads = 0;
+    let running = [{
+      run_id: 'e'.repeat(32),
+      routine_id: ROUTINE_VIEW.routine_id,
+      status: 'leased',
+      scheduled_at: '2026-10-02T09:00:00Z',
+      request_kind: null,
+      assistant_id: null,
+      action: null,
+    }];
     await page.route('**/api/teams/marketing/routines', (route) => {
       routineReads += 1;
-      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: running, incidents: [] } });
     });
     await page.clock.install();
     await page.goto('/chat/?team=marketing');
@@ -5485,15 +5498,27 @@ test.describe('Team Routines', () => {
     const older = runs.getByRole('button', { name: 'Look for older runs' });
     await expect(older).toBeVisible();
     await expect(runs).not.toContainText('No runs yet.');
-    await older.click();
+    await expect(runs).toContainText('Running now');
+    // The running run ends while the panel stays open: the next refresh lists it at the top, reading only the newest
+    // page, and the search for older runs keeps its place.
+    const before = searched.length;
+    delivered = routineRow('e'.repeat(32), 'done', done);
+    running = [];
+    await page.clock.runFor(16_000);
+    await expect(runs).not.toContainText('Running now');
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
+    await expect(runs.getByRole('listitem').first()).toContainText('Done');
+    await expect(older).toBeVisible();
+    expect(searched.slice(before).filter((cursor) => cursor !== null)).toEqual([]);
+    await older.click();
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(older).toHaveCount(0);
     // The chat's periodic refresh replaces the Routine's details; the runs found so far stay.
     const reads = routineReads;
     const searches = searched.length;
     await page.clock.runFor(16_000);
     await expect.poll(() => routineReads).toBeGreaterThan(reads);
-    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
+    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(older).toHaveCount(0);
     expect(searched.slice(searches).filter((before) => before !== null)).toEqual([]);
   });

@@ -1,8 +1,14 @@
 <script>
   import { Button, Notice } from '@shimpz/frontend';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
-  import { RECENT_ROUTINE_RUNS, recentRoutineRuns } from '$lib/chatHistory.js';
+  import {
+    historyMark,
+    historySince,
+    mergedRoutineRuns,
+    RECENT_ROUTINE_RUNS,
+    recentRoutineRuns,
+  } from '$lib/chatHistory.js';
   import { locale } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
@@ -112,18 +118,54 @@
   // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
   let routineId = $derived(routine.routine_id);
 
-  // Assistant names and this Routine's recent runs are read once, when the panel opens; neither is ever required.
+  // The mark of every history row the panel has read, so a refresh reads only the rows written since.
+  let seen = new Set();
+  let search = 0;
+  let refreshing = false;
+
+  // Assistant names and this Routine's recent runs are read when the panel opens; neither is ever required.
   $effect(() => {
-    let current = true;
+    const opened = ++search;
+    const marks = new Set();
+    seen = marks;
     void loadAssistantNames(fetch);
-    recentRoutineRuns(fetch, teamId, routineId)
+    recentRoutineRuns(fetch, teamId, routineId, { seen: marks })
       .then((found) => {
-        if (!current) return;
+        if (opened !== search) return;
         recent = found.runs;
         olderRuns = found.before;
       })
-      .catch(() => { if (current) recentFailed = true; });
-    return () => { current = false; };
+      .catch(() => { if (opened === search) recentFailed = true; });
+    return () => { search += 1; };
+  });
+
+  // Whenever the Routine's runs in progress are read again, a run may have ended: the runs written since the panel last
+  // read the history join its list at the top, and the search for older runs keeps its place. A refresh that reaches
+  // its page bound first starts the list again from what it read, and the older search continues past it.
+  async function refreshRecent() {
+    if (recent === null || recentFailed || refreshing || searchingOlder) return;
+    refreshing = true;
+    const opened = search;
+    try {
+      const since = await historySince(fetch, teamId, seen);
+      if (opened !== search || searchingOlder) return;
+      for (const entry of since.entries) seen.add(historyMark(entry));
+      if (since.before === null) {
+        recent = mergedRoutineRuns(recent, since.entries, routineId);
+      } else {
+        recent = mergedRoutineRuns([], since.entries, routineId);
+        olderRuns = since.before;
+      }
+    } catch {
+      // The next refresh tries again; the runs already listed stay.
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  $effect(() => {
+    void runs;
+    untrack(() => void refreshRecent());
   });
 
   async function searchOlderRuns() {
@@ -131,7 +173,7 @@
     try {
       const found = await recentRoutineRuns(fetch, teamId, routineId, {
         before: olderRuns,
-        wanted: RECENT_ROUTINE_RUNS - recent.length,
+        wanted: Math.max(1, RECENT_ROUTINE_RUNS - recent.length),
       });
       recent = [...recent, ...found.runs];
       olderRuns = found.before;

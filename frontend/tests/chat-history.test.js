@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { listChatHistory, MAX_ROUTINE_RUN_PAGES, recentRoutineRuns } from '../src/lib/chatHistory.js';
+import {
+  historyMark,
+  historySince,
+  listChatHistory,
+  MAX_REFRESH_PAGES,
+  MAX_ROUTINE_RUN_PAGES,
+  mergedRoutineRuns,
+  recentRoutineRuns,
+} from '../src/lib/chatHistory.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
 const TURN_A = 'a'.repeat(32);
@@ -378,3 +386,84 @@ test('a continuous Routine\'s healthy rollups count as its runs, with no run of 
   ]);
   assert.equal(found.before, null);
 });
+
+test('a refresh reads back only to the newest row it already read, and a newer version is a new row', async () => {
+  const routine = '9'.repeat(32);
+  const known = runRow('1'.repeat(32), routine);
+  const pages = {
+    null: { entries: [chatRow(2), { ...known, version: 2 }, chatRow(3)], before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [chatRow(0), known, chatRow(1)], before: 'AAAAAAAAAGQ' },
+  };
+  const requested = [];
+  const fetcher = async (url) => {
+    const before = new URL(url, 'http://admin').searchParams.get('before');
+    requested.push(before);
+    return response(200, pages[before]);
+  };
+  const seen = new Set([chatRow(0), known, chatRow(1)].map((entry) => historyMark(restored(entry))));
+  const since = await historySince(fetcher, 'marketing', seen);
+  // The rewritten Routine row is new; reading stops at the page holding the newest row already read.
+  assert.deepEqual(since.entries.map((entry) => entry.id), [chatRow(2).id, known.id, chatRow(3).id]);
+  assert.equal(since.entries[1].version, 2);
+  assert.equal(since.before, null);
+  assert.deepEqual(requested, [null, 'AAAAAAAAAMg']);
+  // Nothing written since: one page, nothing new.
+  for (const entry of since.entries) seen.add(historyMark(entry));
+  requested.length = 0;
+  assert.deepEqual(await historySince(fetcher, 'marketing', seen), { entries: [], before: null });
+  assert.deepEqual(requested, [null]);
+  // A history that ends first yields all of it.
+  const ended = await historySince(async () => response(200, { entries: [chatRow(4)], before: null }), 'marketing', seen);
+  assert.deepEqual(ended.entries.map((entry) => entry.id), [chatRow(4).id]);
+});
+
+test('a refresh stops at its page bound with every row it read and the cursor to continue from', async () => {
+  let reads = 0;
+  const endless = async () => {
+    reads += 1;
+    return response(200, { entries: [chatRow(reads)], before: 'AAAAAAAAAMg' });
+  };
+  const since = await historySince(endless, 'marketing', new Set());
+  assert.equal(reads, MAX_REFRESH_PAGES);
+  assert.deepEqual(since.entries.map((entry) => entry.id), Array.from(
+    { length: MAX_REFRESH_PAGES },
+    (_, index) => chatRow(MAX_REFRESH_PAGES - index).id,
+  ));
+  assert.equal(since.before, 'AAAAAAAAAMg');
+});
+
+test('a run search records every row it read', async () => {
+  const seen = new Set();
+  const page = { entries: [chatRow(1), runRow('1'.repeat(32), '9'.repeat(32))], before: null };
+  await recentRoutineRuns(async () => response(200, page), 'marketing', '9'.repeat(32), { seen });
+  assert.deepEqual([...seen], [chatRow(1).id, `${'1'.repeat(32)}:routine@1`]);
+});
+
+test("rows written since join a Routine's runs at the top, a newer version moving its run there", () => {
+  const routine = '9'.repeat(32);
+  const run = (digit, version = 1) => ({ ...restoredRun(digit, routine), version });
+  const listed = [run('2'), run('1')];
+  const arrived = [
+    { id: chatRow(5).id, kind: 'message' },
+    run('1', 2),
+    restoredRun('7', '8'.repeat(32)),
+    run('3'),
+    run('2'),
+  ];
+  // Run 2 arrives at the version already listed, so it stays where it is.
+  assert.deepEqual(mergedRoutineRuns(listed, arrived, routine).map((entry) => [entry.id[0], entry.version]), [
+    ['3', 1], ['1', 2], ['2', 1],
+  ]);
+  assert.equal(mergedRoutineRuns(listed, [arrived[0]], routine), listed);
+});
+
+function restoredRun(digit, routineId) {
+  return {
+    id: `${digit.repeat(32)}:routine`,
+    kind: 'routine-run',
+    runId: digit.repeat(32),
+    routineId,
+    outcome: 'done',
+    version: 1,
+  };
+}
