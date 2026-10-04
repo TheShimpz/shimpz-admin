@@ -236,19 +236,21 @@ test('cancelling stops the uploads in flight and sending waits for none of them'
 });
 
 // Holds every file read the page starts once `holdAttachmentReads` is set, until `releaseAttachmentReads` runs; the
-// release settles after the held reads and the work they resume have finished.
+// release settles after the held reads and the work they resume have finished. `releaseAttachmentReads(true)` makes
+// the held reads fail instead.
 async function holdFileReads(page) {
   await page.addInitScript(() => {
     const read = Blob.prototype.arrayBuffer;
     const held = [];
     window.heldAttachmentReads = () => held.length;
-    window.releaseAttachmentReads = async () => {
-      await Promise.all(held.splice(0).map((release) => release()));
+    window.releaseAttachmentReads = async (fail = false) => {
+      await Promise.all(held.splice(0).map((release) => release(fail)));
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
     Blob.prototype.arrayBuffer = function arrayBuffer() {
       if (!window.holdAttachmentReads) return read.call(this);
-      return new Promise((resolve) => held.push(() => {
+      return new Promise((resolve, reject) => held.push((fail) => {
+        if (fail) return reject(new DOMException('held read failed', 'NotReadableError'));
         const bytes = read.call(this);
         resolve(bytes);
         return bytes;
@@ -318,6 +320,25 @@ test('the first file of a message can be cancelled while its read stalls, and th
   // The read that finishes after the cancel belongs to no message.
   await page.evaluate(() => window.releaseAttachmentReads());
   await expect(attachmentList(page).getByRole('listitem')).toHaveCount(0);
+});
+
+test('a selection cancelled while its read fails reads none of its later files', async ({ page }) => {
+  await holdFileReads(page);
+  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
+  await page.evaluate(() => { window.holdAttachmentReads = true; });
+  await choose(page, attach, [textFile('first.md'), textFile('second.md'), textFile('third.md')]);
+  await expect.poll(() => page.evaluate(() => window.heldAttachmentReads())).toBe(1);
+
+  await page.getByRole('button', { name: EN.cancelUpload }).click();
+  await page.evaluate(() => window.releaseAttachmentReads(true));
+  // The failed read ends the cancelled selection: second.md and third.md are never read.
+  expect(await page.evaluate(() => window.heldAttachmentReads())).toBe(0);
+  await expect(attachmentList(page).getByRole('listitem')).toHaveCount(0);
+  await composer.fill('Hello');
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => chatMessages(scenario).length).toBe(1);
+  expect(chatMessages(scenario)[0].files ?? []).toHaveLength(0);
 });
 
 async function selectTeam(page, name) {

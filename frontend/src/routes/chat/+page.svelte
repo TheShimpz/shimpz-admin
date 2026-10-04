@@ -1699,6 +1699,8 @@
     const current = () => attachmentTeamId === teamId && attachmentInspections.includes(inspection);
     try {
       for (const file of files) {
+        // A Team change or a cancel ends the selection: no further file of it is read, even after a failed read.
+        if (!current()) return;
         let readability = { kind: 'file', note: 'unreadable' };
         if (file.size > 0) {
           try {
