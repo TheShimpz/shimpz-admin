@@ -80,6 +80,18 @@ test('a turn shown live keeps the time the page first showed it, through later u
   assert.ok(turnInstants()({ renderKey: 1 }) <= Date.now());
 });
 
+test('a replaced transcript forgets the live times of the turns it no longer holds', () => {
+  let clock = Date.parse('2026-10-02T10:00:00Z');
+  const instantOf = turnInstants(() => clock);
+  instantOf({ renderKey: 1 });
+  instantOf({ renderKey: 2 });
+  clock += 60_000;
+  instantOf.retain([{ renderKey: 2 }]);
+  // The retained turn keeps its first time; a turn that left and returns is shown anew.
+  assert.equal(instantOf({ renderKey: 2 }), Date.parse('2026-10-02T10:00:00Z'));
+  assert.equal(instantOf({ renderKey: 1 }), Date.parse('2026-10-02T10:01:00Z'));
+});
+
 test('a message time is its clock to the second, in the viewer timezone and the Admin locale', () => {
   const instant = Date.parse('2026-10-03T02:30:07Z');
   assert.equal(clockTime(instant, 'pt', 'UTC'), '02:30:07');

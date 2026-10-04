@@ -204,6 +204,7 @@
   const instantOf = turnInstants();
   let today = $state(calendarDay(Date.now()));
   let days = $derived(exchangeDays(exchanges, instantOf));
+  $effect(() => instantOf.retain(turns));
   let installPlanWorking = $derived(turns.some((turn) => (
     ['planned', 'installing'].includes(turn.installPlan?.state)
   )));

@@ -47,15 +47,20 @@ export function exchangeDays(exchanges, instantOf, timeZone) {
 
 /**
  * The instant of each transcript turn: a history row's stored time, else the moment the page first showed it. A shown
- * turn keeps its first time across later updates.
+ * turn keeps its first time across later updates; `retain(turns)` forgets the turns the transcript no longer holds.
  */
 export function turnInstants(now = () => Date.now()) {
   const shown = new Map();
-  return (turn) => {
+  const instantOf = (turn) => {
     if (turn.createdAt) return Date.parse(turn.createdAt);
     if (!shown.has(turn.renderKey)) shown.set(turn.renderKey, now());
     return shown.get(turn.renderKey);
   };
+  instantOf.retain = (turns) => {
+    const live = new Set(turns.map((turn) => turn.renderKey));
+    for (const key of shown.keys()) if (!live.has(key)) shown.delete(key);
+  };
+  return instantOf;
 }
 
 /** An instant's time of day to the second on a 24-hour clock ("14:03:07"), in the Admin locale's digits. */
