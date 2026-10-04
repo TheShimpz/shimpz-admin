@@ -581,6 +581,34 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/integrations`);
 });
 
+test('a Routine plan projection bounds text in Unicode code points, as Team does', () => {
+  // Team bounds each projected text by Python len(): a preview of 100 emoji is 102 code points but 202 UTF-16 units.
+  const emoji = '\u{1F600}';
+  const preview = JSON.stringify(emoji.repeat(100));
+  const literal = (value) => [{ ...PLAN[0], inputs: [{ member: 'page', source: 'literal', value }] }];
+  // Each bound counts the whole string: a preview's JSON quotes, and a pointer's leading slash.
+  assert.equal(isSteps(literal(JSON.stringify(emoji.repeat(118)))), true);
+  const step = { ...PLAN[0], inputs: [{ member: emoji.repeat(128), source: 'literal', value: preview }] };
+  const later = {
+    id: 'records',
+    assistant: 'shimpz-cloudflare',
+    action: 'list-dns-records',
+    inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: `/${emoji.repeat(255)}` }],
+    stored_inputs: [],
+  };
+  assert.equal(isSteps([step, later]), true);
+  assert.equal(parseRoutineView({ ...ROUTINE, steps: [step, later] }).steps[0].inputs[0].value, preview);
+  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, detail: { ...DEFINED, steps: [step, later] } };
+  assert.equal(parseRoutineRunEntry(created).outcome, 'created');
+  for (const steps of [
+    literal(JSON.stringify(emoji.repeat(119))),
+    [{ ...step, inputs: [{ member: emoji.repeat(129), source: 'literal', value: '1' }] }],
+    [step, { ...later, inputs: [{ ...later.inputs[0], pointer: `/${emoji.repeat(256)}` }] }],
+  ]) {
+    assert.equal(isSteps(steps), false, JSON.stringify(steps));
+  }
+});
+
 test('a Routine plan projection is admitted only in its closed, bounded form', () => {
   const step = PLAN[0];
   const later = {

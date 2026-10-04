@@ -3,7 +3,7 @@
 
 import { clockTime } from './chatDays.js';
 import { isLocale } from './locales.js';
-import { isInstant, jsonObject, TEAM_ID_RE } from './validate.js';
+import { codePointLength, isInstant, jsonObject, TEAM_ID_RE } from './validate.js';
 
 export const MAX_QUOTE_CHARS = 500;
 export const MAX_ASSISTANTS = 16;
@@ -140,7 +140,7 @@ const INPUT_KEYS = {
 };
 
 function plain(value, maximum) {
-  return typeof value === 'string' && value.length > 0 && value.length <= maximum && !PLAN_UNSAFE_RE.test(value);
+  return typeof value === 'string' && value.length > 0 && codePointLength(value) <= maximum && !PLAN_UNSAFE_RE.test(value);
 }
 
 function isInput(value, earlier) {
@@ -148,7 +148,7 @@ function isInput(value, earlier) {
   if (!keys || !exact(value, keys) || !plain(value.member, 128)) return false;
   if (value.source === 'literal') return plain(value.value, MAX_PREVIEW_CHARS);
   if (value.source === 'run_clock') return CLOCK_FORMATS.includes(value.value);
-  return earlier.includes(value.step) && typeof value.pointer === 'string' && value.pointer.length <= 256 &&
+  return earlier.includes(value.step) && typeof value.pointer === 'string' && codePointLength(value.pointer) <= 256 &&
     POINTER_RE.test(value.pointer) && !PLAN_UNSAFE_RE.test(value.pointer);
 }
 
