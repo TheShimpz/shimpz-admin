@@ -16,7 +16,7 @@
   import DialogAction from '$lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
-  import { historyMark, historySince, listChatHistory } from '$lib/chatHistory.js';
+  import { historyBoundary, historySince, listChatHistory } from '$lib/chatHistory.js';
   import BrainMenu from '$lib/BrainMenu.svelte';
   import EffortMenu from '$lib/EffortMenu.svelte';
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
@@ -496,7 +496,7 @@
       if (!team) throw new Error(copy.loadFailed);
       turns = page.entries.map((entry) => historyTurn(entry, team.name));
       historyBefore = page.before;
-      historySeen = new Set(page.entries.map(historyMark));
+      historySeen = historyBoundary(new Set(), page.entries);
       historyLoading = false;
       connectSocket(teamId);
       if (turns.length > 0) await revealLatestExchange({ instant: true });
@@ -594,11 +594,11 @@
       if (since.before !== null) {
         turns = since.entries.map((entry) => historyTurn(entry, team.name));
         historyBefore = since.before;
-        historySeen = new Set(since.entries.map(historyMark));
+        historySeen = historyBoundary(new Set(), since.entries);
         await revealLatestExchange({ instant: true });
         return;
       }
-      for (const entry of since.entries) historySeen.add(historyMark(entry));
+      historySeen = historyBoundary(historySeen, since.entries);
       const shown = new Map(
         turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
       );
