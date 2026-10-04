@@ -281,7 +281,7 @@ async function measure(browser, baseURL, count, control) {
     const beforeTerminal = await taskDuration(cdp);
     await page.evaluate((value) => window.benchEmit({
       type: 'done', team_id: value.team_id, team_name: value.team_name, reply: 'Benchmark reply.',
-      clarification: null, routine_proposal: null,
+      clarification: null,
     }), team);
     await page.getByText('Benchmark reply.', { exact: true }).waitFor();
     await page.getByRole('group', { name: 'I’m processing…' }).waitFor({ state: 'detached' });

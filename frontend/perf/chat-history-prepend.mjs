@@ -33,6 +33,8 @@ if (!Number.isSafeInteger(samples) || samples < 1 || samples > 30) {
 
 const cursor = (index) => `${String(index).padStart(10, '0')}E`;
 const id = (index) => index.toString(16).padStart(32, '0');
+// Every history row carries the UTC second Admin wrote it; record N was written N seconds after the first.
+const createdAt = (index) => new Date(Date.UTC(2026, 9, 1) + index * 1_000).toISOString().replace('.000Z', 'Z');
 const percentile = (values, proportion) => {
   const ordered = [...values].sort((a, b) => a - b);
   return Math.round(ordered[Math.ceil(proportion * ordered.length) - 1] * 10) / 10;
@@ -44,10 +46,10 @@ function historyPage(index, totalPages) {
   for (let offset = 0; offset < 32; offset += 1) {
     const number = first + offset;
     const marker = `Record ${number}`;
-    entries.push({ id: `${id(number)}:user`, kind: 'message', role: 'user',
+    entries.push({ id: `${id(number)}:user`, created_at: createdAt(number), kind: 'message', role: 'user',
       text: `${marker}: Summarize the status and next steps.` });
-    entries.push({ id: `${id(number)}:reply`, kind: 'message', role: 'assistant', author: team.team_name,
-      text: `### ${marker}\n\n- **Status:** ready for review.\n- **Next:** check the attached result.\n\n\`\`\`text\n${marker}: complete\n\`\`\`` });
+    entries.push({ id: `${id(number)}:reply`, created_at: createdAt(number), kind: 'message', role: 'assistant',
+      author: team.team_name, text: `### ${marker}\n\n- **Status:** ready for review.\n- **Next:** check the attached result.\n\n\`\`\`text\n${marker}: complete\n\`\`\`` });
   }
   return { entries, before: index + 1 < totalPages ? cursor(index + 1) : null };
 }
