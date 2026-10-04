@@ -189,6 +189,9 @@ textarea:focus-visible {
   border: 0;
 }
 
+/* Every property transitions by default, so any nonzero duration here would hold each style change, such as a margin
+   that depends on a sibling, for a frame after the update that caused it and after any scroll correction measured
+   against that update. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -196,7 +199,7 @@ textarea:focus-visible {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 

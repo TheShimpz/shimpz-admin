@@ -538,6 +538,8 @@
         ...turns,
       ];
       historyBefore = page.before;
+      // The loading status leaves in the same update, so the correction measures the layout the reader will see.
+      historyWorking = false;
       await tick();
       if (viewport && viewport === turnsViewport) {
         viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;

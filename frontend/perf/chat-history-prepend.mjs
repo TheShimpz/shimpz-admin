@@ -12,6 +12,7 @@
 // A forced collection after the visible window bounds deferred heap work separately.
 // Journey totals contain the idle and scroll windows; adding them would count work twice.
 // Collection totals also include assertions; journeyWallMs is measured by the driver.
+// SHIMPZ_HISTORY_EXHAUST=1 makes the measured page the oldest one, so its prepend also removes the history sentinel.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
@@ -24,6 +25,7 @@ const models = catalog.providers.map((item) => ({
 }));
 const pages = (process.env.SHIMPZ_HISTORY_PAGES ?? '1,4,8').split(',').map(Number);
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
+const exhaust = (process.env.SHIMPZ_HISTORY_EXHAUST ?? '0') === '1';
 if (pages.some((count) => !Number.isSafeInteger(count) || count < 1 || count > 16)) {
   throw new Error('Existing page counts must be between 1 and 16.');
 }
@@ -158,7 +160,7 @@ async function measure(browser, baseURL, existingPages) {
         if (before !== null && before !== cursor(index)) unexpected.push('invalid cursor');
         if (before === null) newestRequests += 1;
         else olderRequests += 1;
-        body = historyPage(index, existingPages + 2);
+        body = historyPage(index, existingPages + (exhaust ? 1 : 2));
       } else {
         body = apiFixture(method, url.pathname);
       }
@@ -295,7 +297,7 @@ try {
   }
   for (const [existingPages, values] of runs) {
     const metric = (name, proportion) => percentile(values.map((value) => value[name]), proportion);
-    console.log(JSON.stringify({ existingPages, insertedEntries: 64, samples,
+    console.log(JSON.stringify({ existingPages, insertedEntries: 64, samples, historyExhausted: exhaust,
       cpuP50Ms: metric('cpuMs', 0.5), cpuP95Ms: metric('cpuMs', 0.95),
       journeyTaskP50Ms: metric('journeyTaskMs', 0.5), journeyTaskP95Ms: metric('journeyTaskMs', 0.95),
       journeyWithCollectionTaskP50Ms: metric('journeyWithCollectionTaskMs', 0.5),

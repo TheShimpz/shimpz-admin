@@ -1800,6 +1800,37 @@ test('loads earlier history only when the transcript is scrolled to its top', as
   await expect(turns).not.toHaveAttribute('aria-describedby');
 });
 
+test('keeps the message at the top of the transcript where it was once earlier history arrives', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  await routeReadyChat(page, {
+    history: longHistory('f', 32, cursor),
+    olderHistory: longHistory('e', 32, null),
+  });
+  let releaseOlder;
+  const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
+  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
+    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
+    return route.fallback();
+  });
+  // A reader who asked for reduced motion gets every layout change at once, so it is measured with that setting.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/chat/');
+  const turns = page.locator('.turns');
+  await expect(page.getByText('Recent answer 32', { exact: false })).toBeInViewport();
+  // The reader scrolls the transcript to its top with the wheel, as they reach earlier history.
+  await turns.hover();
+  await page.mouse.wheel(0, -((await turns.evaluate((element) => element.scrollTop)) + 1000));
+  await expect(page.getByRole('status').filter({ hasText: 'Loading earlier messages…' })).toBeAttached();
+  const reading = page.getByText('Recent question 1', { exact: true });
+  const shownAt = async () => (await reading.boundingBox()).y;
+  const before = await shownAt();
+  releaseOlder();
+  await expect(page.getByText('Earlier question 32', { exact: true })).toBeAttached();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // The reader's place is the message they were reading, not just any part of the screen.
+  expect(Math.abs((await shownAt()) - before)).toBeLessThanOrEqual(2);
+});
+
 test('keeps the reader in place when they scroll while earlier history is loading', async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
