@@ -273,6 +273,7 @@ def _file_reference(value: object) -> dict[str, object]:
     size = value["size"]
     if (
         team_contract.canonical_file_id(value["id"]) is None
+        or not isinstance(value["name"], str)
         or team_contract.canonical_filename(value["name"]) != value["name"]
         or not isinstance(value["media_type"], str)
         or team_contract.canonical_media_type(value["media_type"]) != value["media_type"]

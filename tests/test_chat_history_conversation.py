@@ -258,7 +258,15 @@ class ChatHistoryConversationTests(unittest.TestCase):
         self.assertEqual(rows[f"{attached}:reply"], "attached")
         self.assertEqual(rows[f"{refused}:guidance"], "attached")
         self.assertEqual(rows[f"{plain}:reply"], "plain")
-        for invalid in (1, "yes", None, [{**FILE, "sha256": "e" * 64}], [FILE, FILE], [FILE] * 9):
+        for invalid in (
+            1,
+            "yes",
+            None,
+            [{**FILE, "name": None}],
+            [{**FILE, "sha256": "e" * 64}],
+            [FILE, FILE],
+            [FILE] * 9,
+        ):
             with self.subTest(files=invalid), self.assertRaises(ValueError):
                 history.append_user("marketing", history.new_turn_id(), "x", files=invalid)
         with self.assertRaises(ValueError):
