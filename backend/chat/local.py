@@ -79,6 +79,7 @@ _CHAT_ERROR_DETAILS = {
     "ownership-conflict": "the Team resource ownership check failed",
     "action-state-unavailable": "Team Action execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
+    "space-resetting": "the Space is being reset; retry when it finishes",
     "integration-challenge-response-invalid": "the Assistant integration challenge was invalid",
     "human-challenge-response-invalid": "the Assistant request for your input was invalid",
     "human-request-invalid": "the Assistant request for your input changed; retry the message",

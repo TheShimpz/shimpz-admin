@@ -1011,8 +1011,9 @@
     if (status === 503 && detail === 'authentication is unavailable') {
       return { message: copy.authenticationUnavailable, detail: '' };
     }
+    const resetting = status === 409 && typeof detail === 'string' && detail.startsWith('space-resetting:');
     return {
-      message: friendlyChatError(status),
+      message: resetting ? copy.spaceResetting : friendlyChatError(status),
       detail: `HTTP ${status} · ${detail}`,
     };
   }

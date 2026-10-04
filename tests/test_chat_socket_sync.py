@@ -470,6 +470,21 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 },
             )
 
+            # Team refuses a turn that races a Local reset; the code survives so the person knows to retry.
+            resetting = await response_for(
+                self.chat_socket.local._safe_error(
+                    self.team.TeamResponse(409, {"code": "space-resetting", "detail": "the Space is being reset"})
+                )
+            )
+            self.assertEqual(
+                resetting,
+                {
+                    "type": "error",
+                    "status": 409,
+                    "detail": "space-resetting: the Space is being reset; retry when it finishes",
+                },
+            )
+
             sensitive_marker = "sk-private-must-never-cross-the-websocket"
             upstream_error = await response_for(
                 self.team.TeamResponse(

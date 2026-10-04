@@ -428,6 +428,7 @@ export const messages = {
       "turnFailed": "The chat turn could not start.",
       "capacityFailed": "The local chat is busy. Try again shortly.",
       "runtimeFailed": "The local chat runtime is unavailable.",
+      "spaceResetting": "The Space is being reset. Try again when it finishes.",
       "requestFailed": "The Team could not complete this turn.",
       "install": {
         "label": "Assistant installation",
@@ -832,6 +833,7 @@ export const messages = {
       "turnFailed": "Não foi possível iniciar o turno do chat.",
       "capacityFailed": "O chat local está ocupado. Tente novamente em instantes.",
       "runtimeFailed": "O runtime do chat local está indisponível.",
+      "spaceResetting": "O Space está sendo redefinido. Tente novamente quando terminar.",
       "requestFailed": "O Time não conseguiu concluir este turno.",
       "install": {
         "label": "Instalação de Assistant",
@@ -1236,6 +1238,7 @@ export const messages = {
       "turnFailed": "No se pudo iniciar el turno del chat.",
       "capacityFailed": "El chat local está ocupado. Inténtalo de nuevo en unos instantes.",
       "runtimeFailed": "El entorno del chat local no está disponible.",
+      "spaceResetting": "El Space se está restableciendo. Inténtalo de nuevo cuando termine.",
       "requestFailed": "El Equipo no pudo completar este turno.",
       "install": {
         "label": "Instalación de Assistant",
@@ -1640,6 +1643,7 @@ export const messages = {
       "turnFailed": "无法开始本轮聊天。",
       "capacityFailed": "本地聊天正忙，请稍后重试。",
       "runtimeFailed": "本地聊天运行环境不可用。",
+      "spaceResetting": "Space 正在重置。完成后请重试。",
       "requestFailed": "团队无法完成本轮对话。",
       "install": {
         "label": "Assistant 安装",
@@ -2044,6 +2048,7 @@ export const messages = {
       "turnFailed": "Le tour de chat n’a pas pu démarrer.",
       "capacityFailed": "Le chat local est occupé. Réessayez dans un instant.",
       "runtimeFailed": "L’environnement du chat local est indisponible.",
+      "spaceResetting": "Le Space est en cours de réinitialisation. Réessayez une fois celle-ci terminée.",
       "requestFailed": "L’Équipe n’a pas pu terminer ce tour.",
       "install": {
         "label": "Installation d’Assistant",
@@ -2448,6 +2453,7 @@ export const messages = {
       "turnFailed": "Die Chat-Runde konnte nicht gestartet werden.",
       "capacityFailed": "Der lokale Chat ist ausgelastet. Versuche es gleich noch einmal.",
       "runtimeFailed": "Die lokale Chat-Laufzeit ist nicht verfügbar.",
+      "spaceResetting": "Der Space wird gerade zurückgesetzt. Versuche es erneut, sobald das abgeschlossen ist.",
       "requestFailed": "Das Team konnte diese Runde nicht abschließen.",
       "install": {
         "label": "Assistant-Installation",
@@ -2852,6 +2858,7 @@ export const messages = {
       "turnFailed": "チャットのターンを開始できませんでした。",
       "capacityFailed": "ローカルチャットは混み合っています。しばらくしてからもう一度お試しください。",
       "runtimeFailed": "ローカルチャットのランタイムを利用できません。",
+      "spaceResetting": "Space をリセットしています。完了したらもう一度お試しください。",
       "requestFailed": "チームはこのターンを完了できませんでした。",
       "install": {
         "label": "Assistant のインストール",
@@ -3256,6 +3263,7 @@ export const messages = {
       "turnFailed": "تعذّر بدء جولة الدردشة.",
       "capacityFailed": "الدردشة المحلية مشغولة. أعد المحاولة بعد قليل.",
       "runtimeFailed": "بيئة تشغيل الدردشة المحلية غير متاحة.",
+      "spaceResetting": "تجري إعادة تعيين Space. أعد المحاولة بعد اكتمالها.",
       "requestFailed": "تعذّر على الفريق إكمال هذه الجولة.",
       "install": {
         "label": "تثبيت Assistant",

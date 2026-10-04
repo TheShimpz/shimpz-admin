@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 
 import { expect, test } from '@playwright/test';
 
+import { messages } from '../src/lib/messages.js';
 import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
@@ -198,6 +199,7 @@ async function routeReadyChat(page, {
   holdProgressFinish = false,
   invalidProgressSequence = false,
   terminalError = false,
+  terminalDetail = 'synthetic runtime failure',
   whatsappInstalled = false,
   omitPlannedWhatsappFromInventory = false,
   storedInputStatus = '',
@@ -824,7 +826,7 @@ async function routeReadyChat(page, {
         if (holdProgressStart) releaseProgressStart = sendProgress;
         else sendProgress();
         const completeReply = () => socket.send(JSON.stringify(terminalError
-          ? { type: 'error', status: terminalError === true ? 503 : terminalError, detail: 'synthetic runtime failure' }
+          ? { type: 'error', status: terminalError === true ? 503 : terminalError, detail: terminalDetail }
           : {
               type: 'done',
               team_id: 'marketing',
@@ -1294,6 +1296,21 @@ test('Try again resends only the latest failed message', async ({ page }) => {
   expect(sentMessages(frames)).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
   // A new send names no identity; Try again carries back the seal Admin gave the failed send (ADR-0092).
   expect(frames.map((frame) => frame.request)).toEqual([null, null, `${1_790_000_002}.${'a'.repeat(32)}.${'b'.repeat(64)}`]);
+});
+
+test('a send refused while the Space resets explains the reset and can be sent again', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    terminalError: 409,
+    terminalDetail: 'space-resetting: the Space is being reset; retry when it finishes',
+  });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
+  await expect(notice).toContainText(messages.en.chatPage.spaceResetting);
+
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual(['List my DNS zones', 'List my DNS zones']);
 });
 
 test('a send Admin refuses as expired is never offered to be sent again', async ({ page }) => {
