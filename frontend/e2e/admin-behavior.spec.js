@@ -1800,7 +1800,7 @@ test('loads earlier history only when the transcript is scrolled to its top', as
   await expect(turns).not.toHaveAttribute('aria-describedby');
 });
 
-test('keeps the message at the top of the transcript where it was once earlier history arrives', async ({ page }) => {
+test('keeps the message at the top of the transcript where it was once earlier history arrives @browser-sensitive', async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   await routeReadyChat(page, {
     history: longHistory('f', 32, cursor),
@@ -1817,10 +1817,14 @@ test('keeps the message at the top of the transcript where it was once earlier h
   await page.goto('/chat/');
   const turns = page.locator('.turns');
   await expect(page.getByText('Recent answer 32', { exact: false })).toBeInViewport();
-  // The reader scrolls the transcript to its top with the wheel, as they reach earlier history.
+  // The reader scrolls the transcript to its top with the wheel, as they reach earlier history; an engine may move
+  // less than one gesture asks, so the reader keeps scrolling until the earlier page is requested.
+  const loading = page.getByRole('status').filter({ hasText: 'Loading earlier messages…' });
   await turns.hover();
-  await page.mouse.wheel(0, -((await turns.evaluate((element) => element.scrollTop)) + 1000));
-  await expect(page.getByRole('status').filter({ hasText: 'Loading earlier messages…' })).toBeAttached();
+  await expect(async () => {
+    await page.mouse.wheel(0, -((await turns.evaluate((element) => element.scrollTop)) + 1000));
+    await expect(loading).toBeAttached({ timeout: 500 });
+  }).toPass();
   const reading = page.getByText('Recent question 1', { exact: true });
   const shownAt = async () => (await reading.boundingBox()).y;
   const before = await shownAt();
