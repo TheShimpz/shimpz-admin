@@ -3,7 +3,7 @@
   import { tick, untrack } from 'svelte';
 
   import {
-    historyMark,
+    historyBoundary,
     historySince,
     mergedRoutineRuns,
     RECENT_ROUTINE_RUNS,
@@ -118,7 +118,7 @@
   // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
   let routineId = $derived(routine.routine_id);
 
-  // The mark of every history row the panel has read, so a refresh reads only the rows written since.
+  // The marks of the newest history rows the panel has read, so a refresh reads only the rows written since.
   let seen = new Set();
   let search = 0;
   let refreshing = false;
@@ -149,7 +149,7 @@
     try {
       const since = await historySince(fetch, teamId, seen);
       if (opened !== search || searchingOlder) return;
-      for (const entry of since.entries) seen.add(historyMark(entry));
+      seen = historyBoundary(seen, since.entries);
       if (since.before === null) {
         recent = mergedRoutineRuns(recent, since.entries, routineId);
       } else {

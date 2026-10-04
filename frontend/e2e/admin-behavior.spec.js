@@ -5523,6 +5523,42 @@ test.describe('Team Routines', () => {
     expect(searched.slice(searches).filter((before) => before !== null)).toEqual([]);
   });
 
+  test("a Routine's panel that stays open keeps its latest few runs while new runs keep ending", async ({ page }) => {
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const failed = { code: 'assistant-rpc-failed', actions: [] };
+    const digits = '0123456789abcdef';
+    const history = [0, 1, 2, 3, 4].map((index) => routineRow(digits[index].repeat(32), 'done', done));
+    await routeReadyChat(page);
+    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({
+      json: { entries: history, before: null },
+    }));
+    let routineReads = 0;
+    await page.route('**/api/teams/marketing/routines', (route) => {
+      routineReads += 1;
+      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+    });
+    await page.clock.install();
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' });
+    await expect(runs.getByRole('listitem')).toHaveCount(5);
+    // Two runs end before each refresh; the newest, a failed one, lists first and the oldest leave the list.
+    for (let index = 5; index < 15; index += 2) {
+      history.push(routineRow(digits[index].repeat(32), 'done', done));
+      history.push(routineRow(digits[index + 1].repeat(32), 'failed', failed));
+      const reads = routineReads;
+      await page.clock.runFor(16_000);
+      await expect.poll(() => routineReads).toBeGreaterThan(reads);
+      await expect(runs.getByRole('listitem').first()).toContainText('assistant-rpc-failed');
+      await expect(runs.getByRole('listitem')).toHaveCount(5);
+    }
+  });
+
   test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }) => {
     const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 12 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });

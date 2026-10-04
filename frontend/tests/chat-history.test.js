@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  HISTORY_BOUNDARY_ROWS,
+  historyBoundary,
   historyMark,
   historySince,
   listChatHistory,
   MAX_REFRESH_PAGES,
   MAX_ROUTINE_RUN_PAGES,
   mergedRoutineRuns,
+  RECENT_ROUTINE_RUNS,
   recentRoutineRuns,
 } from '../src/lib/chatHistory.js';
 import { LocalApiError } from '../src/lib/localApi.js';
@@ -432,11 +435,34 @@ test('a refresh stops at its page bound with every row it read and the cursor to
   assert.equal(since.before, 'AAAAAAAAAMg');
 });
 
-test('a run search records every row it read', async () => {
+test('a run search records only the newest page it read, the boundary a refresh reads back to', async () => {
   const seen = new Set();
-  const page = { entries: [chatRow(1), runRow('1'.repeat(32), '9'.repeat(32))], before: null };
-  await recentRoutineRuns(async () => response(200, page), 'marketing', '9'.repeat(32), { seen });
+  const pages = {
+    null: { entries: [chatRow(1), runRow('1'.repeat(32), '9'.repeat(32))], before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [chatRow(0)], before: null },
+  };
+  const fetcher = async (url) => response(200, pages[new URL(url, 'http://admin').searchParams.get('before')]);
+  await recentRoutineRuns(fetcher, 'marketing', '9'.repeat(32), { seen, wanted: 2 });
   assert.deepEqual([...seen], [chatRow(1).id, `${'1'.repeat(32)}:routine@1`]);
+});
+
+test('the history boundary keeps only the marks of the newest rows read', () => {
+  const marks = new Set(Array.from({ length: HISTORY_BOUNDARY_ROWS }, (_, index) => chatRow(index).id));
+  const arrived = [chatRow(HISTORY_BOUNDARY_ROWS), restored(chatRow(HISTORY_BOUNDARY_ROWS + 1))];
+  const boundary = historyBoundary(marks, arrived);
+  assert.equal(boundary.size, HISTORY_BOUNDARY_ROWS);
+  assert.equal(boundary.has(chatRow(0).id), false);
+  assert.equal(boundary.has(chatRow(1).id), false);
+  assert.deepEqual([...boundary].slice(-3), [
+    chatRow(HISTORY_BOUNDARY_ROWS - 1).id,
+    chatRow(HISTORY_BOUNDARY_ROWS).id,
+    chatRow(HISTORY_BOUNDARY_ROWS + 1).id,
+  ]);
+  // However many rows a long-open panel reads, the boundary never grows past one page of them.
+  let growing = new Set();
+  for (let index = 0; index < 10 * HISTORY_BOUNDARY_ROWS; index += 1) growing = historyBoundary(growing, [chatRow(index)]);
+  assert.equal(growing.size, HISTORY_BOUNDARY_ROWS);
+  assert.equal(growing.has(chatRow(10 * HISTORY_BOUNDARY_ROWS - 1).id), true);
 });
 
 test("rows written since join a Routine's runs at the top, a newer version moving its run there", () => {
@@ -455,6 +481,24 @@ test("rows written since join a Routine's runs at the top, a newer version movin
     ['3', 1], ['1', 2], ['2', 1],
   ]);
   assert.equal(mergedRoutineRuns(listed, [arrived[0]], routine), listed);
+});
+
+test("a Routine's merged runs keep their window: each new run pushes the oldest out", () => {
+  const routine = '9'.repeat(32);
+  const digits = '0123456789abcdef';
+  const run = (index) => restoredRun(digits[index], routine);
+  const recent = [4, 3, 2, 1, 0].map(run);
+  // A continuous Routine keeps adding runs while its panel stays open; the list stays at its latest few.
+  let listed = recent;
+  for (let index = 5; index < 16; index += 1) listed = mergedRoutineRuns(listed, [run(index)], routine);
+  assert.equal(listed.length, RECENT_ROUTINE_RUNS);
+  assert.deepEqual(listed.map((entry) => entry.id[0]), ['f', 'e', 'd', 'c', 'b']);
+  // A shorter list fills up to the window; a longer one the person asked for keeps its length.
+  assert.deepEqual(mergedRoutineRuns([run(0)], [run(1), run(2)], routine).map((entry) => entry.id[0]), ['2', '1', '0']);
+  const searched = [6, 5, 4, 3, 2, 1, 0].map(run);
+  assert.deepEqual(mergedRoutineRuns(searched, [run(7), run(8)], routine).map((entry) => entry.id[0]), [
+    '8', '7', '6', '5', '4', '3', '2',
+  ]);
 });
 
 function restoredRun(digit, routineId) {
