@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -57,6 +58,7 @@ class RoutineAnswerTests(unittest.TestCase):
     def setUp(self) -> None:
         answer._CHALLENGES.clear()
         answer._GENERATIONS.clear()
+        answer._OPENINGS.clear()
         self.addCleanup(answer._CHALLENGES.clear)
         self.addCleanup(answer._GENERATIONS.clear)
         for patch in (mock.patch.object(chat_local, "model_credential", return_value=CREDENTIAL),):
@@ -323,6 +325,79 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertNotIn(("team_1", RUN, CHALLENGE), answer._CHALLENGES)
         answer._restore(("team_1", RUN, CHALLENGE), deadline, request, None)
         self.assertNotIn(("team_1", RUN, CHALLENGE), answer._CHALLENGES)
+
+    def test_concurrent_openings_keep_the_challenge_team_created_last(self) -> None:
+        first, second = "e" * 32, "f" * 32
+        first_called = threading.Event()
+        second_remembered = threading.Event()
+        remember = answer._remember
+
+        def team_opens(*_args):
+            if not first_called.is_set():
+                # Team created A, then a second tab opens B; A's response is held until B's opening either kept its
+                # challenge or waits for the Team's opening, so A's response is the one that arrives last.
+                first_called.set()
+                for _ in range(500):
+                    opening = answer._OPENINGS.get("team_1")
+                    if second_remembered.is_set() or (opening is not None and opening.users == 2):
+                        break
+                    second_remembered.wait(0.01)
+                else:
+                    raise AssertionError("the second opening neither finished nor waited")
+                return frozen(challenge_id=first, turn_id=first)
+            return frozen(challenge_id=second, turn_id=second)
+
+        def remembered(key, deadline, request):
+            remember(key, deadline, request)
+            if key[2] == second:
+                second_remembered.set()
+
+        opened: dict[str, str] = {}
+
+        def open_in(tab: str) -> None:
+            opened[tab] = answer.open_challenge("team_1", RUN, {"locale": "en"}).body["challenge"]["challenge_id"]
+
+        with (
+            mock.patch.object(transport, "_call", side_effect=team_opens),
+            mock.patch.object(answer, "_remember", side_effect=remembered),
+        ):
+            tab_a = threading.Thread(target=open_in, args=("a",))
+            tab_a.start()
+            self.assertTrue(first_called.wait(5))
+            tab_b = threading.Thread(target=open_in, args=("b",))
+            tab_b.start()
+            tab_a.join(5)
+            tab_b.join(5)
+        self.assertEqual(opened, {"a": first, "b": second})
+        self.assertEqual(list(answer._CHALLENGES), [("team_1", RUN, second)])
+        self.assertEqual(answer._OPENINGS, {})
+        # The live challenge B answers; Team cancelled A when it created B.
+        frame = {"type": "human-response", "challenge_id": second, "decision": "submit", "value": True}
+        result, stream = self.respond(frame)
+        self.assertEqual(result.status, 200)
+        self.assertEqual(stream.call_args.args[2]["challenge_id"], second)
+
+    def test_an_opening_waits_a_bounded_time_and_leaves_no_lock_behind(self) -> None:
+        busy = team.TeamResponse(409, {"code": "routine-challenge-busy"})
+        with mock.patch.object(answer, "OPENING_WAIT_SECONDS", 0.01), answer._opening("team_1") as held:
+            self.assertTrue(held)
+            with mock.patch.object(transport, "_call") as call:
+                self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}), busy)
+                # Too many Teams opening at once refuses another Team before it waits or asks Team.
+                with mock.patch.object(answer, "MAX_OPENING_TEAMS", 1):
+                    self.assertEqual(answer.open_challenge("team_2", RUN, {"locale": "en"}), busy)
+            call.assert_not_called()
+            self.assertEqual(list(answer._OPENINGS), ["team_1"])
+        self.assertEqual(answer._OPENINGS, {})
+        # A failed Team request releases the Team's opening too.
+        with (
+            mock.patch.object(transport, "_call", side_effect=RuntimeError("unreachable")),
+            self.assertRaises(RuntimeError),
+        ):
+            answer.open_challenge("team_1", RUN, {"locale": "en"})
+        self.assertEqual(answer._OPENINGS, {})
+        self.open()
+        self.assertEqual(answer._OPENINGS, {})
 
     def test_routes_bind_chat_password_authority_and_refuse_malformed_answers(self) -> None:
         authenticate = mock.AsyncMock()

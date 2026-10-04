@@ -8,10 +8,11 @@ the Supervisor's session with the Team's model key.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from http import HTTPStatus
 
 from team import bridge as team
@@ -33,6 +34,13 @@ _CHALLENGES: dict[tuple[str, str, str], tuple[float, dict[str, object]]] = {}
 _GENERATIONS: dict[str, int] = {}
 _TOKENS = itertools.count(1)
 _CHALLENGES_LOCK = threading.Lock()
+# Each Team's opening (its Team request, projection, and cache update) runs alone, so the challenge Admin keeps is
+# the one Team created last. A lock exists only while a Team has an opening in flight, for at most this many Teams.
+MAX_OPENING_TEAMS = MAX_OPEN_CHALLENGES
+OPENING_WAIT_SECONDS = 30.0
+_OPENINGS: dict[str, _Opening] = {}
+_OPENINGS_LOCK = threading.Lock()
+_OPENING_BUSY = team.TeamResponse(HTTPStatus.CONFLICT, {"code": "routine-challenge-busy"})
 Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
 
@@ -80,6 +88,42 @@ def _take(key: tuple[str, str, str]) -> tuple[float, dict[str, object], int | No
     return (*entry, generation) if entry is not None and entry[0] > time.monotonic() else None
 
 
+class _Opening:
+    """One Team's opening lock and the openings holding or awaiting it; it is dropped when the last one leaves."""
+
+    __slots__ = ("lock", "users")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
+@contextlib.contextmanager
+def _opening(canonical: str) -> Iterator[bool]:
+    """Hold the Team's opening lock; False when it stays busy past the bounded wait or too many Teams are opening."""
+    with _OPENINGS_LOCK:
+        entry = _OPENINGS.get(canonical)
+        if entry is None and len(_OPENINGS) < MAX_OPENING_TEAMS:
+            entry = _OPENINGS[canonical] = _Opening()
+        if entry is not None:
+            entry.users += 1
+    if entry is None:
+        yield False
+        return
+    try:
+        acquired = entry.lock.acquire(timeout=OPENING_WAIT_SECONDS)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                entry.lock.release()
+    finally:
+        with _OPENINGS_LOCK:
+            entry.users -= 1
+            if entry.users == 0:
+                del _OPENINGS[canonical]
+
+
 def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamResponse:
     """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration.
 
@@ -89,6 +133,11 @@ def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamRe
     opening = routine_contract.canonical_challenge_open(body)
     if opening is None:
         raise team.TeamRequestError("Routine challenge opening is invalid")
+    with _opening(canonical) as admitted:
+        return _open(canonical, run, opening) if admitted else _OPENING_BUSY
+
+
+def _open(canonical: str, run: str, opening: dict[str, str]) -> team.TeamResponse:
     response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
     if response.status != 200 or not isinstance(response.body, dict):
         return manage._projected(response, lambda _body: None)
