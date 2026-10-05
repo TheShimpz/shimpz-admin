@@ -13,7 +13,7 @@ const ICON = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
   'base64',
 );
-const NEXT_ACTION = /shimpz assistant prepare.*shimpz assistant stage/;
+const NEXT_ACTION = /shimpz assistant stage/;
 
 function snapshot(assistantId, imageId) {
   return {
