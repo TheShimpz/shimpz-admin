@@ -5,62 +5,17 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history
+from tests.chat_history_case import ChatHistoryCase
 
 
-def _installed_event() -> dict[str, object]:
-    return {
-        "type": "assistant-install-plan",
-        "state": "installed",
-        "plan_id": "a" * 32,
-        "team_id": "marketing",
-        "assistants": [
-            {
-                "id": "shimpz-cloudflare",
-                "name": "Shimpz Cloudflare",
-                "summary": "Manage DNS records.",
-                "providers": ["cloudflare"],
-                "provenance": "local",
-                "status": "installed",
-            }
-        ],
-        "continuation": "dispatch",
-    }
-
-
-def _uninstall_assistant() -> dict[str, str]:
-    return {
-        "id": "shimpz-cloudflare",
-        "name": "Shimpz Cloudflare",
-        "summary": "Manage DNS records.",
-        "version": "0.4.5",
-    }
-
-
-class ChatHistoryReplyPayloadTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / "chat-history.sqlite3"
-        self.path_patch = mock.patch.object(history, "STORE_PATH", self.path)
-        self.path_patch.start()
-        self.addCleanup(self.path_patch.stop)
-
-    @staticmethod
-    def _admitted(team_id: str = "marketing") -> str:
-        # Every turn event follows its admitted user row, as chat delivery writes it.
-        turn = history.new_turn_id()
-        history.append_user(team_id, turn, "Request")
-        return turn
-
+class ChatHistoryReplyPayloadTests(ChatHistoryCase):
     def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
         asked = {
             "question": "Qual período?",

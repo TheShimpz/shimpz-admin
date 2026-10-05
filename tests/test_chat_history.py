@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import sqlite3
 import sys
-import tempfile
 import tracemalloc
 import unittest
 from pathlib import Path
@@ -21,60 +20,18 @@ from history import delivery
 from history import http as history_http
 from history import store as history
 from team import bridge as team
+from tests.chat_history_case import ChatHistoryCase, installed_event, uninstall_assistant
 
 
-def _installed_event() -> dict[str, object]:
-    return {
-        "type": "assistant-install-plan",
-        "state": "installed",
-        "plan_id": "a" * 32,
-        "team_id": "marketing",
-        "assistants": [
-            {
-                "id": "shimpz-cloudflare",
-                "name": "Shimpz Cloudflare",
-                "summary": "Manage DNS records.",
-                "providers": ["cloudflare"],
-                "provenance": "local",
-                "status": "installed",
-            }
-        ],
-        "continuation": "dispatch",
-    }
-
-
-def _uninstall_assistant() -> dict[str, str]:
-    return {
-        "id": "shimpz-cloudflare",
-        "name": "Shimpz Cloudflare",
-        "version": "0.4.5",
-    }
-
-
-class ChatHistoryTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / "chat-history.sqlite3"
-        self.path_patch = mock.patch.object(history, "STORE_PATH", self.path)
-        self.path_patch.start()
-        self.addCleanup(self.path_patch.stop)
-
-    @staticmethod
-    def _admitted(team_id: str = "marketing") -> str:
-        # Every turn event follows its admitted user row, as chat delivery writes it.
-        turn = history.new_turn_id()
-        history.append_user(team_id, turn, "Request")
-        return turn
-
+class ChatHistoryTests(ChatHistoryCase):
     def test_records_idempotent_terminal_rows_in_presentation_order(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
 
         self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
         self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
-        self.assertTrue(history.append_install("marketing", first, _installed_event()))
-        self.assertTrue(history.append_install("marketing", first, _installed_event()))
+        self.assertTrue(history.append_install("marketing", first, installed_event()))
+        self.assertTrue(history.append_install("marketing", first, installed_event()))
         self.assertTrue(history.append_user("marketing", second, "List my DNS zones"))
         self.assertTrue(
             history.append_reply(
@@ -119,7 +76,7 @@ class ChatHistoryTests(unittest.TestCase):
         }
         with mock.patch.object(history, "_now", side_effect=lambda: next(times)):
             self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
-            self.assertTrue(history.append_install("marketing", first, _installed_event()))
+            self.assertTrue(history.append_install("marketing", first, installed_event()))
             self.assertTrue(history.append_user("marketing", second, "List my DNS zones"))
             self.assertTrue(history.append_reply("marketing", second, done))
             # A repeated write of the same row is the same row: it keeps the time it was first written.
@@ -151,7 +108,7 @@ class ChatHistoryTests(unittest.TestCase):
         first = history.new_turn_id()
         second = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", first, "Install and list zones"))
-        self.assertTrue(history.append_install("marketing", first, _installed_event()))
+        self.assertTrue(history.append_install("marketing", first, installed_event()))
         self.assertTrue(history.bind_resumable_turn("marketing", first))
         self.assertTrue(history.append_user("marketing", second, "Newest request"))
         self.assertFalse(history.bind_resumable_turn("marketing", second))
@@ -189,7 +146,7 @@ class ChatHistoryTests(unittest.TestCase):
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Install Cloudflare"))
         self.assertTrue(history.bind_resumable_turn("marketing", turn_id))
-        event = {**_installed_event(), "continuation": "none"}
+        event = {**installed_event(), "continuation": "none"}
 
         self.assertTrue(history.append_install("marketing", turn_id, event))
         self.assertIsNone(history.resumable_turn("marketing"))
@@ -197,7 +154,7 @@ class ChatHistoryTests(unittest.TestCase):
     def test_already_installed_outcome_round_trips_without_lifecycle_authority(self) -> None:
         turn_id = history.new_turn_id()
         event = {
-            **_installed_event(),
+            **installed_event(),
             "continuation": "none",
             "outcome": "already-installed",
         }
@@ -253,7 +210,7 @@ class ChatHistoryTests(unittest.TestCase):
         self.assertEqual([entry["text"] for entry in history.page("sales")["entries"]], ["Sales secret"])
 
     def test_rejects_nonterminal_or_secret_bearing_install_state(self) -> None:
-        event = _installed_event()
+        event = installed_event()
         for mutation in (
             {"state": "installing"},
             {"access_token": "secret"},
@@ -333,7 +290,7 @@ class ChatHistoryTests(unittest.TestCase):
                 clear()
                 # A delayed reply, install, guidance, or uninstall must not recreate the deleted Team's history.
                 self.assertFalse(history.append_reply("marketing", turn, done))
-                self.assertFalse(history.append_install("marketing", turn, _installed_event()))
+                self.assertFalse(history.append_install("marketing", turn, installed_event()))
                 guidance = ("assistant-install-target-required", "Name it.")
                 self.assertFalse(history.append_guidance("marketing", turn, *guidance))
                 self.assertEqual(history.page("marketing")["entries"], [])
@@ -546,80 +503,80 @@ class ChatHistoryTests(unittest.TestCase):
             (history._install_assistant, ({"id": "missing-fields"},)),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "id": "Invalid"},),
+                ({**installed_event()["assistants"][0], "id": "Invalid"},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "providers": ()},),
+                ({**installed_event()["assistants"][0], "providers": ()},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "providers": ["x"] * 33},),
+                ({**installed_event()["assistants"][0], "providers": ["x"] * 33},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "provenance": "unknown"},),
+                ({**installed_event()["assistants"][0], "provenance": "unknown"},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "status": "working"},),
+                ({**installed_event()["assistants"][0], "status": "working"},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "providers": ["bad_provider"]},),
+                ({**installed_event()["assistants"][0], "providers": ["bad_provider"]},),
             ),
             (
                 history._install_assistant,
-                ({**_installed_event()["assistants"][0], "providers": ["x", "x"]},),
+                ({**installed_event()["assistants"][0], "providers": ["x", "x"]},),
             ),
             (history._install_payload, (None, "marketing")),
             (history._install_payload, ({"type": "other"}, "marketing")),
             (
                 history._install_payload,
-                ({**_installed_event(), "state": "installing"}, "marketing"),
+                ({**installed_event(), "state": "installing"}, "marketing"),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "team_id": "sales"}, "marketing"),
+                ({**installed_event(), "team_id": "sales"}, "marketing"),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "plan_id": "invalid"}, "marketing"),
+                ({**installed_event(), "plan_id": "invalid"}, "marketing"),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "assistants": []}, "marketing"),
+                ({**installed_event(), "assistants": []}, "marketing"),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "assistants": [_installed_event()["assistants"][0]] * 2}, "marketing"),
+                ({**installed_event(), "assistants": [installed_event()["assistants"][0]] * 2}, "marketing"),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "continuation": "later"}, "marketing"),
+                ({**installed_event(), "continuation": "later"}, "marketing"),
             ),
             (
                 history._install_payload,
                 (
                     {
-                        **_installed_event(),
-                        "assistants": [{**_installed_event()["assistants"][0], "status": "pending"}],
+                        **installed_event(),
+                        "assistants": [{**installed_event()["assistants"][0], "status": "pending"}],
                     },
                     "marketing",
                 ),
             ),
             (
                 history._install_payload,
-                ({**_installed_event(), "outcome": "new"}, "marketing"),
+                ({**installed_event(), "outcome": "new"}, "marketing"),
             ),
             (
                 history._install_payload,
                 (
                     {
-                        **_installed_event(),
+                        **installed_event(),
                         "state": "failed",
                         "status": True,
-                        "assistants": [_installed_event()["assistants"][0]],
+                        "assistants": [installed_event()["assistants"][0]],
                     },
                     "marketing",
                 ),
@@ -639,7 +596,7 @@ class ChatHistoryTests(unittest.TestCase):
                 "state": state,
                 "plan_id": "b" * 32,
                 "team_id": "marketing",
-                "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
                 **fields,
             }
             self.assertTrue(history.append_install("marketing", self._admitted(), event))
@@ -649,14 +606,14 @@ class ChatHistoryTests(unittest.TestCase):
             "state": "failed",
             "plan_id": "b" * 32,
             "team_id": "marketing",
-            "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+            "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
             "status": True,
         }
         with self.assertRaises(ValueError):
             history._install_payload(invalid_failed, "marketing")
 
     def test_rejects_malformed_uninstall_and_stored_payloads(self) -> None:
-        assistant = _uninstall_assistant()
+        assistant = uninstall_assistant()
         base_event = {
             "type": "assistant-uninstall",
             "state": "cancelled",
@@ -716,7 +673,7 @@ class ChatHistoryTests(unittest.TestCase):
                     {
                         "kind": "assistant-install",
                         "state": "stopped",
-                        "assistants": [_installed_event()["assistants"][0]] * 2,
+                        "assistants": [installed_event()["assistants"][0]] * 2,
                     },
                 ),
             ),
@@ -726,7 +683,7 @@ class ChatHistoryTests(unittest.TestCase):
                     {
                         "kind": "assistant-install",
                         "state": "installed",
-                        "assistants": [_installed_event()["assistants"][0]],
+                        "assistants": [installed_event()["assistants"][0]],
                         "outcome": "unexpected",
                     },
                 ),
@@ -737,7 +694,7 @@ class ChatHistoryTests(unittest.TestCase):
                     {
                         "kind": "assistant-install",
                         "state": "installed",
-                        "assistants": [{**_installed_event()["assistants"][0], "status": "pending"}],
+                        "assistants": [{**installed_event()["assistants"][0], "status": "pending"}],
                     },
                 ),
             ),
@@ -747,7 +704,7 @@ class ChatHistoryTests(unittest.TestCase):
                     {
                         "kind": "assistant-install",
                         "state": "failed",
-                        "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                        "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
                         "status": True,
                     },
                 ),
@@ -811,7 +768,7 @@ class ChatHistoryTests(unittest.TestCase):
             {
                 "kind": "assistant-install",
                 "state": "failed",
-                "assistants": [{**_installed_event()["assistants"][0], "status": "failed"}],
+                "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
                 "status": 503,
             }
         )

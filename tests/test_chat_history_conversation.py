@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import sys
-import tempfile
 import unicodedata
-import unittest
 from pathlib import Path
 from unittest import mock
 
@@ -17,47 +15,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 from history import context as conversation_context
 from history import delivery
 from history import store as history
+from tests.chat_history_case import ChatHistoryCase, installed_event, uninstall_assistant
 
 FILE = {"id": "f" * 32, "name": "contrato.pdf", "media_type": "application/pdf", "size": 2048}
 
 
-def _installed_event() -> dict[str, object]:
-    return {
-        "type": "assistant-install-plan",
-        "state": "installed",
-        "plan_id": "a" * 32,
-        "team_id": "marketing",
-        "assistants": [
-            {
-                "id": "shimpz-cloudflare",
-                "name": "Shimpz Cloudflare",
-                "summary": "Manage DNS records.",
-                "providers": ["cloudflare"],
-                "provenance": "local",
-                "status": "installed",
-            }
-        ],
-        "continuation": "dispatch",
-    }
-
-
-def _uninstall_assistant() -> dict[str, str]:
-    return {
-        "id": "shimpz-cloudflare",
-        "name": "Shimpz Cloudflare",
-        "version": "0.4.5",
-    }
-
-
-class ChatHistoryConversationTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / "chat-history.sqlite3"
-        self.path_patch = mock.patch.object(history, "STORE_PATH", self.path)
-        self.path_patch.start()
-        self.addCleanup(self.path_patch.stop)
-
+class ChatHistoryConversationTests(ChatHistoryCase):
     def test_conversation_text_keeps_exact_control_and_format_boundaries(self) -> None:
         allowed_ascii = {9, 10, 13, *range(32, 127)}
         for codepoint in range(128):
@@ -147,13 +110,13 @@ class ChatHistoryConversationTests(unittest.TestCase):
         uninstalled = history.new_turn_id()
         current = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", installed, "Instale o Cloudflare"))
-        self.assertTrue(history.append_install("marketing", installed, _installed_event()))
+        self.assertTrue(history.append_install("marketing", installed, installed_event()))
         self.assertTrue(history.append_user("marketing", uninstalled, "Desinstale o Cloudflare"))
         self.assertTrue(
             history.append_uninstall(
                 "marketing",
                 uninstalled,
-                _uninstall_assistant(),
+                uninstall_assistant(),
                 {
                     "type": "assistant-uninstall",
                     "state": "uninstalled",
