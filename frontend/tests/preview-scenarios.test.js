@@ -281,7 +281,7 @@ test('the Routine lifecycle preview spans the day before it opened and that day,
   const instants = history.map((entry) => Date.parse(entry.created_at));
   assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
   assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
-    ...Array(5).fill('2026-10-02'),
+    ...Array(6).fill('2026-10-02'),
     ...Array(4).fill('2026-10-03'),
   ]);
   for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);

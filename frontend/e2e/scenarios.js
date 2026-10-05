@@ -40,6 +40,7 @@ export const ROUTINE_VIEW = {
   name: 'Daily DNS zones',
   quote: 'Every day at 9, list my DNS zones',
   steps: ROUTINE_PLAN,
+  output: { mode: 'show', step: 'zones' },
   schedule: { kind: 'daily', time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -317,6 +318,7 @@ function create(state, message, timezone) {
     detail: {
       name: 'Daily DNS zones',
       steps: ROUTINE_PLAN,
+      output: routine.output,
       schedule: routine.schedule,
       timezone: routine.timezone,
     },

@@ -1,11 +1,12 @@
 <script>
   import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import { fillRoutineCopy, humanizeId, literalWords, pointerWords } from '$lib/routine.js';
+  import { dispositionWords, fillRoutineCopy, humanizeId, literalWords, pointerWords } from '$lib/routine.js';
 
   // A Routine plan's safe projection (ADR-0092) in words: numbered steps naming the Assistant and its Action, each
   // input as a friendly key and value, references to an earlier step's result as a path, and the saved keys an Action
-  // uses by name only. Every value is Team's escaped preview, rendered as text, never as Markdown or HTML.
-  let { steps, copy, names = {} } = $props();
+  // uses by name only, then what each run does with its result. Every value is Team's escaped preview, rendered as
+  // text, never as Markdown or HTML.
+  let { steps, copy, names = {}, output = null } = $props();
 
   const assistantName = (id) => names[id] ?? humanizeId(id);
   let positions = $derived(new Map(steps.map((step, index) => [step.id, index + 1])));
@@ -14,8 +15,9 @@
     if (input.source === 'literal') return literalWords(input.value);
     if (input.source === 'run_clock') return fillRoutineCopy(copy.clock, { format: copy.clocks[input.value] });
     const n = positions.get(input.step);
-    if (!input.pointer) return fillRoutineCopy(copy.fromStepWhole, { n });
-    return fillRoutineCopy(copy.fromStep, { n, path: pointerWords(input.pointer, copy) });
+    const text = input.source === 'step_text';
+    if (!input.pointer) return fillRoutineCopy(text ? copy.fromStepTextWhole : copy.fromStepWhole, { n });
+    return fillRoutineCopy(text ? copy.fromStepText : copy.fromStep, { n, path: pointerWords(input.pointer, copy) });
   }
 </script>
 
@@ -48,6 +50,7 @@
     </li>
   {/each}
 </ol>
+{#if output}<p class="disposition">{dispositionWords(output, steps, copy)}</p>{/if}
 
 <style>
   /* Steps as plain rows without rules: a mono number, the Action with its Assistant beside it, and one quiet line of what it uses. */
@@ -66,4 +69,5 @@
   dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.74rem; overflow-wrap: anywhere; }
   .stored { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
   .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
+  .disposition { margin: 0.25rem 0 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
 </style>

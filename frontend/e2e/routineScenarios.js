@@ -94,9 +94,10 @@ export const ROUTINE_TEXT = Object.freeze({
 const id = (digit) => digit.repeat(32);
 const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
 
-// The continuous Routine created from chat, healthy and rolling its runs up per minute; a weekly Routine whose run is
-// held for recovery; a daily Routine its failures paused, which nothing holds; and a monthly one a person paused from
-// its card while its held run still waits for a decision.
+// The continuous Routine created from chat, healthy and rolling its runs up per minute as it hands each result on; a
+// weekly Routine that shows its records after every run and whose run is held for recovery; a daily Routine that shows
+// its zones only when they change, which its failures paused; and a monthly one that shows nothing, which a person
+// paused from its card while its held run still waits for a decision (ADR-0092 amendment, 2026-10-05, output).
 const UPDATE = {
   id: 'update',
   assistant: 'shimpz-cloudflare',
@@ -115,16 +116,30 @@ const DELETE = {
 function routines(locale) {
   const { names, quotes } = textFor(locale);
   return [
-    { ...ROUTINE, routine_id: id('1'), schedule: { kind: 'continuous', gap: 5, cap: 500 } },
+    { ...ROUTINE, routine_id: id('1'), output: { mode: 'chain', step: null }, schedule: { kind: 'continuous', gap: 5, cap: 500 } },
     {
       ...ROUTINE,
       routine_id: id('2'),
       steps: [...STEPS, UPDATE],
+      output: { mode: 'show', step: 'records' },
       schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
       next_run_at: '2026-10-04T11:00:00Z',
     },
-    { ...ROUTINE, routine_id: id('3'), schedule: { kind: 'daily', time: '09:00' }, paused: true },
-    { ...ROUTINE, routine_id: id('4'), steps: [...STEPS, DELETE], schedule: { kind: 'monthly', day: 1, time: '10:00' }, paused: true },
+    {
+      ...ROUTINE,
+      routine_id: id('3'),
+      output: { mode: 'changes', step: 'zones' },
+      schedule: { kind: 'daily', time: '09:00' },
+      paused: true,
+    },
+    {
+      ...ROUTINE,
+      routine_id: id('4'),
+      steps: [...STEPS, DELETE],
+      output: { mode: 'none', step: null },
+      schedule: { kind: 'monthly', day: 1, time: '10:00' },
+      paused: true,
+    },
   ].map((routine, index) => ({ ...routine, name: names[index], quote: quotes[index] }));
 }
 
@@ -159,10 +174,45 @@ function row(noticeId, routine, outcome, detail, { run = true, at = '2026-10-01T
 }
 
 function defined(routine) {
-  return { name: routine.name, steps: routine.steps, schedule: routine.schedule, timezone: routine.timezone };
+  return {
+    name: routine.name, steps: routine.steps, output: routine.output, schedule: routine.schedule, timezone: routine.timezone,
+  };
 }
 
 const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']];
+const text = (value) => ({ kind: 'text', value, cut: false });
+const fields = (...pairs) => ({ kind: 'fields', fields: pairs, omitted: 0 });
+// What a run shows of its result: Team's bounded, redacted projection of the Action's validated result, as plain data.
+export const SHOWN_ZONES = Object.freeze({
+  step: 'zones',
+  state: 'shown',
+  value: fields(
+    ['pagination', fields(['count', { kind: 'number', value: '3' }], ['page', { kind: 'number', value: '1' }])],
+    ['zones', {
+      kind: 'list',
+      items: [
+        fields(['name', text('example.com')], ['paused', { kind: 'bool', value: false }], ['status', text('active')]),
+        fields(['name', text('example.org')], ['paused', { kind: 'bool', value: true }], ['status', text('pending')]),
+        fields(['name', text('<img src=x onerror=alert(1)>.dev')], ['paused', { kind: 'bool', value: false }], ['status', text('active')]),
+      ],
+      omitted: 0,
+    }],
+  ),
+  truncated: false,
+});
+const SHOWN_RECORDS = Object.freeze({
+  step: 'records',
+  state: 'shown',
+  value: fields(['records', {
+    kind: 'list',
+    items: [
+      fields(['content', text('192.0.2.10')], ['name', text('example.com')], ['type', text('A')]),
+      fields(['content', { kind: 'redacted' }], ['name', text('_token.example.com')], ['type', text('TXT')]),
+    ],
+    omitted: 4,
+  }]),
+  truncated: true,
+});
 
 // The transcript, oldest first: one row of every Routine notice the owner validates. Its rows span the day before the
 // preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
@@ -174,9 +224,10 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
   return [
     row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: yesterday(-120) }),
     row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: yesterday(-90) }),
-    row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS }, { at: yesterday(-50) }),
+    row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS, output: null }, { at: yesterday(-50) }),
     row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: yesterday(0), version: 9 }),
-    row(id('e'), HELD, 'recovered', { actions: ACTIONS }, { at: yesterday(20) }),
+    row(id('e'), HELD, 'recovered', { actions: ACTIONS, output: SHOWN_RECORDS }, { at: yesterday(20) }),
+    row(id('8'), PAUSED, 'done', { actions: ACTIONS, output: SHOWN_ZONES }, { at: yesterday(40) }),
     row(id('f'), HELD, 'user-skipped', {
       assistant_id: 'shimpz-cloudflare', action: 'update-dns-record', choice: 'run',
     }, { at: at(-150) }),

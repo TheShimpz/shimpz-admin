@@ -23,6 +23,7 @@ const ROUTINE = {
       stored_inputs: ['api-token'],
     },
   ],
+  output: { mode: 'show', step: 'zones' },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],

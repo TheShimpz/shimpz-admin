@@ -5,6 +5,7 @@
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
+  import RoutineOutput from '$lib/RoutineOutput.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
   import { humanizeId, routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
 
@@ -12,8 +13,9 @@
   // own message, as one entry of an activity timeline: the notice's time on the timeline's rail, the Routine's name and a
   // status phrase colored by meaning, then one quiet line of detail. Consecutive notices share one thin rail through
   // their times (`joinAbove`, `joinBelow`).
-  // It never carries an Action's raw input or result, and it is not part of the Brain's conversation. Every name and
-  // value is plain text. The entry decides nothing: while its run waits for the person, its one action opens that
+  // It never carries an Action's raw input or result: a Routine that shows its result carries Team's bounded, redacted
+  // projection of it (ADR-0092 amendment, 2026-10-05, output). It is not part of the Brain's conversation. Every name
+  // and value is plain text. The entry decides nothing: while its run waits for the person, its one action opens that
   // Routine's panel, which is the decision itself.
   let { entry, copy, teamId, teamName, joinAbove = false, joinBelow = false } = $props();
 
@@ -86,6 +88,12 @@
       {line}{#if shown.code && index === details.length - 1}{line ? ' ' : ''}<code class="code">{shown.code}</code>{/if}
     </p>
   {/each}
+  {#if shown.output}
+    <div class="output" role="group" aria-label={copy.notice.output.label}>
+      <RoutineOutput node={shown.output.value} copy={copy.notice.output} locale={$locale} />
+      {#if shown.output.truncated}<p class="truncated">{copy.notice.output.truncated}</p>{/if}
+    </div>
+  {/if}
   <!-- The button stays while the panel is open, so closing it returns focus here. -->
   {#if waiting || panel}
     <p class="wait">
@@ -216,6 +224,18 @@
   }
 
   .waiting { color: var(--shimpz-color-yellow); }
+
+  /* A shown result sits under the entry's detail, as quiet data the width of the transcript allows. */
+  .output {
+    display: grid;
+    gap: 0.25rem;
+    max-width: 100%;
+    margin-block-start: 0.25rem;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  .truncated { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.78rem; }
 
   /* The one action reads as a link: cyan words and a chevron, no frame. */
   .wait :global(.shimpz-button.open) {

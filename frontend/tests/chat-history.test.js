@@ -315,7 +315,7 @@ function runRow(noticeId, routineId) {
     run_id: noticeId,
     outcome: 'done',
     created_at: AT,
-    detail: { actions: [['shimpz-cloudflare', 'list-zones']] },
+    detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null },
     version: 1,
   };
 }

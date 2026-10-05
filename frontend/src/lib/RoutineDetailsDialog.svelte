@@ -346,7 +346,7 @@
           </p>
         {/if}
       {:else if page === 'steps'}
-        <RoutinePlan steps={routine.steps} copy={copy.plan} names={$assistantNames} />
+        <RoutinePlan steps={routine.steps} output={routine.output} copy={copy.plan} names={$assistantNames} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}

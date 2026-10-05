@@ -25,6 +25,13 @@ import {
   parseRoutineRunEntry,
   parseRoutineView,
   isSteps,
+  isDisposition,
+  isOutput,
+  dispositionWords,
+  omittedWords,
+  outputScalarWords,
+  outputLabels,
+  outputTable,
   parseRunView,
   pauseRoutine,
   pointerWords,
@@ -134,6 +141,7 @@ const ROUTINE = {
   name: 'DNS semanal',
   quote: QUOTE,
   steps: PLAN,
+  output: { mode: 'show', step: 'zones' },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -348,6 +356,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
 const DEFINED = {
   name: 'DNS semanal',
   steps: PLAN,
+  output: { mode: 'show', step: 'zones' },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
 };
@@ -360,10 +369,32 @@ const RUN_ENTRY = {
   run_id: 'b'.repeat(32),
   outcome: 'done',
   created_at: '2026-10-05T12:01:07Z',
-  detail: { actions: [['shimpz-cloudflare', 'list-zones']] },
+  detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null },
   version: 2,
 };
 const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' };
+// A run's shown result: Team's bounded projection of the zones it listed, one cut, and a value Team redacted.
+const SHOWN_OUTPUT = Object.freeze({
+  step: 'zones',
+  state: 'shown',
+  value: {
+    kind: 'fields',
+    fields: [
+      ['zones', {
+        kind: 'list',
+        items: [
+          { kind: 'fields', fields: [['name', { kind: 'text', value: 'example.com', cut: false }], ['paused', { kind: 'bool', value: false }]], omitted: 0 },
+          { kind: 'fields', fields: [['name', { kind: 'text', value: '<b>example.org</b>', cut: false }], ['token', { kind: 'redacted' }]], omitted: 0 },
+        ],
+        omitted: 2,
+      }],
+      ['count', { kind: 'number', value: '1234.5' }],
+    ],
+    omitted: 0,
+  },
+  truncated: true,
+});
+const UNSHOWN = Object.freeze({ step: 'zones', state: 'unavailable', value: null, truncated: false });
 
 test('a Routine transcript row is admitted only in its closed form', async () => {
   assert.deepEqual(parseRoutineRunEntry(RUN_ENTRY), {
@@ -378,7 +409,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     version: RUN_ENTRY.version,
   });
   const valid = [
-    { ...RUN_ENTRY, outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'replace-dns-record']] } },
+    { ...RUN_ENTRY, outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'replace-dns-record']], output: null } },
     { ...RUN_ENTRY, outcome: 'held', detail: STEP },
     { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: null, action: null } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } },
@@ -456,10 +487,18 @@ function noticeShown(entry, options) {
 
 test('every Routine notice reads as a status phrase colored by meaning, its time, and one quiet detail line', () => {
   const chain = 'Shimpz Cloudflare · List zones › List DNS records';
+  const zones = [['shimpz-cloudflare', 'list-zones']];
   const cases = [
-    [{ outcome: 'done', detail: { actions: [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']] } },
+    // A Routine that shows its result carries Team's projection apart from its words (ADR-0092, 2026-10-05).
+    [{ outcome: 'done', detail: { actions: zones, output: SHOWN_OUTPUT } },
+      ['healthy', 'concluída', ['Shimpz Cloudflare · List zones'], '', SHOWN_OUTPUT]],
+    [{ outcome: 'done', detail: { actions: zones, output: { ...UNSHOWN, state: 'unchanged' } } },
+      ['healthy', 'concluída', ['Shimpz Cloudflare · List zones', 'Nada mudou desde o último resultado mostrado.'], '']],
+    [{ outcome: 'recovered', detail: { actions: zones, output: UNSHOWN } },
+      ['healthy', 'concluída após recuperação', ['Shimpz Cloudflare · List zones', 'Não foi possível mostrar o resultado.'], '']],
+    [{ outcome: 'done', detail: { actions: [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']], output: null } },
       ['healthy', 'concluída', [chain], '']],
-    [{ outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } },
+    [{ outcome: 'recovered', detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null } },
       ['healthy', 'concluída após recuperação', ['Shimpz Cloudflare · List zones'], '']],
     [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } },
       ['healthy', 'em execução', [`9 execuções concluídas no minuto das ${minuteWords(RUN_ENTRY.created_at, 'pt')}`], '']],
@@ -485,15 +524,15 @@ test('every Routine notice reads as a status phrase colored by meaning, its time
     [{ outcome: 'skipped', run_id: null, detail: { missed: 1 } }, ['neutral', 'execuções perdidas', ['1 execução agendada não aconteceu'], '']],
     [{ outcome: 'skipped', run_id: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas', ['3 execuções agendadas não aconteceram'], '']],
     [{ outcome: 'created', run_id: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 500 }, steps: [...PLAN, { ...PLAN[0], id: 'records', action: 'list-dns-records', inputs: [] }] } },
-      ['neutral', 'criada', ['A cada 5 s após cada execução, até 500 por dia · America/Sao_Paulo', chain], '']],
-    [{ outcome: 'changed', run_id: null, detail: DEFINED },
-      ['neutral', 'atualizada', ['Toda segunda-feira às 09:00 · America/Sao_Paulo', 'Shimpz Cloudflare · List zones'], '']],
+      ['neutral', 'criada', ['A cada 5 s após cada execução, até 500 por dia · America/Sao_Paulo', chain, 'Mostra o resultado da etapa 1 a cada execução'], '']],
+    [{ outcome: 'changed', run_id: null, detail: { ...DEFINED, output: { mode: 'none', step: null } } },
+      ['neutral', 'atualizada', ['Toda segunda-feira às 09:00 · America/Sao_Paulo', 'Shimpz Cloudflare · List zones', 'Não mostra nada após uma execução'], '']],
   ];
   const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
   // The notice keeps its seconds (created at 12:01:07 UTC).
   assert.match(time, /^\d{2}:01:07$/);
-  for (const [change, [tone, status, lines, code], options] of cases) {
-    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }, options), { tone, status, time, lines, code }, change.outcome);
+  for (const [change, [tone, status, lines, code, output = null], options] of cases) {
+    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }, options), { tone, status, time, lines, code, output }, change.outcome);
   }
   // Every outcome has its status and detail words in every Admin language.
   for (const [locale, catalog] of Object.entries(routineMessages)) {
@@ -921,4 +960,87 @@ test('a Routine deletion starts with the password and admits only the factors Ad
     beginRoutineDeletion(fetcher([[429, { code: 'authentication-locked', retry_after: 1e9 }]]).fetch, 'team_1', ROUTINE.routine_id, 'x'),
     (error) => error.retryAfter === 0,
   );
+});
+
+test('a shown result is admitted only in Team\'s closed form and reads as plain words in the viewer\'s language', () => {
+  assert.ok(isOutput(SHOWN_OUTPUT));
+  assert.ok(isOutput(UNSHOWN));
+  assert.ok(isOutput({ ...UNSHOWN, state: 'unchanged' }));
+  const text = (value) => ({ kind: 'text', value, cut: false });
+  const nested = (depth) => (depth === 0 ? { kind: 'null' } : { kind: 'list', items: [nested(depth - 1)], omitted: 0 });
+  for (const invalid of [
+    { ...SHOWN_OUTPUT, state: 'hidden' },
+    { ...SHOWN_OUTPUT, value: null },
+    { ...UNSHOWN, value: { kind: 'null' } },
+    { ...UNSHOWN, truncated: true },
+    { ...SHOWN_OUTPUT, step: 'Zones' },
+    { ...SHOWN_OUTPUT, extra: 1 },
+    { ...SHOWN_OUTPUT, value: text('a\u202eb') },
+    { ...SHOWN_OUTPUT, value: text('x'.repeat(301)) },
+    { ...SHOWN_OUTPUT, value: { kind: 'text', value: 'x' } },
+    { ...SHOWN_OUTPUT, value: { kind: 'number', value: Infinity } },
+    { ...SHOWN_OUTPUT, value: { kind: 'number', value: 12 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'number', value: '012' } },
+    { ...SHOWN_OUTPUT, value: { kind: 'number', value: '1'.repeat(65) } },
+    { ...SHOWN_OUTPUT, value: { kind: 'bool', value: 1 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'script', value: 'x' } },
+    { ...SHOWN_OUTPUT, value: { kind: 'toString' } },
+    { ...SHOWN_OUTPUT, value: nested(5) },
+    { ...SHOWN_OUTPUT, value: { kind: 'list', items: [], omitted: -1 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'list', items: Array(51).fill({ kind: 'null' }), omitted: 0 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['a', { kind: 'null' }], ['a', { kind: 'null' }]], omitted: 0 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['', { kind: 'null' }]], omitted: 0 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['a']], omitted: 0 } },
+    { ...SHOWN_OUTPUT, value: { kind: 'list', items: Array(50).fill(text('é'.repeat(300))), omitted: 0 } },
+    [],
+    null,
+  ]) assert.equal(isOutput(invalid), false, JSON.stringify(invalid)?.slice(0, 80));
+  assert.ok(isOutput({ ...SHOWN_OUTPUT, value: nested(4) }));
+  // A disposition names one of the plan's steps exactly when it shows one.
+  assert.ok(isDisposition({ mode: 'changes', step: 'zones' }, PLAN));
+  assert.ok(isDisposition({ mode: 'chain', step: null }, PLAN));
+  for (const invalid of [{ mode: 'show', step: 'other' }, { mode: 'none', step: 'zones' }, { mode: 'loud', step: null }, { mode: 'show' }]) {
+    assert.equal(isDisposition(invalid, PLAN), false);
+  }
+  const copy = routineMessages.pt;
+  assert.equal(dispositionWords({ mode: 'changes', step: 'zones' }, PLAN, copy.plan), 'Mostra o resultado da etapa 1 só quando ele muda');
+  // A list of field sets reads as one table, its columns in first-seen order and a missing cell empty.
+  const zones = SHOWN_OUTPUT.value.fields[0][1];
+  const table = outputTable(zones);
+  assert.deepEqual(table.columns, ['name', 'paused', 'token']);
+  assert.deepEqual(table.rows[1], [zones.items[1].fields[0][1], null, { kind: 'redacted' }]);
+  assert.equal(outputTable({ kind: 'list', items: [], omitted: 0 }), null);
+  assert.equal(outputTable({ kind: 'list', items: [text('a')], omitted: 0 }), null);
+  assert.equal(outputTable(zones, 2), null);
+  assert.equal(outputTable(SHOWN_OUTPUT.value), null);
+  const words = copy.notice.output;
+  assert.deepEqual(
+    [text('<b>x</b>'), { kind: 'number', value: '1234.5' }, { kind: 'bool', value: true }, { kind: 'bool', value: false },
+      { kind: 'redacted' }, { kind: 'elided' }, { kind: 'null' }].map((node) => outputScalarWords(node, words, 'pt')),
+    ['<b>x</b>', '1.234,5', 'sim', 'não', 'oculto', '…', '—'],
+  );
+  assert.equal(omittedWords(words, 1, 'pt'), 'mais 1');
+  // A number reads in the viewer's locale only while the browser holds it exactly; otherwise exactly as Team wrote it.
+  const number = (value) => outputScalarWords({ kind: 'number', value }, words, 'pt');
+  assert.deepEqual(
+    ['0.0001', '1.23456', '1e-7', '-12', '123456789012345', '12345678901234567890', '0.1234567890123456789'].map(number),
+    ['0,0001', '1,23456', '0,0000001', '-12', '123.456.789.012.345', '12345678901234567890', '0.1234567890123456789'],
+  );
+  // A field set Team cut short, or one with no fields, never becomes a table row that hides it.
+  const cut = { kind: 'fields', fields: [['a', text('x')]], omitted: 2 };
+  assert.equal(outputTable({ kind: 'list', items: [cut], omitted: 0 }), null);
+  assert.equal(outputTable({ kind: 'list', items: [{ kind: 'fields', fields: [], omitted: 0 }], omitted: 0 }), null);
+  // Labels read humanized only while that keeps them distinct.
+  assert.deepEqual(outputLabels(['per_page', 'name']), ['Per page', 'Name']);
+  assert.deepEqual(outputLabels(['a-b', 'a_b']), ['a-b', 'a_b']);
+  assert.equal(omittedWords(routineMessages.en.notice.output, 1200, 'en'), '1,200 more');
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    for (const key of ['label', 'unchanged', 'unavailable', 'empty', 'yes', 'no', 'redacted', 'truncated']) {
+      assert.equal(typeof catalog.notice.output[key], 'string', `${locale} ${key}`);
+    }
+    for (const mode of ['show', 'changes', 'chain', 'none']) {
+      assert.doesNotMatch(dispositionWords({ mode, step: mode === 'show' || mode === 'changes' ? 'zones' : null }, PLAN, catalog.plan), /\{/, locale);
+    }
+    assert.doesNotMatch(omittedWords(catalog.notice.output, 3, locale), /\{/, locale);
+  }
 });

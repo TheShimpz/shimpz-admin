@@ -5182,7 +5182,7 @@ test.describe('Team Routines', () => {
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }),
-          entry(run, 'done', { actions: [['shimpz-cloudflare', 'list-zones']] }),
+          entry(run, 'done', { actions: [['shimpz-cloudflare', 'list-zones']], output: null }),
         ],
         before: null,
       },
@@ -5208,6 +5208,78 @@ test.describe('Team Routines', () => {
     await expect(transcript.getByRole('button')).toHaveCount(0);
   });
 
+  test('a Routine run that shows its result renders Team\'s projection as escaped data in the transcript', async ({ page }) => {
+    // ADR-0092 amendment, 2026-10-05 (output): the run's zones, a value Team redacted, and a hostile value as text.
+    const text = (value) => ({ kind: 'text', value, cut: false });
+    const zone = (name, paused) => ({ kind: 'fields', fields: [['name', text(name)], ['paused', { kind: 'bool', value: paused }]], omitted: 0 });
+    const shown = {
+      step: 'zones',
+      state: 'shown',
+      value: {
+        kind: 'fields',
+        fields: [
+          ['a-b', { kind: 'number', value: '0.0001' }],
+          ['a_b', { kind: 'number', value: '12345678901234567890' }],
+          ['cut', { kind: 'list', items: [{ kind: 'fields', fields: [['name', text('example.net')]], omitted: 3 }], omitted: 0 }],
+          ['token', { kind: 'redacted' }],
+          ['zones', { kind: 'list', items: [zone('example.com', false), zone('<img src=x onerror=alert(1)>.dev', true)], omitted: 7 }],
+        ],
+        omitted: 0,
+      },
+      truncated: true,
+    };
+    const entry = (id, detail) => ({
+      id: `${id}:routine`,
+      kind: 'routine-run',
+      notice_id: id,
+      routine_id: ROUTINE_VIEW.routine_id,
+      quote: ROUTINE_VIEW.quote,
+      run_id: id,
+      outcome: 'done',
+      created_at: '2026-10-01T12:01:07Z',
+      detail,
+      version: 1,
+    });
+    const actions = [['shimpz-cloudflare', 'list-zones']];
+    const unchanged = { step: 'zones', state: 'unchanged', value: null, truncated: false };
+    const dialogs = [];
+    page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+    await routeReadyChat(page, {
+      history: {
+        entries: [entry('b'.repeat(32), { actions, output: shown }), entry('c'.repeat(32), { actions, output: unchanged })],
+        before: null,
+      },
+    });
+    await page.goto('/chat/?team=marketing');
+    const transcript = page.locator('.routine-run');
+    await expect(transcript).toHaveCount(2);
+    const result = transcript.nth(0).getByRole('group', { name: 'Result' });
+    // The zones read as a table: one row per zone, its values as text, and how many more Team left out.
+    const table = result.getByRole('table');
+    await expect(table.getByRole('row')).toHaveCount(3);
+    await expect(table.getByRole('columnheader')).toHaveText(['Name', 'Paused']);
+    await expect(table.getByRole('row').nth(1).getByRole('cell')).toHaveText(['example.com', 'no']);
+    await expect(table.getByRole('row').nth(2).getByRole('cell').first()).toHaveText('<img src=x onerror=alert(1)>.dev');
+    await expect(result).toContainText('7 more');
+    await expect(result).toContainText('hidden');
+    await expect(result).toContainText('Showing part of the result.');
+    await expect(result.locator('img, a, script')).toHaveCount(0);
+    // Two labels that would read alike stay as Team wrote them, and numbers read exactly, never rounded.
+    const rows = result.locator(':scope > dl > div');
+    await expect(rows.filter({ hasText: 'a-b' })).toContainText('0.0001');
+    await expect(rows.filter({ hasText: 'a_b' })).toContainText('12345678901234567890');
+    // A field set Team cut short keeps its own rows and says how many more it left out, never a table row.
+    const cut = rows.filter({ hasText: 'cut' });
+    await expect(cut.getByRole('table')).toHaveCount(0);
+    await expect(cut).toContainText('example.net');
+    await expect(cut).toContainText('3 more');
+    // A run whose result did not change says so instead of repeating it.
+    await expect(transcript.nth(1).getByRole('group', { name: 'Result' })).toHaveCount(0);
+    await expect(transcript.nth(1)).toContainText('No change since the last result shown.');
+    expect(dialogs).toEqual([]);
+    expect(await accessibilityViolations(page)).toEqual([]);
+  });
+
   test('a Routine notice shows every name it carries as literal text, never as a link, image, or element', async ({ page }) => {
     // A request may be longer than a name, whose 80 characters still fit every kind of markup it could imitate.
     const hostile = '[x](https://evil.test) ![i](https://evil.test/a.png) <img src=x onerror=alert(1)> **b**';
@@ -5230,10 +5302,11 @@ test.describe('Team Routines', () => {
         entries: [
           // Named by its own definition, by Team's list, and by its request.
           row('b'.repeat(32), 'a'.repeat(32), 'created', {
-            name, steps: ROUTINE_VIEW.steps, schedule: ROUTINE_VIEW.schedule, timezone: 'America/Sao_Paulo',
+            name, steps: ROUTINE_VIEW.steps, output: ROUTINE_VIEW.output, schedule: ROUTINE_VIEW.schedule,
+            timezone: 'America/Sao_Paulo',
           }, null),
           row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']] }),
-          row('d'.repeat(32), 'f'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] }),
+          row('d'.repeat(32), 'f'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']], output: null }),
         ],
         before: null,
       },
@@ -5549,7 +5622,7 @@ test.describe('Team Routines', () => {
   });
 
   test("a Routine's recent runs are found past a full page of newer unrelated chat", async ({ page }) => {
-    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']], output: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({
       id: `${index.toString(16).padStart(32, '0')}:user`,
       created_at: '2026-10-02T09:00:00Z',
@@ -5596,7 +5669,7 @@ test.describe('Team Routines', () => {
       text: `Unrelated message ${start + index + 1}`,
     }));
     const searched = [];
-    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']], output: null };
     // A run that ends while the panel is open is written after the newest unrelated message.
     let delivered = null;
     await routeReadyChat(page);
@@ -5664,7 +5737,7 @@ test.describe('Team Routines', () => {
   });
 
   test("a Routine's panel that stays open keeps its latest few runs while new runs keep ending", async ({ page }) => {
-    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']], output: null };
     const failed = { code: 'assistant-rpc-failed', actions: [] };
     const digits = '0123456789abcdef';
     const history = [0, 1, 2, 3, 4].map((index) => routineRow(digits[index].repeat(32), 'done', done));
@@ -5944,7 +6017,7 @@ test.describe('Team Routines', () => {
   test('a Routine notice delivered after the chat opened becomes reviewable without a reload', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
-    const earlier = routineRow('c'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']] });
+    const earlier = routineRow('c'.repeat(32), 'done', { actions: [['shimpz-cloudflare', 'list-zones']], output: null });
     const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' });
     let history = { entries: [earlier], before: null };
     let runs = [];
@@ -6008,7 +6081,7 @@ test.describe('Team Routines', () => {
     await expect(panel).toHaveCount(0);
 
     // The run's newer version replaces its row instead of adding another; the draft is still there.
-    const published = { actions: [['shimpz-cloudflare', 'replace-dns-record']] };
+    const published = { actions: [['shimpz-cloudflare', 'replace-dns-record']], output: null };
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
@@ -6020,7 +6093,7 @@ test.describe('Team Routines', () => {
 
   test('Routine notices written behind more than one page of newer history while the chat was away still arrive', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
-    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']], output: null };
     const earlier = routineRow('c'.repeat(32), 'done', done);
     const gap = routineRow('d'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [] });
     const newest = routineRow('e'.repeat(32), 'done', done);
@@ -6100,7 +6173,7 @@ test.describe('Team Routines', () => {
           text: `Answer ${prefix}${index}\n\n${'Detail line. '.repeat(30).trim()}` },
       ];
     };
-    const done = { actions: [['shimpz-cloudflare', 'list-zones']] };
+    const done = { actions: [['shimpz-cloudflare', 'list-zones']], output: null };
     const history = {
       entries: [
         ...exchange('a', 0, '2026-09-29T14:00:05Z'),

@@ -106,14 +106,15 @@ function view(value, keys, valid) {
 /** One confirmed Routine as a Supervisor sees it. */
 export function parseRoutineView(value) {
   const keys = [
-    'routine_id', 'name', 'quote', 'steps', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm',
-    'deleting', 'paused',
+    'routine_id', 'name', 'quote', 'steps', 'output', 'schedule', 'timezone', 'assistant_ids', 'next_run_at',
+    'needs_reconfirm', 'deleting', 'paused',
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
     ID_RE.test(item.routine_id) &&
     isName(item.name) &&
     isSteps(item.steps) &&
+    isDisposition(item.output, item.steps) &&
     isQuote(item.quote) &&
     isSchedule(item.schedule) &&
     isTimezone(item.timezone) &&
@@ -137,6 +138,7 @@ const INPUT_KEYS = {
   literal: ['member', 'source', 'value'],
   run_clock: ['member', 'source', 'value'],
   step_output: ['member', 'source', 'step', 'pointer'],
+  step_text: ['member', 'source', 'step', 'pointer'],
 };
 
 function plain(value, maximum) {
@@ -181,6 +183,75 @@ export function isSteps(value) {
     earlier.push(step.id);
   }
   return true;
+}
+
+// What a completed run does with its result (ADR-0092 amendment, 2026-10-05, output), mirroring Team's
+// `routine.canonical_disposition` and `routine.canonical_output`: show one step's result after every run, only when it
+// changed, hand it on, or show nothing; and a shown result as Team's bounded, redacted, ordered projection.
+const OUTPUT_MODES = ['show', 'changes', 'chain', 'none'];
+const SHOWN_MODES = ['show', 'changes'];
+const OUTPUT_STATES = ['shown', 'unchanged', 'unavailable'];
+const MAX_OUTPUT_DEPTH = 4;
+const MAX_OUTPUT_ITEMS = 50;
+const MAX_OUTPUT_FIELDS = 24;
+const MAX_OUTPUT_TEXT_CHARS = 300;
+const MAX_OUTPUT_KEY_CHARS = 64;
+const MAX_OUTPUT_BYTES = 16 * 1024;
+// A number is its exact JSON text, so the browser never rounds it.
+const MAX_OUTPUT_NUMBER_CHARS = 64;
+const OUTPUT_NUMBER_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
+const SCALAR_NODES = {
+  null: (node) => exact(node, ['kind']),
+  redacted: (node) => exact(node, ['kind']),
+  elided: (node) => exact(node, ['kind']),
+  bool: (node) => exact(node, ['kind', 'value']) && typeof node.value === 'boolean',
+  number: (node) =>
+    exact(node, ['kind', 'value']) &&
+    typeof node.value === 'string' &&
+    node.value.length <= MAX_OUTPUT_NUMBER_CHARS &&
+    OUTPUT_NUMBER_RE.test(node.value),
+  text: (node) =>
+    exact(node, ['kind', 'value', 'cut']) &&
+    typeof node.cut === 'boolean' &&
+    typeof node.value === 'string' &&
+    codePointLength(node.value) <= MAX_OUTPUT_TEXT_CHARS &&
+    !PLAN_UNSAFE_RE.test(node.value),
+};
+
+/** Whether a plan's output disposition is closed and names one of its projected steps exactly when it shows one. */
+export function isDisposition(value, steps) {
+  if (!exact(value, ['mode', 'step']) || !OUTPUT_MODES.includes(value.mode)) return false;
+  if (!SHOWN_MODES.includes(value.mode)) return value.step === null;
+  return typeof value.step === 'string' && Array.isArray(steps) && steps.some((step) => step.id === value.step);
+}
+
+function isOutputNode(node, depth) {
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return false;
+  if (node.kind !== 'list' && node.kind !== 'fields') {
+    return typeof node.kind === 'string' && Object.hasOwn(SCALAR_NODES, node.kind) && SCALAR_NODES[node.kind](node);
+  }
+  if (depth >= MAX_OUTPUT_DEPTH || !Number.isInteger(node.omitted) || node.omitted < 0) return false;
+  if (node.kind === 'list') {
+    return exact(node, ['kind', 'items', 'omitted']) && Array.isArray(node.items) &&
+      node.items.length <= MAX_OUTPUT_ITEMS && node.items.every((item) => isOutputNode(item, depth + 1));
+  }
+  return exact(node, ['kind', 'fields', 'omitted']) && Array.isArray(node.fields) &&
+    node.fields.length <= MAX_OUTPUT_FIELDS &&
+    node.fields.every((field) => Array.isArray(field) && field.length === 2 && plain(field[0], MAX_OUTPUT_KEY_CHARS) &&
+      isOutputNode(field[1], depth + 1)) &&
+    new Set(node.fields.map((field) => field[0])).size === node.fields.length;
+}
+
+/** Whether a completed run's output is Team's closed form: a shown projection, or unchanged or unavailable alone. */
+export function isOutput(value) {
+  if (!exact(value, ['step', 'state', 'value', 'truncated'])) return false;
+  const valid =
+    typeof value.step === 'string' &&
+    STEP_ID_RE.test(value.step) &&
+    OUTPUT_STATES.includes(value.state) &&
+    typeof value.truncated === 'boolean' &&
+    (value.state === 'shown' ? isOutputNode(value.value, 0) : value.value === null && value.truncated === false);
+  return valid && new TextEncoder().encode(JSON.stringify(value)).length <= MAX_OUTPUT_BYTES;
 }
 
 function isActions(value) {
@@ -652,14 +723,15 @@ function closedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
 }
 
-// The ordered Assistant Actions a completed run carried out; never their input or result.
+// The ordered Assistant Actions a completed run carried out, never their input, and the result it shows, if any.
 function isCompleted(detail) {
-  return isActions(detail.actions) && detail.actions.length > 0 && detail.actions.length <= MAX_STEPS;
+  return isActions(detail.actions) && detail.actions.length > 0 && detail.actions.length <= MAX_STEPS &&
+    (detail.output === null || isOutput(detail.output));
 }
 
 const NOTICE_DETAILS = {
-  done: [['actions'], isCompleted],
-  recovered: [['actions'], isCompleted],
+  done: [['actions', 'output'], isCompleted],
+  recovered: [['actions', 'output'], isCompleted],
   held: [['assistant_id', 'action'], (detail) => isHeldStep(detail.assistant_id, detail.action)],
   paused: [
     ['assistant_id', 'action', 'reason'],
@@ -688,8 +760,8 @@ const NOTICE_DETAILS = {
   ],
   denied: [['actions'], (detail) => isActions(detail.actions)],
   stopped: [['actions'], (detail) => isActions(detail.actions)],
-  created: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
-  changed: [['name', 'steps', 'schedule', 'timezone'], isDefinition],
+  created: [['name', 'steps', 'output', 'schedule', 'timezone'], isDefinition],
+  changed: [['name', 'steps', 'output', 'schedule', 'timezone'], isDefinition],
 };
 
 // `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9).
@@ -700,7 +772,8 @@ function isName(value) {
 }
 
 function isDefinition(detail) {
-  return isName(detail.name) && isSteps(detail.steps) && isSchedule(detail.schedule) && isTimezone(detail.timezone);
+  return isName(detail.name) && isSteps(detail.steps) && isDisposition(detail.output, detail.steps) &&
+    isSchedule(detail.schedule) && isTimezone(detail.timezone);
 }
 
 function isAssistantList(value) {
@@ -813,9 +886,17 @@ export function routineNotice(entry, { copy, locale, assistantName, steps = [] }
     case 'created':
     case 'changed': {
       const schedule = scheduleWords(detail.schedule, copy.schedule, locale);
-      lines = [`${schedule} · ${detail.timezone}`, stepChain(detail.steps.map((item) => [item.assistant, item.action]), assistantName)];
+      lines = [
+        `${schedule} · ${detail.timezone}`,
+        stepChain(detail.steps.map((item) => [item.assistant, item.action]), assistantName),
+        dispositionWords(detail.output, detail.steps, copy.plan),
+      ];
       break;
     }
+    case 'done':
+    case 'recovered':
+      if (detail.output && detail.output.state !== 'shown') lines = [...chain, notice.output[detail.output.state]];
+      break;
     case 'healthy':
       lines = [fill(plural(notice.healthy, detail.runs, locale), { runs: detail.runs, minute: minuteWords(entry.createdAt, locale) })];
       break;
@@ -846,7 +927,71 @@ export function routineNotice(entry, { copy, locale, assistantName, steps = [] }
     time: clockTime(Date.parse(entry.createdAt), locale),
     lines,
     code: entry.outcome === 'failed' ? detail.code : '',
+    // A shown result, rendered apart as plain text: Team's bounded, redacted projection, never Markdown or HTML.
+    output: detail.output?.state === 'shown' ? detail.output : null,
   };
+}
+
+/** What a Routine does with each run's result, in words: the shown step is named by its place in the plan. */
+export function dispositionWords(output, steps, copy) {
+  const n = steps.findIndex((step) => step.id === output.step) + 1;
+  return fill(copy.output[output.mode], { n });
+}
+
+/**
+ * A list of field sets as one table, when every item is a field set and together they name at most eight labels: its
+ * columns in first-seen order and each row's node per column, or null for a missing one. Anything else is null.
+ */
+export function outputTable(node, maximum = 8) {
+  // A field set Team cut short keeps its own list form, so its "N more" is never lost in a table row.
+  if (node.kind !== 'list' || node.items.length === 0 ||
+    !node.items.every((item) => item.kind === 'fields' && item.omitted === 0)) {
+    return null;
+  }
+  const columns = [...new Set(node.items.flatMap((item) => item.fields.map(([label]) => label)))];
+  if (columns.length === 0 || columns.length > maximum) return null;
+  const rows = node.items.map((item) => {
+    const cells = new Map(item.fields);
+    return columns.map((column) => cells.get(column) ?? null);
+  });
+  return { columns, rows };
+}
+
+/**
+ * Labels as shown: humanized ("per_page" reads "Per page") only while that keeps every label distinct, otherwise
+ * exactly as Team wrote them, so two fields never read alike.
+ */
+export function outputLabels(labels) {
+  const humanized = labels.map((label) => humanizeId(label));
+  return new Set(humanized).size === labels.length ? humanized : [...labels];
+}
+
+/**
+ * A number's exact JSON text in the viewer's locale when the browser can hold it exactly (at most 15 significant
+ * digits), and otherwise exactly as Team wrote it, so a shown number is never rounded.
+ */
+function numberWords(text, locale) {
+  const digits = text.replace(/^-/u, '').replace(/[eE].*$/u, '').replace('.', '').replace(/^0+/u, '');
+  const value = Number(text);
+  if (digits.length > 15 || !Number.isFinite(value)) return text;
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 100 }).format(value);
+}
+
+/** One scalar node of a shown result as plain words in the viewer's language. */
+export function outputScalarWords(node, copy, locale) {
+  switch (node.kind) {
+    case 'text': return node.value;
+    case 'number': return numberWords(node.value, locale);
+    case 'bool': return node.value ? copy.yes : copy.no;
+    case 'redacted': return copy.redacted;
+    case 'elided': return '…';
+    default: return '—';
+  }
+}
+
+/** How many more items or fields a shown result left out, in words. */
+export function omittedWords(copy, count, locale) {
+  return fill(plural(copy.more, count, locale), { count: new Intl.NumberFormat(locale).format(count) });
 }
 
 /**
