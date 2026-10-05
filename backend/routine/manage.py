@@ -6,6 +6,7 @@ view; any other body becomes one safe error, so the browser never renders an unc
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from http import HTTPStatus
 
@@ -17,12 +18,21 @@ from protocol.http.v1 import routine as routine_contract
 from routine import team as routine_team
 
 _INVALID = team.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
+# A path count in its one canonical decimal form, as Team reads it.
+_COUNT_RE = re.compile(r"(?:0|[1-9][0-9]{0,9})\Z")
 
 
 def _id(value: object, name: str) -> str:
     if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
         raise team.TeamRequestError(f"{name} is invalid")
     return value
+
+
+def _count(value: object, name: str, minimum: int, bound: int) -> int:
+    """A path count in its canonical decimal form, from ``minimum`` and below ``bound``."""
+    if not isinstance(value, str) or _COUNT_RE.fullmatch(value) is None or not minimum <= int(value) < bound:
+        raise team.TeamRequestError(f"{name} is invalid")
+    return int(value)
 
 
 def _projected(
@@ -61,7 +71,7 @@ def _deleted(team_id: str, routine_id: str) -> Callable[[dict[str, object]], dic
 
 def list_routines(team_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
-    # The whole list is the one Team answer with its own protocol allowance above every other answer's cap.
+    # The whole list is read within its own protocol bound, the one Team answer above the Local API's 128 KiB cap.
     response = transport._call(
         "GET", f"/v1/teams/{canonical}/routines", max_response_bytes=routine_contract.MAX_ROUTINE_LIST_BYTES
     )
@@ -163,6 +173,50 @@ def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
         return (
             admitted if admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run) else None
         )
+
+    return _projected(response, admit)
+
+
+def plan_steps(team_id: object, routine_id: object, revision: object, offset: object) -> team.TeamResponse:
+    """One page of a Routine revision's steps from ``offset``, admitted only for exactly the page asked for.
+
+    Team refuses a revision that is no longer current, so the browser never combines two revisions' steps.
+    """
+    canonical = team.canonical_team_id(team_id)
+    routine = _id(routine_id, "Routine")
+    number = _count(revision, "Routine revision", 1, 2**31)
+    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
+    response = transport._call("GET", f"/v1/teams/{canonical}/routines/{routine}/revisions/{number}/steps/{start}")
+
+    def admit(body: dict[str, object]) -> dict[str, object] | None:
+        page = routine_contract.canonical_page(body)
+        if page is None or (page["routine_id"], page["revision"], page["offset"]) != (routine, number, start):
+            return None
+        return page
+
+    return _projected(response, admit)
+
+
+def run_steps(team_id: object, run_id: object, snapshot: object, offset: object) -> team.TeamResponse:
+    """One page of what a run did step by step, from ``offset``, of one snapshot of its records.
+
+    ``latest`` asks for the current snapshot, which the page then names; any other page is admitted only for exactly
+    the snapshot asked for, and Team refuses one whose records changed since.
+    """
+    canonical = team.canonical_team_id(team_id)
+    run = _id(run_id, "Routine run")
+    if snapshot != "latest" and (
+        not isinstance(snapshot, str) or routine_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
+    ):
+        raise team.TeamRequestError("Routine run snapshot is invalid")
+    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
+    response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
+
+    def admit(body: dict[str, object]) -> dict[str, object] | None:
+        page = routine_contract.canonical_run_steps(body)
+        if page is None or (page["team_id"], page["run_id"], page["offset"]) != (canonical, run, start):
+            return None
+        return page if snapshot in ("latest", page["snapshot"]) else None
 
     return _projected(response, admit)
 

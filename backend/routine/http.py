@@ -27,6 +27,10 @@ def register(
     application.add_api_route(base + "/{routine_id}", delete_route(confirmations), methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/diagnostics", routine_diagnostics, methods=["GET"])
+    application.add_api_route(base + "/runs/{run_id}/steps/{snapshot}/{offset}", routine_run_steps, methods=["GET"])
+    application.add_api_route(
+        base + "/{routine_id}/revisions/{revision}/steps/{offset}", routine_plan_steps, methods=["GET"]
+    )
     application.add_api_route(base + "/{routine_id}/resume", routine_resume, methods=["POST"])
     application.add_api_route(base + "/{routine_id}/pause", routine_pause, methods=["POST"])
     application.add_api_route(base + "/incidents/{incident_id}/card", routine_card, methods=["POST"])
@@ -102,6 +106,18 @@ async def routine_stop(team_id: str, run_id: str):
 
 async def routine_diagnostics(team_id: str, run_id: str):
     return _no_store(await run_in_threadpool(team_http.response, lambda: manage.diagnostics(team_id, run_id)))
+
+
+async def routine_run_steps(team_id: str, run_id: str, snapshot: str, offset: str):
+    return _no_store(
+        await run_in_threadpool(team_http.response, lambda: manage.run_steps(team_id, run_id, snapshot, offset))
+    )
+
+
+async def routine_plan_steps(team_id: str, routine_id: str, revision: str, offset: str):
+    return _no_store(
+        await run_in_threadpool(team_http.response, lambda: manage.plan_steps(team_id, routine_id, revision, offset))
+    )
 
 
 async def routine_resume(team_id: str, routine_id: str):
