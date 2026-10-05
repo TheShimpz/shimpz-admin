@@ -847,9 +847,9 @@ export function routineErrorMessage(error, copy) {
     'assistant-language-drift': copy.unavailable,
     'routine-limit': copy.full,
     'routine-rate-limit': copy.full,
-    // A Team's daily Action-step budget, or its whole definitions' budget, is full like its run ceiling.
-    'routine-step-budget': copy.full,
-    'routine-team-budget': copy.full,
+    // The Team's Routines' daily Action steps together, or their definitions together, would outgrow its budget.
+    'routine-step-budget': copy.stepBudget,
+    'routine-team-budget': copy.teamBudget,
     'routine-too-large': copy.tooLarge,
     // The Routine changed while its steps were read; it is read again, never mixed with the other revision.
     'routine-revision-changed': copy.routineChanged,

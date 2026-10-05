@@ -366,15 +366,22 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['model-credential-missing', 'credentialMissing'],
     ['routine-receipts-full', 'unavailable'],
     ['notices-full', 'unavailable'],
-    // A Team's daily step and definition budgets are full like its run ceiling.
-    ['routine-step-budget', 'full'],
-    ['routine-team-budget', 'full'],
+    // A Team's daily step and definition budgets each say their own fact, never the run ceiling's.
+    ['routine-step-budget', 'stepBudget'],
+    ['routine-team-budget', 'teamBudget'],
     ['routine-too-large', 'tooLarge'],
     ['routine-revision-changed', 'routineChanged'],
     ['routine-run-changed', 'stale'],
   ]) {
     assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
   }
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    const budgets = ['routine-step-budget', 'routine-team-budget', 'routine-rate-limit']
+      .map((code) => routineErrorMessage(new RoutineError(code), catalog.errors));
+    assert.equal(new Set(budgets).size, 3, locale);
+    assert.ok(budgets.every((words) => typeof words === 'string' && words.length > 0), locale);
+  }
+  assert.match(errors.stepBudget, /20,000/u);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   const zone = browserTimezone();
