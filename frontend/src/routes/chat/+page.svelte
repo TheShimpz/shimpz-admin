@@ -2227,7 +2227,13 @@
                     </div>
                   {/if}
                   {#if answer !== null}
-                    <p class="clarification-reply"><span class="reply-label">{$t('clarify').answered}</span>{answer}</p>
+                    <!-- The question stays above its answer, so the person always sees what they replied to. -->
+                    <div class="clarification-reply">
+                      <p class="clarification-question">
+                        <span class="reply-label">{$t('clarify').questionLabel}</span>{answer.question}
+                      </p>
+                      <p><span class="reply-label">{$t('clarify').answered}</span>{answer.answer}</p>
+                    </div>
                   {:else}
                     <p>{userTurn.text}</p>
                   {/if}
@@ -2810,7 +2816,9 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .clarification-reply { display: grid; gap: 2px; margin: 0; }
+  .clarification-reply { display: grid; gap: 0.55rem; margin: 0; }
+  .clarification-reply p { display: grid; gap: 2px; margin: 0; }
+  .clarification-question { color: var(--shimpz-color-text-muted); }
   .reply-label {
     color: var(--shimpz-color-text-muted);
     font-family: var(--shimpz-font-mono, ui-monospace, monospace);

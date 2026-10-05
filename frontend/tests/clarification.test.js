@@ -163,6 +163,8 @@ function exchange(key, text, clarification = null, historyIds = {}) {
 
 const ASK = 'Gerar o relatório';
 const answerTo = (answer) => composeClarifiedRequest(ASK, ASKED.question, answer, LABELS);
+// An answering message shows the question it answers above the answer, so the person sees what they replied to.
+const shown = (answer, question = ASKED.question) => ({ question, answer });
 
 test('a question card needs its exact user request from the same history turn', () => {
   assert.equal(clarifiedRequest(exchange(0, ASK)), null);
@@ -184,7 +186,7 @@ test('an answer closes the nearest earlier unanswered question it composes', () 
   ];
   const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
   assert.deepEqual([...given], [[1, 'Hoje'], [0, 'Esta semana']]);
-  assert.deepEqual([...sent], [[3, 'Hoje'], [4, 'Esta semana']]);
+  assert.deepEqual([...sent], [[3, shown('Hoje')], [4, shown('Esta semana')]]);
 });
 
 test('an answer skips questions it does not compose and never answers a later question', () => {
@@ -197,7 +199,7 @@ test('an answer skips questions it does not compose and never answers a later qu
   ];
   const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
   assert.deepEqual([...given], [[0, 'Hoje']]);
-  assert.deepEqual([...sent], [[2, 'Hoje']]);
+  assert.deepEqual([...sent], [[2, shown('Hoje')]]);
 });
 
 test('an explicit live answer link wins over the nearest open question', () => {
@@ -209,7 +211,7 @@ test('an explicit live answer link wins over the nearest open question', () => {
   ];
   const { given, sent } = matchClarificationAnswers(history, new Map([['u2', 'a0']]), [LABELS]);
   assert.deepEqual([...given], [[0, 'Hoje'], [1, 'Esta semana']]);
-  assert.deepEqual([...sent], [[2, 'Hoje'], [3, 'Esta semana']]);
+  assert.deepEqual([...sent], [[2, shown('Hoje')], [3, shown('Esta semana')]]);
 
   const ignored = matchClarificationAnswers(
     history,
@@ -217,6 +219,17 @@ test('an explicit live answer link wins over the nearest open question', () => {
     [LABELS],
   );
   assert.deepEqual([...ignored.given], [[1, 'Hoje'], [0, 'Esta semana']]);
+});
+
+test('each answer keeps the exact question it answers, also across chained Routine questions', () => {
+  const first = { question: 'Que trabalho você quer que a rotina repita?', options: [{ label: 'Listar zonas', description: '' }], default_index: null };
+  const second = { question: 'Com que frequência devo listar as zonas?', options: [{ label: 'a cada 30 segundos', description: '' }], default_index: null };
+  const request = 'Cria uma nova rotina pra mim';
+  const named = composeClarifiedRequest(request, first.question, 'Listar zonas', LABELS);
+  const timed = composeClarifiedRequest(named, second.question, 'a cada 25 segundos', LABELS);
+  const history = [exchange(0, request, first), exchange(1, named, second), exchange(2, timed)];
+  const { sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
+  assert.deepEqual([...sent], [[1, shown('Listar zonas', first.question)], [2, shown('a cada 25 segundos', second.question)]]);
 });
 
 test('history without question cards matches nothing', () => {

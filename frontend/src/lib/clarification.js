@@ -118,23 +118,19 @@ export function clarifiedRequest(exchange) {
  * Each question is answered by at most one later message that is exactly its composed request: a live answer by the
  * message it sent (`liveAnswers` maps that user turn's render key to the answered assistant turn's render key), and
  * otherwise the nearest earlier open question it composes. `given` maps the question's exchange index to that answer,
- * and `sent` maps the answering exchange index to the answer it shows. One pass keeps the open questions, so a message
- * is only checked against questions still waiting for an answer.
+ * and `sent` maps the answering exchange index to the question it answers and the answer, so the message can show both.
+ * One pass keeps the open questions, so a message is only checked against questions still waiting for an answer.
  */
 export function matchClarificationAnswers(exchanges, liveAnswers, labelSets) {
   const given = new Map();
   const sent = new Map();
   const originals = exchanges.map(clarifiedRequest);
   const answer = (later, index) => {
-    const value = clarificationAnswer(
-      exchanges[later].user?.text,
-      originals[index],
-      exchanges[index].assistant.clarification.question,
-      labelSets,
-    );
+    const { question } = exchanges[index].assistant.clarification;
+    const value = clarificationAnswer(exchanges[later].user?.text, originals[index], question, labelSets);
     if (value === null) return false;
     given.set(index, value);
-    sent.set(later, value);
+    sent.set(later, { question, answer: value });
     return true;
   };
   const exchangeOf = new Map(exchanges.map((exchange, index) => [exchange.assistant?.renderKey, index]));

@@ -1465,6 +1465,49 @@ test('a reloaded question stays bound to its own request', async ({ page }) => {
   ]);
 });
 
+// The person's message keeps the question above the answer, so it always shows what was answered (live and reloaded).
+test('an answer shows the question it answers, when sent and after a reload', async ({ page }) => {
+  const { card, answer } = await askRoutineQuestion(page);
+  await card.getByRole('radio', { name: 'Other answer' }).check();
+  await card.getByRole('textbox').fill('every 25 seconds');
+  await answer.click();
+  const sent = page.getByRole('article', { name: 'You' }).last();
+  await expect(sent.getByText(ROUTINE_QUESTION.question)).toBeVisible();
+  await expect(sent.getByText('every 25 seconds')).toBeVisible();
+
+  const [first, second] = ['f'.repeat(32), '0'.repeat(32)];
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${first}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: ROUTINE_REQUEST },
+        {
+          id: `${first}:reply`,
+          created_at: HISTORY_AT,
+          kind: 'message',
+          role: 'assistant',
+          text: ROUTINE_QUESTION_REPLY,
+          author: 'Marketing',
+          clarification: ROUTINE_QUESTION,
+        },
+        {
+          id: `${second}:user`,
+          created_at: HISTORY_AT,
+          kind: 'message',
+          role: 'user',
+          text: composedAnswer(ROUTINE_REQUEST, ROUTINE_QUESTION.question, 'every 25 seconds'),
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.reload();
+  const reloaded = page.getByRole('article', { name: 'You' }).last();
+  await expect(reloaded.getByText(ROUTINE_QUESTION.question)).toBeVisible();
+  await expect(reloaded.getByText('every 25 seconds')).toBeVisible();
+  await expect(page.getByRole('form', { name: ROUTINE_QUESTION.question })).toHaveCount(0);
+});
+
 test('a reloaded question answered in another language offers no second answer', async ({ page }) => {
   const [first, second] = ['d'.repeat(32), 'e'.repeat(32)];
   const composed = `Which new AI models were released?\n\nPergunta: ${CLARIFICATION.question}\nResposta: This week`;
