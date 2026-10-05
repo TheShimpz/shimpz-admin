@@ -22,15 +22,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
             preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job = self._future(self.assistant_plan.Result("installed", installed))
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Task complete.",
-                    "clarification": None,
-                },
-            )
+            response = chat_socket_fixtures.completed_turn("Task complete.")
             with (
                 mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=preparation),
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job) as submit_plan,
@@ -65,15 +57,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
 
     def test_no_capability_gap_dispatches_directly_without_a_plan_event(self) -> None:
         async def scenario() -> None:
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Done.",
-                    "clarification": None,
-                },
-            )
+            response = chat_socket_fixtures.completed_turn("Done.")
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -103,15 +87,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
 
     def test_targetless_uninstall_requests_a_name_without_brain_or_inventory_discovery(self) -> None:
         async def scenario() -> None:
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Tudo certo.",
-                    "clarification": None,
-                },
-            )
+            response = chat_socket_fixtures.completed_turn("Tudo certo.")
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,

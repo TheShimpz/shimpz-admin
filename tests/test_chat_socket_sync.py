@@ -95,15 +95,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
         async def scenario() -> None:
             pending = _integration_challenge(status=200)
             empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
-            completed = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Fresh turn.",
-                    "clarification": None,
-                },
-            )
+            completed = chat_socket_fixtures.completed_turn("Fresh turn.")
             with (
                 mock.patch.object(
                     self.chat_socket.local,
@@ -141,15 +133,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
 
     def test_integration_sync_delivers_done_only_after_explicit_resume(self) -> None:
         async def scenario() -> None:
-            completed = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Published.",
-                    "clarification": None,
-                },
-            )
+            completed = chat_socket_fixtures.completed_turn("Published.")
             with (
                 mock.patch.object(
                     self.chat_socket.local,
@@ -208,15 +192,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 started.set()
                 release.wait(timeout=2)
                 finished.set()
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Team-authoritative.",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("Team-authoritative.")
 
             with (
                 mock.patch.object(
@@ -260,15 +236,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 started.set()
                 release.wait(timeout=2)
                 finished.set()
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "late completion",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("late completion")
 
             with (
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=pending),

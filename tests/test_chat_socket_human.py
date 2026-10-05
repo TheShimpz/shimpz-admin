@@ -26,15 +26,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
             ),
             clock=lambda: self.auth_clock[0],
         )
-        self.completed = self.chat_socket.local.PublicResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": "Completed.",
-                "clarification": None,
-            },
-        )
+        self.completed = chat_socket_fixtures.completed_turn("Completed.")
 
     async def _open_challenge(self, kind: str) -> chat_socket_fixtures.Socket:
         websocket = await self._open()

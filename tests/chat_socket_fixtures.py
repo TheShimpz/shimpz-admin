@@ -145,6 +145,15 @@ async def wait_for_thread(event: threading.Event, wait_seconds: float = EXPECTED
         await asyncio.sleep(0.005)
 
 
+def completed_turn(reply: str) -> object:
+    """Return the Team's public completed-turn response for the Marketing Team."""
+    local_module = importlib.import_module("chat.local")
+    return local_module.PublicResponse(
+        200,
+        {"team_id": "team_1", "team_name": "Marketing", "reply": reply, "clarification": None},
+    )
+
+
 def integration_requirements() -> list[dict[str, object]]:
     return [
         {

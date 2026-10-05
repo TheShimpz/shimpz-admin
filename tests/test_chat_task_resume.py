@@ -6,7 +6,7 @@ import asyncio
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import chat_frame
+from tests.chat_socket_fixtures import chat_frame, completed_turn
 
 
 class ChatTaskResumeTests(ChatWebSocketCase):
@@ -76,15 +76,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
         async def scenario() -> None:
             plan = self._automatic_plan()
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Task complete.",
-                    "clarification": None,
-                },
-            )
+            response = completed_turn("Task complete.")
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -211,15 +203,7 @@ class ChatConversationWindowTests(ChatWebSocketCase):
             replies = iter(("Your zones are example.com.", "Done."))
 
             def turn(_team_id, _payload, _conversation, _request, _progress):
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": next(replies),
-                        "clarification": None,
-                    },
-                )
+                return completed_turn(next(replies))
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as sent:
                 websocket = await self._open()

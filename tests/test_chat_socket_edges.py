@@ -841,15 +841,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 )
             self.assertEqual(send_terminal.await_args.args[2]["status"], 503)
 
-            completed = local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Completed.",
-                    "clarification": None,
-                },
-            )
+            completed = chat_socket_fixtures.completed_turn("Completed.")
             send_terminal.reset_mock()
             with (
                 mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=completed)),

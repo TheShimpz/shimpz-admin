@@ -221,15 +221,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 started.set()
                 release.wait(timeout=2)
                 _emit_measured_progress(progress)
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "late reply",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("late reply")
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
@@ -287,15 +279,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[-1]))
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Natural terminal.",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("Natural terminal.")
 
             def stop(_team_id):
                 release.set()
@@ -341,15 +325,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             def turn(_team_id, _payload, _conversation, _request, _progress):
                 started.set()
                 finish_turn.wait(timeout=2)
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Bounded terminal.",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("Bounded terminal.")
 
             def stop(_team_id):
                 finish_turn.set()
@@ -386,15 +362,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 started.set()
                 release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[0]))
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "discard me",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("discard me")
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
@@ -426,15 +394,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 started.set()
                 progress(dict(_MEASURED_PROGRESS[0]))
                 release.wait(timeout=2)
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "discard me",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("discard me")
 
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
@@ -456,15 +416,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             def turn(_team_id, _payload, _conversation, _request, progress):
                 progress(dict(_MEASURED_PROGRESS[0]))
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "already committed",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("already committed")
 
             def submit_completed(_executor, function, /, *args, **kwargs):
                 future = concurrent.futures.Future()
@@ -507,15 +459,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             def turn(_team_id, _payload, _conversation, _request, progress):
                 _emit_measured_progress(progress)
-                return self.chat_socket.local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Done.",
-                        "clarification": None,
-                    },
-                )
+                return chat_socket_fixtures.completed_turn("Done.")
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn):
                 websocket = await self._open()

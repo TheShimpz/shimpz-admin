@@ -118,15 +118,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 mock.patch.object(
                     self.chat_socket.local,
                     "turn",
-                    return_value=self.chat_socket.local.PublicResponse(
-                        200,
-                        {
-                            "team_id": "team_1",
-                            "team_name": "Marketing",
-                            "reply": "Temos apenas Cloudflare/DNS.",
-                            "clarification": None,
-                        },
-                    ),
+                    return_value=chat_socket_fixtures.completed_turn("Temos apenas Cloudflare/DNS."),
                 ) as turn,
                 mock.patch.object(
                     self.chat_socket.lifecycle,

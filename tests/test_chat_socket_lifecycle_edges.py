@@ -13,7 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat import assistant_proposal, assistant_route, local, socket
+from chat import assistant_proposal, assistant_route, socket
 from tests import chat_socket_fixtures
 
 
@@ -246,17 +246,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
     def test_chat_dispatch_carries_the_frame_locale_and_never_the_message_in_the_turn(self) -> None:
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            future.set_result(
-                local.PublicResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Done.",
-                        "clarification": None,
-                    },
-                )
-            )
+            future.set_result(chat_socket_fixtures.completed_turn("Done."))
             connection = socket._Connection()
             websocket = mock.AsyncMock()
             message = "x" * 2_001

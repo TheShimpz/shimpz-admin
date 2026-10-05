@@ -36,15 +36,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 ("shimpz-cloudflare",),
             )
             installed = tuple({**item, "status": "installed"} for item in self.assistant_plan.initial_items(plan))
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Olá.",
-                    "clarification": None,
-                },
-            )
+            response = chat_socket_fixtures.completed_turn("Olá.")
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,
@@ -104,15 +96,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 self.assistant_plan.Preparation(already_installed=result),
                 "assistant-install",
             )
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Done.",
-                    "clarification": None,
-                },
-            )
+            response = chat_socket_fixtures.completed_turn("Done.")
             with (
                 mock.patch.object(
                     self.chat_socket.lifecycle,

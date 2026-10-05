@@ -11,6 +11,7 @@ from unittest import mock
 import uvicorn
 import websockets
 from tests.chat_socket_case import ChatWebSocketCase
+from tests.chat_socket_fixtures import completed_turn
 from websockets.exceptions import InvalidStatus
 
 
@@ -42,15 +43,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
 
             uri = f"ws://127.0.0.1:{port}/api/teams/team_1/chat/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
-            response = self.chat_socket.local.PublicResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "hello from the Team",
-                    "clarification": None,
-                },
-            )
+            response = completed_turn("hello from the Team")
             try:
                 with self.assertRaises(InvalidStatus):
                     await websockets.connect(
