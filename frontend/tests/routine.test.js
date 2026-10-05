@@ -38,6 +38,7 @@ import {
   pauseRoutine,
   pointerWords,
   humanizeId,
+  inputWords,
   literalWords,
   routineStatus,
   STATUS_TAGS,
@@ -1117,6 +1118,16 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
   assert.equal(literalWords('1'), '1');
   assert.equal(literalWords('{"a":1}'), '{"a":1}');
   assert.equal(literalWords('not json'), 'not json');
+  // Decoding a preview never reverses Team's escaping: every unsafe character Team escaped is shown escaped again.
+  assert.equal(literalWords('"a\\u202eb"'), 'a\\u202eb');
+  assert.equal(literalWords('"\\u200b\\u2028\\ufeff\\u0007\\ud800x"'), '\\u200b\\u2028\\ufeff\\u0007\\ud800x');
+  assert.equal(literalWords('"line\\nbreak"'), 'line\\u000abreak');
+  // A paired surrogate is one safe character and stays as it is.
+  assert.equal(literalWords('"\\ud83d\\ude00"'), '\u{1F600}');
+  for (const preview of ['"a\\u202eb"', '"\\u2066x\\u2069"', '"\\u0000"']) {
+    assert.doesNotMatch(literalWords(preview), /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u, preview);
+  }
+  assert.equal(inputWords({ member: 'x', source: 'literal', value: '"a\\u202eb"' }, routineMessages.en.plan), 'a\\u202eb');
 });
 
 test("a Routine's status is its most urgent one", () => {

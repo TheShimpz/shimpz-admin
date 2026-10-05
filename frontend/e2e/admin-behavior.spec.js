@@ -5442,8 +5442,13 @@ test.describe('Team Routines', () => {
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const listed = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
     const [watch] = listed.routines;
+    // The first step's literal carries a bidi override that Team escaped in its preview.
     const steps = Array.from({ length: 3 }, (_, index) => ({
-      position: index + 1, assistant: 'shimpz-cloudflare', action: 'list-zones', inputs: [], stored_inputs: [],
+      position: index + 1,
+      assistant: 'shimpz-cloudflare',
+      action: 'list-zones',
+      inputs: index ? [] : [{ member: 'name', source: 'literal', value: '"a\\u202eb"' }],
+      stored_inputs: [],
     }));
     const revised = planSummary(steps, 2);
     let changed = false;
@@ -5472,6 +5477,9 @@ test.describe('Team Routines', () => {
     await panel.getByRole('tab', { name: 'Steps' }).click();
     await expect(panel.getByRole('list', { name: 'Steps' }).locator(':scope > li')).toHaveCount(3);
     expect(read).toEqual(['1/0', '2/0']);
+    // The escape stays visible text: decoding the preview never puts the raw override into the page.
+    await expect(panel.getByRole('list', { name: 'Steps' }).locator('dd').first()).toHaveText('a\\u202eb');
+    expect(await page.evaluate(() => document.body.textContent.includes('\u202e'))).toBe(false);
     await expect(panel.getByRole('button', { name: /^Show \d+ more steps?$/u })).toHaveCount(0);
   });
 
@@ -5520,7 +5528,8 @@ test.describe('Team Routines', () => {
         attempt: position === 61 ? 3 : 1,
         duration_ms: 812,
         recorded_at: '2026-10-01T12:00:02Z',
-        inputs: [{ member: 'zone_id', source: 'step_output', value: `"zone-${position}"` }],
+        // Team escaped a bidi override in the first step's preview.
+        inputs: [{ member: 'zone_id', source: 'step_output', value: position === 1 ? '"zone\\u202e-1"' : `"zone-${position}"` }],
       };
     });
     const read = [];
@@ -5558,6 +5567,9 @@ test.describe('Team Routines', () => {
     await expect(items.nth(60)).toContainText(status.failed);
     await expect(items.nth(60)).toContainText('List DNS records');
     await expect(items.nth(60).locator('dd')).toHaveText('zone-61');
+    // The escape stays visible text: decoding the preview never puts the raw override into the page.
+    await expect(items.nth(0).locator('dd')).toHaveText('zone\\u202e-1');
+    expect(await page.evaluate(() => document.body.textContent.includes('\u202e'))).toBe(false);
     await expect(items.nth(61)).toContainText(status.unavailable);
     for (const index of [62, 69]) {
       await expect(items.nth(index)).toContainText(status.not_run);

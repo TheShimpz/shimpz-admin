@@ -657,11 +657,23 @@ export function pointerWords(pointer, copy) {
     .join(' › ');
 }
 
-/** A literal's preview as plain words: a JSON string reads without its quotes; anything else stays as Team showed it. */
+// Exactly Team's unsafe set (`routine.escaped`): controls, bidi and zero-width formatting, line and paragraph
+// separators, the BOM, and, in this Unicode-mode class, a lone surrogate.
+const UNSAFE_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/gu;
+
+/** Text with every character in Team's unsafe set written back as its JSON unicode escape, as Team writes it. */
+export function escapedText(text) {
+  return text.replace(UNSAFE_TEXT_RE, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/**
+ * A literal's preview as plain words: a JSON string reads without its quotes, with every unsafe character Team escaped
+ * escaped again, so decoding never restores a control or invisible character; anything else stays as Team showed it.
+ */
 export function literalWords(preview) {
   try {
     const value = JSON.parse(preview);
-    return typeof value === 'string' ? value : preview;
+    return typeof value === 'string' ? escapedText(value) : preview;
   } catch {
     return preview;
   }
