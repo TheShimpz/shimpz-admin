@@ -414,7 +414,7 @@ export function routineRecoveryRoutes(state, method, path, body) {
   return null;
 }
 
-// What each lifecycle run with a shown result did, step by step: its records, kept as one snapshot.
+// What lifecycle runs did, step by step: their records, kept as one snapshot each.
 const SNAPSHOT = 'c'.repeat(32);
 const record = (position, status, action, { attempt = 1, duration = 640 + position * 37, inputs = [] } = {}) => ({
   position,
@@ -423,7 +423,7 @@ const record = (position, status, action, { attempt = 1, duration = 640 + positi
   action,
   attempt,
   duration_ms: status === 'recovered' ? null : duration,
-  recorded_at: `2026-09-30T12:00:${String(10 + position).padStart(2, '0')}Z`,
+  recorded_at: new Date(Date.UTC(2026, 8, 30, 12, 0, 10 + position)).toISOString().replace('.000Z', 'Z'),
   inputs,
 });
 const RUN_RECORDS = {
@@ -436,6 +436,15 @@ const RUN_RECORDS = {
   [id('8')]: [
     record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
     record(2, 'done', 'list-dns-records', { inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
+  ],
+  // The continuous watch's completed run hands its result on and shows none; each zone's records were listed.
+  [id('c')]: WATCH.map((item) => record(item.position, 'done', item.action, {
+    inputs: item.position === 1 ? [{ member: 'page', source: 'literal', value: '1' }] : [{ member: 'zone_id', source: 'step_output', value: null }],
+  })),
+  // The failed run's zone list failed on its third attempt, so the run never started its second step.
+  [FAILED_RUN]: [
+    record(1, 'failed', 'list-zones', { attempt: 3, inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
+    { position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null },
   ],
 };
 
@@ -474,12 +483,14 @@ export function routineStepRoutes(state, method, path) {
   }
   const run = path.match(new RegExp(`^${base}/runs/([0-9a-f]{32})/steps/(latest|[0-9a-f]{32})/([0-9]+)$`));
   if (run) {
-    const notice = state.history.find((entry) => entry.run_id === run[1] && entry.detail?.plan);
+    const notice = state.history.find((entry) => entry.run_id === run[1]);
     const records = RUN_RECORDS[run[1]];
-    if (!notice || !records) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
+    // A completed run's notice names the revision it carried out; any other run carried out its Routine's current one.
+    const plan = notice?.detail.plan ?? state.routines.find((item) => item.routine_id === notice?.routine_id)?.plan;
+    if (!plan || !records) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
     if (run[2] !== 'latest' && run[2] !== SNAPSHOT) return { status: 409, json: { code: 'routine-run-changed' } };
     if (Number(run[3]) >= records.length) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
-    return { status: 200, json: runStepsPage(run[1], notice.routine_id, notice.detail.plan, records, { offset: Number(run[3]) }) };
+    return { status: 200, json: runStepsPage(run[1], notice.routine_id, plan, records, { offset: Number(run[3]) }) };
   }
   return null;
 }

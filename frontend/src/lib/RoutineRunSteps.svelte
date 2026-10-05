@@ -3,16 +3,25 @@
   import { tick, untrack } from 'svelte';
 
   import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import { conditionWords, fillRoutineCopy, humanizeId, literalWords, needsPage, readRunSteps } from '$lib/routine.js';
+  import {
+    conditionWords,
+    fillRoutineCopy,
+    humanizeId,
+    literalWords,
+    needsPage,
+    pageBinding,
+    readRunSteps,
+  } from '$lib/routine.js';
   import { durationWords, visibleSteps } from '$lib/routineResult.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was
   // given as Team's redacted previews, and the failed attempts Team recorded for it. A step with no record says plainly
   // that it did not run or that its record is unavailable. The records are read page by page for one snapshot of them,
-  // bound to the revision the run carried out; a snapshot that changed meanwhile is read again from the newest. A long
-  // run reveals its steps a few at a time. Every value is escaped text.
-  let { teamId, runId, plan, attempts = null, copy, names = {}, locale, pageSize = 10 } = $props();
+  // bound to the run's historical `binding` (`runBinding`): every page must match it, and the first page binds what it
+  // left unknown; a snapshot that changed meanwhile is read again from the newest. A long run reveals its steps a few
+  // at a time, and `total` reports how many steps its revision has once that is known. Every value is escaped text.
+  let { teamId, runId, binding, attempts = null, copy, names = {}, locale, pageSize = 10, total = $bindable(null) } = $props();
 
   const ICONS = {
     done: 'check', recovered: 'check', failed: 'failed', stopped: 'stop', waiting: 'approval', not_run: 'skip', unavailable: 'warning',
@@ -22,6 +31,7 @@
 
   let steps = $state([]);
   let next = $state(0);
+  let bound = $state(null);
   let snapshot = 'latest';
   let pages = $state(1);
   let loading = $state(false);
@@ -31,7 +41,7 @@
   let reading = 0;
 
   let shown = $derived(visibleSteps(steps, pages, pageSize));
-  let remaining = $derived(plan.steps - shown.length);
+  let remaining = $derived((bound?.total ?? 0) - shown.length);
 
   const assistantName = (assistant) => names[assistant] ?? humanizeId(assistant);
   const plural = (forms, count) => fillRoutineCopy(
@@ -54,7 +64,7 @@
       while (ticket === reading && needsPage(steps.length, wanted, next)) {
         let page;
         try {
-          page = await readRunSteps(fetch, teamId, runId, plan, snapshot, next);
+          page = await readRunSteps(fetch, teamId, runId, bound, snapshot, next);
         } catch (error) {
           if (error?.code !== 'routine-run-changed' || restarts === RESTARTS) throw error;
           restarts += 1;
@@ -65,6 +75,9 @@
         steps = [...steps, ...page.steps];
         next = page.next;
         snapshot = page.snapshot;
+        // Every later page, and a restart from the newest records, must match the run the first page named.
+        bound = pageBinding(page);
+        total = page.total;
       }
     } catch {
       if (ticket === reading) failed = true;
@@ -74,9 +87,11 @@
   }
 
   $effect(() => {
-    void `${teamId}:${runId}:${plan.plan_digest}`;
+    void `${teamId}:${runId}:${binding.plan_digest}`;
     untrack(() => {
       reading += 1;
+      bound = binding;
+      total = binding.total;
       restart();
       pages = 1;
       failed = false;

@@ -5,6 +5,7 @@ export const routineResultMessages = {
   en: {
     open: "Response",
     finished: "Finished",
+    updated: "Last update",
     steps: "Steps",
     stepCount: { one: "{count} step", other: "{count} steps" },
     response: "Response",
@@ -28,6 +29,7 @@ export const routineResultMessages = {
   pt: {
     open: "Resposta",
     finished: "Terminou",
+    updated: "Última atualização",
     steps: "Etapas",
     stepCount: { one: "{count} etapa", other: "{count} etapas" },
     response: "Resposta",
@@ -51,6 +53,7 @@ export const routineResultMessages = {
   es: {
     open: "Respuesta",
     finished: "Terminó",
+    updated: "Última actualización",
     steps: "Pasos",
     stepCount: { one: "{count} paso", other: "{count} pasos" },
     response: "Respuesta",
@@ -74,6 +77,7 @@ export const routineResultMessages = {
   zh: {
     open: "响应",
     finished: "完成于",
+    updated: "最近更新",
     steps: "步骤",
     stepCount: { one: "{count} 个步骤", other: "{count} 个步骤" },
     response: "响应",
@@ -97,6 +101,7 @@ export const routineResultMessages = {
   fr: {
     open: "Réponse",
     finished: "Terminée",
+    updated: "Dernière mise à jour",
     steps: "Étapes",
     stepCount: { one: "{count} étape", other: "{count} étapes" },
     response: "Réponse",
@@ -120,6 +125,7 @@ export const routineResultMessages = {
   de: {
     open: "Antwort",
     finished: "Beendet",
+    updated: "Letzte Aktualisierung",
     steps: "Schritte",
     stepCount: { one: "{count} Schritt", other: "{count} Schritte" },
     response: "Antwort",
@@ -143,6 +149,7 @@ export const routineResultMessages = {
   ja: {
     open: "応答",
     finished: "終了",
+    updated: "最終更新",
     steps: "ステップ",
     stepCount: { one: "{count} ステップ", other: "{count} ステップ" },
     response: "応答",
@@ -166,6 +173,7 @@ export const routineResultMessages = {
   ar: {
     open: "الاستجابة",
     finished: "انتهى",
+    updated: "آخر تحديث",
     steps: "الخطوات",
     stepCount: { one: "{count} خطوة", other: "{count} خطوات" },
     response: "الاستجابة",

@@ -13,6 +13,8 @@ import {
   readPlanSteps,
   readRunDiagnostics,
   readRunSteps,
+  pageBinding,
+  runBinding,
 } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
@@ -291,14 +293,18 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
     readPlanSteps(adapter(scenario), 'marketing', watch.routine_id, { ...watch.plan, revision: 2 }, 0),
     (error) => error.code === 'routine-revision-changed',
   );
-  // Each run with a shown result has its own step records, of one snapshot; another snapshot was changed since.
-  for (const entry of entries.filter((item) => item.detail.output?.state === 'shown')) {
-    const plan = entry.detail.plan;
-    const page = await readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, 'latest', 0);
-    assert.equal(page.steps.length, plan.steps);
-    assert.deepEqual(await readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, page.snapshot, 0), page);
+  // Runs with and without a shown result, and a failed run whose notice names no plan, have their own step records,
+  // of one snapshot; another snapshot was changed since.
+  const recorded = entries.filter((item) => item.detail.output?.state === 'shown' || ['c'.repeat(32), failed.run_id].includes(item.run_id));
+  assert.equal(recorded.length, 4);
+  for (const entry of recorded) {
+    const binding = runBinding(entry.routine_id, entry.detail.plan ?? null);
+    const page = await readRunSteps(adapter(scenario), 'marketing', entry.run_id, binding, 'latest', 0);
+    const bound = pageBinding(page);
+    assert.equal(page.steps.length, Math.min(64, bound.total));
+    assert.deepEqual(await readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, page.snapshot, 0), page);
     await assert.rejects(
-      readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, 'e'.repeat(32), 0),
+      readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, 'e'.repeat(32), 0),
       (error) => error.code === 'routine-run-changed',
     );
   }

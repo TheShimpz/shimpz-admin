@@ -298,12 +298,41 @@ export function isRunStep(value, position) {
 }
 
 /**
- * One page of what a run did from `offset`, bound to the revision its notice's `plan` summary names and to one
+ * The historical binding every page of one run's records must match: its Routine always, and its revision, plan
+ * digest, and step count once known. A completed run's notice carries its plan summary, which binds them from the
+ * start; a failed, stopped, or held run's notice carries none, so its first page binds them for every later page.
+ */
+export function runBinding(routineId, plan = null) {
+  return {
+    routine_id: routineId,
+    revision: plan?.revision ?? null,
+    plan_digest: plan?.plan_digest ?? null,
+    total: plan?.steps ?? null,
+  };
+}
+
+/** The binding a run-steps page names: its Routine, revision, plan digest, and step count. */
+export function pageBinding(page) {
+  return { routine_id: page.routine_id, revision: page.revision, plan_digest: page.plan_digest, total: page.total };
+}
+
+// A binding is its Routine with its revision, digest, and step count all known or all still unknown.
+function isBinding(value) {
+  if (!exact(value, ['routine_id', 'revision', 'plan_digest', 'total'])) return false;
+  const { routine_id: routineId, revision, plan_digest: digest, total } = value;
+  const known = whole(revision, 1, 2 ** 31 - 1) && typeof digest === 'string' && PLAN_DIGEST_RE.test(digest) &&
+    isPosition(total);
+  return typeof routineId === 'string' && ID_RE.test(routineId) &&
+    (known || (revision === null && digest === null && total === null));
+}
+
+/**
+ * One page of what a run did from `offset`, bound to the run's historical `binding` (`runBinding`) and to one
  * `snapshot` of its retained records. `latest` asks for the current snapshot, which the page names; any other page is
  * admitted only for exactly that snapshot, and Team refuses one whose records changed since (`routine-run-changed`).
  */
-export async function readRunSteps(fetcher, teamId, runId, plan, snapshot, offset) {
-  if (!isSummary(plan) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !SNAPSHOT_RE.test(snapshot)))) {
+export async function readRunSteps(fetcher, teamId, runId, binding, snapshot, offset) {
+  if (!isBinding(binding) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !SNAPSHOT_RE.test(snapshot)))) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/steps/${snapshot}/${offsetPath(offset)}`));
@@ -311,8 +340,9 @@ export async function readRunSteps(fetcher, teamId, runId, plan, snapshot, offse
   return view(body, keys, (item) =>
     item.team_id === teamId &&
     item.run_id === runId &&
-    typeof item.routine_id === 'string' && ID_RE.test(item.routine_id) &&
-    ofPlan(item, plan) &&
+    whole(item.revision, 1, 2 ** 31 - 1) &&
+    typeof item.plan_digest === 'string' && PLAN_DIGEST_RE.test(item.plan_digest) &&
+    Object.entries(binding).every(([key, expected]) => expected === null || item[key] === expected) &&
     typeof item.snapshot === 'string' && SNAPSHOT_RE.test(item.snapshot) &&
     (snapshot === 'latest' || item.snapshot === snapshot) &&
     typeof item.ended === 'boolean' &&

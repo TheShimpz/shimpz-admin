@@ -58,7 +58,7 @@
   // Where a search for runs stopped at its page bound, so the person can continue it; null once history is exhausted.
   let olderRuns = $state(null);
   let searchingOlder = $state(false);
-  let detailsRun = $state('');
+  let detailsRun = $state(null);
   let page = $state('summary');
   // The summary says the time now in the Routine's timezone, kept to the second while the panel is open.
   let now = $state(Date.now());
@@ -382,7 +382,7 @@
                 <!-- A rollup of a continuous Routine's healthy runs is no run of its own, so it has no execution details. -->
                 {#if entry.runId}
                   <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
-                    onclick={() => (detailsRun = entry.runId)}><RoutineIcon name="terminal" /></Button>
+                    onclick={() => (detailsRun = entry)}><RoutineIcon name="terminal" /></Button>
                 {/if}
               </li>
             {/each}
@@ -403,7 +403,7 @@
 </RoutineModal>
 
 {#if detailsRun}
-  <RoutineRunDetails {teamId} runId={detailsRun} copy={copy.details} errors={copy.errors} onclose={() => (detailsRun = '')} />
+  <RoutineRunDetails {teamId} entry={detailsRun} {copy} names={$assistantNames} onclose={() => (detailsRun = null)} />
 {/if}
 
 <style>

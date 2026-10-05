@@ -58,6 +58,8 @@ import {
   needsPage,
   readPlanSteps,
   readRunSteps,
+  pageBinding,
+  runBinding,
   stopRoutineRun,
 } from '../src/lib/routine.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
@@ -865,7 +867,7 @@ function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT, ended = true }
 }
 
 test("a run's step records are admitted only for its own revision and one snapshot of them", async () => {
-  const plan = TWO;
+  const plan = runBinding(ROUTINE.routine_id, TWO);
   const run = RUN_ENTRY.run_id;
   const steps = [RECORDED, GAP];
   let api = fetcher([[200, runPage(0, steps)], [200, runPage(0, steps)]]);
@@ -907,6 +909,7 @@ test("a run's step records are admitted only for its own revision and one snapsh
     [{ ...runPage(0, steps), team_id: 'team_2' }, 'latest', 0],
     [{ ...runPage(0, steps), run_id: 'd'.repeat(32) }, 'latest', 0],
     [{ ...runPage(0, steps), revision: 2 }, 'latest', 0],
+    [{ ...runPage(0, steps), routine_id: 'c'.repeat(32) }, 'latest', 0],
     [{ ...runPage(0, steps), plan_digest: `sha256:${'e'.repeat(64)}` }, 'latest', 0],
     [runPage(0, steps, { total: 3 }), 'latest', 0],
     [runPage(0, steps, { snapshot: 'e'.repeat(32) }), SNAPSHOT, 0],
@@ -931,9 +934,43 @@ test("a run's step records are admitted only for its own revision and one snapsh
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, 'LATEST', 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, null, 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, null, 'latest', 0),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, TWO, 'latest', 0),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, { ...plan, total: null }, 'latest', 0),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, runBinding('x'), 'latest', 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, 'latest', 256),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
+  }
+});
+
+test("a run whose notice names no plan binds its records to the run its first page names, for every later page", async () => {
+  const run = RUN_ENTRY.run_id;
+  const unknown = runBinding(ROUTINE.routine_id);
+  assert.deepEqual(unknown, { routine_id: ROUTINE.routine_id, revision: null, plan_digest: null, total: null });
+  const steps = Array.from({ length: 70 }, (_, index) => ({ ...RECORDED, position: index + 1 }));
+  const first = runPage(0, steps.slice(0, 64), { total: 70 });
+  const page = await readRunSteps(fetcher([[200, first]]).fetch, 'team_1', run, unknown, 'latest', 0);
+  const bound = pageBinding(page);
+  assert.deepEqual(bound, { routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST, total: 70 });
+  const second = runPage(64, steps.slice(64), { total: 70 });
+  assert.equal((await readRunSteps(fetcher([[200, second]]).fetch, 'team_1', run, bound, SNAPSHOT, 64)).next, null);
+  // A later page of another revision, digest, size, or Routine never joins the first.
+  for (const other of [{ revision: 2 }, { plan_digest: `sha256:${'e'.repeat(64)}` }, { routine_id: 'c'.repeat(32) }]) {
+    await assert.rejects(
+      readRunSteps(fetcher([[200, { ...second, ...other }]]).fetch, 'team_1', run, bound, SNAPSHOT, 64),
+      (error) => error.code === 'routine-response-invalid',
+    );
+  }
+  await assert.rejects(
+    readRunSteps(fetcher([[200, runPage(64, steps.slice(64, 69), { total: 69 })]]).fetch, 'team_1', run, bound, SNAPSHOT, 64),
+    (error) => error.code === 'routine-response-invalid',
+  );
+  // Even before it is bound, a page must name a valid revision and digest and the run's own Routine.
+  for (const other of [{ revision: 0 }, { plan_digest: 'sha256:x' }, { routine_id: 'c'.repeat(32) }]) {
+    await assert.rejects(
+      readRunSteps(fetcher([[200, { ...first, ...other }]]).fetch, 'team_1', run, unknown, 'latest', 0),
+      (error) => error.code === 'routine-response-invalid',
+    );
   }
 });
 

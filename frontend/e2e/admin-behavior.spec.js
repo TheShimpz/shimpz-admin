@@ -4250,6 +4250,9 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
 // Admin's deletion ceremony (ADR-0051): the Supervisor password first, then one six-digit code; `000000` is wrong.
 const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
 
+// Every run's transcript row opens its own step records; this names every other action a row may offer.
+const OTHER_THAN_STEPS = /^(?!Steps$)/u;
+
 async function routeRoutines(
   page,
   {
@@ -5216,8 +5219,8 @@ test.describe('Team Routines', () => {
     // A done row names the Actions the run carried out, never a model reply.
     await expect(transcript.nth(3)).toContainText('done');
     await expect(transcript.nth(3)).toContainText('Shimpz Cloudflare · List zones');
-    // A row whose Routine Team does not list offers no action, not even its panel.
-    await expect(transcript.getByRole('button')).toHaveCount(0);
+    // A row whose Routine Team does not list offers no action but its run's own steps, not even its panel.
+    await expect(transcript.getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
   });
 
   test('a Routine run that shows its result opens it in full: its own step records and the result as escaped data', async ({ page, context }) => {
@@ -5578,6 +5581,52 @@ test.describe('Team Routines', () => {
     }
   });
 
+  test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', async ({ page }) => {
+    const scenario = await routeScenario(page, 'routine-lifecycle');
+    const { routines } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
+    const [watch, , daily] = routines;
+    const status = messages.en.routine.result.status;
+    const read = [];
+    page.on('request', (request) => {
+      const match = new URL(request.url()).pathname.match(/\/runs\/([0-9a-f]{32})\/steps\/(latest|[0-9a-f]{32})\/(\d+)$/u);
+      if (match) read.push(`${match[1][0]}:${match[2] === 'latest' ? 'latest' : 'snapshot'}/${match[3]}`);
+    });
+    await page.goto('/chat/?team=marketing');
+    const rows = page.locator('.routine-run');
+    // The failed run shows no result, so its one link opens its steps: the step that failed and the one never run.
+    const failed = rows.filter({ hasText: 'assistant-rpc-failed' });
+    await expect(failed).toHaveCount(1);
+    await expect(failed.getByRole('button', { name: 'Response' })).toHaveCount(0);
+    await failed.getByRole('button', { name: 'Steps' }).click();
+    let view = page.getByRole('dialog', { name: daily.name });
+    const steps = view.getByRole('region', { name: 'Steps' }).locator('ol > li');
+    await expect(steps).toHaveCount(2);
+    await expect(steps.nth(0)).toContainText(status.failed);
+    await expect(steps.nth(1)).toContainText(status.not_run);
+    await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
+    expect(read).toEqual(['7:latest/0']);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(view).toHaveCount(0);
+    await expect(failed.getByRole('button', { name: 'Steps' })).toBeFocused();
+
+    // The continuous watch's completed run hands its result on: no result to show, and its 120 steps read by page.
+    const completed = rows.filter({ hasText: watch.name }).getByRole('button', { name: 'Steps' });
+    await expect(completed).toHaveCount(1);
+    await completed.click();
+    view = page.getByRole('dialog', { name: watch.name });
+    const records = view.getByRole('region', { name: 'Steps' }).locator('ol > li');
+    await expect(records).toHaveCount(10);
+    await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
+    const more = view.getByRole('button', { name: /^Show \d+ more steps?$/u });
+    for (let shown = 20; shown <= 70; shown += 10) {
+      await more.click();
+      await expect(records).toHaveCount(shown);
+    }
+    expect(read).toEqual(['7:latest/0', 'c:latest/0', 'c:snapshot/64']);
+    await expect(records.nth(69)).toContainText(status.done);
+  });
+
   test('a Routine notice shows every name it carries as literal text, never as a link, image, or element', async ({ page }) => {
     // A request may be longer than a name, whose 80 characters still fit every kind of markup it could imitate.
     const hostile = '[x](https://evil.test) ![i](https://evil.test/a.png) <img src=x onerror=alert(1)> **b**';
@@ -5732,7 +5781,7 @@ test.describe('Team Routines', () => {
     await expect(rows).toHaveCount(2);
     // A transcript card decides nothing: no recovery choice, Resume, or execution details, only its Routine's panel.
     for (const index of [0, 1]) {
-      await expect(rows.nth(index).getByRole('button')).toHaveAccessibleName('Open Routine');
+      await expect(rows.nth(index).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveAccessibleName('Open Routine');
       await expect(rows.nth(index).getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
     }
     // Each waiting notice says so until its run is settled.
@@ -5760,7 +5809,7 @@ test.describe('Team Routines', () => {
     // Closing the panel returns to the card, which no longer waits for anything.
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
-    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await expect(rows.nth(0).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
     await expect(rows.nth(0)).toBeFocused();
     await expect(rows.nth(0)).not.toContainText('Waiting for you');
 
@@ -5851,7 +5900,7 @@ test.describe('Team Routines', () => {
     expect(calls.deletes).toEqual([{ code: '123456' }]);
     expect(calls.answers).toEqual([]);
     // The deleted Routine is no longer listed, so its card offers nothing.
-    await expect(row.getByRole('button')).toHaveCount(0);
+    await expect(row.getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
   });
 
   test("a run's execution details are read for that run in its Routine's panel and shown only as text", async ({ page }) => {
@@ -5897,7 +5946,7 @@ test.describe('Team Routines', () => {
     // A run that waits for nobody offers nothing in the transcript; its details are in its Routine's panel.
     await expect(page.locator('.routine-run')).toContainText('Daily DNS zones failed');
     await expect(page.locator('.routine-run')).toContainText('assistant-rpc-failed');
-    await expect(page.locator('.routine-run').getByRole('button')).toHaveCount(0);
+    await expect(page.locator('.routine-run').getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
     await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
@@ -6128,8 +6177,8 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     // No card resumes a Routine: the failed run's offers nothing, and the held one only opens its Routine's panel.
-    await expect(rows.nth(1).getByRole('button')).toHaveAccessibleName('Open Routine');
-    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await expect(rows.nth(1).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveAccessibleName('Open Routine');
+    await expect(rows.nth(0).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
     // A Routine an unresolved incident still holds offers no Resume: its panel is the recovery decision alone.
     await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
     const heldPanel = page.getByRole('dialog', { name: heldRoutine.name });
@@ -6275,7 +6324,7 @@ test.describe('Team Routines', () => {
     const rows = page.locator('.routine-run');
     await expect(rows).toHaveCount(2);
     // The card itself offers no Review: its one action opens the Routine's panel.
-    await expect(rows.nth(1).getByRole('button')).toHaveAccessibleName('Open Routine');
+    await expect(rows.nth(1).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveAccessibleName('Open Routine');
     expect(openings).toEqual([]);
 
     await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
@@ -6301,7 +6350,7 @@ test.describe('Team Routines', () => {
     expect(answers).toEqual([approval, approval]);
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
-    await expect(rows.nth(1).getByRole('button')).toHaveCount(0);
+    await expect(rows.nth(1).getByRole('button', { name: OTHER_THAN_STEPS })).toHaveCount(0);
 
     await rows.nth(0).getByRole('button', { name: 'Open Routine' }).click();
     const auditPanel = page.getByRole('dialog', { name: audit.name });

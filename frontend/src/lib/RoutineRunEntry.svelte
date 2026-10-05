@@ -15,10 +15,10 @@
   // status phrase colored by meaning, then one quiet line of detail. Consecutive notices share one thin rail through
   // their times (`joinAbove`, `joinBelow`).
   // It never carries an Action's raw input or result: a Routine that shows its result carries Team's bounded, redacted
-  // projection of it (ADR-0092 amendment, 2026-10-05, output), which the entry offers as one Response link that opens
-  // the run in full instead of filling the timeline. It is not part of the Brain's conversation. Every name and value is
-  // plain text. The entry decides nothing: while its run waits for the person, its one action opens that Routine's
-  // panel, which is the decision itself.
+  // projection of it (ADR-0092 amendment, 2026-10-05, output). Every run's entry offers one link that opens the run in
+  // full instead of filling the timeline: Response when it shows a result, otherwise Steps, its own step records. It is
+  // not part of the Brain's conversation. Every name and value is plain text. The entry decides nothing: while its run
+  // waits for the person, its other action opens that Routine's panel, which is the decision itself.
   let { entry, copy, teamId, teamName, joinAbove = false, joinBelow = false } = $props();
 
   let listed = $derived($routineContext.get(teamId));
@@ -62,7 +62,7 @@
     (notice?.querySelector('.open') ?? notice)?.focus();
   }
 
-  // Closing the run view returns focus to the Response link that opened it.
+  // Closing the run view returns focus to the link that opened it.
   async function closeView() {
     viewing = false;
     await tick();
@@ -97,10 +97,11 @@
       {line}{#if shown.code && index === details.length - 1}{line ? ' ' : ''}<code class="code">{shown.code}</code>{/if}
     </p>
   {/each}
-  {#if shown.output}
+  <!-- Every run opens in full: its result when it shows one, and always its own step records. -->
+  {#if entry.runId}
     <p class="links">
       <Button class="response" size="sm" variant="ghost" type="button" aria-haspopup="dialog"
-        onclick={() => (viewing = true)}>{#snippet icon()}<RoutineIcon name="reply" />{/snippet}{copy.result.open}</Button>
+        onclick={() => (viewing = true)}>{#snippet icon()}<RoutineIcon name={shown.output ? 'reply' : 'step'} />{/snippet}{shown.output ? copy.result.open : copy.result.steps}</Button>
     </p>
   {/if}
   <!-- The button stays while the panel is open, so closing it returns focus here. -->
@@ -114,8 +115,9 @@
   {#if result}<p class="result" role="status">{result}</p>{/if}
 </div>
 
-{#if viewing && shown.output}
-  <RoutineRunView {teamId} {entry} {routine} name={routineName} {copy} onclose={closeView} />
+{#if viewing && entry.runId}
+  <RoutineRunView {teamId} {entry} {routine} name={routineName} status={shown.status} tone={shown.tone} {copy}
+    onclose={closeView} />
 {/if}
 
 {#if panel && routine}
