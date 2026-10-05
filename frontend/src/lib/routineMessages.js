@@ -4,6 +4,7 @@
 import { routineDeletionMessages } from './routineDeletionMessages.js';
 import { routineDetailsMessages } from './routineDetailsMessages.js';
 import { routinePanelMessages } from './routinePanelMessages.js';
+import { routineResultMessages } from './routineResultMessages.js';
 
 export const routineMessages = {
   en: {
@@ -115,6 +116,7 @@ export const routineMessages = {
       reopen: "Open the card again",
     },
     details: routineDetailsMessages.en,
+    result: routineResultMessages.en,
     deletion: routineDeletionMessages.en,
     errors: {
       generic: 'The Routine request failed. Try again.',
@@ -243,6 +245,7 @@ export const routineMessages = {
       reopen: "Abrir o cartão de novo",
     },
     details: routineDetailsMessages.pt,
+    result: routineResultMessages.pt,
     deletion: routineDeletionMessages.pt,
     errors: {
       generic: 'O pedido da rotina falhou. Tente de novo.',
@@ -371,6 +374,7 @@ export const routineMessages = {
       reopen: "Abrir la tarjeta de nuevo",
     },
     details: routineDetailsMessages.es,
+    result: routineResultMessages.es,
     deletion: routineDeletionMessages.es,
     errors: {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
@@ -499,6 +503,7 @@ export const routineMessages = {
       reopen: "重新打开卡片",
     },
     details: routineDetailsMessages.zh,
+    result: routineResultMessages.zh,
     deletion: routineDeletionMessages.zh,
     errors: {
       generic: '例行任务请求失败。请重试。',
@@ -627,6 +632,7 @@ export const routineMessages = {
       reopen: "Rouvrir la carte",
     },
     details: routineDetailsMessages.fr,
+    result: routineResultMessages.fr,
     deletion: routineDeletionMessages.fr,
     errors: {
       generic: 'La demande de routine a échoué. Réessayez.',
@@ -755,6 +761,7 @@ export const routineMessages = {
       reopen: "Karte erneut öffnen",
     },
     details: routineDetailsMessages.de,
+    result: routineResultMessages.de,
     deletion: routineDeletionMessages.de,
     errors: {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
@@ -883,6 +890,7 @@ export const routineMessages = {
       reopen: "カードをもう一度開く",
     },
     details: routineDetailsMessages.ja,
+    result: routineResultMessages.ja,
     deletion: routineDeletionMessages.ja,
     errors: {
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
@@ -1011,6 +1019,7 @@ export const routineMessages = {
       reopen: "افتح البطاقة مرة أخرى",
     },
     details: routineDetailsMessages.ar,
+    result: routineResultMessages.ar,
     deletion: routineDeletionMessages.ar,
     errors: {
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',

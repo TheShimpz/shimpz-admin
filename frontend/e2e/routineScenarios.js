@@ -183,17 +183,31 @@ const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'lis
 const text = (value) => ({ kind: 'text', value, cut: false });
 const fields = (...pairs) => ({ kind: 'fields', fields: pairs, omitted: 0 });
 // What a run shows of its result: Team's bounded, redacted projection of the Action's validated result, as plain data.
+const number = (value) => ({ kind: 'number', value });
+const account = { kind: 'fields', fields: [['id', text('023e105f4ecef8ad9ca31a8372d0c353')], ['name', text('Shimpz Marketing')]], omitted: 0 };
+const zone = (zoneId, name, paused, status, type) => fields(
+  ['account', account],
+  ['id', text(zoneId)],
+  ['name', text(name)],
+  ['paused', { kind: 'bool', value: paused }],
+  ['status', text(status)],
+  ['type', text(type)],
+);
+// Cloudflare's zone list as Team projects it: its paging as single values, then each zone with its nested account.
 export const SHOWN_ZONES = Object.freeze({
   step: 'zones',
   state: 'shown',
   value: fields(
-    ['pagination', fields(['count', { kind: 'number', value: '3' }], ['page', { kind: 'number', value: '1' }])],
+    ['page', number('1')],
+    ['per_page', number('20')],
+    ['total_count', number('3')],
+    ['total_pages', number('1')],
     ['zones', {
       kind: 'list',
       items: [
-        fields(['name', text('example.com')], ['paused', { kind: 'bool', value: false }], ['status', text('active')]),
-        fields(['name', text('example.org')], ['paused', { kind: 'bool', value: true }], ['status', text('pending')]),
-        fields(['name', text('<img src=x onerror=alert(1)>.dev')], ['paused', { kind: 'bool', value: false }], ['status', text('active')]),
+        zone('9a7806061c88ada191ed06f989cc3dac', 'example.com', false, 'active', 'full'),
+        zone('4b2b5b3e9d0c4f0aa1b7c6d5e4f30211', 'example.org', true, 'pending', 'full'),
+        zone('c5d1f0e2a3b44c6d8e9f0a1b2c3d4e5f', '<img src=x onerror=alert(1)>.dev', false, 'active', 'partial'),
       ],
       omitted: 0,
     }],
@@ -339,6 +353,14 @@ function diagnostics(runId) {
   });
   const url = 'https://api.cloudflare.com/client/v4/zones/[REDACTED]/dns_records/[REDACTED]';
   const items = {
+    // The recovered run's DNS record list was refused once before its recovery completed it.
+    [id('e')]: [
+      attempt(1, 'list-dns-records', failure(
+        429,
+        `Client error '429 Too Many Requests' for url '${url}'`,
+        '{"success":false,"errors":[{"code":10429,"message":"Rate limited"}]}',
+      ), null),
+    ],
     [HELD_RUN]: [
       attempt(1, 'update-dns-record', failure(
         402,

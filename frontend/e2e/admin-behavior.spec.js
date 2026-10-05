@@ -5208,10 +5208,16 @@ test.describe('Team Routines', () => {
     await expect(transcript.getByRole('button')).toHaveCount(0);
   });
 
-  test('a Routine run that shows its result renders Team\'s projection as escaped data in the transcript', async ({ page }) => {
-    // ADR-0092 amendment, 2026-10-05 (output): the run's zones, a value Team redacted, and a hostile value as text.
+  test('a Routine run that shows its result opens it in full: its steps, the current plan, and the result as escaped data', async ({ page, context }) => {
+    // ADR-0092 amendment, 2026-10-05 (output): the run's zones with their nested account, a value Team redacted, and a
+    // hostile value as text, offered from the transcript as one Response link.
     const text = (value) => ({ kind: 'text', value, cut: false });
-    const zone = (name, paused) => ({ kind: 'fields', fields: [['name', text(name)], ['paused', { kind: 'bool', value: paused }]], omitted: 0 });
+    const account = { kind: 'fields', fields: [['id', text('023e105f4ecef8ad9ca31a8372d0c353')], ['name', text('Main account')]], omitted: 0 };
+    const zone = (id, name, paused) => ({
+      kind: 'fields',
+      fields: [['account', account], ['id', text(id)], ['name', text(name)], ['paused', { kind: 'bool', value: paused }]],
+      omitted: 0,
+    });
     const shown = {
       step: 'zones',
       state: 'shown',
@@ -5221,8 +5227,13 @@ test.describe('Team Routines', () => {
           ['a-b', { kind: 'number', value: '0.0001' }],
           ['a_b', { kind: 'number', value: '12345678901234567890' }],
           ['cut', { kind: 'list', items: [{ kind: 'fields', fields: [['name', text('example.net')]], omitted: 3 }], omitted: 0 }],
+          ['extra', { kind: 'fields', fields: [], omitted: 0 }],
           ['token', { kind: 'redacted' }],
-          ['zones', { kind: 'list', items: [zone('example.com', false), zone('<img src=x onerror=alert(1)>.dev', true)], omitted: 7 }],
+          ['zones', {
+            kind: 'list',
+            items: [zone('9a7806061c88ada191ed06f989cc3dac', 'example.com', false), zone('4b2b5b3e9d0c4f0aa1b7c6d5e4f30211', '<img src=x onerror=alert(1)>.dev', true)],
+            omitted: 7,
+          }],
         ],
         omitted: 0,
       },
@@ -5240,44 +5251,119 @@ test.describe('Team Routines', () => {
       detail,
       version: 1,
     });
+    const run = 'b'.repeat(32);
     const actions = [['shimpz-cloudflare', 'list-zones']];
     const unchanged = { step: 'zones', state: 'unchanged', value: null, truncated: false };
     const dialogs = [];
     page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await routeReadyChat(page, {
       history: {
-        entries: [entry('b'.repeat(32), { actions, output: shown }), entry('c'.repeat(32), { actions, output: unchanged })],
+        entries: [
+          entry(run, { actions, output: shown }),
+          entry('c'.repeat(32), { actions, output: unchanged }),
+          entry('d'.repeat(32), { actions: [...actions, ['shimpz-cloudflare', 'list-dns-records']], output: shown }),
+        ],
         before: null,
       },
     });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    const diagnostics = [];
+    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/').at(-2);
+      diagnostics.push(runId);
+      await route.fulfill({
+        json: {
+          team_id: 'marketing',
+          run_id: runId,
+          diagnostics: [{
+            operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+            attempt: 1,
+            assistant_id: 'shimpz-cloudflare',
+            action: 'list-zones',
+            recorded_at: '2026-10-01T12:00:03Z',
+            failure: {
+              error_type: 'httpx.HTTPStatusError',
+              message: "Client error '429 Too Many Requests' <b>escaped</b>",
+              provider: 'api.cloudflare.com',
+              http_status: 429,
+              response_excerpt: null,
+              redacted: true,
+              truncated: true,
+            },
+            condition: null,
+          }],
+        },
+      });
+    });
     await page.goto('/chat/?team=marketing');
     const transcript = page.locator('.routine-run');
-    await expect(transcript).toHaveCount(2);
-    const result = transcript.nth(0).getByRole('group', { name: 'Result' });
-    // The zones read as a table: one row per zone, its values as text, and how many more Team left out.
+    await expect(transcript).toHaveCount(3);
+    // The transcript keeps the result out of the timeline: one Response link opens it.
+    await expect(transcript.nth(0).getByRole('table')).toHaveCount(0);
+    const link = transcript.nth(0).getByRole('button', { name: 'Response' });
+    await link.click();
+    const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await expect(view).toBeVisible();
+    expect(diagnostics).toEqual([run]);
+
+    // Its steps: the Action, the current plan's parameter and saved key by name, and the failed attempt Team recorded.
+    const steps = view.getByRole('region', { name: 'Steps' });
+    await expect(steps.getByRole('listitem').first()).toContainText('List zones');
+    await expect(steps).toContainText('api-token');
+    await expect(steps.locator('dd').first()).toHaveText('1');
+    await expect(steps).toContainText("Client error '429 Too Many Requests' <b>escaped</b>");
+    await expect(steps.locator('b')).toHaveCount(0);
+    // Shortened evidence says it was shortened.
+    await expect(steps).toContainText('This record was shortened.');
+
+    // The result: the zones as a table whose nested account spreads into its own columns, values as text.
+    const result = view.getByRole('region', { name: 'Response' });
     const table = result.getByRole('table');
+    await expect(table.getByRole('columnheader')).toHaveText(['Name', 'Account name', 'Account ID', 'Paused', 'ID']);
     await expect(table.getByRole('row')).toHaveCount(3);
-    await expect(table.getByRole('columnheader')).toHaveText(['Name', 'Paused']);
-    await expect(table.getByRole('row').nth(1).getByRole('cell')).toHaveText(['example.com', 'no']);
+    await expect(table.getByRole('row').nth(1).getByRole('cell')).toHaveText([
+      'example.com', 'Main account', '023e105f4ecef8ad9ca31a8372d0c353', 'no', '9a7806061c88ada191ed06f989cc3dac',
+    ]);
     await expect(table.getByRole('row').nth(2).getByRole('cell').first()).toHaveText('<img src=x onerror=alert(1)>.dev');
     await expect(result).toContainText('7 more');
     await expect(result).toContainText('hidden');
-    await expect(result).toContainText('Showing part of the result.');
-    await expect(result.locator('img, a, script')).toHaveCount(0);
+    // A field set with nothing in it says so.
+    await expect(result.getByText('Nothing', { exact: true })).toBeVisible();
+    await expect(view).toContainText('Showing part of the result.');
+    await expect(view.locator('img, a, script')).toHaveCount(0);
     // Two labels that would read alike stay as Team wrote them, and numbers read exactly, never rounded.
-    const rows = result.locator(':scope > dl > div');
-    await expect(rows.filter({ hasText: 'a-b' })).toContainText('0.0001');
-    await expect(rows.filter({ hasText: 'a_b' })).toContainText('12345678901234567890');
+    await expect(result.getByText('a-b', { exact: true })).toBeVisible();
+    await expect(result.getByText('a_b', { exact: true })).toBeVisible();
+    await expect(result).toContainText('0.0001');
+    await expect(result).toContainText('12345678901234567890');
     // A field set Team cut short keeps its own rows and says how many more it left out, never a table row.
-    const cut = rows.filter({ hasText: 'cut' });
-    await expect(cut.getByRole('table')).toHaveCount(0);
-    await expect(cut).toContainText('example.net');
-    await expect(cut).toContainText('3 more');
-    // A run whose result did not change says so instead of repeating it.
-    await expect(transcript.nth(1).getByRole('group', { name: 'Result' })).toHaveCount(0);
-    await expect(transcript.nth(1)).toContainText('No change since the last result shown.');
-    expect(dialogs).toEqual([]);
+    await expect(result.getByRole('table')).toHaveCount(1);
+    await expect(result).toContainText('example.net');
+    await expect(result).toContainText('3 more');
+    // An identifier copies exactly the value Team projected.
+    await table.getByRole('button', { name: 'Copy 9a7806061c88ada191ed06f989cc3dac' }).click();
+    await expect(view.getByRole('status').filter({ hasText: 'Copied' })).toHaveCount(1);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('9a7806061c88ada191ed06f989cc3dac');
     expect(await accessibilityViolations(page)).toEqual([]);
+
+    // Escape closes the view and returns focus to the link that opened it.
+    await page.keyboard.press('Escape');
+    await expect(view).toHaveCount(0);
+    await expect(link).toBeFocused();
+
+    // A run whose result did not change says so instead of offering one.
+    await expect(transcript.nth(1).getByRole('button', { name: 'Response' })).toHaveCount(0);
+    await expect(transcript.nth(1)).toContainText('No change since the last result shown.');
+    // A run whose Actions the current plan no longer names shows its steps without any plan parameter.
+    await transcript.nth(2).getByRole('button', { name: 'Response' }).click();
+    await expect(view.getByRole('region', { name: 'Steps' }).locator('ol > li')).toHaveCount(2);
+    await expect(view.getByRole('region', { name: 'Steps' })).not.toContainText('api-token');
+    await view.getByRole('button', { name: 'Close' }).click();
+    await expect(view).toHaveCount(0);
+    expect(dialogs).toEqual([]);
   });
 
   test('a Routine notice shows every name it carries as literal text, never as a link, image, or element', async ({ page }) => {

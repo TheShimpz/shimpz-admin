@@ -24,6 +24,7 @@
     lock: ['M5 11h14v10H5Z', 'M8 11V8a4 4 0 0 1 8 0v3'],
     step: ['M5 12h14', 'm13 6 6 6-6 6'],
     spinner: ['M12 3a9 9 0 1 0 9 9'],
+    reply: ['m9 15-5-5 5-5', 'M4 10h11a5 5 0 0 1 5 5v4'],
   };
   // Icons drawn with a circle as well as paths.
   const CIRCLES = { clock: [12, 12, 9], failed: [12, 12, 9], verify: [11, 11, 7] };

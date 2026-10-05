@@ -31,7 +31,7 @@
       </tbody>
     </table>
   </div>
-  {#if more}<p class="more">{more}</p>{/if}
+  {#if more}<div class="more">{more}</div>{/if}
 {:else if node.kind === 'list'}
   {#if node.items.length}
     <ul class="items">
@@ -42,7 +42,7 @@
   {:else if !more}
     <span class="empty">{copy.empty}</span>
   {/if}
-  {#if more}<p class="more">{more}</p>{/if}
+  {#if more}<div class="more">{more}</div>{/if}
 {:else if node.kind === 'fields'}
   {#if node.fields.length}
     <dl class="fields">
@@ -53,7 +53,7 @@
   {:else if !more}
     <span class="empty">{copy.empty}</span>
   {/if}
-  {#if more}<p class="more">{more}</p>{/if}
+  {#if more}<div class="more">{more}</div>{/if}
 {:else}
   <span class={['scalar', `kind-${node.kind}`]}>{outputScalarWords(node, copy, locale)}</span>
 {/if}
