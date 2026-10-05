@@ -30,14 +30,21 @@ function exact(value, keys) {
   );
 }
 
-/** Return the exact clarification, or null when the value is null. Any other shape throws. */
+/**
+ * Return the exact clarification, or null when the value is null. Any other shape throws. `default_index` names the
+ * recommended option, or is null when none is recommended.
+ */
 export function parseClarification(value) {
   if (value === null) return null;
   if (!exact(value, ['question', 'options', 'default_index']) || !closedText(value.question, MAX_QUESTION_CHARS)) {
     throw new TypeError('invalid clarification');
   }
   const { options, default_index: defaultIndex } = value;
-  if (!Array.isArray(options) || options.length < 2 || options.length > 5) throw new TypeError('invalid clarification');
+  // A question that recommends nothing (a Routine question) may offer one suggestion beside the free-text answer.
+  const minimum = defaultIndex === null ? 1 : 2;
+  if (!Array.isArray(options) || options.length < minimum || options.length > 5) {
+    throw new TypeError('invalid clarification');
+  }
   const parsed = options.map((option) => {
     if (
       !exact(option, ['label', 'description']) ||
@@ -46,16 +53,18 @@ export function parseClarification(value) {
     ) throw new TypeError('invalid clarification');
     return { label: option.label, description: option.description };
   });
+  // A Routine question recommends nothing: its default is null, and no option is preselected (ADR-0092, 2026-10-05).
   if (
     new Set(parsed.map((option) => option.label.toLowerCase())).size !== parsed.length ||
-    !Number.isInteger(defaultIndex) ||
-    defaultIndex < 0 ||
-    defaultIndex >= parsed.length
+    (defaultIndex !== null && (!Number.isInteger(defaultIndex) || defaultIndex < 0 || defaultIndex >= parsed.length))
   ) throw new TypeError('invalid clarification');
   return { question: value.question, options: parsed, default_index: defaultIndex };
 }
 
-/** The exact plain reply that accompanies a clarification; every boundary requires the reply to equal it. */
+/**
+ * The exact plain reply that accompanies a clarification; every boundary requires the reply to equal it. A recommended
+ * option carries " ✓"; with a null default none does.
+ */
 export function renderClarification(clarification) {
   return [
     clarification.question,

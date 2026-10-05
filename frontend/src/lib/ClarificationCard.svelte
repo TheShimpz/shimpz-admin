@@ -10,18 +10,22 @@
 
   const id = $props.id();
   const OTHER = 'other';
-  // Each card starts on its own recommended default; a card never changes its question.
-  let choice = $state(untrack(() => String(clarification.default_index)));
+  // Each card starts on its own recommended default, or on no choice when it recommends none (a Routine question,
+  // ADR-0092 amendment 2026-10-05); a card never changes its question.
+  const recommended = untrack(() => clarification.default_index);
+  let choice = $state(recommended === null ? '' : String(recommended));
   let custom = $state('');
   let error = $state('');
 
-  // The recommended option always leads the list; each option keeps its own index as its value.
+  // A recommended option leads the list; without one the options keep their order. Each keeps its index as its value.
   let ordered = $derived([
-    clarification.default_index,
-    ...clarification.options.map((_, index) => index).filter((index) => index !== clarification.default_index),
+    ...(recommended === null ? [] : [recommended]),
+    ...clarification.options.map((_, index) => index).filter((index) => index !== recommended),
   ].map((index) => ({ index, option: clarification.options[index] })));
 
-  let answer = $derived(choice === OTHER ? custom : clarification.options[Number(choice)]?.label ?? '');
+  let answer = $derived(
+    choice === OTHER ? custom : choice === '' ? '' : clarification.options[Number(choice)]?.label ?? '',
+  );
   // A chosen option is always an answer; a custom answer needs text before it can be sent.
   let ready = $derived(answer.trim().length > 0);
 
@@ -60,7 +64,7 @@
         <RadioField
           id={`${id}-option-${index}`}
           name={`${id}-choice`}
-          label={index === clarification.default_index ? `${option.label} · ${copy.recommended}` : option.label}
+          label={index === recommended ? `${option.label} · ${copy.recommended}` : option.label}
           description={option.description}
           optionValue={String(index)}
           bind:value={choice}

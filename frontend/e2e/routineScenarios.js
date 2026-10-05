@@ -336,7 +336,8 @@ export function capClarification(locale = 'en') {
   return {
     question: text.capQuestion,
     options: CAP_OPTIONS.map((cap) => ({ label: text.capLabel.replace('{cap}', String(cap)), description: '' })),
-    default_index: 0,
+    // A Routine question recommends none of its options (ADR-0092 amendment, 2026-10-05).
+    default_index: null,
   };
 }
 

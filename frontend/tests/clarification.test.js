@@ -49,6 +49,16 @@ test('only the exact closed clarification shape parses', () => {
   }
 });
 
+test('a Routine question recommends no option and its reply marks none', () => {
+  const routine = { ...ASKED, default_index: null };
+  assert.deepEqual(parseClarification(routine), routine);
+  assert.equal(renderClarification(routine), 'Qual período você quer cobrir?\n\n1. Hoje — Só lançamentos de hoje.\n2. Esta semana');
+  assert.equal(renderClarification(ASKED), 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana');
+  for (const value of [undefined, false, -1]) {
+    assert.throws(() => parseClarification({ ...ASKED, default_index: value }), /invalid clarification/, String(value));
+  }
+});
+
 test('an answer is combined with the original request without truncation', () => {
   assert.equal(
     composeClarifiedRequest(' Quais modelos saíram? ', ASKED.question, ' Hoje ', LABELS),

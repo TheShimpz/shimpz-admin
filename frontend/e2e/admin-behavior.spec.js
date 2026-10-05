@@ -1382,6 +1382,51 @@ test('a question of 240 emoji is offered and its emoji answer is sent', async ({
   ]);
 });
 
+// A Routine question recommends nothing (ADR-0092 amendment, 2026-10-05): no option is chosen until the person picks one.
+const ROUTINE_REQUEST = 'create a routine that does this every 30 seconds';
+const ROUTINE_QUESTION = {
+  question: 'What should the Routine repeat every 30 seconds?',
+  options: [{ label: 'List my Cloudflare domains', description: '' }],
+  default_index: null,
+};
+const ROUTINE_QUESTION_REPLY = 'What should the Routine repeat every 30 seconds?\n\n1. List my Cloudflare domains';
+
+async function askRoutineQuestion(page) {
+  const chat = await routeReadyChat(page, { clarification: ROUTINE_QUESTION, reply: ROUTINE_QUESTION_REPLY });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, ROUTINE_REQUEST);
+  await page.getByRole('button', { name: 'Send' }).click();
+  const card = page.getByRole('form', { name: ROUTINE_QUESTION.question });
+  const answer = card.getByRole('button', { name: 'Answer' });
+  await expect(answer).toBeDisabled();
+  for (const radio of await card.getByRole('radio').all()) await expect(radio).not.toBeChecked();
+  return { chat, card, answer };
+}
+
+test('a Routine question preselects nothing and sends the suggestion the person picks', async ({ page }) => {
+  const { chat, card, answer } = await askRoutineQuestion(page);
+  await card.getByRole('radio', { name: ROUTINE_QUESTION.options[0].label }).check();
+  await expect(answer).toBeEnabled();
+  await answer.click();
+  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual([
+    ROUTINE_REQUEST,
+    composedAnswer(ROUTINE_REQUEST, ROUTINE_QUESTION.question, ROUTINE_QUESTION.options[0].label),
+  ]);
+});
+
+test('a Routine question sends the person\'s own words as the other answer', async ({ page }) => {
+  const { chat, card, answer } = await askRoutineQuestion(page);
+  await card.getByRole('radio', { name: 'Other answer' }).check();
+  await expect(answer).toBeDisabled();
+  await card.getByRole('textbox').fill('List my DNS records');
+  await answer.click();
+  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual([
+    ROUTINE_REQUEST,
+    composedAnswer(ROUTINE_REQUEST, ROUTINE_QUESTION.question, 'List my DNS records'),
+  ]);
+});
+
 test('an answer that would exceed one message is refused and nothing is sent', async ({ page }) => {
   const chat = await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
   await page.goto('/chat/');
