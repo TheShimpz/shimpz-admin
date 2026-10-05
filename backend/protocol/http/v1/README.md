@@ -187,7 +187,8 @@ What a run did step by step is read page by page from `GET
 revision (`routine_id`, `revision`, `plan_digest`, `total`) and to one `snapshot` of its retained records (`latest` asks
 for the current one; a page naming a snapshot whose records changed since is refused `routine-run-changed`). Each step
 (`routine.canonical_run_step`) is `done`, `recovered` (a verified occurrence, with no duration of its own), `failed` (its
-attempt failed; the run's notice says whether it was held), or `waiting` (frozen for a person), with its Assistant
+attempt failed; the run's notice says whether it was held), `stopped` (Stop or the run's deadline cut the attempt, which
+says nothing about whether it acted), or `waiting` (frozen for a person), with its Assistant
 Action, attempt, `duration_ms`, instant, and the inputs that attempt was given, each a redacted preview (`null` when its
 source's secrecy cannot be established); a position with no record is `not_run` only when the run's terminal record proves
 it never started (`ended`), and `unavailable` otherwise. Records expire after seven days. Each per-attempt diagnostic

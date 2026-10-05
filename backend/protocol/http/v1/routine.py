@@ -938,7 +938,7 @@ def canonical_diagnostics(value: object) -> dict[str, object] | None:
 # What one run did, step by step (ADR-0092 amendment, 2026-10-05, scale): each step's status, attempt, duration, and
 # inputs as redacted previews (null when a source's secrecy is unknown). A missing position is ``not_run`` only when
 # the run's terminal record proves it, else ``unavailable``; pages bind the run's revision and one records snapshot.
-RUN_STEP_STATUSES = ("done", "recovered", "failed", "waiting")
+RUN_STEP_STATUSES = ("done", "recovered", "failed", "stopped", "waiting")
 RUN_STEP_GAPS = ("not_run", "unavailable")
 RUN_INPUT_SOURCES = frozenset({"literal", "run_clock", "step_output", "step_text"})
 SNAPSHOT_RE = re.compile(r"[0-9a-f]{32}\Z")
