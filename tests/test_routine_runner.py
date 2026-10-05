@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import sqlite3
@@ -619,23 +620,41 @@ class RoutineSchedulerTests(unittest.TestCase):
             runner._claim()
         claim.assert_called_once_with(False)
         runner._long.release()
-        # A long run whose segment fails frees both its worker and the long slot.
-        failed = threading.Event()
+        # A long run whose segment fails frees both its worker and the long slot, whether the worker ends after the
+        # claiming tick or before it asks for the next slot; any later claim finds nothing due.
+        for order in ("after", "before"):
+            with self.subTest(order=order):
+                self._a_failed_long_run_frees_both_slots(runner, order)
+
+    def _a_failed_long_run_frees_both_slots(self, runner: scheduler.RoutineScheduler, order: str) -> None:
+        gate, failed = threading.Event(), threading.Event()
+        claims = [{"run": LONG, "next_due_at": None}]
+
+        def segment(*_args):
+            gate.wait(5)
+            failed.set()
+            raise team.RoutineTeamError("x")
+
+        inline = mock.patch.object(runner._workers, "submit", side_effect=lambda work, *args: work(*args))
         with (
-            mock.patch.object(team, "claim", side_effect=[{"run": LONG, "next_due_at": None}]),
-            mock.patch.object(
-                team,
-                "run",
-                side_effect=lambda *_args: failed.set() or (_ for _ in ()).throw(team.RoutineTeamError("x")),
-            ),
+            mock.patch.object(team, "claim", side_effect=lambda _long: claims.pop(0) if claims else IDLE) as claim,
+            mock.patch.object(team, "run", side_effect=segment),
+            inline if order == "before" else contextlib.nullcontext(),
         ):
+            if order == "before":
+                gate.set()
             runner.tick()
+            gate.set()
             self.assertTrue(failed.wait(5))
-        deadline = time.monotonic() + 5
-        while not runner._slots.acquire(blocking=False):
-            self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.01)
+            deadline = time.monotonic() + 5
+            while not runner._slots.acquire(blocking=False):
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            runner._slots.release()
+        # A worker that ended first freed its slot, so the same tick claimed again and found nothing due.
+        self.assertEqual(claim.call_count, 2 if order == "before" else 1)
         self.assertTrue(runner._long.acquire(blocking=False))
+        runner._long.release()
 
     def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
         runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)
