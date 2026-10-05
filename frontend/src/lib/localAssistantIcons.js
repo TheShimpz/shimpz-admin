@@ -8,6 +8,9 @@ const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const MAX_SUMMARY_CHARS = 160;
+const ERROR_CODE_RE = /^[a-z0-9]+(?:-[a-z0-9]+){0,15}$/;
+// Team's refusal of a staged image's preview because that image fails current admission.
+const INADMISSIBLE_PREVIEW = 'local-assistant-preview-invalid';
 
 function createQueue() {
   return { active: 0, pending: [] };
@@ -105,7 +108,13 @@ async function localBusyRetry(response) {
 async function responseError(response, fallback) {
   let body = {};
   try { body = await response.json(); } catch { /* Use the bounded fallback. */ }
-  return new LocalApiError(safeApiError(body, fallback), response.status);
+  const code = typeof body?.code === 'string' && body.code.length <= 80 && ERROR_CODE_RE.test(body.code) ? body.code : '';
+  return new LocalApiError(safeApiError(body, fallback), response.status, code);
+}
+
+/** Whether Team refused a staged snapshot's preview because the exact image fails current admission. */
+export function isInadmissibleLocalPreview(error) {
+  return error instanceof LocalApiError && error.status === 409 && error.code === INADMISSIBLE_PREVIEW;
 }
 
 async function acceptedPng(response) {

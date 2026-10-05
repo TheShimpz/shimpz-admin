@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  isInadmissibleLocalPreview,
   loadAssistantSummary,
   loadLocalAssistantIcon,
   loadLocalAssistantSummary,
@@ -263,4 +264,30 @@ test('reads an installed Assistant summary only in the requested interface langu
     loadAssistantSummary(async () => summaryResponse({}, 502), 'team_1', 'shimpz-cloudflare', 'pt'),
     /The Assistant summary is unavailable/,
   );
+});
+
+test('carries only a bounded Team refusal code and recognizes an inadmissible staged preview', async () => {
+  const refused = (code, status = 409) => async () => new Response(
+    JSON.stringify({ detail: 'Local Assistant preview failed admission', code }),
+    { status, headers: { 'Content-Type': 'application/json' } },
+  );
+  const error = await loadLocalAssistantIcon(refused('local-assistant-preview-invalid'), IMAGE_ID).catch((value) => value);
+  assert.equal(error.code, 'local-assistant-preview-invalid');
+  assert.equal(isInadmissibleLocalPreview(error), true);
+  const summaryError = await loadLocalAssistantSummary(refused('local-assistant-preview-invalid'), IMAGE_ID, 'pt')
+    .catch((value) => value);
+  assert.equal(isInadmissibleLocalPreview(summaryError), true);
+
+  for (const [code, status] of [
+    ['local-assistant-preview-unavailable', 503],
+    ['local-assistant-preview-invalid', 503],
+    ['local-assistant-snapshot-invalid', 409],
+  ]) {
+    const other = await loadLocalAssistantIcon(refused(code, status), IMAGE_ID, { delay: async () => {} })
+      .catch((value) => value);
+    assert.equal(isInadmissibleLocalPreview(other), false);
+  }
+  const unbounded = await loadLocalAssistantIcon(refused('Local Assistant <preview>'), IMAGE_ID).catch((value) => value);
+  assert.equal(unbounded.code, '');
+  assert.equal(isInadmissibleLocalPreview(new Error('local-assistant-preview-invalid')), false);
 });

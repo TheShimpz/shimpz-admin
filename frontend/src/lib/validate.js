@@ -13,10 +13,11 @@ export function codePointLength(value) {
 }
 
 export class LocalApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, code = '') {
     super(message);
     this.name = 'LocalApiError';
     this.status = status;
+    this.code = code;
   }
 }
 

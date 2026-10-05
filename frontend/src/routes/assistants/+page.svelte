@@ -16,6 +16,7 @@
   } from '$lib/localApi.js';
   import { locale, t } from '$lib/i18n.js';
   import {
+    isInadmissibleLocalPreview,
     loadLocalAssistantIcon,
     loadLocalAssistantSummary,
     loadPublicAssistantIcon,
@@ -56,6 +57,8 @@
   let catalogIconUrls = $state({});
   // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
   let catalogIconFailures = $state({});
+  // Exact staged images whose preview Team refused in this load; each load validates every image again.
+  let localPreviewRefusals = $state({});
   let catalogPresentationSettled = $state(false);
   let catalogRefreshing = $state(false);
   let catalogPresentationRequest = 0;
@@ -357,10 +360,15 @@
       try {
         const summary = await loadLocalAssistantSummary(fetch, snapshot.image_id, language, { signal });
         if (request === catalogPresentationRequest) localSummaries[key] = summary;
-      } catch {
+      } catch (error) {
         // An unavailable translation leaves the summary empty rather than showing another language.
+        if (request === catalogPresentationRequest) refuseInadmissibleSnapshot(snapshot.image_id, error);
       }
     }));
+  }
+
+  function refuseInadmissibleSnapshot(imageId, error) {
+    if (imageId && isInadmissibleLocalPreview(error)) localPreviewRefusals[imageId] = true;
   }
 
   function localIconKey(snapshot) {
@@ -466,6 +474,7 @@
       const entries = [
         ...groups.map((group) => ({
           key: localIconKey(group.primary),
+          imageId: group.primary.image_id,
           load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
             signal: iconController.signal,
           }),
@@ -495,6 +504,7 @@
       }
       catalogIconUrls = nextUrls;
       catalogIconFailures = {};
+      localPreviewRefusals = {};
       catalogPresentationSettled = true;
       catalogRefreshing = false;
       await tick();
@@ -522,9 +532,12 @@
             return;
           }
           catalogIconUrls[entry.key] = url;
-        } catch {
+        } catch (error) {
           // A failed or over-budget icon is shown as unavailable, never as a substitute mark.
-          if (request === catalogPresentationRequest) catalogIconFailures[entry.key] = true;
+          if (request === catalogPresentationRequest) {
+            catalogIconFailures[entry.key] = true;
+            refuseInadmissibleSnapshot(entry.imageId, error);
+          }
         }
       }));
       globalThis.clearTimeout(iconTimeout);
@@ -538,6 +551,7 @@
   function beginLocalSnapshotInstall(group) {
     const team = activeTeamRecord;
     if (!team || busy || dialogOpen || localInstallDialogOpen || localInstallImageId) return;
+    if (localPreviewRefusals[group.primary.image_id]) return;
     pendingLocalTeamId = team.id;
     pendingLocalSnapshot = group.primary;
     pendingLocalSnapshots = [group.primary, ...group.alternatives];
@@ -566,6 +580,10 @@
     if (!team || !snapshot || busy || localInstallImageId) return;
     if (team.id !== pendingLocalTeamId) {
       localInstallDialogError = localCopy.teamUnavailable;
+      return;
+    }
+    if (localPreviewRefusals[snapshot.image_id]) {
+      localInstallDialogError = localCopy.localRestage;
       return;
     }
     localInstallImageId = snapshot.image_id;
@@ -638,6 +656,7 @@
       {@const installing = [group.primary, ...group.alternatives].some(
         (snapshot) => snapshot.image_id === localInstallImageId,
       )}
+      {@const restage = !localInstalled && Boolean(localPreviewRefusals[group.primary.image_id])}
       <AssistantCard
         id={`assistant-${group.assistant_id}`}
         class="assistant-card local-assistant-card"
@@ -651,11 +670,11 @@
         badgeTone="local"
         installed={localInstalled}
         actionLabel={localInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
-        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId)}
+        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || restage}
         actionTone={localInstalled ? 'danger' : 'install'}
         actionIcon={localInstalled ? 'uninstall' : 'add'}
-        actionPersistent={installing}
-        actionStatus={installing ? localCopy.localInstalling : undefined}
+        actionPersistent={installing || restage}
+        actionStatus={installing ? localCopy.localInstalling : restage ? localCopy.localRestage : undefined}
         onaction={() => localInstalled
           ? beginAssistantUninstall(group.assistant_id)
           : beginLocalSnapshotInstall(group)}
