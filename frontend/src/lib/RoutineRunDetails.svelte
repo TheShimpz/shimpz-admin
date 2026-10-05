@@ -3,7 +3,7 @@
 
   import DialogAction from '$lib/DialogAction.svelte';
   import { locale } from '$lib/i18n.js';
-  import { fillRoutineCopy, instantWords, readRunDiagnostics, routineErrorMessage } from '$lib/routine.js';
+  import { conditionWords, fillRoutineCopy, instantWords, readRunDiagnostics, routineErrorMessage } from '$lib/routine.js';
 
   // One Routine run's execution details (ADR-0092 section 8): Team's sanitized record of each failed attempt. Every
   // text member is literal evidence shown as escaped text, never Markdown or HTML, and never proof of what changed.
@@ -25,18 +25,6 @@
       .catch((failure) => { if (current) error = routineErrorMessage(failure, errors); });
     return () => { current = false; };
   });
-
-  function conditionWords(condition) {
-    const exit = condition.match(/^exit-status:(-?\d+)$/);
-    if (exit) return fillRoutineCopy(copy.conditions.exit, { code: exit[1] });
-    return {
-      'stderr-output': copy.conditions.stderr,
-      timeout: copy.conditions.timeout,
-      'frame-invalid': copy.conditions.frame,
-      'exit-unavailable': copy.conditions.exitUnavailable,
-      'transport-failed': copy.conditions.transport,
-    }[condition];
-  }
 
   function close(event) {
     event?.preventDefault();
@@ -74,7 +62,7 @@
               {#if item.failure.redacted}<p class="muted">{copy.redacted}</p>{/if}
               {#if item.failure.truncated}<p class="muted">{copy.truncated}</p>{/if}
             {:else}
-              <p>{conditionWords(item.condition)}</p>
+              <p>{conditionWords(item.condition, copy)}</p>
             {/if}
           </li>
         {/each}

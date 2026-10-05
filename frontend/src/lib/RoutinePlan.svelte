@@ -1,6 +1,6 @@
 <script>
   import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import { dispositionWords, fillRoutineCopy, humanizeId, literalWords, pointerWords } from '$lib/routine.js';
+  import { dispositionWords, fillRoutineCopy, humanizeId, inputWords } from '$lib/routine.js';
 
   // A Routine plan's safe projection (ADR-0092) in words: numbered steps naming the Assistant and its Action, each
   // input as a friendly key and value, references to an earlier step's result as a path, and the saved keys an Action
@@ -10,15 +10,6 @@
 
   const assistantName = (id) => names[id] ?? humanizeId(id);
   let positions = $derived(new Map(steps.map((step, index) => [step.id, index + 1])));
-
-  function inputWords(input) {
-    if (input.source === 'literal') return literalWords(input.value);
-    if (input.source === 'run_clock') return fillRoutineCopy(copy.clock, { format: copy.clocks[input.value] });
-    const n = positions.get(input.step);
-    const text = input.source === 'step_text';
-    if (!input.pointer) return fillRoutineCopy(text ? copy.fromStepTextWhole : copy.fromStepWhole, { n });
-    return fillRoutineCopy(text ? copy.fromStepText : copy.fromStep, { n, path: pointerWords(input.pointer, copy) });
-  }
 </script>
 
 <ol class="plan" aria-label={copy.title}>
@@ -35,7 +26,7 @@
             {#if step.inputs.length > 0}
               <dl class="inputs">
                 {#each step.inputs as input (input.member)}
-                  <div><dt>{humanizeId(input.member)}</dt><dd>{inputWords(input)}</dd></div>
+                  <div><dt>{humanizeId(input.member)}</dt><dd>{inputWords(input, positions, copy)}</dd></div>
                 {/each}
               </dl>
             {/if}

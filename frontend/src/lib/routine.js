@@ -520,6 +520,19 @@ export function literalWords(preview) {
   }
 }
 
+/**
+ * One plan input in words: a literal's preview, each run's clock, or a path into an earlier step's result, whose step
+ * `positions` numbers from its id.
+ */
+export function inputWords(input, positions, copy) {
+  if (input.source === 'literal') return literalWords(input.value);
+  if (input.source === 'run_clock') return fill(copy.clock, { format: copy.clocks[input.value] });
+  const n = positions.get(input.step);
+  const text = input.source === 'step_text';
+  if (!input.pointer) return fill(text ? copy.fromStepTextWhole : copy.fromStepWhole, { n });
+  return fill(text ? copy.fromStepText : copy.fromStep, { n, path: pointerWords(input.pointer, copy) });
+}
+
 // A held run's recovery card (ADR-0092 section 7, amended 2026-10-02): exactly Rodar, Recriar, and Excluir, in this
 // order, none recommended. Team answers Rodar and Recriar; Excluir is the Routine's own confirmed deletion.
 export const CARD_CHOICES = ['run', 'recreate', 'delete'];
@@ -1126,6 +1139,19 @@ function isDiagnostic(value) {
     (value.failure === null || isFailure(value.failure)) &&
     (value.condition === null || (typeof value.condition === 'string' && CONDITION_RE.test(value.condition)))
   );
+}
+
+/** A failed attempt's safe transport condition in words. */
+export function conditionWords(condition, copy) {
+  const exit = condition.match(/^exit-status:(-?\d+)$/u);
+  if (exit) return fill(copy.conditions.exit, { code: exit[1] });
+  return {
+    'stderr-output': copy.conditions.stderr,
+    timeout: copy.conditions.timeout,
+    'frame-invalid': copy.conditions.frame,
+    'exit-unavailable': copy.conditions.exitUnavailable,
+    'transport-failed': copy.conditions.transport,
+  }[condition];
 }
 
 /** One run's execution details for exactly the Team and run asked for, oldest attempt first. */
