@@ -2792,6 +2792,10 @@
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
   }
+  /* The time sits right after its author's name instead of across the message. */
+  .turns :global([data-slot="message-header"]) {
+    justify-content: flex-start;
+  }
   /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
   .turn-time {
     font: 400 0.66rem/1.4 var(--shimpz-font-mono);
