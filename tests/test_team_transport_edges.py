@@ -16,7 +16,6 @@ import supervisor
 from team import transport
 
 from protocol.http.v1 import progress as progress_contract
-from protocol.http.v1 import routine as routine_contract
 
 
 class _Response:
@@ -158,7 +157,8 @@ class TeamTransportEdgeTests(unittest.TestCase):
         self.assertEqual(transport._decode_response(empty), {})
 
     def test_only_a_call_given_its_own_allowance_reads_past_the_json_response_cap(self) -> None:
-        allowance = routine_contract.MAX_ROUTINE_LIST_BYTES
+        # A per-call allowance, such as a Routine list's protocol bound, replaces the default JSON response cap.
+        allowance = 2 * transport.MAX_JSON_RESPONSE_BYTES
 
         def call(body: bytes, declared: bool, **kwargs) -> int:
             headers = {"Content-Type": "application/json"}
