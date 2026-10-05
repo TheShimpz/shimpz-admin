@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures
 import contextlib
 import sys
-import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -15,9 +14,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat.delivery import plan as plan_delivery
 from chat.delivery import sync as sync_delivery
 from team import bridge as team
+from tests.chat_socket_case import ChatDeliveryCase, resume_operations
 from tests.chat_socket_fixtures import human_challenge
 
 from chat import connection as chat_connection
@@ -25,33 +24,7 @@ from chat import human, local, socket, task_resume
 from tests import chat_socket_fixtures
 
 
-def _resume_operations() -> task_resume.Operations:
-    return task_resume.Operations(
-        send_event=socket._send_event,
-        plan=plan_delivery.Operations(
-            send_event=socket._send_event,
-            finish_turn=socket._finish_active_turn,
-            continue_turn=socket._continue_team_turn,
-            error_terminal=socket._error_terminal,
-        ),
-        error_terminal=socket._error_terminal,
-    )
-
-
-class ChatSocketEdgeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        previous = socket.history.STORE_PATH
-        socket.history.STORE_PATH = Path(cls.temporary.name) / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        socket.history.STORE_PATH.unlink(missing_ok=True)
-        socket.history_delivery.configure("local")
-
+class ChatSocketEdgeTests(ChatDeliveryCase):
     def test_continuation_stop_saturation_and_detached_finish_are_terminal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -209,7 +182,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 socket._Connection(),
                 "team_1",
                 valid,
-                _resume_operations(),
+                resume_operations(),
             )
             self.assertEqual(
                 admitted[:2],
@@ -242,7 +215,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                         socket._Connection(),
                         "team_1",
                         frame,
-                        _resume_operations(),
+                        resume_operations(),
                     )
                 )
                 self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
@@ -254,7 +227,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     socket._Connection(active=socket._Turn(None, "chat")),
                     "team_1",
                     valid,
-                    _resume_operations(),
+                    resume_operations(),
                 )
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
@@ -266,7 +239,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     socket._Connection(pending_challenge_id="c" * 32),
                     "team_1",
                     valid,
-                    _resume_operations(),
+                    resume_operations(),
                 )
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
@@ -275,7 +248,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
             websocket.reset_mock()
             forged = {**valid, "request": "1." + "a" * 32 + "." + "b" * 64}
             self.assertIsNone(
-                await task_resume.admit(websocket, socket._Connection(), "team_1", forged, _resume_operations())
+                await task_resume.admit(websocket, socket._Connection(), "team_1", forged, resume_operations())
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 410)
 
@@ -286,7 +259,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     socket._Connection(),
                     "team_1",
                     {**valid, "extra": True},
-                    _resume_operations(),
+                    resume_operations(),
                 )
             prepare.assert_not_called()
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
@@ -320,7 +293,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     socket._Connection(),
                     "team_1",
                     frame,
-                    _resume_operations(),
+                    resume_operations(),
                 )
             objective = {
                 "message": frame["objective"],
@@ -344,7 +317,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     connection,
                     "team_1",
                     dict(frame),
-                    _resume_operations(),
+                    resume_operations(),
                 )
                 await connection.active.delivery
             deliver.assert_awaited_once_with(

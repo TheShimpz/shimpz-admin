@@ -117,3 +117,45 @@ class ChatWebSocketCase(unittest.TestCase):
         websocket = chat_socket_fixtures.Socket(self.admin_app.app, token=self.token, **options)
         self.assertTrue(self._accepted(await websocket.start()))
         return websocket
+
+
+def resolved_future(value: object) -> concurrent.futures.Future[object]:
+    future: concurrent.futures.Future[object] = concurrent.futures.Future()
+    future.set_result(value)
+    return future
+
+
+def resume_operations():
+    """The socket's own resume operations, as its task-resume delivery receives them."""
+    socket = importlib.import_module("chat.socket")
+    task_resume = importlib.import_module("chat.task_resume")
+    plan_delivery = importlib.import_module("chat.delivery.plan")
+    return task_resume.Operations(
+        send_event=socket._send_event,
+        plan=plan_delivery.Operations(
+            send_event=socket._send_event,
+            finish_turn=socket._finish_active_turn,
+            continue_turn=socket._continue_team_turn,
+            error_terminal=socket._error_terminal,
+        ),
+        error_terminal=socket._error_terminal,
+    )
+
+
+class ChatDeliveryCase(unittest.TestCase):
+    """Drive the socket's delivery steps directly: a per-class history store, Local delivery, and a live Team."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temporary.cleanup)
+        history = importlib.import_module("chat.socket").history
+        previous = history.STORE_PATH
+        history.STORE_PATH = Path(temporary.name) / "chat-history.sqlite3"
+        cls.addClassCleanup(setattr, history, "STORE_PATH", previous)
+
+    def setUp(self) -> None:
+        socket = importlib.import_module("chat.socket")
+        chat_socket_fixtures.live_team(self)
+        socket.history.STORE_PATH.unlink(missing_ok=True)
+        socket.history_delivery.configure("local")

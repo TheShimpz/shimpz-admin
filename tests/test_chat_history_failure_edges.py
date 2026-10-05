@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import sys
-import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -14,45 +13,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from chat.delivery import plan as plan_delivery
+
+from tests.chat_socket_case import ChatDeliveryCase, resolved_future, resume_operations
 
 from chat import assistant_route, local, socket, task_resume
 from tests import chat_socket_fixtures
 
 
-def _resume_operations() -> task_resume.Operations:
-    return task_resume.Operations(
-        send_event=socket._send_event,
-        plan=plan_delivery.Operations(
-            send_event=socket._send_event,
-            finish_turn=socket._finish_active_turn,
-            continue_turn=socket._continue_team_turn,
-            error_terminal=socket._error_terminal,
-        ),
-        error_terminal=socket._error_terminal,
-    )
-
-
-def _future(value: object) -> concurrent.futures.Future[object]:
-    future: concurrent.futures.Future[object] = concurrent.futures.Future()
-    future.set_result(value)
-    return future
-
-
-class ChatHistoryFailureEdgeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        previous = socket.history.STORE_PATH
-        socket.history.STORE_PATH = Path(cls.temporary.name) / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        socket.history.STORE_PATH.unlink(missing_ok=True)
-        socket.history_delivery.configure("local")
-
+class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
     def test_uninstall_guidance_and_pending_stop_history_failures_are_explicit(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -67,7 +35,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
+                    return_value=resolved_future(
                         assistant_route.Result(
                             "assistant-uninstall",
                             guidance=assistant_route.Guidance(
@@ -168,7 +136,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     mock.patch.object(task_resume.history_delivery, "admit", new=mock.AsyncMock(side_effect=error)),
                     mock.patch.object(task_resume.lifecycle, "submit_resume") as prepare,
                 ):
-                    await task_resume.dispatch(websocket, connection, "team_1", frame, _resume_operations())
+                    await task_resume.dispatch(websocket, connection, "team_1", frame, resume_operations())
                 self.assertEqual(websocket.send_json.await_args.args[0]["status"], status)
                 self.assertIsNone(connection.admitted_history_id)
                 prepare.assert_not_called()

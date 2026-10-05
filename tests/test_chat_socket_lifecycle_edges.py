@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -13,30 +12,13 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from tests.chat_socket_case import ChatDeliveryCase, resolved_future
+
 from chat import assistant_proposal, assistant_route, socket
 from tests import chat_socket_fixtures
 
 
-def _future(value: object) -> concurrent.futures.Future[object]:
-    future: concurrent.futures.Future[object] = concurrent.futures.Future()
-    future.set_result(value)
-    return future
-
-
-class ChatSocketLifecycleEdgeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        previous = socket.history.STORE_PATH
-        socket.history.STORE_PATH = Path(cls.temporary.name) / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        socket.history.STORE_PATH.unlink(missing_ok=True)
-        socket.history_delivery.configure("local")
-
+class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
     def test_targetless_uninstall_guidance_survives_a_retired_ambiguous_proposal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -52,7 +34,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
+                    return_value=resolved_future(
                         assistant_route.Result(
                             "assistant-uninstall",
                             guidance=assistant_route.Guidance(
@@ -100,7 +82,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(assistant_route.Result("unresolved", error_status=422)),
+                    return_value=resolved_future(assistant_route.Result("unresolved", error_status=422)),
                 ) as route,
             ):
                 await socket._dispatch_chat(
@@ -126,7 +108,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(
+                    return_value=resolved_future(
                         assistant_route.Result(
                             "assistant-uninstall",
                             guidance=assistant_route.Guidance(
@@ -176,7 +158,7 @@ class ChatSocketLifecycleEdgeTests(unittest.TestCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=_future(assistant_route.Result("assistant-uninstall", guidance=guidance)),
+                    return_value=resolved_future(assistant_route.Result("assistant-uninstall", guidance=guidance)),
                 ),
             ):
                 await socket._dispatch_chat(

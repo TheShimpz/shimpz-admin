@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures
 import contextvars
 import sys
-import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -20,25 +19,13 @@ from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from history import http as history_http
 from team import bridge as team
+from tests.chat_socket_case import ChatDeliveryCase
 
 from chat import socket
 from tests import chat_socket_fixtures
 
 
-class ChatHistoryDeliveryTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        previous = socket.history.STORE_PATH
-        socket.history.STORE_PATH = Path(cls.temporary.name) / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, socket.history, "STORE_PATH", previous)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        socket.history.STORE_PATH.unlink(missing_ok=True)
-        socket.history_delivery.configure("local")
-
+class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_admission_commits_user_history_before_work_can_start(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
