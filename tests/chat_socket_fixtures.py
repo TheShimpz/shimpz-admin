@@ -18,6 +18,25 @@ EXPECTED_FRAME_SECONDS = 10.0
 CHALLENGE_ID = "b" * 32
 
 
+def chat_frame(
+    message: str,
+    assistant_ids: list[str] | None = None,
+    *,
+    locale: str | None = "en",
+    request: str | None = None,
+) -> dict[str, object]:
+    """Return one complete chat frame with no files and no timezone, as the Admin client sends it."""
+    return {
+        "type": "chat",
+        "message": message,
+        "files": [],
+        "assistant_ids": [] if assistant_ids is None else assistant_ids,
+        "locale": locale,
+        "timezone": None,
+        "request": request,
+    }
+
+
 def ordinary_route(chat_socket) -> concurrent.futures.Future[object]:
     """Return the closed structured route used by tests that exercise later socket stages."""
     future: concurrent.futures.Future[object] = concurrent.futures.Future()

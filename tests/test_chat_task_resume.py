@@ -6,7 +6,7 @@ import asyncio
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import Socket
+from tests.chat_socket_fixtures import Socket, chat_frame
 
 
 class ChatTaskResumeTests(ChatWebSocketCase):
@@ -49,17 +49,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 )
 
                 self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "cloudflare",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_frame("cloudflare"))
                 self.assertEqual((await websocket.next_json())["reply"], follow_up.reply)
                 context = route.call_args.args[2]
                 self.assertEqual(
@@ -237,29 +227,9 @@ class ChatConversationWindowTests(ChatWebSocketCase):
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as sent:
                 websocket = Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "List my zones",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_frame("List my zones"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "And the first one?",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_frame("And the first one?"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.disconnect()
 

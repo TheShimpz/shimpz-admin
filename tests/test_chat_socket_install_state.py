@@ -65,17 +65,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": message,
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame(message))
 
                 planned = await websocket.next_json()
                 self.assertEqual(planned["state"], "planned")
@@ -84,17 +74,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 self.assertEqual((completed["state"], completed["continuation"]), ("installed", "none"))
                 turn.assert_not_called()
 
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Olá",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Olá"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
@@ -147,17 +127,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "instala o cloudflare",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("instala o cloudflare"))
 
                 self.assertEqual(
                     await websocket.next_json(),
@@ -166,17 +136,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 submit_plan.assert_not_called()
                 turn.assert_not_called()
 
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "liste as zonas",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("liste as zonas"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 reference = route.call_args_list[1].args[2].reference
                 self.assertEqual(reference.assistant_id, "shimpz-cloudflare")
@@ -214,17 +174,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "instale o cloudflare e o whatsapp",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("instale o cloudflare e o whatsapp"))
 
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 terminal = await websocket.next_json()

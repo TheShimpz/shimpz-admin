@@ -43,15 +43,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             connection = socket._Connection()
-            frame = {
-                "type": "chat",
-                "message": "Hello",
-                "files": [],
-                "assistant_ids": [],
-                "locale": "en",
-                "timezone": None,
-                "request": None,
-            }
+            frame = chat_socket_fixtures.chat_frame("Hello")
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
                 mock.patch.object(socket.history, "append_user", return_value=True) as append,
@@ -191,15 +183,7 @@ class ChatHistoryDeliveryTests(unittest.TestCase):
         async def scenario() -> None:
             loop = asyncio.get_running_loop()
             loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=1))
-            frame = {
-                "type": "chat",
-                "message": "Hello",
-                "files": [],
-                "assistant_ids": [],
-                "locale": "en",
-                "timezone": None,
-                "request": None,
-            }
+            frame = chat_socket_fixtures.chat_frame("Hello")
             request.set("supervisor-request")
             queued = []
             with (

@@ -129,15 +129,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
     def test_route_saturation_is_bounded(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            frame = {
-                "type": "chat",
-                "message": "hello",
-                "files": [],
-                "assistant_ids": [],
-                "locale": "en",
-                "timezone": None,
-                "request": None,
-            }
+            frame = chat_socket_fixtures.chat_frame("hello")
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -152,15 +144,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_a_chat_frame_names_its_logical_send_and_an_expired_resend_is_refused(self) -> None:
-        frame = {
-            "type": "chat",
-            "message": "Hello",
-            "files": [],
-            "assistant_ids": [],
-            "locale": "en",
-            "timezone": None,
-            "request": "1." + "a" * 32 + "." + "b" * 64,
-        }
+        frame = chat_socket_fixtures.chat_frame("Hello", request="1." + "a" * 32 + "." + "b" * 64)
 
         async def scenario() -> None:
             for candidate, status in (
@@ -180,15 +164,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_a_resend_through_the_socket_reuses_its_sealed_identity_only_while_fresh(self) -> None:
-        frame = {
-            "type": "chat",
-            "message": "Every day at 9, list my zones",
-            "files": [],
-            "assistant_ids": [],
-            "locale": "en",
-            "timezone": None,
-            "request": None,
-        }
+        frame = chat_socket_fixtures.chat_frame("Every day at 9, list my zones")
 
         async def admit(candidate, now):
             websocket = mock.AsyncMock()
@@ -532,15 +508,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 websocket,
                 connection,
                 "team_1",
-                {
-                    "type": "chat",
-                    "message": "hi",
-                    "files": [],
-                    "assistant_ids": [],
-                    "locale": "en",
-                    "timezone": None,
-                    "request": None,
-                },
+                chat_socket_fixtures.chat_frame("hi"),
             )
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
@@ -548,15 +516,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                 websocket,
                 connection,
                 "team_1",
-                {
-                    "type": "chat",
-                    "message": "hi",
-                    "files": [],
-                    "assistant_ids": [],
-                    "locale": "en",
-                    "timezone": None,
-                    "request": None,
-                },
+                chat_socket_fixtures.chat_frame("hi"),
             )
 
             with mock.patch.object(socket, "submit_in_context", side_effect=socket.ExecutorSaturatedError):
@@ -564,15 +524,7 @@ class ChatSocketEdgeTests(unittest.TestCase):
                     websocket,
                     socket._Connection(),
                     "team_1",
-                    {
-                        "type": "chat",
-                        "message": "hi",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    },
+                    chat_socket_fixtures.chat_frame("hi"),
                 )
 
         asyncio.run(scenario())

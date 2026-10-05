@@ -40,15 +40,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
 
                 planned = await websocket.next_json()
@@ -95,17 +87,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Resuma esta conversa",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Resuma esta conversa"))
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -154,17 +136,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "desinstale",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale"))
 
                 self.assertEqual(
                     await websocket.next_json(),
@@ -181,17 +153,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 await websocket.send_json({"type": "stop"})
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "ok",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("ok"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 turn.assert_called_once()
                 await websocket.disconnect()
@@ -214,15 +176,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 failed = await websocket.next_json()
@@ -269,15 +223,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 await websocket.send_json({"type": "stop"})
@@ -317,15 +263,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 self.assertEqual((await websocket.next_json())["state"], "installed")
@@ -364,15 +302,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 await websocket.disconnect()
@@ -406,15 +336,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
                 await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "Configure Cloudflare e envie WhatsApp",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
+                    chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 failed = await websocket.next_json()

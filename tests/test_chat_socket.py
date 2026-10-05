@@ -129,33 +129,9 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     "assistant_ids": [],
                     "provider": "openai",
                 },
-                {
-                    "type": "chat",
-                    "message": "duplicate",
-                    "files": [],
-                    "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
-                    "locale": "en",
-                    "timezone": None,
-                    "request": None,
-                },
-                {
-                    "type": "chat",
-                    "message": "too many",
-                    "files": [],
-                    "assistant_ids": [f"assistant-{index}" for index in range(17)],
-                    "locale": "en",
-                    "timezone": None,
-                    "request": None,
-                },
-                {
-                    "type": "chat",
-                    "message": "noncanonical",
-                    "files": [],
-                    "assistant_ids": ["Shimpz-Assistant"],
-                    "locale": "en",
-                    "timezone": None,
-                    "request": None,
-                },
+                chat_socket_fixtures.chat_frame("duplicate", ["shimpz-cloudflare", "shimpz-cloudflare"]),
+                chat_socket_fixtures.chat_frame("too many", [f"assistant-{index}" for index in range(17)]),
+                chat_socket_fixtures.chat_frame("noncanonical", ["Shimpz-Assistant"]),
             )
             with mock.patch.object(self.chat_socket.local, "turn") as turn:
                 for frame in invalid_frames:
@@ -174,17 +150,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             store["session_secret"] = self.admin_app.auth.new_secret()
             self.admin_app.state._write(store)
             with mock.patch.object(self.chat_socket.local, "turn") as turn:
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "must not run",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))
                 self.assertEqual(
                     await websocket.next_message(),
                     {"type": "websocket.close", "code": 4401, "reason": ""},
@@ -204,17 +170,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "must not run",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))
                 self.assertEqual(
                     await websocket.next_message(),
                     {"type": "websocket.close", "code": 1013, "reason": ""},
@@ -293,29 +249,9 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "first",
-                        "files": [],
-                        "assistant_ids": ["shimpz-cloudflare"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("first", ["shimpz-cloudflare"]))
                 await _wait_for_thread(started)
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "second",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("second"))
                 self.assertEqual(
                     await websocket.next_json(),
                     {"type": "error", "status": 409, "detail": "a chat turn is already active"},
@@ -329,17 +265,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 await asyncio.sleep(0.05)
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "next",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("next"))
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
                     _progress_frames(),
@@ -396,17 +322,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "race",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("race"))
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual(
@@ -463,17 +379,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "bounded",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("bounded"))
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual((await websocket.next_json())["type"], "done")
@@ -511,17 +417,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "running",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
                 await websocket.disconnect()
                 self.assertEqual(stop_mock.call_count, 1)
@@ -562,17 +458,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "running",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
                 await _wait_for_thread(websocket.send_failed)
                 await websocket.disconnect()
@@ -608,17 +494,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "running",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(websocket.send_failed)
                 await websocket.disconnect()
                 stop.assert_not_called()
@@ -637,17 +513,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             ):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "connect",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("connect"))
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 self.assertIsNotNone(self.admin_app.chat_history.resumable_turn("team_1"))
                 await websocket.disconnect()
@@ -672,17 +538,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn):
                 websocket = _Socket(self.admin_app.app, token=self.token)
                 self.assertTrue(self._accepted(await websocket.start()))
-                await websocket.send_json(
-                    {
-                        "type": "chat",
-                        "message": "hello",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(chat_socket_fixtures.chat_frame("hello"))
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
                     _progress_frames(),

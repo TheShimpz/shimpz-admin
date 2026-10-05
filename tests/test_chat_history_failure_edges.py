@@ -83,15 +83,7 @@ class ChatHistoryFailureEdgeTests(unittest.TestCase):
                     websocket,
                     connection,
                     "team_1",
-                    {
-                        "type": "chat",
-                        "message": "desinstale",
-                        "files": [],
-                        "assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    },
+                    chat_socket_fixtures.chat_frame("desinstale"),
                 )
                 delivery = connection.active.delivery
                 await delivery
