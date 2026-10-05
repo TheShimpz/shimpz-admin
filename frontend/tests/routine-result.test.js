@@ -5,11 +5,11 @@ import { conditionWords, inputWords } from '../src/lib/routine.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
 import {
   attemptsByStep,
+  durationWords,
   isScalar,
   MAX_RESULT_COLUMNS,
   resultTable,
   resultView,
-  runSteps,
   valueKind,
   visibleSteps,
 } from '../src/lib/routineResult.js';
@@ -154,37 +154,19 @@ test('a list or a single value at the top is one unlabeled block', () => {
   assert.equal(top.blocks[0].label, '');
 });
 
-const PLAN = [
-  { id: 'zones', assistant: 'shimpz-cloudflare', action: 'list-zones', inputs: [{ member: 'page', source: 'literal', value: '1' }], stored_inputs: ['api-token'] },
-  { id: 'records', assistant: 'shimpz-cloudflare', action: 'list-dns-records', inputs: [], stored_inputs: [] },
-];
-const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']];
-
-test('a run step carries the current plan inputs only while the plan names the same Actions in order', () => {
-  const listed = runSteps(ACTIONS, PLAN);
-  assert.equal(listed.listed, true);
-  assert.deepEqual(listed.steps[0], {
-    n: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', id: 'zones', inputs: PLAN[0].inputs, stored: ['api-token'],
-  });
-  // A plan with other Actions, another order, or no listed plan at all gives no parameters.
-  for (const plan of [[PLAN[0]], [PLAN[1], PLAN[0]], null, undefined]) {
-    const steps = runSteps(ACTIONS, plan);
-    assert.equal(steps.listed, false);
-    assert.deepEqual(steps.steps.map((step) => [step.n, step.id, step.inputs, step.stored]), [[1, null, null, null], [2, null, null, null]]);
-  }
-  const otherAssistant = runSteps([['other', 'list-zones'], ACTIONS[1]], PLAN);
-  assert.equal(otherAssistant.listed, false);
+test('a recorded attempt joins the step whose position it names, and one beyond the run is kept apart', () => {
+  const attempt = (step, number) => ({ assistant_id: 'shimpz-cloudflare', action: 'list-zones', step, attempt: number });
+  const { byStep, apart } = attemptsByStep([attempt(2, 1), attempt(1, 1), attempt(4, 1), attempt(2, 2)], 3);
+  assert.deepEqual([...byStep].map(([step, items]) => [step, items.map((item) => item.attempt)]), [[2, [1, 2]], [1, [1]]]);
+  assert.deepEqual(apart.map((item) => item.step), [4]);
 });
 
-test('a recorded attempt joins only the one step with its Action, otherwise it is kept apart', () => {
-  const steps = runSteps([...ACTIONS, ACTIONS[0]], null).steps;
-  const attempt = (action, number) => ({ assistant_id: 'shimpz-cloudflare', action, attempt: number });
-  const { byStep, apart } = attemptsByStep(
-    [attempt('list-dns-records', 1), attempt('list-zones', 1), attempt('delete-zone', 1), attempt('list-dns-records', 2)],
-    steps,
-  );
-  assert.deepEqual(byStep.map((items) => items.map((item) => item.attempt)), [[], [1, 2], []]);
-  assert.deepEqual(apart.map((item) => item.action), ['list-zones', 'delete-zone']);
+test("a step's duration reads in the viewer's locale", () => {
+  assert.equal(durationWords(812, 'en'), '812 ms');
+  assert.equal(durationWords(4031, 'en'), '4 sec');
+  assert.equal(durationWords(4_250, 'en'), '4.3 sec');
+  assert.equal(durationWords(90_000, 'en'), '1.5 min');
+  assert.equal(durationWords(4_250, 'pt'), '4,3 s');
 });
 
 test('a long run reveals its steps a page at a time', () => {
@@ -198,13 +180,13 @@ test('a long run reveals its steps a page at a time', () => {
 
 test('plan inputs and attempt conditions read in words', () => {
   const plan = routineMessages.en.plan;
-  const positions = new Map([['zones', 1]]);
-  assert.equal(inputWords({ member: 'page', source: 'literal', value: '"1"' }, positions, plan), '1');
-  assert.equal(inputWords({ member: 'at', source: 'run_clock', value: 'date' }, positions, plan), "each run's date");
-  assert.equal(inputWords({ member: 'z', source: 'step_output', step: 'zones', pointer: '' }, positions, plan), 'the whole result of step 1');
-  assert.equal(inputWords({ member: 'z', source: 'step_text', step: 'zones', pointer: '' }, positions, plan), 'the whole result of step 1 as text');
-  assert.equal(inputWords({ member: 'z', source: 'step_output', step: 'zones', pointer: '/zones/0/id' }, positions, plan), 'from step 1 (zones › first › id)');
-  assert.equal(inputWords({ member: 'z', source: 'step_text', step: 'zones', pointer: '/zones/1' }, positions, plan), 'the text of step 1 (zones › item 2)');
+  assert.equal(inputWords({ member: 'page', source: 'literal', value: '"1"' }, plan), '1');
+  assert.equal(inputWords({ member: 'at', source: 'run_clock', value: 'date' }, plan), "each run's date");
+  // A reference names the earlier step by its position.
+  assert.equal(inputWords({ member: 'z', source: 'step_output', step: 1, pointer: '' }, plan), 'the whole result of step 1');
+  assert.equal(inputWords({ member: 'z', source: 'step_text', step: 37, pointer: '' }, plan), 'the whole result of step 37 as text');
+  assert.equal(inputWords({ member: 'z', source: 'step_output', step: 1, pointer: '/zones/0/id' }, plan), 'from step 1 (zones › first › id)');
+  assert.equal(inputWords({ member: 'z', source: 'step_text', step: 1, pointer: '/zones/1' }, plan), 'the text of step 1 (zones › item 2)');
   const details = routineMessages.en.details;
   assert.equal(conditionWords('exit-status:-9', details), 'The Action exited with status -9.');
   assert.equal(conditionWords('timeout', details), 'The Action ran out of time.');

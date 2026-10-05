@@ -1,28 +1,45 @@
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092): every Routine notice, a held
 // run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
-// minute rollup, a run's execution details, and the daily-cap question of a continuous request. Pure data and state
-// transitions; nothing here reaches a real Admin, Team, Brain, or provider.
+// minute rollup, a run's execution details and step records, a 120-step plan read page by page, and the daily-cap
+// question of a continuous request. Pure data and state transitions; nothing here reaches a real Admin, Team, Brain,
+// or provider.
 
-const STEPS = Object.freeze([
-  {
-    id: 'zones',
-    assistant: 'shimpz-cloudflare',
-    action: 'list-zones',
-    inputs: [{ member: 'page', source: 'literal', value: '1' }],
-    stored_inputs: ['api-token'],
-  },
-  {
-    id: 'records',
-    assistant: 'shimpz-cloudflare',
-    action: 'list-dns-records',
-    inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/zones/0/id' }],
-    stored_inputs: ['api-token'],
-  },
+// A projected step at its 1-based position: on the wire a step is named by position (ADR-0092 amendment, scale).
+const step = (position, action, inputs) => ({
+  position, assistant: 'shimpz-cloudflare', action, inputs, stored_inputs: ['api-token'],
+});
+const fromStep = (member, from, pointer) => ({ member, source: 'step_output', step: from, pointer });
+const ZONES = step(1, 'list-zones', [{ member: 'page', source: 'literal', value: '1' }]);
+const STEPS = Object.freeze([ZONES, step(2, 'list-dns-records', [fromStep('zone_id', 1, '/zones/0/id')])]);
+// The continuous watch checks every zone's records: one Action, repeated as often as the person asked.
+const WATCH = Object.freeze([
+  ZONES,
+  ...Array.from({ length: 119 }, (_, index) => step(index + 2, 'list-dns-records', [fromStep('zone_id', 1, `/zones/${index}/id`)])),
 ]);
+const PAGE_STEPS = 64;
+const MAX_SUMMARY_RUNS = 16;
+
+/** A revision's plan summary as Team projects it: runs of consecutive equal Actions, at most 16, then a count. */
+export function planSummary(steps, revision = 1) {
+  const runs = [];
+  for (const item of steps) {
+    const last = runs.at(-1);
+    if (last && last[0] === item.assistant && last[1] === item.action) last[2] += 1;
+    else runs.push([item.assistant, item.action, 1]);
+  }
+  const actions = runs.slice(0, MAX_SUMMARY_RUNS);
+  return {
+    revision,
+    // Each revision has its own digest.
+    plan_digest: `sha256:${'0123456789abcdef'[(12 + revision) % 16].repeat(64)}`,
+    steps: steps.length,
+    actions,
+    more: steps.length - actions.reduce((sum, run) => sum + run[2], 0),
+  };
+}
 
 const ROUTINE = Object.freeze({
   name: 'DNS watch',
-  steps: STEPS,
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-02T12:00:00Z',
@@ -98,20 +115,10 @@ const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
 // weekly Routine that shows its records after every run and whose run is held for recovery; a daily Routine that shows
 // its zones only when they change, which its failures paused; and a monthly one that shows nothing, which a person
 // paused from its card while its held run still waits for a decision (ADR-0092 amendment, 2026-10-05, output).
-const UPDATE = {
-  id: 'update',
-  assistant: 'shimpz-cloudflare',
-  action: 'update-dns-record',
-  inputs: [{ member: 'record_id', source: 'step_output', step: 'records', pointer: '/records/0/id' }],
-  stored_inputs: ['api-token'],
-};
-const DELETE = {
-  id: 'delete',
-  assistant: 'shimpz-cloudflare',
-  action: 'delete-dns-record',
-  inputs: [{ member: 'record_id', source: 'step_output', step: 'records', pointer: '/records/2/id' }],
-  stored_inputs: ['api-token'],
-};
+const UPDATE = step(3, 'update-dns-record', [fromStep('record_id', 2, '/records/0/id')]);
+const DELETE = step(3, 'delete-dns-record', [fromStep('record_id', 2, '/records/2/id')]);
+// Each lifecycle Routine's current steps, which its list view summarizes and its plan pages project.
+const PLANS = [WATCH, [...STEPS, UPDATE], STEPS, [...STEPS, DELETE]];
 
 function routines(locale) {
   const { names, quotes } = textFor(locale);
@@ -120,43 +127,43 @@ function routines(locale) {
     {
       ...ROUTINE,
       routine_id: id('2'),
-      steps: [...STEPS, UPDATE],
-      output: { mode: 'show', step: 'records' },
+      output: { mode: 'show', step: 2 },
       schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
       next_run_at: '2026-10-04T11:00:00Z',
     },
     {
       ...ROUTINE,
       routine_id: id('3'),
-      output: { mode: 'changes', step: 'zones' },
+      output: { mode: 'changes', step: 1 },
       schedule: { kind: 'daily', time: '09:00' },
       paused: true,
     },
     {
       ...ROUTINE,
       routine_id: id('4'),
-      steps: [...STEPS, DELETE],
       output: { mode: 'none', step: null },
       schedule: { kind: 'monthly', day: 1, time: '10:00' },
       paused: true,
     },
-  ].map((routine, index) => ({ ...routine, name: names[index], quote: quotes[index] }));
+  ].map((routine, index) => ({ ...routine, plan: planSummary(PLANS[index]), name: names[index], quote: quotes[index] }));
 }
 
 const HELD_RUN = id('5');
 const PAUSED_RUN = id('6');
 const FAILED_RUN = id('7');
 
-function incident(runId, routine, action) {
+// A held run's incident names the step it was held at by position among its plan's steps.
+function incident(runId, routine, held) {
   return {
     incident_id: runId,
     routine_id: routine.routine_id,
     quote: routine.quote,
     created_at: '2026-10-01T11:00:07Z',
-    assistant_id: 'shimpz-cloudflare',
-    action,
+    ...held,
   };
 }
+
+const placed = (action, position, total) => ({ assistant_id: 'shimpz-cloudflare', action, step: position, steps: total });
 
 function row(noticeId, routine, outcome, detail, { run = true, at = '2026-10-01T12:00:00Z', version = 1 } = {}) {
   return {
@@ -175,11 +182,10 @@ function row(noticeId, routine, outcome, detail, { run = true, at = '2026-10-01T
 
 function defined(routine) {
   return {
-    name: routine.name, steps: routine.steps, output: routine.output, schedule: routine.schedule, timezone: routine.timezone,
+    name: routine.name, plan: routine.plan, output: routine.output, schedule: routine.schedule, timezone: routine.timezone,
   };
 }
 
-const ACTIONS = [['shimpz-cloudflare', 'list-zones'], ['shimpz-cloudflare', 'list-dns-records']];
 const text = (value) => ({ kind: 'text', value, cut: false });
 const fields = (...pairs) => ({ kind: 'fields', fields: pairs, omitted: 0 });
 // What a run shows of its result: Team's bounded, redacted projection of the Action's validated result, as plain data.
@@ -195,7 +201,7 @@ const zone = (zoneId, name, paused, status, type) => fields(
 );
 // Cloudflare's zone list as Team projects it: its paging as single values, then each zone with its nested account.
 export const SHOWN_ZONES = Object.freeze({
-  step: 'zones',
+  step: 1,
   state: 'shown',
   value: fields(
     ['page', number('1')],
@@ -215,7 +221,7 @@ export const SHOWN_ZONES = Object.freeze({
   truncated: false,
 });
 const SHOWN_RECORDS = Object.freeze({
-  step: 'records',
+  step: 2,
   state: 'shown',
   value: fields(['records', {
     kind: 'list',
@@ -238,20 +244,18 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
   return [
     row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: yesterday(-120) }),
     row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: yesterday(-90) }),
-    row(id('c'), CONTINUOUS, 'done', { actions: ACTIONS, output: null }, { at: yesterday(-50) }),
+    row(id('c'), CONTINUOUS, 'done', { plan: CONTINUOUS.plan, output: null }, { at: yesterday(-50) }),
     row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: yesterday(0), version: 9 }),
-    row(id('e'), HELD, 'recovered', { actions: ACTIONS, output: SHOWN_RECORDS }, { at: yesterday(20) }),
-    row(id('8'), PAUSED, 'done', { actions: ACTIONS, output: SHOWN_ZONES }, { at: yesterday(40) }),
-    row(id('f'), HELD, 'user-skipped', {
-      assistant_id: 'shimpz-cloudflare', action: 'update-dns-record', choice: 'run',
-    }, { at: at(-150) }),
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [ACTIONS[0]] }, { at: at(-120), version: 1 }),
-    row(HELD_RUN, HELD, 'held', { assistant_id: 'shimpz-cloudflare', action: 'update-dns-record' }, {
-      at: at(-90), version: 2,
+    row(id('e'), HELD, 'recovered', { plan: HELD.plan, output: SHOWN_RECORDS }, { at: yesterday(20) }),
+    row(id('8'), PAUSED, 'done', { plan: PAUSED.plan, output: SHOWN_ZONES }, { at: yesterday(40) }),
+    row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-150) }),
+    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], step: 1, steps: 2 }, {
+      at: at(-120), version: 1,
     }),
-    row(PAUSED_RUN, PAUSED_HELD, 'paused', {
-      assistant_id: 'shimpz-cloudflare', action: 'delete-dns-record', reason: 'exhausted',
-    }, { at: at(-60), version: 3 }),
+    row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-90), version: 2 }),
+    row(PAUSED_RUN, PAUSED_HELD, 'paused', { ...placed('delete-dns-record', 3, 3), reason: 'exhausted' }, {
+      at: at(-60), version: 3,
+    }),
   ];
 }
 
@@ -260,8 +264,12 @@ export function routineLifecycleStart(locale = 'en', now = Date.now()) {
   const [, HELD, , PAUSED_HELD] = listed;
   return {
     routines: listed,
+    plans: Object.fromEntries(listed.map((routine, index) => [routine.routine_id, PLANS[index]])),
     runs: [],
-    incidents: [incident(HELD_RUN, HELD, 'update-dns-record'), incident(PAUSED_RUN, PAUSED_HELD, 'delete-dns-record')],
+    incidents: [
+      incident(HELD_RUN, HELD, placed('update-dns-record', 3, 3)),
+      incident(PAUSED_RUN, PAUSED_HELD, placed('delete-dns-record', 3, 3)),
+    ],
     history: history(listed, now),
   };
 }
@@ -275,7 +283,7 @@ export function setAside(state, incidentId, choice) {
     ? {
       ...entry,
       outcome: 'user-skipped',
-      detail: { assistant_id: held.assistant_id, action: held.action, choice },
+      detail: { assistant_id: held.assistant_id, action: held.action, step: held.step, steps: held.steps, choice },
       version: entry.version + 1,
     }
     : entry));
@@ -285,7 +293,6 @@ function card(state, incidentId) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
   state.cards = (state.cards ?? 0) + 1;
-  const steps = state.routines.find((item) => item.routine_id === held.routine_id)?.steps ?? [];
   const failed = diagnostics(incidentId).json.diagnostics.at(-1) ?? null;
   return {
     status: 200,
@@ -296,8 +303,8 @@ function card(state, incidentId) {
       revision: 1,
       assistant_id: held.assistant_id,
       action: held.action,
-      step: Math.max(1, steps.findIndex((step) => step.action === held.action) + 1),
-      steps: Math.max(1, steps.length),
+      step: held.step,
+      steps: held.steps,
       evidence: failed ? 'recorded' : 'absent',
       diagnostic: failed,
       nonce: state.cards.toString(16).padStart(32, '0'),
@@ -320,6 +327,10 @@ function answer(state, incidentId, body) {
   setAside(state, incidentId, choice);
   state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, paused: false } : item));
   if (choice === 'recreate') {
+    // Recreating compiles the Routine again: a new revision of the same steps.
+    state.routines = state.routines.map((item) => (item.routine_id === held.routine_id
+      ? { ...item, plan: planSummary(state.plans[item.routine_id], item.plan.revision + 1) }
+      : item));
     const routine = state.routines.find((item) => item.routine_id === held.routine_id);
     state.sequence = (state.sequence ?? 0) + 1;
     const noticeId = `8${state.sequence.toString(16)}`.padStart(32, '0');
@@ -333,11 +344,13 @@ function answer(state, incidentId, body) {
 // Routine's delete was refused its permission; the failed run's attempts show a handled failure whose text is shown
 // escaped, then transport conditions.
 function diagnostics(runId) {
+  const POSITIONS = { 'list-zones': 1, 'list-dns-records': 2, 'update-dns-record': 3, 'delete-dns-record': 3 };
   const attempt = (number, action, failure, condition) => ({
     operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
     attempt: number,
     assistant_id: 'shimpz-cloudflare',
     action,
+    step: POSITIONS[action],
     recorded_at: `2026-10-01T11:5${number}:03Z`,
     failure,
     condition,
@@ -401,6 +414,76 @@ export function routineRecoveryRoutes(state, method, path, body) {
   return null;
 }
 
+// What each lifecycle run with a shown result did, step by step: its records, kept as one snapshot.
+const SNAPSHOT = 'c'.repeat(32);
+const record = (position, status, action, { attempt = 1, duration = 640 + position * 37, inputs = [] } = {}) => ({
+  position,
+  status,
+  assistant_id: 'shimpz-cloudflare',
+  action,
+  attempt,
+  duration_ms: status === 'recovered' ? null : duration,
+  recorded_at: `2026-09-30T12:00:${String(10 + position).padStart(2, '0')}Z`,
+  inputs,
+});
+const RUN_RECORDS = {
+  // The recovered run's DNS record list was rate limited once, and its recovery verified it.
+  [id('e')]: [
+    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
+    record(2, 'recovered', 'list-dns-records', { attempt: 2, inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
+    record(3, 'done', 'update-dns-record', { inputs: [{ member: 'record_id', source: 'step_output', value: null }] }),
+  ],
+  [id('8')]: [
+    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
+    record(2, 'done', 'list-dns-records', { inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
+  ],
+};
+
+/** One page of a revision's projected steps from `offset`: whole consecutive steps, at most 64. */
+export function planPage(routineId, plan, steps, offset) {
+  const page = steps.slice(offset, offset + PAGE_STEPS);
+  const next = offset + page.length === steps.length ? null : offset + page.length;
+  return { routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest, total: steps.length, offset, steps: page, next };
+}
+
+/** One page of a run's step records from `offset`, of one snapshot, bound to the revision its notice summarizes. */
+export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true } = {}) {
+  const page = records.slice(offset, offset + PAGE_STEPS);
+  const next = offset + page.length === records.length ? null : offset + page.length;
+  return {
+    team_id: 'marketing', run_id: runId, routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest,
+    total: plan.steps, snapshot, ended, offset, steps: page, next,
+  };
+}
+
+/**
+ * A Routine's plan pages and a run's step records (ADR-0092 amendment, 2026-10-05, scale): a page of the Routine's
+ * current revision, refused when the reader names another, and a page of a run's one snapshot of records.
+ */
+export function routineStepRoutes(state, method, path) {
+  if (method !== 'GET') return null;
+  const base = '/api/teams/marketing/routines';
+  const plan = path.match(new RegExp(`^${base}/([0-9a-f]{32})/revisions/([0-9]+)/steps/([0-9]+)$`));
+  if (plan) {
+    const routine = state.routines.find((item) => item.routine_id === plan[1]);
+    const steps = state.plans?.[plan[1]];
+    if (!routine || !steps) return { status: 404, json: { code: 'routine-not-found' } };
+    if (Number(plan[2]) !== routine.plan.revision) return { status: 409, json: { code: 'routine-revision-changed' } };
+    if (Number(plan[3]) >= steps.length) return { status: 404, json: { code: 'routine-steps-not-found' } };
+    return { status: 200, json: planPage(routine.routine_id, routine.plan, steps, Number(plan[3])) };
+  }
+  const run = path.match(new RegExp(`^${base}/runs/([0-9a-f]{32})/steps/(latest|[0-9a-f]{32})/([0-9]+)$`));
+  if (run) {
+    const notice = state.history.find((entry) => entry.run_id === run[1] && entry.detail?.plan);
+    const records = RUN_RECORDS[run[1]];
+    if (!notice || !records) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
+    if (run[2] !== 'latest' && run[2] !== SNAPSHOT) return { status: 409, json: { code: 'routine-run-changed' } };
+    if (Number(run[3]) >= records.length) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
+    return { status: 200, json: runStepsPage(run[1], notice.routine_id, notice.detail.plan, records, { offset: Number(run[3]) }) };
+  }
+  return null;
+}
+
 // The continuous request with no daily cap, asked as Brain asks it in the interface language: each option names its cap.
 const CAP_OPTIONS = [100, 500, 1000];
 
@@ -441,6 +524,7 @@ export function capReply(state, message, teamName) {
     schedule: { kind: 'continuous', gap: 5, cap },
   };
   state.routines = [...state.routines, routine];
+  state.plans = { ...state.plans, [routine.routine_id]: WATCH };
   const noticeId = `7${state.sequence.toString(16)}`.padStart(32, '0');
   state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { run: false })];
   return { ...base, reply: text.capReply.replace('{cap}', String(cap)), clarification: null };

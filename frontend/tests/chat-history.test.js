@@ -315,7 +315,10 @@ function runRow(noticeId, routineId) {
     run_id: noticeId,
     outcome: 'done',
     created_at: AT,
-    detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null },
+    detail: {
+      plan: { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 },
+      output: null,
+    },
     version: 1,
   };
 }

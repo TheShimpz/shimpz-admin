@@ -4,7 +4,14 @@
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
 import { localizedChallenge } from './localizedRequest.js';
-import { capReply, routineLifecycleStart, routineRecoveryRoutes, setAside } from './routineScenarios.js';
+import {
+  capReply,
+  planSummary,
+  routineLifecycleStart,
+  routineRecoveryRoutes,
+  routineStepRoutes,
+  setAside,
+} from './routineScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -27,7 +34,7 @@ export const ASSISTANTS = [
 
 export const ROUTINE_PLAN = [
     {
-      id: 'zones',
+      position: 1,
       assistant: 'shimpz-cloudflare',
       action: 'list-zones',
       inputs: [{ member: 'page', source: 'literal', value: '1' }],
@@ -39,8 +46,8 @@ export const ROUTINE_VIEW = {
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
   quote: 'Every day at 9, list my DNS zones',
-  steps: ROUTINE_PLAN,
-  output: { mode: 'show', step: 'zones' },
+  plan: planSummary(ROUTINE_PLAN),
+  output: { mode: 'show', step: 1 },
   schedule: { kind: 'daily', time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -66,6 +73,8 @@ const HELD_INCIDENT = {
   created_at: '2026-09-30T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
+  step: 1,
+  steps: 1,
 };
 
 const FROZEN_RUN = {
@@ -123,6 +132,7 @@ const STARTS = {
     session: authenticatedLocalSession(),
     teams: [TEAM],
     routines: [{ ...ROUTINE_VIEW, paused: true }, WEEKLY_ROUTINE],
+    plans: { [ROUTINE_VIEW.routine_id]: ROUTINE_PLAN, [WEEKLY_ROUTINE.routine_id]: ROUTINE_PLAN },
     runs: [FROZEN_RUN],
     incidents: [HELD_INCIDENT],
   }),
@@ -305,6 +315,7 @@ function create(state, message, timezone) {
     timezone: timezone ?? 'UTC',
   };
   state.routines = [...state.routines, routine];
+  state.plans = { ...state.plans, [routine.routine_id]: ROUTINE_PLAN };
   const noticeId = hexId('7', state.sequence);
   state.history = [...state.history, {
     id: `${noticeId}:routine`,
@@ -317,7 +328,7 @@ function create(state, message, timezone) {
     created_at: '2026-10-01T12:00:00Z',
     detail: {
       name: 'Daily DNS zones',
-      steps: ROUTINE_PLAN,
+      plan: routine.plan,
       output: routine.output,
       schedule: routine.schedule,
       timezone: routine.timezone,
@@ -551,7 +562,8 @@ export function createScenario(name = 'ready', locale = 'en') {
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
-      return routineRecoveryRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
+      return routineRecoveryRoutes(state, method, path, body) ?? routineStepRoutes(state, method, path) ??
+        routineRoutes(state, method, path, body);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {

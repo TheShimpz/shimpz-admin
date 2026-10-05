@@ -10,7 +10,9 @@ import {
   openRoutineCard,
   parseRoutineRunEntry,
   failureCause,
+  readPlanSteps,
   readRunDiagnostics,
+  readRunSteps,
 } from '../src/lib/routine.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
@@ -274,6 +276,32 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
   assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
+  // Every listed Routine's steps read page by page for its own revision; the 120-step watch takes two pages, and a
+  // revision that is no longer current is refused.
+  for (const routine of listed.routines) {
+    const pages = [await readPlanSteps(adapter(scenario), 'marketing', routine.routine_id, routine.plan, 0)];
+    while (pages.at(-1).next !== null) {
+      pages.push(await readPlanSteps(adapter(scenario), 'marketing', routine.routine_id, routine.plan, pages.at(-1).next));
+    }
+    assert.equal(pages.flatMap((page) => page.steps).length, routine.plan.steps);
+  }
+  assert.ok(listed.routines.some((routine) => routine.plan.steps === 120));
+  const [watch] = listed.routines;
+  await assert.rejects(
+    readPlanSteps(adapter(scenario), 'marketing', watch.routine_id, { ...watch.plan, revision: 2 }, 0),
+    (error) => error.code === 'routine-revision-changed',
+  );
+  // Each run with a shown result has its own step records, of one snapshot; another snapshot was changed since.
+  for (const entry of entries.filter((item) => item.detail.output?.state === 'shown')) {
+    const plan = entry.detail.plan;
+    const page = await readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, 'latest', 0);
+    assert.equal(page.steps.length, plan.steps);
+    assert.deepEqual(await readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, page.snapshot, 0), page);
+    await assert.rejects(
+      readRunSteps(adapter(scenario), 'marketing', entry.run_id, plan, 'e'.repeat(32), 0),
+      (error) => error.code === 'routine-run-changed',
+    );
+  }
 });
 
 test('the Routine lifecycle preview spans the day before it opened and that day, oldest first', () => {

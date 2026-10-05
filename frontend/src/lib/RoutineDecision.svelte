@@ -7,7 +7,6 @@
   import { locale } from '$lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import { routineContext } from '$lib/routineContext.js';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
@@ -31,7 +30,6 @@
     teamId,
     teamName,
     runId,
-    routineId,
     outcome,
     detail,
     copy,
@@ -59,11 +57,10 @@
 
   const CHOICE_ICONS = { run: 'play', recreate: 'rebuild', delete: 'trash' };
   const HINTS = { run: 'runHint', recreate: 'recreateHint', delete: 'deleteHint' };
-  let listed = $derived($routineContext.get(teamId));
   let recovery = $derived(outcome === 'held' || outcome === 'paused');
 
-  // Where a held or paused run stopped, as one sentence: its place in the plan the run executed, which the card
-  // names; before the card opens, the listed Routine's place when it names that step exactly once.
+  // Where a held or paused run stopped, as one sentence: its position in the plan the run executed, which the card,
+  // its incident, and its notice name.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;
@@ -72,13 +69,8 @@
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
-    if (card) return fillRoutineCopy(copy.card.stoppedAt, { n: card.step, total: card.steps, step: words });
-    const steps = listed?.routines.find((routine) => routine.routine_id === routineId)?.steps ?? [];
-    const matches = steps.flatMap((item, index) => (
-      item.assistant === step.assistant_id && item.action === step.action ? [index + 1] : []
-    ));
-    return matches.length === 1
-      ? fillRoutineCopy(copy.card.stoppedAt, { n: matches[0], total: steps.length, step: words })
+    return step.step
+      ? fillRoutineCopy(copy.card.stoppedAt, { n: step.step, total: step.steps, step: words })
       : fillRoutineCopy(copy.card.stoppedAtStep, { step: words });
   });
   // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one

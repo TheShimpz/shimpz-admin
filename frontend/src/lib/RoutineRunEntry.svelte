@@ -79,7 +79,6 @@
     copy,
     locale: $locale,
     assistantName: (id) => $assistantNames[id] ?? humanizeId(id),
-    steps: routine?.steps ?? [],
   }));
   let details = $derived(shown.lines.length || !shown.code ? shown.lines : ['']);
 </script>

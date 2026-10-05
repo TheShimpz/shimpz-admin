@@ -1,6 +1,6 @@
-// A completed Routine run as its run view shows it (ADR-0092 amendment, 2026-10-05, output): each step the run carried
-// out, the parameters its Routine's plan lists for it, the failed attempts Team recorded, and the result Team projected,
-// organized for reading. Pure data shaping only: every value stays Team's node, rendered later as escaped text.
+// A completed Routine run as its run view shows it (ADR-0092 amendment, 2026-10-05, output and scale): each step as the
+// run recorded it, the failed attempts Team recorded, and the result Team projected, organized for reading. Pure data
+// shaping only: every value stays Team's node, rendered later as escaped text.
 
 import { humanizeId, outputLabels } from './routine.js';
 
@@ -152,39 +152,27 @@ export function resultView(node) {
 }
 
 /**
- * The steps a completed run carried out, in order. Team records no parameters per run, so a step carries the inputs of
- * its Routine's plan as Team lists it now, and only when that plan names exactly the same Assistant Actions in the
- * same order; `listed` says whether it does. Those inputs are the current plan's, never proof of what the run used.
+ * A run's recorded failed attempts beside the steps they belong to: each attempt names its step's position, and one
+ * that names a position beyond the run's `total` steps is kept apart, never guessed.
  */
-export function runSteps(actions, plan) {
-  const listed = Array.isArray(plan) && plan.length === actions.length &&
-    plan.every((step, index) => step.assistant === actions[index][0] && step.action === actions[index][1]);
-  const steps = actions.map(([assistant, action], index) => ({
-    n: index + 1,
-    assistant,
-    action,
-    id: listed ? plan[index].id : null,
-    inputs: listed ? plan[index].inputs : null,
-    stored: listed ? plan[index].stored_inputs : null,
-  }));
-  return { listed, steps };
-}
-
-/**
- * A run's recorded failed attempts beside the steps they belong to: an attempt joins the one step with its Assistant
- * and Action; an attempt that matches none or more than one step is kept apart, never guessed.
- */
-export function attemptsByStep(diagnostics, steps) {
-  const byStep = steps.map(() => []);
+export function attemptsByStep(diagnostics, total) {
+  const byStep = new Map();
   const apart = [];
   for (const item of diagnostics) {
-    const matches = steps.flatMap((step, index) => (
-      step.assistant === item.assistant_id && step.action === item.action ? [index] : []
-    ));
-    if (matches.length === 1) byStep[matches[0]].push(item);
-    else apart.push(item);
+    if (item.step > total) apart.push(item);
+    else byStep.set(item.step, [...(byStep.get(item.step) ?? []), item]);
   }
   return { byStep, apart };
+}
+
+/** How long a step's attempt took, in the viewer's locale: milliseconds under a second, else seconds or minutes. */
+export function durationWords(ms, locale) {
+  const unit = (value, name, digits = 0) => new Intl.NumberFormat(locale, {
+    style: 'unit', unit: name, unitDisplay: 'short', maximumFractionDigits: digits,
+  }).format(value);
+  if (ms < 1_000) return unit(ms, 'millisecond');
+  if (ms < 60_000) return unit(ms / 1_000, 'second', 1);
+  return unit(ms / 60_000, 'minute', 1);
 }
 
 /** The steps a list shows when it reveals `page` steps at a time and the person asked for more `pages` times. */

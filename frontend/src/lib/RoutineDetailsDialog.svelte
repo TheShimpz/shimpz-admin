@@ -73,14 +73,19 @@
   let word = $derived(STATUS_WORDS[status]);
   // Why a paused Routine waits for the chat or is going away, said once on its summary page.
   let reason = $derived({ reconfirm: copy.list.needsReconfirm, deleting: copy.status.deleting }[status]);
-  // The run that waits for the person: a held run is its incident (the incident and the run share one id), a frozen
-  // run its approval. A held run Team lists before its incident names no step until its card does.
+  // The run that waits for the person: a held run is its incident (the incident and the run share one id), which names
+  // the step it was held at by position, a frozen run its approval. A held run Team lists before its incident names no
+  // step until its card does.
   let decision = $derived.by(() => {
     if (status === 'recovery') {
       const incident = incidents.find((item) => item.routine_id === routine.routine_id);
       const held = live.find((run) => run.status === 'held');
-      const source = incident ? { ...incident, run_id: incident.incident_id } : held;
-      return source ? { runId: source.run_id, outcome: 'held', detail: { assistant_id: source.assistant_id, action: source.action } } : null;
+      const source = incident ? { ...incident, run_id: incident.incident_id } : { ...held, step: null, steps: null };
+      return source.run_id ? {
+        runId: source.run_id,
+        outcome: 'held',
+        detail: { assistant_id: source.assistant_id, action: source.action, step: source.step, steps: source.steps },
+      } : null;
     }
     const frozen = status === 'waiting' ? live.find((run) => run.status === 'frozen') : null;
     return frozen
@@ -324,7 +329,7 @@
       <div class="content decide" hidden={confirming}>
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
-          <RoutineDecision {teamId} {teamName} runId={pending.runId} routineId={routine.routine_id}
+          <RoutineDecision {teamId} {teamName} runId={pending.runId}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
             onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
@@ -346,7 +351,8 @@
           </p>
         {/if}
       {:else if page === 'steps'}
-        <RoutinePlan steps={routine.steps} output={routine.output} copy={copy.plan} names={$assistantNames} />
+        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
+          onchanged={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}

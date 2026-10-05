@@ -6,13 +6,12 @@
   import RoutineRunSteps from '$lib/RoutineRunSteps.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
   import { fillRoutineCopy, instantWords, readRunDiagnostics } from '$lib/routine.js';
-  import { attemptsByStep, resultView, runSteps } from '$lib/routineResult.js';
+  import { attemptsByStep, resultView } from '$lib/routineResult.js';
 
-  // One completed Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output): when it
-  // finished, the result it shows organized for reading, and its steps with what happened to each. Team records no
-  // parameters per run, so a step shows its Routine's current plan's parameters, said as such, only while that plan
-  // still names the same Actions in the same order. The failed attempts Team recorded for the run are read on open
-  // for exactly this Team and run; a late answer for an earlier run is discarded. Every value is escaped text.
+  // One completed Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output and scale): when
+  // it finished, the result it shows organized for reading, and its own step records: what happened to each step and
+  // the inputs its attempt was given, read page by page. The failed attempts Team recorded for the run are read on
+  // open for exactly this Team and run; a late answer for an earlier run is discarded. Every value is escaped text.
   let { teamId, entry, routine = null, name, copy, onclose } = $props();
 
   const id = $props.id();
@@ -24,13 +23,12 @@
 
   let output = $derived(entry.detail.output);
   let view = $derived(resultView(output.value));
-  let run = $derived(runSteps(entry.detail.actions, routine?.steps ?? null));
-  let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, run.steps) : null);
-  let note = $derived(!routine ? copy.result.planUnlisted : run.listed ? copy.result.planInputs : copy.result.planChanged);
+  let plan = $derived(entry.detail.plan);
+  let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, plan.steps) : null);
   let finished = $derived(instantWords(entry.createdAt, $locale, routine?.timezone));
   let count = $derived(fillRoutineCopy(
-    new Intl.PluralRules($locale).select(run.steps.length) === 'one' ? copy.result.stepCount.one : copy.result.stepCount.other,
-    { count: new Intl.NumberFormat($locale).format(run.steps.length) },
+    new Intl.PluralRules($locale).select(plan.steps) === 'one' ? copy.result.stepCount.one : copy.result.stepCount.other,
+    { count: new Intl.NumberFormat($locale).format(plan.steps) },
   ));
 
   $effect(() => { void loadAssistantNames(fetch); });
@@ -86,8 +84,8 @@
 
         <section class="steps" aria-labelledby={`${id}-steps`}>
           <h3 id={`${id}-steps`}>{copy.result.steps}</h3>
-          <div class="note">{note}</div>
-          <RoutineRunSteps steps={run.steps} status={copy.result.stepDone} {attempts} {copy} names={$assistantNames}
+          <div class="note">{copy.result.recordsNote}</div>
+          <RoutineRunSteps {teamId} runId={entry.runId} {plan} {attempts} {copy} names={$assistantNames}
             locale={$locale} />
           {#if unavailable}
             <div class="note">{copy.result.attemptsUnavailable}</div>

@@ -14,16 +14,14 @@ const ROUTINE = {
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
   quote: 'Every day at 9, list my DNS zones',
-  steps: [
-    {
-      id: 'zones',
-      assistant: 'shimpz-cloudflare',
-      action: 'list-zones',
-      inputs: [{ member: 'page', source: 'literal', value: '1' }],
-      stored_inputs: ['api-token'],
-    },
-  ],
-  output: { mode: 'show', step: 'zones' },
+  plan: {
+    revision: 1,
+    plan_digest: `sha256:${'d'.repeat(64)}`,
+    steps: 1,
+    actions: [['shimpz-cloudflare', 'list-zones', 1]],
+    more: 0,
+  },
+  output: { mode: 'show', step: 1 },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
@@ -49,6 +47,8 @@ const INCIDENT = {
   created_at: '2026-10-05T12:01:07Z',
   assistant_id: null,
   action: null,
+  step: null,
+  steps: null,
 };
 
 // Each listing answers only when the test releases it, so responses can arrive out of order.
