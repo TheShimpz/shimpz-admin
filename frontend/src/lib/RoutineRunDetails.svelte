@@ -5,6 +5,7 @@
   import { locale } from '$lib/i18n.js';
   import RoutineRunSteps from '$lib/RoutineRunSteps.svelte';
   import {
+    attemptWords,
     conditionWords,
     fillRoutineCopy,
     instantWords,
@@ -67,7 +68,7 @@
         {#each diagnostics as item (`${item.operation_id}:${item.attempt}`)}
           <li>
             <p class="heading">
-              {fillRoutineCopy(copy.attempt, { assistant: item.assistant_id, action: item.action, attempt: item.attempt })}
+              {attemptWords(item, copy.attempt)}
             </p>
             <p class="muted">{fillRoutineCopy(copy.recorded, { at: instantWords(item.recorded_at, $locale) })}</p>
             {#if item.failure}

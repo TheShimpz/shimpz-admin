@@ -4,6 +4,7 @@
 
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import {
+    attemptWords,
     conditionWords,
     fillRoutineCopy,
     humanizeId,
@@ -113,7 +114,7 @@
   <li class="attempt">
     <div class="attempt-head">
       <span class="mono">{named
-        ? fillRoutineCopy(copy.details.attempt, { assistant: assistantName(item.assistant_id), action: humanizeId(item.action), attempt: item.attempt })
+        ? attemptWords(item, copy.details.attempt, { assistant: assistantName, action: humanizeId })
         : fillRoutineCopy(copy.result.attempt, { attempt: item.attempt })}</span>
       {#if item.failure?.http_status}<span class="mono">HTTP {item.failure.http_status}</span>{/if}
       {#if item.failure}<code>{item.failure.error_type}</code>{/if}

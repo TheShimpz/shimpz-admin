@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { conditionWords, inputWords } from '../src/lib/routine.js';
+import { attemptWords, conditionWords, inputWords } from '../src/lib/routine.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
 import {
   attemptsByStep,
@@ -191,6 +191,20 @@ test('plan inputs and attempt conditions read in words', () => {
   assert.equal(conditionWords('exit-status:-9', details), 'The Action exited with status -9.');
   assert.equal(conditionWords('timeout', details), 'The Action ran out of time.');
   assert.equal(conditionWords('transport-failed', details), 'Team could not reach the Action.');
+});
+
+test("an attempt's heading names its recorded step, so one Action's attempts at two positions read apart", () => {
+  const attempt = (step) => ({ assistant_id: 'shimpz-cloudflare', action: 'list-dns-records', step, attempt: 1 });
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    const [second, fifth] = [attempt(2), attempt(5)].map((item) => attemptWords(item, catalog.details.attempt));
+    assert.notEqual(second, fifth, locale);
+    assert.doesNotMatch(second, /\{\w+\}/u, locale);
+    assert.match(fifth, /5/u, locale);
+  }
+  assert.equal(
+    attemptWords(attempt(2), routineMessages.en.details.attempt, { assistant: () => 'Shimpz Cloudflare', action: () => 'List DNS records' }),
+    'Step 2: Shimpz Cloudflare · List DNS records, attempt 1',
+  );
 });
 
 test('every interface language words the run view with the same keys', () => {

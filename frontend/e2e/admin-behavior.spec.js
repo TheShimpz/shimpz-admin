@@ -5971,6 +5971,46 @@ test.describe('Team Routines', () => {
     await expect(dialog).not.toContainText('httpx.HTTPStatusError');
   });
 
+  test("a repeated Action's failed attempts at two positions read apart in the panel's execution details", async ({ page }) => {
+    const failed = 'c'.repeat(32);
+    await routeReadyChat(page, {
+      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], step: 5, steps: 6 })], before: null },
+    });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    // The same Action's first attempt failed at step 2 and at step 5: one operation per position.
+    const attempt = (operation, step) => ({
+      operation_id: `6f1c2b8e-3a4d-4c5e-9f60-${operation}`,
+      attempt: 1,
+      assistant_id: 'shimpz-cloudflare',
+      action: 'list-dns-records',
+      step,
+      recorded_at: '2026-10-01T12:00:03Z',
+      failure: null,
+      condition: 'timeout',
+    });
+    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', (route) => route.fulfill({
+      json: { team_id: 'marketing', run_id: failed, diagnostics: [attempt('718293a4b5c6', 2), attempt('718293a4b5c7', 5)] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    await panel.getByRole('button', { name: 'Execution details' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Execution details' });
+    const attempts = dialog.locator('.attempts > li');
+    await expect(attempts).toHaveCount(2);
+    // Each attempt names its own position, so the two read apart.
+    const headings = await attempts.locator('.heading').allTextContents();
+    expect(headings[0]).not.toEqual(headings[1]);
+    expect(headings[0]).toContain('2');
+    expect(headings[1]).toContain('5');
+  });
+
   test("a Routine's recent runs are found past a full page of newer unrelated chat", async ({ page }) => {
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({

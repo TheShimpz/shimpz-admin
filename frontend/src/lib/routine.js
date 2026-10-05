@@ -1332,6 +1332,14 @@ function isDiagnostic(value) {
   );
 }
 
+/**
+ * A recorded attempt's heading: the step position Team recorded, its Assistant and Action, and its attempt number, so
+ * attempts of one Action repeated at different positions never read alike. `names` words the Assistant and Action.
+ */
+export function attemptWords(item, template, { assistant = (id) => id, action = (id) => id } = {}) {
+  return fill(template, { step: item.step, assistant: assistant(item.assistant_id), action: action(item.action), attempt: item.attempt });
+}
+
 /** A failed attempt's safe transport condition in words. */
 export function conditionWords(condition, copy) {
   const exit = condition.match(/^exit-status:(-?\d+)$/u);
