@@ -166,7 +166,8 @@ class RoutineHistoryTests(unittest.TestCase):
                 {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
             )
         )
-        self.assertFalse(history.append_routine_notice({**done, "detail": {"actions": [["shimpz-cloudflare", "x"]]}}))
+        conflicting = {"actions": [["shimpz-cloudflare", "x"]], "output": None}
+        self.assertFalse(history.append_routine_notice({**done, "detail": conflicting}))
         entries = history.page("team_1")["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")

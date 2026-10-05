@@ -26,6 +26,7 @@ DEFINED = {
             "stored_inputs": [],
         }
     ],
+    "output": {"mode": "show", "step": "zones"},
     "schedule": {"kind": "daily", "time": "09:00"},
     "timezone": "UTC",
 }
@@ -73,6 +74,45 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
                     self.assertIsNone(admit(value))
             self.assertIsNone(admit(["not", "a", "view"]))
 
+    def test_shown_results_and_dispositions_admit_exactly_the_closed_forms(self) -> None:
+        """A run's shown result is Team's closed projection; a disposition names a projected step (2026-10-05)."""
+        output = VECTORS["routine_views"]["output"]
+        for value in output["valid"]:
+            self.assertEqual(routine_contract.canonical_output(value), value)
+        for value in output["invalid"]:
+            self.assertIsNone(routine_contract.canonical_output(value))
+        shown = output["valid"][0]
+        nested: dict[str, object] = {"kind": "null"}
+        for _depth in range(routine_contract.MAX_OUTPUT_DEPTH + 1):
+            nested = {"kind": "list", "items": [nested], "omitted": 0}
+        text = {"kind": "text", "value": "x", "cut": False}
+        for node in (
+            nested,
+            {"kind": []},
+            {"kind": "list", "items": "x", "omitted": 0},
+            {"kind": "list", "items": [text] * 51, "omitted": 0},
+            {"kind": "fields", "fields": [["a"]], "omitted": 0},
+            {"kind": "fields", "fields": [["k", text]] * 25, "omitted": 0},
+            {"kind": "fields", "fields": [], "omitted": 0, "x": 1},
+            {"kind": "list", "items": [{**text, "value": "é" * 300}] * 50, "omitted": 0},
+            "text",
+        ):
+            self.assertIsNone(routine_contract.canonical_output({**shown, "value": node}))
+        self.assertIsNone(routine_contract.canonical_output([]))
+        self.assertEqual(routine_contract.escaped("a\u202eb"), "a\\u202eb")
+        steps = [{"id": "zones"}]
+        self.assertEqual(
+            routine_contract.canonical_disposition({"mode": "show", "step": "zones"}, steps),
+            {"mode": "show", "step": "zones"},
+        )
+        for value, projected in (
+            ({"mode": "show", "step": "other"}, steps),
+            ({"mode": "show", "step": "zones"}, "steps"),
+            ({"mode": "none", "step": "zones"}, steps),
+            ([], steps),
+        ):
+            self.assertIsNone(routine_contract.canonical_disposition(value, projected))
+
     def test_run_diagnostics_admit_exactly_the_golden_vectors(self) -> None:
         for value in VECTORS["routine_diagnostics"]["valid"]:
             with self.subTest(value=value):
@@ -87,8 +127,8 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
 
     def test_notice_details_are_closed_and_never_carry_action_data(self) -> None:
         valid = {
-            "done": {"actions": [["dns", "list-zones"]]},
-            "recovered": {"actions": [["dns", "replace-dns-record"]]},
+            "done": {"actions": [["dns", "list-zones"]], "output": None},
+            "recovered": {"actions": [["dns", "replace-dns-record"]], "output": None},
             "held": {"assistant_id": "dns", "action": "replace-dns-record"},
             "paused": {"assistant_id": "dns", "action": "replace-dns-record", "reason": "policy"},
             "user-skipped": {"assistant_id": None, "action": None, "choice": "delete"},
