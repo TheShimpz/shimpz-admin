@@ -16,7 +16,11 @@ from team import transport
 
 from protocol.http.v1 import routine as routine_contract
 
-RUN_TIMEOUT_SECONDS = 15 * 60
+# A segment's socket timeout: its run's claimed active time plus a fixed margin, never below fifteen minutes.
+MIN_RUN_TIMEOUT_SECONDS = 15 * 60
+RUN_TIMEOUT_MARGIN_SECONDS = 5 * 60
+# A person's answer resumes a run whose active time Admin was never told, so it waits as long as any run may spend.
+RESUME_TIMEOUT_SECONDS = routine_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
 TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 # "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
 RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
@@ -38,15 +42,26 @@ def _answer(response: team.TeamResponse) -> dict[str, object]:
     return body
 
 
-def claim() -> dict[str, object]:
+def claim(long: bool) -> dict[str, object]:
     """Lease at most one due run: ``run`` is None when nothing may start now, and ``next_due_at`` then hints when.
 
-    A healthy compiled run needs no model key, so a claim is never gated on one (ADR-0092).
+    ``long`` says whether Admin can take a long run now. A healthy compiled run needs no model key, so a claim is never
+    gated on one (ADR-0092).
     """
-    body = routine_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {})))
+    body = routine_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {"long": long})))
     if body is None:
         raise RoutineTeamError("Routine claim is invalid")
     return body
+
+
+def is_long(claimed: dict[str, object]) -> bool:
+    """Whether a claimed run may spend more active time than a short one (ADR-0092 amendment, 2026-10-05, scale)."""
+    return claimed["active_seconds"] > routine_contract.SHORT_ACTIVE_SECONDS
+
+
+def run_timeout(claimed: dict[str, object]) -> int:
+    """The socket timeout of one segment of a claimed run, which Team bounds by the run's active time."""
+    return max(MIN_RUN_TIMEOUT_SECONDS, claimed["active_seconds"] + RUN_TIMEOUT_MARGIN_SECONDS)
 
 
 def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
@@ -62,7 +77,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
         f"/v1/teams/{team_id}/routines/runs/{run_id}/segment",
         # The signed segment names exactly the revision, plan, and mode its claim leased (ADR-0092).
         {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"], "mode": claimed["mode"]},
-        timeout=RUN_TIMEOUT_SECONDS,
+        timeout=run_timeout(claimed),
         bindings=transport._RequestBindings(
             model_credential=(claimed["provider"], api_key) if api_key else None,
             routine=(identity, claimed["lease_token"]),

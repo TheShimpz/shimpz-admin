@@ -102,6 +102,8 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(stream.call_args.kwargs["bindings"].model_credential, CREDENTIAL)
         self.assertIsNone(stream.call_args.kwargs["bindings"].human_assurance)
         stream.call_args.kwargs["progress"]({"type": "progress"})
+        # A resumed run may replay for as long as any run may spend, which Admin was never told for this one.
+        self.assertGreater(stream.call_args.kwargs["timeout"], 7200)
         # The challenge is one-use.
         again, stream = self.respond(frame)
         self.assertEqual((again.status, again.body["code"]), (409, "human-request-expired"))

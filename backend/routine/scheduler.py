@@ -1,7 +1,9 @@
 """Admin's Routine scheduler (ADR-0086): one thread claims due runs onto a lane of two workers.
 
 Every tick, with jitter, it delivers notices, then reserves a free lane slot before each claim, so a lease is never
-taken for a run no worker can start, and it claims until every slot is busy or Team has nothing more to start. Team
+taken for a run no worker can start, and it claims until every slot is busy or Team has nothing more to start. At most
+one worker holds a long run, so a long run never keeps short work from every worker: a claim offers to take a long run
+only while that one long slot is free (ADR-0092 amendment, 2026-10-05, scale). Team
 enforces every lease and deadline itself, so a stalled worker only wastes its own slot. A tick comes at the latest
 every interval; Team's next-due hint and a finished run wake it sooner (ADR-0092), and a missed hint only waits for
 the next reconciliation.
@@ -39,6 +41,7 @@ class RoutineScheduler:
         self._wake = threading.Event()
         self._due_at: float | None = None
         self._slots = threading.BoundedSemaphore(workers)
+        self._long = threading.Lock()
         self._workers = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="shimpz-routine-run")
         self._thread = threading.Thread(target=self._loop, name="shimpz-routine-scheduler", daemon=True)
 
@@ -103,24 +106,46 @@ class RoutineScheduler:
             # Until Team answers with nothing more to start, only a run finishing meanwhile sets the next wake.
             self._due_at = None
             while held:
-                answer = team.claim()
-                if answer["run"] is None:
-                    self._due_at = answer["next_due_at"]
+                claimed, long = self._claim()
+                if claimed is None:
                     return
-                self._workers.submit(self._run, answer["run"], identity)
-                # The slot is now the run's own; the worker frees it.
+                self._workers.submit(self._run, claimed, identity, long)
+                # The slot, and the long slot for a long run, are now the run's own; the worker frees them.
                 held = self._slots.acquire(blocking=False)
         finally:
             if held:
                 self._slots.release()
 
-    def _run(self, claimed: dict[str, object], identity: supervisor.LocalIdentity) -> None:
+    def _claim(self) -> tuple[dict[str, object] | None, bool]:
+        """Claim one run, offering a long one only while the long slot is free; also say whether it keeps that slot.
+
+        Team leasing a long run Admin did not offer to take is refused, so two long runs never share the workers.
+        """
+        reserved = self._long.acquire(blocking=False)
+        kept = False
+        try:
+            answer = team.claim(reserved)
+            claimed = answer["run"]
+            if claimed is None:
+                self._due_at = answer["next_due_at"]
+                return None, False
+            kept = team.is_long(claimed)
+            if kept and not reserved:
+                raise team.RoutineTeamError("Team leased a long run Admin could not take")
+            return claimed, kept
+        finally:
+            if reserved and not kept:
+                self._long.release()
+
+    def _run(self, claimed: dict[str, object], identity: supervisor.LocalIdentity, long: bool) -> None:
         try:
             outcome = team.run(claimed, identity)
             log.info("Routine run ended %s", outcome)
         except _FAILURES:
             log.warning("Routine run segment failed; Team ends the run under its own lease rules")
         finally:
+            if long:
+                self._long.release()
             self._slots.release()
             # A finished run frees a slot and may make the next one due: claim again soon, not at the next interval.
             self._due_at = time.time()

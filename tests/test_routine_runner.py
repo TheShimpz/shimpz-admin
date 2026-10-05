@@ -36,6 +36,8 @@ ROLLUPS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text(
 BATCH = VECTORS["notice_batch"]["valid"][0]
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
 CLAIMED = {"run": CLAIM, "next_due_at": None}
+# A run whose revision may spend more active time than a short one (ADR-0092 amendment, 2026-10-05, scale).
+LONG = {**CLAIM, "active_seconds": 7200}
 IDLE = {"run": None, "next_due_at": None}
 TRACE = "a" * 32
 
@@ -166,7 +168,7 @@ class RoutineHistoryTests(unittest.TestCase):
                 {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
             )
         )
-        conflicting = {"actions": [["shimpz-cloudflare", "x"]], "output": None}
+        conflicting = {**done["detail"], "plan": {**done["detail"]["plan"], "revision": 2}}
         self.assertFalse(history.append_routine_notice({**done, "detail": conflicting}))
         entries = history.page("team_1")["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
@@ -218,12 +220,16 @@ class RoutineTeamCallTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key") as resolve,
             mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call,
         ):
-            self.assertEqual(team.claim(), CLAIMED)
-        call.assert_called_once_with("POST", "/v1/routines/claim", {})
+            self.assertEqual(team.claim(False), CLAIMED)
+        # The claim says only whether Admin can take a long run now.
+        call.assert_called_once_with("POST", "/v1/routines/claim", {"long": False})
         resolve.assert_not_called()
+        with mock.patch.object(transport, "_call", return_value=answer({"run": LONG, "next_due_at": None})) as call:
+            self.assertEqual(team.claim(True)["run"], LONG)
+        call.assert_called_once_with("POST", "/v1/routines/claim", {"long": True})
         hinted = {"run": None, "next_due_at": 1790000300}
         with mock.patch.object(transport, "_call", return_value=answer(hinted)):
-            self.assertEqual(team.claim(), hinted)
+            self.assertEqual(team.claim(False), hinted)
         with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
             self.assertEqual(team.notices(), BATCH)
         with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
@@ -233,11 +239,11 @@ class RoutineTeamCallTests(unittest.TestCase):
             {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
         )
         for response, action in (
-            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim()),
-            (answer({"run": None}), lambda: team.claim()),
+            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim(False)),
+            (answer({"run": None}), lambda: team.claim(False)),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
-            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim()),
+            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim(False)),
             (answer({"code": "x"}, 503), team.notices),
             (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
         ):
@@ -298,6 +304,10 @@ class RoutineTeamCallTests(unittest.TestCase):
         )
         self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
+        # A segment waits for its run's active time plus a margin, never less than fifteen minutes.
+        self.assertEqual(stream.call_args.kwargs["timeout"], team.MIN_RUN_TIMEOUT_SECONDS)
+        self.assertEqual(team.run_timeout(LONG), 7200 + team.RUN_TIMEOUT_MARGIN_SECONDS)
+        self.assertEqual(team.run_timeout({**CLAIM, "active_seconds": 60}), team.MIN_RUN_TIMEOUT_SECONDS)
         stream.call_args.kwargs["progress"]({"type": "progress"})
         # Without a key the segment still runs, carrying no model credential; Team pauses a recovery it then needs.
         with (
@@ -552,6 +562,80 @@ class RoutineSchedulerTests(unittest.TestCase):
             runner.tick()
         claim.assert_called_once()
         self.assertEqual(runner.delay(1000.0), 5)
+
+    def test_two_long_due_runs_never_occupy_both_workers_and_a_short_run_still_starts(self) -> None:
+        first = {**LONG, "run_id": "1" * 32}
+        short = {**CLAIM, "run_id": "2" * 32}
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        offered: list[bool] = []
+
+        def claim(long):
+            # Team leases a long run only to a claim that offers to take one.
+            offered.append(long)
+            return {"run": first if long else short, "next_due_at": None}
+
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0, workers=2)
+        self.addCleanup(runner.close)
+        with (
+            mock.patch.object(team, "claim", side_effect=claim),
+            mock.patch.object(team, "run", side_effect=lambda *_args: gate.wait(5) and "done"),
+        ):
+            runner.tick()
+            # The first claim offers the free long slot; with it held, the second worker claims only a short run.
+            self.assertEqual(offered, [True, False])
+            self.assertFalse(runner._long.acquire(blocking=False))
+            gate.set()
+            deadline = time.monotonic() + 5
+            while not runner._long.acquire(blocking=False):
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            runner._long.release()
+
+    def test_a_short_or_absent_run_frees_the_long_slot_at_once_and_a_failed_long_run_frees_it(self) -> None:
+        runner = scheduler.RoutineScheduler(interval=30, jitter=0, workers=1)
+        self.addCleanup(runner.close)
+        # Nothing due, or a short run in the long slot's offer: the long slot is free again right away.
+        with mock.patch.object(team, "claim", return_value=IDLE):
+            self.assertEqual(runner._claim(), (None, False))
+        self.assertTrue(runner._long.acquire(blocking=False))
+        runner._long.release()
+        with mock.patch.object(team, "claim", return_value=CLAIMED):
+            self.assertEqual(runner._claim(), (CLAIM, False))
+        self.assertTrue(runner._long.acquire(blocking=False))
+        runner._long.release()
+        # A claim that fails leaves the long slot free.
+        with (
+            mock.patch.object(team, "claim", side_effect=team.RoutineTeamError("down")),
+            self.assertRaises(team.RoutineTeamError),
+        ):
+            runner._claim()
+        self.assertTrue(runner._long.acquire(blocking=False))
+        # Team leasing a long run while the long slot is taken is refused, and the long slot stays its holder's.
+        with (
+            mock.patch.object(team, "claim", return_value={"run": LONG, "next_due_at": None}) as claim,
+            self.assertRaises(team.RoutineTeamError),
+        ):
+            runner._claim()
+        claim.assert_called_once_with(False)
+        runner._long.release()
+        # A long run whose segment fails frees both its worker and the long slot.
+        failed = threading.Event()
+        with (
+            mock.patch.object(team, "claim", side_effect=[{"run": LONG, "next_due_at": None}]),
+            mock.patch.object(
+                team,
+                "run",
+                side_effect=lambda *_args: failed.set() or (_ for _ in ()).throw(team.RoutineTeamError("x")),
+            ),
+        ):
+            runner.tick()
+            self.assertTrue(failed.wait(5))
+        deadline = time.monotonic() + 5
+        while not runner._slots.acquire(blocking=False):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.assertTrue(runner._long.acquire(blocking=False))
 
     def test_the_thread_ticks_until_closed_and_survives_any_failure(self) -> None:
         runner = scheduler.RoutineScheduler(interval=0.01, jitter=0.001)

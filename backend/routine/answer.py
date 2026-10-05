@@ -205,7 +205,7 @@ def _resume(canonical: str, run: str, action: str, payload: dict[str, object], a
         "POST",
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",
         payload,
-        timeout=routine_team.RUN_TIMEOUT_SECONDS,
+        timeout=routine_team.RESUME_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings(model_credential=credential, human_assurance=assurance),
         progress=lambda _event: None,
     )
