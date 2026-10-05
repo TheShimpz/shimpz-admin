@@ -18,6 +18,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from http_request import http_request, json_headers, remote
+
 
 def _request(
     path: str,
@@ -27,42 +29,12 @@ def _request(
     cookie: str = "",
 ) -> Request:
     body = json.dumps(payload).encode() if payload is not None else b""
-    headers: list[tuple[bytes, bytes]] = []
-    if payload is not None:
-        headers.extend(
-            [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(body)).encode()),
-            ]
-        )
+    headers = json_headers(body) if payload is not None else []
     if origin is not None:
         headers.append((b"origin", origin.encode()))
     if cookie:
         headers.append((b"cookie", f"shimpz_admin={cookie}".encode()))
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "https",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": headers,
-        "client": ("192.0.2.10", 1234),
-        "server": ("admin.example.test", 443),
-    }
-    delivered = False
-
-    async def receive():
-        nonlocal delivered
-        if delivered:
-            return {"type": "http.request", "body": b"", "more_body": False}
-        delivered = True
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
+    return http_request(path, remote("192.0.2.10"), body=body, headers=headers)
 
 
 class AppAuthenticationEdgeTests(unittest.TestCase):

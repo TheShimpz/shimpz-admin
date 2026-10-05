@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from fastapi import HTTPException
-from starlette.requests import Request
+from http_request import LOOPBACK, http_request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -72,28 +72,11 @@ class ModelProviderRouteTests(unittest.TestCase):
     def test_model_provider_routes_require_the_local_admin_session(self) -> None:
         path = "/api/model-providers"
         self.assertNotIn(path, self.admin_app.OPEN_API)
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": "GET",
-            "scheme": "http",
-            "path": path,
-            "raw_path": path.encode(),
-            "query_string": b"",
-            "root_path": "",
-            "headers": [],
-            "client": ("127.0.0.1", 1234),
-            "server": ("testserver", 80),
-        }
-
-        async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
 
         async def should_not_run(_request):
             self.fail("unauthenticated request reached the model credential route")
 
-        response = asyncio.run(self.admin_app._gate(Request(scope, receive), should_not_run))
+        response = asyncio.run(self.admin_app._gate(http_request(path, LOOPBACK, method="GET"), should_not_run))
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.body, b'{"detail":"unauthenticated"}')
 

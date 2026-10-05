@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from http_request import LOOPBACK, http_request, json_headers
 from mfa_helper import code, configure_supervisor
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -113,32 +114,21 @@ class AuthRouteTests(unittest.TestCase):
     ) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
-        headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())] if body else []
+        headers = json_headers(body) if body else []
         if origin is not None:
             headers.append((b"origin", origin.encode("ascii")))
         if cookie is not None:
             headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
         if ticket is not None:
             headers.append((b"cookie", f"shimpz_admin_ticket={ticket}".encode("ascii")))
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": method or ("POST" if body else "GET"),
-            "scheme": "http",
-            "path": raw_path,
-            "raw_path": raw_path.encode(),
-            "query_string": query.encode(),
-            "root_path": "",
-            "headers": headers,
-            "client": ("127.0.0.1", 1234),
-            "server": ("testserver", 80),
-        }
-
-        async def receive():
-            return {"type": "http.request", "body": body, "more_body": False}
-
-        return Request(scope, receive)
+        return http_request(
+            raw_path,
+            LOOPBACK,
+            method=method or ("POST" if body else "GET"),
+            body=body,
+            headers=headers,
+            query=query.encode(),
+        )
 
     @staticmethod
     def _cookie(response, name: str) -> str:

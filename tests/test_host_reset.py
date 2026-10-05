@@ -15,6 +15,7 @@ from unittest import mock
 
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+from http_request import Peer, http_request
 from mfa_helper import configure_supervisor
 from starlette.requests import Request
 
@@ -29,26 +30,13 @@ CAPABILITY = "a" * 64
 
 
 def _request(payload: dict[str, object]) -> Request:
-    body = json.dumps(payload).encode()
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "DELETE",
-        "scheme": "http",
-        "path": "/api/space/host",
-        "raw_path": b"/api/space/host",
-        "query_string": b"",
-        "root_path": "",
-        "headers": [(b"content-type", b"application/json")],
-        "client": ("172.18.0.1", 1234),
-        "server": ("admin", 4600),
-    }
-
-    async def receive():
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
+    return http_request(
+        "/api/space/host",
+        Peer("http", ("172.18.0.1", 1234), ("admin", 4600)),
+        method="DELETE",
+        body=json.dumps(payload).encode(),
+        headers=[(b"content-type", b"application/json")],
+    )
 
 
 async def _read_json(request: Request) -> dict:

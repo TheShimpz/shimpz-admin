@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from http_request import http_request, remote
 from starlette.datastructures import Headers, UploadFile
 from starlette.formparsers import MultiPartException
 from starlette.requests import Request
@@ -24,32 +25,7 @@ def _request(
     headers: list[tuple[bytes, bytes]],
     chunks: list[bytes] | None = None,
 ) -> Request:
-    body_chunks = list(chunks or [b""])
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "https",
-        "path": "/api/teams/team_1/files",
-        "raw_path": b"/api/teams/team_1/files",
-        "query_string": b"",
-        "root_path": "",
-        "headers": headers,
-        "client": ("192.0.2.30", 1234),
-        "server": ("admin.example.test", 443),
-    }
-    index = 0
-
-    async def receive():
-        nonlocal index
-        if index >= len(body_chunks):
-            return {"type": "http.request", "body": b"", "more_body": False}
-        body = body_chunks[index]
-        index += 1
-        return {"type": "http.request", "body": body, "more_body": index < len(body_chunks)}
-
-    return Request(scope, receive)
+    return http_request("/api/teams/team_1/files", remote("192.0.2.30"), chunks=chunks, headers=headers)
 
 
 class _Parser:

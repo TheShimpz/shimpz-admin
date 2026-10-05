@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from http_request import http_request, remote
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,25 +23,7 @@ sys.path.insert(0, str(BACKEND))
 
 def _request(*, cookie: str = "token") -> Request:
     headers = [(b"cookie", f"shimpz_admin={cookie}".encode())] if cookie else []
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "https",
-        "path": "/api/test",
-        "raw_path": b"/api/test",
-        "query_string": b"",
-        "root_path": "",
-        "headers": headers,
-        "client": ("192.0.2.40", 1234),
-        "server": ("admin.example.test", 443),
-    }
-
-    async def receive():
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    return Request(scope, receive)
+    return http_request("/api/test", remote("192.0.2.40"), headers=headers)
 
 
 class AppOAuthEdgeTests(unittest.TestCase):

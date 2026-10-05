@@ -15,6 +15,7 @@ from unittest import mock
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import HTTPException
+from http_request import Peer, http_request, json_headers
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,40 +26,19 @@ def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", orig
     parsed = urlsplit(url)
     headers = [(b"host", parsed.netloc.encode("ascii"))]
     if body:
-        headers.extend(
-            [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(body)).encode("ascii")),
-            ]
-        )
+        headers.extend(json_headers(body))
     if cookie:
         headers.append((b"cookie", cookie.encode("ascii")))
     if origin:
         headers.append((b"origin", origin.encode("ascii")))
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": parsed.scheme,
-        "path": parsed.path,
-        "raw_path": parsed.path.encode("ascii"),
-        "query_string": parsed.query.encode("ascii"),
-        "root_path": "",
-        "headers": headers,
-        "client": ("127.0.0.1", 1234),
-        "server": (parsed.hostname, parsed.port),
-    }
-    delivered = False
-
-    async def receive():
-        nonlocal delivered
-        if delivered:
-            return {"type": "http.request", "body": b"", "more_body": False}
-        delivered = True
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
+    return http_request(
+        parsed.path,
+        Peer(parsed.scheme, ("127.0.0.1", 1234), (parsed.hostname, parsed.port)),
+        method=method,
+        body=body,
+        headers=headers,
+        query=parsed.query.encode("ascii"),
+    )
 
 
 class OAuthRoutesTest(unittest.TestCase):

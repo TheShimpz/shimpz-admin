@@ -11,6 +11,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest import mock
 
+from http_request import LOOPBACK, http_request, json_headers
 from mfa_helper import NOW, code, configure_supervisor
 from starlette.requests import Request
 
@@ -36,30 +37,12 @@ LATER = NOW + 60
 
 def _request(method: str, path: str, payload: object, *, origin: str | None, cookies: dict[str, str]) -> Request:
     body = json.dumps(payload).encode()
-    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+    headers = json_headers(body)
     if origin is not None:
         headers.append((b"origin", origin.encode()))
     if cookies:
         headers.append((b"cookie", "; ".join(f"{name}={value}" for name, value in cookies.items()).encode()))
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": "http",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": headers,
-        "client": ("127.0.0.1", 1234),
-        "server": ("testserver", 80),
-    }
-
-    async def receive():
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
+    return http_request(path, LOOPBACK, method=method, body=body, headers=headers)
 
 
 class RoutineDeleteConfirmationTests(unittest.TestCase):

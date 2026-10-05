@@ -17,6 +17,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from http_request import http_request, json_headers, remote
+
 
 def _request(
     path: str = "/api/test",
@@ -28,42 +30,12 @@ def _request(
     request_headers = list(headers or [])
     if cookie:
         request_headers.append((b"cookie", f"shimpz_admin={cookie}".encode()))
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "https",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": request_headers,
-        "client": ("192.0.2.20", 1234),
-        "server": ("admin.example.test", 443),
-    }
-    delivered = False
-
-    async def receive():
-        nonlocal delivered
-        if delivered:
-            return {"type": "http.request", "body": b"", "more_body": False}
-        delivered = True
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    return Request(scope, receive)
+    return http_request(path, remote("192.0.2.20"), body=body, headers=request_headers)
 
 
 def _json_request(payload: object, *, cookie: str = "") -> Request:
     body = json.dumps(payload).encode()
-    return _request(
-        body=body,
-        headers=[
-            (b"content-type", b"application/json"),
-            (b"content-length", str(len(body)).encode()),
-        ],
-        cookie=cookie,
-    )
+    return _request(body=body, headers=json_headers(body), cookie=cookie)
 
 
 class AppRouteEdgeTests(unittest.TestCase):
