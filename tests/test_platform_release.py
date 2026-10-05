@@ -53,6 +53,20 @@ class PlatformReleaseStatusTests(unittest.TestCase):
                 path = self._status(lambda value, checked_at=checked_at: value.update({"checked_at": checked_at}))
                 self.assertEqual(platform_release.read_status(path)["checked_at"], checked_at)
 
+    def test_admits_a_developer_release_from_this_host_only(self) -> None:
+        developer = f"localhost/shimpz-local-release@sha256:{'b' * 64}"
+        path = self._status(lambda value: value.update({"release": developer}))
+        self.assertEqual(platform_release.read_status(path)["release"], developer)
+        for release in (
+            f"localhost:5000/shimpz-local-release@sha256:{'b' * 64}",
+            f"127.0.0.1/shimpz-local-release@sha256:{'b' * 64}",
+            f"localhost/shimpz-admin@sha256:{'b' * 64}",
+            "localhost/shimpz-local-release:latest",
+        ):
+            with self.subTest(release=release), self.assertRaises(platform_release.PlatformReleaseUnavailableError):
+                path = self._status(lambda value, release=release: value.update({"release": release}))
+                platform_release.read_status(path)
+
     def test_rejects_malformed_or_widened_status(self) -> None:
         mutations = (
             lambda value: value.update({"token": "secret"}),

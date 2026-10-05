@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fetchPlatformRelease } from '../src/lib/platformRelease.js';
+import { fetchPlatformRelease, isDeveloperRelease } from '../src/lib/platformRelease.js';
 
 const release = `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`;
 
@@ -44,5 +44,22 @@ test('hides unavailable, malformed, widened, or secret-bearing status', async ()
     { release, ordinal: 42, checked_at: '2026-08-08T22:52:21Z', outcome: 'current', token: 'secret' },
   ]) {
     assert.equal(await fetchPlatformRelease(async () => response(200, body)), null);
+  }
+});
+
+test('admits a developer release built on this host and names it as one', async () => {
+  const developer = `localhost/shimpz-local-release@sha256:${'b'.repeat(64)}`;
+  const body = { release: developer, ordinal: 42, checked_at: '2026-08-08T22:52:21Z', outcome: 'current' };
+  const status = await fetchPlatformRelease(async () => response(200, body));
+  assert.deepEqual(status, body);
+  assert.equal(isDeveloperRelease(status), true);
+  assert.equal(isDeveloperRelease({ ...body, release }), false);
+  assert.equal(isDeveloperRelease(null), false);
+  for (const widened of [
+    `localhost:5000/shimpz-local-release@sha256:${'b'.repeat(64)}`,
+    `127.0.0.1/shimpz-local-release@sha256:${'b'.repeat(64)}`,
+    `localhost/shimpz-admin@sha256:${'b'.repeat(64)}`,
+  ]) {
+    assert.equal(await fetchPlatformRelease(async () => response(200, { ...body, release: widened })), null);
   }
 });

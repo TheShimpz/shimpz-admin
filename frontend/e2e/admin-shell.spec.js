@@ -290,6 +290,28 @@ test('shows the installed Admin version with the read-only Local release status'
   await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeVisible();
 });
 
+test('names a developer release built on this host in the Local release status', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  await page.route('**/api/platform-release', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      release: `localhost/shimpz-local-release@sha256:${'b'.repeat(64)}`,
+      ordinal: 42,
+      checked_at: '2026-08-08T22:52:21Z',
+      outcome: 'current',
+    }),
+  }));
+
+  await page.goto('/assistants/');
+
+  const status = page.getByText('Admin v0.1.0', { exact: true });
+  await expect(status.locator('..')).toHaveAttribute('title', 'Developer build on Local platform release 42');
+});
+
 test('still shows the installed Admin version when Local release status is unavailable', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({

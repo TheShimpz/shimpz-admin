@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import packageMetadata from '../../package.json';
   import { t } from '$lib/i18n.js';
-  import { fetchPlatformRelease } from '$lib/platformRelease.js';
+  import { fetchPlatformRelease, isDeveloperRelease } from '$lib/platformRelease.js';
 
   let status = $state(null);
   const adminVersion = packageMetadata.version;
@@ -27,7 +27,9 @@
   class:unknown={status === null}
   class="platform-release"
   aria-live="polite"
-  title={status ? $t('shell.platformOrdinal', { ordinal: status.ordinal }) : undefined}
+  title={status
+    ? $t(isDeveloperRelease(status) ? 'shell.platformDeveloper' : 'shell.platformOrdinal', { ordinal: status.ordinal })
+    : undefined}
 >
   <span class="indicator" aria-hidden="true"></span>
   <span>Admin v{adminVersion}</span>

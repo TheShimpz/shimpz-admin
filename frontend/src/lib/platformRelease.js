@@ -1,6 +1,7 @@
 import { exactKeys, jsonObject } from './validate.js';
 
-const RELEASE = /^ghcr\.io\/theshimpz\/shimpz-local-release@sha256:[0-9a-f]{64}$/;
+// A published release set, or a developer release built on this host (ADR-0099).
+const RELEASE = /^(?:ghcr\.io\/theshimpz|localhost)\/shimpz-local-release@sha256:[0-9a-f]{64}$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const OUTCOMES = new Set(['current', 'updated', 'rollback-needed']);
 
@@ -19,4 +20,8 @@ export async function fetchPlatformRelease(fetcher = fetch) {
     || !OUTCOMES.has(body.outcome)
   ) return null;
   return body;
+}
+
+export function isDeveloperRelease(status) {
+  return status?.release.startsWith('localhost/') === true;
 }

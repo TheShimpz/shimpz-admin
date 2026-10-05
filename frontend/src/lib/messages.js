@@ -257,6 +257,7 @@ export const messages = {
       languageMenu: 'Language',
       platformRollback: 'Update rolled back',
       platformOrdinal: 'Local platform release {ordinal}',
+      platformDeveloper: 'Developer build on Local platform release {ordinal}',
     },
     teams: {
       kicker: 'Teams // isolated runtimes',
@@ -664,6 +665,7 @@ export const messages = {
       languageMenu: 'Idioma',
       platformRollback: 'Atualização revertida',
       platformOrdinal: 'Versão local da plataforma {ordinal}',
+      platformDeveloper: 'Build de desenvolvimento sobre a versão local da plataforma {ordinal}',
     },
     teams: {
       kicker: 'Times // runtimes isolados',
@@ -1071,6 +1073,7 @@ export const messages = {
       languageMenu: 'Idioma',
       platformRollback: 'Actualización revertida',
       platformOrdinal: 'Versión local de la plataforma {ordinal}',
+      platformDeveloper: 'Compilación de desarrollo sobre la versión local de la plataforma {ordinal}',
     },
     teams: {
       kicker: 'Equipos // entornos aislados',
@@ -1478,6 +1481,7 @@ export const messages = {
       languageMenu: '语言',
       platformRollback: '更新已回滚',
       platformOrdinal: '本地平台版本 {ordinal}',
+      platformDeveloper: '基于本地平台版本 {ordinal} 的开发构建',
     },
     teams: {
       kicker: '团队 // 隔离运行环境',
@@ -1885,6 +1889,7 @@ export const messages = {
       languageMenu: 'Langue',
       platformRollback: 'Mise à jour annulée',
       platformOrdinal: 'Version locale de la plateforme {ordinal}',
+      platformDeveloper: 'Build de développement sur la version locale de la plateforme {ordinal}',
     },
     teams: {
       kicker: 'Équipes // environnements isolés',
@@ -2292,6 +2297,7 @@ export const messages = {
       languageMenu: 'Sprache',
       platformRollback: 'Aktualisierung zurückgesetzt',
       platformOrdinal: 'Lokale Plattformversion {ordinal}',
+      platformDeveloper: 'Entwicklungs-Build auf der lokalen Plattformversion {ordinal}',
     },
     teams: {
       kicker: 'Teams // isolierte Laufzeitumgebungen',
@@ -2699,6 +2705,7 @@ export const messages = {
       languageMenu: '言語',
       platformRollback: '更新をロールバックしました',
       platformOrdinal: 'ローカルプラットフォーム版 {ordinal}',
+      platformDeveloper: 'ローカルプラットフォーム版 {ordinal} の開発ビルド',
     },
     teams: {
       kicker: 'チーム // 分離ランタイム',
@@ -3106,6 +3113,7 @@ export const messages = {
       languageMenu: 'اللغة',
       platformRollback: 'تم التراجع عن التحديث',
       platformOrdinal: 'إصدار المنصة المحلية {ordinal}',
+      platformDeveloper: 'إصدار تطويري مبني على إصدار المنصة المحلية {ordinal}',
     },
     teams: {
       kicker: 'الفرق // بيئات تشغيل معزولة',

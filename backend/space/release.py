@@ -11,7 +11,8 @@ from fastapi import FastAPI, HTTPException
 
 STATUS_PATH = Path("/run/shimpz-local-release/status.json")
 MAX_STATUS_BYTES = 1024
-RELEASE = re.compile(r"ghcr\.io/theshimpz/shimpz-local-release@sha256:[0-9a-f]{64}")
+# A published release set, or a developer release built on this host (ADR-0099).
+RELEASE = re.compile(r"(?:ghcr\.io/theshimpz|localhost)/shimpz-local-release@sha256:[0-9a-f]{64}")
 # 9999-12-31T23:59:59Z keeps every accepted Unix second inside the datetime range.
 MAX_CHECKED_AT = 253_402_300_799
 OUTCOMES = frozenset({"current", "updated", "rollback-needed"})
