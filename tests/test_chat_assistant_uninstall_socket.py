@@ -6,58 +6,19 @@ import asyncio
 import concurrent.futures
 import importlib
 import json
-import os
-import sys
-import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from tests.mfa_helper import configure_supervisor
+from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
 
-_Socket = chat_socket_fixtures.Socket
-
-
-class ChatAssistantUninstallSocketTests(unittest.TestCase):
+class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(cls.root),
-                "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-            },
-        ):
-            cls.admin_app = importlib.import_module("app")
-        cls.chat_socket = importlib.import_module("chat.socket")
-        cls.assistant_route = importlib.import_module("chat.assistant_route")
+        super().setUpClass()
         cls.uninstall_delivery = importlib.import_module("chat.delivery.uninstall")
-        previous_store = cls.admin_app.state.STORE_PATH
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        previous_origins = cls.chat_socket.STATIC_ORIGINS
-        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
-        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
-        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
-        self.token = self.admin_app.auth.issue_session(secret, "totp")
 
     def _uninstall_candidate(self):
         return self.chat_socket.lifecycle.assistant_proposal.UninstallCandidate(
@@ -69,23 +30,6 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
             ),
             "0.4.4",
         )
-
-    @staticmethod
-    def _future(value=None, error: Exception | None = None):
-        future: concurrent.futures.Future[object] = concurrent.futures.Future()
-        if error is None:
-            future.set_result(value)
-        else:
-            future.set_exception(error)
-        return future
-
-    @staticmethod
-    def _accepted(message: dict) -> bool:
-        return message == {
-            "type": "websocket.accept",
-            "subprotocol": "shimpz.chat.v7",
-            "headers": [],
-        }
 
     def test_explicit_uninstall_uses_one_socket_scoped_proposal_and_team_result(self) -> None:
         async def scenario() -> None:
@@ -105,8 +49,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     return_value=result,
                 ) as uninstall,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Desinstala o Cloudflare", ["shimpz-cloudflare"])
                 )
@@ -213,8 +156,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     ),
                 ) as route,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstala ele"))
                 guidance = await websocket.next_json()
                 self.assertEqual(guidance["reply"], reply)
@@ -224,8 +166,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 self.assertEqual(inventory["reply"], "Temos apenas Cloudflare/DNS.")
                 await websocket.disconnect()
 
-                resumed = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await resumed.start()))
+                resumed = await self._open()
                 await resumed.send_json(chat_socket_fixtures.chat_frame("desinstala esse então"))
                 proposed = await resumed.next_json()
                 self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
@@ -300,8 +241,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     return_value=self._future(assistant_plan.Result("installed", installed)),
                 ),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale o cloudflare"))
                 proposed = await websocket.next_json()
                 self.assertEqual((proposed["type"], proposed["state"]), ("assistant-uninstall", "proposed"))
@@ -347,8 +287,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 ),
                 mock.patch.object(self.chat_socket.lifecycle.assistant_uninstall, "uninstall") as uninstall,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("desinstale o cloudflare", ["shimpz-cloudflare"])
                 )
@@ -387,8 +326,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     ),
                 ),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale o cloudflare"))
                 event = await websocket.next_json()
                 self.assertEqual((event["type"], event.get("state"), event.get("status")), expected)
@@ -413,8 +351,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                     **route,
                 ),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale o cloudflare"))
                 event = await websocket.next_json()
                 self.assertEqual((event["type"], event["status"]), ("error", status))
@@ -437,8 +374,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale o cloudflare"))
                 await websocket.send_json({"type": "stop"})
                 self.assertEqual(await websocket.next_json(), {"type": "stopped"})
@@ -457,8 +393,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 "submit_route",
                 return_value=route,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Desinstala o Cloudflare"))
                 await websocket.send_json(chat_socket_fixtures.chat_frame("continue"))
                 self.assertEqual((await websocket.next_json())["status"], 409)
@@ -488,8 +423,7 @@ class ChatAssistantUninstallSocketTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Desinstala o Cloudflare"))
                 await websocket.disconnect()
                 stop.assert_not_called()

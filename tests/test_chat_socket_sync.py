@@ -3,22 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
-import os
-import sys
-import tempfile
 import threading
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from tests.mfa_helper import configure_supervisor
+from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
 
 CHALLENGE_ID = chat_socket_fixtures.CHALLENGE_ID
 _integration_challenge = chat_socket_fixtures.integration_challenge
@@ -41,44 +33,12 @@ _MEASURED_PROGRESS = (
 )
 
 
-_Socket = chat_socket_fixtures.Socket
 _wait_for_thread = chat_socket_fixtures.wait_for_thread
 
 
-class ChatWebSocketSyncTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(cls.root),
-                "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-            },
-        ):
-            cls.admin_app = importlib.import_module("app")
-        cls.chat_socket = importlib.import_module("chat.socket")
-        cls.team = importlib.import_module("team.bridge")
-        previous_store = cls.admin_app.state.STORE_PATH
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        previous_origins = cls.chat_socket.STATIC_ORIGINS
-        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
-        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
-
+class ChatWebSocketSyncTests(ChatWebSocketCase):
     def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
-        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
-        self.token = self.admin_app.auth.issue_session(secret, "totp")
+        super().setUp()
         empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
         pending_human = mock.patch.object(
             self.chat_socket.local,
@@ -87,17 +47,6 @@ class ChatWebSocketSyncTests(unittest.TestCase):
         )
         pending_human.start()
         self.addCleanup(pending_human.stop)
-        route = mock.patch.object(
-            self.chat_socket.lifecycle,
-            "submit_route",
-            side_effect=lambda *_args: chat_socket_fixtures.ordinary_route(self.chat_socket),
-        )
-        route.start()
-        self.addCleanup(route.stop)
-
-    @staticmethod
-    def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
 
     def _bind_history(self, message: str) -> str:
         turn_id = self.admin_app.chat_history.new_turn_id()
@@ -116,8 +65,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=augmented),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 error = await websocket.next_json()
                 self.assertEqual(error["type"], "error")
@@ -135,8 +83,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
                 resume.assert_not_called()
@@ -171,8 +118,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "turn", return_value=completed) as turn,
             ):
                 self._bind_history("Expired integration")
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 await websocket.send_json({"type": "sync", "locale": "en"})
@@ -222,8 +168,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 history_id = self.admin_app.chat_history.new_turn_id()
                 self.admin_app.chat_history.append_user("team_1", history_id, "Publish after OAuth")
                 self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
@@ -287,8 +232,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 self._bind_history("Resume integration")
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 await _wait_for_thread(started)
                 await websocket.disconnect()
@@ -336,8 +280,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 self._bind_history("Stop resumed integration")
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 await websocket.send_json({"type": "sync", "locale": "en"})
@@ -407,8 +350,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
                     side_effect=RuntimeError("must not escape"),
                 ),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual(
                     await websocket.next_json(),
@@ -423,8 +365,7 @@ class ChatWebSocketSyncTests(unittest.TestCase):
     def test_public_terminal_relays_only_the_closed_sanitized_error_document(self) -> None:
         async def response_for(team_response) -> dict:
             with mock.patch.object(self.chat_socket.local, "turn", return_value=team_response):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("hello"))
                 event = await websocket.next_json()
                 with self.assertRaises(TimeoutError):

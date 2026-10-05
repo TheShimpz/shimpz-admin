@@ -97,9 +97,12 @@ class ChatWebSocketCase(unittest.TestCase):
         )
 
     @staticmethod
-    def _future(value):
-        future = concurrent.futures.Future()
-        future.set_result(value)
+    def _future(value=None, error: Exception | None = None):
+        future: concurrent.futures.Future[object] = concurrent.futures.Future()
+        if error is None:
+            future.set_result(value)
+        else:
+            future.set_exception(error)
         return future
 
     def _route_future(self, preparation, intent="ordinary-task"):
@@ -108,3 +111,9 @@ class ChatWebSocketCase(unittest.TestCase):
     @staticmethod
     def _accepted(message: dict) -> bool:
         return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
+
+    async def _open(self, **options) -> chat_socket_fixtures.Socket:
+        """Open one Supervisor-authenticated socket and require the exact chat subprotocol acceptance."""
+        websocket = chat_socket_fixtures.Socket(self.admin_app.app, token=self.token, **options)
+        self.assertTrue(self._accepted(await websocket.start()))
+        return websocket

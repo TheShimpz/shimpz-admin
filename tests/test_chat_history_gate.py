@@ -9,8 +9,6 @@ from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
 
-_Socket = chat_socket_fixtures.Socket
-
 
 class ChatHistoryGateTests(ChatWebSocketCase):
     def test_stopped_paused_gate_releases_history_for_the_next_gate(self) -> None:
@@ -30,8 +28,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("connect"))
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 first = self.admin_app.chat_history.resumable_turn("team_1")
@@ -69,8 +66,7 @@ class ChatHistoryGateTests(ChatWebSocketCase):
                     side_effect=(unavailable, stopped),
                 ),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("connect"))
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 turn_id = self.admin_app.chat_history.resumable_turn("team_1")

@@ -3,70 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
-import os
 import socket
-import sys
-import tempfile
 import threading
-import unittest
-from pathlib import Path
 from unittest import mock
 
 import uvicorn
 import websockets
-from tests.chat_socket_fixtures import ordinary_route
-from tests.mfa_helper import configure_supervisor
+from tests.chat_socket_case import ChatWebSocketCase
 from websockets.exceptions import InvalidStatus
 
-from tests import chat_socket_fixtures
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
-
-
-class ChatWebSocketRuntimeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(cls.root),
-                "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-            },
-        ):
-            cls.admin_app = importlib.import_module("app")
-        cls.chat_socket = importlib.import_module("chat.socket")
-        previous_store = cls.admin_app.state.STORE_PATH
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        previous_origins = cls.chat_socket.STATIC_ORIGINS
-        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
-        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
-
-    def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
-        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
-        self.token = self.admin_app.auth.issue_session(secret, "totp")
-        route = mock.patch.object(
-            self.chat_socket.lifecycle,
-            "submit_route",
-            side_effect=lambda *_args: ordinary_route(self.chat_socket),
-        )
-        route.start()
-        self.addCleanup(route.stop)
-
+class ChatWebSocketRuntimeTests(ChatWebSocketCase):
     def test_real_uvicorn_negotiates_v3_and_delivers_one_public_terminal(self) -> None:
         async def scenario() -> None:
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

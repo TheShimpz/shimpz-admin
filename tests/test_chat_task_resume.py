@@ -6,7 +6,7 @@ import asyncio
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import Socket, chat_frame
+from tests.chat_socket_fixtures import chat_frame
 
 
 class ChatTaskResumeTests(ChatWebSocketCase):
@@ -32,8 +32,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                     return_value=self._future(self.assistant_route.Result("assistant-install", guidance=follow_up)),
                 ) as route,
             ):
-                websocket = Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     {
                         "type": "resume-task",
@@ -105,8 +104,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
                 mock.patch("history.delivery.conversation", new=mock.AsyncMock(return_value=window)) as projected,
             ):
-                websocket = Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     {
                         "type": "resume-task",
@@ -180,8 +178,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     {
                         "type": "resume-task",
@@ -225,8 +222,7 @@ class ChatConversationWindowTests(ChatWebSocketCase):
                 )
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as sent:
-                websocket = Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_frame("List my zones"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 await websocket.send_json(chat_frame("And the first one?"))

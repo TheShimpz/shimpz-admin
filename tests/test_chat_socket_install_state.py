@@ -10,8 +10,6 @@ from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
 
-_Socket = chat_socket_fixtures.Socket
-
 
 class ChatInstallStateTests(ChatWebSocketCase):
     def test_explicit_install_only_plan_is_terminal_without_a_brain_turn(self) -> None:
@@ -63,8 +61,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame(message))
 
                 planned = await websocket.next_json()
@@ -125,8 +122,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan") as submit_plan,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("instala o cloudflare"))
 
                 self.assertEqual(
@@ -172,8 +168,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("instale o cloudflare e o whatsapp"))
 
                 self.assertEqual((await websocket.next_json())["state"], "planned")

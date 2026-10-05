@@ -12,7 +12,6 @@ from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
 
-_Socket = chat_socket_fixtures.Socket
 _wait_for_thread = chat_socket_fixtures.wait_for_thread
 
 
@@ -37,8 +36,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job) as submit_plan,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
@@ -85,8 +83,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan") as submit_plan,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Resuma esta conversa"))
                 self.assertEqual(
                     await websocket.next_json(),
@@ -134,8 +131,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 ) as route,
                 mock.patch.object(self.chat_socket.local, "turn", return_value=response) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("desinstale"))
 
                 self.assertEqual(
@@ -173,8 +169,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", return_value=job),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
@@ -220,8 +215,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", side_effect=submit),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
@@ -260,8 +254,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                     return_value=chat_socket_fixtures.integration_challenge(),
                 ) as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
@@ -299,8 +292,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.lifecycle, "submit_plan", side_effect=submit),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )
@@ -309,8 +301,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 await _wait_for_thread(stopped_seen)
                 turn.assert_not_called()
 
-                reconnect = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await reconnect.start()))
+                reconnect = await self._open()
                 await asyncio.sleep(0)
                 turn.assert_not_called()
                 await reconnect.disconnect()
@@ -333,8 +324,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(
                     chat_socket_fixtures.chat_frame("Configure Cloudflare e envie WhatsApp", ["already-enabled"])
                 )

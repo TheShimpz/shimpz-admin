@@ -3,59 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
-import os
-import sys
-import tempfile
 import unittest
 from functools import partial
-from pathlib import Path
 from unittest import mock
 
-from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge, ordinary_route
-from tests.chat_socket_fixtures import Socket as _Socket
-from tests.mfa_helper import configure_supervisor
+from tests.chat_socket_case import ChatWebSocketCase
+from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge
 
 from tests import chat_socket_fixtures
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
 
-
-class ChatWebSocketHumanTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(cls.root),
-                "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-            },
-        ):
-            cls.admin_app = importlib.import_module("app")
-        cls.chat_socket = importlib.import_module("chat.socket")
-        previous_store = cls.admin_app.state.STORE_PATH
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        previous_origins = cls.chat_socket.STATIC_ORIGINS
-        cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
-        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
-
+class ChatWebSocketHumanTests(ChatWebSocketCase):
     def setUp(self) -> None:
-        chat_socket_fixtures.live_team(self)
-        self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        self.admin_app.chat_history.STORE_PATH.unlink(missing_ok=True)
-        secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
-        self.token = self.admin_app.auth.issue_session(secret, "totp")
+        super().setUp()
         self.auth_clock = [100.0]
         self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalPasswordAuthority(
             partial(
@@ -74,21 +35,9 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 "clarification": None,
             },
         )
-        route = mock.patch.object(
-            self.chat_socket.lifecycle,
-            "submit_route",
-            side_effect=lambda *_args: ordinary_route(self.chat_socket),
-        )
-        route.start()
-        self.addCleanup(route.stop)
 
-    @staticmethod
-    def _accepted(message: dict[str, object]) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
-
-    async def _open_challenge(self, kind: str) -> _Socket:
-        websocket = _Socket(self.admin_app.app, token=self.token)
-        self.assertTrue(self._accepted(await websocket.start()))
+    async def _open_challenge(self, kind: str) -> chat_socket_fixtures.Socket:
+        websocket = await self._open()
         await websocket.send_json(chat_socket_fixtures.chat_frame("Continue"))
         challenge = await websocket.next_json()
         self.assertEqual(challenge["type"], "human-required")
@@ -357,8 +306,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
             body["request"]["title"] = "tampered"
             invalid = self.chat_socket.team.TeamResponse(428, body)
             with mock.patch.object(self.chat_socket.local, "turn", return_value=invalid):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Continue"))
                 self.assertEqual(
                     await websocket.next_json(),
@@ -398,8 +346,7 @@ class ChatWebSocketHumanTests(unittest.TestCase):
                 history_id = self.admin_app.chat_history.new_turn_id()
                 self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
                 self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 challenge = await websocket.next_json()
                 self.assertEqual(challenge["type"], "human-required")

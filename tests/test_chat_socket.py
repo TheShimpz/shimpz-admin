@@ -74,8 +74,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             self.assertEqual(await anonymous.start(), {"type": "websocket.close", "code": 4401, "reason": ""})
             await anonymous.finish()
 
-            authenticated = _Socket(self.admin_app.app, token=self.token)
-            self.assertTrue(self._accepted(await authenticated.start()))
+            authenticated = await self._open()
             await authenticated.disconnect()
 
         asyncio.run(scenario())
@@ -94,12 +93,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 self.admin_app.state.bind_browser_origin("https://developer.example.test"),
                 "learned",
             )
-            admitted = _Socket(
-                self.admin_app.app,
-                token=self.token,
-                origin="https://developer.example.test",
-            )
-            self.assertTrue(self._accepted(await admitted.start()))
+            admitted = await self._open(origin="https://developer.example.test")
             await admitted.disconnect()
 
             self.assertEqual(
@@ -118,8 +112,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_chat_frame_requires_one_exact_bounded_assistant_scope(self) -> None:
         async def scenario() -> None:
-            websocket = _Socket(self.admin_app.app, token=self.token)
-            self.assertTrue(self._accepted(await websocket.start()))
+            websocket = await self._open()
             invalid_frames = (
                 {"type": "chat", "message": "missing scope", "files": []},
                 {
@@ -144,8 +137,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_session_is_revalidated_before_every_frame(self) -> None:
         async def scenario() -> None:
-            websocket = _Socket(self.admin_app.app, token=self.token)
-            self.assertTrue(self._accepted(await websocket.start()))
+            websocket = await self._open()
             store = self.admin_app.state.get()
             store["session_secret"] = self.admin_app.auth.new_secret()
             self.admin_app.state._write(store)
@@ -168,8 +160,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 "_session_ok",
                 new=mock.AsyncMock(side_effect=[True, unavailable]),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))
                 self.assertEqual(
                     await websocket.next_message(),
@@ -181,8 +172,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
     def test_invalid_duplicate_and_oversized_frames_fail_closed(self) -> None:
         async def rejected_frame(text: str, event: dict, close_code: int) -> None:
-            websocket = _Socket(self.admin_app.app, token=self.token)
-            self.assertTrue(self._accepted(await websocket.start()))
+            websocket = await self._open()
             await websocket.send_text(text)
             self.assertEqual(await websocket.next_json(), event)
             self.assertEqual(
@@ -208,8 +198,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 1009,
             )
 
-            binary = _Socket(self.admin_app.app, token=self.token)
-            self.assertTrue(self._accepted(await binary.start()))
+            binary = await self._open()
             await binary.send_bytes(b'{"type":"stop"}')
             self.assertEqual(
                 await binary.next_json(),
@@ -247,8 +236,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as turn_mock,
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("first", ["shimpz-cloudflare"]))
                 await _wait_for_thread(started)
                 await websocket.send_json(chat_socket_fixtures.chat_frame("second"))
@@ -320,8 +308,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
                 mock.patch.object(self.chat_socket.local, "stop", side_effect=stop),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("race"))
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
@@ -377,8 +364,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "stop", side_effect=stop),
                 mock.patch.object(self.chat_socket, "STOP_RESULT_WAIT_SECONDS", 0.02),
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("bounded"))
                 await _wait_for_thread(started)
                 await websocket.send_json({"type": "stop"})
@@ -415,8 +401,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
                 await websocket.disconnect()
@@ -456,8 +441,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open(fail_send_type="progress")
                 await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
                 await _wait_for_thread(websocket.send_failed)
@@ -492,8 +476,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket, "submit_in_context", side_effect=submit_completed),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token, fail_send_type="progress")
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open(fail_send_type="progress")
                 await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(websocket.send_failed)
                 await websocket.disconnect()
@@ -511,8 +494,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 ),
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("connect"))
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 self.assertIsNotNone(self.admin_app.chat_history.resumable_turn("team_1"))
@@ -536,8 +518,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 )
 
             with mock.patch.object(self.chat_socket.local, "turn", side_effect=turn):
-                websocket = _Socket(self.admin_app.app, token=self.token)
-                self.assertTrue(self._accepted(await websocket.start()))
+                websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("hello"))
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
