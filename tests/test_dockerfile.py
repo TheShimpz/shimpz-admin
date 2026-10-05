@@ -46,12 +46,33 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         runtime = dockerfile.split(" AS runtime\n", 1)[1]
 
         self.assertIn(f"FROM {UV_IMAGE} AS uv", dockerfile)
-        self.assertIn("COPY --from=uv /uv /usr/local/bin/uv", dockerfile)
-        self.assertIn("COPY --from=dependencies /opt/venv /opt/venv", runtime)
+        self.assertIn("--mount=type=bind,from=uv,source=/uv,target=/tmp/uv", dockerfile)
+        self.assertIn("\nFROM dependencies AS runtime\n", dockerfile)
         self.assertNotIn("uv-install.sh", dockerfile)
         self.assertNotIn("apt-get", runtime)
         self.assertNotIn("curl", runtime)
         self.assertNotIn("/usr/local/bin/uv", runtime)
+
+    def test_static_runtime_derives_from_an_epoch_free_dependency_layer(self) -> None:
+        # Shimpz ADR-0098: no commit-time input reaches the dependency layer, so an unchanged lock reuses its bytes.
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        stages = dict(re.findall(r"(?ms)^FROM (?:--platform=\S+ )?\S+ AS (\w+)\n(.*?)(?=^FROM |\Z)", dockerfile))
+        self.assertEqual(["dependencies", "runtime", "ui", "uv"], sorted(stages))
+        for stage in ("uv", "dependencies"):
+            with self.subTest(stage=stage):
+                self.assertNotRegex(stages[stage], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR|COPY|ADD)\b")
+        recipe = "\n".join(line for line in stages["dependencies"].splitlines() if not line.startswith("#"))
+        dependencies = re.sub(r"\\\n\s*", " ", recipe)
+        for mount in (
+            "--mount=type=tmpfs,target=/tmp",
+            "--mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml",
+            "--mount=type=bind,source=uv.lock,target=/tmp/project/uv.lock",
+        ):
+            self.assertIn(mount, dependencies)
+        self.assertIn("uv sync --frozen --no-install-project --no-dev --python 3.14", dependencies)
+        self.assertTrue(dependencies.rstrip().endswith("find /opt -depth -exec touch -h -d @0 {} +"))
+        # The UI build keeps the commit-bound epoch that names its SvelteKit version.
+        self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")
 
     def test_runtime_keeps_one_process_for_memory_bound_mfa_ceremonies(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

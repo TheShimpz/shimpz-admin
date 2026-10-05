@@ -6,7 +6,6 @@
 
 # ── stage 1: obtain the exact uv binary without retaining an installer toolchain ──────────────
 FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
-ARG SOURCE_DATE_EPOCH=0
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS ui
@@ -24,19 +23,26 @@ RUN npm test && npm run build && \
     rm -rf /root/.npm
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────
-# This stage deliberately follows TARGETPLATFORM so native wheels match the final image.
+# This stage deliberately follows TARGETPLATFORM so native wheels match the final image. Its layer is the runtime's
+# base and a pure function of the pinned base, uv, and the lock (Shimpz ADR-0098): no ARG SOURCE_DATE_EPOCH, WORKDIR,
+# COPY, or ADD here, uv and the lock arrive as read-only mounts on a discarded tmpfs, the uv cache is removed, and
+# every /opt timestamp is fixed. An unchanged lock therefore yields the same layer bytes at every commit, with or
+# without a build cache.
 FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
-ARG SOURCE_DATE_EPOCH=0
-COPY --from=uv /uv /usr/local/bin/uv
-COPY pyproject.toml uv.lock ./
-RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-install-project --no-dev --python 3.14 && \
-    rm -rf /root/.cache/uv
+RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
+    --mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=/tmp/project/uv.lock \
+    cd /tmp/project && \
+    UV_PROJECT_ENVIRONMENT=/opt/venv UV_CACHE_DIR=/opt/uv-cache UV_LINK_MODE=copy \
+        /tmp/uv sync --frozen --no-install-project --no-dev --python 3.14 && \
+    rm -rf /opt/uv-cache && \
+    find /opt -depth -exec touch -h -d @0 {} +
 
 # ── stage 4: minimal Python runtime ─────────────────────────────────────────────────────────────
-# The digest-pinned Python base already retains CA roots; build-only uv never enters this stage.
-FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS runtime
+# The digest-pinned Python base already retains CA roots; build-only uv never enters an image layer.
+FROM dependencies AS runtime
 ARG SOURCE_DATE_EPOCH=0
-COPY --from=dependencies /opt/venv /opt/venv
 
 # Runs as the host repo owner (uid 1000) for the existing Admin data-volume ownership contract.
 RUN groupadd -g 1000 admin && \
