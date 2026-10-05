@@ -413,6 +413,7 @@ export const messages = {
         "states": { "started": "In progress", "finished": "Complete" }
       },
       "you": "You",
+      "timeAt": "at",
       "stop": "Stop",
       "emptyTeams": "Create a Team with the + button to start chatting.",
       "assistantOverflow": "This Team has more running Assistants than one conversation can use ({limit}). Left out: {names}. Uninstall enough Assistants in the Store to include them.",
@@ -819,6 +820,7 @@ export const messages = {
         "states": { "started": "Em andamento", "finished": "Concluído" }
       },
       "you": "Você",
+      "timeAt": "às",
       "stop": "Parar",
       "emptyTeams": "Crie um Time com o botão + para começar a conversar.",
       "assistantOverflow": "Este Time tem mais Assistants em execução do que uma conversa pode usar ({limit}). Ficaram de fora: {names}. Desinstale Assistants suficientes na Store para incluí-los.",
@@ -1225,6 +1227,7 @@ export const messages = {
         "states": { "started": "En curso", "finished": "Completado" }
       },
       "you": "Tú",
+      "timeAt": "a las",
       "stop": "Detener",
       "emptyTeams": "Crea un Equipo con el botón + para empezar a conversar.",
       "assistantOverflow": "Este Equipo tiene más Assistants en ejecución de los que una conversación puede usar ({limit}). Quedaron fuera: {names}. Desinstala suficientes Assistants en la Store para incluirlos.",
@@ -1631,6 +1634,7 @@ export const messages = {
         "states": { "started": "进行中", "finished": "已完成" }
       },
       "you": "你",
+      "timeAt": "于",
       "stop": "停止",
       "emptyTeams": "使用 + 按钮创建团队即可开始对话。",
       "assistantOverflow": "此团队运行中的 Assistant 超过单次对话可用的上限（{limit}）。未包含：{names}。在 Store 中卸载足够多的 Assistant 即可纳入它们。",
@@ -2037,6 +2041,7 @@ export const messages = {
         "states": { "started": "En cours", "finished": "Terminé" }
       },
       "you": "Vous",
+      "timeAt": "à",
       "stop": "Arrêter",
       "emptyTeams": "Créez une Équipe avec le bouton + pour commencer à discuter.",
       "assistantOverflow": "Cette Équipe a plus d’Assistants actifs qu’une conversation ne peut en utiliser ({limit}). Exclus : {names}. Désinstallez suffisamment d’Assistants dans le Store pour les inclure.",
@@ -2443,6 +2448,7 @@ export const messages = {
         "states": { "started": "Läuft", "finished": "Abgeschlossen" }
       },
       "you": "Du",
+      "timeAt": "um",
       "stop": "Stoppen",
       "emptyTeams": "Erstelle ein Team mit der Schaltfläche +, um zu chatten.",
       "assistantOverflow": "Dieses Team hat mehr laufende Assistants, als ein Gespräch nutzen kann ({limit}). Nicht enthalten: {names}. Deinstalliere genügend Assistants im Store, um sie einzubeziehen.",
@@ -2849,6 +2855,7 @@ export const messages = {
         "states": { "started": "実行中", "finished": "完了" }
       },
       "you": "あなた",
+      "timeAt": "·",
       "stop": "停止",
       "emptyTeams": "+ ボタンでチームを作成すると会話を始められます。",
       "assistantOverflow": "このチームで実行中の Assistant は、1 つの会話で使える上限（{limit}）を超えています。含まれていないもの：{names}。Store で十分な数の Assistant をアンインストールすると含められます。",
@@ -3255,6 +3262,7 @@ export const messages = {
         "states": { "started": "قيد التنفيذ", "finished": "مكتمل" }
       },
       "you": "أنت",
+      "timeAt": "في",
       "stop": "إيقاف",
       "emptyTeams": "أنشئ فريقًا باستخدام زر + لبدء المحادثة.",
       "assistantOverflow": "يحتوي هذا الفريق على Assistants قيد التشغيل أكثر مما يمكن لمحادثة واحدة استخدامه ({limit}). المستبعدة: {names}. ألغِ تثبيت عدد كافٍ من Assistants من Store لتضمينها.",

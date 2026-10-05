@@ -2203,6 +2203,7 @@
           <!-- When a message was sent or a reply completed, to the second, in the viewer's timezone. -->
           {#snippet turnTime(turn)}
             {@const instant = instantOf(turn)}
+            <span class="turn-at">{copy.timeAt}</span>
             <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
           {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
@@ -2793,8 +2794,14 @@
     font-variant-numeric: tabular-nums;
   }
   /* The time sits right after its author's name instead of across the message. */
-  .turns :global([data-slot="message-header"]) {
+  :global(.turns [data-slot="message-header"]) {
     justify-content: flex-start;
+  }
+  /* "às" reads as a word in the sentence "NEO às 10:30:00", not as part of the uppercase label. */
+  .turn-at {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
   }
   /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
   .turn-time {
