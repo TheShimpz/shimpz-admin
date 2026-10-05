@@ -967,14 +967,17 @@ export function outputLabels(labels) {
 }
 
 /**
- * A number's exact JSON text in the viewer's locale when the browser can hold it exactly (at most 15 significant
- * digits), and otherwise exactly as Team wrote it, so a shown number is never rounded.
+ * A number's exact JSON text in the viewer's locale only when the browser holds it exactly and the locale's digits
+ * keep every one of them: at most 15 significant digits, and zero or a magnitude from 0.000001 to under 10^15.
+ * Anything else reads exactly as Team wrote it, so a shown number is never rounded.
  */
 function numberWords(text, locale) {
   const digits = text.replace(/^-/u, '').replace(/[eE].*$/u, '').replace('.', '').replace(/^0+/u, '');
   const value = Number(text);
-  if (digits.length > 15 || !Number.isFinite(value)) return text;
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 100 }).format(value);
+  const magnitude = Math.abs(value);
+  const localizable = digits.length <= 15 && Number.isFinite(value) &&
+    (value === 0 || (magnitude >= 1e-6 && magnitude < 1e15));
+  return localizable ? new Intl.NumberFormat(locale, { maximumFractionDigits: 21 }).format(value) : text;
 }
 
 /** One scalar node of a shown result as plain words in the viewer's language. */

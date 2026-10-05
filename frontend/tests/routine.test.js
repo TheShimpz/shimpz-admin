@@ -1023,8 +1023,10 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   // A number reads in the viewer's locale only while the browser holds it exactly; otherwise exactly as Team wrote it.
   const number = (value) => outputScalarWords({ kind: 'number', value }, words, 'pt');
   assert.deepEqual(
-    ['0.0001', '1.23456', '1e-7', '-12', '123456789012345', '12345678901234567890', '0.1234567890123456789'].map(number),
-    ['0,0001', '1,23456', '0,0000001', '-12', '123.456.789.012.345', '12345678901234567890', '0.1234567890123456789'],
+    ['0.0001', '1.23456', '0.000001', '-12', '0', '123456789012345', '12345678901234567890', '0.1234567890123456789',
+      '1e-7', '1e-101', '5e-324', '0.00000012345', '1e15'].map(number),
+    ['0,0001', '1,23456', '0,000001', '-12', '0', '123.456.789.012.345', '12345678901234567890', '0.1234567890123456789',
+      '1e-7', '1e-101', '5e-324', '0.00000012345', '1e15'],
   );
   // A field set Team cut short, or one with no fields, never becomes a table row that hides it.
   const cut = { kind: 'fields', fields: [['a', text('x')]], omitted: 2 };
