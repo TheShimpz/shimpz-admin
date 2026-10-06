@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from functools import partial
 from pathlib import Path
 from unittest import mock
 from urllib.parse import urlencode
@@ -227,33 +228,24 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
                 502,
             )
 
+        complete = partial(
+            assistants.complete_cloudflare_oauth_callback, state="a" * 43, claim="b" * 64, session_binding="c" * 43
+        )
         with mock.patch.object(
             assistants.transport,
             "_call",
             side_effect=[upstream_error, invalid, invalid_connected],
         ):
             self.assertEqual(
-                assistants.complete_cloudflare_oauth_callback(
-                    state="a" * 43,
-                    claim="b" * 64,
-                    session_binding="c" * 43,
-                ),
+                complete(),
                 upstream_error,
             )
             self.assertEqual(
-                assistants.complete_cloudflare_oauth_callback(
-                    state="a" * 43,
-                    claim="b" * 64,
-                    session_binding="c" * 43,
-                ).status,
+                complete().status,
                 502,
             )
             self.assertEqual(
-                assistants.complete_cloudflare_oauth_callback(
-                    state="a" * 43,
-                    claim="b" * 64,
-                    session_binding="c" * 43,
-                ).status,
+                complete().status,
                 502,
             )
 
