@@ -43,6 +43,25 @@ async def _read_json(request: Request) -> dict:
     return await request.json()
 
 
+def _reset(
+    payload: dict[str, object],
+    *,
+    setup_lock: asyncio.Lock | None = None,
+    verify_password: mock.AsyncMock | None = None,
+    bootstrap_reset: mock.Mock | None = None,
+    established_reset: mock.Mock | None = None,
+):
+    """Return one host-reset call; every authority the test does not name is a fresh stand-in."""
+    return host_reset.reset(
+        _request(payload),
+        setup_lock=asyncio.Lock() if setup_lock is None else setup_lock,
+        read_json=_read_json,
+        verify_password=mock.AsyncMock() if verify_password is None else verify_password,
+        bootstrap_reset=mock.Mock() if bootstrap_reset is None else bootstrap_reset,
+        established_reset=mock.Mock() if established_reset is None else established_reset,
+    )
+
+
 class HostResetTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -141,10 +160,8 @@ class HostResetTests(unittest.TestCase):
         established = mock.Mock()
 
         response = asyncio.run(
-            host_reset.reset(
-                _request({"capability": CAPABILITY}),
-                setup_lock=asyncio.Lock(),
-                read_json=_read_json,
+            _reset(
+                {"capability": CAPABILITY},
                 verify_password=password,
                 bootstrap_reset=bootstrap,
                 established_reset=established,
@@ -158,10 +175,8 @@ class HostResetTests(unittest.TestCase):
         established.assert_not_called()
         with self.assertRaises(HTTPException) as replay:
             asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
+                _reset(
+                    {"capability": CAPABILITY},
                     verify_password=password,
                     bootstrap_reset=bootstrap,
                     established_reset=established,
@@ -171,30 +186,14 @@ class HostResetTests(unittest.TestCase):
 
     def test_reset_rejects_invalid_payloads_and_reports_busy_authority(self) -> None:
         with self.assertRaises(HTTPException) as unavailable:
-            asyncio.run(
-                host_reset.reset(
-                    _request({"capability": None}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(),
-                    established_reset=mock.Mock(),
-                )
-            )
+            asyncio.run(_reset({"capability": None}))
         self.assertEqual(unavailable.exception.status_code, 403)
 
         async def while_busy():
             lock = asyncio.Lock()
             await lock.acquire()
             try:
-                return await host_reset.reset(
-                    _request({"capability": CAPABILITY}),
-                    setup_lock=lock,
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(),
-                    established_reset=mock.Mock(),
-                )
+                return await _reset({"capability": CAPABILITY}, setup_lock=lock)
             finally:
                 lock.release()
 
@@ -203,16 +202,7 @@ class HostResetTests(unittest.TestCase):
         self.assertEqual(json.loads(busy.body)["code"], "host-reset-busy")
 
         with self.assertRaises(HTTPException) as extra:
-            asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY, "password": "unexpected"}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(),
-                    established_reset=mock.Mock(),
-                )
-            )
+            asyncio.run(_reset({"capability": CAPABILITY, "password": "unexpected"}))
         self.assertEqual(extra.exception.status_code, 400)
 
     def test_consumption_remembers_every_unexpired_capability(self) -> None:
@@ -233,22 +223,12 @@ class HostResetTests(unittest.TestCase):
         established = mock.Mock(return_value=JSONResponse({"reset": True}))
 
         missing = asyncio.run(
-            host_reset.reset(
-                _request({"capability": CAPABILITY}),
-                setup_lock=asyncio.Lock(),
-                read_json=_read_json,
-                verify_password=password,
-                bootstrap_reset=mock.Mock(),
-                established_reset=established,
-            )
+            _reset({"capability": CAPABILITY}, verify_password=password, established_reset=established)
         )
         response = asyncio.run(
-            host_reset.reset(
-                _request({"capability": CAPABILITY, "password": "secret"}),
-                setup_lock=asyncio.Lock(),
-                read_json=_read_json,
+            _reset(
+                {"capability": CAPABILITY, "password": "secret"},
                 verify_password=password,
-                bootstrap_reset=mock.Mock(),
                 established_reset=established,
             )
         )
@@ -268,14 +248,7 @@ class HostResetTests(unittest.TestCase):
         password = mock.AsyncMock()
 
         response = asyncio.run(
-            host_reset.reset(
-                _request({"capability": CAPABILITY}),
-                setup_lock=asyncio.Lock(),
-                read_json=_read_json,
-                verify_password=password,
-                bootstrap_reset=mock.Mock(),
-                established_reset=established,
-            )
+            _reset({"capability": CAPABILITY}, verify_password=password, established_reset=established)
         )
 
         self.assertEqual(response.status_code, 200)
@@ -291,16 +264,7 @@ class HostResetTests(unittest.TestCase):
         state._write(data)
         bootstrap = mock.Mock(return_value=JSONResponse({"reset": True}))
 
-        response = asyncio.run(
-            host_reset.reset(
-                _request({"capability": CAPABILITY}),
-                setup_lock=asyncio.Lock(),
-                read_json=_read_json,
-                verify_password=mock.AsyncMock(),
-                bootstrap_reset=bootstrap,
-                established_reset=mock.Mock(),
-            )
-        )
+        response = asyncio.run(_reset({"capability": CAPABILITY}, bootstrap_reset=bootstrap))
 
         self.assertEqual(response.status_code, 200)
         bootstrap.assert_called_once_with()
@@ -311,16 +275,7 @@ class HostResetTests(unittest.TestCase):
             mock.patch.object(state, "authentication_state", side_effect=error),
             self.assertRaises(HTTPException) as extra,
         ):
-            asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY, "extra": True}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(),
-                    established_reset=mock.Mock(),
-                )
-            )
+            asyncio.run(_reset({"capability": CAPABILITY, "extra": True}))
         self.assertEqual(extra.exception.status_code, 400)
 
         with (
@@ -328,16 +283,7 @@ class HostResetTests(unittest.TestCase):
             mock.patch.object(host_reset, "_recovery_reset_action", return_value=(None, "")),
             self.assertRaises(RuntimeError),
         ):
-            asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(),
-                    established_reset=mock.Mock(),
-                )
-            )
+            asyncio.run(_reset({"capability": CAPABILITY}))
 
     def test_reset_logs_and_propagates_team_failure(self) -> None:
         failure = RuntimeError("team reset failed")
@@ -345,28 +291,14 @@ class HostResetTests(unittest.TestCase):
             self.assertLogs("shimpz-admin", level="ERROR") as captured,
             self.assertRaisesRegex(RuntimeError, "team reset failed"),
         ):
-            asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(side_effect=failure),
-                    established_reset=mock.Mock(),
-                )
-            )
+            asyncio.run(_reset({"capability": CAPABILITY}, bootstrap_reset=mock.Mock(side_effect=failure)))
         self.assertIn("host reset failed after host-capability authorization", "\n".join(captured.output))
 
     def test_reset_audit_names_only_the_authority_class_and_outcome(self) -> None:
         with self.assertLogs("shimpz-admin", level="INFO") as captured:
             asyncio.run(
-                host_reset.reset(
-                    _request({"capability": CAPABILITY}),
-                    setup_lock=asyncio.Lock(),
-                    read_json=_read_json,
-                    verify_password=mock.AsyncMock(),
-                    bootstrap_reset=mock.Mock(return_value=JSONResponse({"reset": True})),
-                    established_reset=mock.Mock(),
+                _reset(
+                    {"capability": CAPABILITY}, bootstrap_reset=mock.Mock(return_value=JSONResponse({"reset": True}))
                 )
             )
 
