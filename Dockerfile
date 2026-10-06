@@ -16,6 +16,8 @@ WORKDIR /w
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund && rm -rf /root/.npm
 COPY frontend/ ./
+# The frontend tests pin their labels to these Team protocol mirrors, read at ../../backend from /w/tests.
+COPY backend/protocol/http/v1/payload.py backend/protocol/http/v1/routine_proposal.py /backend/protocol/http/v1/
 # adapter-static writes the SPA to /w/build. Normalize the copied artifact tree explicitly: the
 # release builder supplies the Git-derived epoch and the final Python stage consumes only this tree.
 RUN npm test && npm run build && \
