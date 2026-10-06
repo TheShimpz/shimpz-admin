@@ -7,7 +7,6 @@ lease. Every answer is admitted only in its canonical protocol view.
 from __future__ import annotations
 
 import json
-import re
 
 import models
 import supervisor
@@ -22,7 +21,6 @@ MIN_RUN_TIMEOUT_SECONDS = 15 * 60
 RUN_TIMEOUT_MARGIN_SECONDS = 5 * 60
 # A person's answer resumes a run whose active time Admin was never told, so it waits as long as any run may spend.
 RESUME_TIMEOUT_SECONDS = routine_run_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
-TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 # "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
 RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
 # Team admits at most this many deliveries in one notice acknowledgment.
@@ -38,7 +36,7 @@ def _answer(response: team.TeamResponse) -> dict[str, object]:
         raise RoutineTeamError(f"Team answered {response.status}")
     body = dict(response.body)
     trace_id = body.pop("trace_id", None)
-    if not isinstance(trace_id, str) or TRACE_ID_RE.fullmatch(trace_id) is None:
+    if not transport.is_trace_id(trace_id):
         raise RoutineTeamError("Team answer has no trace")
     return body
 

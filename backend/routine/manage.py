@@ -17,7 +17,6 @@ from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
 from protocol.http.v1 import routine_run as routine_run_contract
-from routine import team as routine_team
 
 _INVALID = team.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
 # A path count in its one canonical decimal form, as Team reads it.
@@ -48,7 +47,7 @@ def _projected(
         safe = isinstance(code, str) and routine_contract.ERROR_CODE_RE.fullmatch(code) is not None
         return team.TeamResponse(status, {"code": code if safe else "routine-request-failed"})
     trace_id = body.pop("trace_id", None)
-    if not isinstance(trace_id, str) or routine_team.TRACE_ID_RE.fullmatch(trace_id) is None:
+    if not transport.is_trace_id(trace_id):
         return _INVALID
     admitted = admit(body)
     return _INVALID if admitted is None else team.TeamResponse(response.status, admitted)
