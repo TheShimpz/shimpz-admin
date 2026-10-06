@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history
-from tests.chat_history_case import ChatHistoryCase
+from tests.chat_history_case import ChatHistoryCase, done_event
 
 from chat import local
 
@@ -101,13 +101,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
     def test_a_reply_never_carries_a_retired_routine_proposal(self) -> None:
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Todo dia às 9, liste as zonas"))
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Pronto: todo dia às 9 listo as zonas.",
-            "clarification": None,
-        }
+        done = done_event("Pronto: todo dia às 9 listo as zonas.")
         # A Routine is created from the message itself (ADR-0092); a reply with a proposal card is refused.
         with self.assertRaises(ValueError):
             history.append_reply("marketing", turn_id, {**done, "routine_proposal": None})
@@ -134,13 +128,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
     def test_a_reply_keeps_the_actions_its_attachments_withheld_for_reload(self) -> None:
         restricted = {"actions": [{"assistant": "shimpz-cloudflare", "action": "list-zones"}], "total": 3}
         turn_id = self._admitted()
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "The contract names two zones.",
-            "clarification": None,
-        }
+        done = done_event("The contract names two zones.")
         for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 history.append_reply("marketing", turn_id, {**done, "restricted_actions": invalid})
@@ -201,13 +189,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
     def test_a_reply_keeps_its_routine_card_or_refusal_for_reload(self) -> None:
         vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
         card = vectors["routine_proposal"]["valid"][0]
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Listei os registros.",
-            "clarification": None,
-        }
+        done = done_event("Listei os registros.")
         turn_id = self._admitted()
         self.assertTrue(history.append_reply("marketing", turn_id, {**done, "routine_proposal": card}))
         self.assertEqual(history.page("marketing")["entries"][-1]["routine_proposal"], card)
@@ -257,13 +239,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
             "models": [{"provider": "openai", "model": "gpt-6-luna", "input_tokens": 1331, "output_tokens": 36}],
         }
         turn_id = self._admitted()
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Two zones are active.",
-            "clarification": None,
-        }
+        done = done_event("Two zones are active.")
         for invalid in (None, {**usage, "models": []}, {**usage, "duration_ms": 86_400_001}):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 history.append_reply("marketing", turn_id, {**done, "usage": invalid})

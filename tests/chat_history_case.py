@@ -34,6 +34,11 @@ def installed_event() -> dict[str, object]:
     }
 
 
+def done_event(reply: str, team_id: str = "marketing", team_name: str = "Marketing") -> dict[str, object]:
+    """A fresh completed-turn event as chat delivery records it."""
+    return {"type": "done", "team_id": team_id, "team_name": team_name, "reply": reply, "clarification": None}
+
+
 def uninstall_assistant() -> dict[str, str]:
     return {
         "id": "shimpz-cloudflare",

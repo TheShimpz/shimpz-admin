@@ -20,7 +20,7 @@ from history import delivery
 from history import http as history_http
 from history import store as history
 from team import bridge as team
-from tests.chat_history_case import ChatHistoryCase, installed_event, uninstall_assistant
+from tests.chat_history_case import ChatHistoryCase, done_event, installed_event, uninstall_assistant
 
 
 class ChatHistoryTests(ChatHistoryCase):
@@ -37,13 +37,7 @@ class ChatHistoryTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 second,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": "Two zones are active.",
-                    "clarification": None,
-                },
+                done_event("Two zones are active."),
             )
         )
 
@@ -67,13 +61,7 @@ class ChatHistoryTests(ChatHistoryCase):
         self.assertRegex(history._now(), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         times = iter(f"2026-10-0{day}T23:59:5{second}Z" for day in (1, 2, 3) for second in range(10))
         first, second = history.new_turn_id(), history.new_turn_id()
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Two zones are active.",
-            "clarification": None,
-        }
+        done = done_event("Two zones are active.")
         with mock.patch.object(history, "_now", side_effect=lambda: next(times)):
             self.assertTrue(history.append_user("marketing", first, "Install Cloudflare"))
             self.assertTrue(history.append_install("marketing", first, installed_event()))
@@ -117,13 +105,7 @@ class ChatHistoryTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 first,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": "First finished.",
-                    "clarification": None,
-                },
+                done_event("First finished."),
             )
         )
         self.assertIsNone(history.resumable_turn("marketing"))
@@ -131,13 +113,7 @@ class ChatHistoryTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 second,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": "Finished.",
-                    "clarification": None,
-                },
+                done_event("Finished."),
             )
         )
         self.assertIsNone(history.resumable_turn("marketing"))
@@ -276,13 +252,7 @@ class ChatHistoryTests(ChatHistoryCase):
             )
 
     def test_a_turn_event_after_its_team_history_was_cleared_is_never_recorded(self) -> None:
-        done = {
-            "type": "done",
-            "team_id": "marketing",
-            "team_name": "Marketing",
-            "reply": "Two zones are active.",
-            "clarification": None,
-        }
+        done = done_event("Two zones are active.")
         for clear in (lambda: history.clear_team("marketing"), history.clear_all):
             with self.subTest(clear=clear):
                 turn = history.new_turn_id()
@@ -341,13 +311,7 @@ class ChatHistoryTests(ChatHistoryCase):
             history.append_reply(
                 team_id,
                 turn_id,
-                {
-                    "type": "done",
-                    "team_id": team_id,
-                    "team_name": "Marketing",
-                    "reply": reply,
-                    "clarification": None,
-                },
+                done_event(reply, team_id, "Marketing"),
             )
         )
 
@@ -434,13 +398,7 @@ class ChatHistoryTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 turn_id,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": reply,
-                    "clarification": None,
-                },
+                done_event(reply),
             )
         )
         self.assertEqual(history.page("marketing")["entries"][-1]["text"], reply)
@@ -490,13 +448,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 (
                     "marketing",
                     "a" * 32,
-                    {
-                        "type": "done",
-                        "team_id": "sales",
-                        "team_name": "Sales",
-                        "reply": "No",
-                        "clarification": None,
-                    },
+                    done_event("No", "sales", "Sales"),
                 ),
             ),
             (history._install_assistant, (None,)),

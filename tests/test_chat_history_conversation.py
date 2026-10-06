@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from history import context as conversation_context
 from history import delivery
 from history import store as history
-from tests.chat_history_case import ChatHistoryCase, installed_event, uninstall_assistant
+from tests.chat_history_case import ChatHistoryCase, done_event, installed_event, uninstall_assistant
 
 FILE = {"id": "f" * 32, "name": "contrato.pdf", "media_type": "application/pdf", "size": 2048}
 
@@ -56,13 +56,7 @@ class ChatHistoryConversationTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 listed,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": "Temos apenas Cloudflare/DNS.",
-                    "clarification": None,
-                },
+                done_event("Temos apenas Cloudflare/DNS."),
             )
         )
         self.assertTrue(history.append_user("other_team", history.new_turn_id(), "Must not cross Teams"))
@@ -80,13 +74,7 @@ class ChatHistoryConversationTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 inventory,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": "Temos apenas Cloudflare/DNS.",
-                    "clarification": None,
-                },
+                done_event("Temos apenas Cloudflare/DNS."),
             )
         )
         self.assertTrue(history.append_user("marketing", current, "Desinstala esse então."))
@@ -248,13 +236,7 @@ class ChatHistoryConversationTests(ChatHistoryCase):
                 history.append_reply(
                     "marketing",
                     turn_id,
-                    {
-                        "type": "done",
-                        "team_id": "marketing",
-                        "team_name": "Marketing",
-                        "reply": f"Resposta {index}",
-                        "clarification": None,
-                    },
+                    done_event(f"Resposta {index}"),
                 )
             )
         current = history.new_turn_id()
@@ -288,13 +270,7 @@ class ChatHistoryConversationTests(ChatHistoryCase):
             history.append_reply(
                 "marketing",
                 prior,
-                {
-                    "type": "done",
-                    "team_id": "marketing",
-                    "team_name": "Marketing",
-                    "reply": reply,
-                    "clarification": None,
-                },
+                done_event(reply),
             )
         )
         self.assertTrue(history.append_user("marketing", current, "Continue"))
