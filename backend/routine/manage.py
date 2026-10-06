@@ -123,12 +123,12 @@ def stop(team_id: object, run_id: object) -> team.TeamResponse:
     return _run_decision(team_id, run_id, "stop", {}, "stopped")
 
 
-def _bound(team_id: str, incident_id: str, admit: Callable[[object], dict[str, object] | None]):
-    """A card view that names exactly the Team and incident it was asked for."""
+def _bound(admit: Callable[[object], dict[str, object] | None], **expected: object):
+    """A view admitted only when it names exactly the identities it was asked for."""
 
     def bound(body: dict[str, object]) -> dict[str, object] | None:
         admitted = admit(body)
-        if admitted is None or (admitted["team_id"], admitted["incident_id"]) != (team_id, incident_id):
+        if admitted is None or tuple(admitted[name] for name in expected) != tuple(expected.values()):
             return None
         return admitted
 
@@ -140,7 +140,7 @@ def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     incident = _id(incident_id, "Routine incident")
     response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/card", {})
-    return _projected(response, _bound(canonical, incident, routine_run_contract.canonical_card))
+    return _projected(response, _bound(routine_run_contract.canonical_card, team_id=canonical, incident_id=incident))
 
 
 def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
@@ -154,7 +154,8 @@ def answer_card(team_id: object, incident_id: object, body: object) -> team.Team
     if answer is None:
         raise team.TeamRequestError("Routine card answer is invalid")
     response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
-    return _projected(response, _bound(canonical, incident, routine_run_contract.canonical_card_answer))
+    admit = _bound(routine_run_contract.canonical_card_answer, team_id=canonical, incident_id=incident)
+    return _projected(response, admit)
 
 
 def _proposal(team_id: object, proposal_id: object, method: str, statuses: frozenset[str]) -> team.TeamResponse:
@@ -164,11 +165,11 @@ def _proposal(team_id: object, proposal_id: object, method: str, statuses: froze
     body = {} if method == "POST" else None
     response = transport._call(method, f"/v1/teams/{canonical}/routines/proposals/{proposal}", body)
 
+    bound = _bound(routine_proposal_contract.canonical_proposal_answer, team_id=canonical, proposal_id=proposal)
+
     def admit(body: dict[str, object]) -> dict[str, object] | None:
-        admitted = routine_proposal_contract.canonical_proposal_answer(body)
-        if admitted is None or (admitted["team_id"], admitted["proposal_id"]) != (canonical, proposal):
-            return None
-        return admitted if admitted["status"] in statuses else None
+        admitted = bound(body)
+        return admitted if admitted is not None and admitted["status"] in statuses else None
 
     return _projected(response, admit)
 
@@ -188,14 +189,7 @@ def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     run = _id(run_id, "Routine run")
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/diagnostics")
-
-    def admit(body: dict[str, object]) -> dict[str, object] | None:
-        admitted = routine_run_contract.canonical_diagnostics(body)
-        return (
-            admitted if admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run) else None
-        )
-
-    return _projected(response, admit)
+    return _projected(response, _bound(routine_run_contract.canonical_diagnostics, team_id=canonical, run_id=run))
 
 
 def plan_steps(team_id: object, routine_id: object, revision: object, offset: object) -> team.TeamResponse:
@@ -208,13 +202,7 @@ def plan_steps(team_id: object, routine_id: object, revision: object, offset: ob
     number = _count(revision, "Routine revision", 1, 2**31)
     start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/{routine}/revisions/{number}/steps/{start}")
-
-    def admit(body: dict[str, object]) -> dict[str, object] | None:
-        page = routine_contract.canonical_page(body)
-        if page is None or (page["routine_id"], page["revision"], page["offset"]) != (routine, number, start):
-            return None
-        return page
-
+    admit = _bound(routine_contract.canonical_page, routine_id=routine, revision=number, offset=start)
     return _projected(response, admit)
 
 
@@ -235,11 +223,11 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
     start = _count(offset, "Routine step offset", 0, bound)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
 
+    bound = _bound(routine_run_contract.canonical_run_steps, team_id=canonical, run_id=run, offset=start)
+
     def admit(body: dict[str, object]) -> dict[str, object] | None:
-        page = routine_run_contract.canonical_run_steps(body)
-        if page is None or (page["team_id"], page["run_id"], page["offset"]) != (canonical, run, start):
-            return None
-        return page if snapshot in ("latest", page["snapshot"]) else None
+        page = bound(body)
+        return page if page is not None and snapshot in ("latest", page["snapshot"]) else None
 
     return _projected(response, admit)
 
