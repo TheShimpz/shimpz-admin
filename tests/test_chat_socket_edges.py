@@ -24,6 +24,19 @@ from chat import human, local, socket, task_resume
 from tests import chat_socket_fixtures
 
 
+def _empty_integration_challenge() -> local.PublicResponse:
+    """A pending integration challenge that names no requirement."""
+    body = {
+        "team_id": "team_1",
+        "status": "integrations-required",
+        "turn_id": "a" * 32,
+        "challenge_id": "a" * 32,
+        "expires_in": 300,
+        "requirements": [],
+    }
+    return local.PublicResponse(428, body)
+
+
 class ChatSocketEdgeTests(ChatDeliveryCase):
     def test_continuation_stop_saturation_and_detached_finish_are_terminal(self) -> None:
         async def scenario() -> None:
@@ -383,17 +396,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             await socket._deliver_turn(websocket, connection, turn, "team_1")
             self.assertIsNone(connection.active)
 
-            challenge = local.PublicResponse(
-                428,
-                {
-                    "team_id": "team_1",
-                    "status": "integrations-required",
-                    "turn_id": "a" * 32,
-                    "challenge_id": "a" * 32,
-                    "expires_in": 300,
-                    "requirements": [],
-                },
-            )
+            challenge = _empty_integration_challenge()
             future = concurrent.futures.Future()
             future.set_result(challenge)
             turn = socket._Turn(future, "chat", asyncio.Queue())
@@ -417,17 +420,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             await sync_delivery.integration(websocket, connection, "team_1", object(), None, socket._SYNC_OPERATIONS)
             self.assertTrue(connection.sync_terminal_sent)
 
-            pending = local.PublicResponse(
-                428,
-                {
-                    "team_id": "team_1",
-                    "status": "integrations-required",
-                    "turn_id": "a" * 32,
-                    "challenge_id": "a" * 32,
-                    "expires_in": 300,
-                    "requirements": [],
-                },
-            )
+            pending = _empty_integration_challenge()
             connection = socket._Connection()
             await sync_delivery.integration(websocket, connection, "team_1", pending, None, socket._SYNC_OPERATIONS)
             self.assertTrue(connection.sync_terminal_sent)
@@ -611,17 +604,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             failure = local.PublicResponse(503, {"team_id": "team_1"})
             self.assertEqual(sync_delivery.pending_error(failure, "team_1", "human")["status"], 503)
 
-            pending = local.PublicResponse(
-                428,
-                {
-                    "team_id": "team_1",
-                    "status": "integrations-required",
-                    "turn_id": "a" * 32,
-                    "challenge_id": "a" * 32,
-                    "expires_in": 300,
-                    "requirements": [],
-                },
-            )
+            pending = _empty_integration_challenge()
             invalid_resumed = team.TeamResponse(428, {"status": "integrations-required"})
             await sync_delivery.integration(
                 websocket,
@@ -764,36 +747,18 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
-            send_terminal = mock.AsyncMock(return_value=True)
-            with (
-                mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=denied_response)),
-                mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
-            ):
-                await socket._deliver_human_response(
-                    mock.AsyncMock(),
-                    socket._Connection(),
-                    "team_1",
-                    future,
-                    progress,
-                    failure,
-                )
-            self.assertEqual(send_terminal.await_args.args[2]["status"], 503)
-
             completed = chat_socket_fixtures.completed_turn("Completed.")
-            send_terminal.reset_mock()
-            with (
-                mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=completed)),
-                mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
-            ):
-                await socket._deliver_human_response(
-                    mock.AsyncMock(),
-                    socket._Connection(),
-                    "team_1",
-                    future,
-                    progress,
-                    failure,
-                )
-            self.assertEqual(send_terminal.await_args.args[2]["type"], "done")
+            for result, field, expected in ((denied_response, "status", 503), (completed, "type", "done")):
+                send_terminal = mock.AsyncMock(return_value=True)
+                with (
+                    self.subTest(field=field),
+                    mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=result)),
+                    mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
+                ):
+                    await socket._deliver_human_response(
+                        mock.AsyncMock(), socket._Connection(), "team_1", future, progress, failure
+                    )
+                    self.assertEqual(send_terminal.await_args.args[2][field], expected)
 
             pending = socket._Connection(
                 pending_challenge_id="b" * 32,
