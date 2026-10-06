@@ -43,7 +43,6 @@ OUTCOMES = frozenset(
         "done",
         "healthy",
         "recovered",
-        "rehearsed",
         "held",
         "paused",
         "user-skipped",
@@ -151,19 +150,16 @@ def canonical_timezone(value: object) -> str | None:
 
 
 # Where a Routine's timezone came from (ADR-0101): the person's browser, a zone the person wrote, or none at all, when
-# the Routine needs no zone and stores "UTC" only by convention, which no consumer may read as the person's zone.
+# the Routine runs on "UTC" only by convention, which no consumer may read as the person's zone.
 TIMEZONE_SOURCES = ("browser", "person", "none")
 CONVENTIONAL_TIMEZONE = "UTC"
-CALENDAR_KINDS = frozenset({"daily", "weekly", "monthly"})
 
 
-def zoned(schedule: object, timezone: object, source: object) -> bool:
-    """Whether a timezone and its source fit a schedule: a calendar schedule needs a known zone, and none means UTC."""
-    if source not in TIMEZONE_SOURCES or canonical_timezone(timezone) is None or not isinstance(schedule, dict):
+def zoned(timezone: object, source: object) -> bool:
+    """Whether a timezone and its source fit together: a known source names a zone, and none means UTC."""
+    if source not in TIMEZONE_SOURCES or canonical_timezone(timezone) is None:
         return False
-    if source == "none":
-        return timezone == CONVENTIONAL_TIMEZONE and schedule.get("kind") not in CALENDAR_KINDS
-    return True
+    return source != "none" or timezone == CONVENTIONAL_TIMEZONE
 
 
 def daily_rate(schedule: dict[str, object]) -> Fraction:
@@ -655,11 +651,7 @@ def _disposed(value: object, steps: int) -> bool:
 
 
 def _scope(value: dict[str, object], steps: int) -> bool:
-    """A Routine's standing scope: only a decision has a model and an allowance, which its steps leave room for.
-
-    A Routine that may change anything waits for a rehearsal or has had one, so it can never be new and active
-    without one; that history is Team's, so only the closed forms are checked here.
-    """
+    """A Routine's standing scope: only a decision has a model and an allowance, which its steps leave room for."""
     decide = value["output"]["mode"] == "decide"
     return (
         value["state"] in ROUTINE_STATES
@@ -678,7 +670,7 @@ def _defined(detail: dict[str, object]) -> bool:
         and summary is not None
         and _disposed(detail["output"], summary["steps"])
         and canonical_schedule(detail["schedule"]) == detail["schedule"]
-        and zoned(detail["schedule"], detail["timezone"], detail["timezone_source"])
+        and zoned(detail["timezone"], detail["timezone_source"])
         and _scope(detail, summary["steps"])
     )
 
@@ -691,14 +683,6 @@ def _completed(detail: dict[str, object]) -> bool:
         summary is not None
         and (output is None or (canonical_output(output) is not None and output["step"] <= summary["steps"]))
         and _decision(detail["decision"])
-    )
-
-
-def _rehearsed(detail: dict[str, object]) -> bool:
-    """A rehearsal: as a completed run, with how many effects it did not run, could not test, or found unpermitted."""
-    return _completed(detail) and all(
-        _whole(detail[key], 0, MAX_ROUTINE_STEPS + MAX_DECISION_CALLS)
-        for key in ("rehearsed", "untested", "not_permitted")
     )
 
 
@@ -749,7 +733,6 @@ _DEFINED_FIELDS = {
 _DETAILS = {
     "done": (_COMPLETED_FIELDS, _completed),
     "recovered": (_COMPLETED_FIELDS, _completed),
-    "rehearsed": (_COMPLETED_FIELDS | {"rehearsed", "untested", "not_permitted"}, _rehearsed),
     "held": (_STEP_FIELDS, _held_step),
     "paused": (_STEP_FIELDS | {"reason"}, lambda detail: _held_step(detail) and detail["reason"] in PAUSE_REASONS),
     "user-skipped": (
@@ -787,8 +770,8 @@ MAX_NOTICE_BATCH = 1024
 # message, fits many times.
 MAX_NOTICE_BATCH_BYTES = 112 * 1024
 RUN_STATUSES = frozenset({"leased", "frozen", "held"})
-# A Routine's state (ADR-0101 section 5.5): it runs, a person paused it, or it waits for a rehearsal before it can run.
-ROUTINE_STATES = ("active", "paused", "rehearsal")
+# A Routine's state (ADR-0101 section 5.5): it runs, or a person paused it.
+ROUTINE_STATES = ("active", "paused")
 LEASE_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}\Z")
 _INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 
@@ -836,7 +819,7 @@ def canonical_routine_view(value: object) -> dict[str, object] | None:
         and _disposed(value["output"], summary["steps"])
         and value["schedule"] is not None
         and canonical_schedule(value["schedule"]) == value["schedule"]
-        and zoned(value["schedule"], value["timezone"], value["timezone_source"])
+        and zoned(value["timezone"], value["timezone_source"])
         and _assistant_ids(value["assistant_ids"], minimum=0)
         and _instant(value["next_run_at"])
         and type(value["needs_reconfirm"]) is bool
@@ -1188,11 +1171,10 @@ def canonical_diagnostics(value: object) -> dict[str, object] | None:
 
 # What one run did, call by call (ADR-0092 amendment, 2026-10-05, scale; ADR-0101 section 7): each replay step and
 # decision call's status, attempt, duration, and inputs as redacted previews (null when a source's secrecy is unknown).
-# A rehearsal records an effect it did not run as ``rehearsed`` and a step that needed its output as ``untested``; a
-# decision call outside the permitted set in a rehearsal is ``not-permitted``. A missing replay position is ``not_run``
+# A missing replay position is ``not_run``
 # only when the run's terminal record proves it, else ``unavailable``; a missing decision call is always
 # ``unavailable``. Pages bind the run's revision and one records snapshot, and carry the run's decision record.
-RUN_STEP_STATUSES = ("done", "recovered", "failed", "stopped", "waiting", "rehearsed", "untested", "not-permitted")
+RUN_STEP_STATUSES = ("done", "recovered", "failed", "stopped", "waiting")
 RUN_STEP_GAPS = ("not_run", "unavailable")
 RUN_INPUT_SOURCES = frozenset({"literal", "run_clock", "step_output", "decision"})
 SNAPSHOT_RE = re.compile(r"[0-9a-f]{32}\Z")
@@ -1215,10 +1197,8 @@ def _run_input(value: object) -> bool:
 
 
 def _status_phase(status: object, phase: str) -> bool:
-    """Which statuses each phase may record: untested and not_run are replay's, not-permitted a decision's."""
-    if phase == "replay":
-        return status != "not-permitted"
-    return status not in ("untested", "not_run")
+    """Which statuses each phase may record: not_run is replay's alone."""
+    return phase == "replay" or status != "not_run"
 
 
 def canonical_run_step(value: object, position: dict[str, object], steps: int) -> dict[str, object] | None:
@@ -1371,20 +1351,10 @@ def _card_output(value: object, total: int) -> bool:
     return canonical_disposition({**value, "step": shown}, total) is not None
 
 
-def _changes(value: dict[str, object]) -> bool:
-    """Whether a card's Routine may change anything, so it is rehearsed before it can run (ADR-0101 section 8)."""
-    return not all(item["read_only"] for item in [*value["steps"], *value["permitted"]])
-
-
-def _clocked(steps: list[object]) -> bool:
-    """Whether a card's plan reads the run date, which only a known timezone can give."""
-    return any(item["origin"] == "clock" for step in steps for item in step["inputs"])
-
-
 def canonical_proposal(value: object) -> dict[str, object] | None:
     """One recorded Routine's confirmation card, within its byte bound."""
     fields = {"proposal_id", "expires_at", "replaces", "name", "schedule", "timezone", "timezone_source", "next_runs"}
-    rest = {"daily_cap", "output", "steps", "permitted", "decision", "rehearsal"}
+    rest = {"daily_cap", "output", "steps", "permitted", "decision"}
     if not isinstance(value, dict) or set(value) != fields | rest:
         return None
     steps, runs = value["steps"], value["next_runs"]
@@ -1396,7 +1366,7 @@ def canonical_proposal(value: object) -> dict[str, object] | None:
         and _optional(value["replaces"], ROUTINE_ID_RE)
         and canonical_name(value["name"]) == value["name"]
         and canonical_schedule(value["schedule"]) == value["schedule"]
-        and zoned(value["schedule"], value["timezone"], value["timezone_source"])
+        and zoned(value["timezone"], value["timezone_source"])
         and isinstance(runs, list)
         and 1 <= len(runs) <= MAX_NEXT_RUNS
         and all(_instant(item) for item in runs)
@@ -1404,12 +1374,10 @@ def canonical_proposal(value: object) -> dict[str, object] | None:
         and type(value["daily_cap"]) is int
         and value["daily_cap"] == daily_cap(value["schedule"])
         and all(_card_step(item, index) for index, item in enumerate(steps, start=1))
-        and (value["timezone_source"] != "none" or not _clocked(steps))
         and _card_permitted(value["permitted"])
         and (value["decision"] is not None) == (value["output"]["mode"] == "decide")
         and _card_decision(value["decision"])
         and len(steps) + (0 if value["decision"] is None else value["decision"]["allowance"]) <= MAX_ROUTINE_STEPS
-        and value["rehearsal"] is _changes(value)
         and encoded_bytes(value) <= MAX_PROPOSAL_BYTES
     )
     return copy.deepcopy(value) if valid else None
@@ -1421,29 +1389,60 @@ def canonical_proposal(value: object) -> dict[str, object] | None:
 QUESTION_CODES = (
     "routine-schedule-unstated",
     "routine-interval-over-budget",
-    "routine-no-room",
     "routine-binding-ambiguous",
     "routine-binding-unsourced",
     "routine-work-split",
     "routine-work-rerun",
-    "routine-timezone-ambiguous",
-    "routine-timezone-unstated",
 )
 MAX_QUESTION_OPTIONS = 8
 MAX_QUESTION_OPTION_CHARS = 120
 
 
+# A target's exact JSON text: a string within MAX_QUESTION_OPTION_CHARS escapes at most its quotes and backslashes.
+MAX_QUESTION_VALUE_CHARS = 2 * MAX_QUESTION_OPTION_CHARS + 2
+
+
+def _target(text: object) -> bool:
+    """A target's exact JSON text: one string or integer, as compact JSON would write it, so no client rounds it."""
+    if not isinstance(text, str) or not 0 < len(text) <= MAX_QUESTION_VALUE_CHARS:
+        return False
+    try:
+        decoded = json.loads(text)
+    except ValueError:
+        return False
+    scalar = (
+        _plain(decoded, MAX_QUESTION_OPTION_CHARS)
+        if isinstance(decoded, str)
+        else type(decoded) is int and len(text) <= MAX_QUESTION_OPTION_CHARS
+    )
+    return scalar and json.dumps(decoded, ensure_ascii=False) == text
+
+
 def _question_option(value: object) -> bool:
-    """One target a person may choose: the value its input would take, and the item member that names it, if any."""
+    """One target a person may choose: the JSON text of the value its input would take, and its name, if any."""
     if not isinstance(value, dict) or set(value) != {"value", "label"}:
         return False
-    chosen, label = value["value"], value["label"]
-    scalar = (
-        _plain(chosen, MAX_QUESTION_OPTION_CHARS)
-        if isinstance(chosen, str)
-        else type(chosen) is int and len(str(chosen)) <= MAX_QUESTION_OPTION_CHARS
-    )
-    return scalar and (label is None or _plain(label, MAX_QUESTION_OPTION_CHARS))
+    label = value["label"]
+    return _target(value["value"]) and (label is None or _plain(label, MAX_QUESTION_OPTION_CHARS))
+
+
+# The reply of a send that answers Team's pending question, which Team then records without asking the Brain: one
+# fixed text in each interface language, and the English one for a chat without one (ADR-0101).
+ANSWER_REPLIES = {
+    "ar": "طبّقتُ إجابتك على الروتين.",
+    "de": "Ich habe Ihre Antwort auf die Routine angewendet.",
+    "en": "I applied your answer to the Routine.",
+    "es": "Apliqué tu respuesta a la rutina.",
+    "fr": "J'ai appliqué votre réponse à la routine.",
+    "ja": "回答をルーティンに反映しました。",
+    "pt": "Apliquei sua resposta à rotina.",
+    "zh": "已将你的回答应用到例行任务。",
+}
+
+
+def answer_reply(locale: str | None) -> str:
+    """The fixed reply of an answer Team records itself, in the chat's interface language or English."""
+    return ANSWER_REPLIES[locale or "en"]
 
 
 def canonical_question(value: object) -> dict[str, object] | None:
@@ -1456,7 +1455,7 @@ def canonical_question(value: object) -> dict[str, object] | None:
         and (code == "routine-binding-ambiguous" or not options)
         and len(options) <= MAX_QUESTION_OPTIONS
         and all(_question_option(item) for item in options)
-        and len({json.dumps(item["value"]) for item in options}) == len(options)
+        and len({item["value"] for item in options}) == len(options)
         and (
             _whole(interval, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
             if code == "routine-interval-over-budget"

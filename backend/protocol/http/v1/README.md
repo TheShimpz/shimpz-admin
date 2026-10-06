@@ -96,8 +96,9 @@ the recommended default marked with " âœ“" and a non-empty description after " â
 it requests and authorizes nothing, and the user answers with a new chat message.
 Admin composes that message from the original request, a blank line, then the question and the answer on their own
 lines, each after its interface-language label (`payload.CLARIFICATION_LABELS`, `payload.compose_clarified`); a request
-may be clarified more than once. `payload.person_lines` reads the person's own words back out of such a message: every
-question line is dropped and each answer loses its label (ADR-0101).
+may be clarified more than once. `payload.authored_segments` reads the person's own words back out of such a message as
+segments in order: the original text, then each answer without its label, never a question; a later segment is the
+person's later word (ADR-0101).
 
 A Local chat terminal that recorded a Routine (ADR-0101) carries at most one of `routine_proposal`,
 `routine_question`, and `routine_refusal` beside the agent's own `reply`, which keeps the work the turn already did.
@@ -106,19 +107,20 @@ interface language (for example `routine-mutation-unavailable` or `routine-secre
 `routine_question` (`routine.canonical_question`) is `{code, options, value}`: Team asks the person before any card,
 the recording is kept, and the person's answer is an ordinary chat message. Its code is one of
 `routine.QUESTION_CODES`: how often it runs (`routine-schedule-unstated`), a stated interval the Team's daily budget
-cannot hold (`routine-interval-over-budget`, whose `value` is the shortest interval in seconds that fits) or no room at
-all (`routine-no-room`), which item an input means (`routine-binding-ambiguous`, whose `options` are at most 8
-targets `{value, label}`: the string or integer the input would take and the item member that names it, or `null`), a
-value that no earlier result provides (`routine-binding-unsourced`), work split across messages
-(`routine-work-split`), work to run again for a chosen target (`routine-work-rerun`), and which timezone
-(`routine-timezone-ambiguous`, `routine-timezone-unstated`). Only `routine-binding-ambiguous` has options, and only
-`routine-interval-over-budget` has a value. `routine_proposal` is
+cannot hold (`routine-interval-over-budget`, whose `value` is the shortest interval in seconds that fits; with room
+for no run at all the recording is refused as `routine-step-budget`), which item an input means (`routine-binding-ambiguous`, whose `options` are at most 8
+targets `{value, label}`: `value` is the exact compact JSON text of the string or integer the input would take, so
+no client rounds a large integer, and `label` the item's name, or `null`), a value that no earlier result provides (`routine-binding-unsourced`), work split across messages
+(`routine-work-split`), and work to run again for a chosen target (`routine-work-rerun`). Only `routine-binding-ambiguous` has options, and only
+`routine-interval-over-budget` has a value. When the person's next send is Admin's composed answer to that question
+and its latest answer binds it (it states a schedule or an interval, or is exactly one target's JSON text), Team
+records again with the request's stored intent without asking the Brain, and the reply is the fixed
+`routine.answer_reply` text in the interface language (English without one). `routine_proposal` is
 the Routine's confirmation card (`routine.canonical_proposal`), at most 160 KiB, which Team checks against the whole
 terminal line bound before publishing: `{proposal_id, expires_at, replaces, name, schedule, timezone, timezone_source,
-next_runs, daily_cap, output, steps, permitted, decision, rehearsal}`. `replaces` is `null` for a new Routine or the id
+next_runs, daily_cap, output, steps, permitted, decision}`. `replaces` is `null` for a new Routine or the id
 of the Routine it changes; `timezone_source` is `browser`, `person` (a zone the person wrote), or `none` (`routine.zoned`:
-only a schedule that is not daily, weekly, or monthly and a plan that never reads the run date may have none, and its
-timezone is then `UTC` by convention, never a claim about the person); `next_runs` holds one to three instants;
+the Routine then runs on `UTC` by convention, its run date included, which is never a claim about the person); `next_runs` holds one to three instants;
 `daily_cap` is exactly `routine.daily_cap` of the schedule; `output` is `{mode, when}`, and a shown mode shows the last
 step. Each step is `{position,
 assistant, action, read_only, inputs}`, and each input `{member, origin, value, step, pointer, where, item}` names
@@ -129,8 +131,7 @@ the same on every run), each with the literal's complete JSON text escaped (neve
 item's own pointer. `permitted` lists every Action the Routine may call, each once in identity order with whether its
 reviewed effect is read-only; `decision` is `null` unless the mode is `decide`, then `{request, notes, model,
 allowance}`, the frozen base prompt's two parts, the model `{provider, model, effort}`, and 1 to 64 decision calls, and
-`len(steps) + allowance` is at most 256. `rehearsal` is true exactly when a step or permitted Action may change
-something. A Supervisor answers the card once: `POST /v1/teams/:team_id/routines/proposals/:proposal_id` with `{}`
+`len(steps) + allowance` is at most 256. A Supervisor answers the card once: `POST /v1/teams/:team_id/routines/proposals/:proposal_id` with `{}`
 (Criar rotina) creates or changes the Routine, and `DELETE` on the same path (Cancelar) revokes the card; both answer
 `routine.canonical_proposal_answer`, `{team_id, proposal_id, routine_id, status}` with status `created`, `changed`, or
 `revoked` (whose `routine_id` is `null`). A revoked or already-consumed card is answered as such, never twice applied.
@@ -185,8 +186,7 @@ confirms its card (ADR-0101). Its notice then has the Routine outcome `created` 
 disposition (`routine.canonical_disposition`: `{mode, step, when}`, where `mode` is `show`, `changes`, `none`, or
 `decide`; `step` is the 1-based position of the shown step for `show` and `changes`, and `when` is `always` or
 `changes` for `decide` only), its schedule, zone, and the zone's source (`routine.zoned`, as on the card), and its
-standing scope: its `state` (`active`, `paused`, or
-`rehearsal`, waiting for a rehearsal before it can run), its permitted Actions as `{total, changes}`
+standing scope: its `state` (`active` or `paused`), its permitted Actions as `{total, changes}`
 (`routine.canonical_permitted`, at most `routine.MAX_PERMITTED`), and, only for `decide`, the frozen model and a decision
 allowance of 1 to 64 calls, with the plan's steps and the allowance together at most 256. A plan holds 0 to 256 steps,
 none only when it decides; on the wire a step is always named by its position, never by its internal id. The summary
@@ -232,10 +232,7 @@ at most `routine.MAX_OUTPUT_BYTES` (16 KiB); `cut`, `omitted`, `elided`, and `tr
 characters, or `null` when the decision chose not to notify and only ends a run that already had a notice), `unchanged`,
 `ceiling`, or `unavailable` with its `code` (`routine-protection-lost` when the run's protection was lost). A `changes`
 Routine publishes a completed run only when its result differs from the last one shown, and `none` publishes no
-completion of its own; a run that already has a notice always gets its terminal version. `rehearsed` ends a rehearsal
-run (ADR-0101 section 8) with the same `{plan, output, decision}` and how many effects it did not run (`rehearsed`), how
-many steps it could not test because they needed one (`untested`), and how many decision calls were outside the
-permitted set (`not_permitted`).
+completion of its own; a run that already has a notice always gets its terminal version.
 
 Every call is placed by a position (`routine.canonical_position`): `{"phase": "replay", "step": n}`, a replay step's
 1-based position among the plan's `steps`, or `{"phase": "decision", "call": n}`, a decision call's 1-based order (at
@@ -263,9 +260,7 @@ retained records (`latest` asks for the current one; a page naming a snapshot wh
 rationale, notify, usage}`, at most eight quoted rules of 200 characters and a 500-character rationale). Each entry
 (`routine.canonical_run_step`) has its `position` and is `done`, `recovered` (a verified occurrence, with no duration of
 its own), `failed` (its attempt failed; the run's notice says whether it was held), `stopped` (Stop or the run's
-deadline cut the attempt, which says nothing about whether it acted), `waiting` (frozen for a person), `rehearsed` (an
-effect a rehearsal did not run), `untested` (a replay step that needed one), or `not-permitted` (a rehearsal's decision
-call outside the permitted set), with its Assistant Action, attempt, `duration_ms`, instant, and the inputs that attempt
+deadline cut the attempt, which says nothing about whether it acted), or `waiting` (frozen for a person), with its Assistant Action, attempt, `duration_ms`, instant, and the inputs that attempt
 was given, each a redacted preview (`null` when its source's secrecy cannot be established; a decision call's are
 `decision`). A replay position with no record is `not_run` only when the run's terminal record proves it never started
 (`ended`), and `unavailable` otherwise; a decision call with no record is always `unavailable`. The page is
