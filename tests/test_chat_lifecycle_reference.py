@@ -148,34 +148,11 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
+        valid_classification = {**base, "intent": "ordinary-task", "assistant_ids": []}
         classification_invalid = (
-            {
-                "task_follows": False,
-                "team_id": "team_1",
-                "intent": "ordinary-task",
-                "query": "unexpected",
-                "assistant_ids": [],
-                "reply": "",
-                "trace_id": TRACE_ID,
-            },
-            {
-                "task_follows": False,
-                "team_id": "team_1",
-                "intent": "unresolved",
-                "query": "unexpected",
-                "assistant_ids": [],
-                "reply": "",
-                "trace_id": TRACE_ID,
-            },
-            {
-                "task_follows": False,
-                "team_id": "team_1",
-                "intent": "ordinary-task",
-                "query": "",
-                "assistant_ids": [],
-                "reply": "Unexpected guidance",
-                "trace_id": TRACE_ID,
-            },
+            {**valid_classification, "query": "unexpected"},
+            {**valid_classification, "intent": "unresolved", "query": "unexpected"},
+            {**valid_classification, "reply": "Unexpected guidance"},
         )
         for body in classification_invalid:
             with (
@@ -188,15 +165,6 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
-        valid_classification = {
-            "task_follows": False,
-            "team_id": "team_1",
-            "intent": "ordinary-task",
-            "query": "",
-            "assistant_ids": [],
-            "reply": "",
-            "trace_id": TRACE_ID,
-        }
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(
@@ -213,15 +181,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                 ),
             )
 
-        invalid_unresolved = {
-            "task_follows": False,
-            "team_id": "team_1",
-            "intent": "unresolved",
-            "query": "unexpected",
-            "assistant_ids": [],
-            "reply": "",
-            "trace_id": TRACE_ID,
-        }
+        invalid_unresolved = {**valid_classification, "intent": "unresolved", "query": "unexpected"}
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, invalid_unresolved)),
