@@ -7,6 +7,7 @@ import { localizedChallenge } from './localizedRequest.js';
 import {
   recordDeletion,
   recordingReply,
+  ROUTINE_QUESTIONS,
   routineLifecycleStart,
   routineProposalRoutes,
   routineRecoveryRoutes,
@@ -149,6 +150,32 @@ const STARTS = {
     routines: [],
     runs: [],
     recording: 'refusal',
+  }),
+  // Any message is a recording turn whose reply asks Team's question first (ADR-0101): when the Routine should run,
+  // which of two zones named shimpz.com it uses, or that no interval fits the Team's budget. The answer gets the card.
+  'routine-question': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    recording: 'card',
+    question: ROUTINE_QUESTIONS.schedule,
+  }),
+  'routine-ambiguous': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    recording: 'card',
+    question: ROUTINE_QUESTIONS.ambiguous,
+  }),
+  'routine-no-room': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    recording: 'card',
+    question: ROUTINE_QUESTIONS.noRoom,
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({

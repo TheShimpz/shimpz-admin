@@ -74,6 +74,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "I listed your zones and the DNS records of shimpz.com. The Routine below repeats exactly that.",
     refusalRequest: "Every day, log in with my password hunter2 and export the DNS records",
     refusalReply: "I exported the DNS records once.",
+    questionReply: "I listed your zones and the DNS records of shimpz.com.",
   },
   pt: {
     names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS", "Relatório antigo de DNS"],
@@ -82,6 +83,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "Listei suas zonas e os registros DNS de shimpz.com. A rotina abaixo repete exatamente isso.",
     refusalRequest: "Todo dia, entre com a minha senha hunter2 e exporte os registros DNS",
     refusalReply: "Exportei os registros DNS uma vez.",
+    questionReply: "Listei suas zonas e os registros DNS de shimpz.com.",
   },
   es: {
     names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS", "Informe antiguo de DNS"],
@@ -90,6 +92,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "Listé tus zonas y los registros DNS de shimpz.com. La rutina de abajo repite exactamente eso.",
     refusalRequest: "Todos los días, entra con mi contraseña hunter2 y exporta los registros DNS",
     refusalReply: "Exporté los registros DNS una vez.",
+    questionReply: "Listé tus zonas y los registros DNS de shimpz.com.",
   },
   zh: {
     names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理", "旧 DNS 报告"],
@@ -98,6 +101,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "我列出了你的区域和 shimpz.com 的 DNS 记录。下面的例行任务会完全重复这些操作。",
     refusalRequest: "每天用我的密码 hunter2 登录并导出 DNS 记录",
     refusalReply: "我已导出一次 DNS 记录。",
+    questionReply: "我列出了你的区域和 shimpz.com 的 DNS 记录。",
   },
   fr: {
     names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel", "Ancien rapport DNS"],
@@ -106,6 +110,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "J’ai listé vos zones et les enregistrements DNS de shimpz.com. La routine ci-dessous refait exactement cela.",
     refusalRequest: "Chaque jour, connecte-toi avec mon mot de passe hunter2 et exporte les enregistrements DNS",
     refusalReply: "J’ai exporté les enregistrements DNS une fois.",
+    questionReply: "J’ai listé vos zones et les enregistrements DNS de shimpz.com.",
   },
   de: {
     names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung", "Alter DNS-Bericht"],
@@ -114,6 +119,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "Ich habe deine Zonen und die DNS-Einträge von shimpz.com aufgelistet. Die Routine unten wiederholt genau das.",
     refusalRequest: "Melde dich jeden Tag mit meinem Passwort hunter2 an und exportiere die DNS-Einträge",
     refusalReply: "Ich habe die DNS-Einträge einmal exportiert.",
+    questionReply: "Ich habe deine Zonen und die DNS-Einträge von shimpz.com aufgelistet.",
   },
   ja: {
     names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理", "旧 DNS レポート"],
@@ -122,6 +128,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "ゾーンと shimpz.com の DNS レコードを一覧にしました。下のルーティンはそれをそのまま繰り返します。",
     refusalRequest: "毎日、私のパスワード hunter2 でログインして DNS レコードをエクスポートして",
     refusalReply: "DNS レコードを一度エクスポートしました。",
+    questionReply: "ゾーンと shimpz.com の DNS レコードを一覧にしました。",
   },
   ar: {
     names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري", "تقرير DNS القديم"],
@@ -130,6 +137,7 @@ export const ROUTINE_TEXT = Object.freeze({
     cardReply: "عرضتُ مناطقك وسجلات DNS لـ shimpz.com. الروتين أدناه يكرر ذلك تمامًا.",
     refusalRequest: "كل يوم، سجّل الدخول بكلمة مروري hunter2 وصدّر سجلات DNS",
     refusalReply: "صدّرتُ سجلات DNS مرة واحدة.",
+    questionReply: "عرضتُ مناطقك وسجلات DNS لـ shimpz.com.",
   },
 });
 
@@ -538,6 +546,21 @@ const CARD_STEPS = Object.freeze([
 const CARD_LIFETIME_MS = 15 * 60 * 1000;
 
 /** The confirmation card of the owner's recorded watch, as a recording turn's reply carries it. */
+// The questions Team may ask before a card (ADR-0101): the schedule nobody stated, two zones of one name to choose
+// between, and a Team whose daily Action budget has no room at any interval.
+export const ROUTINE_QUESTIONS = Object.freeze({
+  schedule: { code: 'routine-schedule-unstated', options: [], value: null },
+  ambiguous: {
+    code: 'routine-binding-ambiguous',
+    options: [
+      { value: '023e105f4ecef8ad9ca31a8372d0c353', label: 'shimpz.com' },
+      { value: '9a7806061c88ada191ed06f989cc3dac', label: 'shimpz.com' },
+    ],
+    value: null,
+  },
+  noRoom: { code: 'routine-no-room', options: [], value: null },
+});
+
 export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
   return {
     proposal_id: proposalId,
@@ -573,7 +596,9 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
 function recordTurn(state, message, reply) {
   const turn = `${'e'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`;
   const at = instant(Date.now());
-  const { reply: text, team_name: author, usage, routine_proposal: proposal, routine_refusal: refusal } = reply;
+  const {
+    reply: text, team_name: author, usage, routine_proposal: proposal, routine_refusal: refusal, routine_question: asked,
+  } = reply;
   state.history = [
     ...state.history,
     { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: message },
@@ -587,13 +612,15 @@ function recordTurn(state, message, reply) {
       usage: structuredClone(usage),
       ...(proposal ? { routine_proposal: structuredClone(proposal) } : {}),
       ...(refusal ? { routine_refusal: structuredClone(refusal) } : {}),
+      ...(asked ? { routine_question: structuredClone(asked) } : {}),
     },
   ];
 }
 
 /**
  * A recording turn (ADR-0101): it did the work once, then its reply carries the card of the Routine that repeats it,
- * or, in the refusal scenario, why no Routine was created (its request would hold a password). Returns Team's frame.
+ * or, in the refusal scenario, why no Routine was created (its request would hold a password). In a question scenario
+ * the first reply asks Team's question instead, and the answer's reply carries the card. Returns Team's frame.
  */
 export function recordingReply(state, message, teamName) {
   const text = textFor(state.locale);
@@ -602,6 +629,10 @@ export function recordingReply(state, message, teamName) {
   let reply;
   if (state.recording === 'refusal') {
     reply = { ...base, reply: text.refusalReply, routine_refusal: { code: 'routine-secret-literal' } };
+  } else if (state.question && !state.asked) {
+    // Team asks first, keeping the recording: the person's answer is the next send, whose reply carries the card.
+    state.asked = true;
+    reply = { ...base, reply: text.questionReply, routine_question: structuredClone(state.question) };
   } else {
     const proposalId = `c${state.sequence.toString(16)}`.padStart(32, '0');
     const proposal = cloudflareCard(proposalId, state.locale);
