@@ -350,6 +350,68 @@ def _request_headers(
     return headers
 
 
+@dataclass(frozen=True, slots=True)
+class _Reading[Result: (TeamResponse, TeamAssetResponse)]:
+    """How one kind of Team answer is accepted, decoded, named in logs, and answered when Team is unavailable."""
+
+    accept: str
+    decode: Callable[[http.client.HTTPResponse], Result]
+    unavailable: Callable[[], Result]
+    subject: str
+    decode_errors: tuple[type[Exception], ...] = ()
+
+
+def _team_unavailable() -> TeamResponse:
+    return TeamResponse(502, {"detail": "team unavailable"})
+
+
+def _exchange[Result: (TeamResponse, TeamAssetResponse)](
+    method: str,
+    path: str,
+    entity: _Entity,
+    *,
+    timeout: int,
+    bindings: _RequestBindings,
+    reading: _Reading[Result],
+) -> Result:
+    """One authenticated Team exchange whose every connection, dispatch, or decode failure answers unavailable."""
+    try:
+        host, port = _endpoint()
+        headers = _request_headers(
+            method,
+            path,
+            entity.body,
+            accept=reading.accept,
+            content_type=entity.content_type,
+            filename=entity.filename,
+            bindings=bindings,
+        )
+        connection = http.client.HTTPConnection(host, port, timeout=timeout)
+    except OSError, UnicodeError, http.client.HTTPException:
+        log.warning("%s failed (%s)", reading.subject, method)
+        return reading.unavailable()
+    try:
+        # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
+        # socket would require serialization and could retain an authenticated connection across
+        # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
+        connection.request(method, path, body=entity.body, headers=headers)
+        response = connection.getresponse()
+        if not 200 <= response.status <= 599:
+            raise OSError("invalid team status")
+        result = reading.decode(response)
+    except (OSError, UnicodeError, http.client.HTTPException, *reading.decode_errors):
+        # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
+        log.warning("%s failed (%s)", reading.subject, method)
+        return reading.unavailable()
+    finally:
+        try:
+            connection.close()
+        except OSError:
+            log.warning("team connection close failed (%s)", method)
+    log.info("%s %s %s -> HTTP %s", reading.subject, method, path, result.status)
+    return result
+
+
 def _request(
     method: str,
     path: str,
@@ -359,42 +421,19 @@ def _request(
     bindings: _RequestBindings = _NO_BINDINGS,
     max_response_bytes: int = MAX_JSON_RESPONSE_BYTES,
 ) -> TeamResponse:
-    try:
-        host, port = _endpoint()
-        headers = _request_headers(
-            method,
-            path,
-            entity.body,
-            accept="application/json",
-            content_type=entity.content_type,
-            filename=entity.filename,
-            bindings=bindings,
-        )
-        connection = http.client.HTTPConnection(host, port, timeout=timeout)
-    except OSError, UnicodeError, http.client.HTTPException:
-        log.warning("team request failed (%s)", method)
-        return TeamResponse(502, {"detail": "team unavailable"})
-    try:
-        # Deliberately request-scoped: Admin calls can run concurrently, while a shared HTTP/1.1
-        # socket would require serialization and could retain an authenticated connection across
-        # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
-        connection.request(method, path, body=entity.body, headers=headers)
-        response = connection.getresponse()
-        if not 200 <= response.status <= 599:
-            raise OSError("invalid team status")
-        result = TeamResponse(response.status, _decode_response(response, max_response_bytes))
-    except OSError, UnicodeError, http.client.HTTPException:
-        # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
-        log.warning("team request failed (%s)", method)
-        return TeamResponse(502, {"detail": "team unavailable"})
-    finally:
-        try:
-            connection.close()
-        except OSError:
-            log.warning("team connection close failed (%s)", method)
-
-    log.info("team %s %s -> HTTP %s", method, path, result.status)
-    return result
+    return _exchange(
+        method,
+        path,
+        entity,
+        timeout=timeout,
+        bindings=bindings,
+        reading=_Reading(
+            "application/json",
+            lambda response: TeamResponse(response.status, _decode_response(response, max_response_bytes)),
+            _team_unavailable,
+            "team request",
+        ),
+    )
 
 
 def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
@@ -416,36 +455,23 @@ def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
     return TeamAssetResponse(HTTPStatus.OK, contents, {})
 
 
+_ASSET_READING = _Reading(
+    "image/png",
+    _decode_asset,
+    lambda: TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"}),
+    "Team asset request",
+)
+
+
 def _request_asset(method: str, path: str) -> TeamAssetResponse:
-    try:
-        host, port = _endpoint()
-        headers = _request_headers(
-            method,
-            path,
-            None,
-            accept="image/png",
-            content_type=None,
-            filename=None,
-            bindings=_RequestBindings(),
-        )
-        connection = http.client.HTTPConnection(host, port, timeout=CONTROL_TIMEOUT_SECONDS)
-    except OSError, UnicodeError, http.client.HTTPException:
-        log.warning("Team asset request failed (%s)", method)
-        return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
-    try:
-        connection.request(method, path, headers=headers)
-        response = connection.getresponse()
-        if not 200 <= response.status <= 599:
-            raise OSError("invalid Team status")
-        result = _decode_asset(response)
-    except OSError, UnicodeError, http.client.HTTPException:
-        log.warning("Team asset request failed (%s)", method)
-        return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
-    finally:
-        with contextlib.suppress(OSError):
-            connection.close()
-    log.info("Team asset %s %s -> HTTP %s", method, path, result.status)
-    return result
+    return _exchange(
+        method,
+        path,
+        _Entity(None, None),
+        timeout=CONTROL_TIMEOUT_SECONDS,
+        bindings=_NO_BINDINGS,
+        reading=_ASSET_READING,
+    )
 
 
 def _decode_stream(
@@ -493,37 +519,20 @@ def _stream_request(
     bindings: _RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
-    try:
-        host, port = _endpoint()
-        headers = _request_headers(
-            method,
-            path,
-            body,
-            accept="application/x-ndjson",
-            content_type="application/json",
-            filename=None,
-            bindings=bindings,
-        )
-        connection = http.client.HTTPConnection(host, port, timeout=timeout)
-    except OSError, UnicodeError, http.client.HTTPException:
-        log.warning("team chat stream failed (%s)", method)
-        return TeamResponse(502, {"detail": "team unavailable"})
-    try:
-        connection.request(method, path, body=body, headers=headers)
-        result = _decode_stream(connection.getresponse(), progress)
-    except (
-        OSError,
-        UnicodeError,
-        http.client.HTTPException,
-        progress_contract.ProgressContractError,
-    ):
-        log.warning("team chat stream failed (%s)", method)
-        return TeamResponse(502, {"detail": "team unavailable"})
-    finally:
-        with contextlib.suppress(OSError):
-            connection.close()
-    log.info("team %s %s -> HTTP %s", method, path, result.status)
-    return result
+    return _exchange(
+        method,
+        path,
+        _Entity(body, "application/json"),
+        timeout=timeout,
+        bindings=bindings,
+        reading=_Reading(
+            "application/x-ndjson",
+            lambda response: _decode_stream(response, progress),
+            _team_unavailable,
+            "team chat stream",
+            (progress_contract.ProgressContractError,),
+        ),
+    )
 
 
 def _call(

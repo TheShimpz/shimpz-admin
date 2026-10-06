@@ -286,6 +286,41 @@ class TeamTransportEdgeTests(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "continued after terminal"):
             transport._decode_stream(response, mock.Mock())
 
+    def test_every_answer_kind_keeps_its_answer_and_reports_a_failed_close(self) -> None:
+        terminal = progress_contract.encode_record({"type": "terminal", "status": 200, "body": {"ok": True}})
+        answers = (
+            (
+                _Response(headers={"Content-Type": "image/png", "Content-Length": "1"}, body=b"x"),
+                lambda: transport._request_asset("GET", "/icon"),
+                transport.TeamAssetResponse(HTTPStatus.OK, b"x", {}),
+            ),
+            (
+                _Response(
+                    headers={"Content-Type": "application/x-ndjson", "Transfer-Encoding": "chunked"},
+                    body=b"",
+                    lines=[terminal],
+                ),
+                lambda: transport._stream_request(
+                    "POST", "/chat", b"{}", timeout=1, bindings=transport._RequestBindings(), progress=mock.Mock()
+                ),
+                transport.TeamResponse(200, {"ok": True}),
+            ),
+        )
+        _Connection.close_error = True
+        self.addCleanup(setattr, _Connection, "close_error", False)
+        self.addCleanup(setattr, _Connection, "response", _Response())
+        for response, call, expected in answers:
+            _Connection.response = response
+            with (
+                self.subTest(expected=expected),
+                mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
+                mock.patch.object(transport, "_team_token", return_value="token"),
+                mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
+                self.assertLogs("shimpz-admin", "WARNING") as logs,
+            ):
+                self.assertEqual(call(), expected)
+            self.assertIn("team connection close failed", "\n".join(logs.output))
+
     def test_wrapper_rejects_absent_stream_and_invalid_raw_body(self) -> None:
         with self.assertRaisesRegex(transport.TeamRequestError, "body is required"):
             transport._call_stream(
