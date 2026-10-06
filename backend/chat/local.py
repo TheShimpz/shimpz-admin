@@ -30,7 +30,6 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
 MAX_REPLY_CHARS = 60_000
-MAX_TEAM_NAME_CHARS = 80
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
@@ -693,7 +692,7 @@ def _project_turn(
         set(response.body) - _OPTIONAL_DONE_FIELDS != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
         or not _valid_trace_id(response.body.get("trace_id"))
-        or not _valid_team_name(team_name)
+        or team_contract.canonical_team_name(team_name) is None
         or not isinstance(reply, str)
         or not reply.strip()
         or len(reply) > MAX_REPLY_CHARS
@@ -853,15 +852,6 @@ def open_human(team_id: object, locale: str) -> team.TeamResponse:
         lambda canonical_id: team.open_chat_human(canonical_id, locale),
         lambda response, canonical_id: _project_pending_challenge(response, canonical_id, locale),
         "human-challenge-response-invalid",
-    )
-
-
-def _valid_team_name(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and value == value.strip()
-        and 0 < len(value) <= MAX_TEAM_NAME_CHARS
-        and all(ord(character) >= 32 and ord(character) != 127 for character in value)
     )
 
 

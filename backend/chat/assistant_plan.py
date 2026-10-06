@@ -13,9 +13,10 @@ from chat.executor import submit_in_context
 from team import bridge as team
 
 from chat import assistant_install, assistant_inventory, assistant_proposal, local, local_catalog, store_catalog
+from protocol.http.v1 import payload as team_contract
 
 MAX_PLAN_ASSISTANTS = 4
-MAX_CHAT_ASSISTANTS = 16
+MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
 
 
 @dataclass(frozen=True, slots=True)

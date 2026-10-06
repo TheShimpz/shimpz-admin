@@ -15,9 +15,6 @@ _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_CHAT_MESSAGE_CHARS = team_contract.MAX_CHAT_MESSAGE_CHARS
 MAX_CHAT_FILES = team_contract.MAX_CHAT_FILES
 MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
-MAX_HUMAN_TEXT_CHARS = 16_000
-MAX_HUMAN_CHOICES = 32
-MAX_HUMAN_CHOICE_CHARS = 128
 # The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090), and `timezone`
 # the browser's IANA zone, the default zone of a Routine the message creates (ADR-0092), or null.
 CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale", "timezone"})
@@ -129,7 +126,7 @@ def canonical_human_resume(payload: object) -> dict[str, object]:
     }
     if decision == "submit":
         value = payload["value"]
-        if not _human_value(value):
+        if not chat_ws_common._human_value(value):
             raise TeamRequestError("human continuation value is invalid")
         result["value"] = value
     return result
@@ -146,16 +143,3 @@ def canonical_human_assurance(value: object) -> dict[str, str]:
         "kind": kind,
         "challenge_id": canonical_challenge_id(value["challenge_id"]),
     }
-
-
-def _human_value(value: object) -> bool:
-    if value is True:
-        return True
-    if isinstance(value, str):
-        return len(value) <= MAX_HUMAN_TEXT_CHARS
-    return (
-        isinstance(value, list)
-        and len(value) <= MAX_HUMAN_CHOICES
-        and len(value) == len(set(value))
-        and all(isinstance(item, str) and len(item) <= MAX_HUMAN_CHOICE_CHARS for item in value)
-    )
