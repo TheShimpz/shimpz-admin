@@ -169,13 +169,13 @@ const STARTS = {
     recording: 'card',
     question: ROUTINE_QUESTIONS.ambiguous,
   }),
-  'routine-no-room': () => ({
+  'routine-exact-target': () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
     routines: [],
     runs: [],
     recording: 'card',
-    question: ROUTINE_QUESTIONS.noRoom,
+    question: ROUTINE_QUESTIONS.exact,
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({

@@ -547,18 +547,25 @@ const CARD_LIFETIME_MS = 15 * 60 * 1000;
 
 /** The confirmation card of the owner's recorded watch, as a recording turn's reply carries it. */
 // The questions Team may ask before a card (ADR-0101): the schedule nobody stated, two zones of one name to choose
-// between, and a Team whose daily Action budget has no room at any interval.
+// between, and two targets of the same digits, one a string and one an integer. Each target is its exact JSON text.
 export const ROUTINE_QUESTIONS = Object.freeze({
   schedule: { code: 'routine-schedule-unstated', options: [], value: null },
   ambiguous: {
     code: 'routine-binding-ambiguous',
     options: [
-      { value: '023e105f4ecef8ad9ca31a8372d0c353', label: 'shimpz.com' },
-      { value: '9a7806061c88ada191ed06f989cc3dac', label: 'shimpz.com' },
+      { value: '"023e105f4ecef8ad9ca31a8372d0c353"', label: 'shimpz.com' },
+      { value: '"9a7806061c88ada191ed06f989cc3dac"', label: 'shimpz.com' },
     ],
     value: null,
   },
-  noRoom: { code: 'routine-no-room', options: [], value: null },
+  exact: {
+    code: 'routine-binding-ambiguous',
+    options: [
+      { value: '"12345678901234567890"', label: null },
+      { value: '12345678901234567890', label: null },
+    ],
+    value: null,
+  },
 });
 
 export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
@@ -588,7 +595,6 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
       { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
     ],
     decision: null,
-    rehearsal: false,
   };
 }
 
@@ -617,6 +623,15 @@ function recordTurn(state, message, reply) {
   ];
 }
 
+// Whether a send answers the pending question: a target question needs one option's exact JSON text, which is kept.
+function answers(state, message) {
+  if (state.question.code !== 'routine-binding-ambiguous') return true;
+  const last = message.split('\n').at(-1);
+  const chosen = state.question.options.find((option) => last.endsWith(`: ${option.value}`));
+  if (chosen) state.chosen = chosen.value;
+  return chosen !== undefined;
+}
+
 /**
  * A recording turn (ADR-0101): it did the work once, then its reply carries the card of the Routine that repeats it,
  * or, in the refusal scenario, why no Routine was created (its request would hold a password). In a question scenario
@@ -629,8 +644,10 @@ export function recordingReply(state, message, teamName) {
   let reply;
   if (state.recording === 'refusal') {
     reply = { ...base, reply: text.refusalReply, routine_refusal: { code: 'routine-secret-literal' } };
-  } else if (state.question && !state.asked) {
-    // Team asks first, keeping the recording: the person's answer is the next send, whose reply carries the card.
+  } else if (state.question && (!state.asked || !answers(state, message))) {
+    // Team asks first, keeping the recording: the person's answer is the next send, whose reply carries the card. A
+    // target is chosen only by its exact JSON text as the answer's last line, as Team matches it; anything else asks
+    // again.
     state.asked = true;
     reply = { ...base, reply: text.questionReply, routine_question: structuredClone(state.question) };
   } else {

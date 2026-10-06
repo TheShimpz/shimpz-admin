@@ -36,6 +36,7 @@ import {
   parseRoutineProposal,
   parseRoutineRefusal,
   parseRoutineQuestion,
+  questionTarget,
   questionWords,
   QUESTION_CODES,
   isZoned,
@@ -152,7 +153,6 @@ const PROPOSAL = Object.freeze({
     { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
   ],
   decision: null,
-  rehearsal: false,
 });
 
 test("a recording turn's reply and its stored history carry at most one Routine card or refusal, never beside a question", async () => {
@@ -207,12 +207,16 @@ test("a recording turn's reply and its stored history carry at most one Routine 
 });
 
 test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
-  const target = (value, label = 'shimpz.com') => ({ value, label });
+  // Each option carries its target's exact JSON text: a string with its quotes, an integer with every digit.
+  const target = (text, label = 'shimpz.com') => ({ value: text, label });
+  const quoted = (value) => JSON.stringify(value);
+  const huge = '12345678901234567890';
   const valid = [
     { code: 'routine-schedule-unstated', options: [], value: null },
     { code: 'routine-interval-over-budget', options: [], value: 9 },
-    { code: 'routine-binding-ambiguous', options: [target('a'.repeat(32)), target('b'.repeat(32))], value: null },
-    { code: 'routine-binding-ambiguous', options: [target(42, null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(quoted('a'.repeat(32))), target(quoted('b'.repeat(32)))], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('42', null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(quoted(huge), null), target(huge, null)], value: null },
     ...QUESTION_CODES.filter((code) => !['routine-interval-over-budget'].includes(code))
       .map((code) => ({ code, options: [], value: null })),
   ];
@@ -220,17 +224,27 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   for (const invalid of [
     null,
     { code: 'routine-other', options: [], value: null },
-    { code: 'routine-schedule-unstated', options: [target('a')], value: null },
+    { code: 'routine-no-room', options: [], value: null },
+    { code: 'routine-timezone-unstated', options: [], value: null },
+    { code: 'routine-timezone-ambiguous', options: [], value: null },
+    { code: 'routine-schedule-unstated', options: [target(quoted('a'))], value: null },
     { code: 'routine-schedule-unstated', options: [], value: 9 },
     { code: 'routine-interval-over-budget', options: [], value: 4 },
     { code: 'routine-interval-over-budget', options: [], value: null },
-    { code: 'routine-binding-ambiguous', options: [target('a'), target('a')], value: null },
-    { code: 'routine-binding-ambiguous', options: Array.from({ length: 9 }, (_, index) => target(`v${index}`)), value: null },
-    { code: 'routine-binding-ambiguous', options: [{ value: 'a' }], value: null },
-    { code: 'routine-binding-ambiguous', options: [target(2 ** 60, null)], value: null },
-    { code: 'routine-binding-ambiguous', options: [target('a\u0000b')], value: null },
-    { code: 'routine-binding-ambiguous', options: [target('a', '')], value: null },
-    { code: 'routine-binding-ambiguous', options: [target(1.5, null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(quoted('a')), target(quoted('a'))], value: null },
+    { code: 'routine-binding-ambiguous', options: Array.from({ length: 9 }, (_, index) => target(quoted(`v${index}`))), value: null },
+    { code: 'routine-binding-ambiguous', options: [{ value: quoted('a') }], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(42, null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('a')], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('"a"x')], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('1.5', null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('01', null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('true', null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('"\\u0061"')], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(quoted('a\u0000b'))], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('9'.repeat(121), null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('', null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(quoted('a'), '')], value: null },
     { code: 'routine-schedule-unstated', options: [], value: null, extra: 1 },
   ]) {
     assert.throws(() => parseRoutineQuestion(invalid), RoutineError);
@@ -240,61 +254,58 @@ test('a Routine question is admitted only in its closed form and reads as facts 
     for (const value of valid) {
       const words = questionWords(value, copy);
       assert.ok(words.question.length > 0 && !/\{/u.test(words.question), `${locale} ${value.code}`);
-      assert.ok(words.answers.every((answer) => answer.length > 0 && !/\{/u.test(answer)), `${locale} ${value.code}`);
+      assert.ok(words.answers.every((answer) => answer.label.length > 0 && !/\{/u.test(answer.label)), `${locale} ${value.code}`);
     }
-    assert.deepEqual(questionWords(valid[0], copy).answers, copy.questions.schedule.answers);
-    assert.equal(questionWords({ code: 'routine-no-room', options: [], value: null }, copy).answers.length, 0);
+    const schedule = copy.questions.schedule.answers;
+    assert.deepEqual(questionWords(valid[0], copy).answers, schedule.map((answer) => ({ label: answer, text: answer })));
   }
   const en = routineMessages.en.proposal;
-  assert.deepEqual(questionWords(valid[2], en).answers, [`shimpz.com (${'a'.repeat(32)})`, `shimpz.com (${'b'.repeat(32)})`]);
-  assert.deepEqual(questionWords(valid[3], en).answers, ['42']);
+  // A person reads each target's label; the answer sends its exact JSON text, the only form Team matches.
+  assert.deepEqual(questionWords(valid[2], en).answers, [
+    { label: `shimpz.com (${'a'.repeat(32)})`, text: quoted('a'.repeat(32)) },
+    { label: `shimpz.com (${'b'.repeat(32)})`, text: quoted('b'.repeat(32)) },
+  ]);
+  assert.deepEqual(questionWords(valid[3], en).answers, [{ label: '42', text: '42' }]);
+  // A string and an integer of the same digits stay two answers, and no digit of the integer is rounded.
+  assert.deepEqual(questionWords(valid[4], en).answers.map((answer) => answer.text), [quoted(huge), huge]);
+  assert.equal(questionTarget(huge).shown, huge);
+  assert.equal(questionTarget(quoted(huge)).kind, 'string');
   const budget = questionWords(valid[1], en);
   assert.match(budget.question, /\b9\b/u);
-  assert.deepEqual(budget.answers, ['Every 9 seconds']);
+  assert.deepEqual(budget.answers, [{ label: 'Every 9 seconds', text: 'Every 9 seconds' }]);
 });
 
-test("a Routine's cap is its gap's whole day and its timezone is shown only when it has one", () => {
+test("a Routine's cap is its gap's whole day and UTC stands in when no timezone was given", () => {
   assert.equal(continuousCap(5), 17280);
   assert.equal(continuousCap(30), 2880);
   assert.equal(continuousCap(86400), 1);
   assert.equal(dailyCap({ kind: 'continuous', gap: 30, cap: 2880 }), 2880);
   assert.equal(dailyCap({ kind: 'hourly', every: 5 }), 5);
   assert.equal(dailyCap({ kind: 'weekly', weekday: 0, time: '09:00' }), 1);
-  const continuous = { kind: 'continuous', gap: 30, cap: 2880 };
-  const daily = { kind: 'daily', time: '09:00' };
-  assert.equal(isZoned(daily, 'America/Sao_Paulo', 'browser'), true);
-  assert.equal(isZoned(daily, 'Europe/Paris', 'person'), true);
-  assert.equal(isZoned(continuous, 'UTC', 'none'), true);
-  for (const [schedule, zone, source] of [
-    [daily, 'UTC', 'none'],
-    [continuous, 'America/Sao_Paulo', 'none'],
-    [continuous, 'UTC', 'guess'],
-    [continuous, '../etc', 'browser'],
-    [null, 'UTC', 'browser'],
-  ]) {
-    assert.equal(isZoned(schedule, zone, source), false);
+  assert.equal(isZoned('America/Sao_Paulo', 'browser'), true);
+  assert.equal(isZoned('Europe/Paris', 'person'), true);
+  assert.equal(isZoned('UTC', 'none'), true);
+  for (const [zone, source] of [['America/Sao_Paulo', 'none'], ['UTC', 'guess'], ['../etc', 'browser']]) {
+    assert.equal(isZoned(zone, source), false);
   }
-  assert.equal(displayZone({ timezone: 'UTC', timezone_source: 'none' }), undefined);
+  // With no timezone given, instants show in the UTC the Routine actually runs in.
+  assert.equal(displayZone({ timezone: 'UTC', timezone_source: 'none' }), 'UTC');
   assert.equal(displayZone({ timezone: 'America/Sao_Paulo', timezone_source: 'browser' }), 'America/Sao_Paulo');
-  // A card whose cap is not its schedule's, or with no zone but a run date, is refused.
+  // A card whose cap is not its schedule's is refused.
   assert.throws(() => parseRoutineProposal({ ...PROPOSAL, daily_cap: 1000 }), RoutineError);
   assert.throws(() => parseRoutineProposal({ ...PROPOSAL, clamped: false }), RoutineError);
+  // A calendar schedule and a run date both run in UTC when no timezone was given.
   const clocked = { ...PROPOSAL.steps[0], inputs: [{ member: 'day', origin: 'clock', value: null, step: null, pointer: null, where: null, item: null }] };
-  assert.throws(
-    () => parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none', steps: [clocked, PROPOSAL.steps[1]] }),
-    RoutineError,
-  );
+  const daily = { ...PROPOSAL, schedule: { kind: 'daily', time: '09:00' }, daily_cap: 1, timezone: 'UTC', timezone_source: 'none' };
+  assert.equal(parseRoutineProposal({ ...daily, steps: [clocked, PROPOSAL.steps[1]] }).timezone_source, 'none');
   assert.equal(parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none' }).timezone_source, 'none');
 });
 
 test('a Routine card is admitted only whole, and its inputs say where each value comes from', () => {
   assert.deepEqual(parseRoutineProposal(structuredClone(PROPOSAL)), PROPOSAL);
-  const changing = {
-    ...PROPOSAL,
-    steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }],
-    rehearsal: true,
-  };
-  assert.equal(parseRoutineProposal(changing).rehearsal, true);
+  // A step that changes something reads like any other: the card names it, and nothing waits for a rehearsal.
+  const changing = { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }] };
+  assert.equal(parseRoutineProposal(changing).steps[1].read_only, false);
   const decide = {
     ...PROPOSAL,
     output: { mode: 'decide', when: 'changes' },
@@ -308,8 +319,7 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   assert.equal(parseRoutineProposal(decide).decision.allowance, 4);
   for (const invalid of [
     { ...PROPOSAL, extra: 1 },
-    { ...PROPOSAL, rehearsal: true },
-    { ...changing, rehearsal: false },
+    { ...PROPOSAL, rehearsal: false },
     { ...PROPOSAL, next_runs: [] },
     { ...PROPOSAL, next_runs: [PROPOSAL.next_runs[1], PROPOSAL.next_runs[0]] },
     { ...PROPOSAL, daily_cap: 1001 },
@@ -471,12 +481,14 @@ const UNPLACED = Object.freeze({ assistant_id: null, action: null, position: nul
 
 test('Routines and runs are admitted only in their closed views', () => {
   assert.deepEqual(parseRoutineView(ROUTINE), ROUTINE);
-  for (const state of ['paused', 'rehearsal']) assert.deepEqual(parseRoutineView({ ...ROUTINE, state }), { ...ROUTINE, state });
+  assert.deepEqual(parseRoutineView({ ...ROUTINE, state: 'paused' }), { ...ROUTINE, state: 'paused' });
   const { state: _state, ...stateless } = ROUTINE;
   for (const invalid of [
     // The retired request quote and paused flag stay refused.
     { ...ROUTINE, quote: 'Toda segunda às 9h, confira o DNS' },
     { ...ROUTINE, paused: false },
+    // A rehearsal state is not a Routine's.
+    { ...ROUTINE, state: 'rehearsal' },
     { ...ROUTINE, deleting: 'no' },
     { ...ROUTINE, assistant_ids: ['Bad'] },
     { ...ROUTINE, state: 'running' },
@@ -738,8 +750,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, protection_lost: true },
     {
       ...RUN_ENTRY,
-      outcome: 'rehearsed',
-      detail: { ...RUN_ENTRY.detail, rehearsed: 1, untested: 0, not_permitted: 0 },
       usage: { duration_ms: 9800, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }] },
     },
     { ...RUN_ENTRY, outcome: 'held', detail: CALL },
@@ -778,6 +788,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, name: ' padded ' },
     { ...RUN_ENTRY, name: null },
     { ...RUN_ENTRY, quote: 'Toda segunda às 9h, confira o DNS' },
+    // A rehearsal is no Routine outcome.
+    { ...RUN_ENTRY, outcome: 'rehearsed', detail: { ...RUN_ENTRY.detail, rehearsed: 1, untested: 0, not_permitted: 0 } },
     { ...RUN_ENTRY, usage: null },
     { ...RUN_ENTRY, usage: { duration_ms: 1, models: [], extra: 1 } },
     { ...RUN_ENTRY, protection_lost: 'no' },
@@ -847,8 +859,6 @@ test('every Routine notice reads as one line: a status phrase colored by meaning
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT, decision: null } }, ['healthy', 'concluída']],
     [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN, decision: null } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'rehearsed', detail: { plan: SUMMARY, output: null, decision: null, rehearsed: 1, untested: 1, not_permitted: 0 } },
-      ['neutral', 'ensaiada']],
     [{ outcome: 'deleted', run_id: null, usage: null, detail: {} }, ['danger', 'Removida']],
     [{ outcome: 'frozen', detail: { request_kind: 'permission', ...CALL } }, ['waiting', 'aguardando permissão']],
     [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } }, ['healthy', 'em execução']],
@@ -1187,11 +1197,11 @@ test("a run's step records are admitted only for its own revision and one snapsh
     `/api/teams/team_1/routines/runs/${run}/steps/${SNAPSHOT}/0`,
   ]);
   // A stopped attempt was cut by Stop or the run's deadline; it carries its Action and inputs like a failed one.
-  for (const status of ['done', 'failed', 'stopped', 'waiting', 'rehearsed', 'untested']) {
+  for (const status of ['done', 'failed', 'stopped', 'waiting']) {
     assert.ok(isRunStep({ ...RECORDED, status }, REPLAY_1, 2), status);
   }
   const call = CALLED.position;
-  for (const status of ['done', 'rehearsed', 'not-permitted']) assert.ok(isRunStep({ ...CALLED, status }, call, 2), status);
+  for (const status of ['done', 'failed']) assert.ok(isRunStep({ ...CALLED, status }, call, 2), status);
   for (const valid of [
     { ...RECORDED, status: 'recovered', duration_ms: null },
     { ...RECORDED, inputs: null },
@@ -1209,8 +1219,10 @@ test("a run's step records are admitted only for its own revision and one snapsh
     [RECORDED, call],
     [{ ...RECORDED, position: 1 }, REPLAY_1],
     [{ ...RECORDED, status: 'running' }, REPLAY_1],
-    [{ ...RECORDED, status: 'not-permitted' }, REPLAY_1],
-    [{ ...CALLED, status: 'untested' }, call],
+    // No rehearsal statuses: a step never reads as rehearsed, untested, or not permitted.
+    [{ ...RECORDED, status: 'rehearsed' }, REPLAY_1],
+    [{ ...RECORDED, status: 'untested' }, REPLAY_1],
+    [{ ...CALLED, status: 'not-permitted' }, call],
     [{ ...RECORDED, status: 'recovered' }, REPLAY_1],
     [{ ...RECORDED, duration_ms: -1 }, REPLAY_1],
     [{ ...RECORDED, duration_ms: 2 ** 53 }, REPLAY_1],
@@ -1524,7 +1536,6 @@ test("a Routine's status is its most urgent one", () => {
   assert.equal(routineStatus(routine, [run('leased')]), 'running');
   assert.equal(routineStatus(routine, [run('frozen')]), 'waiting');
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [run('frozen')]), 'paused');
-  assert.equal(routineStatus({ ...routine, state: 'rehearsal' }), 'rehearsal');
   assert.equal(routineStatus({ ...routine, state: 'paused', needs_reconfirm: true }), 'reconfirm');
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [], [incident]), 'recovery');
   assert.equal(routineStatus(routine, [run('held')]), 'recovery');
@@ -1537,7 +1548,7 @@ test('a Routine shows the person only running, paused, or failed', () => {
     Object.entries(STATUS_WORDS),
     [
       ['healthy', 'running'], ['continuous', 'running'], ['running', 'running'],
-      ['paused', 'paused'], ['waiting', 'paused'], ['reconfirm', 'paused'], ['rehearsal', 'paused'],
+      ['paused', 'paused'], ['waiting', 'paused'], ['reconfirm', 'paused'],
       ['recovery', 'failed'],
     ],
   );

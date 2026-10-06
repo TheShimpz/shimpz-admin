@@ -20,7 +20,7 @@
   // confirms, in full and as escaped text — its name, schedule, timezone, next runs, daily cap, what each run does
   // with its result, every step with whether it changes something and each input with where its value comes from, the
   // Actions it may call, and, for a decision, what it decides with its model and allowance. It states facts only: the
-  // work ran once now, approvals ask on every run, and a Routine that changes something is rehearsed first. Exactly
+  // work ran once now, and approvals ask on every run. Exactly
   // two buttons, none preselected or recommended: Create confirms the card, Cancel revokes it. A card past its
   // lifetime offers neither and says so.
   let { teamId, proposal, copy, locale } = $props();
@@ -71,7 +71,12 @@
 
   <dl class="facts">
     <div><dt>{card.schedule}</dt><dd>{scheduleWords(proposal.schedule, copy.schedule, locale)}</dd></div>
-    {#if proposal.timezone_source !== 'none'}<div><dt>{card.timezone}</dt><dd>{proposal.timezone}</dd></div>{/if}
+    <div>
+      <dt>{card.timezone}</dt>
+      <dd>{proposal.timezone_source === 'none'
+        ? fillRoutineCopy(card.timezoneFallback, { timezone: proposal.timezone })
+        : proposal.timezone}</dd>
+    </div>
     <div>
       <dt>{card.nextRuns}</dt>
       <dd>
@@ -141,7 +146,6 @@
   <ul class="statements">
     <li>{card.ranOnce}</li>
     <li>{card.approvals}</li>
-    {#if proposal.rehearsal}<li>{card.rehearsal}</li>{/if}
   </ul>
 
   {#if answer}

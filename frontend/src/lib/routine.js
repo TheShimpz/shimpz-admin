@@ -60,22 +60,19 @@ export function isTimezone(value) {
 // Routine needs no zone and stores UTC only by convention, which Admin never shows as the person's zone.
 export const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
 const CONVENTIONAL_TIMEZONE = 'UTC';
-const CALENDAR_KINDS = ['daily', 'weekly', 'monthly'];
-
-/** Whether a timezone and its source fit a schedule, as Team's `zoned` admits them. */
-export function isZoned(schedule, timezone, source) {
-  if (!TIMEZONE_SOURCES.includes(source) || !isTimezone(timezone) || !schedule || typeof schedule !== 'object') {
-    return false;
-  }
-  return source !== 'none' || (timezone === CONVENTIONAL_TIMEZONE && !CALENDAR_KINDS.includes(schedule.kind));
-}
 
 /**
- * The timezone Admin shows a Routine's instants in: its own, unless it has none, when they show in the viewer's own
- * timezone (undefined), never as a claim about the person's zone.
+ * Whether a timezone and its source fit together, as Team's `zoned` admits them: a known source names a zone, and
+ * `none` means UTC used because no timezone was given, for any schedule and any run date (ADR-0101).
  */
+export function isZoned(timezone, source) {
+  if (!TIMEZONE_SOURCES.includes(source) || !isTimezone(timezone)) return false;
+  return source !== 'none' || timezone === CONVENTIONAL_TIMEZONE;
+}
+
+/** The timezone Admin shows a Routine's instants in: the one it runs in, UTC when no timezone was given. */
 export function displayZone(value) {
-  return value.timezone_source === 'none' ? undefined : value.timezone;
+  return value.timezone;
 }
 
 /** A continuous Routine's starts in any rolling 24 hours: as many as its gap allows all day, never lowered. */
@@ -125,8 +122,8 @@ function view(value, keys, valid) {
   return structuredClone(value);
 }
 
-// A Routine's state (ADR-0101): it runs, a person paused it, or it waits for a rehearsal before it can run.
-export const ROUTINE_STATES = ['active', 'paused', 'rehearsal'];
+// A Routine's state (ADR-0101): it runs, or a person paused it.
+export const ROUTINE_STATES = ['active', 'paused'];
 // The Actions a Routine may call at most in its lifetime, and the most its decision may call in one run.
 const MAX_PERMITTED = 288;
 const MAX_ALLOWANCE = 64;
@@ -167,7 +164,7 @@ export function parseRoutineView(value) {
     isSummary(item.plan) &&
     isDisposition(item.output, item.plan.steps) &&
     isSchedule(item.schedule) &&
-    isZoned(item.schedule, item.timezone, item.timezone_source) &&
+    isZoned(item.timezone, item.timezone_source) &&
     isAssistants(item.assistant_ids, 0) &&
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
@@ -344,9 +341,8 @@ export async function readPlanSteps(fetcher, teamId, routineId, plan, offset) {
 // What one run did, call by call (ADR-0092 amendment, 2026-10-05, scale; ADR-0101), mirroring Team's
 // `routine.canonical_run_step`: a recorded replay step or decision call's status, Action, attempt, duration, instant,
 // and its inputs as redacted previews, or a gap. `stopped`: Stop or the run's deadline cut the attempt, which says
-// nothing about whether the Action acted. A rehearsal records an effect it did not run as `rehearsed`, a step that
-// needed its output as `untested`, and a decision call outside the permitted set as `not-permitted`.
-const RUN_STEP_STATUSES = ['done', 'recovered', 'failed', 'stopped', 'waiting', 'rehearsed', 'untested', 'not-permitted'];
+// nothing about whether the Action acted.
+const RUN_STEP_STATUSES = ['done', 'recovered', 'failed', 'stopped', 'waiting'];
 const RUN_STEP_GAPS = ['not_run', 'unavailable'];
 const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output', 'decision'];
 // The Actions one decision turn may call at most.
@@ -378,9 +374,9 @@ function samePosition(left, right) {
   return left.phase === right.phase && left.step === right.step && left.call === right.call;
 }
 
-// Which statuses each phase records: untested and not run are a replay step's, not permitted a decision call's.
+// Which statuses each phase records: not run is a replay step's alone.
 function isStatusOf(status, phase) {
-  return phase === 'replay' ? status !== 'not-permitted' : !['untested', 'not_run'].includes(status);
+  return phase === 'replay' || status !== 'not_run';
 }
 
 /** Whether a value is one run entry at exactly `position`: what its attempt did, or only that it never ran or is gone. */
@@ -787,7 +783,7 @@ export function pauseRoutine(fetcher, teamId, routineId) {
 
 /**
  * How a listed Routine stands for the person, most urgent first: being deleted, held for recovery, waiting to be asked
- * again, paused, waiting for its rehearsal, waiting for an approval, running now, or idle between runs (continuous or
+ * again, paused, waiting for an approval, running now, or idle between runs (continuous or
  * on its schedule).
  */
 export function routineStatus(routine, runs = [], incidents = []) {
@@ -798,7 +794,6 @@ export function routineStatus(routine, runs = [], incidents = []) {
   }
   if (routine.needs_reconfirm) return 'reconfirm';
   if (routine.state === 'paused') return 'paused';
-  if (routine.state === 'rehearsal') return 'rehearsal';
   if (own.some((run) => run.status === 'frozen')) return 'waiting';
   if (own.length) return 'running';
   return routine.schedule.kind === 'continuous' ? 'continuous' : 'healthy';
@@ -816,7 +811,6 @@ export const STATUS_WORDS = Object.freeze({
   paused: 'paused',
   waiting: 'paused',
   reconfirm: 'paused',
-  rehearsal: 'paused',
   recovery: 'failed',
 });
 
@@ -828,7 +822,7 @@ export const STATUS_TAGS = Object.freeze({
 });
 
 /** Statuses that need the person, shown in words beside the Routine. */
-export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'rehearsal', 'waiting']);
+export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'waiting']);
 
 const ACRONYMS = new Set(['api', 'dns', 'http', 'id', 'ip', 'ssl', 'tls', 'url']);
 
@@ -1123,12 +1117,6 @@ function isCompleted(detail) {
     isNoticeDecision(detail.decision);
 }
 
-// A rehearsal: as a completed run, with how many effects it did not run, could not test, or found not permitted.
-function isRehearsed(detail) {
-  return isCompleted(detail) &&
-    ['rehearsed', 'untested', 'not_permitted'].every((key) => whole(detail[key], 0, MAX_ROUTINE_STEPS + MAX_DECISION_CALLS));
-}
-
 // The call a failed run stopped at by position, or both null when it failed before any call.
 function isFailedAt(detail) {
   return (detail.position === null && detail.steps === null) || isCallPosition(detail.position, detail.steps);
@@ -1143,7 +1131,6 @@ const DEFINED_KEYS = [
 const NOTICE_DETAILS = {
   done: [COMPLETED_KEYS, isCompleted],
   recovered: [COMPLETED_KEYS, isCompleted],
-  rehearsed: [[...COMPLETED_KEYS, 'rehearsed', 'untested', 'not_permitted'], isRehearsed],
   held: [STEP_KEYS, isHeldStep],
   paused: [[...STEP_KEYS, 'reason'], (detail) => isHeldStep(detail) && PAUSE_REASONS.includes(detail.reason)],
   // A person set the held run aside: Rodar, or the deletion of its Routine.
@@ -1178,7 +1165,7 @@ function isName(value) {
 
 function isDefinition(detail) {
   return isName(detail.name) && isSummary(detail.plan) && isDisposition(detail.output, detail.plan.steps) &&
-    isSchedule(detail.schedule) && isZoned(detail.schedule, detail.timezone, detail.timezone_source) &&
+    isSchedule(detail.schedule) && isZoned(detail.timezone, detail.timezone_source) &&
     isScope(detail, detail.plan.steps);
 }
 
@@ -1262,7 +1249,7 @@ export function healthyRunsWords(forms, runs, locale) {
 }
 
 // Each outcome's tone in the transcript's activity timeline: healthy (done, recovered, running), danger (failed, held,
-// denied, removed), waiting (paused, frozen, scope changed), or neutral (created, updated, rehearsed, set aside,
+// denied, removed), waiting (paused, frozen, scope changed), or neutral (created, updated, set aside,
 // stopped, missed runs).
 const NOTICE_TONES = Object.freeze({
   done: 'healthy',
@@ -1272,7 +1259,6 @@ const NOTICE_TONES = Object.freeze({
   held: 'danger',
   denied: 'danger',
   deleted: 'danger',
-  rehearsed: 'neutral',
   paused: 'waiting',
   frozen: 'waiting',
   'scope-changed': 'waiting',
@@ -1620,31 +1606,28 @@ function isCardDecision(value) {
 export function parseRoutineProposal(value) {
   const keys = [
     'proposal_id', 'expires_at', 'replaces', 'name', 'schedule', 'timezone', 'timezone_source', 'next_runs',
-    'daily_cap', 'output', 'steps', 'permitted', 'decision', 'rehearsal',
+    'daily_cap', 'output', 'steps', 'permitted', 'decision',
   ];
   return view(value, keys, (item) => {
     const { steps, output, next_runs: runs } = item;
     if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exact(output, ['mode', 'when'])) return false;
     const shown = SHOWN_MODES.includes(output.mode) ? steps.length : null;
-    const changes = [...steps, ...(Array.isArray(item.permitted) ? item.permitted : [])].some((entry) => !entry.read_only);
     return (
       typeof item.proposal_id === 'string' && ID_RE.test(item.proposal_id) &&
       isInstant(item.expires_at) &&
       (item.replaces === null || (typeof item.replaces === 'string' && ID_RE.test(item.replaces))) &&
       isName(item.name) &&
       isSchedule(item.schedule) &&
-      isZoned(item.schedule, item.timezone, item.timezone_source) &&
+      isZoned(item.timezone, item.timezone_source) &&
       Array.isArray(runs) && runs.length >= 1 && runs.length <= MAX_NEXT_RUNS && runs.every(isInstant) &&
       runs.every((run, index) => index === 0 || runs[index - 1] <= run) &&
       item.daily_cap === dailyCap(item.schedule) &&
       isDisposition({ ...output, step: shown }, steps.length) &&
       steps.every((step, index) => isCardStep(step, index + 1)) &&
-      (item.timezone_source !== 'none' || !steps.some((step) => step.inputs.some((input) => input.origin === 'clock'))) &&
       isCardPermitted(item.permitted) &&
       (item.decision !== null) === (output.mode === 'decide') &&
       isCardDecision(item.decision) &&
       steps.length + (item.decision === null ? 0 : item.decision.allowance) <= MAX_ROUTINE_STEPS &&
-      item.rehearsal === changes &&
       encodedBytes(item) <= MAX_PROPOSAL_BYTES
     );
   });
@@ -1660,24 +1643,40 @@ export function parseRoutineRefusal(value) {
 export const QUESTION_CODES = [
   'routine-schedule-unstated',
   'routine-interval-over-budget',
-  'routine-no-room',
   'routine-binding-ambiguous',
   'routine-binding-unsourced',
   'routine-work-split',
   'routine-work-rerun',
-  'routine-timezone-ambiguous',
-  'routine-timezone-unstated',
 ];
 const MAX_QUESTION_OPTIONS = 8;
 const MAX_QUESTION_OPTION_CHARS = 120;
 
+// A target's exact JSON text: a string escapes at most its quotes and backslashes; an integer keeps every digit.
+const MAX_QUESTION_VALUE_CHARS = 2 * MAX_QUESTION_OPTION_CHARS + 2;
+const INTEGER_TEXT_RE = /^-?(?:0|[1-9][0-9]*)$/;
+
+/**
+ * The target a question option names, decoded from its exact JSON text, or null when the text is not one: a plain
+ * string written exactly as compact JSON writes it, or an integer whose digits are kept as text so none is rounded.
+ */
+export function questionTarget(text) {
+  if (typeof text !== 'string' || text.length === 0 || text.length > MAX_QUESTION_VALUE_CHARS) return null;
+  if (INTEGER_TEXT_RE.test(text)) return text.length <= MAX_QUESTION_OPTION_CHARS ? { kind: 'integer', shown: text } : null;
+  let decoded;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof decoded !== 'string' || !plain(decoded, MAX_QUESTION_OPTION_CHARS) || JSON.stringify(decoded) !== text) {
+    return null;
+  }
+  return { kind: 'string', shown: decoded };
+}
+
 function isQuestionOption(value) {
-  if (!exact(value, ['value', 'label'])) return false;
-  // An integer target past JavaScript's exact range could not be sent back unchanged, so it is refused.
-  const scalar = typeof value.value === 'string'
-    ? plain(value.value, MAX_QUESTION_OPTION_CHARS)
-    : Number.isSafeInteger(value.value) && String(value.value).length <= MAX_QUESTION_OPTION_CHARS;
-  return scalar && (value.label === null || plain(value.label, MAX_QUESTION_OPTION_CHARS));
+  return exact(value, ['value', 'label']) && questionTarget(value.value) !== null &&
+    (value.label === null || plain(value.label, MAX_QUESTION_OPTION_CHARS));
 }
 
 /** One question Team asks before a card, admitted exactly as Team's closed form, or a thrown error. */
@@ -1690,7 +1689,7 @@ export function parseRoutineQuestion(value) {
       (code === 'routine-binding-ambiguous' || options.length === 0) &&
       options.length <= MAX_QUESTION_OPTIONS &&
       options.every(isQuestionOption) &&
-      new Set(options.map((option) => JSON.stringify(option.value))).size === options.length &&
+      new Set(options.map((option) => option.value)).size === options.length &&
       (code === 'routine-interval-over-budget'
         ? whole(interval, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
         : interval === null)
@@ -1701,34 +1700,34 @@ export function parseRoutineQuestion(value) {
 const QUESTION_KEYS = {
   'routine-schedule-unstated': 'schedule',
   'routine-interval-over-budget': 'overBudget',
-  'routine-no-room': 'noRoom',
   'routine-binding-ambiguous': 'ambiguous',
   'routine-binding-unsourced': 'unsourced',
   'routine-work-split': 'split',
   'routine-work-rerun': 'rerun',
-  'routine-timezone-ambiguous': 'timezoneAmbiguous',
-  'routine-timezone-unstated': 'timezoneUnstated',
 };
 
 /**
- * A Routine question in words: its sentence and the answers a person may send with one press, each sent as plain text
- * in the person's own words. An ambiguous binding offers each target; an interval over budget offers the shortest
- * interval that fits; no room offers nothing to choose, so the person may only write.
+ * A Routine question in words: its sentence and the answers a person may send with one press, each with the label a
+ * person reads and the text the answer sends. An ambiguous binding's target is sent as its exact JSON text, the only
+ * answer Team matches, so a string and an integer of the same digits stay distinct; every other answer is sent as the
+ * words it shows. An interval over budget offers the shortest interval that fits.
  */
 export function questionWords(question, copy) {
   const words = copy.questions[QUESTION_KEYS[question.code]];
   if (question.code === 'routine-binding-ambiguous') {
     const answers = question.options.map((option) => {
-      const target = String(option.value);
-      return option.label === null ? target : fill(words.option, { label: option.label, value: target });
+      const target = questionTarget(option.value).shown;
+      const label = option.label === null ? target : fill(words.option, { label: option.label, value: target });
+      return { label, text: option.value };
     });
     return { question: words.question, answers };
   }
   if (question.code === 'routine-interval-over-budget') {
     const seconds = String(question.value);
-    return { question: fill(words.question, { seconds }), answers: [fill(words.answer, { seconds })] };
+    const answer = fill(words.answer, { seconds });
+    return { question: fill(words.question, { seconds }), answers: [{ label: answer, text: answer }] };
   }
-  return { question: words.question, answers: words.answers ?? [] };
+  return { question: words.question, answers: (words.answers ?? []).map((answer) => ({ label: answer, text: answer })) };
 }
 
 // The words of a refusal code. Every documented one has its own sentence; a plan code reads as the plan's, and any

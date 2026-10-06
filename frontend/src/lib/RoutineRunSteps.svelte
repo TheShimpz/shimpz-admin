@@ -29,8 +29,8 @@
   } = $props();
 
   const ICONS = {
-    done: 'check', recovered: 'check', failed: 'failed', stopped: 'stop', waiting: 'approval', rehearsed: 'check',
-    untested: 'skip', 'not-permitted': 'warning', not_run: 'skip', unavailable: 'warning',
+    done: 'check', recovered: 'check', failed: 'failed', stopped: 'stop', waiting: 'approval',
+    not_run: 'skip', unavailable: 'warning',
   };
   // A changed snapshot is read again from the newest this many times before the steps are said to be unavailable.
   const RESTARTS = 2;
@@ -228,9 +228,6 @@
   .step--failed .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
   .step--stopped .status :global(.routine-icon) { color: var(--shimpz-color-text-muted); }
   .step--waiting .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
-  .step--not-permitted .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
-  .step--rehearsed .status :global(.routine-icon),
-  .step--untested .status :global(.routine-icon),
   .step--not_run .status :global(.routine-icon),
   .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
   .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; margin: 0.15rem 0 0; font-size: 0.78rem; }

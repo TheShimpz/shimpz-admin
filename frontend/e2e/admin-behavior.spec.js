@@ -4673,7 +4673,7 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(1);
   });
 
-  test('two zones of one name are told apart by choosing one, whose id the answer sends', async ({ page }) => {
+  test('two zones of one name are told apart by choosing one, whose exact id the answer sends', async ({ page }) => {
     const scenario = await recordRoutine(page, 'routine-ambiguous');
     const words = messages.en.routine.proposal.questions.ambiguous;
     const question = page.getByRole('radiogroup', { name: words.question });
@@ -4682,20 +4682,27 @@ test.describe('Team Routines', () => {
     await question.getByRole('radio', { name: second }).check();
     await page.getByRole('button', { name: 'Answer', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
-    expect(sentMessages(scenario).at(-1)).toContain(`Answer: ${second}`);
+    // The person reads the label; Team receives the target's exact JSON text, the only answer it matches.
+    expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: "9a7806061c88ada191ed06f989cc3dac"');
+    // After a reload the answered question still reads as the chosen target's label.
+    await page.reload();
+    await expect(page.getByText(second)).toBeVisible();
   });
 
-  test('when no interval fits, the question offers nothing to choose and only a written answer is sent', async ({ page }) => {
-    const scenario = await recordRoutine(page, 'routine-no-room');
-    const words = messages.en.routine.proposal.questions.noRoom;
-    const question = page.getByRole('radiogroup', { name: words.question });
-    await expect(question.getByRole('radio')).toHaveCount(1);
-    const answer = page.getByRole('button', { name: 'Answer', exact: true });
-    await question.getByRole('radio', { name: 'Other answer' }).check();
-    await expect(answer).toBeDisabled();
-    await page.getByRole('textbox', { name: 'Other answer' }).fill('Remove the old DNS Routine first');
-    await answer.click();
-    expect(sentMessages(scenario).at(-1)).toContain('Answer: Remove the old DNS Routine first');
+  test('a string and an integer of the same digits stay two targets, and the chosen one reaches Team exactly', async ({ page }) => {
+    const digits = '12345678901234567890';
+    // The scenario answers with a card only for an option's exact JSON text, as Team matches it.
+    for (const [index, sent] of [[0, `"${digits}"`], [1, digits]]) {
+      const scenario = await recordRoutine(page, 'routine-exact-target');
+      const words = messages.en.routine.proposal.questions.ambiguous;
+      const question = page.getByRole('radiogroup', { name: words.question });
+      await expect(question.getByRole('radio', { name: digits, exact: true })).toHaveCount(2);
+      await question.getByRole('radio', { name: digits, exact: true }).nth(index).check();
+      await page.getByRole('button', { name: 'Answer', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+      // Every digit of the integer survives, and the string keeps its quotes, so Team tells them apart.
+      expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe(`Answer: ${sent}`);
+    }
   });
 
   test("a deleted Routine's last notice names it as removed, also after a reload", async ({ page }) => {

@@ -115,9 +115,9 @@
     return () => clearInterval(timer);
   });
 
-  // A Routine with no timezone of its own makes no claim about one (ADR-0101).
+  // A Routine given no timezone runs in UTC, and says so without claiming the person chose it (ADR-0101).
   let summary = $derived(fillParts(
-    routine.timezone_source === 'none' ? copy.panel.summaryLineUnzoned : copy.panel.summaryLine,
+    routine.timezone_source === 'none' ? copy.panel.summaryLineFallback : copy.panel.summaryLine,
     {
       schedule: scheduleWords(routine.schedule, copy.schedule, $locale),
       timezone: routine.timezone,
@@ -196,7 +196,7 @@
   }
 
   const RUN_ICONS = {
-    done: 'check', recovered: 'check', rehearsed: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
+    done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
     held: 'warning', paused: 'pause', frozen: 'approval',
   };
 
@@ -205,7 +205,6 @@
     return {
       done: run.done,
       recovered: run.recovered,
-      rehearsed: copy.notice.status.rehearsed,
       failed: fillRoutineCopy(run.failed, { code: entry.detail.code ?? '' }),
       denied: run.denied,
       stopped: run.stopped,

@@ -21,7 +21,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, using the {timezone} timezone ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}, using {timezone} because no timezone was given ({now}).",
       next: "Next run",
       runs: "Runs",
       noRuns: "No runs yet.",
@@ -37,7 +37,6 @@ export const routinePanelMessages = {
       skipped: "Set aside",
     },
     status: {
-      rehearsal: "Waiting for its rehearsal",
       running: "Running",
       paused: "Paused",
       failed: "Failed",
@@ -64,7 +63,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, usando o timezone {timezone} ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}, usando {timezone} porque nenhum fuso horário foi informado ({now}).",
       next: "Próxima execução",
       runs: "Execuções",
       noRuns: "Nenhuma execução ainda.",
@@ -80,7 +79,6 @@ export const routinePanelMessages = {
       skipped: "Deixada de lado",
     },
     status: {
-      rehearsal: "Aguardando o ensaio",
       running: "Executando",
       paused: "Pausada",
       failed: "Falhou",
@@ -107,7 +105,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, usando la zona horaria {timezone} ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}, usando {timezone} porque no se indicó ninguna zona horaria ({now}).",
       next: "Próxima ejecución",
       runs: "Ejecuciones",
       noRuns: "Aún no hay ejecuciones.",
@@ -123,7 +121,6 @@ export const routinePanelMessages = {
       skipped: "Dejada de lado",
     },
     status: {
-      rehearsal: "Esperando su ensayo",
       running: "Ejecutándose",
       paused: "En pausa",
       failed: "Falló",
@@ -150,7 +147,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}，使用时区 {timezone}（{now}）。",
-      summaryLineUnzoned: "{schedule}（{now}）。",
+      summaryLineFallback: "{schedule}，因未提供时区而使用 {timezone}（{now}）。",
       next: "下次运行",
       runs: "运行记录",
       noRuns: "还没有运行。",
@@ -166,7 +163,6 @@ export const routinePanelMessages = {
       skipped: "已搁置",
     },
     status: {
-      rehearsal: "等待演练",
       running: "运行中",
       paused: "已暂停",
       failed: "失败",
@@ -193,7 +189,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, avec le fuseau horaire {timezone} ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}, avec {timezone} car aucun fuseau horaire n’a été indiqué ({now}).",
       next: "Prochaine exécution",
       runs: "Exécutions",
       noRuns: "Aucune exécution pour l’instant.",
@@ -209,7 +205,6 @@ export const routinePanelMessages = {
       skipped: "Mise de côté",
     },
     status: {
-      rehearsal: "En attente de sa répétition",
       running: "En cours",
       paused: "En pause",
       failed: "Échec",
@@ -236,7 +231,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, in der Zeitzone {timezone} ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}, in {timezone}, weil keine Zeitzone angegeben wurde ({now}).",
       next: "Nächste Ausführung",
       runs: "Ausführungen",
       noRuns: "Noch keine Ausführungen.",
@@ -252,7 +247,6 @@ export const routinePanelMessages = {
       skipped: "Beiseitegelegt",
     },
     status: {
-      rehearsal: "Wartet auf ihre Probe",
       running: "Läuft",
       paused: "Pausiert",
       failed: "Fehlgeschlagen",
@@ -279,7 +273,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}（タイムゾーン {timezone}、{now}）。",
-      summaryLineUnzoned: "{schedule}（{now}）。",
+      summaryLineFallback: "{schedule}（タイムゾーンの指定がないため {timezone}、{now}）。",
       next: "次の実行",
       runs: "実行履歴",
       noRuns: "まだ実行はありません。",
@@ -295,7 +289,6 @@ export const routinePanelMessages = {
       skipped: "保留",
     },
     status: {
-      rehearsal: "リハーサル待ち",
       running: "実行中",
       paused: "一時停止中",
       failed: "失敗",
@@ -322,7 +315,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}، باستخدام المنطقة الزمنية {timezone} ({now}).",
-      summaryLineUnzoned: "{schedule} ({now}).",
+      summaryLineFallback: "{schedule}، باستخدام {timezone} لعدم تحديد منطقة زمنية ({now}).",
       next: "التشغيل التالي",
       runs: "عمليات التشغيل",
       noRuns: "لا توجد عمليات تشغيل بعد.",
@@ -338,7 +331,6 @@ export const routinePanelMessages = {
       skipped: "وُضع جانبًا",
     },
     status: {
-      rehearsal: "بانتظار البروفة",
       running: "قيد التشغيل",
       paused: "متوقف مؤقتًا",
       failed: "فشل",

@@ -17,7 +17,9 @@
   let error = $state('');
 
   let words = $derived(questionWords(question, copy));
-  let answer = $derived(choice === OTHER ? custom : choice === '' ? '' : words.answers[Number(choice)] ?? '');
+  let answer = $derived(choice === OTHER ? custom : choice === '' ? '' : words.answers[Number(choice)]?.text ?? '');
+  // An answer sent as a target's exact JSON text reads as that target's label once answered, after a reload too.
+  let answeredLabel = $derived(words.answers.find((option) => option.text === answered)?.label ?? answered);
   let ready = $derived(answer.trim().length > 0);
 
   async function chooseOther() {
@@ -44,17 +46,17 @@
 {#if answered !== null}
   <div class="routine-question answered">
     <p class="question">{words.question}</p>
-    <p class="choice"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">{clarifyCopy.answered}: </span>{answered}</p>
+    <p class="choice"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">{clarifyCopy.answered}: </span>{answeredLabel}</p>
   </div>
 {:else}
   <form class="routine-question" aria-labelledby={`${id}-question`} onsubmit={submit}>
     <p class="question" id={`${id}-question`}>{words.question}</p>
     <div class="options" role="radiogroup" aria-labelledby={`${id}-question`}>
-      {#each words.answers as option, index (option)}
+      {#each words.answers as option, index (option.text)}
         <RadioField
           id={`${id}-option-${index}`}
           name={`${id}-choice`}
-          label={option}
+          label={option.label}
           optionValue={String(index)}
           bind:value={choice}
           {disabled}

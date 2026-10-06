@@ -107,14 +107,20 @@ test("a refused recording says in the person's language that no Routine was crea
 });
 
 test("a question scenario asks Team's question in every language and answers the next send with the card", () => {
-  for (const name of ['routine-question', 'routine-ambiguous', 'routine-no-room']) {
+  for (const name of ['routine-question', 'routine-ambiguous', 'routine-exact-target']) {
     for (const locale of Object.keys(ROUTINE_TEXT)) {
       const scenario = createScenario(name, locale);
       const send = (message) => scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] })[0];
       const asked = parseChatEvent(send(ROUTINE_TEXT[locale].request), 'marketing', 'Marketing');
       const words = questionWords(asked.routine_question, routineMessages[locale].proposal);
       assert.ok(words.question.length > 0, `${name} ${locale}`);
-      const answered = parseChatEvent(send('A cada hora'), 'marketing', 'Marketing');
+      // A target question is answered only by an option's exact JSON text; a schedule question by any words.
+      const answer = words.answers.at(-1).text;
+      if (asked.routine_question.options.length > 0) {
+        const unmatched = parseChatEvent(send('Q: x\nA: shimpz.com'), 'marketing', 'Marketing');
+        assert.equal(Object.hasOwn(unmatched, 'routine_question'), true, `${name} ${locale}`);
+      }
+      const answered = parseChatEvent(send(`Q: x\nA: ${answer}`), 'marketing', 'Marketing');
       assert.equal(Object.hasOwn(answered, 'routine_proposal'), true, `${name} ${locale}`);
     }
   }

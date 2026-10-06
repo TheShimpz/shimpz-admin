@@ -92,7 +92,7 @@
       <dl class="meta">
         <div>
           <dt>{WAITING.includes(entry.outcome) ? copy.result.updated : copy.result.finished}</dt>
-          <dd><time datetime={entry.createdAt}>{finished}</time>{#if routine && routine.timezone_source !== 'none'}<span class="zone">{routine.timezone}</span>{/if}</dd>
+          <dd><time datetime={entry.createdAt}>{finished}</time>{#if routine}<span class="zone">{routine.timezone}</span>{/if}</dd>
         </div>
         {#if count}<div><dt>{copy.result.steps}</dt><dd>{count}</dd></div>{/if}
       </dl>

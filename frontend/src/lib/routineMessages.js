@@ -68,7 +68,7 @@ export const routineMessages = {
       failedOutcome: "failed",
     },
     notice: {
-      status: { created: "created", changed: "updated", done: "done", recovered: "done after recovery", healthy: "running", failed: "failed", held: "stopped with an error", denied: "denied", stopped: "stopped", paused: "paused", scopeChanged: "paused", frozenHuman: "awaiting approval", frozenIntegrations: "awaiting connection", userSkipped: "set aside", skipped: "missed runs", deleted: "Removed", rehearsed: "rehearsed", frozenPermission: "awaiting permission" },
+      status: { created: "created", changed: "updated", done: "done", recovered: "done after recovery", healthy: "running", failed: "failed", held: "stopped with an error", denied: "denied", stopped: "stopped", paused: "paused", scopeChanged: "paused", frozenHuman: "awaiting approval", frozenIntegrations: "awaiting connection", userSkipped: "set aside", skipped: "missed runs", deleted: "Removed", frozenPermission: "awaiting permission" },
       rest: { one: "{count} more step", other: "{count} more steps" },
       waiting: "Waiting for you",
       protectionLost: "Some results are hidden to protect secret values.",
@@ -195,7 +195,7 @@ export const routineMessages = {
       failedOutcome: "falhou",
     },
     notice: {
-      status: { created: "criada", changed: "atualizada", done: "concluída", recovered: "concluída após recuperação", healthy: "em execução", failed: "falhou", held: "parou com erro", denied: "negada", stopped: "interrompida", paused: "pausada", scopeChanged: "pausada", frozenHuman: "aguardando aprovação", frozenIntegrations: "aguardando conexão", userSkipped: "deixada de lado", skipped: "execuções perdidas", deleted: "Removida", rehearsed: "ensaiada", frozenPermission: "aguardando permissão" },
+      status: { created: "criada", changed: "atualizada", done: "concluída", recovered: "concluída após recuperação", healthy: "em execução", failed: "falhou", held: "parou com erro", denied: "negada", stopped: "interrompida", paused: "pausada", scopeChanged: "pausada", frozenHuman: "aguardando aprovação", frozenIntegrations: "aguardando conexão", userSkipped: "deixada de lado", skipped: "execuções perdidas", deleted: "Removida", frozenPermission: "aguardando permissão" },
       rest: { one: "mais {count} etapa", other: "mais {count} etapas" },
       waiting: "Esperando você",
       protectionLost: "Alguns resultados estão ocultos para proteger valores secretos.",
@@ -322,7 +322,7 @@ export const routineMessages = {
       failedOutcome: "falló",
     },
     notice: {
-      status: { created: "creada", changed: "actualizada", done: "completada", recovered: "completada tras recuperación", healthy: "en marcha", failed: "falló", held: "detenida por un error", denied: "denegada", stopped: "detenida", paused: "en pausa", scopeChanged: "en pausa", frozenHuman: "esperando aprobación", frozenIntegrations: "esperando conexión", userSkipped: "dejada de lado", skipped: "ejecuciones perdidas", deleted: "Eliminada", rehearsed: "ensayada", frozenPermission: "esperando permiso" },
+      status: { created: "creada", changed: "actualizada", done: "completada", recovered: "completada tras recuperación", healthy: "en marcha", failed: "falló", held: "detenida por un error", denied: "denegada", stopped: "detenida", paused: "en pausa", scopeChanged: "en pausa", frozenHuman: "esperando aprobación", frozenIntegrations: "esperando conexión", userSkipped: "dejada de lado", skipped: "ejecuciones perdidas", deleted: "Eliminada", frozenPermission: "esperando permiso" },
       rest: { one: "{count} paso más", other: "{count} pasos más" },
       waiting: "Te está esperando",
       protectionLost: "Algunos resultados están ocultos para proteger valores secretos.",
@@ -449,7 +449,7 @@ export const routineMessages = {
       failedOutcome: "失败",
     },
     notice: {
-      status: { created: "已创建", changed: "已更新", done: "已完成", recovered: "恢复后已完成", healthy: "运行中", failed: "失败", held: "因错误停止", denied: "已拒绝", stopped: "已停止", paused: "已暂停", scopeChanged: "已暂停", frozenHuman: "等待批准", frozenIntegrations: "等待连接", userSkipped: "已搁置", skipped: "错过的运行", deleted: "已删除", rehearsed: "已演练", frozenPermission: "等待许可" },
+      status: { created: "已创建", changed: "已更新", done: "已完成", recovered: "恢复后已完成", healthy: "运行中", failed: "失败", held: "因错误停止", denied: "已拒绝", stopped: "已停止", paused: "已暂停", scopeChanged: "已暂停", frozenHuman: "等待批准", frozenIntegrations: "等待连接", userSkipped: "已搁置", skipped: "错过的运行", deleted: "已删除", frozenPermission: "等待许可" },
       rest: { one: "还有 {count} 步", other: "还有 {count} 步" },
       waiting: "等你处理",
       protectionLost: "为保护机密值，部分结果已隐藏。",
@@ -576,7 +576,7 @@ export const routineMessages = {
       failedOutcome: "échec",
     },
     notice: {
-      status: { created: "créée", changed: "mise à jour", done: "terminée", recovered: "terminée après reprise", healthy: "en cours", failed: "échec", held: "arrêtée sur une erreur", denied: "refusée", stopped: "arrêtée", paused: "en pause", scopeChanged: "en pause", frozenHuman: "en attente d’approbation", frozenIntegrations: "en attente de connexion", userSkipped: "mise de côté", skipped: "exécutions manquées", deleted: "Supprimée", rehearsed: "répétée", frozenPermission: "en attente d’autorisation" },
+      status: { created: "créée", changed: "mise à jour", done: "terminée", recovered: "terminée après reprise", healthy: "en cours", failed: "échec", held: "arrêtée sur une erreur", denied: "refusée", stopped: "arrêtée", paused: "en pause", scopeChanged: "en pause", frozenHuman: "en attente d’approbation", frozenIntegrations: "en attente de connexion", userSkipped: "mise de côté", skipped: "exécutions manquées", deleted: "Supprimée", frozenPermission: "en attente d’autorisation" },
       rest: { one: "{count} étape de plus", other: "{count} étapes de plus" },
       waiting: "Elle vous attend",
       protectionLost: "Certains résultats sont masqués pour protéger des valeurs secrètes.",
@@ -703,7 +703,7 @@ export const routineMessages = {
       failedOutcome: "fehlgeschlagen",
     },
     notice: {
-      status: { created: "erstellt", changed: "aktualisiert", done: "fertig", recovered: "fertig nach Wiederherstellung", healthy: "läuft", failed: "fehlgeschlagen", held: "durch Fehler angehalten", denied: "abgelehnt", stopped: "gestoppt", paused: "pausiert", scopeChanged: "pausiert", frozenHuman: "wartet auf Freigabe", frozenIntegrations: "wartet auf Verbindung", userSkipped: "beiseitegelegt", skipped: "verpasste Ausführungen", deleted: "Entfernt", rehearsed: "geprobt", frozenPermission: "wartet auf Erlaubnis" },
+      status: { created: "erstellt", changed: "aktualisiert", done: "fertig", recovered: "fertig nach Wiederherstellung", healthy: "läuft", failed: "fehlgeschlagen", held: "durch Fehler angehalten", denied: "abgelehnt", stopped: "gestoppt", paused: "pausiert", scopeChanged: "pausiert", frozenHuman: "wartet auf Freigabe", frozenIntegrations: "wartet auf Verbindung", userSkipped: "beiseitegelegt", skipped: "verpasste Ausführungen", deleted: "Entfernt", frozenPermission: "wartet auf Erlaubnis" },
       rest: { one: "{count} weiterer Schritt", other: "{count} weitere Schritte" },
       waiting: "Wartet auf Sie",
       protectionLost: "Einige Ergebnisse sind verborgen, um geheime Werte zu schützen.",
@@ -830,7 +830,7 @@ export const routineMessages = {
       failedOutcome: "失敗",
     },
     notice: {
-      status: { created: "作成済み", changed: "更新済み", done: "完了", recovered: "復旧後に完了", healthy: "実行中", failed: "失敗", held: "エラーで停止", denied: "拒否", stopped: "停止", paused: "一時停止中", scopeChanged: "一時停止中", frozenHuman: "承認待ち", frozenIntegrations: "接続待ち", userSkipped: "保留", skipped: "実行されなかった予定", deleted: "削除済み", rehearsed: "リハーサル済み", frozenPermission: "許可待ち" },
+      status: { created: "作成済み", changed: "更新済み", done: "完了", recovered: "復旧後に完了", healthy: "実行中", failed: "失敗", held: "エラーで停止", denied: "拒否", stopped: "停止", paused: "一時停止中", scopeChanged: "一時停止中", frozenHuman: "承認待ち", frozenIntegrations: "接続待ち", userSkipped: "保留", skipped: "実行されなかった予定", deleted: "削除済み", frozenPermission: "許可待ち" },
       rest: { one: "ほか {count} ステップ", other: "ほか {count} ステップ" },
       waiting: "あなたの対応待ち",
       protectionLost: "秘密の値を保護するため、一部の結果は非表示です。",
@@ -957,7 +957,7 @@ export const routineMessages = {
       failedOutcome: "فشل",
     },
     notice: {
-      status: { created: "أُنشئ", changed: "حُدِّث", done: "اكتمل", recovered: "اكتمل بعد الاسترداد", healthy: "يعمل", failed: "فشل", held: "توقّف بسبب خطأ", denied: "رُفض", stopped: "توقّف", paused: "متوقف مؤقتًا", scopeChanged: "متوقف مؤقتًا", frozenHuman: "بانتظار الموافقة", frozenIntegrations: "بانتظار الربط", userSkipped: "وُضع جانبًا", skipped: "تشغيلات فائتة", deleted: "أُزيل", rehearsed: "أُجريت له بروفة", frozenPermission: "بانتظار الإذن" },
+      status: { created: "أُنشئ", changed: "حُدِّث", done: "اكتمل", recovered: "اكتمل بعد الاسترداد", healthy: "يعمل", failed: "فشل", held: "توقّف بسبب خطأ", denied: "رُفض", stopped: "توقّف", paused: "متوقف مؤقتًا", scopeChanged: "متوقف مؤقتًا", frozenHuman: "بانتظار الموافقة", frozenIntegrations: "بانتظار الربط", userSkipped: "وُضع جانبًا", skipped: "تشغيلات فائتة", deleted: "أُزيل", frozenPermission: "بانتظار الإذن" },
       rest: { one: "{count} خطوة أخرى", other: "{count} خطوات أخرى" },
       waiting: "بانتظارك",
       protectionLost: "بعض النتائج مخفية لحماية قيم سرية.",
