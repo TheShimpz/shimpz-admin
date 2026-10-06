@@ -25,6 +25,31 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         self.authorization_url = self._authorization_url()
 
+    def _issue(
+        self,
+        *,
+        team_id: object = "marketing",
+        challenge_id: object = "a" * 32,
+        callback_mode: str = "loopback",
+        admin_session: object = None,
+    ) -> handoff_store.OAuthPreparation:
+        """Issue one handoff for this test's Admin session unless another session is named."""
+        return self.store.issue(
+            team_id=team_id,
+            challenge_id=challenge_id,
+            admin_session=self.session if admin_session is None else admin_session,
+            callback_mode=callback_mode,
+        )
+
+    def _complete(self, completion_code: str, *, admin_session: str | None = None) -> handoff_store.OAuthCompletion:
+        """Complete the Marketing out-of-band handoff for this test's Admin session unless another is named."""
+        return self.store.complete(
+            team_id="marketing",
+            challenge_id="a" * 32,
+            admin_session=self.session if admin_session is None else admin_session,
+            completion_code=completion_code,
+        )
+
     @staticmethod
     def _authorization_url(
         callback: str = "loopback",
@@ -41,12 +66,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         )
 
     def test_handoff_is_session_issued_bounded_and_one_use(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="b" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
+        preparation = self._issue(challenge_id="b" * 32)
 
         self.assertRegex(preparation.token, r"^[0-9a-f]{64}$")
         self.assertRegex(preparation.session_binding, r"^[A-Za-z0-9_-]{43}$")
@@ -59,12 +79,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             self.store.consume(preparation.token, "loopback")
 
     def test_expiry_restart_and_wrong_shapes_fail_closed(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="b" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
+        preparation = self._issue(challenge_id="b" * 32)
         self.now += 30
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(preparation.token, "loopback")
@@ -74,47 +89,17 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             restarted.consume(preparation.token, "loopback")
         for invalid in ("Marketing", "team/one", "", None):
             with self.assertRaises(handoff_store.OAuthHandoffError):
-                self.store.issue(
-                    team_id=invalid,
-                    challenge_id="b" * 32,
-                    admin_session=self.session,
-                    callback_mode="loopback",
-                )
+                self._issue(team_id=invalid, challenge_id="b" * 32)
         with self.assertRaises(handoff_store.OAuthHandoffError):
-            self.store.issue(
-                team_id="marketing",
-                challenge_id="not-a-challenge",
-                admin_session=self.session,
-                callback_mode="loopback",
-            )
+            self._issue(challenge_id="not-a-challenge")
 
     def test_duplicate_and_capacity_limits_do_not_evict_live_handoffs(self) -> None:
-        first = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
+        first = self._issue()
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "already pending"):
-            self.store.issue(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session=self.session,
-                callback_mode="loopback",
-            )
-        second = self.store.issue(
-            team_id="sales",
-            challenge_id="b" * 32,
-            admin_session=self.session,
-            callback_mode="hosted",
-        )
+            self._issue()
+        second = self._issue(team_id="sales", challenge_id="b" * 32, callback_mode="hosted")
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "capacity"):
-            self.store.issue(
-                team_id="support",
-                challenge_id="c" * 32,
-                admin_session=self.session,
-                callback_mode="loopback",
-            )
+            self._issue(team_id="support", challenge_id="c" * 32)
         self.store.authorize(first.token, self.authorization_url)
         hosted_url = self._authorization_url("hosted")
         self.store.authorize(second.token, hosted_url)
@@ -123,17 +108,9 @@ class OAuthHandoffStoreTest(unittest.TestCase):
 
     def test_logout_cancels_only_its_own_unconsumed_handoffs(self) -> None:
         other_session = "v1:9999999999:fedcba9876543210:" + "b" * 64
-        first = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
-        second = self.store.issue(
-            team_id="sales",
-            challenge_id="b" * 32,
-            admin_session=other_session,
-            callback_mode="hosted",
+        first = self._issue()
+        second = self._issue(
+            team_id="sales", challenge_id="b" * 32, callback_mode="hosted", admin_session=other_session
         )
 
         hosted_url = self._authorization_url("hosted")
@@ -144,21 +121,11 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         self.assertEqual(self.store.consume(second.token, "hosted").authorization_url, hosted_url)
 
     def test_unprepared_invalid_and_duplicate_authorization_fail_closed(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
+        preparation = self._issue()
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(preparation.token, "loopback")
 
-        second = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="loopback",
-        )
+        second = self._issue()
         for invalid in (
             "http://shimpz.com/api/oauth/cloudflare/start",
             "https://evil.example/start",
@@ -175,12 +142,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             self.store.authorize(second.token, self.authorization_url)
 
     def test_callback_mode_mismatch_consumes_the_handoff(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="hosted",
-        )
+        preparation = self._issue(callback_mode="hosted")
         self.store.authorize(preparation.token, self._authorization_url("hosted"))
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(preparation.token, "loopback")
@@ -188,53 +150,23 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             self.store.consume(preparation.token, "hosted")
 
     def test_out_of_band_completion_is_session_state_bound_and_one_use(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="out-of-band",
-        )
+        preparation = self._issue(callback_mode="out-of-band")
         self.store.authorize(preparation.token, self._authorization_url("out-of-band"))
         code = "c1." + "b" * 43 + "." + "a" * 64
 
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.complete(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session="v1:9999999999:fedcba9876543210:" + "d" * 64,
-                completion_code=code,
-            )
+            self._complete(code, admin_session="v1:9999999999:fedcba9876543210:" + "d" * 64)
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.complete(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session=self.session,
-                completion_code="c1." + "x" * 43 + "." + "a" * 64,
-            )
+            self._complete("c1." + "x" * 43 + "." + "a" * 64)
 
-        completion = self.store.complete(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            completion_code=code,
-        )
+        completion = self._complete(code)
         self.assertEqual((completion.state, completion.claim), ("b" * 43, "a" * 64))
         self.assertEqual(completion.session_binding, preparation.session_binding)
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.complete(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session=self.session,
-                completion_code=code,
-            )
+            self._complete(code)
 
     def test_cancel_returns_only_the_exact_pending_team_binding(self) -> None:
-        preparation = self.store.issue(
-            team_id="marketing",
-            challenge_id="a" * 32,
-            admin_session=self.session,
-            callback_mode="out-of-band",
-        )
+        preparation = self._issue(callback_mode="out-of-band")
         self.store.authorize(preparation.token, self._authorization_url("out-of-band"))
 
         self.assertIsNone(
@@ -264,18 +196,8 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "limits"):
             handoff_store.OAuthHandoffStore(capacity=0, ttl_seconds=30)
         for operation in (
-            lambda: self.store.issue(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session="short",
-                callback_mode="loopback",
-            ),
-            lambda: self.store.issue(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session=self.session,
-                callback_mode="invalid",
-            ),
+            lambda: self._issue(admin_session="short"),
+            lambda: self._issue(callback_mode="invalid"),
             lambda: self.store.consume("bad", "loopback"),
             lambda: handoff_store._completion_code(None),
             lambda: handoff_store._completion_code("bad"),
@@ -306,18 +228,8 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         duplicate = "a" * 64
         unique = "b" * 64
         with mock.patch.object(handoff_store.secrets, "token_hex", side_effect=[duplicate, duplicate, unique]):
-            first = self.store.issue(
-                team_id="marketing",
-                challenge_id="a" * 32,
-                admin_session=self.session,
-                callback_mode="loopback",
-            )
-            second = self.store.issue(
-                team_id="sales",
-                challenge_id="b" * 32,
-                admin_session=self.session,
-                callback_mode="out-of-band",
-            )
+            first = self._issue()
+            second = self._issue(team_id="sales", challenge_id="b" * 32, callback_mode="out-of-band")
         self.assertEqual((first.token, second.token), (duplicate, unique))
         self.store.authorize(second.token, self._authorization_url("out-of-band"))
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
