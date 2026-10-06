@@ -58,11 +58,9 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
         if len(items) != 1 or items[0][0] != "file" or not isinstance(items[0][1], UploadFile):
             raise HTTPException(status_code=400, detail="multipart body must contain only one file field")
         upload = items[0][1]
-        try:
+        with team_http.refused_as_bad_request():
             filename = team.canonical_filename(upload.filename)
             media_type = team.canonical_media_type(upload.content_type)
-        except team.TeamRequestError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
         content = await upload.read(team.MAX_FILE_UPLOAD_BYTES + 1)
         if not content:
             raise HTTPException(status_code=400, detail="file must contain bytes")

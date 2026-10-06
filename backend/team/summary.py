@@ -50,10 +50,8 @@ def localized(read: Callable[[str], team.TeamResponse], locale: str, subject: st
     canonical = team_contract.canonical_locale(locale)
     if canonical is None:
         raise HTTPException(status_code=422, detail="Assistant summary locale is invalid")
-    try:
+    with team_http.refused_as_bad_request():
         result = read(canonical)
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
     if result.status != 200:
         return JSONResponse(status_code=result.status, content=result.body)
     body = {key: value for key, value in result.body.items() if key != "trace_id"}

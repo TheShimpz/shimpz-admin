@@ -111,7 +111,7 @@ class StateEdgeTests(unittest.TestCase):
 
 class AssetProjectionEdgeTests(unittest.TestCase):
     def test_asset_errors_json_and_binary_results_are_projected(self) -> None:
-        with self.assertRaisesRegex(assets.HTTPException, "invalid") as caught:
+        with self.assertRaisesRegex(assets.team_http.HTTPException, "invalid") as caught:
             assets._response(lambda: (_ for _ in ()).throw(bridge.TeamRequestError("invalid")))
         self.assertEqual(caught.exception.status_code, 400)
 

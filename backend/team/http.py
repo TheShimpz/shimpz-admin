@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -12,11 +13,18 @@ from team import bridge
 from protocol.http.v1 import websocket as chat_ws_common
 
 
-def response(action) -> JSONResponse:
+@contextmanager
+def refused_as_bad_request() -> Iterator[None]:
+    """Answer a request Admin refused before any Team call as the browser's own 400, with the refusal's reason."""
     try:
-        result = action()
+        yield
     except bridge.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def response(action) -> JSONResponse:
+    with refused_as_bad_request():
+        result = action()
     return JSONResponse(status_code=result.status, content=result.body)
 
 

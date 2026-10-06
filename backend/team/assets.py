@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 from team import bridge
+from team import http as team_http
 
 
 def _response(action) -> Response:
-    try:
+    with team_http.refused_as_bad_request():
         result = action()
-    except bridge.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
     if result.contents is None:
         return JSONResponse(status_code=result.status, content=result.error)
     return Response(

@@ -705,15 +705,13 @@ async def team_assistant_stored_input_clear(
     assistant_id: str,
     stored_input_id: str,
 ):
-    try:
+    with team_http.refused_as_bad_request():
         response = await asyncio.to_thread(
             action_stored_input.clear_assistant_stored_input,
             team_id,
             assistant_id,
             stored_input_id,
         )
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
     return JSONResponse(response.body, status_code=response.status, headers={"Cache-Control": "no-store"})
 
 
@@ -848,15 +846,13 @@ if ADMIN_PROFILE == "local":
 
 @app.delete("/api/teams/{team_id}/assistant-integrations/{assistant_id}/{integration_id}")
 async def team_assistant_integration_disconnect(team_id: str, assistant_id: str, integration_id: str):
-    try:
+    with team_http.refused_as_bad_request():
         response = await asyncio.to_thread(
             integrations.disconnect_assistant_integration,
             team_id,
             assistant_id,
             integration_id,
         )
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
     if response.status == 204 and not response.body:
         return Response(status_code=204, headers={"Cache-Control": "no-store"})
     return JSONResponse(response.body, status_code=response.status, headers={"Cache-Control": "no-store"})

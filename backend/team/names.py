@@ -29,10 +29,8 @@ def _team_name(payload: dict) -> str:
         raise HTTPException(status_code=400, detail="request body must contain only team_name")
     if not isinstance(payload["team_name"], str):
         raise HTTPException(status_code=400, detail="team name must be a string")
-    try:
+    with team_http.refused_as_bad_request():
         return bridge.canonical_local_team_name(unicodedata.normalize("NFC", payload["team_name"].strip()))
-    except bridge.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 def _candidate_ids(team_name: str) -> list[str]:
