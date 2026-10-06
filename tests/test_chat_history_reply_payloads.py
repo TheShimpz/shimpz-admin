@@ -143,6 +143,46 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
+    def test_a_reply_keeps_its_routine_card_or_refusal_for_reload(self) -> None:
+        vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+        card = vectors["routine_proposal"]["valid"][0]
+        done = {
+            "type": "done",
+            "team_id": "marketing",
+            "team_name": "Marketing",
+            "reply": "Listei os registros.",
+            "clarification": None,
+        }
+        turn_id = self._admitted()
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "routine_proposal": card}))
+        self.assertEqual(history.page("marketing")["entries"][-1]["routine_proposal"], card)
+        refused = self._admitted()
+        refusal = {"code": "routine-recording-empty"}
+        self.assertTrue(history.append_reply("marketing", refused, {**done, "routine_refusal": refusal}))
+        self.assertEqual(history.page("marketing")["entries"][-1]["routine_refusal"], refusal)
+        asked = {
+            "question": "Qual zona?",
+            "options": [{"label": "a", "description": ""}, {"label": "b", "description": ""}],
+            "default_index": 0,
+        }
+        for invalid in (
+            {"routine_proposal": {**card, "name": ""}},
+            {"routine_proposal": card, "routine_refusal": refusal},
+            {"routine_refusal": refusal, "clarification": asked, "reply": "Qual zona?\n\n1. a\n2. b"},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", self._admitted(), {**done, **invalid})
+        tampered = self._admitted()
+        self.assertTrue(history.append_reply("marketing", tampered, done))
+        stored = {"kind": "message", "role": "assistant", "text": "x", "author": "Marketing", "routine_refusal": {}}
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (json.dumps(stored), f"{tampered}:reply"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
     def test_a_reply_keeps_its_closed_turn_usage_for_reload(self) -> None:
         usage = {
             "duration_ms": 6200,

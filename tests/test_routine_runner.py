@@ -35,6 +35,11 @@ VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text(
 # Team's exact healthy-rollup delivery sequences and the transcript rows Admin must end with (ADR-0092 section 9).
 ROLLUPS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_rollup_delivery"]
 BATCH = VECTORS["notice_batch"]["valid"][0]
+# One run's waiting notice and the newer version that ends it; a missed-firings notice; a deleted Routine's notice.
+FROZEN = VECTORS["notice_batch"]["valid"][1]["notices"][0]
+DONE = VECTORS["notice_batch"]["valid"][2]["notices"][0]
+SKIPPED = next(item for item in VECTORS["notice_batch"]["valid"][10]["notices"] if item["outcome"] == "skipped")
+DELETED = next(item for item in BATCH["notices"] if item["outcome"] == "deleted")
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
 CLAIMED = {"run": CLAIM, "next_due_at": None}
 # A run whose revision may spend more active time than a short one (ADR-0092 amendment, 2026-10-05, scale).
@@ -154,27 +159,25 @@ class RoutineHistoryTests(unittest.TestCase):
         self.addCleanup(patch.stop)
 
     def test_one_row_per_run_that_a_newer_version_replaces_at_the_end(self) -> None:
-        done, skipped, frozen = BATCH["notices"]
-        self.assertTrue(
-            history.append_routine_notice(
-                {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
-            )
-        )
+        done, skipped, frozen = DONE, SKIPPED, FROZEN
+        self.assertEqual((frozen["notice_id"], frozen["version"], done["version"]), (done["notice_id"], 1, 2))
+        self.assertTrue(history.append_routine_notice(frozen))
         self.assertTrue(history.append_routine_notice(skipped))
         self.assertTrue(history.append_routine_notice(done))
         # An equal version is idempotent; an older one is already superseded; a conflicting equal one is refused.
         self.assertTrue(history.append_routine_notice(done))
-        self.assertTrue(
-            history.append_routine_notice(
-                {**frozen, "run_id": done["run_id"], "notice_id": done["notice_id"], "version": 1}
-            )
-        )
+        self.assertTrue(history.append_routine_notice(frozen))
         conflicting = {**done["detail"], "plan": {**done["detail"]["plan"], "revision": 2}}
         self.assertFalse(history.append_routine_notice({**done, "detail": conflicting}))
         entries = history.page("team_1")["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
-        self.assertEqual(entries[-1]["quote"], done["quote"])
+        # Each row keeps the name its own notice froze, its usage, and whether the run lost its protection.
+        self.assertEqual(
+            {key: entries[-1][key] for key in ("name", "usage", "protection_lost")},
+            {key: done[key] for key in ("name", "usage", "protection_lost")},
+        )
+        self.assertNotIn("quote", entries[-1])
         # A notice's row time is its own instant, never the moment Admin wrote it.
         self.assertEqual([entry["created_at"] for entry in entries], [skipped["created_at"], done["created_at"]])
         with sqlite3.connect(self.path) as database:
@@ -235,9 +238,10 @@ class RoutineTeamCallTests(unittest.TestCase):
             self.assertEqual(team.notices(), BATCH)
         with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
             team.acknowledge(BATCH["notices"])
+        first = BATCH["notices"][0]
         self.assertEqual(
             call.call_args.args[2]["deliveries"][0],
-            {"team_id": "team_1", "notice_id": BATCH["notices"][0]["notice_id"], "version": 2},
+            {"team_id": "team_1", "notice_id": first["notice_id"], "version": first["version"]},
         )
         for response, action in (
             (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim(False)),

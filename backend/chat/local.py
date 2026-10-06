@@ -12,6 +12,7 @@ buggy controller can never echo that key or internal execution details back to t
 from __future__ import annotations
 
 import contextlib
+import json
 import re
 import time
 from collections.abc import Callable
@@ -26,6 +27,7 @@ from team import bridge as team
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -33,13 +35,21 @@ MAX_REPLY_CHARS = 60_000
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
-# A done event's public fields; a chat reply may carry one Routine proposal for the confirmation card (ADR-0086).
+# A done event's public fields.
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
 # The Actions a completed turn withheld for its attachment content, named for guidance only (ADR-0093).
 RESTRICTED_FIELD = "restricted_actions"
-_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD})
+# A recording turn ends with the card of the Routine it recorded, for the person to confirm, or with why it made none
+# (ADR-0101 section 5.2); never both, and never beside a question.
+PROPOSAL_FIELD = "routine_proposal"
+REFUSAL_FIELD = "routine_refusal"
+ROUTINE_FIELDS = {
+    PROPOSAL_FIELD: routine_contract.canonical_proposal,
+    REFUSAL_FIELD: routine_contract.canonical_refusal,
+}
+_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD, *ROUTINE_FIELDS})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -678,10 +688,14 @@ def _project_turn(
         restricted = team_contract.canonical_restricted_actions(response.body[RESTRICTED_FIELD])
         if restricted is None:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    routine = admit_routine_fields(response.body, clarification)
+    if routine is None:
+        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = " ".join(
         (
             f"{team_name} {reply} {_clarification_text(clarification)}",
             *(f"{model['provider']} {model['model']}" for model in (usage["models"] if usage else ())),
+            json.dumps(routine, ensure_ascii=False),
         )
     )
     if (
@@ -705,8 +719,20 @@ def _project_turn(
             "clarification": clarification,
             **({USAGE_FIELD: usage} if usage is not None else {}),
             **({RESTRICTED_FIELD: restricted} if restricted is not None else {}),
+            **routine,
         },
     )
+
+
+def admit_routine_fields(body: dict[str, object], clarification: object) -> dict[str, object] | None:
+    """A reply's Routine card or refusal in its closed form, at most one of them and never beside a question."""
+    present = [name for name in ROUTINE_FIELDS if name in body]
+    if not present:
+        return {}
+    if len(present) > 1 or clarification is not None:
+        return None
+    admitted = ROUTINE_FIELDS[present[0]](body[present[0]])
+    return None if admitted is None else {present[0]: admitted}
 
 
 def _clarification_text(clarification: dict[str, object] | None) -> str:

@@ -230,7 +230,18 @@ def _append(
 # Serializes Routine notice delivery with Team deletion and Space reset, including their transcript cleanup, so a
 # notice read before a Team is deleted is never written into the history after that Team's rows are removed.
 LIFECYCLE_LOCK = threading.Lock()
-_NOTICE_FIELDS = ("notice_id", "routine_id", "quote", "run_id", "outcome", "created_at", "detail", "version")
+_NOTICE_FIELDS = (
+    "notice_id",
+    "routine_id",
+    "name",
+    "run_id",
+    "outcome",
+    "created_at",
+    "detail",
+    "version",
+    "usage",
+    "protection_lost",
+)
 
 
 def append_routine_notice(notice: object) -> bool:
@@ -312,11 +323,29 @@ def append_user(team_id: object, turn_id: object, message: object, *, files: obj
     )
 
 
+# A reply's Routine card for the person to confirm, or why the recording made none: at most one, never with a question.
+_ROUTINE_REPLY_FIELDS = {
+    "routine_proposal": routine_contract.canonical_proposal,
+    "routine_refusal": routine_contract.canonical_refusal,
+}
+
+
+def _routine_reply(value: Mapping[str, object], clarification: object) -> dict[str, object]:
+    present = [name for name in _ROUTINE_REPLY_FIELDS if name in value]
+    if not present:
+        return {}
+    admitted = _ROUTINE_REPLY_FIELDS[present[0]](value[present[0]])
+    if len(present) > 1 or clarification is not None or admitted is None or admitted != value[present[0]]:
+        raise ValueError("chat history Routine reply is invalid")
+    return {present[0]: admitted}
+
+
 def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    if not isinstance(event, Mapping) or set(event) - {"usage", "restricted_actions"} != fields:
+    optional = {"usage", "restricted_actions", *_ROUTINE_REPLY_FIELDS}
+    if not isinstance(event, Mapping) or set(event) - optional != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
@@ -341,6 +370,8 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows the same guidance for the Actions the attachments withheld (ADR-0093).
         entry["restricted_actions"] = restricted
+    # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101 section 5.2).
+    entry.update(_routine_reply(event, entry.get("clarification")))
     return _append(
         canonical_team, f"{canonical_turn}:reply", entry, anchor_turn=canonical_turn, finish_turn=canonical_turn
     )
@@ -586,6 +617,8 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
         usage = team_contract.canonical_turn_usage(payload["usage"])
         if usage is None or usage != payload["usage"]:
             raise ValueError("invalid stored message")
+    if role == "assistant":
+        expected.update(_routine_reply(payload, payload.get("clarification")))
     if role == "user" and "files" in payload:
         expected.add("files")
         _file_references(payload["files"])

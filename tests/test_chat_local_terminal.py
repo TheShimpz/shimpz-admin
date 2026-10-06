@@ -5,6 +5,7 @@ Usage, clarification, and Routine proposals reach the browser only in their clos
 
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -84,6 +85,56 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
         for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
             with self.subTest(restricted=invalid):
                 self.assertEqual(turn(restricted_actions=invalid).body, {"code": "chat-response-invalid"})
+
+    def test_relays_one_closed_routine_card_or_refusal_free_of_forbidden_values(self) -> None:
+        """A recording turn ends with its Routine card or why it made none, never both and never beside a question."""
+        card = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_proposal"]["valid"][0]
+        asked = {
+            "question": "Qual zona?",
+            "options": [{"label": "a", "description": ""}, {"label": "b", "description": ""}],
+            "default_index": 0,
+        }
+
+        def turn(**extra: object) -> object:
+            body = {
+                "team_id": "team_1",
+                "team_name": "Marketing",
+                "reply": "Listei os registros.",
+                "clarification": None,
+                "trace_id": TRACE_ID,
+                **extra,
+            }
+            with (
+                mock.patch.object(
+                    team,
+                    "get_inference",
+                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
+                ),
+                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
+                mock.patch.object(team, "chat", return_value=team.TeamResponse(200, body)),
+            ):
+                return local.turn(
+                    "team_1",
+                    {"message": "Cria uma rotina", "files": [], "assistant_ids": [], "locale": "pt", "timezone": None},
+                    (),
+                    REQUEST,
+                )
+
+        relayed = turn(routine_proposal=card)
+        self.assertEqual(relayed.websocket_event("team_1")["routine_proposal"], card)
+        refused = turn(routine_refusal={"code": "routine-secret-literal"})
+        self.assertEqual(refused.websocket_event("team_1")["routine_refusal"], {"code": "routine-secret-literal"})
+        self.assertNotIn("routine_proposal", turn().body)
+        leaked = {**card, "name": "sk-test-0123456789abcdef"}
+        for extra in (
+            {"routine_proposal": {**card, "rehearsal": not card["rehearsal"]}},
+            {"routine_proposal": leaked},
+            {"routine_refusal": {"code": "Bad Code"}},
+            {"routine_proposal": card, "routine_refusal": {"code": "routine-recording-empty"}},
+            {"routine_refusal": {"code": "routine-recording-empty"}, "clarification": asked},
+        ):
+            with self.subTest(extra=extra):
+                self.assertEqual(turn(**extra).body, {"code": "chat-response-invalid"})
 
     def test_projects_only_a_closed_clarification_free_of_forbidden_values(self) -> None:
         asked = {
