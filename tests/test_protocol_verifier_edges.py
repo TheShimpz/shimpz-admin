@@ -314,6 +314,24 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
 
+    def test_rejects_answer_replies_that_miss_a_language_or_a_fallback(self) -> None:
+        def edit(old: str, new: str):
+            def mutate(root: Path) -> None:
+                module = root / "routine.py"
+                text = module.read_text(encoding="utf-8")
+                self.assertIn(old, text)
+                module.write_text(text.replace(old, new, 1), encoding="utf-8")
+                _rehash(root, "routine.py")
+
+            return mutate
+
+        for mutate in (
+            edit('    "zh": "已将你的回答应用到例行任务。",\n', ""),
+            edit('    return ANSWER_REPLIES[locale or "en"]', '    return ANSWER_REPLIES[locale or "pt"]'),
+        ):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", mutate)
+
     def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value.pop("rendered_copy")
