@@ -4644,6 +4644,60 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(0);
   });
 
+  // What Team asks before a card is answered in the chat (ADR-0101): no answer is preselected, the answer is the next
+  // send, and its reply carries the card.
+  function sentMessages(scenario) {
+    return scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries
+      .filter((entry) => entry.role === 'user')
+      .map((entry) => entry.text);
+  }
+
+  test('a schedule question is answered with one choice and its reply carries the Routine card', async ({ page }) => {
+    const scenario = await recordRoutine(page, 'routine-question');
+    const words = messages.en.routine.proposal.questions.schedule;
+    const question = page.getByRole('radiogroup', { name: words.question });
+    await expect(question).toBeVisible();
+    const answer = page.getByRole('button', { name: 'Answer', exact: true });
+    await expect(answer).toBeDisabled();
+    for (const label of words.answers) await expect(question.getByRole('radio', { name: label })).not.toBeChecked();
+    expect(await accessibilityViolations(page)).toEqual([]);
+    await question.getByRole('radio', { name: 'Every hour' }).check();
+    await answer.click();
+    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+    await expect(question).toHaveCount(0);
+    const sent = sentMessages(scenario);
+    expect(sent.at(-1)).toBe(`${ROUTINE_TEXT.en.request}\n\nQuestion: ${words.question}\nAnswer: Every hour`);
+    // A reload keeps the question answered and the card under its answer's reply.
+    await page.reload();
+    await expect(page.getByRole('radiogroup', { name: words.question })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(1);
+  });
+
+  test('two zones of one name are told apart by choosing one, whose id the answer sends', async ({ page }) => {
+    const scenario = await recordRoutine(page, 'routine-ambiguous');
+    const words = messages.en.routine.proposal.questions.ambiguous;
+    const question = page.getByRole('radiogroup', { name: words.question });
+    const second = 'shimpz.com (9a7806061c88ada191ed06f989cc3dac)';
+    await expect(question.getByRole('radio', { name: 'shimpz.com (023e105f4ecef8ad9ca31a8372d0c353)' })).toBeVisible();
+    await question.getByRole('radio', { name: second }).check();
+    await page.getByRole('button', { name: 'Answer', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+    expect(sentMessages(scenario).at(-1)).toContain(`Answer: ${second}`);
+  });
+
+  test('when no interval fits, the question offers nothing to choose and only a written answer is sent', async ({ page }) => {
+    const scenario = await recordRoutine(page, 'routine-no-room');
+    const words = messages.en.routine.proposal.questions.noRoom;
+    const question = page.getByRole('radiogroup', { name: words.question });
+    await expect(question.getByRole('radio')).toHaveCount(1);
+    const answer = page.getByRole('button', { name: 'Answer', exact: true });
+    await question.getByRole('radio', { name: 'Other answer' }).check();
+    await expect(answer).toBeDisabled();
+    await page.getByRole('textbox', { name: 'Other answer' }).fill('Remove the old DNS Routine first');
+    await answer.click();
+    expect(sentMessages(scenario).at(-1)).toContain('Answer: Remove the old DNS Routine first');
+  });
+
   test("a deleted Routine's last notice names it as removed, also after a reload", async ({ page }) => {
     await routeScenario(page, 'routine-lifecycle');
     await page.goto('/chat/?team=marketing');
@@ -5661,7 +5715,8 @@ test.describe('Team Routines', () => {
       ...noticeExtras(outcome),
     });
     const { name: _name, ...definition } = Object.fromEntries(
-      ['name', 'plan', 'output', 'schedule', 'timezone', 'state', 'permitted', 'model', 'allowance'].map((key) => [key, ROUTINE_VIEW[key]]),
+      ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted', 'model', 'allowance']
+        .map((key) => [key, ROUTINE_VIEW[key]]),
     );
     await routeReadyChat(page, {
       history: {
