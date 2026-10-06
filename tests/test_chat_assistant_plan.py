@@ -74,6 +74,23 @@ def _registry(*items: tuple[str, tuple[str, ...]]):
     )
 
 
+def _install_required(*assistant_ids: str) -> assistant_plan.team.TeamResponse:
+    """Team's capability plan that requires installing exactly these Assistants."""
+    return assistant_plan.team.TeamResponse(
+        200, {"team_id": "team_1", "status": "install-required", "assistant_ids": list(assistant_ids)}
+    )
+
+
+def _inventory(*items: tuple[str, str]):
+    """Patch Team's installed inventory to answer these (Assistant, status) pairs."""
+    return mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed(*items))
+
+
+def _execute(plan: assistant_plan.Plan) -> assistant_plan.Result:
+    """Run one plan to completion with no stop request and no progress observer."""
+    return assistant_plan.execute(plan, threading.Event(), lambda _items: None)
+
+
 def _payload(message: str, assistant_ids: tuple[str, ...] = (), locale: str = "en") -> dict[str, object]:
     return {"message": message, "files": [], "assistant_ids": list(assistant_ids), "locale": locale}
 
@@ -167,10 +184,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             objective,
             (CLOUDFLARE, exa),
-            assistant_plan.team.TeamResponse(
-                200,
-                {"team_id": "team_1", "status": "install-required", "assistant_ids": ["shimpz-exa"]},
-            ),
+            _install_required("shimpz-exa"),
         )
 
         self.assertEqual([item["id"] for item in planner.call_args.args[2]], ["cloudflare", "shimpz-exa"])
@@ -193,10 +207,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Use Cloudflare",
             (DOMAIN_HELPER, enabled),
-            assistant_plan.team.TeamResponse(
-                200,
-                {"team_id": "team_1", "status": "install-required", "assistant_ids": ["enabled"]},
-            ),
+            _install_required("enabled"),
             installed=_installed(("enabled", "running")),
             registry=_registry(("enabled", ("inspect-resource",))),
             assistant_ids=("enabled",),
@@ -243,14 +254,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             objective,
             (CLOUDFLARE, WHATSAPP),
-            assistant_plan.team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "status": "install-required",
-                    "assistant_ids": ["cloudflare", "whatsapp"],
-                },
-            ),
+            _install_required("cloudflare", "whatsapp"),
         )
 
         self.assertIsNotNone(result.plan)
@@ -280,10 +284,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.local,
                 "capability_plan",
-                return_value=assistant_plan.team.TeamResponse(
-                    200,
-                    {"team_id": "team_1", "status": "install-required", "assistant_ids": ["cloudflare"]},
-                ),
+                return_value=_install_required("cloudflare"),
             ),
         ):
             result = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
@@ -319,14 +320,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Configure Cloudflare",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "status": "install-required",
-                    "assistant_ids": ["cloudflare"],
-                },
-            ),
+            _install_required("cloudflare"),
             local_inventory=_local_inventory(),
         )
 
@@ -355,14 +349,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.local,
                 "capability_plan",
-                return_value=assistant_plan.team.TeamResponse(
-                    200,
-                    {
-                        "team_id": "team_1",
-                        "status": "install-required",
-                        "assistant_ids": ["cloudflare"],
-                    },
-                ),
+                return_value=_install_required("cloudflare"),
             ),
         ):
             result = assistant_plan.prepare_capability(
@@ -451,10 +438,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.local,
                 "capability_plan",
-                return_value=assistant_plan.team.TeamResponse(
-                    200,
-                    {"team_id": "team_1", "status": "install-required", "assistant_ids": ["whatsapp"]},
-                ),
+                return_value=_install_required("whatsapp"),
             ) as planner,
         ):
             result = assistant_plan.prepare_capability(
@@ -494,14 +478,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, _planner = self._prepare(
             "Configure Cloudflare e envie WhatsApp",
             (CLOUDFLARE, WHATSAPP),
-            assistant_plan.team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "status": "install-required",
-                    "assistant_ids": ["cloudflare", "whatsapp"],
-                },
-            ),
+            _install_required("cloudflare", "whatsapp"),
             installed=_installed(*((assistant_id, "running") for assistant_id in enabled_ids)),
             registry=_registry(*((assistant_id, ("unrelated",)) for assistant_id in enabled_ids)),
             assistant_ids=enabled_ids,
@@ -629,9 +606,7 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
 
     def test_a_planned_publication_shows_discovery_summary_in_the_turn_language(self) -> None:
         store = self._store((self.PORTUGUESE, replace(WHATSAPP, summary="Mensagens revisadas do WhatsApp.")))
-        planned = assistant_plan.team.TeamResponse(
-            200, {"team_id": "team_1", "status": "install-required", "assistant_ids": ["cloudflare"]}
-        )
+        planned = _install_required("cloudflare")
         with (
             mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()),
             mock.patch.object(assistant_plan.local, "capability_plan", return_value=planned) as planner,
@@ -783,17 +758,9 @@ class AssistantPlanExecutionTests(unittest.TestCase):
                     assistant_install.InstallResult(503),
                 ),
             ) as install,
-            mock.patch.object(
-                assistant_plan.team,
-                "list_installed_assistants",
-                return_value=_installed(("cloudflare", "running")),
-            ),
+            _inventory(("cloudflare", "running")),
         ):
-            result = assistant_plan.execute(
-                self._plan(CLOUDFLARE, WHATSAPP, third),
-                threading.Event(),
-                lambda _items: None,
-            )
+            result = _execute(self._plan(CLOUDFLARE, WHATSAPP, third))
 
         self.assertEqual(result.state, "failed")
         self.assertEqual(result.status, 503)
@@ -816,11 +783,7 @@ class AssistantPlanExecutionTests(unittest.TestCase):
                 "install_publication",
                 return_value=assistant_install.InstallResult(200, True),
             ) as install,
-            mock.patch.object(
-                assistant_plan.team,
-                "list_installed_assistants",
-                return_value=_installed(("cloudflare", "running")),
-            ),
+            _inventory(("cloudflare", "running")),
         ):
             result = assistant_plan.execute(
                 self._plan(CLOUDFLARE, WHATSAPP),
@@ -839,17 +802,9 @@ class AssistantPlanExecutionTests(unittest.TestCase):
                 "install_publication",
                 return_value=assistant_install.InstallResult(200, True),
             ),
-            mock.patch.object(
-                assistant_plan.team,
-                "list_installed_assistants",
-                return_value=_installed(("cloudflare", "stopped")),
-            ),
+            _inventory(("cloudflare", "stopped")),
         ):
-            result = assistant_plan.execute(
-                self._plan(CLOUDFLARE),
-                threading.Event(),
-                lambda _items: None,
-            )
+            result = _execute(self._plan(CLOUDFLARE))
 
         self.assertEqual(result.state, "failed")
         self.assertEqual(result.status, 502)
@@ -862,17 +817,9 @@ class AssistantPlanExecutionTests(unittest.TestCase):
                 "install_local_snapshot",
                 return_value=assistant_install.InstallResult(200, True),
             ) as install,
-            mock.patch.object(
-                assistant_plan.team,
-                "list_installed_assistants",
-                return_value=_installed(("cloudflare", "running")),
-            ),
+            _inventory(("cloudflare", "running")),
         ):
-            result = assistant_plan.execute(
-                self._plan(local_assistant),
-                threading.Event(),
-                lambda _items: None,
-            )
+            result = _execute(self._plan(local_assistant))
 
         self.assertEqual(result.state, "installed")
         install.assert_called_once_with("team_1", local_assistant)
@@ -883,11 +830,7 @@ class AssistantPlanExecutionTests(unittest.TestCase):
             "install_publication",
             side_effect=assistant_plan.team.TeamRequestError("private failure"),
         ):
-            result = assistant_plan.execute(
-                self._plan(CLOUDFLARE, WHATSAPP),
-                threading.Event(),
-                lambda _items: None,
-            )
+            result = _execute(self._plan(CLOUDFLARE, WHATSAPP))
 
         self.assertEqual(result.state, "failed")
         self.assertEqual(result.status, 502)
