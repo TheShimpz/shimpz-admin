@@ -7,7 +7,6 @@ import concurrent.futures
 import hashlib
 import hmac
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -19,6 +18,7 @@ import auth
 import models
 import state
 from chat.delivery import progress as chat_progress
+from mfa_helper import isolated_store
 from team import assets, bridge, transport
 
 from chat import local, payloads
@@ -54,13 +54,7 @@ class ModelEdgeTests(unittest.TestCase):
 
 class StateEdgeTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.previous_path = state.STORE_PATH
-        state.STORE_PATH = Path(self.temporary.name) / "admin.json"
-        self.addCleanup(setattr, state, "STORE_PATH", self.previous_path)
-        with state._STORE_LOCK:
-            state._store_cache = None
+        isolated_store(self, state)
 
     def test_corrupt_changed_and_non_object_stores_fail_loud(self) -> None:
         state.STORE_PATH.write_text("{", encoding="utf-8")

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import copy
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from mfa_helper import configure_supervisor
+from mfa_helper import configure_supervisor, isolated_store
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -47,13 +46,7 @@ def credential() -> dict[str, object]:
 
 class PasskeyTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.previous_path = state.STORE_PATH
-        state.STORE_PATH = Path(self.temporary.name) / "admin.json"
-        self.addCleanup(setattr, state, "STORE_PATH", self.previous_path)
-        with state._STORE_LOCK:
-            state._store_cache = None
+        isolated_store(self, state)
         configure_supervisor(state, "violet otter lantern quartz 92")
 
     def test_rp_id_is_exact_host_and_rejects_ip_or_external_http(self) -> None:

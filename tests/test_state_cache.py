@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import stat
 import sys
-import tempfile
 import unittest
 from collections.abc import Callable
 from pathlib import Path
@@ -12,20 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import state
-from mfa_helper import code, configure_supervisor
+from mfa_helper import code, configure_supervisor, isolated_store
 
 NOW = 1_800_000_000
 
 
 class AdminStoreCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.previous_path = state.STORE_PATH
-        state.STORE_PATH = Path(self.temporary.name) / "admin.json"
-        self.addCleanup(setattr, state, "STORE_PATH", self.previous_path)
-        with state._STORE_LOCK:
-            state._store_cache = None
+        isolated_store(self, state)
 
     def test_validated_store_is_read_once_until_file_identity_changes(self) -> None:
         state._write({"session_secret": "first"})

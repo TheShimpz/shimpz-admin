@@ -5,14 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-import tempfile
 import unittest
 from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest import mock
 
 from http_request import LOOPBACK, http_request, json_headers
-from mfa_helper import NOW, code, configure_supervisor
+from mfa_helper import NOW, code, configure_supervisor, isolated_store
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,13 +46,7 @@ def _request(method: str, path: str, payload: object, *, origin: str | None, coo
 
 class RoutineDeleteConfirmationTests(unittest.TestCase):
     def setUp(self) -> None:
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        previous = state.STORE_PATH
-        state.STORE_PATH = Path(temporary.name) / "admin.json"
-        self.addCleanup(setattr, state, "STORE_PATH", previous)
-        with state._STORE_LOCK:
-            state._store_cache = None
+        isolated_store(self, state)
         secret = configure_supervisor(state, PASSWORD)
         # The clock stands just after the fixture's TOTP enrollment, for its codes and the session alike.
         clock = mock.patch.object(totp.time, "time", return_value=LATER)
