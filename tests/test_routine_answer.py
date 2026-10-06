@@ -16,6 +16,7 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import transport
 from test_chat_human_projection import _fingerprinted, _request, _response
@@ -42,16 +43,7 @@ def resumed(status: str = "done", run: str = RUN) -> team.TeamResponse:
 
 def body_request(payload: object) -> Request:
     raw = json.dumps(payload).encode()
-    delivered = False
-
-    async def receive():
-        nonlocal delivered
-        chunk = b"" if delivered else raw
-        delivered = True
-        return {"type": "http.request", "body": chunk, "more_body": False}
-
-    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(raw)).encode())]
-    return Request({"type": "http", "method": "POST", "path": "/", "headers": headers, "query_string": b""}, receive)
+    return http_request("/", LOOPBACK, body=raw, headers=json_headers(raw))
 
 
 class RoutineAnswerTests(unittest.TestCase):

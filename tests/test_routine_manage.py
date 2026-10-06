@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import local_auth
+from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import transport
 
@@ -45,17 +46,9 @@ def answer(body: dict[str, object], status: int = 200) -> team.TeamResponse:
 
 def request(payload: object, application: object = None) -> Request:
     body = json.dumps(payload).encode()
-    delivered = False
-
-    async def receive():
-        nonlocal delivered
-        chunk = b"" if delivered else body
-        delivered = True
-        return {"type": "http.request", "body": chunk, "more_body": False}
-
-    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
-    scope = {"type": "http", "method": "POST", "path": "/", "headers": headers, "query_string": b""}
-    return Request({**scope, "app": application or FastAPI()}, receive)
+    built = http_request("/", LOOPBACK, body=body, headers=json_headers(body))
+    built.scope["app"] = application or FastAPI()
+    return built
 
 
 class RoutineManageTests(unittest.TestCase):
