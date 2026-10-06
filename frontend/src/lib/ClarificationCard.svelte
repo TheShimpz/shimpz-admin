@@ -10,15 +10,16 @@
 
   const id = $props.id();
   const OTHER = 'other';
-  // Each card starts on its own recommended default; a card never changes its question.
+  // Each card starts on its own recommended default, or on nothing when it recommends none; a card never changes its
+  // question.
   const recommended = untrack(() => clarification.default_index);
-  let choice = $state(String(recommended));
+  let choice = $state(recommended === null ? '' : String(recommended));
   let custom = $state('');
   let error = $state('');
 
   // The recommended option leads the list; the others keep their order. Each keeps its index as its value.
   let ordered = $derived([
-    recommended,
+    ...(recommended === null ? [] : [recommended]),
     ...clarification.options.map((_, index) => index).filter((index) => index !== recommended),
   ].map((index) => ({ index, option: clarification.options[index] })));
 

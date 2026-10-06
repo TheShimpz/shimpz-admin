@@ -49,9 +49,15 @@ test('only the exact closed clarification shape parses', () => {
   }
 });
 
-test('every question recommends one of its options, and the retired unrecommended form is refused', () => {
+test('a question recommends one of its options or, never steering a choice, none', () => {
   assert.equal(renderClarification(ASKED), 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana');
-  for (const value of [null, undefined, false, -1, 2]) {
+  const unrecommended = { ...ASKED, default_index: null };
+  assert.deepEqual(parseClarification(unrecommended), unrecommended);
+  assert.equal(
+    renderClarification(unrecommended),
+    'Qual período você quer cobrir?\n\n1. Hoje — Só lançamentos de hoje.\n2. Esta semana',
+  );
+  for (const value of [undefined, false, -1, 2]) {
     assert.throws(() => parseClarification({ ...ASKED, default_index: value }), /invalid clarification/, String(value));
   }
 });

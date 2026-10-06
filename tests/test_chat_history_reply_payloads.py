@@ -19,6 +19,24 @@ from chat import local
 
 
 class ChatHistoryReplyPayloadTests(ChatHistoryCase):
+    def test_an_unrecommended_question_keeps_no_default_through_the_turn_and_history(self) -> None:
+        # A Routine question never steers a choice: no option is recommended, and the reply marks none.
+        asked = {
+            "question": "Com que frequência?",
+            "options": [{"label": "A cada hora", "description": ""}, {"label": "Todo dia", "description": ""}],
+            "default_index": None,
+        }
+        reply = "Com que frequência?\n\n1. A cada hora\n2. Todo dia"
+        body = {"team_id": "marketing", "team_name": "Marketing", "reply": reply, "clarification": asked}
+        projected = local._project_turn(
+            local.team.TeamResponse(200, {**body, "trace_id": "a" * 32}), "marketing", forbidden_values=("not-a-key",)
+        )
+        self.assertEqual((projected.status, projected.body["clarification"]), (200, asked))
+        turn_id = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", turn_id, "Cria uma rotina"))
+        self.assertTrue(history.append_reply("marketing", turn_id, {"type": "done", **projected.body}))
+        self.assertEqual(history.page("marketing")["entries"][-1]["clarification"], asked)
+
     def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
         asked = {
             "question": "Qual período?",

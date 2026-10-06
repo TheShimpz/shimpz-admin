@@ -32,7 +32,7 @@ function exact(value, keys) {
 
 /**
  * Return the exact clarification, or null when the value is null. Any other shape throws. `default_index` names the
- * recommended option.
+ * recommended option, or is null when the question recommends none, as a Routine question never steers a choice.
  */
 export function parseClarification(value) {
   if (value === null) return null;
@@ -53,7 +53,7 @@ export function parseClarification(value) {
   });
   if (
     new Set(parsed.map((option) => option.label.toLowerCase())).size !== parsed.length ||
-    !Number.isInteger(defaultIndex) || defaultIndex < 0 || defaultIndex >= parsed.length
+    (defaultIndex !== null && (!Number.isInteger(defaultIndex) || defaultIndex < 0 || defaultIndex >= parsed.length))
   ) throw new TypeError('invalid clarification');
   return { question: value.question, options: parsed, default_index: defaultIndex };
 }

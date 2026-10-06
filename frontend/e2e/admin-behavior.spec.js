@@ -1234,6 +1234,40 @@ test('an older question answered after another request closes once its answer is
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
 });
 
+test('a question that recommends nothing preselects no option and answers only once one is chosen', async ({ page }) => {
+  const asked = { ...CLARIFICATION, default_index: null };
+  const reply = 'Which period should the list cover?\n\n1. Today — Only models released today.\n2. This week\n3. This month';
+  const turn = 'c'.repeat(32);
+  const chat = await routeReadyChat(page, {
+    history: {
+      entries: [
+        { id: `${turn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: VOICE_REQUEST },
+        {
+          id: `${turn}:reply`,
+          created_at: HISTORY_AT,
+          kind: 'message',
+          role: 'assistant',
+          text: reply,
+          author: 'Marketing',
+          clarification: asked,
+        },
+      ],
+      before: null,
+    },
+  });
+  await page.goto('/chat/');
+  const card = page.getByRole('form', { name: CLARIFICATION.question });
+  await expect(card.getByRole('radio', { checked: true })).toHaveCount(0);
+  await expect(card.getByRole('radio', { name: /· recommended/ })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Answer' })).toBeDisabled();
+  expect(sentMessages(chat.chatFrames())).toEqual([]);
+
+  await card.getByRole('radio', { name: 'This week' }).check();
+  await card.getByRole('button', { name: 'Answer' }).click();
+  await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  expect(sentMessages(chat.chatFrames())).toEqual([composedAnswer(VOICE_REQUEST, CLARIFICATION.question, 'This week')]);
+});
+
 test('a custom answer takes focus and can be sent only once it has text', async ({ page }) => {
   const scenario = await routeScenario(page, 'clarify');
   const { card } = await askVoiceQuestion(page, scenario);
