@@ -44,6 +44,22 @@ def _route_operations() -> route_delivery.Operations:
     )
 
 
+async def _deliver_admitted(
+    plan, operations, turn: Turn, message: str, *, connection: Connection | None = None
+) -> None:
+    """Deliver one admitted plan to a sentinel socket for an English turn that sent this message."""
+    payload = {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+    await plan_delivery._deliver_admitted(
+        mock.sentinel.websocket,
+        Connection() if connection is None else connection,
+        turn,
+        "team_1",
+        payload,
+        plan,
+        operations,
+    )
+
+
 class PlanDeliveryEdges(unittest.TestCase):
     def test_composed_explicit_install_clears_the_single_assistant_reference(self) -> None:
         connection = Connection(assistant_reference=assistant_proposal.AssistantReference("prior", "Prior"))
@@ -316,15 +332,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 mock.patch.object(plan_delivery, "_run_job", new=mock.AsyncMock(return_value=terminal)),
                 mock.patch.object(plan_delivery.history, "append_install", return_value=True) as append,
             ):
-                await plan_delivery._deliver_admitted(
-                    mock.sentinel.websocket,
-                    Connection(),
-                    turn,
-                    "team_1",
-                    {"message": "do the task", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    plan,
-                    operations,
-                )
+                await _deliver_admitted(plan, operations, turn, "do the task")
             append.assert_called_once()
             operations.send_event.assert_awaited_once()
             operations.continue_turn.assert_awaited_once()
@@ -341,15 +349,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 mock.patch.object(plan_delivery, "_run_job", new=mock.AsyncMock(return_value=terminal)),
                 mock.patch.object(plan_delivery.history, "append_install", return_value=False),
             ):
-                await plan_delivery._deliver_admitted(
-                    mock.sentinel.websocket,
-                    Connection(),
-                    turn,
-                    "team_1",
-                    {"message": "do the task", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    plan,
-                    operations,
-                )
+                await _deliver_admitted(plan, operations, turn, "do the task")
             operations.finish_turn.assert_awaited_once()
             operations.send_event.assert_not_awaited()
             operations.continue_turn.assert_not_awaited()
@@ -479,15 +479,7 @@ class PlanDeliveryEdges(unittest.TestCase):
         async def scenario() -> None:
             operations = _operations()
             with mock.patch.object(plan_delivery, "_run_job", new=mock.AsyncMock(return_value=None)):
-                await plan_delivery._deliver_admitted(
-                    mock.sentinel.websocket,
-                    Connection(),
-                    Turn(None, "assistant-plan"),
-                    "team_1",
-                    {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    _plan(),
-                    operations,
-                )
+                await _deliver_admitted(_plan(), operations, Turn(None, "assistant-plan"), "send")
             operations.send_event.assert_not_awaited()
             operations.continue_turn.assert_not_awaited()
 
@@ -495,14 +487,8 @@ class PlanDeliveryEdges(unittest.TestCase):
             result = assistant_plan.Result("installed", ())
             connection = Connection()
             with mock.patch.object(plan_delivery, "_run_job", new=mock.AsyncMock(return_value=result)):
-                await plan_delivery._deliver_admitted(
-                    mock.sentinel.websocket,
-                    connection,
-                    Turn(None, "assistant-plan"),
-                    "team_1",
-                    {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    _plan(),
-                    operations,
+                await _deliver_admitted(
+                    _plan(), operations, Turn(None, "assistant-plan"), "send", connection=connection
                 )
             self.assertTrue(connection.closed)
             operations.continue_turn.assert_not_awaited()
