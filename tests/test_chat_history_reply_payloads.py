@@ -160,6 +160,14 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         refusal = {"code": "routine-recording-empty"}
         self.assertTrue(history.append_reply("marketing", refused, {**done, "routine_refusal": refusal}))
         self.assertEqual(history.page("marketing")["entries"][-1]["routine_refusal"], refusal)
+        ambiguous = {
+            "code": "routine-binding-ambiguous",
+            "options": [{"value": "a" * 32, "label": "shimpz.com"}, {"value": "b" * 32, "label": "shimpz.com"}],
+            "value": None,
+        }
+        questioned = self._admitted()
+        self.assertTrue(history.append_reply("marketing", questioned, {**done, "routine_question": ambiguous}))
+        self.assertEqual(history.page("marketing")["entries"][-1]["routine_question"], ambiguous)
         asked = {
             "question": "Qual zona?",
             "options": [{"label": "a", "description": ""}, {"label": "b", "description": ""}],
@@ -169,6 +177,8 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
             {"routine_proposal": {**card, "name": ""}},
             {"routine_proposal": card, "routine_refusal": refusal},
             {"routine_refusal": refusal, "clarification": asked, "reply": "Qual zona?\n\n1. a\n2. b"},
+            {"routine_question": ambiguous, "routine_refusal": refusal},
+            {"routine_question": {**ambiguous, "code": "routine-schedule-unstated"}},
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 history.append_reply("marketing", self._admitted(), {**done, **invalid})

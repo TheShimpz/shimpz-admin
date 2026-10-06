@@ -323,10 +323,12 @@ def append_user(team_id: object, turn_id: object, message: object, *, files: obj
     )
 
 
-# A reply's Routine card for the person to confirm, or why the recording made none: at most one, never with a question.
+# A reply's Routine card for the person to confirm, what Team asks first, or why the recording made none: at most one,
+# never with a clarification, so a reload restores the same question or card for the same turn.
 _ROUTINE_REPLY_FIELDS = {
     "routine_proposal": routine_contract.canonical_proposal,
     "routine_refusal": routine_contract.canonical_refusal,
+    "routine_question": routine_contract.canonical_question,
 }
 
 

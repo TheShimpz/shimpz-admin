@@ -125,6 +125,8 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
         refused = turn(routine_refusal={"code": "routine-secret-literal"})
         self.assertEqual(refused.websocket_event("team_1")["routine_refusal"], {"code": "routine-secret-literal"})
         self.assertNotIn("routine_proposal", turn().body)
+        question = {"code": "routine-schedule-unstated", "options": [], "value": None}
+        self.assertEqual(turn(routine_question=question).websocket_event("team_1")["routine_question"], question)
         leaked = {**card, "name": "sk-test-0123456789abcdef"}
         for extra in (
             {"routine_proposal": {**card, "rehearsal": not card["rehearsal"]}},
@@ -132,6 +134,9 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
             {"routine_refusal": {"code": "Bad Code"}},
             {"routine_proposal": card, "routine_refusal": {"code": "routine-recording-empty"}},
             {"routine_refusal": {"code": "routine-recording-empty"}, "clarification": asked},
+            {"routine_question": {"code": "routine-schedule-unstated", "options": [], "value": 30}},
+            {"routine_question": question, "routine_refusal": {"code": "routine-recording-empty"}},
+            {"routine_question": question, "clarification": asked},
         ):
             with self.subTest(extra=extra):
                 self.assertEqual(turn(**extra).body, {"code": "chat-response-invalid"})
