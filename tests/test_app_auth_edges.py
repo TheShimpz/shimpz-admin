@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
 import os
 import sys
-import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,39 +36,20 @@ def _request(
     return http_request(path, remote("192.0.2.10"), body=body, headers=headers)
 
 
-class AppAuthenticationEdgeTests(unittest.TestCase):
+class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        root = Path(cls.temporary.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-                "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
+        root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(
+            root, extra={"SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777"}
+        )
         cls.store = root / "admin.json"
-        previous_store = cls.admin_app.state.STORE_PATH
-        cls.admin_app.state.STORE_PATH = cls.store
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        cls.admin_app.chat_history.STORE_PATH = root / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
+        app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", cls.store)
+        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
 
     def setUp(self) -> None:
         self.store.unlink(missing_ok=True)
         self.admin_app._LOCAL_AUTH_CONTEXT = self.admin_app.local_auth.Context()
-
-    def assert_status(self, expected: int, awaitable) -> None:
-        with self.assertRaises(self.admin_app.HTTPException) as raised:
-            asyncio.run(awaitable)
-        self.assertEqual(raised.exception.status_code, expected)
 
     def test_profile_and_lifespan_reject_drift_and_materialize_initialized_local_authority(self) -> None:
         with (

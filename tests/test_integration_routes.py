@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
-import os
 import sys
-import tempfile
 import unittest
 from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+import app_import
 from fastapi import HTTPException
 from http_request import Peer, http_request, json_headers
 from starlette.requests import Request
@@ -56,19 +54,8 @@ class OAuthRoutesTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
+        root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(root)
 
     def setUp(self) -> None:
         self.admin_app.OAUTH_HANDOFFS = self.admin_app.handoff_store.OAuthHandoffStore(

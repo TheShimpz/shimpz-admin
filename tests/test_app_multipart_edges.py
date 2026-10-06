@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import io
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from http_request import http_request, remote
 from starlette.datastructures import Headers, UploadFile
 from starlette.formparsers import MultiPartException
@@ -66,27 +64,11 @@ def _upload(content: bytes, *, filename: str = "file.txt", content_type: str = "
     )
 
 
-class AppMultipartEdgeTests(unittest.TestCase):
+class AppMultipartEdgeTests(app_import.RouteStatusAssertions):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        root = Path(cls.temporary.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-
-    def assert_status(self, expected: int, awaitable) -> None:
-        with self.assertRaises(self.admin_app.HTTPException) as raised:
-            asyncio.run(awaitable)
-        self.assertEqual(raised.exception.status_code, expected)
+        root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(root)
 
     @staticmethod
     def multipart_headers(*extra: tuple[bytes, bytes]) -> list[tuple[bytes, bytes]]:

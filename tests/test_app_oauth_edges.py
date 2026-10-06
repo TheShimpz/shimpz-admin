@@ -7,12 +7,12 @@ import importlib
 import importlib.util
 import os
 import sys
-import tempfile
 import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from http_request import http_request, remote
 from starlette.requests import Request
 
@@ -26,25 +26,12 @@ def _request(*, cookie: str = "token") -> Request:
     return http_request("/api/test", remote("192.0.2.40"), headers=headers)
 
 
-class AppOAuthEdgeTests(unittest.TestCase):
+class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        root = Path(cls.temporary.name)
-        cls.environment = {
-            "SHIMPZ_REPO": str(root),
-            "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-            "SHIMPZ_ADMIN_PROFILE": "local",
-        }
-        with mock.patch.dict(os.environ, cls.environment):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-
-    def assert_status(self, expected: int, awaitable) -> None:
-        with self.assertRaises(self.admin_app.HTTPException) as raised:
-            asyncio.run(awaitable)
-        self.assertEqual(raised.exception.status_code, expected)
+        root = app_import.temporary_root(cls)
+        cls.environment = app_import.environment(root)
+        cls.admin_app = app_import.load_app(root)
 
     @staticmethod
     def preparation():

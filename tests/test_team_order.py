@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
 import os
 import sys
@@ -13,6 +12,8 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+
+import app_import
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -567,22 +568,9 @@ class SerializationTests(OrderCase):
 class LifecycleCleanupTests(OrderCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        root = Path(cls.temporary.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        cls.admin_app.chat_history.STORE_PATH = root / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
+        root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(root)
+        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
 
     def test_a_deleted_or_absent_team_loses_its_saved_position(self) -> None:
         self.saved("a", "b")

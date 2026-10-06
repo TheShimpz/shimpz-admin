@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 from urllib.parse import unquote
+
+import app_import
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -19,9 +18,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 class SpaFallbackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
+        cls.root = app_import.temporary_root(cls)
         cls.ui_dir = cls.root / "ui"
         cls.ui_dir.mkdir()
         (cls.ui_dir / "index.html").write_bytes(b"spa shell")
@@ -33,21 +30,9 @@ class SpaFallbackTests(unittest.TestCase):
         sibling.mkdir()
         (sibling / "secret.txt").write_bytes(b"secret sentinel")
 
-        with (
-            mock.patch.dict(
-                os.environ,
-                {
-                    "SHIMPZ_REPO": str(cls.root),
-                    "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                    "SHIMPZ_ADMIN_PROFILE": "local",
-                },
-            ),
-            mock.patch.object(Path, "is_dir", return_value=True),
-        ):
-            # Register the production SPA route even in a clean source checkout, where the
-            # frontend build directory is intentionally absent until the image build.
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
+        # Register the production SPA route even in a clean source checkout, where the
+        # frontend build directory is intentionally absent until the image build.
+        cls.admin_app = app_import.load_app(cls.root, mock.patch.object(Path, "is_dir", return_value=True))
 
     async def _request(self, path: str) -> tuple[int, bytes]:
         messages: list[dict] = []

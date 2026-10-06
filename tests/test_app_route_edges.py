@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,30 +36,12 @@ def _json_request(payload: object, *, cookie: str = "") -> Request:
     return _request(body=body, headers=json_headers(body), cookie=cookie)
 
 
-class AppRouteEdgeTests(unittest.TestCase):
+class AppRouteEdgeTests(app_import.RouteStatusAssertions):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        root = Path(cls.temporary.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-        previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        cls.admin_app.chat_history.STORE_PATH = root / "chat-history.sqlite3"
-        cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-
-    def assert_async_status(self, expected: int, awaitable) -> None:
-        with self.assertRaises(self.admin_app.HTTPException) as raised:
-            asyncio.run(awaitable)
-        self.assertEqual(raised.exception.status_code, expected)
+        root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(root)
+        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
 
     def assert_sync_status(self, expected: int, action) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
@@ -104,14 +84,14 @@ class AppRouteEdgeTests(unittest.TestCase):
             self.assert_sync_status(503, self.admin_app.platform_release.status_response)
 
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
-        self.assert_async_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
-        self.assert_async_status(
+        self.assert_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
+        self.assert_status(
             400,
             self.admin_app._bounded_json_object(
                 _request(body=b"{}", headers=[(b"content-type", b"application/json"), (b"content-length", b"x")])
             ),
         )
-        self.assert_async_status(
+        self.assert_status(
             413,
             self.admin_app._bounded_json_object(
                 _request(
@@ -121,7 +101,7 @@ class AppRouteEdgeTests(unittest.TestCase):
                 max_bytes=2,
             ),
         )
-        self.assert_async_status(
+        self.assert_status(
             413,
             self.admin_app._bounded_json_object(
                 _request(body=b"{}", headers=[(b"content-type", b"application/json")]),
@@ -130,13 +110,13 @@ class AppRouteEdgeTests(unittest.TestCase):
         )
         for body in (b"{", b'{"key":1,"key":2}', b'{"key":NaN}', b'{"key":[1e999]}'):
             with self.subTest(body=body):
-                self.assert_async_status(
+                self.assert_status(
                     400,
                     self.admin_app._bounded_json_object(
                         _request(body=body, headers=[(b"content-type", b"application/json")])
                     ),
                 )
-        self.assert_async_status(
+        self.assert_status(
             400,
             self.admin_app._bounded_json_object(_request(body=b"[]", headers=[(b"content-type", b"application/json")])),
         )
@@ -212,14 +192,14 @@ class AppRouteEdgeTests(unittest.TestCase):
                 self.subTest(payload=payload),
                 mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
             ):
-                self.assert_async_status(expected, self.admin_app.teams_destroy("team_1", request))
+                self.assert_status(expected, self.admin_app.teams_destroy("team_1", request))
 
         with mock.patch.object(
             self.admin_app,
             "_bounded_json_object",
             new=mock.AsyncMock(return_value={"team_name": "Marketing", "password": ""}),
         ):
-            self.assert_async_status(400, self.admin_app.teams_destroy("team_1", request))
+            self.assert_status(400, self.admin_app.teams_destroy("team_1", request))
 
         payload = {"team_name": "Marketing", "password": "violet otter lantern quartz 92"}
         with (
@@ -227,14 +207,14 @@ class AppRouteEdgeTests(unittest.TestCase):
             mock.patch.object(self.admin_app.state, "get", return_value={}),
             mock.patch.object(self.admin_app.asyncio, "to_thread", side_effect=ValueError("corrupt")),
         ):
-            self.assert_async_status(503, self.admin_app.teams_destroy("team_1", request))
+            self.assert_status(503, self.admin_app.teams_destroy("team_1", request))
 
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
             mock.patch.object(self.admin_app.state, "get", return_value={}),
             mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value=False)),
         ):
-            self.assert_async_status(403, self.admin_app.teams_destroy("team_1", request))
+            self.assert_status(403, self.admin_app.teams_destroy("team_1", request))
 
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
@@ -328,7 +308,7 @@ class AppRouteEdgeTests(unittest.TestCase):
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
             mock.patch.object(self.admin_app, "_session_evidence", new=mock.AsyncMock(return_value=None)),
         ):
-            self.assert_async_status(401, self.admin_app.teams_destroy("team_1", request))
+            self.assert_status(401, self.admin_app.teams_destroy("team_1", request))
 
         statuses = ((401, 403), (429, 429), (503, 503))
         for upstream, expected in statuses:
@@ -349,7 +329,7 @@ class AppRouteEdgeTests(unittest.TestCase):
                     ),
                 ),
             ):
-                self.assert_async_status(expected, self.admin_app.teams_destroy("team_1", request))
+                self.assert_status(expected, self.admin_app.teams_destroy("team_1", request))
 
     def test_the_interface_registry_carries_names_but_never_the_canonical_english_summary(self) -> None:
         registry = self.admin_app.team.TeamResponse(

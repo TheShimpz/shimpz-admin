@@ -6,13 +6,12 @@ import asyncio
 import hashlib
 import importlib
 import json
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -40,19 +39,8 @@ def _request(body: object) -> Request:
 class DecisionProviderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        cls.root = Path(cls.tempdir.name)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(cls.root),
-                "SHIMPZ_ADMIN_STORE": str(cls.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
-            },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
+        cls.root = app_import.temporary_root(cls)
+        cls.admin_app = app_import.load_app(cls.root)
         cls.decision = importlib.import_module("decision")
         cls.state = importlib.import_module("state")
         cls.models = importlib.import_module("models")

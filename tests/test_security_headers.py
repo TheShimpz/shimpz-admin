@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+import app_import
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -18,26 +17,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 class SecurityHeaderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        root = Path(cls.tempdir.name)
+        root = app_import.temporary_root(cls)
         cls.ui_dir = root / "ui"
         cls.ui_dir.mkdir()
         (cls.ui_dir / "index.html").write_bytes(b"spa shell")
 
-        with (
-            mock.patch.dict(
-                os.environ,
-                {
-                    "SHIMPZ_REPO": str(root),
-                    "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                    "SHIMPZ_ADMIN_PROFILE": "local",
-                },
-            ),
-            mock.patch.object(Path, "is_dir", return_value=True),
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
+        cls.admin_app = app_import.load_app(root, mock.patch.object(Path, "is_dir", return_value=True))
 
     async def _request(self, method: str, path: str) -> tuple[int, dict[str, str]]:
         messages: list[dict] = []

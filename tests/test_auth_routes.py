@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
 import os
 import sys
-import tempfile
 import time
 import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from http_request import LOOPBACK, http_request, json_headers
 from mfa_helper import code, configure_supervisor
 from starlette.requests import Request
@@ -26,27 +25,18 @@ sys.path.insert(0, str(ROOT / "backend"))
 class AuthRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tempdir = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.tempdir.cleanup)
-        root = Path(cls.tempdir.name)
+        root = app_import.temporary_root(cls)
         cls.key_directory = root / "supervisor"
         cls.key_directory.mkdir(mode=0o2770)
         cls.key_directory.chmod(0o2770)
-        with mock.patch.dict(
-            os.environ,
-            {
-                "SHIMPZ_REPO": str(root),
-                "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
+        cls.admin_app = app_import.load_app(
+            root,
+            extra={
                 "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
                 "SHIMPZ_SETUP_TOKEN": "retired-token-must-be-inert",
             },
-        ):
-            sys.modules.pop("app", None)
-            cls.admin_app = importlib.import_module("app")
-        previous_store = cls.admin_app.state.STORE_PATH
-        cls.admin_app.state.STORE_PATH = root / "admin.json"
-        cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
+        )
+        app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", root / "admin.json")
         previous_public_key = cls.admin_app.supervisor.PUBLIC_KEY_FILE
         cls.admin_app.supervisor.PUBLIC_KEY_FILE = cls.key_directory / "public.pem"
         cls.addClassCleanup(
