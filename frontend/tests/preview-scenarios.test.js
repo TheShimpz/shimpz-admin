@@ -62,7 +62,7 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   const [first] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
   const card = parseChatEvent(first, 'marketing', 'Marketing').routine_proposal;
   assert.equal(card.name, ROUTINE_TEXT.pt.card);
-  assert.deepEqual(card.schedule, { kind: 'continuous', gap: 30, cap: 1000 });
+  assert.deepEqual(card.schedule, { kind: 'continuous', gap: 30, cap: 2880 });
   assert.deepEqual(card.steps.map((step) => step.action), ['list-zones', 'list-dns-records']);
   assert.deepEqual(card.steps[1].inputs[0].where, { member: 'name', value_json: '"shimpz.com"' });
   assert.equal(card.steps[1].inputs[0].item, '/id');

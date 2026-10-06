@@ -5,6 +5,7 @@
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import {
     confirmRoutineProposal,
+    displayZone,
     dispositionWords,
     fillRoutineCopy,
     humanizeId,
@@ -70,20 +71,19 @@
 
   <dl class="facts">
     <div><dt>{card.schedule}</dt><dd>{scheduleWords(proposal.schedule, copy.schedule, locale)}</dd></div>
-    <div><dt>{card.timezone}</dt><dd>{proposal.timezone}</dd></div>
+    {#if proposal.timezone_source !== 'none'}<div><dt>{card.timezone}</dt><dd>{proposal.timezone}</dd></div>{/if}
     <div>
       <dt>{card.nextRuns}</dt>
       <dd>
         <ul class="runs">
           {#each proposal.next_runs as run (run)}
-            <li><time datetime={run}>{instantWords(run, locale, proposal.timezone)}</time></li>
+            <li><time datetime={run}>{instantWords(run, locale, displayZone(proposal))}</time></li>
           {/each}
         </ul>
       </dd>
     </div>
     <div>
       <dt>{fillRoutineCopy(card.dailyCap, { cap: new Intl.NumberFormat(locale).format(proposal.daily_cap) })}</dt>
-      {#if proposal.clamped}<dd>{card.clamped}</dd>{/if}
     </div>
     <div>
       <dt>{card.output}</dt>

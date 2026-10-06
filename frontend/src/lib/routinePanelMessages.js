@@ -21,6 +21,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, using the {timezone} timezone ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "Next run",
       runs: "Runs",
       noRuns: "No runs yet.",
@@ -63,6 +64,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, usando o timezone {timezone} ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "Próxima execução",
       runs: "Execuções",
       noRuns: "Nenhuma execução ainda.",
@@ -105,6 +107,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, usando la zona horaria {timezone} ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "Próxima ejecución",
       runs: "Ejecuciones",
       noRuns: "Aún no hay ejecuciones.",
@@ -147,6 +150,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}，使用时区 {timezone}（{now}）。",
+      summaryLineUnzoned: "{schedule}（{now}）。",
       next: "下次运行",
       runs: "运行记录",
       noRuns: "还没有运行。",
@@ -189,6 +193,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, avec le fuseau horaire {timezone} ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "Prochaine exécution",
       runs: "Exécutions",
       noRuns: "Aucune exécution pour l’instant.",
@@ -231,6 +236,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}, in der Zeitzone {timezone} ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "Nächste Ausführung",
       runs: "Ausführungen",
       noRuns: "Noch keine Ausführungen.",
@@ -273,6 +279,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}（タイムゾーン {timezone}、{now}）。",
+      summaryLineUnzoned: "{schedule}（{now}）。",
       next: "次の実行",
       runs: "実行履歴",
       noRuns: "まだ実行はありません。",
@@ -315,6 +322,7 @@ export const routinePanelMessages = {
     },
     panel: {
       summaryLine: "{schedule}، باستخدام المنطقة الزمنية {timezone} ({now}).",
+      summaryLineUnzoned: "{schedule} ({now}).",
       next: "التشغيل التالي",
       runs: "عمليات التشغيل",
       noRuns: "لا توجد عمليات تشغيل بعد.",

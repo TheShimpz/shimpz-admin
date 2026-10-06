@@ -23,6 +23,7 @@ const ROUTINE = {
   output: { mode: 'show', step: 1, when: null },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
+  timezone_source: 'browser',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,

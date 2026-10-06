@@ -6186,7 +6186,7 @@ test.describe('Team Routines', () => {
   });
 
   test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }) => {
-    const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 12 } };
+    const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 17280 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({

@@ -49,6 +49,7 @@ function permittedOf(steps) {
 export function routineView(fields, steps) {
   return {
     timezone: 'America/Sao_Paulo',
+    timezone_source: 'browser',
     assistant_ids: ['shimpz-cloudflare'],
     next_run_at: '2026-10-02T12:00:00Z',
     needs_reconfirm: false,
@@ -148,7 +149,7 @@ const PLANS = [WATCH, [...STEPS, UPDATE], STEPS, [...STEPS, DELETE]];
 function routines(locale) {
   const { names } = textFor(locale);
   return [
-    { routine_id: id('1'), output: { mode: 'none', step: null, when: null }, schedule: { kind: 'continuous', gap: 5, cap: 500 } },
+    { routine_id: id('1'), output: { mode: 'none', step: null, when: null }, schedule: { kind: 'continuous', gap: 5, cap: 17280 } },
     {
       routine_id: id('2'),
       output: { mode: 'show', step: 2, when: null },
@@ -213,8 +214,8 @@ function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', 
 }
 
 function defined(routine) {
-  const { name, plan, output, schedule, timezone, state, permitted, model, allowance } = routine;
-  return { name, plan, output, schedule, timezone, state, permitted, model, allowance };
+  const { name, plan, output, schedule, timezone, timezone_source: source, state, permitted, model, allowance } = routine;
+  return { name, plan, output, schedule, timezone, timezone_source: source, state, permitted, model, allowance };
 }
 
 const text = (value) => ({ kind: 'text', value, cut: false });
@@ -543,11 +544,11 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
     expires_at: instant(now + CARD_LIFETIME_MS),
     replaces: null,
     name: textFor(locale).card,
-    schedule: { kind: 'continuous', gap: 30, cap: 1000 },
+    schedule: { kind: 'continuous', gap: 30, cap: 2880 },
     timezone: 'America/Sao_Paulo',
+    timezone_source: 'browser',
     next_runs: [30, 60, 90].map((seconds) => instant(now + seconds * 1000)),
-    daily_cap: 1000,
-    clamped: false,
+    daily_cap: 2880,
     output: { mode: 'show', when: null },
     steps: [
       { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
@@ -636,6 +637,7 @@ export function routineProposalRoutes(state, method, path, body) {
     output: { mode: 'show', step: 2, when: null },
     schedule: proposal.schedule,
     timezone: proposal.timezone,
+    timezone_source: proposal.timezone_source,
     next_run_at: proposal.next_runs[0],
   }, CARD_STEPS);
   state.routines = [...state.routines, routine];

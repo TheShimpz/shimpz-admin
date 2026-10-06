@@ -42,7 +42,7 @@ export function isSchedule(value) {
   if (!fields || !exact(value, fields)) return false;
   if (value.kind === 'hourly') return whole(value.every, 1, 24);
   if (value.kind === 'continuous') {
-    return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && whole(value.cap, 1, MAX_DAILY_RUNS);
+    return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && value.cap === continuousCap(value.gap);
   }
   return (
     typeof value.time === 'string' &&
@@ -54,6 +54,40 @@ export function isSchedule(value) {
 
 export function isTimezone(value) {
   return typeof value === 'string' && TIMEZONE_RE.test(value);
+}
+
+// Where a Routine's timezone came from (ADR-0101): the person's browser, a zone the person wrote, or none, when the
+// Routine needs no zone and stores UTC only by convention, which Admin never shows as the person's zone.
+export const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
+const CONVENTIONAL_TIMEZONE = 'UTC';
+const CALENDAR_KINDS = ['daily', 'weekly', 'monthly'];
+
+/** Whether a timezone and its source fit a schedule, as Team's `zoned` admits them. */
+export function isZoned(schedule, timezone, source) {
+  if (!TIMEZONE_SOURCES.includes(source) || !isTimezone(timezone) || !schedule || typeof schedule !== 'object') {
+    return false;
+  }
+  return source !== 'none' || (timezone === CONVENTIONAL_TIMEZONE && !CALENDAR_KINDS.includes(schedule.kind));
+}
+
+/**
+ * The timezone Admin shows a Routine's instants in: its own, unless it has none, when they show in the viewer's own
+ * timezone (undefined), never as a claim about the person's zone.
+ */
+export function displayZone(value) {
+  return value.timezone_source === 'none' ? undefined : value.timezone;
+}
+
+/** A continuous Routine's starts in any rolling 24 hours: as many as its gap allows all day, never lowered. */
+export function continuousCap(gap) {
+  return Math.ceil(DAY_SECONDS / gap);
+}
+
+/** The most runs a Routine may start in any rolling 24 hours, as Team's `daily_cap` derives it from its schedule. */
+export function dailyCap(schedule) {
+  if (schedule.kind === 'continuous') return schedule.cap;
+  if (schedule.kind === 'hourly') return Math.ceil(24 / schedule.every);
+  return 1;
 }
 
 function isAssistants(value, minimum) {
@@ -70,8 +104,7 @@ const NONCE_RE = /^[0-9a-f]{32}$/;
 export const MAX_ROUTINES = 8;
 // The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
 export const MAX_INCIDENTS = 32;
-// A Team's rolling-24-hour run ceiling, which also bounds one continuous Routine's cap (ADR-0092).
-export const MAX_DAILY_RUNS = 1000;
+const DAY_SECONDS = 86400;
 export const MIN_CONTINUOUS_GAP_SECONDS = 5;
 export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
 export const MAX_ROLLUP_RUNS = 60 / MIN_CONTINUOUS_GAP_SECONDS;
@@ -124,8 +157,8 @@ function isScope(item, steps) {
 /** One confirmed Routine as a Supervisor sees it. */
 export function parseRoutineView(value) {
   const keys = [
-    'routine_id', 'name', 'plan', 'output', 'schedule', 'timezone', 'assistant_ids', 'next_run_at', 'needs_reconfirm',
-    'deleting', 'state', 'permitted', 'permissions_revision', 'model', 'allowance',
+    'routine_id', 'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'assistant_ids', 'next_run_at',
+    'needs_reconfirm', 'deleting', 'state', 'permitted', 'permissions_revision', 'model', 'allowance',
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
@@ -134,7 +167,7 @@ export function parseRoutineView(value) {
     isSummary(item.plan) &&
     isDisposition(item.output, item.plan.steps) &&
     isSchedule(item.schedule) &&
-    isTimezone(item.timezone) &&
+    isZoned(item.schedule, item.timezone, item.timezone_source) &&
     isAssistants(item.assistant_ids, 0) &&
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
@@ -1103,7 +1136,9 @@ function isFailedAt(detail) {
 
 const STEP_KEYS = ['assistant_id', 'action', 'position', 'steps'];
 const COMPLETED_KEYS = ['plan', 'output', 'decision'];
-const DEFINED_KEYS = ['name', 'plan', 'output', 'schedule', 'timezone', 'state', 'permitted', 'model', 'allowance'];
+const DEFINED_KEYS = [
+  'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted', 'model', 'allowance',
+];
 
 const NOTICE_DETAILS = {
   done: [COMPLETED_KEYS, isCompleted],
@@ -1143,7 +1178,8 @@ function isName(value) {
 
 function isDefinition(detail) {
   return isName(detail.name) && isSummary(detail.plan) && isDisposition(detail.output, detail.plan.steps) &&
-    isSchedule(detail.schedule) && isTimezone(detail.timezone) && isScope(detail, detail.plan.steps);
+    isSchedule(detail.schedule) && isZoned(detail.schedule, detail.timezone, detail.timezone_source) &&
+    isScope(detail, detail.plan.steps);
 }
 
 function isAssistantList(value) {
@@ -1583,8 +1619,8 @@ function isCardDecision(value) {
  */
 export function parseRoutineProposal(value) {
   const keys = [
-    'proposal_id', 'expires_at', 'replaces', 'name', 'schedule', 'timezone', 'next_runs', 'daily_cap', 'clamped',
-    'output', 'steps', 'permitted', 'decision', 'rehearsal',
+    'proposal_id', 'expires_at', 'replaces', 'name', 'schedule', 'timezone', 'timezone_source', 'next_runs',
+    'daily_cap', 'output', 'steps', 'permitted', 'decision', 'rehearsal',
   ];
   return view(value, keys, (item) => {
     const { steps, output, next_runs: runs } = item;
@@ -1597,13 +1633,13 @@ export function parseRoutineProposal(value) {
       (item.replaces === null || (typeof item.replaces === 'string' && ID_RE.test(item.replaces))) &&
       isName(item.name) &&
       isSchedule(item.schedule) &&
-      isTimezone(item.timezone) &&
+      isZoned(item.schedule, item.timezone, item.timezone_source) &&
       Array.isArray(runs) && runs.length >= 1 && runs.length <= MAX_NEXT_RUNS && runs.every(isInstant) &&
       runs.every((run, index) => index === 0 || runs[index - 1] <= run) &&
-      whole(item.daily_cap, 1, MAX_DAILY_RUNS) &&
-      typeof item.clamped === 'boolean' &&
+      item.daily_cap === dailyCap(item.schedule) &&
       isDisposition({ ...output, step: shown }, steps.length) &&
       steps.every((step, index) => isCardStep(step, index + 1)) &&
+      (item.timezone_source !== 'none' || !steps.some((step) => step.inputs.some((input) => input.origin === 'clock'))) &&
       isCardPermitted(item.permitted) &&
       (item.decision !== null) === (output.mode === 'decide') &&
       isCardDecision(item.decision) &&
@@ -1619,6 +1655,82 @@ export function parseRoutineRefusal(value) {
   return view(value, ['code'], (item) => typeof item.code === 'string' && ERROR_CODE_RE.test(item.code));
 }
 
+// What Team asks the person before a recording can become a card (ADR-0101): the span is kept, and the person's answer
+// is an ordinary send. Only an ambiguous binding offers targets; an interval over budget carries the shortest that fits.
+export const QUESTION_CODES = [
+  'routine-schedule-unstated',
+  'routine-interval-over-budget',
+  'routine-no-room',
+  'routine-binding-ambiguous',
+  'routine-binding-unsourced',
+  'routine-work-split',
+  'routine-work-rerun',
+  'routine-timezone-ambiguous',
+  'routine-timezone-unstated',
+];
+const MAX_QUESTION_OPTIONS = 8;
+const MAX_QUESTION_OPTION_CHARS = 120;
+
+function isQuestionOption(value) {
+  if (!exact(value, ['value', 'label'])) return false;
+  // An integer target past JavaScript's exact range could not be sent back unchanged, so it is refused.
+  const scalar = typeof value.value === 'string'
+    ? plain(value.value, MAX_QUESTION_OPTION_CHARS)
+    : Number.isSafeInteger(value.value) && String(value.value).length <= MAX_QUESTION_OPTION_CHARS;
+  return scalar && (value.label === null || plain(value.label, MAX_QUESTION_OPTION_CHARS));
+}
+
+/** One question Team asks before a card, admitted exactly as Team's closed form, or a thrown error. */
+export function parseRoutineQuestion(value) {
+  return view(value, ['code', 'options', 'value'], (item) => {
+    const { code, options, value: interval } = item;
+    return (
+      QUESTION_CODES.includes(code) &&
+      Array.isArray(options) &&
+      (code === 'routine-binding-ambiguous' || options.length === 0) &&
+      options.length <= MAX_QUESTION_OPTIONS &&
+      options.every(isQuestionOption) &&
+      new Set(options.map((option) => JSON.stringify(option.value))).size === options.length &&
+      (code === 'routine-interval-over-budget'
+        ? whole(interval, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS)
+        : interval === null)
+    );
+  });
+}
+
+const QUESTION_KEYS = {
+  'routine-schedule-unstated': 'schedule',
+  'routine-interval-over-budget': 'overBudget',
+  'routine-no-room': 'noRoom',
+  'routine-binding-ambiguous': 'ambiguous',
+  'routine-binding-unsourced': 'unsourced',
+  'routine-work-split': 'split',
+  'routine-work-rerun': 'rerun',
+  'routine-timezone-ambiguous': 'timezoneAmbiguous',
+  'routine-timezone-unstated': 'timezoneUnstated',
+};
+
+/**
+ * A Routine question in words: its sentence and the answers a person may send with one press, each sent as plain text
+ * in the person's own words. An ambiguous binding offers each target; an interval over budget offers the shortest
+ * interval that fits; no room offers nothing to choose, so the person may only write.
+ */
+export function questionWords(question, copy) {
+  const words = copy.questions[QUESTION_KEYS[question.code]];
+  if (question.code === 'routine-binding-ambiguous') {
+    const answers = question.options.map((option) => {
+      const target = String(option.value);
+      return option.label === null ? target : fill(words.option, { label: option.label, value: target });
+    });
+    return { question: words.question, answers };
+  }
+  if (question.code === 'routine-interval-over-budget') {
+    const seconds = String(question.value);
+    return { question: fill(words.question, { seconds }), answers: [fill(words.answer, { seconds })] };
+  }
+  return { question: words.question, answers: words.answers ?? [] };
+}
+
 // The words of a refusal code. Every documented one has its own sentence; a plan code reads as the plan's, and any
 // other code reads as the generic sentence, so Team may stop emitting one without a stored row turning invalid.
 const REFUSAL_KEYS = {
@@ -1632,6 +1744,10 @@ const REFUSAL_KEYS = {
   'routine-step-budget': 'stepBudget',
   'routine-proposal-too-large': 'tooLarge',
   'routine-record-again': 'recordAgain',
+  'routine-recording-cyclic': 'unverified',
+  'routine-recording-conflict': 'unverified',
+  'routine-recording-unverified': 'unverified',
+  'routine-recording-ambiguous': 'ambiguous',
 };
 
 /** The localized sentence saying why no Routine was created from this turn. */

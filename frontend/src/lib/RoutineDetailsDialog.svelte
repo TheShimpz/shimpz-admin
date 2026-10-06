@@ -14,6 +14,7 @@
   import {
     ATTENTION_STATUSES,
     clockWords,
+    displayZone,
     fillParts,
     fillRoutineCopy,
     healthyRunsWords,
@@ -114,11 +115,15 @@
     return () => clearInterval(timer);
   });
 
-  let summary = $derived(fillParts(copy.panel.summaryLine, {
-    schedule: scheduleWords(routine.schedule, copy.schedule, $locale),
-    timezone: routine.timezone,
-    now: clockWords(now, $locale, routine.timezone),
-  }));
+  // A Routine with no timezone of its own makes no claim about one (ADR-0101).
+  let summary = $derived(fillParts(
+    routine.timezone_source === 'none' ? copy.panel.summaryLineUnzoned : copy.panel.summaryLine,
+    {
+      schedule: scheduleWords(routine.schedule, copy.schedule, $locale),
+      timezone: routine.timezone,
+      now: clockWords(now, $locale, displayZone(routine)),
+    },
+  ));
   let until = $derived(untilWords(routine.next_run_at, now, $locale));
 
   // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
@@ -348,7 +353,7 @@
         {#if !ATTENTION_STATUSES.includes(status)}
           <p class="next">
             <span class="next-label">{copy.panel.next}</span>
-            <span><time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, routine.timezone)}</time>
+            <span><time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, displayZone(routine))}</time>
               {#if until}<span class="until">[{until}]</span>{/if}</span>
           </p>
         {/if}
@@ -380,7 +385,7 @@
               <li>
                 <RoutineIcon name={RUN_ICONS[entry.outcome] ?? 'clock'} />
                 <span class="run-what">{outcomeWords(entry)}</span>
-                <span class="when">{instantWords(entry.createdAt, $locale, routine.timezone)}</span>
+                <span class="when">{instantWords(entry.createdAt, $locale, displayZone(routine))}</span>
                 <!-- A rollup of a continuous Routine's healthy runs is no run of its own, so it has no execution details. -->
                 {#if entry.runId}
                   <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}

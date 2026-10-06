@@ -6,7 +6,7 @@
   import RoutineRunSteps from '$lib/RoutineRunSteps.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
   import {
-    fillRoutineCopy, instantWords, MAX_DECISION_CALLS, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
+    displayZone, fillRoutineCopy, instantWords, MAX_DECISION_CALLS, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
   } from '$lib/routine.js';
   import { attemptsByStep, resultView } from '$lib/routineResult.js';
 
@@ -45,7 +45,7 @@
   let attempts = $derived(diagnostics ? attemptsByStep(
     diagnostics, steps ?? MAX_ROUTINE_STEPS, total ?? (steps ?? MAX_ROUTINE_STEPS) + MAX_DECISION_CALLS,
   ) : null);
-  let finished = $derived(instantWords(entry.createdAt, $locale, routine?.timezone));
+  let finished = $derived(instantWords(entry.createdAt, $locale, routine ? displayZone(routine) : undefined));
   let count = $derived(steps === null ? '' : fillRoutineCopy(
     new Intl.PluralRules($locale).select(steps) === 'one' ? copy.result.stepCount.one : copy.result.stepCount.other,
     { count: new Intl.NumberFormat($locale).format(steps) },
@@ -92,7 +92,7 @@
       <dl class="meta">
         <div>
           <dt>{WAITING.includes(entry.outcome) ? copy.result.updated : copy.result.finished}</dt>
-          <dd><time datetime={entry.createdAt}>{finished}</time>{#if routine}<span class="zone">{routine.timezone}</span>{/if}</dd>
+          <dd><time datetime={entry.createdAt}>{finished}</time>{#if routine && routine.timezone_source !== 'none'}<span class="zone">{routine.timezone}</span>{/if}</dd>
         </div>
         {#if count}<div><dt>{copy.result.steps}</dt><dd>{count}</dd></div>{/if}
       </dl>
