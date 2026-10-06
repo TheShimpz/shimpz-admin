@@ -18,7 +18,6 @@ from team import transport
 
 from chat import payloads
 from protocol.http.v1 import payload as team_contract
-from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 
@@ -28,6 +27,9 @@ MAX_JSON_RESPONSE_BYTES = transport.MAX_JSON_RESPONSE_BYTES
 TeamResponse = transport.TeamResponse
 TeamAssetResponse = transport.TeamAssetResponse
 TeamRequestError = transport.TeamRequestError
+is_team_response = transport.is_team_response
+is_trace_id = transport.is_trace_id
+trace_envelope = transport.trace_envelope
 _call = transport._call
 _call_raw = transport._call_raw
 _call_stream = transport._call_stream
@@ -162,13 +164,7 @@ def team_inventory(response: TeamResponse) -> TeamResponse | list[dict[str, str]
     if not 200 <= response.status < 300:
         return response
     try:
-        allowed_envelope = {"teams"}
-        if "trace_id" in response.body:
-            allowed_envelope.add("trace_id")
-            trace_id = response.body["trace_id"]
-            if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-                raise ValueError("invalid trace id")
-        if set(response.body) != allowed_envelope:
+        if set(response.body) != trace_envelope(response.body, {"teams"}):
             raise ValueError("unexpected inventory fields")
         inventory = response.body["teams"]
         if not isinstance(inventory, list) or len(inventory) > MAX_TEAMS:
@@ -234,12 +230,11 @@ def rename(team_id: object, team_name: object) -> TeamResponse:
     if not 200 <= response.status < 300:
         return response
     body = response.body
-    trace_id = body.get("trace_id")
     if (
         set(body) - {"trace_id"} != {"team_id", "team_name"}
         or body["team_id"] != canonical_id
         or body["team_name"] != name
-        or ("trace_id" in body and not (isinstance(trace_id, str) and chat_ws_common.HEX_ID_RE.fullmatch(trace_id)))
+        or ("trace_id" in body and not is_trace_id(body["trace_id"]))
     ):
         log.warning("team returned an invalid rename response")
         return TeamResponse(502, {"detail": "Team rename response is invalid."})
@@ -276,8 +271,7 @@ def _project_inference_response(
             or provider != selected_provider
             or model != selected_model
             or effort not in INFERENCE_EFFORTS
-            or not isinstance(trace_id, str)
-            or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+            or not is_trace_id(trace_id)
         ):
             raise ValueError("non-canonical inference metadata")
         if expected is not None and (selected_provider, selected_model, effort) != expected:

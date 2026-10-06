@@ -232,7 +232,7 @@ def project(body: object, team_id: str) -> dict[str, object]:
     if body["team_id"] != team_id or body["status"] != "human-required":
         raise HumanChallengeError("invalid human challenge identity")
     identity = chat_ws_common.challenge_identity(body, team_id)
-    if identity is None or not _trace_id(body["trace_id"]):
+    if identity is None or not team.is_trace_id(body["trace_id"]):
         raise HumanChallengeError("invalid human challenge identity")
     challenge_id, turn_id = identity
     expires_in = body["expires_in"]
@@ -455,10 +455,6 @@ def _fingerprint(request: dict[str, object], supplied: str) -> bool:
         return False
     expected = hashlib.sha256(canonical).hexdigest()
     return hmac.compare_digest(supplied, expected)
-
-
-def _trace_id(value: object) -> bool:
-    return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
 
 
 def browser_value(request: object, value: object) -> bool:

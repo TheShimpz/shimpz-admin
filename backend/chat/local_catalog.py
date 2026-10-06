@@ -10,7 +10,6 @@ from team import bridge as team
 
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
-from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 50
 _CREATOR = re.compile(r"^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
@@ -105,20 +104,9 @@ def _assistant(value: object) -> LocalAssistant:
 
 def primary(response: object) -> tuple[LocalAssistant, ...]:
     """Return the newest exact staged image for every Local Assistant identity."""
-    if (
-        not isinstance(response, team.TeamResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or not 200 <= response.status < 300
-        or not isinstance(response.body, dict)
-    ):
+    if not team.is_team_response(response) or not 200 <= response.status < 300 or not isinstance(response.body, dict):
         raise ValueError("Local Assistant inventory is unavailable")
-    allowed = {"assistants"}
-    if "trace_id" in response.body:
-        trace_id = response.body["trace_id"]
-        if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-            raise ValueError("Team trace identifier is invalid")
-        allowed.add("trace_id")
+    allowed = team.trace_envelope(response.body, {"assistants"})
     raw = response.body.get("assistants")
     if set(response.body) != allowed or not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
         raise ValueError("Local Assistant inventory is invalid")

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from team import bridge as team
 
 from chat import assistant_inventory, assistant_proposal
-from protocol.http.v1 import websocket as chat_ws_common
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,14 +42,7 @@ def uninstall(proposal: assistant_proposal.UninstallProposal) -> UninstallResult
 
 
 def _project_result(response: object, assistant_id: str) -> UninstallResult:
-    if (
-        not isinstance(response, team.TeamResponse)
-        or not isinstance(response.status, int)
-        or isinstance(
-            response.status,
-            bool,
-        )
-    ):
+    if not team.is_team_response(response):
         return UninstallResult(502)
     if not 200 <= response.status < 300:
         return UninstallResult(response.status)
@@ -61,18 +53,10 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
     return UninstallResult(response.status, projected)
 
 
-def _trace_id(value: object) -> bool:
-    return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
-
-
 def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant uninstall result is invalid")
-    allowed = {"assistant", "uninstalled"}
-    if "trace_id" in response.body:
-        if not _trace_id(response.body["trace_id"]):
-            raise ValueError("Team trace identifier is invalid")
-        allowed.add("trace_id")
+    allowed = team.trace_envelope(response.body, {"assistant", "uninstalled"})
     uninstalled = response.body.get("uninstalled")
     if (
         set(response.body) != allowed

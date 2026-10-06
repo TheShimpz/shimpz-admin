@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from team import bridge as team
 
 from chat import local_catalog, store_catalog
-from protocol.http.v1 import websocket as chat_ws_common
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,11 +24,7 @@ def install_publication(team_id: str, assistant: store_catalog.CatalogAssistant)
             "source_digest": assistant.source_digest,
         },
     )
-    if (
-        not isinstance(response, team.TeamResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-    ):
+    if not team.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
         return InstallResult(response.status)
@@ -43,11 +38,7 @@ def install_publication(team_id: str, assistant: store_catalog.CatalogAssistant)
 def install_local_snapshot(team_id: str, assistant: local_catalog.LocalAssistant) -> InstallResult:
     """Submit one exact staged image to Team's fresh-only Local lifecycle."""
     response = team.install_fresh_local_assistant(team_id, {"image_id": assistant.image_id})
-    if (
-        not isinstance(response, team.TeamResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-    ):
+    if not team.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
         return InstallResult(response.status)
@@ -61,12 +52,7 @@ def install_local_snapshot(team_id: str, assistant: local_catalog.LocalAssistant
 def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant install result is invalid")
-    allowed = {"assistant", "installed"}
-    if "trace_id" in response.body:
-        trace_id = response.body["trace_id"]
-        if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-            raise ValueError("Team trace identifier is invalid")
-        allowed.add("trace_id")
+    allowed = team.trace_envelope(response.body, {"assistant", "installed"})
     installed = response.body.get("installed")
     if (
         set(response.body) != allowed
@@ -80,12 +66,7 @@ def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
 def _local_install_body(response: team.TeamResponse, assistant: local_catalog.LocalAssistant) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Local Assistant install result is invalid")
-    allowed = {"assistant", "installed", "provenance", "image_id", "unpublished"}
-    if "trace_id" in response.body:
-        trace_id = response.body["trace_id"]
-        if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-            raise ValueError("Team trace identifier is invalid")
-        allowed.add("trace_id")
+    allowed = team.trace_envelope(response.body, {"assistant", "installed", "provenance", "image_id", "unpublished"})
     installed = response.body.get("installed")
     if (
         set(response.body) != allowed

@@ -22,6 +22,7 @@ import supervisor as local_supervisor
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
+from protocol.http.v1 import websocket as team_http
 
 log = logging.getLogger("shimpz-admin")
 
@@ -78,6 +79,25 @@ class _Entity:
 class TeamResponse:
     status: int
     body: dict[str, object]
+
+
+def is_team_response(value: object) -> bool:
+    """Admit a Team response whose status is an integer, never a boolean."""
+    return isinstance(value, TeamResponse) and isinstance(value.status, int) and not isinstance(value.status, bool)
+
+
+def is_trace_id(value: object) -> bool:
+    """Admit one Team trace identifier."""
+    return isinstance(value, str) and team_http.HEX_ID_RE.fullmatch(value) is not None
+
+
+def trace_envelope(body: dict[str, object], fields: set[str]) -> set[str]:
+    """Return a closed envelope's fields plus Team's optional trace identifier, refusing an invalid one."""
+    if "trace_id" not in body:
+        return set(fields)
+    if not is_trace_id(body["trace_id"]):
+        raise ValueError("Team trace identifier is invalid")
+    return {*fields, "trace_id"}
 
 
 @dataclass(frozen=True)

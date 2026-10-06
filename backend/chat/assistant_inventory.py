@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from team import bridge as team
 
 from chat import assistant_proposal, store_catalog
-from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_ASSISTANTS = 128
 # Team admits the Developers install protocol's 128 Actions per Assistant.
@@ -26,21 +25,9 @@ class InstalledAssistant:
 
 
 def _payload(response: object, field: str) -> object:
-    if (
-        not isinstance(response, team.TeamResponse)
-        or not isinstance(response.status, int)
-        or isinstance(response.status, bool)
-        or not 200 <= response.status < 300
-        or not isinstance(response.body, dict)
-    ):
+    if not team.is_team_response(response) or not 200 <= response.status < 300 or not isinstance(response.body, dict):
         raise ValueError("Team Assistant inventory is unavailable")
-    allowed = {field}
-    if "trace_id" in response.body:
-        trace_id = response.body["trace_id"]
-        if not isinstance(trace_id, str) or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None:
-            raise ValueError("Team trace identifier is invalid")
-        allowed.add("trace_id")
-    if set(response.body) != allowed:
+    if set(response.body) != team.trace_envelope(response.body, {field}):
         raise ValueError("Team Assistant inventory fields are invalid")
     return response.body[field]
 

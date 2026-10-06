@@ -312,14 +312,12 @@ def capability_plan(
             raise ValueError("invalid capability plan fields")
         status = body["status"]
         raw_ids = body["assistant_ids"]
-        trace_id = body["trace_id"]
         if (
             body["team_id"] != canonical_id
             or status not in {"sufficient", "install-required"}
             or not isinstance(raw_ids, list)
             or len(raw_ids) > MAX_CAPABILITY_PLAN_IDS
-            or not isinstance(trace_id, str)
-            or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+            or not team.is_trace_id(body["trace_id"])
         ):
             raise ValueError("invalid capability plan identity")
         assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
@@ -417,7 +415,6 @@ def _project_intent_route(
     query = body["query"]
     raw_ids = body["assistant_ids"]
     reply = body["reply"]
-    trace_id = body["trace_id"]
     if (
         body["team_id"] != canonical_id
         or intent not in {"ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"}
@@ -428,8 +425,7 @@ def _project_intent_route(
         or len(raw_ids) > MAX_INTENT_ROUTE_IDS
         or not isinstance(reply, str)
         or (reply and chat_ws_common.public_text(reply, MAX_INTENT_ROUTE_REPLY_CHARS) != reply)
-        or not isinstance(trace_id, str)
-        or chat_ws_common.HEX_ID_RE.fullmatch(trace_id) is None
+        or not team.is_trace_id(body["trace_id"])
     ):
         raise ValueError("invalid intent route identity")
     assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
@@ -516,7 +512,7 @@ def _challenge_envelope(
     if (
         response.body["team_id"] != team_id
         or response.body["status"] != status
-        or not _valid_trace_id(response.body["trace_id"])
+        or not team.is_trace_id(response.body["trace_id"])
     ):
         raise ValueError("invalid challenge identity")
     identity = chat_ws_common.challenge_identity(response.body, team_id)
@@ -644,7 +640,7 @@ def _project_human_denial(response: team.TeamResponse, team_id: str) -> team.Tea
         set(response.body) != _HUMAN_DENIED_RESPONSE_FIELDS
         or response.body.get("team_id") != team_id
         or response.body.get("status") != "human-denied"
-        or not _valid_trace_id(response.body.get("trace_id"))
+        or not team.is_trace_id(response.body.get("trace_id"))
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-response-invalid"})
     reason = response.body.get("reason")
@@ -691,7 +687,7 @@ def _project_turn(
     if (
         set(response.body) - _OPTIONAL_DONE_FIELDS != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
-        or not _valid_trace_id(response.body.get("trace_id"))
+        or not team.is_trace_id(response.body.get("trace_id"))
         or team_contract.canonical_team_name(team_name) is None
         or not isinstance(reply, str)
         or not reply.strip()
@@ -830,7 +826,7 @@ def _pending(
     if (
         response.body.get("team_id") == canonical_id
         and response.body.get("status") == "none"
-        and _valid_trace_id(response.body.get("trace_id"))
+        and team.is_trace_id(response.body.get("trace_id"))
     ):
         return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
@@ -855,10 +851,6 @@ def open_human(team_id: object, locale: str) -> team.TeamResponse:
     )
 
 
-def _valid_trace_id(value: object) -> bool:
-    return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
-
-
 def stop(team_id: object) -> team.TeamResponse:
     canonical_id = team.canonical_team_id(team_id)
     response = team.stop_chat(canonical_id)
@@ -874,7 +866,7 @@ def stop(team_id: object) -> team.TeamResponse:
     if (
         set(response.body) != _STOP_RESPONSE_FIELDS
         or response_team_id != canonical_id
-        or not _valid_trace_id(response.body.get("trace_id"))
+        or not team.is_trace_id(response.body.get("trace_id"))
         or not all(isinstance(value, bool) for value in (requested, accepted, confirmed, forced_restart))
         or requested != accepted
         or ((confirmed or forced_restart) and not accepted)

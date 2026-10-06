@@ -7,7 +7,6 @@ import logging
 from team import transport
 
 from chat import payloads
-from protocol.http.v1 import websocket as team_http
 
 TeamResponse = transport.TeamResponse
 TeamRequestError = transport.TeamRequestError
@@ -17,10 +16,6 @@ STATUSES = frozenset({"missing", "stored"})
 log = logging.getLogger("shimpz-admin")
 
 
-def _trace(value: object) -> bool:
-    return isinstance(value, str) and team_http.HEX_ID_RE.fullmatch(value) is not None
-
-
 def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
     if not 200 <= response.status < 300:
         return response
@@ -28,7 +23,7 @@ def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
         if (
             set(response.body) != {"team_id", "stored_inputs", "trace_id"}
             or response.body["team_id"] != team_id
-            or not _trace(response.body["trace_id"])
+            or not transport.is_trace_id(response.body["trace_id"])
         ):
             raise ValueError("invalid Stored Input envelope")
         raw = response.body["stored_inputs"]
@@ -96,7 +91,7 @@ def clear_assistant_stored_input(
         or response.body["assistant_id"] != assistant
         or response.body["stored_input_id"] != stored_input
         or type(response.body["cleared"]) is not bool
-        or not _trace(response.body["trace_id"])
+        or not transport.is_trace_id(response.body["trace_id"])
     ):
         log.warning("team returned an invalid Stored Input clear response")
         return TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."})
