@@ -20,7 +20,6 @@ from team import transport
 
 from chat import human
 from chat import local as chat_local
-from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
@@ -47,9 +46,7 @@ Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
 def _run(team_id: object, run_id: object) -> tuple[str, str]:
     canonical = team.canonical_team_id(team_id)
-    if not isinstance(run_id, str) or routine_contract.ROUTINE_ID_RE.fullmatch(run_id) is None:
-        raise team.TeamRequestError("Routine run is invalid")
-    return canonical, run_id
+    return canonical, manage._id(run_id, "Routine run")
 
 
 def _store(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
