@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import NamedTuple
+from urllib.parse import unquote
 
 from starlette.requests import Request
 
@@ -62,3 +63,57 @@ def http_request(
         return {"type": "http.request", "body": chunk, "more_body": bool(pending)}
 
     return Request(scope, receive)
+
+
+class Exchange(NamedTuple):
+    """The status, lower-cased headers, and body one ASGI exchange produced."""
+
+    status: int
+    headers: dict[str, str]
+    body: bytes
+
+
+async def asgi_exchange(
+    application,
+    path: str,
+    peer: Peer,
+    *,
+    method: str = "GET",
+    headers: list[tuple[bytes, bytes]] | None = None,
+    unquote_path: bool = False,
+) -> Exchange:
+    """Drive one bodiless request through a whole ASGI application, then report the client as disconnected."""
+    messages: list[dict] = []
+    sent = False
+
+    async def receive() -> dict:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict) -> None:
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": peer.scheme,
+        "path": unquote(path) if unquote_path else path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": list(headers or []),
+        "client": peer.client,
+        "server": peer.server,
+    }
+    await application(scope, receive, send)
+    start = next(message for message in messages if message["type"] == "http.response.start")
+    return Exchange(
+        start["status"],
+        {key.decode().lower(): value.decode() for key, value in start["headers"]},
+        b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body"),
+    )

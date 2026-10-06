@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from fastapi import HTTPException
-from http_request import Peer, http_request, json_headers
+from http_request import Peer, asgi_exchange, http_request, json_headers
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,36 +74,14 @@ async def _asgi_response(
     cookie: str = "",
     method: str = "GET",
 ) -> tuple[int, dict[str, str]]:
-    messages: list[dict] = []
-    sent = False
-
-    async def receive():
-        nonlocal sent
-        if not sent:
-            sent = True
-            return {"type": "http.request", "body": b"", "more_body": False}
-        return {"type": "http.disconnect"}
-
-    async def send(message):
-        messages.append(message)
-
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": "https",
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": [(b"cookie", cookie.encode())] if cookie else [],
-        "client": ("192.0.2.1", 1234),
-        "server": ("admin.shimpz.test", 443),
-    }
-    await application(scope, receive, send)
-    start = next(message for message in messages if message["type"] == "http.response.start")
-    return start["status"], {key.decode().lower(): value.decode() for key, value in start["headers"]}
+    exchange = await asgi_exchange(
+        application,
+        path,
+        Peer("https", ("192.0.2.1", 1234), ("admin.shimpz.test", 443)),
+        method=method,
+        headers=[(b"cookie", cookie.encode())] if cookie else None,
+    )
+    return exchange.status, exchange.headers
 
 
 class HostedAuthRouteTests(unittest.TestCase):

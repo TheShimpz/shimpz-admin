@@ -7,9 +7,9 @@ import sys
 import unittest
 from pathlib import Path
 from unittest import mock
-from urllib.parse import unquote
 
 import app_import
+from http_request import LOOPBACK, asgi_exchange
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -35,39 +35,9 @@ class SpaFallbackTests(unittest.TestCase):
         cls.admin_app = app_import.load_app(cls.root, mock.patch.object(Path, "is_dir", return_value=True))
 
     async def _request(self, path: str) -> tuple[int, bytes]:
-        messages: list[dict] = []
-        request_sent = False
-
-        async def receive() -> dict:
-            nonlocal request_sent
-            if not request_sent:
-                request_sent = True
-                return {"type": "http.request", "body": b"", "more_body": False}
-            return {"type": "http.disconnect"}
-
-        async def send(message: dict) -> None:
-            messages.append(message)
-
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": "GET",
-            "scheme": "http",
-            "path": unquote(path),
-            "raw_path": path.encode(),
-            "query_string": b"",
-            "root_path": "",
-            "headers": [],
-            "client": ("127.0.0.1", 1234),
-            "server": ("testserver", 80),
-        }
         with mock.patch.object(self.admin_app, "UI_DIR", self.ui_dir):
-            await self.admin_app.app(scope, receive, send)
-
-        status = next(message["status"] for message in messages if message["type"] == "http.response.start")
-        body = b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body")
-        return status, body
+            exchange = await asgi_exchange(self.admin_app.app, path, LOOPBACK, unquote_path=True)
+        return exchange.status, exchange.body
 
     def test_absolute_and_traversal_paths_never_escape_ui_directory(self) -> None:
         paths = (

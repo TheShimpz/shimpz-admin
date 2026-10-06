@@ -9,9 +9,14 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
+from http_request import Peer, asgi_exchange
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
+
+
+# A loopback browser of the Local Space's public origin.
+LOCAL_ORIGIN = Peer("https", ("127.0.0.1", 1234), ("local.shimpz.com", 443))
 
 
 class SecurityHeaderTests(unittest.TestCase):
@@ -25,39 +30,9 @@ class SecurityHeaderTests(unittest.TestCase):
         cls.admin_app = app_import.load_app(root, mock.patch.object(Path, "is_dir", return_value=True))
 
     async def _request(self, method: str, path: str) -> tuple[int, dict[str, str]]:
-        messages: list[dict] = []
-        request_sent = False
-
-        async def receive() -> dict:
-            nonlocal request_sent
-            if not request_sent:
-                request_sent = True
-                return {"type": "http.request", "body": b"", "more_body": False}
-            return {"type": "http.disconnect"}
-
-        async def send(message: dict) -> None:
-            messages.append(message)
-
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": method,
-            "scheme": "https",
-            "path": path,
-            "raw_path": path.encode(),
-            "query_string": b"",
-            "root_path": "",
-            "headers": [],
-            "client": ("127.0.0.1", 1234),
-            "server": ("local.shimpz.com", 443),
-        }
         with mock.patch.object(self.admin_app, "UI_DIR", self.ui_dir):
-            await self.admin_app.app(scope, receive, send)
-
-        start = next(message for message in messages if message["type"] == "http.response.start")
-        headers = {key.decode().lower(): value.decode() for key, value in start["headers"]}
-        return start["status"], headers
+            exchange = await asgi_exchange(self.admin_app.app, path, LOCAL_ORIGIN, method=method)
+        return exchange.status, exchange.headers
 
     def assert_security_headers(self, headers: dict[str, str]) -> None:
         policy = headers["content-security-policy"]
