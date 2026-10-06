@@ -223,7 +223,11 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         def drifted_output(value: dict[str, object]) -> None:
             value["routine_phrase"]["outputs"][0]["outputs"] = ["drift"]
 
-        for mutate in (missing, drifted_question, drifted_output):
+        def drifted_request(value: dict[str, object]) -> None:
+            case = value["routine_phrase"]["requests_routine"][0]
+            case["requests"] = not case["requests"]
+
+        for mutate in (missing, drifted_question, drifted_output, drifted_request):
             with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
                 _execute(
                     HTTP / "verify.py",
