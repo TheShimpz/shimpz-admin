@@ -30,7 +30,7 @@ async def turn(
     *,
     finish_history: bool = False,
 ) -> bool:
-    if connection.closed or active.terminal_sent:
+    if active.terminal_sent or (connection.closed and event.get("type") != "done"):
         return False
     projected = event
     try:
@@ -48,6 +48,9 @@ async def turn(
         if (event.get("type") == "done" or finish_history) and active.history_id == connection.pending_history_id:
             connection.pending_history_id = None
     active.terminal_sent = True
+    if connection.closed:
+        # A completed reply is committed for a reload even after the browser left; there is no one to send it to.
+        return False
     if not await send(websocket, projected):
         connection.closed = True
         return False
