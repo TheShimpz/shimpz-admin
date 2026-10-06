@@ -31,6 +31,11 @@ def _installed(*items: tuple[str, str]):
     )
 
 
+def _inventory(*items: tuple[str, str]):
+    """Patch Team's installed inventory to answer these (Assistant, version) pairs."""
+    return mock.patch.object(assistant_uninstall.team, "list_installed_assistants", return_value=_installed(*items))
+
+
 def _registry(*assistant_ids: str):
     return assistant_uninstall.team.TeamResponse(
         200,
@@ -70,11 +75,7 @@ def _proposal(version: str = "0.4.4") -> assistant_proposal.UninstallProposal:
 class AssistantUninstallDirectoryTests(unittest.TestCase):
     def test_returns_only_installed_team_identities(self) -> None:
         with (
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_installed_assistants",
-                return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-            ),
+            _inventory(("shimpz-cloudflare", "0.4.4")),
             mock.patch.object(
                 assistant_uninstall.team,
                 "list_assistants",
@@ -90,11 +91,7 @@ class AssistantUninstallDirectoryTests(unittest.TestCase):
 
     def test_registry_drift_fails_closed(self) -> None:
         with (
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_installed_assistants",
-                return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-            ),
+            _inventory(("shimpz-cloudflare", "0.4.4")),
             mock.patch.object(assistant_uninstall.team, "list_assistants", return_value=_registry()),
             self.assertRaises(ValueError),
         ):
@@ -129,11 +126,7 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
             {"assistant": "shimpz-cloudflare", "uninstalled": True, "trace_id": "c" * 32},
         )
         with (
-            mock.patch.object(
-                assistant_uninstall.team,
-                "list_installed_assistants",
-                return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-            ),
+            _inventory(("shimpz-cloudflare", "0.4.4")),
             mock.patch.object(
                 assistant_uninstall.team,
                 "uninstall_assistant",
@@ -164,11 +157,7 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
         ):
             with (
                 self.subTest(status=response.status),
-                mock.patch.object(
-                    assistant_uninstall.team,
-                    "list_installed_assistants",
-                    return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-                ),
+                _inventory(("shimpz-cloudflare", "0.4.4")),
                 mock.patch.object(assistant_uninstall.team, "uninstall_assistant", return_value=response),
             ):
                 self.assertEqual(assistant_uninstall.uninstall(_proposal()), expected)
@@ -217,11 +206,7 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
         for response, result in zip(responses, expected, strict=True):
             with (
                 self.subTest(response=response),
-                mock.patch.object(
-                    assistant_uninstall.team,
-                    "list_installed_assistants",
-                    return_value=_installed(("shimpz-cloudflare", "0.4.4")),
-                ),
+                _inventory(("shimpz-cloudflare", "0.4.4")),
                 mock.patch.object(assistant_uninstall.team, "uninstall_assistant", return_value=response),
             ):
                 self.assertEqual(assistant_uninstall.uninstall(_proposal()), result)
