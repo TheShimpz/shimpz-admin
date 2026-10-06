@@ -332,6 +332,28 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
 
+    def test_rejects_output_choices_that_miss_a_language_or_name_one_output_twice(self) -> None:
+        def edit(old: str, new: str):
+            def mutate(root: Path) -> None:
+                module = root / "routine.py"
+                text = module.read_text(encoding="utf-8")
+                self.assertIn(old, text)
+                module.write_text(text.replace(old, new, 1), encoding="utf-8")
+                _rehash(root, "routine.py")
+
+            return mutate
+
+        zh = (
+            '    "zh": {"show": "每次运行都显示", "changes": "仅在变化时显示", "none": "不显示", '
+            '"chain": "用于其他操作"},\n'
+        )
+        for mutate in (
+            edit(zh, ""),
+            edit('        "none": "Don\'t show",\n', '        "none": "show every run",\n'),
+        ):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", mutate)
+
     def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value.pop("rendered_copy")
