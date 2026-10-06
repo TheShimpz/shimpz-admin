@@ -29,6 +29,25 @@ def json_headers(body: bytes) -> list[tuple[bytes, bytes]]:
     return [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
 
 
+def _scope(
+    method: str, path: str, raw_path: str, query: bytes, peer: Peer, headers: list[tuple[bytes, bytes]] | None
+) -> dict[str, object]:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method,
+        "scheme": peer.scheme,
+        "path": path,
+        "raw_path": raw_path.encode(),
+        "query_string": query,
+        "root_path": "",
+        "headers": list(headers or []),
+        "client": peer.client,
+        "server": peer.server,
+    }
+
+
 def http_request(
     path: str,
     peer: Peer,
@@ -40,20 +59,7 @@ def http_request(
     query: bytes = b"",
 ) -> Request:
     """Return a request whose body arrives once, or as the given chunks, and then reads as complete."""
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": peer.scheme,
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": query,
-        "root_path": "",
-        "headers": list(headers or []),
-        "client": peer.client,
-        "server": peer.server,
-    }
+    scope = _scope(method, path, path, query, peer, headers)
     pending = [body] if chunks is None else list(chunks)
 
     async def receive():
@@ -96,20 +102,7 @@ async def asgi_exchange(
     async def send(message: dict) -> None:
         messages.append(message)
 
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": method,
-        "scheme": peer.scheme,
-        "path": unquote(path) if unquote_path else path,
-        "raw_path": path.encode(),
-        "query_string": b"",
-        "root_path": "",
-        "headers": list(headers or []),
-        "client": peer.client,
-        "server": peer.server,
-    }
+    scope = _scope(method, unquote(path) if unquote_path else path, path, b"", peer, headers)
     await application(scope, receive, send)
     start = next(message for message in messages if message["type"] == "http.response.start")
     return Exchange(
