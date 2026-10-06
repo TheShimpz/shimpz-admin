@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import tempfile
 import unittest
@@ -62,6 +63,17 @@ class _Connection:
     def close(self) -> None:
         if self.close_error:
             raise OSError("close failed")
+
+
+@contextlib.contextmanager
+def _team_connection():
+    """Send transport calls to the fake Team connection at a fixed endpoint with a fixed bearer token."""
+    with (
+        mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
+        mock.patch.object(transport, "_team_token", return_value="token"),
+        mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
+    ):
+        yield
 
 
 class TeamTransportEdgeTests(unittest.TestCase):
@@ -165,11 +177,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
             if declared:
                 headers["Content-Length"] = str(len(body))
             _Connection.response = _Response(headers=headers, body=body)
-            with (
-                mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
-                mock.patch.object(transport, "_team_token", return_value="token"),
-                mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
-            ):
+            with _team_connection():
                 return transport._call("GET", "/v1/teams/team_1/routines", **kwargs).status
 
         self.addCleanup(setattr, _Connection, "response", _Response())
@@ -221,20 +229,12 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 ).status,
                 HTTPStatus.BAD_GATEWAY,
             )
-        with (
-            mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
-            mock.patch.object(transport, "_team_token", return_value="token"),
-            mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
-        ):
+        with _team_connection():
             self.assertEqual(transport._call("GET", "/v1/teams").status, 502)
 
         _Connection.response = _Response()
         _Connection.close_error = True
-        with (
-            mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
-            mock.patch.object(transport, "_team_token", return_value="token"),
-            mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
-        ):
+        with _team_connection():
             self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
         _Connection.close_error = False
 
@@ -253,11 +253,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 transport._decode_asset(response)
 
         _Connection.response = _Response(99)
-        with (
-            mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
-            mock.patch.object(transport, "_team_token", return_value="token"),
-            mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
-        ):
+        with _team_connection():
             self.assertEqual(transport._request_asset("GET", "/icon").status, HTTPStatus.BAD_GATEWAY)
 
     def test_stream_decoder_rejects_headers_size_and_terminal_residue(self) -> None:
@@ -313,9 +309,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
             _Connection.response = response
             with (
                 self.subTest(expected=expected),
-                mock.patch.object(transport, "_endpoint", return_value=("team", 7077)),
-                mock.patch.object(transport, "_team_token", return_value="token"),
-                mock.patch.object(transport.http.client, "HTTPConnection", _Connection),
+                _team_connection(),
                 self.assertLogs("shimpz-admin", "WARNING") as logs,
             ):
                 self.assertEqual(call(), expected)
