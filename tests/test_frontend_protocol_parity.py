@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from protocol.http.v1 import payload as team_contract
 
 LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
+VALIDATE = ROOT / "frontend" / "src" / "lib" / "validate.js"
 
 
 def _constant(source: str, name: str) -> str:
@@ -64,6 +65,24 @@ class FrontendProtocolParityTests(unittest.TestCase):
                 self.assertIsNotNone(literal)
                 pairs = dict(re.findall(r"(\w+): (\d+)", literal[1]))
                 self.assertEqual({field: int(value) for field, value in pairs.items()}, bounds)
+
+
+class FrontendIdentifierParityTests(unittest.TestCase):
+    def test_the_browser_identifier_kinds_are_the_team_identifiers(self) -> None:
+        source = VALIDATE.read_text(encoding="utf-8")
+
+        def exported(name: str) -> str:
+            match = re.search(rf"^export const {name} = (.+);$", source, re.MULTILINE)
+            if match is None:
+                raise AssertionError(f"{name} is missing from the browser validators")
+            return match[1]
+
+        self.assertEqual(exported("ASSISTANT_ID_RE"), f"/{team_contract.ASSISTANT_ID_PATTERN}/")
+        self.assertEqual(exported("ACTION_ID_RE"), f"/{team_contract.ACTION_ID_PATTERN}/")
+        for name in ("MAX_ASSISTANT_ID_CHARS", "MAX_IDENTIFIER_CHARS", "MAX_ACTION_ID_CHARS"):
+            with self.subTest(name=name):
+                self.assertEqual(int(exported(name)), getattr(team_contract, name))
+        self.assertEqual(team_contract.IDENTIFIER_RE.pattern, team_contract.ASSISTANT_ID_PATTERN)
 
 
 if __name__ == "__main__":

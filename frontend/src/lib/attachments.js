@@ -1,7 +1,15 @@
 // Chat attachments (ADR-0093): the composer's per-message admission, the browser's mirror of Team's readability rules,
 // the bounded upload through Admin, and the closed shapes Team discloses about files and withheld Actions.
 import { LocalApiError } from './localApi.js';
-import { ASSISTANT_ID_RE, codePointLength, exactKeys, jsonObject, OPAQUE_ID_RE, TEAM_ID_RE } from './validate.js';
+import {
+  codePointLength,
+  exactKeys,
+  isActionId,
+  isAssistantId,
+  jsonObject,
+  OPAQUE_ID_RE,
+  TEAM_ID_RE,
+} from './validate.js';
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -27,7 +35,6 @@ const MAX_RESTRICTED_ACTIONS = 16;
 const MAX_RESTRICTED_ACTION_TOTAL = 2048;
 const MAX_RESTRICTED_ACTIONS_BYTES = 2048;
 
-const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const FILENAME_CONTROL_RE = /[\u0000-\u001f\u007f]/;
@@ -201,12 +208,8 @@ export function parseRestrictedActions(value) {
   const actions = value.actions.map((item) => {
     if (
       !exactKeys(item, ['assistant', 'action']) ||
-      typeof item.assistant !== 'string' ||
-      item.assistant.length > 80 ||
-      !ASSISTANT_ID_RE.test(item.assistant) ||
-      typeof item.action !== 'string' ||
-      item.action.length > 128 ||
-      !ACTION_ID_RE.test(item.action)
+      !isAssistantId(item.assistant) ||
+      !isActionId(item.action)
     ) throw new LocalApiError('The local chat response is invalid.');
     return { assistant: item.assistant, action: item.action };
   });

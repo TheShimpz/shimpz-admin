@@ -9,6 +9,9 @@ import {
   codePointLength,
   CONTROL_RE,
   exactKeys,
+  isActionId,
+  isAssistantId,
+  isIdentifier,
   jsonObject,
   OPAQUE_ID_RE,
   TEAM_ID_RE,
@@ -65,8 +68,6 @@ const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation'])
 const CHAT_PROGRESS_STATES = new Set(['started', 'finished']);
 const MAX_CHAT_PROGRESS_EVENTS = 2052;
 const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
-const MAX_PROGRESS_ASSISTANT_ID_CHARS = 40;
-const MAX_PROGRESS_ACTION_ID_CHARS = 80;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -119,10 +120,8 @@ function canonicalTeam(value) {
   return value;
 }
 
-function canonicalId(value, message = 'The local chat response is invalid.') {
-  if (typeof value !== 'string' || value.length > 80 || !ASSISTANT_ID_RE.test(value)) {
-    throw new LocalApiError(message);
-  }
+function canonicalId(value, message = 'The local chat response is invalid.', valid = isAssistantId) {
+  if (!valid(value)) throw new LocalApiError(message);
   return value;
 }
 
@@ -193,7 +192,7 @@ function canonicalIntegrationAction(value) {
   ) {
     throw new LocalApiError('The local chat response is invalid.');
   }
-  return { id: canonicalId(value.id) };
+  return { id: canonicalId(value.id, undefined, isActionId) };
 }
 
 function canonicalIntegrationActions(values) {
@@ -227,8 +226,8 @@ function canonicalIntegrationRequirement(value) {
   return {
     assistant_id: canonicalId(value.assistant_id),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
-    integration_id: canonicalId(value.integration_id),
-    provider: canonicalId(value.provider),
+    integration_id: canonicalId(value.integration_id, undefined, isIdentifier),
+    provider: canonicalId(value.provider, undefined, isIdentifier),
     name: canonicalPublicText(value.name, 80),
     scopes: canonicalIntegrationScopes(value.scopes),
     actions: canonicalIntegrationActions(value.actions),
@@ -443,7 +442,7 @@ function canonicalHumanRequest(value) {
   if (HUMAN_LENGTH_LIMITS.has(base.kind)) {
     const limit = HUMAN_LENGTH_LIMITS.get(base.kind);
     const storedInput = base.kind === 'input:password' && Object.hasOwn(value, 'stored_input')
-      ? canonicalId(value.stored_input)
+      ? canonicalId(value.stored_input, undefined, isIdentifier)
       : undefined;
     const lengthKeys = [...baseKeys, 'label', 'required', 'placeholder', 'min_length', 'max_length'];
     if (storedInput !== undefined) lengthKeys.push('stored_input');
@@ -488,13 +487,13 @@ function canonicalHumanRequest(value) {
   };
 }
 
-function canonicalHumanIdentity(value, expectedKeys, maximum) {
+function canonicalHumanIdentity(value, expectedKeys, maximum, valid) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !exactKeys(value, expectedKeys)) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   return Object.fromEntries(expectedKeys.map((key) => [
     key,
-    key === 'id' ? canonicalId(value[key]) : canonicalPublicText(value[key], maximum),
+    key === 'id' ? canonicalId(value[key], undefined, valid) : canonicalPublicText(value[key], maximum),
   ]));
 }
 
@@ -576,8 +575,8 @@ function canonicalIntegrationInventoryItem(value) {
     assistant_id: canonicalId(value.assistant_id, 'The Assistant integration inventory is invalid.'),
     assistant_name: canonicalPublicText(value.assistant_name, 80),
     assistant_version: canonicalSemanticVersion(value.assistant_version),
-    id: canonicalId(value.id, 'The Assistant integration inventory is invalid.'),
-    provider: canonicalId(value.provider, 'The Assistant integration inventory is invalid.'),
+    id: canonicalId(value.id, 'The Assistant integration inventory is invalid.', isIdentifier),
+    provider: canonicalId(value.provider, 'The Assistant integration inventory is invalid.', isIdentifier),
     name: canonicalPublicText(value.name, 80),
     scopes: canonicalIntegrationScopes(value.scopes),
     status: value.status,
@@ -841,7 +840,7 @@ function canonicalStoredInputMetadata(value) {
   try {
     return {
       assistant_id: canonicalId(value.assistant_id),
-      stored_input_id: canonicalId(value.stored_input_id),
+      stored_input_id: canonicalId(value.stored_input_id, undefined, isIdentifier),
       status: value.status,
     };
   } catch {
@@ -881,7 +880,7 @@ export async function clearAssistantStoredInput(fetcher, teamId, assistantId, st
   let storedInput;
   try {
     assistant = canonicalId(assistantId, 'Invalid Assistant Stored Input request.');
-    storedInput = canonicalId(storedInputId, 'Invalid Assistant Stored Input request.');
+    storedInput = canonicalId(storedInputId, 'Invalid Assistant Stored Input request.', isIdentifier);
   } catch {
     throw new LocalApiError('Invalid Assistant Stored Input request.');
   }
@@ -919,7 +918,7 @@ export async function authorizeAssistantIntegration(
   let integration;
   try {
     assistant = canonicalId(assistantId, 'Invalid Assistant authorization request.');
-    integration = canonicalId(integrationId, 'Invalid Assistant authorization request.');
+    integration = canonicalId(integrationId, 'Invalid Assistant authorization request.', isIdentifier);
   } catch {
     throw new LocalApiError('Invalid Assistant authorization request.');
   }
@@ -981,7 +980,7 @@ export async function completeAssistantIntegration(fetcher, teamId, challengeId,
     connected: true,
     team_id: teamId,
     assistant_id: canonicalId(body.assistant_id, 'The Assistant completion response is invalid.'),
-    integration_id: canonicalId(body.integration_id, 'The Assistant completion response is invalid.'),
+    integration_id: canonicalId(body.integration_id, 'The Assistant completion response is invalid.', isIdentifier),
   };
 }
 
@@ -1028,7 +1027,7 @@ function canonicalInstallPlanAssistant(value) {
     !['local', 'published'].includes(value.provenance) ||
     !['pending', 'installing', 'installed', 'failed'].includes(value.status)
   ) throw new LocalApiError('The local chat response is invalid.');
-  const providers = value.providers.map((provider) => canonicalId(provider));
+  const providers = value.providers.map((provider) => canonicalId(provider, undefined, isIdentifier));
   if (
     new Set(providers).size !== providers.length ||
     providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)
@@ -1317,12 +1316,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
         value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
       )) ||
       (action && (
-        typeof value.assistant_id !== 'string' ||
-        value.assistant_id.length > MAX_PROGRESS_ASSISTANT_ID_CHARS ||
-        !ASSISTANT_ID_RE.test(value.assistant_id) ||
-        typeof value.action !== 'string' ||
-        value.action.length > MAX_PROGRESS_ACTION_ID_CHARS ||
-        !ASSISTANT_ID_RE.test(value.action) ||
+        !isAssistantId(value.assistant_id) ||
+        !isActionId(value.action) ||
         !Number.isSafeInteger(value.index) ||
         !Number.isSafeInteger(value.total) ||
         value.index < 1 ||
@@ -1447,8 +1442,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       type: 'human-required',
       challenge_id: value.challenge_id,
       expires_in: value.expires_in,
-      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80),
-      action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160),
+      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80, isAssistantId),
+      action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160, isActionId),
       request,
       rendered: canonicalRendered(value.rendered, request),
       locale: value.locale,

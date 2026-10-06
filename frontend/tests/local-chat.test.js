@@ -437,7 +437,7 @@ for (const invalid of [
   },
   {
     type: 'progress', seq: 1, origin: 'team', phase: 'action', state: 'started',
-    assistant_id: 'shimpz-cloudflare', index: 1, action: 'x'.repeat(81), total: 1,
+    assistant_id: 'shimpz-cloudflare', index: 1, action: 'x'.repeat(129), total: 1,
   },
 ]) {
     assert.throws(

@@ -3,6 +3,7 @@ import {
   codePointLength,
   CONTROL_RE,
   exactKeys,
+  isIdentifier,
   jsonObject,
   LocalApiError,
   TEAM_ID_RE,
@@ -274,14 +275,12 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
       !Array.isArray(entry.actions) ||
       entry.actions.length < 1 ||
       entry.actions.length > 128 ||
-      entry.actions.some((action) => typeof action !== 'string' || action.length > 80 || !ASSISTANT_ID_RE.test(action)) ||
+      entry.actions.some((action) => !isIdentifier(action)) ||
       new Set(entry.actions).size !== entry.actions.length ||
       entry.actions.some((action, index) => index > 0 && entry.actions[index - 1] >= action) ||
       !Array.isArray(entry.integrations) ||
       entry.integrations.length > 16 ||
-      entry.integrations.some((integration) => (
-        typeof integration !== 'string' || integration.length > 80 || !ASSISTANT_ID_RE.test(integration)
-      )) ||
+      entry.integrations.some((integration) => !isIdentifier(integration)) ||
       new Set(entry.integrations).size !== entry.integrations.length ||
       entry.integrations.some((integration, index) => index > 0 && entry.integrations[index - 1] >= integration) ||
       !Array.isArray(entry.declared_creators) ||
