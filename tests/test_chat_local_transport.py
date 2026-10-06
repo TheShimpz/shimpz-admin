@@ -19,6 +19,7 @@ import supervisor as local_supervisor
 from team import bridge as team
 from team import transport
 
+from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 
 TRACE_ID = "a" * 32
@@ -163,7 +164,7 @@ class PrivateChatTransportTests(unittest.TestCase):
         assistant_ids = []
         for index in range(16):
             prefix = f"a{index}"
-            assistant_ids.append(prefix + ("x" * (80 - len(prefix))))
+            assistant_ids.append(prefix + ("x" * (team_contract.MAX_ASSISTANT_ID_CHARS - len(prefix))))
 
         with team.supervisor_session(session, account=False, local_identity=identity):
             team.chat(
@@ -174,7 +175,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                     "assistant_ids": assistant_ids,
                     "locale": "en",
                     "timezone": None,
-                    "conversation": [],
+                    "conversation": [{"role": "user", "text": "x" * 512, "truncated": False}],
                     "request": REQUEST,
                 },
                 provider="openai",

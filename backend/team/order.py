@@ -28,7 +28,7 @@ from team import bridge
 from team import http as team_http
 
 from protocol.http.v1 import payload as team_contract
-from protocol.http.v1 import websocket as chat_ws_common
+from protocol.http.v1 import strict_json
 
 ORDER_PATH = Path(os.environ.get("SHIMPZ_TEAM_ORDER_STORE") or "/data/team-order.json")
 MAX_ORDER_BYTES = 8 * 1024
@@ -83,11 +83,7 @@ def load() -> list[str] | None:
     if len(raw) != metadata.st_size or len(raw) > MAX_ORDER_BYTES:
         raise OrderInvalidError("Team order has an invalid size")
     try:
-        value = json.loads(
-            raw,
-            object_pairs_hook=chat_ws_common.unique_json_object,
-            parse_constant=chat_ws_common._reject_json_constant,
-        )
+        value = strict_json.loads(raw)
     except ValueError, RecursionError:
         raise OrderInvalidError("Team order is not JSON") from None
     if (

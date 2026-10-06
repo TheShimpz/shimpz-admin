@@ -100,6 +100,10 @@ class OrderFileTests(OrderCase):
             with self.subTest(raw=raw[:40], mode=oct(mode)), self.assertRaises(team_order.OrderInvalidError):
                 self.write(raw, mode)
                 team_order.load()
+        for raw in (b'{"team_ids":[NaN]}', b'{"team_ids":[-1e999]}'):
+            with self.subTest(raw=raw), self.assertRaisesRegex(team_order.OrderInvalidError, "not JSON"):
+                self.write(raw, 0o600)
+                team_order.load()
         self.saved("a")
         link = self.root / "second-link"
         os.link(self.path, link)

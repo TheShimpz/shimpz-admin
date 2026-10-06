@@ -44,7 +44,16 @@ def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = N
             path = Path(value)
             return mirror / source.name if path.resolve() == source.resolve() else path
 
-        module_names = ("payload", "progress", "routine", "supervisor", "websocket")
+        module_names = (
+            "identifiers",
+            "payload",
+            "progress",
+            "purpose",
+            "routine",
+            "strict_json",
+            "supervisor",
+            "websocket",
+        )
         with (
             _fresh_modules(*module_names),
             mock.patch.object(sys, "path", [str(mirror), *sys.path]),

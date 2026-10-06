@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
+import runpy
 import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1] / "backend" / "protocol" / "http"
 EXPECTED_UPSTREAM = {
     "repository": "https://github.com/TheShimpz/shimpz-teams",
-    "commit": "36e4073f622244212870c2dbdc45b0165e4b26d5",
+    "commit": "3002178e8897ec7b16deecd51c90b357b02b6047",
     "path": "protocol/http/v1",
-    "tree": "79954ce8cc2bdf20f378e7882be0145142f8b7de",
-    "contract_files_sha256": "32d861e49fc3d7f635feceedaa53f75803515fa22491528f2ea68d6f28f3952a",
+    "tree": "71738be3678d48670c021b12bac02e9c5c086135",
+    "contract_files_sha256": "de8ed0779a9486f62933a8c0ff4eb7e729b258b9675686d0ecd075523e2d02f6",
 }
 
 
@@ -25,6 +29,19 @@ class TeamHttpProtocolTests(unittest.TestCase):
         manifest = (ROOT / "v1" / "contract-files.sha256").read_bytes()
         self.assertEqual(hashlib.sha256(manifest).hexdigest(), EXPECTED_UPSTREAM["contract_files_sha256"])
         subprocess.run([sys.executable, str(ROOT / "v1" / "verify.py")], check=True)
+
+    def test_the_verifier_imports_the_mirrored_modules_flat_from_their_directory(self) -> None:
+        names = ("identifiers", "payload", "progress", "purpose", "routine", "strict_json", "supervisor", "websocket")
+        saved = {name: sys.modules.pop(name) for name in names if name in sys.modules}
+        output = io.StringIO()
+        try:
+            with mock.patch.object(sys, "path", [str(ROOT / "v1"), *sys.path]), contextlib.redirect_stdout(output):
+                runpy.run_path(str(ROOT / "v1" / "verify.py"), run_name="admin_team_protocol_verifier")
+        finally:
+            for name in names:
+                sys.modules.pop(name, None)
+            sys.modules.update(saved)
+        self.assertIn("golden vectors are valid", output.getvalue())
 
 
 if __name__ == "__main__":

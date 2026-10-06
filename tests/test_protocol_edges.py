@@ -108,10 +108,11 @@ class PayloadEdges(unittest.TestCase):
 
 class ProgressEdges(unittest.TestCase):
     def test_helpers_and_events_reject_invalid_values(self) -> None:
-        with self.assertRaises(ValueError):
-            progress._reject_json_constant("NaN")
-        with self.assertRaises(ValueError):
-            progress._unique_json_object([("x", 1), ("x", 2)])
+        for line in (b'{"type":"terminal","type":"terminal"}\n', b'{"v":NaN}\n', b'{"v":[1e999]}\n'):
+            with self.subTest(line=line), self.assertRaises(progress.ProgressContractError):
+                progress.decode_line(line)
+        finite = progress.decode_line(b'{"body":{"v":0.5},"status":200,"type":"terminal"}\n')
+        self.assertEqual(finite["body"], {"v": 0.5})
         cases = (
             None,
             {"phase": "bad", "state": "started", "seq": 1},
@@ -208,8 +209,9 @@ class SupervisorEdges(unittest.TestCase):
 class WebSocketEdges(unittest.TestCase):
     def test_origin_text_and_json_failures(self) -> None:
         self.assertIsNone(websocket.canonical_origin(None))
-        with self.assertRaises(ValueError):
-            websocket._reject_json_constant("NaN")
+        for text in ('{"a":1,"a":2}', '{"a":-Infinity}', '{"a":{"b":-1E400}}'):
+            with self.subTest(text=text), self.assertRaises(websocket.FrameError):
+                websocket.decode_bounded_json_frame({"type": "websocket.receive", "text": text}, 64)
         with self.assertRaises(ValueError):
             websocket.public_text(None, 10)
         self.assertEqual(websocket.public_text("français\u00a0?", 10), "français\u00a0?")

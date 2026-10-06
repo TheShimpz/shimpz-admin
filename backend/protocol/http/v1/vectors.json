@@ -176,6 +176,29 @@
       "close_code": 1007
     },
     {
+      "name": "finite_number",
+      "message": {
+        "type": "websocket.receive",
+        "text": "{\"v\":-1.5e3}"
+      },
+      "max_bytes": 128,
+      "valid": true,
+      "value": {
+        "v": -1500.0
+      }
+    },
+    {
+      "name": "exponent_overflow",
+      "message": {
+        "type": "websocket.receive",
+        "text": "{\"type\":\"chat\",\"v\":1e999}"
+      },
+      "max_bytes": 128,
+      "valid": false,
+      "status": 400,
+      "close_code": 1007
+    },
+    {
       "name": "binary_frame",
       "message": {
         "type": "websocket.receive",
@@ -289,6 +312,21 @@
       "record": {"type": "progress", "seq": 2, "phase": "action", "state": "finished", "elapsed_ms": 12, "assistant_id": "hello-world", "index": 1, "action": "lookup", "total": 2}
     },
     {
+      "name": "dotted_action_started",
+      "valid": true,
+      "record": {"type": "progress", "seq": 2, "phase": "action", "state": "started", "assistant_id": "hello-world", "index": 1, "action": "dns.read_zone", "total": 1}
+    },
+    {
+      "name": "action_over_bound",
+      "valid": false,
+      "record": {"type": "progress", "seq": 2, "phase": "action", "state": "started", "assistant_id": "hello-world", "index": 1, "action": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp", "total": 1}
+    },
+    {
+      "name": "assistant_over_bound",
+      "valid": false,
+      "record": {"type": "progress", "seq": 2, "phase": "action", "state": "started", "assistant_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "index": 1, "action": "lookup", "total": 1}
+    },
+    {
       "name": "terminal",
       "valid": true,
       "record": {"type": "terminal", "status": 200, "body": {"team_id": "team_1", "reply": "done"}}
@@ -327,6 +365,12 @@
       "record": {"type": "terminal", "status": 200, "body": {"reply": "done", "team_id": "team_1"}}
     },
     {
+      "name": "largest_progress_line",
+      "valid": true,
+      "line": "{\"action\":\"pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp\",\"assistant_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"elapsed_ms\":86400000,\"index\":512,\"phase\":\"action\",\"seq\":2048,\"state\":\"finished\",\"total\":512,\"type\":\"progress\"}\n",
+      "record": {"type": "progress", "seq": 2048, "phase": "action", "state": "finished", "elapsed_ms": 86400000, "assistant_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "index": 512, "action": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp", "total": 512}
+    },
+    {
       "name": "duplicate_field_line",
       "valid": false,
       "line": "{\"type\":\"terminal\",\"type\":\"terminal\",\"status\":200,\"body\":{}}\n"
@@ -335,6 +379,23 @@
       "name": "non_finite_line",
       "valid": false,
       "line": "{\"type\":\"terminal\",\"status\":NaN,\"body\":{}}\n"
+    },
+    {
+      "name": "finite_number_line",
+      "valid": true,
+      "line": "{\"body\":{\"v\":0.5},\"status\":200,\"type\":\"terminal\"}\n",
+      "record": {
+        "type": "terminal",
+        "status": 200,
+        "body": {
+          "v": 0.5
+        }
+      }
+    },
+    {
+      "name": "exponent_overflow_line",
+      "valid": false,
+      "line": "{\"type\":\"terminal\",\"status\":200,\"body\":{\"v\":-1e999}}\n"
     },
     {
       "name": "missing_newline",
@@ -354,12 +415,16 @@
       "invalid": ["", "Team", "team-name", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
     },
     "assistant": {
-      "valid": ["a", "hello-world"],
-      "invalid": ["", "Hello", "hello_world", "hello--world"]
+      "valid": ["a", "hello-world", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "invalid": ["", "Hello", "hello_world", "hello--world", "hello-world\n", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+    },
+    "identifier": {
+      "valid": ["a", "api-token", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "invalid": ["", "Api-token", "api_token", "api.token", "api--token", "api-token\n", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 7]
     },
     "action": {
-      "valid": ["list-zones", "dns.read", "zone_get"],
-      "invalid": ["", "List-zones", "../shell", "dns..read"]
+      "valid": ["list-zones", "dns.read", "zone_get", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "invalid": ["", "List-zones", "../shell", "dns..read", "dns.read\n", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
     },
     "source_digest": {
       "valid": ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],

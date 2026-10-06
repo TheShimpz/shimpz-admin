@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from team import bridge
 
+from protocol.http.v1 import strict_json
 from protocol.http.v1 import websocket as chat_ws_common
 
 
@@ -49,11 +50,7 @@ async def bounded_json_object(
         if len(body) > max_bytes:
             raise HTTPException(status_code=413, detail="request body too large")
     try:
-        payload = json.loads(
-            body,
-            object_pairs_hook=chat_ws_common.unique_json_object,
-            parse_constant=chat_ws_common._reject_json_constant,
-        )
+        payload = strict_json.loads(body)
     except json.JSONDecodeError, UnicodeError, RecursionError, ValueError:
         raise HTTPException(status_code=400, detail="request body must be valid JSON") from None
     if not isinstance(payload, dict):

@@ -2,6 +2,11 @@
 
 Team owns the closed identifiers, payload projections, and WebSocket frame boundary used by Admin
 and Store. `payload.py` validates Team-facing HTTP values without trusting upstream fields.
+`identifiers.py` owns the closed Team, Assistant, and Action identifier grammars and `purpose.py` the Action purpose
+sentence rule; `payload.py` re-exports both, and the Brain consumes these two files as a pinned mirror.
+An Assistant id (at most 40 characters) and an Assistant's Integration, provider, or Stored Input identifier
+(`canonical_identifier`, at most 64) use the Developers published-Assistant grammar; an Action id uses Team's wider
+grammar, which also admits `.` and `_` separators, within 128 characters.
 `websocket.py` validates the bounded `shimpz.chat.v7` frame primitives and redacts unsafe errors.
 `progress.py` owns the closed metadata-only progress events and NDJSON terminal framing used by
 Local Team chat. An Action occurrence carries only its canonical reviewed Assistant and Action
@@ -9,6 +14,9 @@ identifiers; it never carries arguments, results, prompts, model output, or free
 advisory; only the single terminal record determines the operation outcome. A missing, repeated,
 malformed, oversized, or out-of-order record fails closed at the consumer without widening Team
 authority or exposing execution payloads.
+`strict_json.py` is an exact copy of the umbrella `.standards/strict_json.py` security source: the frame and stream
+decoders parse through it, so a duplicate field and every non-finite number, including an exponent overflow such as
+`1e999`, fail closed. The modules import one another as a package, and flat when `verify.py` runs them as scripts.
 Thread pools, queues, worker limits, and saturation behavior are deployable-owned runtime policy,
 not part of this wire protocol.
 

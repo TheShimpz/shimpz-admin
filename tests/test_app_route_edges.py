@@ -128,7 +128,7 @@ class AppRouteEdgeTests(unittest.TestCase):
                 max_bytes=1,
             ),
         )
-        for body in (b"{", b'{"key":1,"key":2}'):
+        for body in (b"{", b'{"key":1,"key":2}', b'{"key":NaN}', b'{"key":[1e999]}'):
             with self.subTest(body=body):
                 self.assert_async_status(
                     400,
