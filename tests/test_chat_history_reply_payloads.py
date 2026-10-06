@@ -19,6 +19,11 @@ from chat import local
 
 
 class ChatHistoryReplyPayloadTests(ChatHistoryCase):
+    def _store_payload(self, event_key: str, payload: dict[str, object]) -> None:
+        """Overwrite one stored transcript payload behind the history store's back."""
+        with sqlite3.connect(self.path) as database:
+            database.execute("UPDATE transcript SET payload = ? WHERE event_key = ?", (json.dumps(payload), event_key))
+
     def test_an_unrecommended_question_keeps_no_default_through_the_turn_and_history(self) -> None:
         # A Routine question never steers a choice: no option is recommended, and the reply marks none.
         asked = {
@@ -61,40 +66,28 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         self.assertEqual(entry["id"], f"{turn_id}:reply")
 
         # A tampered stored question makes the history unavailable instead of rendering it.
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "clarification": {**asked, "options": asked["options"][:1]},
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
+        self._store_payload(
+            f"{turn_id}:reply",
+            {
+                "kind": "message",
+                "role": "assistant",
+                "text": "x",
+                "author": "Marketing",
+                "clarification": {**asked, "options": asked["options"][:1]},
+            },
+        )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "clarification": None,
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
+        self._store_payload(
+            f"{turn_id}:reply",
+            {
+                "kind": "message",
+                "role": "assistant",
+                "text": "x",
+                "author": "Marketing",
+                "clarification": None,
+            },
+        )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
@@ -106,22 +99,16 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(ValueError):
             history.append_reply("marketing", turn_id, {**done, "routine_proposal": None})
         self.assertTrue(history.append_reply("marketing", turn_id, done))
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (
-                    json.dumps(
-                        {
-                            "kind": "message",
-                            "role": "assistant",
-                            "text": "x",
-                            "author": "Marketing",
-                            "routine_proposal": {},
-                        }
-                    ),
-                    f"{turn_id}:reply",
-                ),
-            )
+        self._store_payload(
+            f"{turn_id}:reply",
+            {
+                "kind": "message",
+                "role": "assistant",
+                "text": "x",
+                "author": "Marketing",
+                "routine_proposal": {},
+            },
+        )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
@@ -144,11 +131,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
             "author": "Marketing",
             "restricted_actions": {**restricted, "total": 0},
         }
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (json.dumps(stored), f"{tampered}:reply"),
-            )
+        self._store_payload(f"{tampered}:reply", stored)
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
@@ -225,11 +208,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         tampered = self._admitted()
         self.assertTrue(history.append_reply("marketing", tampered, done))
         stored = {"kind": "message", "role": "assistant", "text": "x", "author": "Marketing", "routine_refusal": {}}
-        with sqlite3.connect(self.path) as database:
-            database.execute(
-                "UPDATE transcript SET payload = ? WHERE event_key = ?",
-                (json.dumps(stored), f"{tampered}:reply"),
-            )
+        self._store_payload(f"{tampered}:reply", stored)
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
