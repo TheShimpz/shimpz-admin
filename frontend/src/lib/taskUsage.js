@@ -44,12 +44,23 @@ function invalid() {
  * throws, so the whole frame is refused.
  */
 export function parseTaskUsage(value) {
-  if (value === undefined) return null;
+  return value === undefined ? null : parseUsage(value, 1);
+}
+
+/**
+ * The exact usage of a Routine run's notice (ADR-0101): a chat turn's shape whose models may be none, for a run that
+ * called no model. Any other value throws, so the whole notice row is refused.
+ */
+export function parseRunUsage(value) {
+  return parseUsage(value, 0);
+}
+
+function parseUsage(value, minimum) {
   if (
     !exactRecord(value, USAGE_KEYS) ||
     !count(value.duration_ms, MAX_DURATION_MS) ||
     !Array.isArray(value.models) ||
-    value.models.length < 1 ||
+    value.models.length < minimum ||
     value.models.length > MAX_MODELS
   ) throw invalid();
   let previous = null;
@@ -89,10 +100,14 @@ export function taskUsageSummary(usage) {
   return { tokens, usd: priced ? cents / 100 : null, seconds: usage.duration_ms / 1000, detail };
 }
 
-/** The one-line, locale-formatted label: "≈ US$ 0.0019 · 12,480 tokens · 6.2 s". */
+/**
+ * The one-line, locale-formatted label: "≈ US$ 0.0019 · 12,480 tokens · 6.2 s". A Routine run that called no model
+ * reads only its duration: "10.5 s".
+ */
 export function formatTaskUsage(summary, locale, copy) {
   const number = new Intl.NumberFormat(locale);
   const seconds = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  if (summary.detail.length === 0) return `${seconds.format(summary.seconds)} s`;
   const parts = [];
   if (summary.usd !== null) {
     const money = new Intl.NumberFormat(locale, {

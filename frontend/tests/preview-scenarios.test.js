@@ -6,6 +6,7 @@ import { renderClarification } from '../src/lib/clarification.js';
 import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
 import {
   answerRoutineCard,
+  confirmRoutineProposal,
   listRoutines,
   openRoutineCard,
   parseRoutineRunEntry,
@@ -14,8 +15,11 @@ import {
   readRunDiagnostics,
   readRunSteps,
   pageBinding,
+  refusalWords,
+  revokeRoutineProposal,
   runBinding,
 } from '../src/lib/routine.js';
+import { routineMessages } from '../src/lib/routineMessages.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 
@@ -44,32 +48,61 @@ test('a scenario answers only what it declares and fails closed otherwise', () =
 test('scenarios never share state, and a caller cannot mutate one through a response', () => {
   const first = createScenario('routines');
   const second = createScenario('routines');
-  first.respond({ method: 'GET', path: ROUTINES }).json.routines[0].quote = 'changed';
+  first.respond({ method: 'GET', path: ROUTINES }).json.routines[0].name = 'changed';
   first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}`, body: { code: '123456' } });
   const untouched = second.respond({ method: 'GET', path: ROUTINES }).json;
   assert.equal(untouched.routines.length, 2);
-  assert.notEqual(untouched.routines[0].quote, 'changed');
+  assert.notEqual(untouched.routines[0].name, 'changed');
   assert.equal(first.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });
 
-test('a recurring chat request creates its Routine directly with a created notice and no card', () => {
-  const scenario = createScenario('ready');
+test('a recording turn carries the Cloudflare card; Criar rotina creates its Routine and Cancelar creates nothing', async () => {
+  const scenario = createScenario('routine-card', 'pt');
   const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
-  const [once] = scenario.chat.message(frame('List my DNS zones now'));
-  assert.equal(Object.hasOwn(once, 'routine_proposal'), false);
+  const [first] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
+  const card = parseChatEvent(first, 'marketing', 'Marketing').routine_proposal;
+  assert.equal(card.name, ROUTINE_TEXT.pt.card);
+  assert.deepEqual(card.schedule, { kind: 'continuous', gap: 30, cap: 1000 });
+  assert.deepEqual(card.steps.map((step) => step.action), ['list-zones', 'list-dns-records']);
+  assert.deepEqual(card.steps[1].inputs[0].where, { member: 'name', value_json: '"shimpz.com"' });
+  assert.equal(card.steps[1].inputs[0].item, '/id');
+  // Nothing is created until the person confirms.
   assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
-  scenario.chat.message(frame('Every day at 9, check my certificates'));
-  scenario.chat.message(frame('Every Monday, list my DNS zones'));
-  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
-  assert.equal(routines.length, 2);
-  assert.notEqual(routines[0].routine_id, routines[1].routine_id);
-  assert.equal(routines[0].timezone, 'America/Sao_Paulo');
+  assert.deepEqual(await confirmRoutineProposal(adapter(scenario), 'marketing', card.proposal_id), {
+    status: 'created',
+    routineId: scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].routine_id,
+  });
+  const [routine] = (await listRoutines(adapter(scenario), 'marketing')).routines;
+  assert.equal(routine.name, card.name);
+  // A used card answers once; a second confirmation is refused as expired.
+  await assert.rejects(
+    confirmRoutineProposal(adapter(scenario), 'marketing', card.proposal_id),
+    (error) => error.code === 'routine-proposal-expired',
+  );
+  const [second] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
+  const revoked = parseChatEvent(second, 'marketing', 'Marketing').routine_proposal;
+  assert.equal((await revokeRoutineProposal(adapter(scenario), 'marketing', revoked.proposal_id)).status, 'revoked');
+  assert.equal((await listRoutines(adapter(scenario), 'marketing')).routines.length, 1);
+  // The transcript keeps each card with its reply, and the created notice names the Routine.
   const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
-  const notices = entries.map(parseRoutineRunEntry);
-  assert.deepEqual(notices.map((notice) => notice.outcome), ['created', 'created']);
-  assert.equal(notices[0].quote, 'Every day at 9, check my certificates');
-  // There is no confirmation or preview route any more.
-  assert.equal(scenario.respond({ method: 'POST', path: ROUTINES, body: {} }), null);
+  assert.equal(entries.filter((entry) => entry.routine_proposal).length, 2);
+  const created = entries.filter((entry) => entry.kind === 'routine-run').map(parseRoutineRunEntry);
+  assert.deepEqual(created.map((notice) => [notice.outcome, notice.name]), [['created', card.name]]);
+  // A plain message in another scenario creates nothing and carries no card.
+  const plain = createScenario('ready');
+  const [reply] = plain.chat.message(frame('Every day at 9, list my DNS zones'));
+  assert.equal(Object.hasOwn(reply, 'routine_proposal'), false);
+  assert.deepEqual(plain.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
+});
+
+test("a refused recording says in the person's language that no Routine was created", () => {
+  for (const locale of Object.keys(ROUTINE_TEXT)) {
+    const scenario = createScenario('routine-refusal', locale);
+    const [reply] = scenario.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].refusalRequest, files: [], assistant_ids: [] });
+    const { routine_refusal: refusal } = parseChatEvent(reply, 'marketing', 'Marketing');
+    assert.equal(refusalWords(refusal, routineMessages[locale].proposal), routineMessages[locale].proposal.refusals.secret, locale);
+    assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, [], locale);
+  }
 });
 
 test('runs are stopped by id, a paused Routine resumes, and the chat socket answers a sync', () => {
@@ -81,10 +114,10 @@ test('runs are stopped by id, a paused Routine resumes, and the chat socket answ
   assert.equal(scenario.respond({ method: 'POST', path: `${ROUTINES}/runs/${'b'.repeat(32)}/resolve`, body: {} }), null);
   const listed = scenario.respond({ method: 'GET', path: ROUTINES }).json;
   assert.equal(listed.incidents.length, 1);
-  assert.equal(listed.routines[0].paused, true);
+  assert.equal(listed.routines[0].state, 'paused');
   const resumed = scenario.respond({ method: 'POST', path: `${ROUTINES}/${'a'.repeat(32)}/resume`, body: {} });
   assert.equal(resumed.json.paused, false);
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].paused, false);
+  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].state, 'active');
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
 });
@@ -253,24 +286,26 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   const scenario = createScenario('routine-lifecycle');
   const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
   const outcomes = entries.map((entry) => parseRoutineRunEntry(entry).outcome);
-  for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused']) {
+  for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused', 'deleted']) {
     assert.ok(outcomes.includes(outcome), outcome);
   }
+  // Every row is titled by the name Team froze into it; the deleted Routine's notice is the last row and still names it.
+  const notices = entries.map(parseRoutineRunEntry);
+  assert.deepEqual([notices.at(-1).outcome, notices.at(-1).name], ['deleted', ROUTINE_TEXT.en.names[4]]);
+  // Runs report their usage with and without a model, and one run says it lost its secret-value protection.
+  assert.ok(notices.some((notice) => notice.usage?.models.length === 0));
+  assert.ok(notices.some((notice) => notice.usage?.models.length > 0));
+  assert.ok(notices.some((notice) => notice.protectionLost));
   const listed = await listRoutines(adapter(scenario), 'marketing');
   assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
-  assert.ok(listed.routines.some((routine) => routine.paused));
+  assert.ok(listed.routines.some((routine) => routine.state === 'paused'));
   const [held, paused] = listed.incidents;
   // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
   const card = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
-  assert.deepEqual(card.choices, ['run', 'recreate', 'delete']);
+  assert.deepEqual(card.choices, ['run', 'delete']);
   assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
   assert.equal(failureCause((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
-  // The monthly Routine's Recriar is refused and changes nothing; Rodar sets the weekly one's held run aside.
-  const refusedCard = await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id);
-  await assert.rejects(
-    answerRoutineCard(adapter(scenario), 'marketing', paused.incident_id, refusedCard, 'recreate'),
-    (error) => error.code === 'routine-recreate-refused',
-  );
+  // Rodar sets the weekly one's held run aside.
   assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
   assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
   const rows = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
@@ -301,7 +336,7 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
     const binding = runBinding(entry.routine_id, entry.detail.plan ?? null);
     const page = await readRunSteps(adapter(scenario), 'marketing', entry.run_id, binding, 'latest', 0);
     const bound = pageBinding(page);
-    assert.equal(page.steps.length, Math.min(64, bound.total));
+    assert.equal(page.steps.length, Math.min(64, page.total));
     assert.deepEqual(await readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, page.snapshot, 0), page);
     await assert.rejects(
       readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, 'e'.repeat(32), 0),
@@ -316,46 +351,21 @@ test('the Routine lifecycle preview spans the day before it opened and that day,
   assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
   assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
     ...Array(6).fill('2026-10-02'),
-    ...Array(4).fill('2026-10-03'),
+    ...Array(5).fill('2026-10-03'),
   ]);
   for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);
 });
 
-test('the daily-cap preview asks its question, then creates the continuous Routine the answer names', () => {
-  const scenario = createScenario('routine-cap', 'pt');
-  const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
-  const [asked] = scenario.chat.message(frame('Fique conferindo meus registros DNS sem parar'));
-  const event = parseChatEvent(asked, 'marketing', 'Marketing');
-  assert.equal(event.clarification.options.length, 3);
-  assert.equal(asked.reply, renderClarification(event.clarification));
-  const [done] = scenario.chat.message(frame(
-    'Fique conferindo meus registros DNS sem parar\n\nPergunta: Qual limite diário de execuções você prefere?\nResposta: Até 500 execuções por dia',
-  ));
-  assert.equal(done.clarification, null);
-  const { routines } = scenario.respond({ method: 'GET', path: ROUTINES }).json;
-  assert.deepEqual(routines.map((routine) => routine.schedule), [{ kind: 'continuous', gap: 5, cap: 500 }]);
-  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
-  assert.equal(parseRoutineRunEntry(entries.at(-1)).detail.schedule.cap, 500);
-});
-
-test("every locale's Routine preview names and asks in that language, through the real parsers", async () => {
+test("every locale's Routine preview names its Routines and its card in that language, through the real parsers", async () => {
   for (const locale of Object.keys(ROUTINE_TEXT)) {
     const scenario = createScenario('routine-lifecycle', locale);
     const { routines } = await listRoutines(adapter(scenario), 'marketing');
-    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names, locale);
-    assert.deepEqual(routines.map((routine) => routine.quote), ROUTINE_TEXT[locale].quotes, locale);
+    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names.slice(0, 4), locale);
     const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
-    for (const entry of entries) assert.ok(ROUTINE_TEXT[locale].quotes.includes(parseRoutineRunEntry(entry).quote), locale);
-    const asking = createScenario('routine-cap', locale);
-    const [asked] = asking.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].quotes[0], files: [], assistant_ids: [] });
-    const { clarification } = parseChatEvent(asked, 'marketing', 'Marketing');
-    assert.equal(clarification.question, ROUTINE_TEXT[locale].capQuestion, locale);
-    const [created] = asking.chat.message({
-      type: 'chat', message: `${ROUTINE_TEXT[locale].quotes[0]}\n\nQ: ${clarification.question}\nA: ${clarification.options[1].label}`,
-      files: [], assistant_ids: [],
-    });
-    assert.equal(created.clarification, null, locale);
-    assert.equal(asking.respond({ method: 'GET', path: ROUTINES }).json.routines[0].schedule.cap, 500, locale);
+    for (const entry of entries) assert.ok(ROUTINE_TEXT[locale].names.includes(parseRoutineRunEntry(entry).name), locale);
+    const recording = createScenario('routine-card', locale);
+    const [reply] = recording.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].request, files: [], assistant_ids: [] });
+    assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').routine_proposal.name, ROUTINE_TEXT[locale].card, locale);
   }
 });
 

@@ -13,19 +13,24 @@
     pageBinding,
     readRunSteps,
   } from '$lib/routine.js';
-  import { durationWords, visibleSteps } from '$lib/routineResult.js';
+  import { durationWords, positionKey, visibleSteps } from '$lib/routineResult.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was
   // given as Team's redacted previews, and the failed attempts Team recorded for it. A step with no record says plainly
-  // that it did not run or that its record is unavailable. The records are read page by page for one snapshot of them,
-  // bound to the run's historical `binding` (`runBinding`): every page must match it, and the first page binds what it
-  // left unknown; a snapshot that changed meanwhile is read again from the newest. A long run reveals its steps a few
-  // at a time, and `total` reports how many steps its revision has once that is known. Every value is escaped text.
-  let { teamId, runId, binding, attempts = null, copy, names = {}, locale, pageSize = 10, total = $bindable(null) } = $props();
+  // that it did not run or that its record is unavailable. The replay steps come first, then each Action the run's
+  // decision turn called, numbered by its call. The records are read page by page for one snapshot of them, bound to the
+  // run's historical `binding` (`runBinding`): every page must match it, and the first page binds what it left unknown;
+  // a snapshot that changed meanwhile is read again from the newest. A long run reveals its entries a few at a time;
+  // `replay` and `total` report how many replay steps and entries it has once that is known. Every value is escaped text.
+  let {
+    teamId, runId, binding, attempts = null, copy, names = {}, locale, pageSize = 10,
+    replay = $bindable(null), total = $bindable(null),
+  } = $props();
 
   const ICONS = {
-    done: 'check', recovered: 'check', failed: 'failed', stopped: 'stop', waiting: 'approval', not_run: 'skip', unavailable: 'warning',
+    done: 'check', recovered: 'check', failed: 'failed', stopped: 'stop', waiting: 'approval', rehearsed: 'check',
+    untested: 'skip', 'not-permitted': 'warning', not_run: 'skip', unavailable: 'warning',
   };
   // A changed snapshot is read again from the newest this many times before the steps are said to be unavailable.
   const RESTARTS = 2;
@@ -42,7 +47,7 @@
   let reading = 0;
 
   let shown = $derived(visibleSteps(steps, pages, pageSize));
-  let remaining = $derived((bound?.total ?? 0) - shown.length);
+  let remaining = $derived((total ?? 0) - shown.length);
 
   const assistantName = (assistant) => names[assistant] ?? humanizeId(assistant);
   const plural = (forms, count) => fillRoutineCopy(
@@ -78,6 +83,7 @@
         snapshot = page.snapshot;
         // Every later page, and a restart from the newest records, must match the run the first page named.
         bound = pageBinding(page);
+        replay = page.replay;
         total = page.total;
       }
     } catch {
@@ -92,7 +98,8 @@
     untrack(() => {
       reading += 1;
       bound = binding;
-      total = binding.total;
+      replay = binding.replay;
+      total = null;
       restart();
       pages = 1;
       failed = false;
@@ -114,7 +121,7 @@
   <li class="attempt">
     <div class="attempt-head">
       <span class="mono">{named
-        ? attemptWords(item, copy.details.attempt, { assistant: assistantName, action: humanizeId })
+        ? attemptWords(item, { step: copy.details.attempt, call: copy.details.attemptCall }, { assistant: assistantName, action: humanizeId })
         : fillRoutineCopy(copy.result.attempt, { attempt: item.attempt })}</span>
       {#if item.failure?.http_status}<span class="mono">HTTP {item.failure.http_status}</span>{/if}
       {#if item.failure}<code>{item.failure.error_type}</code>{/if}
@@ -130,9 +137,11 @@
 {/snippet}
 
 <ol class="steps" bind:this={list}>
-  {#each shown as step (step.position)}
-    <li class={['step', `step--${step.status}`]} tabindex="-1">
-      <span class="number" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
+  {#each shown as step (positionKey(step.position))}
+    <li class={['step', `step--${step.status}`, `step--${step.position.phase}`]} tabindex="-1">
+      <span class="number" aria-hidden="true">{step.position.phase === 'replay'
+        ? String(step.position.step).padStart(2, '0')
+        : `D${String(step.position.call).padStart(2, '0')}`}</span>
       <div class="body">
         {#if step.action}
           <div class="head">
@@ -161,10 +170,10 @@
             <div class="dim">{copy.result.noInputs}</div>
           {/if}
         {/if}
-        {#if attempts?.byStep.get(step.position)?.length}
+        {#if attempts?.byStep.get(positionKey(step.position))?.length}
           <div class="attempts">
-            <div class="attempts-title">{plural(copy.result.attempts, attempts.byStep.get(step.position).length)}</div>
-            <ul>{#each attempts.byStep.get(step.position) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
+            <div class="attempts-title">{plural(copy.result.attempts, attempts.byStep.get(positionKey(step.position)).length)}</div>
+            <ul>{#each attempts.byStep.get(positionKey(step.position)) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
           </div>
         {/if}
       </div>
@@ -219,6 +228,9 @@
   .step--failed .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
   .step--stopped .status :global(.routine-icon) { color: var(--shimpz-color-text-muted); }
   .step--waiting .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
+  .step--not-permitted .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
+  .step--rehearsed .status :global(.routine-icon),
+  .step--untested .status :global(.routine-icon),
   .step--not_run .status :global(.routine-icon),
   .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
   .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; margin: 0.15rem 0 0; font-size: 0.78rem; }

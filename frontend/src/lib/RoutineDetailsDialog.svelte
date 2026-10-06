@@ -22,6 +22,7 @@
     resumeRoutine,
     routineErrorMessage,
     routineStatus,
+    scheduleWords,
     STATUS_TAGS,
     STATUS_WORDS,
     stopRoutineRun,
@@ -80,11 +81,11 @@
     if (status === 'recovery') {
       const incident = incidents.find((item) => item.routine_id === routine.routine_id);
       const held = live.find((run) => run.status === 'held');
-      const source = incident ? { ...incident, run_id: incident.incident_id } : { ...held, step: null, steps: null };
+      const source = incident ? { ...incident, run_id: incident.incident_id } : { ...held, position: null, steps: null };
       return source.run_id ? {
         runId: source.run_id,
         outcome: 'held',
-        detail: { assistant_id: source.assistant_id, action: source.action, step: source.step, steps: source.steps },
+        detail: { assistant_id: source.assistant_id, action: source.action, position: source.position, steps: source.steps },
       } : null;
     }
     const frozen = status === 'waiting' ? live.find((run) => run.status === 'frozen') : null;
@@ -114,7 +115,7 @@
   });
 
   let summary = $derived(fillParts(copy.panel.summaryLine, {
-    request: routine.quote.replace(/[\s.。．!！]+$/u, ''),
+    schedule: scheduleWords(routine.schedule, copy.schedule, $locale),
     timezone: routine.timezone,
     now: clockWords(now, $locale, routine.timezone),
   }));
@@ -190,7 +191,7 @@
   }
 
   const RUN_ICONS = {
-    done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
+    done: 'check', recovered: 'check', rehearsed: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
     held: 'warning', paused: 'pause', frozen: 'approval',
   };
 
@@ -199,6 +200,7 @@
     return {
       done: run.done,
       recovered: run.recovered,
+      rehearsed: copy.notice.status.rehearsed,
       failed: fillRoutineCopy(run.failed, { code: entry.detail.code ?? '' }),
       denied: run.denied,
       stopped: run.stopped,
@@ -304,7 +306,7 @@
     <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
     {#if !routine.deleting}
       <div class="actions">
-        {#if routine.paused}
+        {#if routine.state === 'paused'}
           <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
             aria-label={copy.list.resume} title={copy.list.resume}
             onclick={() => act(() => resumeRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="play" /></Button>
@@ -456,7 +458,7 @@
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
   .summary { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; overflow-wrap: break-word; }
   .part { font-weight: 700; }
-  .part--request { font-weight: inherit; }
+  .part--schedule { font-weight: inherit; }
   /* The next run: a mono label over the instant, then how far off it is. */
   .next { display: grid; justify-items: start; gap: 0.3rem; margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }

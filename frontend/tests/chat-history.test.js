@@ -311,15 +311,18 @@ function runRow(noticeId, routineId) {
     kind: 'routine-run',
     notice_id: noticeId,
     routine_id: routineId,
-    quote: 'Every day at 9, list my zones',
+    name: 'Daily zones',
     run_id: noticeId,
     outcome: 'done',
     created_at: AT,
     detail: {
       plan: { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 },
       output: null,
+      decision: null,
     },
     version: 1,
+    usage: { duration_ms: 812, models: [] },
+    protection_lost: false,
   };
 }
 
@@ -381,7 +384,7 @@ test('a continuous Routine\'s healthy rollups count as its runs, with no run of 
     outcome: 'healthy',
     detail: { runs },
   });
-  const missed = { ...runRow('c'.repeat(32), routine), run_id: null, outcome: 'skipped', detail: { missed: 2 } };
+  const missed = { ...runRow('c'.repeat(32), routine), run_id: null, usage: null, outcome: 'skipped', detail: { missed: 2 } };
   const page = { entries: [missed, rollup('1', 12), runRow('2'.repeat(32), routine), rollup('3', 4)], before: null };
   const found = await recentRoutineRuns(async () => response(200, page), 'marketing', routine);
   // The rollups and the run are found newest first; a notice of missed runs is no run.

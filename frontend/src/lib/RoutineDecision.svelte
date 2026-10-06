@@ -55,12 +55,12 @@
   // before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
   let card = $state(null);
 
-  const CHOICE_ICONS = { run: 'play', recreate: 'rebuild', delete: 'trash' };
-  const HINTS = { run: 'runHint', recreate: 'recreateHint', delete: 'deleteHint' };
+  const CHOICE_ICONS = { run: 'play', delete: 'trash' };
+  const HINTS = { run: 'runHint', delete: 'deleteHint' };
   let recovery = $derived(outcome === 'held' || outcome === 'paused');
 
-  // Where a held or paused run stopped, as one sentence: its position in the plan the run executed, which the card,
-  // its incident, and its notice name.
+  // Where a held or paused run stopped, as one sentence: its position the card, its incident, and its notice name, a
+  // replay step of the plan the run executed or a call its decision turn made.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;
@@ -69,16 +69,16 @@
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
-    return step.step
-      ? fillRoutineCopy(copy.card.stoppedAt, { n: step.step, total: step.steps, step: words })
-      : fillRoutineCopy(copy.card.stoppedAtStep, { step: words });
+    if (step.position.phase === 'decision') return fillRoutineCopy(copy.card.stoppedAtCall, { n: step.position.call, step: words });
+    return fillRoutineCopy(copy.card.stoppedAt, { n: step.position.step, total: step.steps, step: words });
   });
   // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
   // names the approval it waits for.
   let reason = $derived.by(() => {
     if (outcome === 'held') return copy.card.heldLead;
     if (outcome === 'paused') return fillRoutineCopy(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
-    return fillRoutineCopy(detail.request_kind === 'human' ? copy.run.frozenHuman : copy.run.frozenIntegrations, {
+    const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations, permission: copy.run.frozenPermission };
+    return fillRoutineCopy(frozen[detail.request_kind], {
       assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
       action: humanizeId(detail.action),
     });
@@ -190,7 +190,7 @@
     result = '';
     try {
       const answered = await answerRoutineCard(fetch, teamId, runId, card, choice);
-      result = answered.status === 'requested' ? copy.card.requested : copy.card.recreated;
+      result = copy.card.requested;
       finish(result);
     } catch (error) {
       result = routineErrorMessage(error, copy.errors);

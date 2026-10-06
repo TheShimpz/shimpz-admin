@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { parseChatEvent } from '../src/lib/localChat.js';
-import { formatTaskUsage, formatTaskUsageDetail, parseTaskUsage, taskUsageSummary } from '../src/lib/taskUsage.js';
+import { formatTaskUsage, formatTaskUsageDetail, parseRunUsage, parseTaskUsage, taskUsageSummary } from '../src/lib/taskUsage.js';
 
 const COPY = { tokens: 'tokens', input: 'input', output: 'output' };
 const USAGE = {
@@ -78,4 +78,19 @@ test('a model the catalog does not price shows tokens and time but no cost', () 
   assert.equal(summary.usd, null);
   assert.equal(formatTaskUsage(summary, 'en', COPY), '2 tokens · 0.5 s');
   assert.equal(formatTaskUsageDetail(summary, 'en', COPY), 'unknown: 1 input · 1 output');
+});
+
+test('a Routine run usage may name no model and then reads its duration alone', () => {
+  const replay = { duration_ms: 10_500, models: [] };
+  assert.deepEqual(parseRunUsage(replay), replay);
+  assert.throws(() => parseTaskUsage(replay), /invalid task usage/);
+  assert.throws(() => parseRunUsage(undefined), /invalid task usage/);
+  assert.throws(() => parseRunUsage({ ...replay, extra: 1 }), /invalid task usage/);
+  const summary = taskUsageSummary(replay);
+  assert.equal(formatTaskUsage(summary, 'pt', COPY), '10,5 s');
+  const decided = parseRunUsage({
+    duration_ms: 10_500,
+    models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 23_000, output_tokens: 518 }],
+  });
+  assert.match(formatTaskUsage(taskUsageSummary(decided), 'pt', COPY), /23\.518 tokens · 10,5 s$/u);
 });

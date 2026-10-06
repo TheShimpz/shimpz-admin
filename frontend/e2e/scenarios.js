@@ -5,11 +5,13 @@ import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
 import { localizedChallenge } from './localizedRequest.js';
 import {
-  capReply,
-  planSummary,
+  recordDeletion,
+  recordingReply,
   routineLifecycleStart,
+  routineProposalRoutes,
   routineRecoveryRoutes,
   routineStepRoutes,
+  routineView,
   setAside,
 } from './routineScenarios.js';
 
@@ -37,30 +39,24 @@ export const ROUTINE_PLAN = [
       position: 1,
       assistant: 'shimpz-cloudflare',
       action: 'list-zones',
+      read_only: true,
       inputs: [{ member: 'page', source: 'literal', value: '1' }],
       stored_inputs: ['api-token'],
     },
   ];
 
-export const ROUTINE_VIEW = {
+export const ROUTINE_VIEW = routineView({
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
-  quote: 'Every day at 9, list my DNS zones',
-  plan: planSummary(ROUTINE_PLAN),
-  output: { mode: 'show', step: 1 },
+  output: { mode: 'show', step: 1, when: null },
   schedule: { kind: 'daily', time: '09:00' },
-  timezone: 'America/Sao_Paulo',
-  assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-01T12:00:00Z',
-  needs_reconfirm: false,
-  deleting: false,
-  paused: false,
-};
+}, ROUTINE_PLAN);
 
 const WEEKLY_ROUTINE = {
   ...ROUTINE_VIEW,
   routine_id: 'd'.repeat(32),
-  quote: 'Every Monday at 8, check my certificates',
+  name: 'Weekly certificates',
   schedule: { kind: 'weekly', weekday: 0, time: '08:00' },
   next_run_at: '2026-10-05T11:00:00Z',
 };
@@ -69,11 +65,11 @@ const WEEKLY_ROUTINE = {
 const HELD_INCIDENT = {
   incident_id: 'b'.repeat(32),
   routine_id: ROUTINE_VIEW.routine_id,
-  quote: ROUTINE_VIEW.quote,
+  name: ROUTINE_VIEW.name,
   created_at: '2026-09-30T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
-  step: 1,
+  position: { phase: 'replay', step: 1 },
   steps: 1,
 };
 
@@ -85,6 +81,8 @@ const FROZEN_RUN = {
   request_kind: 'human',
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
+  position: { phase: 'replay', step: 1 },
+  steps: 1,
 };
 
 export function authenticatedLocalSession(overrides = {}) {
@@ -104,10 +102,6 @@ export function authenticatedLocalSession(overrides = {}) {
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
-
-function hexId(prefix, sequence) {
-  return `${prefix}${sequence.toString(16)}`.padStart(32, '0');
-}
 
 // Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
@@ -131,21 +125,30 @@ const STARTS = {
   routines: () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
-    routines: [{ ...ROUTINE_VIEW, paused: true }, WEEKLY_ROUTINE],
+    routines: [{ ...ROUTINE_VIEW, state: 'paused' }, WEEKLY_ROUTINE],
     plans: { [ROUTINE_VIEW.routine_id]: ROUTINE_PLAN, [WEEKLY_ROUTINE.routine_id]: ROUTINE_PLAN },
     runs: [FROZEN_RUN],
     incidents: [HELD_INCIDENT],
   }),
-  // Every Routine notice in the transcript, a held run's recovery card, a paused Routine, a minute rollup, and a run's
-  // execution details (ADR-0092).
+  // Every Routine notice in the transcript, a deleted Routine's last notice, runs' usage with and without a model, a
+  // held run's recovery card, a paused Routine, a minute rollup, and a run's execution details (ADR-0092, ADR-0101).
   'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
-  // A continuous request that names no daily cap asks for it; the answer creates the Routine.
-  'routine-cap': () => ({
+  // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar rotina creates it,
+  // Cancelar revokes it (ADR-0101).
+  'routine-card': () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
     routines: [],
     runs: [],
-    capQuestion: true,
+    recording: 'card',
+  }),
+  // Any message is a recording turn whose request would hold a password, so its reply says no Routine was created.
+  'routine-refusal': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    recording: 'refusal',
   }),
   clarify: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [], clarify: 'ok' }),
   'clarify-error': () => ({
@@ -241,7 +244,7 @@ function routineRoutes(state, method, path, body) {
   }
   const resume = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/resume$/);
   if (resume && method === 'POST') {
-    state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, paused: false } : item));
+    state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, state: 'active' } : item));
     return ok({ team_id: 'marketing', routine_id: resume[1], paused: false });
   }
   const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
@@ -250,6 +253,9 @@ function routineRoutes(state, method, path, body) {
     for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routine[1])) {
       setAside(state, held.incident_id, 'delete');
     }
+    // Its last notice names it and closes its timeline.
+    const deleted = state.routines.find((item) => item.routine_id === routine[1]);
+    if (deleted) recordDeletion(state, deleted);
     state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
     state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
@@ -306,37 +312,6 @@ function otherTeamRoutes(state, method, path) {
 }
 
 // A recurring request creates its Routine directly from the user's own message (ADR-0092), with a created notice.
-function create(state, message, timezone) {
-  state.sequence += 1;
-  const routine = {
-    ...ROUTINE_VIEW,
-    routine_id: hexId('9', state.sequence),
-    quote: message.slice(0, 200),
-    timezone: timezone ?? 'UTC',
-  };
-  state.routines = [...state.routines, routine];
-  state.plans = { ...state.plans, [routine.routine_id]: ROUTINE_PLAN };
-  const noticeId = hexId('7', state.sequence);
-  state.history = [...state.history, {
-    id: `${noticeId}:routine`,
-    kind: 'routine-run',
-    notice_id: noticeId,
-    routine_id: routine.routine_id,
-    quote: routine.quote,
-    run_id: null,
-    outcome: 'created',
-    created_at: '2026-10-01T12:00:00Z',
-    detail: {
-      name: 'Daily DNS zones',
-      plan: routine.plan,
-      output: routine.output,
-      schedule: routine.schedule,
-      timezone: routine.timezone,
-    },
-    version: 1,
-  }];
-}
-
 export const CLARIFICATION = Object.freeze({
   question: '“Todas as opções do mercado” é amplo demais para validar literalmente. Qual escopo de comparação você quer?',
   options: [
@@ -498,17 +473,13 @@ const PREVIEW_USAGE = Object.freeze({
 function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
-  if (state.capQuestion) {
-    return capReply(state, message, state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name);
-  }
-  const recurring = /\b(every|daily|weekly|toda|todo|cada)\b/iu.test(message);
+  const teamName = state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name;
+  if (state.recording) return recordingReply(state, message, teamName);
   return {
     type: 'done',
     team_id: 'marketing',
-    team_name: state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name,
-    reply: recurring
-      ? (create(state, message, frame.timezone), 'Done: this Routine runs every day at 09:00.')
-      : `Preview reply to: ${message}`,
+    team_name: teamName,
+    reply: `Preview reply to: ${message}`,
     clarification: null,
     usage: structuredClone(PREVIEW_USAGE),
   };
@@ -563,7 +534,7 @@ export function createScenario(name = 'ready', locale = 'en') {
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
       if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
       return routineRecoveryRoutes(state, method, path, body) ?? routineStepRoutes(state, method, path) ??
-        routineRoutes(state, method, path, body);
+        routineProposalRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
     },
     // The chat socket: `open` and `message` return the frames to send back, in order.
     chat: {

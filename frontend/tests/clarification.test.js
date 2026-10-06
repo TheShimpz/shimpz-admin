@@ -49,12 +49,9 @@ test('only the exact closed clarification shape parses', () => {
   }
 });
 
-test('a Routine question recommends no option and its reply marks none', () => {
-  const routine = { ...ASKED, default_index: null };
-  assert.deepEqual(parseClarification(routine), routine);
-  assert.equal(renderClarification(routine), 'Qual período você quer cobrir?\n\n1. Hoje — Só lançamentos de hoje.\n2. Esta semana');
+test('every question recommends one of its options, and the retired unrecommended form is refused', () => {
   assert.equal(renderClarification(ASKED), 'Qual período você quer cobrir?\n\n1. Hoje ✓ — Só lançamentos de hoje.\n2. Esta semana');
-  for (const value of [undefined, false, -1]) {
+  for (const value of [null, undefined, false, -1, 2]) {
     assert.throws(() => parseClarification({ ...ASKED, default_index: value }), /invalid clarification/, String(value));
   }
 });

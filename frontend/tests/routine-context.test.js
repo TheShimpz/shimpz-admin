@@ -13,7 +13,6 @@ import {
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
-  quote: 'Every day at 9, list my DNS zones',
   plan: {
     revision: 1,
     plan_digest: `sha256:${'d'.repeat(64)}`,
@@ -21,16 +20,20 @@ const ROUTINE = {
     actions: [['shimpz-cloudflare', 'list-zones', 1]],
     more: 0,
   },
-  output: { mode: 'show', step: 1 },
+  output: { mode: 'show', step: 1, when: null },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
-  paused: false,
+  state: 'active',
+  permitted: { total: 1, changes: 0 },
+  permissions_revision: 0,
+  model: null,
+  allowance: 0,
 };
-const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), quote: 'Every Monday, check my certificates' };
+const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), name: 'Weekly certificates' };
 const RUN = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
@@ -39,15 +42,17 @@ const RUN = {
   request_kind: null,
   assistant_id: null,
   action: null,
+  position: null,
+  steps: null,
 };
 const INCIDENT = {
   incident_id: 'd'.repeat(32),
   routine_id: ROUTINE.routine_id,
-  quote: ROUTINE.quote,
+  name: ROUTINE.name,
   created_at: '2026-10-05T12:01:07Z',
   assistant_id: null,
   action: null,
-  step: null,
+  position: null,
   steps: null,
 };
 

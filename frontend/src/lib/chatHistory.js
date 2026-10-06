@@ -1,5 +1,6 @@
 import { parseFileReferences, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
+import { parseRoutineReply } from './localChat.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
@@ -94,6 +95,8 @@ function messageEntry(value, suffix, status) {
   const used = assistant && Object.hasOwn(value, 'usage');
   // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
   const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
+  // A recording turn's Routine card or refusal is kept with its reply, so a reload shows it again (ADR-0101).
+  const routineKeys = assistant ? ['routine_proposal', 'routine_refusal'].filter((key) => Object.hasOwn(value, key)) : [];
   // A user message keeps references to the files it carried, never their content.
   const attached = !assistant && Object.hasOwn(value, 'files');
   const expected = assistant
@@ -106,15 +109,18 @@ function messageEntry(value, suffix, status) {
       ...(clarified ? ['clarification'] : []),
       ...(used ? ['usage'] : []),
       ...(withheld ? ['restricted_actions'] : []),
+      ...routineKeys,
     ]
     : ['id', 'kind', 'role', 'text', ...(attached ? ['files'] : [])];
   let usage = null;
   let restricted = null;
   let files = null;
+  let routine = {};
   try {
     if (used) usage = parseTaskUsage(value.usage);
     if (withheld) restricted = parseRestrictedActions(value.restricted_actions);
     if (attached) files = parseFileReferences(value.files);
+    if (routineKeys.length) routine = parseRoutineReply(value, value.clarification ?? null);
   } catch {
     throw invalidHistory(status);
   }
@@ -147,6 +153,7 @@ function messageEntry(value, suffix, status) {
     ...(usage ? { usage } : {}),
     ...(restricted ? { restricted_actions: restricted } : {}),
     ...(files ? { files } : {}),
+    ...routine,
   };
 }
 

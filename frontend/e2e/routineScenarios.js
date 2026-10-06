@@ -1,14 +1,15 @@
-// Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092): every Routine notice, a held
+// Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
+// titled by the name Team froze into it, a deleted Routine's last notice, runs' usage with and without a model, a held
 // run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
-// minute rollup, a run's execution details and step records, a 120-step plan read page by page, and the daily-cap
-// question of a continuous request. Pure data and state transitions; nothing here reaches a real Admin, Team, Brain,
-// or provider.
+// minute rollup, a run's execution details and step records, a 120-step plan read page by page, the confirmation card
+// of the owner's recorded Cloudflare watch, and a recording turn's refusal. Pure data and state transitions; nothing
+// here reaches a real Admin, Team, Brain, or provider.
 
 // A projected step at its 1-based position: on the wire a step is named by position (ADR-0092 amendment, scale).
-const step = (position, action, inputs) => ({
-  position, assistant: 'shimpz-cloudflare', action, inputs, stored_inputs: ['api-token'],
+const step = (position, action, inputs, readOnly = true) => ({
+  position, assistant: 'shimpz-cloudflare', action, read_only: readOnly, inputs, stored_inputs: ['api-token'],
 });
-const fromStep = (member, from, pointer) => ({ member, source: 'step_output', step: from, pointer });
+const fromStep = (member, from, pointer) => ({ member, source: 'step_output', step: from, pointer, where: null, item: null });
 const ZONES = step(1, 'list-zones', [{ member: 'page', source: 'literal', value: '1' }]);
 const STEPS = Object.freeze([ZONES, step(2, 'list-dns-records', [fromStep('zone_id', 1, '/zones/0/id')])]);
 // The continuous watch checks every zone's records: one Action, repeated as often as the person asked.
@@ -38,152 +39,182 @@ export function planSummary(steps, revision = 1) {
   };
 }
 
-const ROUTINE = Object.freeze({
-  name: 'DNS watch',
-  timezone: 'America/Sao_Paulo',
-  assistant_ids: ['shimpz-cloudflare'],
-  next_run_at: '2026-10-02T12:00:00Z',
-  needs_reconfirm: false,
-  deleting: false,
-  paused: false,
-});
+// The Actions a plan may call, each once, and how many of them change something.
+function permittedOf(steps) {
+  const seen = new Map(steps.map((item) => [`${item.assistant}\u0000${item.action}`, item.read_only]));
+  return { total: seen.size, changes: [...seen.values()].filter((readOnly) => !readOnly).length };
+}
 
-// Every fixture text in the preview's interface language, so a Routine's name and request read as the Admin does.
+/** A Routine view as Team lists it: no decision, so no model and no allowance. */
+export function routineView(fields, steps) {
+  return {
+    timezone: 'America/Sao_Paulo',
+    assistant_ids: ['shimpz-cloudflare'],
+    next_run_at: '2026-10-02T12:00:00Z',
+    needs_reconfirm: false,
+    deleting: false,
+    state: 'active',
+    permitted: permittedOf(steps),
+    permissions_revision: 0,
+    model: null,
+    allowance: 0,
+    ...fields,
+    plan: fields.plan ?? planSummary(steps),
+  };
+}
+
+// Every fixture text in the preview's interface language, so a Routine's name, the owner's request, and Team's reply
+// read as the Admin does. `names[4]` is a Routine that was deleted; its last notice still names it.
 export const ROUTINE_TEXT = Object.freeze({
   en: {
-    names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup"],
-    quotes: ["Keep checking my DNS records nonstop, up to 500 times a day", "Every Sunday at 8, update the www record", "Every day at 9, check my certificates", "On the 1st of every month, clean up old DNS records"],
-    capQuestion: "Which daily run limit do you prefer?",
-    capLabel: "Up to {cap} runs a day",
-    capReply: "Done: it runs every 5 s after each run, up to {cap} a day.",
+    names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup", "Old DNS report"],
+    card: "shimpz.com DNS",
+    request: "Every 30 seconds, list the DNS records of my zone shimpz.com, up to 1,000 times a day",
+    cardReply: "I listed your zones and the DNS records of shimpz.com. The Routine below repeats exactly that.",
+    refusalRequest: "Every day, log in with my password hunter2 and export the DNS records",
+    refusalReply: "I exported the DNS records once.",
   },
   pt: {
-    names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS"],
-    quotes: ["Fique conferindo meus registros DNS sem parar, até 500 vezes por dia", "Todo domingo às 8h, atualize o registro www", "Todo dia às 9h, confira meus certificados", "No dia 1 de cada mês, limpe registros DNS antigos"],
-    capQuestion: "Qual limite diário de execuções você prefere?",
-    capLabel: "Até {cap} execuções por dia",
-    capReply: "Pronto: ela roda a cada 5 s após cada execução, até {cap} por dia.",
+    names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS", "Relatório antigo de DNS"],
+    card: "DNS de shimpz.com",
+    request: "A cada 30 segundos, liste os registros DNS da minha zona shimpz.com, até 1.000 vezes por dia",
+    cardReply: "Listei suas zonas e os registros DNS de shimpz.com. A rotina abaixo repete exatamente isso.",
+    refusalRequest: "Todo dia, entre com a minha senha hunter2 e exporte os registros DNS",
+    refusalReply: "Exportei os registros DNS uma vez.",
   },
   es: {
-    names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS"],
-    quotes: ["Sigue revisando mis registros DNS sin parar, hasta 500 veces al día", "Cada domingo a las 8, actualiza el registro www", "Todos los días a las 9, revisa mis certificados", "El día 1 de cada mes, limpia los registros DNS antiguos"],
-    capQuestion: "¿Qué límite diario de ejecuciones prefieres?",
-    capLabel: "Hasta {cap} ejecuciones al día",
-    capReply: "Listo: se ejecuta cada 5 s tras cada ejecución, hasta {cap} al día.",
+    names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS", "Informe antiguo de DNS"],
+    card: "DNS de shimpz.com",
+    request: "Cada 30 segundos, lista los registros DNS de mi zona shimpz.com, hasta 1.000 veces al día",
+    cardReply: "Listé tus zonas y los registros DNS de shimpz.com. La rutina de abajo repite exactamente eso.",
+    refusalRequest: "Todos los días, entra con mi contraseña hunter2 y exporta los registros DNS",
+    refusalReply: "Exporté los registros DNS una vez.",
   },
   zh: {
-    names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理"],
-    quotes: ["不停地检查我的 DNS 记录，每天最多 500 次", "每周日 8 点，更新 www 记录", "每天 9 点，检查我的证书", "每月 1 日，清理旧的 DNS 记录"],
-    capQuestion: "你希望每天最多运行多少次？",
-    capLabel: "每天最多 {cap} 次",
-    capReply: "好了：每次运行结束 5 秒后再次运行，每天最多 {cap} 次。",
+    names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理", "旧 DNS 报告"],
+    card: "shimpz.com 的 DNS",
+    request: "每 30 秒列出我的区域 shimpz.com 的 DNS 记录，每天最多 1,000 次",
+    cardReply: "我列出了你的区域和 shimpz.com 的 DNS 记录。下面的例行任务会完全重复这些操作。",
+    refusalRequest: "每天用我的密码 hunter2 登录并导出 DNS 记录",
+    refusalReply: "我已导出一次 DNS 记录。",
   },
   fr: {
-    names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel"],
-    quotes: ["Vérifie mes enregistrements DNS en continu, jusqu’à 500 fois par jour", "Chaque dimanche à 8 h, mets à jour l’enregistrement www", "Tous les jours à 9 h, vérifie mes certificats", "Le 1er de chaque mois, nettoie les anciens enregistrements DNS"],
-    capQuestion: "Quelle limite quotidienne d’exécutions préférez-vous ?",
-    capLabel: "Jusqu’à {cap} exécutions par jour",
-    capReply: "C’est fait : elle s’exécute toutes les 5 s après chaque exécution, jusqu’à {cap} par jour.",
+    names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel", "Ancien rapport DNS"],
+    card: "DNS de shimpz.com",
+    request: "Toutes les 30 secondes, liste les enregistrements DNS de ma zone shimpz.com, jusqu’à 1 000 fois par jour",
+    cardReply: "J’ai listé vos zones et les enregistrements DNS de shimpz.com. La routine ci-dessous refait exactement cela.",
+    refusalRequest: "Chaque jour, connecte-toi avec mon mot de passe hunter2 et exporte les enregistrements DNS",
+    refusalReply: "J’ai exporté les enregistrements DNS une fois.",
   },
   de: {
-    names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung"],
-    quotes: ["Prüfe meine DNS-Einträge ununterbrochen, bis zu 500-mal am Tag", "Jeden Sonntag um 8 Uhr den www-Eintrag aktualisieren", "Jeden Tag um 9 Uhr meine Zertifikate prüfen", "Am 1. jedes Monats alte DNS-Einträge bereinigen"],
-    capQuestion: "Welches tägliche Ausführungslimit bevorzugst du?",
-    capLabel: "Bis zu {cap} Ausführungen pro Tag",
-    capReply: "Erledigt: Sie läuft alle 5 s nach jeder Ausführung, bis zu {cap} pro Tag.",
+    names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung", "Alter DNS-Bericht"],
+    card: "DNS von shimpz.com",
+    request: "Liste alle 30 Sekunden die DNS-Einträge meiner Zone shimpz.com auf, bis zu 1.000-mal am Tag",
+    cardReply: "Ich habe deine Zonen und die DNS-Einträge von shimpz.com aufgelistet. Die Routine unten wiederholt genau das.",
+    refusalRequest: "Melde dich jeden Tag mit meinem Passwort hunter2 an und exportiere die DNS-Einträge",
+    refusalReply: "Ich habe die DNS-Einträge einmal exportiert.",
   },
   ja: {
-    names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理"],
-    quotes: ["DNS レコードを休まず確認して、1 日最大 500 回まで", "毎週日曜 8 時に www レコードを更新して", "毎日 9 時に証明書を確認して", "毎月 1 日に古い DNS レコードを整理して"],
-    capQuestion: "1 日の実行上限はどれにしますか？",
-    capLabel: "1 日最大 {cap} 回",
-    capReply: "完了：各実行の 5 秒後に再実行し、1 日最大 {cap} 回です。",
+    names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理", "旧 DNS レポート"],
+    card: "shimpz.com の DNS",
+    request: "30 秒ごとに、私のゾーン shimpz.com の DNS レコードを一覧にして。1 日最大 1,000 回まで",
+    cardReply: "ゾーンと shimpz.com の DNS レコードを一覧にしました。下のルーティンはそれをそのまま繰り返します。",
+    refusalRequest: "毎日、私のパスワード hunter2 でログインして DNS レコードをエクスポートして",
+    refusalReply: "DNS レコードを一度エクスポートしました。",
   },
   ar: {
-    names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري"],
-    quotes: ["واصل فحص سجلات DNS دون توقف، حتى 500 مرة يوميًا", "كل يوم أحد الساعة 8، حدّث سجل www", "كل يوم الساعة 9، افحص شهاداتي", "في اليوم الأول من كل شهر، نظّف سجلات DNS القديمة"],
-    capQuestion: "ما الحد اليومي لعمليات التشغيل الذي تفضّله؟",
-    capLabel: "حتى {cap} تشغيل يوميًا",
-    capReply: "تم: يعمل كل 5 ث بعد كل تشغيل، حتى {cap} يوميًا.",
+    names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري", "تقرير DNS القديم"],
+    card: "DNS لـ shimpz.com",
+    request: "كل 30 ثانية، اعرض سجلات DNS لمنطقتي shimpz.com، حتى 1000 مرة يوميًا",
+    cardReply: "عرضتُ مناطقك وسجلات DNS لـ shimpz.com. الروتين أدناه يكرر ذلك تمامًا.",
+    refusalRequest: "كل يوم، سجّل الدخول بكلمة مروري hunter2 وصدّر سجلات DNS",
+    refusalReply: "صدّرتُ سجلات DNS مرة واحدة.",
   },
 });
 
 const id = (digit) => digit.repeat(32);
 const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
+const instant = (ms) => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z');
 
-// The continuous Routine created from chat, healthy and rolling its runs up per minute as it hands each result on; a
-// weekly Routine that shows its records after every run and whose run is held for recovery; a daily Routine that shows
-// its zones only when they change, which its failures paused; and a monthly one that shows nothing, which a person
-// paused from its card while its held run still waits for a decision (ADR-0092 amendment, 2026-10-05, output).
-const UPDATE = step(3, 'update-dns-record', [fromStep('record_id', 2, '/records/0/id')]);
-const DELETE = step(3, 'delete-dns-record', [fromStep('record_id', 2, '/records/2/id')]);
+// The continuous Routine, healthy and rolling its runs up per minute, which shows nothing after a run; a weekly
+// Routine that shows its records after every run and whose run is held for recovery; a daily Routine that shows its
+// zones only when they change, which its failures paused; and a monthly one that shows nothing, which a person paused
+// from its card while its held run still waits for a decision (ADR-0092 amendment, 2026-10-05, output).
+const UPDATE = step(3, 'update-dns-record', [fromStep('record_id', 2, '/records/0/id')], false);
+const DELETE = step(3, 'delete-dns-record', [fromStep('record_id', 2, '/records/2/id')], false);
 // Each lifecycle Routine's current steps, which its list view summarizes and its plan pages project.
 const PLANS = [WATCH, [...STEPS, UPDATE], STEPS, [...STEPS, DELETE]];
 
 function routines(locale) {
-  const { names, quotes } = textFor(locale);
+  const { names } = textFor(locale);
   return [
-    { ...ROUTINE, routine_id: id('1'), output: { mode: 'chain', step: null }, schedule: { kind: 'continuous', gap: 5, cap: 500 } },
+    { routine_id: id('1'), output: { mode: 'none', step: null, when: null }, schedule: { kind: 'continuous', gap: 5, cap: 500 } },
     {
-      ...ROUTINE,
       routine_id: id('2'),
-      output: { mode: 'show', step: 2 },
+      output: { mode: 'show', step: 2, when: null },
       schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
       next_run_at: '2026-10-04T11:00:00Z',
     },
     {
-      ...ROUTINE,
       routine_id: id('3'),
-      output: { mode: 'changes', step: 1 },
+      output: { mode: 'changes', step: 1, when: null },
       schedule: { kind: 'daily', time: '09:00' },
-      paused: true,
+      state: 'paused',
     },
     {
-      ...ROUTINE,
       routine_id: id('4'),
-      output: { mode: 'none', step: null },
+      output: { mode: 'none', step: null, when: null },
       schedule: { kind: 'monthly', day: 1, time: '10:00' },
-      paused: true,
+      state: 'paused',
     },
-  ].map((routine, index) => ({ ...routine, plan: planSummary(PLANS[index]), name: names[index], quote: quotes[index] }));
+  ].map((fields, index) => routineView({ ...fields, name: names[index] }, PLANS[index]));
 }
 
 const HELD_RUN = id('5');
 const PAUSED_RUN = id('6');
 const FAILED_RUN = id('7');
+const REMOVED = id('0');
 
-// A held run's incident names the step it was held at by position among its plan's steps.
+// A held run's incident names the call it was held at by its position among its plan's steps.
 function incident(runId, routine, held) {
-  return {
-    incident_id: runId,
-    routine_id: routine.routine_id,
-    quote: routine.quote,
-    created_at: '2026-10-01T11:00:07Z',
-    ...held,
-  };
+  return { incident_id: runId, routine_id: routine.routine_id, name: routine.name, created_at: '2026-10-01T11:00:07Z', ...held };
 }
 
-const placed = (action, position, total) => ({ assistant_id: 'shimpz-cloudflare', action, step: position, steps: total });
+const placed = (action, position, total) => ({
+  assistant_id: 'shimpz-cloudflare', action, position: { phase: 'replay', step: position }, steps: total,
+});
 
-function row(noticeId, routine, outcome, detail, { run = true, at = '2026-10-01T12:00:00Z', version = 1 } = {}) {
+// What a run used: a replayed run calls no model and reports only its duration; a run whose recovery asked a model
+// reports that model's tokens as a chat reply does.
+const REPLAY_USAGE = Object.freeze({ duration_ms: 4120, models: [] });
+const MODEL_USAGE = Object.freeze({
+  duration_ms: 9800,
+  models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }],
+});
+// The outcomes of a Routine rather than of a run; of them only the healthy rollup sums its runs' usage.
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
+
+function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
+  const run = !ROUTINE_OUTCOMES.includes(outcome);
   return {
     id: `${noticeId}:routine`,
     kind: 'routine-run',
     notice_id: noticeId,
     routine_id: routine.routine_id,
-    quote: routine.quote,
+    name: routine.name,
     run_id: run ? noticeId : null,
     outcome,
     created_at: at,
     detail,
     version,
+    usage: usage ?? (run || outcome === 'healthy' ? structuredClone(REPLAY_USAGE) : null),
+    protection_lost: lost,
   };
 }
 
 function defined(routine) {
-  return {
-    name: routine.name, plan: routine.plan, output: routine.output, schedule: routine.schedule, timezone: routine.timezone,
-  };
+  const { name, plan, output, schedule, timezone, state, permitted, model, allowance } = routine;
+  return { name, plan, output, schedule, timezone, state, permitted, model, allowance };
 }
 
 const text = (value) => ({ kind: 'text', value, cut: false });
@@ -234,28 +265,32 @@ const SHOWN_RECORDS = Object.freeze({
   truncated: true,
 });
 
-// The transcript, oldest first: one row of every Routine notice the owner validates. Its rows span the day before the
-// preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
-function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
-  const second = 1_000;
-  const opened = Math.floor(now / second) * second;
-  const at = (offset) => new Date(opened + offset * second).toISOString().replace('.000Z', 'Z');
+// The transcript, oldest first: one row of every Routine notice the owner validates, ending with a deleted Routine's
+// last notice. Its rows span the day before the preview opened and that day itself, so the transcript shows a day
+// header for each and today's replacing yesterday's.
+function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
+  const opened = Math.floor(now / 1000) * 1000;
+  const at = (offset) => instant(opened + offset * 1000);
   const yesterday = (offset) => at(offset - 86_400);
+  const removed = { routine_id: REMOVED, name: removedName };
+  const completed = (plan, output) => ({ plan, output, decision: null });
   return [
-    row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { run: false, at: yesterday(-120) }),
-    row(id('b'), HELD, 'changed', defined(HELD), { run: false, at: yesterday(-90) }),
-    row(id('c'), CONTINUOUS, 'done', { plan: CONTINUOUS.plan, output: null }, { at: yesterday(-50) }),
-    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { run: false, at: yesterday(0), version: 9 }),
-    row(id('e'), HELD, 'recovered', { plan: HELD.plan, output: SHOWN_RECORDS }, { at: yesterday(20) }),
-    row(id('8'), PAUSED, 'done', { plan: PAUSED.plan, output: SHOWN_ZONES }, { at: yesterday(40) }),
-    row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-150) }),
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], step: 1, steps: 2 }, {
-      at: at(-120), version: 1,
+    row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { at: yesterday(-120) }),
+    row(id('b'), HELD, 'changed', defined(HELD), { at: yesterday(-90) }),
+    row(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
+    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080, models: [] } }),
+    row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: MODEL_USAGE }),
+    row(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
+    row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-180) }),
+    // A run resumed after a Team restart lost the protection of its secret values, and says so.
+    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 1 }, steps: 2 }, {
+      at: at(-150), lost: true,
     }),
-    row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-90), version: 2 }),
+    row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-120), version: 2 }),
     row(PAUSED_RUN, PAUSED_HELD, 'paused', { ...placed('delete-dns-record', 3, 3), reason: 'exhausted' }, {
-      at: at(-60), version: 3,
+      at: at(-90), version: 3,
     }),
+    row(id('9'), removed, 'deleted', {}, { at: at(-60) }),
   ];
 }
 
@@ -270,11 +305,11 @@ export function routineLifecycleStart(locale = 'en', now = Date.now()) {
       incident(HELD_RUN, HELD, placed('update-dns-record', 3, 3)),
       incident(PAUSED_RUN, PAUSED_HELD, placed('delete-dns-record', 3, 3)),
     ],
-    history: history(listed, now),
+    history: history(listed, now, textFor(locale).names[4]),
   };
 }
 
-/** A person set a held run aside (Rodar, Recriar, or its Routine's deletion): its row says how; nothing was undone. */
+/** A person set a held run aside (Rodar, or its Routine's deletion): its row says how; nothing was undone. */
 export function setAside(state, incidentId, choice) {
   const held = (state.incidents ?? []).find((item) => item.incident_id === incidentId);
   if (!held) return;
@@ -283,10 +318,17 @@ export function setAside(state, incidentId, choice) {
     ? {
       ...entry,
       outcome: 'user-skipped',
-      detail: { assistant_id: held.assistant_id, action: held.action, step: held.step, steps: held.steps, choice },
+      detail: { assistant_id: held.assistant_id, action: held.action, position: held.position, steps: held.steps, choice },
       version: entry.version + 1,
     }
     : entry));
+}
+
+/** A deleted Routine's last notice: it names the Routine and closes its timeline. */
+export function recordDeletion(state, routine) {
+  state.sequence = (state.sequence ?? 0) + 1;
+  const noticeId = `6${state.sequence.toString(16)}`.padStart(32, '0');
+  state.history = [...state.history, row(noticeId, routine, 'deleted', {}, { at: instant(Date.now()) })];
 }
 
 function card(state, incidentId) {
@@ -303,41 +345,25 @@ function card(state, incidentId) {
       revision: 1,
       assistant_id: held.assistant_id,
       action: held.action,
-      step: held.step,
+      position: held.position,
       steps: held.steps,
       evidence: failed ? 'recorded' : 'absent',
       diagnostic: failed,
       nonce: state.cards.toString(16).padStart(32, '0'),
       expires_in: 300,
-      choices: ['run', 'recreate', 'delete'],
+      choices: ['run', 'delete'],
     },
   };
 }
 
-// Rodar sets the held run aside and starts the Routine again; Recriar rebuilds it from its original request. The
-// monthly Routine's original request no longer compiles, so its Recriar is refused and nothing changes.
+// Rodar sets the held run aside and starts the Routine again; Excluir is the Routine's own confirmed deletion.
 function answer(state, incidentId, body) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
-  const choice = body?.choice;
-  if (choice !== 'run' && choice !== 'recreate') return { status: 400, json: { code: 'invalid-body' } };
-  if (choice === 'recreate' && incidentId === PAUSED_RUN) {
-    return { status: 422, json: { code: 'routine-recreate-refused' } };
-  }
-  setAside(state, incidentId, choice);
-  state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, paused: false } : item));
-  if (choice === 'recreate') {
-    // Recreating compiles the Routine again: a new revision of the same steps.
-    state.routines = state.routines.map((item) => (item.routine_id === held.routine_id
-      ? { ...item, plan: planSummary(state.plans[item.routine_id], item.plan.revision + 1) }
-      : item));
-    const routine = state.routines.find((item) => item.routine_id === held.routine_id);
-    state.sequence = (state.sequence ?? 0) + 1;
-    const noticeId = `8${state.sequence.toString(16)}`.padStart(32, '0');
-    state.history = [...state.history, row(noticeId, routine, 'changed', defined(routine), { run: false })];
-  }
-  const status = choice === 'run' ? 'requested' : 'recreated';
-  return { status: 200, json: { team_id: 'marketing', incident_id: incidentId, choice, status } };
+  if (body?.choice !== 'run') return { status: 422, json: { code: 'invalid-body' } };
+  setAside(state, incidentId, 'run');
+  state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, state: 'active' } : item));
+  return { status: 200, json: { team_id: 'marketing', incident_id: incidentId, choice: 'run', status: 'requested' } };
 }
 
 // Each held step's execution details. The weekly Routine's update hit a Cloudflare account out of credits; the monthly
@@ -345,13 +371,13 @@ function answer(state, incidentId, body) {
 // escaped, then transport conditions.
 function diagnostics(runId) {
   const POSITIONS = { 'list-zones': 1, 'list-dns-records': 2, 'update-dns-record': 3, 'delete-dns-record': 3 };
-  const attempt = (number, action, failure, condition) => ({
+  const attempt = (count, action, failure, condition) => ({
     operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-    attempt: number,
+    attempt: count,
     assistant_id: 'shimpz-cloudflare',
     action,
-    step: POSITIONS[action],
-    recorded_at: `2026-10-01T11:5${number}:03Z`,
+    position: { phase: 'replay', step: POSITIONS[action] },
+    recorded_at: `2026-10-01T11:5${count}:03Z`,
     failure,
     condition,
   });
@@ -417,7 +443,7 @@ export function routineRecoveryRoutes(state, method, path, body) {
 // What lifecycle runs did, step by step: their records, kept as one snapshot each.
 const SNAPSHOT = 'c'.repeat(32);
 const record = (position, status, action, { attempt = 1, duration = 640 + position * 37, inputs = [] } = {}) => ({
-  position,
+  position: { phase: 'replay', step: position },
   status,
   assistant_id: 'shimpz-cloudflare',
   action,
@@ -437,14 +463,17 @@ const RUN_RECORDS = {
     record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
     record(2, 'done', 'list-dns-records', { inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
   ],
-  // The continuous watch's completed run hands its result on and shows none; each zone's records were listed.
+  // The continuous watch's completed run shows nothing; each zone's records were listed.
   [id('c')]: WATCH.map((item) => record(item.position, 'done', item.action, {
     inputs: item.position === 1 ? [{ member: 'page', source: 'literal', value: '1' }] : [{ member: 'zone_id', source: 'step_output', value: null }],
   })),
   // The failed run's zone list failed on its third attempt, so the run never started its second step.
   [FAILED_RUN]: [
     record(1, 'failed', 'list-zones', { attempt: 3, inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
-    { position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null },
+    {
+      position: { phase: 'replay', step: 2 }, status: 'not_run', assistant_id: null, action: null, attempt: null,
+      duration_ms: null, recorded_at: null, inputs: null,
+    },
   ],
 };
 
@@ -455,13 +484,16 @@ export function planPage(routineId, plan, steps, offset) {
   return { routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest, total: steps.length, offset, steps: page, next };
 }
 
-/** One page of a run's step records from `offset`, of one snapshot, bound to the revision its notice summarizes. */
-export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true } = {}) {
+/**
+ * One page of a run's records from `offset`, of one snapshot, bound to the revision its notice summarizes: its replay
+ * steps, then any decision calls, and the run's one decision record.
+ */
+export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true, decision = null } = {}) {
   const page = records.slice(offset, offset + PAGE_STEPS);
   const next = offset + page.length === records.length ? null : offset + page.length;
   return {
     team_id: 'marketing', run_id: runId, routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest,
-    total: plan.steps, snapshot, ended, offset, steps: page, next,
+    replay: plan.steps, total: records.length, snapshot, ended, offset, steps: page, next, decision,
   };
 }
 
@@ -495,48 +527,120 @@ export function routineStepRoutes(state, method, path) {
   return null;
 }
 
-// The continuous request with no daily cap, asked as Brain asks it in the interface language: each option names its cap.
-const CAP_OPTIONS = [100, 500, 1000];
+// The owner's recorded Cloudflare watch (ADR-0101): it listed the zones, then the DNS records of the one zone whose
+// name is shimpz.com, every 30 seconds up to 1,000 times a day, showing the records after every run.
+const SELECTOR = Object.freeze({ pointer: '/result', where: { member: 'name', value_json: '"shimpz.com"' }, item: '/id' });
+const CARD_STEPS = Object.freeze([
+  step(1, 'list-zones', []),
+  step(2, 'list-dns-records', [{ member: 'zone_id', source: 'step_output', step: 1, ...SELECTOR }]),
+]);
+const CARD_LIFETIME_MS = 15 * 60 * 1000;
 
-export function capClarification(locale = 'en') {
-  const text = textFor(locale);
+/** The confirmation card of the owner's recorded watch, as a recording turn's reply carries it. */
+export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
   return {
-    question: text.capQuestion,
-    options: CAP_OPTIONS.map((cap) => ({ label: text.capLabel.replace('{cap}', String(cap)), description: '' })),
-    // A Routine question recommends none of its options (ADR-0092 amendment, 2026-10-05).
-    default_index: null,
+    proposal_id: proposalId,
+    expires_at: instant(now + CARD_LIFETIME_MS),
+    replaces: null,
+    name: textFor(locale).card,
+    schedule: { kind: 'continuous', gap: 30, cap: 1000 },
+    timezone: 'America/Sao_Paulo',
+    next_runs: [30, 60, 90].map((seconds) => instant(now + seconds * 1000)),
+    daily_cap: 1000,
+    clamped: false,
+    output: { mode: 'show', when: null },
+    steps: [
+      { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
+      {
+        position: 2,
+        assistant: 'shimpz-cloudflare',
+        action: 'list-dns-records',
+        read_only: true,
+        inputs: [{ member: 'zone_id', origin: 'selector', value: null, step: 1, ...SELECTOR }],
+      },
+    ],
+    permitted: [
+      { assistant: 'shimpz-cloudflare', action: 'list-dns-records', read_only: true },
+      { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
+    ],
+    decision: null,
+    rehearsal: false,
   };
 }
 
+// Each recording turn's message and reply are kept in the transcript, so a reload shows its card again.
+function recordTurn(state, message, reply) {
+  const turn = `${'e'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`;
+  const at = instant(Date.now());
+  const { reply: text, team_name: author, usage, routine_proposal: proposal, routine_refusal: refusal } = reply;
+  state.history = [
+    ...state.history,
+    { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: message },
+    {
+      id: `${turn}:reply`,
+      created_at: at,
+      kind: 'message',
+      role: 'assistant',
+      text,
+      author,
+      usage: structuredClone(usage),
+      ...(proposal ? { routine_proposal: structuredClone(proposal) } : {}),
+      ...(refusal ? { routine_refusal: structuredClone(refusal) } : {}),
+    },
+  ];
+}
+
 /**
- * The daily-cap question of a continuous request, then the Routine its answer creates with its created notice; any
- * other answer is asked again. Returns the chat frame Team would send.
+ * A recording turn (ADR-0101): it did the work once, then its reply carries the card of the Routine that repeats it,
+ * or, in the refusal scenario, why no Routine was created (its request would hold a password). Returns Team's frame.
  */
-export function capReply(state, message, teamName) {
+export function recordingReply(state, message, teamName) {
   const text = textFor(state.locale);
-  const asked = capClarification(state.locale);
-  const base = { type: 'done', team_id: 'marketing', team_name: teamName };
-  const chosen = asked.options.findIndex((option) => message.endsWith(`: ${option.label}`));
-  if (chosen < 0) {
-    return {
-      ...base,
-      reply: `${asked.question}\n\n${asked.options
-        .map((option, index) => `${index + 1}. ${option.label}${index === asked.default_index ? ' ✓' : ''}`)
-        .join('\n')}`,
-      clarification: asked,
-    };
-  }
-  const cap = CAP_OPTIONS[chosen];
   state.sequence += 1;
-  const routine = {
-    ...routines(state.locale)[0],
-    routine_id: `9${state.sequence.toString(16)}`.padStart(32, '0'),
-    quote: message.split('\n')[0].slice(0, 200),
-    schedule: { kind: 'continuous', gap: 5, cap },
-  };
+  const base = { type: 'done', team_id: 'marketing', team_name: teamName, clarification: null, usage: structuredClone(MODEL_USAGE) };
+  let reply;
+  if (state.recording === 'refusal') {
+    reply = { ...base, reply: text.refusalReply, routine_refusal: { code: 'routine-secret-literal' } };
+  } else {
+    const proposalId = `c${state.sequence.toString(16)}`.padStart(32, '0');
+    const proposal = cloudflareCard(proposalId, state.locale);
+    state.proposals = { ...state.proposals, [proposalId]: proposal };
+    reply = { ...base, reply: text.cardReply, routine_proposal: proposal };
+  }
+  recordTurn(state, message, reply);
+  return reply;
+}
+
+/**
+ * Criar rotina and Cancelar for a card (ADR-0101): confirming a pending card creates its Routine with its created
+ * notice; revoking it, or a card already gone, creates nothing. A used, revoked, or expired card is refused.
+ */
+export function routineProposalRoutes(state, method, path, body) {
+  const match = path.match(/^\/api\/teams\/marketing\/routines\/proposals\/([0-9a-f]{32})$/);
+  if (!match || !['POST', 'DELETE'].includes(method)) return null;
+  const proposalId = match[1];
+  const proposal = state.proposals?.[proposalId];
+  const remaining = Object.fromEntries(Object.entries(state.proposals ?? {}).filter(([key]) => key !== proposalId));
+  if (method === 'DELETE') {
+    if (body !== null) return { status: 422, json: { code: 'invalid-body' } };
+    state.proposals = remaining;
+    state.revoked = [...(state.revoked ?? []), proposalId];
+    return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: null, status: 'revoked' } };
+  }
+  if (!body || typeof body !== 'object' || Object.keys(body).length) return { status: 422, json: { code: 'invalid-body' } };
+  if (!proposal || Date.parse(proposal.expires_at) <= Date.now()) return { status: 409, json: { code: 'routine-proposal-expired' } };
+  state.proposals = remaining;
+  const routine = routineView({
+    routine_id: `9${proposalId.slice(-8)}`.padStart(32, '0'),
+    name: proposal.name,
+    output: { mode: 'show', step: 2, when: null },
+    schedule: proposal.schedule,
+    timezone: proposal.timezone,
+    next_run_at: proposal.next_runs[0],
+  }, CARD_STEPS);
   state.routines = [...state.routines, routine];
-  state.plans = { ...state.plans, [routine.routine_id]: WATCH };
-  const noticeId = `7${state.sequence.toString(16)}`.padStart(32, '0');
-  state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { run: false })];
-  return { ...base, reply: text.capReply.replace('{cap}', String(cap)), clarification: null };
+  state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
+  const noticeId = `7${proposalId.slice(-8)}`.padStart(32, '0');
+  state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { at: instant(Date.now()) })];
+  return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }

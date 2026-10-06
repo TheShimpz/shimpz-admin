@@ -1,7 +1,7 @@
 import { parseFileDisclosure, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
-import { browserTimezone } from './routine.js';
+import { browserTimezone, parseRoutineProposal, parseRoutineRefusal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
@@ -1202,6 +1202,18 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
   throw new LocalApiError('The local chat response is invalid.');
 }
 
+// A recording turn's reply carries the card of the Routine it recorded or why it made none (ADR-0101): at most one, and
+// never beside a question.
+const ROUTINE_REPLIES = { routine_proposal: parseRoutineProposal, routine_refusal: parseRoutineRefusal };
+
+/** A reply's Routine card or refusal in its closed form, or nothing; any other shape throws. */
+export function parseRoutineReply(value, clarification) {
+  const present = Object.keys(ROUTINE_REPLIES).filter((key) => Object.hasOwn(value, key));
+  if (present.length === 0) return {};
+  if (present.length > 1 || clarification) throw new TypeError('invalid Routine reply');
+  return { [present[0]]: ROUTINE_REPLIES[present[0]](value[present[0]]) };
+}
+
 /** Parse one public chat frame. Raw provider events and extra fields fail closed. */
 export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -1211,11 +1223,13 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     let clarification = null;
     let usage = null;
     let restricted = null;
+    let routine = {};
     try {
       clarification = parseClarification(value.clarification);
       usage = parseTaskUsage(value.usage);
       // The Actions Team withheld because the message's attachments were readable; never anything to run.
       if (Object.hasOwn(value, 'restricted_actions')) restricted = parseRestrictedActions(value.restricted_actions);
+      routine = parseRoutineReply(value, clarification);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
     }
@@ -1226,6 +1240,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     // `usage` is optional: Team reports it only when a model call of the turn reported usage.
     if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
     if (restricted) doneKeys.push('restricted_actions');
+    doneKeys.push(...Object.keys(routine));
     if (
       !exactKeys(value, doneKeys) ||
       !TEAM_ID_RE.test(value.team_id) ||
@@ -1247,6 +1262,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       clarification,
       ...(usage ? { usage } : {}),
       ...(restricted ? { restricted_actions: restricted } : {}),
+      ...routine,
     };
   }
   if (value.type === 'assistant-install-plan') {

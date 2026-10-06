@@ -6,13 +6,16 @@
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
   import RoutineRunView from '$lib/RoutineRunView.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
-  import { routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
+  import { decisionWords, routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
   // own message, as one line of an activity timeline: the notice's time on the timeline's rail, the Routine's name, a
   // status phrase colored by meaning, and the run's usage when its notice carries one, read by the chat's own usage
   // formatter. Consecutive notices share one thin rail through their times (`joinAbove`, `joinBelow`).
+  // The name is only the one Team froze into this notice (ADR-0101), never the live Routine list and never a request,
+  // so a reloaded transcript reads alike and a Routine's last notice, its removal, still names it. A completed run's
+  // decision says what it decided in Team's escaped words, and a run that lost its secret-value protection says so.
   // A run's name opens the run in full instead of filling the timeline: the result it shows, when it shows one, and its
   // own step records with each step's parameters. A notice without a run keeps its name as text. It never carries an
   // Action's raw input or result, and it is not part of the Brain's conversation. Every name and value is plain text.
@@ -69,10 +72,8 @@
     opener?.focus();
   }
 
-  // The Routine's short name: as Team lists it now, as the notice defined it, or else its request.
-  let routineName = $derived(
-    listed?.routines.find((item) => item.routine_id === entry.routineId)?.name ?? entry.detail.name ?? entry.quote,
-  );
+  let routineName = $derived(entry.name);
+  let decision = $derived(entry.detail.decision ? decisionWords(entry.detail.decision, copy) : '');
   let shown = $derived(routineNotice(entry, { copy, locale: $locale }));
   let usage = $derived(entry.usage ? taskUsageSummary(entry.usage) : null);
 </script>
@@ -93,9 +94,12 @@
     {/if}
     <span class="status">{shown.status}</span>
     {#if usage}
-      <span class="usage" title={formatTaskUsageDetail(usage, $locale, usageCopy)}>{formatTaskUsage(usage, $locale, usageCopy)}</span>
+      <span class="usage" title={usage.detail.length ? formatTaskUsageDetail(usage, $locale, usageCopy) : undefined}
+        >{formatTaskUsage(usage, $locale, usageCopy)}</span>
     {/if}
   </p>
+  {#if decision}<p class="decision">{decision}</p>{/if}
+  {#if entry.protectionLost}<p class="lost">{copy.notice.protectionLost}</p>{/if}
   <time class="time" datetime={entry.createdAt}>{shown.time}</time>
   <!-- The button stays while the panel is open, so closing it returns focus here. -->
   {#if waiting || panel}
@@ -236,6 +240,8 @@
   .usage::before { content: '· '; }
 
   .routine-run .wait,
+  .routine-run .decision,
+  .routine-run .lost,
   .routine-run .result {
     margin: 0;
     font-size: 0.85rem;
@@ -273,6 +279,8 @@
   :global([dir='rtl']) .chevron { display: inline-block; transform: scaleX(-1); }
 
   .routine-run .result { color: var(--shimpz-color-text-dim); }
+  .routine-run .decision { color: var(--shimpz-color-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .routine-run .lost { color: var(--shimpz-color-yellow); }
 
   @media (max-width: 40rem) {
     .routine-run .head,

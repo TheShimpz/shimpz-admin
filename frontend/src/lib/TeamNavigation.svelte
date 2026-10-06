@@ -124,7 +124,7 @@
     const listed = teamRoutines(teamId);
     return listed.incidents.length > 0 ||
       listed.runs.some((run) => run.status === 'held') ||
-      listed.routines.some((routine) => routine.paused || routine.needs_reconfirm);
+      listed.routines.some((routine) => routine.state === 'paused' || routine.needs_reconfirm);
   }
 
   // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.

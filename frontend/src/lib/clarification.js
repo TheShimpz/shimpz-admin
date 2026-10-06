@@ -32,7 +32,7 @@ function exact(value, keys) {
 
 /**
  * Return the exact clarification, or null when the value is null. Any other shape throws. `default_index` names the
- * recommended option, or is null when none is recommended.
+ * recommended option.
  */
 export function parseClarification(value) {
   if (value === null) return null;
@@ -40,9 +40,7 @@ export function parseClarification(value) {
     throw new TypeError('invalid clarification');
   }
   const { options, default_index: defaultIndex } = value;
-  // A question that recommends nothing (a Routine question) may offer one suggestion beside the free-text answer.
-  const minimum = defaultIndex === null ? 1 : 2;
-  if (!Array.isArray(options) || options.length < minimum || options.length > 5) {
+  if (!Array.isArray(options) || options.length < 2 || options.length > 5) {
     throw new TypeError('invalid clarification');
   }
   const parsed = options.map((option) => {
@@ -53,10 +51,9 @@ export function parseClarification(value) {
     ) throw new TypeError('invalid clarification');
     return { label: option.label, description: option.description };
   });
-  // A Routine question recommends nothing: its default is null, and no option is preselected (ADR-0092, 2026-10-05).
   if (
     new Set(parsed.map((option) => option.label.toLowerCase())).size !== parsed.length ||
-    (defaultIndex !== null && (!Number.isInteger(defaultIndex) || defaultIndex < 0 || defaultIndex >= parsed.length))
+    !Number.isInteger(defaultIndex) || defaultIndex < 0 || defaultIndex >= parsed.length
   ) throw new TypeError('invalid clarification');
   return { question: value.question, options: parsed, default_index: defaultIndex };
 }

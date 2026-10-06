@@ -5,7 +5,9 @@
   import RoutineResult from '$lib/RoutineResult.svelte';
   import RoutineRunSteps from '$lib/RoutineRunSteps.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
-  import { fillRoutineCopy, instantWords, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding } from '$lib/routine.js';
+  import {
+    fillRoutineCopy, instantWords, MAX_DECISION_CALLS, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
+  } from '$lib/routine.js';
   import { attemptsByStep, resultView } from '$lib/routineResult.js';
 
   // One Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output and scale): how it stands
@@ -35,10 +37,14 @@
   let output = $derived(entry.detail.output?.state === 'shown' ? entry.detail.output : null);
   let view = $derived(output ? resultView(output.value) : null);
   let binding = $derived(runBinding(entry.routineId, entry.detail.plan ?? null));
-  // A completed run's notice says how many steps its revision has; any other run's first page of records does.
+  // A completed run's notice says how many replay steps its revision has; any other run's first page of records does,
+  // with how many entries the run recorded, its replay steps and then its decision calls.
+  let replay = $state(null);
   let total = $state(null);
-  let steps = $derived(entry.detail.plan?.steps ?? total);
-  let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, steps ?? MAX_ROUTINE_STEPS) : null);
+  let steps = $derived(entry.detail.plan?.steps ?? replay);
+  let attempts = $derived(diagnostics ? attemptsByStep(
+    diagnostics, steps ?? MAX_ROUTINE_STEPS, total ?? (steps ?? MAX_ROUTINE_STEPS) + MAX_DECISION_CALLS,
+  ) : null);
   let finished = $derived(instantWords(entry.createdAt, $locale, routine?.timezone));
   let count = $derived(steps === null ? '' : fillRoutineCopy(
     new Intl.PluralRules($locale).select(steps) === 'one' ? copy.result.stepCount.one : copy.result.stepCount.other,
@@ -104,7 +110,7 @@
           <h3 id={`${id}-steps`}>{copy.result.steps}</h3>
           <div class="note">{copy.result.recordsNote}</div>
           <RoutineRunSteps {teamId} runId={entry.runId} {binding} {attempts} {copy} names={$assistantNames}
-            locale={$locale} bind:total />
+            locale={$locale} bind:replay bind:total />
           {#if unavailable}
             <div class="note">{copy.result.attemptsUnavailable}</div>
           {:else if diagnostics === null}
