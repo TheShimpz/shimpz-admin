@@ -55,6 +55,15 @@ def response(
     )
 
 
+def _selected_route(intent: str, assistant_id: str):
+    """Patch Team's routing to name "cloudflare" for the intent, then select exactly this Assistant."""
+    return mock.patch.object(
+        assistant_route.local,
+        "intent_route",
+        side_effect=(response(intent, "cloudflare"), response(intent, assistant_ids=[assistant_id])),
+    )
+
+
 def cloudflare() -> store_catalog.CatalogAssistant:
     return store_catalog.CatalogAssistant(
         "shimpz-cloudflare",
@@ -279,14 +288,7 @@ class AssistantRouteTests(unittest.TestCase):
         assistant = cloudflare()
         installed: dict[str, assistant_inventory.InstalledAssistant] = {}
         with (
-            mock.patch.object(
-                assistant_route.local,
-                "intent_route",
-                side_effect=(
-                    response("assistant-install", "cloudflare"),
-                    response("assistant-install", assistant_ids=[assistant.assistant_id]),
-                ),
-            ) as route,
+            _selected_route("assistant-install", assistant.assistant_id) as route,
             mock.patch.object(
                 assistant_route,
                 "_catalog_state",
@@ -330,14 +332,7 @@ class AssistantRouteTests(unittest.TestCase):
             )
         }
         with (
-            mock.patch.object(
-                assistant_route.local,
-                "intent_route",
-                side_effect=(
-                    response("assistant-install", "cloudflare"),
-                    response("assistant-install", assistant_ids=[assistant.assistant_id]),
-                ),
-            ),
+            _selected_route("assistant-install", assistant.assistant_id),
             mock.patch.object(assistant_route, "_catalog_state", return_value=(installed, (assistant,))),
         ):
             result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog, False)
@@ -408,14 +403,7 @@ class AssistantRouteTests(unittest.TestCase):
             "0.4.5",
         )
         with (
-            mock.patch.object(
-                assistant_route.local,
-                "intent_route",
-                side_effect=(
-                    response("assistant-uninstall", "cloudflare"),
-                    response("assistant-uninstall", assistant_ids=[candidate.assistant.assistant_id]),
-                ),
-            ) as route,
+            _selected_route("assistant-uninstall", candidate.assistant.assistant_id) as route,
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
         ):
             result = assistant_route.prepare("team_1", payload("retire o cloudflare"), mock.sentinel.catalog, False)
@@ -439,14 +427,7 @@ class AssistantRouteTests(unittest.TestCase):
             ),
         )
         with (
-            mock.patch.object(
-                assistant_route.local,
-                "intent_route",
-                side_effect=(
-                    response("assistant-uninstall", "cloudflare"),
-                    response("assistant-uninstall", assistant_ids=["shimpz-cloudflare"]),
-                ),
-            ) as route,
+            _selected_route("assistant-uninstall", "shimpz-cloudflare") as route,
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
         ):
             result = assistant_route.prepare(
@@ -505,14 +486,7 @@ class AssistantRouteTests(unittest.TestCase):
             "0.4.5",
         )
         with (
-            mock.patch.object(
-                assistant_route.local,
-                "intent_route",
-                side_effect=(
-                    response("assistant-uninstall", "cloudflare"),
-                    response("assistant-uninstall", assistant_ids=["different"]),
-                ),
-            ),
+            _selected_route("assistant-uninstall", "different"),
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
             self.assertRaises(assistant_route.RouteError),
         ):
