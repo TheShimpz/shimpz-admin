@@ -31,6 +31,9 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
             "0.4.4",
         )
 
+    def _uninstall_result(self):
+        return self.assistant_route.Result("assistant-uninstall", uninstall=self._uninstall_candidate())
+
     def test_explicit_uninstall_uses_one_socket_scoped_proposal_and_team_result(self) -> None:
         async def scenario() -> None:
             route: concurrent.futures.Future[object] = concurrent.futures.Future()
@@ -55,12 +58,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 )
                 await asyncio.sleep(0.3)
                 turn.assert_not_called()
-                route.set_result(
-                    self.assistant_route.Result(
-                        "assistant-uninstall",
-                        uninstall=self._uninstall_candidate(),
-                    )
-                )
+                route.set_result(self._uninstall_result())
                 proposed = await websocket.next_json()
                 self.assertEqual(proposed["type"], "assistant-uninstall")
                 self.assertEqual(proposed["state"], "proposed")
@@ -131,12 +129,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                                 preparation=self.chat_socket.lifecycle.assistant_plan.Preparation(),
                             )
                         ),
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                uninstall=self._uninstall_candidate(),
-                            )
-                        ),
+                        self._future(self._uninstall_result()),
                     ),
                 ) as route,
             ):
@@ -200,12 +193,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     self.chat_socket.lifecycle,
                     "submit_route",
                     side_effect=(
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                uninstall=self._uninstall_candidate(),
-                            )
-                        ),
+                        self._future(self._uninstall_result()),
                         self._future(
                             self.assistant_route.Result(
                                 "assistant-install",
@@ -255,18 +243,8 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     self.chat_socket.lifecycle,
                     "submit_route",
                     side_effect=(
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                uninstall=self._uninstall_candidate(),
-                            )
-                        ),
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                uninstall=self._uninstall_candidate(),
-                            )
-                        ),
+                        self._future(self._uninstall_result()),
+                        self._future(self._uninstall_result()),
                     ),
                 ),
                 mock.patch.object(self.chat_socket.lifecycle.assistant_uninstall, "uninstall") as uninstall,
@@ -373,12 +351,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 self.assertEqual((await websocket.next_json())["status"], 409)
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                route.set_result(
-                    self.assistant_route.Result(
-                        "assistant-uninstall",
-                        uninstall=self._uninstall_candidate(),
-                    )
-                )
+                route.set_result(self._uninstall_result())
                 self.assertEqual((await websocket.next_json())["state"], "proposed")
                 await websocket.disconnect()
 
