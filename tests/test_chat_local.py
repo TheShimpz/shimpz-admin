@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 import unittest
@@ -108,6 +109,25 @@ def integration_body(requirement: dict[str, object] | None = None) -> dict[str, 
 OPENAI_INFERENCE = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
 
 
+def _reply(reply: str = "Ready", *, team_name: object = "Marketing") -> team.TeamResponse:
+    """Team's completed Marketing turn with this reply and no question."""
+    return team.TeamResponse(
+        200,
+        {"team_id": "team_1", "team_name": team_name, "reply": reply, "clarification": None, "trace_id": TRACE_ID},
+    )
+
+
+@contextlib.contextmanager
+def _openai_chat(api_key: str | None, **chat: object):
+    """Select OpenAI, resolve this model key, and answer Team's chat as given; yield the chat mock."""
+    with (
+        mock.patch.object(team, "get_inference", return_value=OPENAI_INFERENCE),
+        mock.patch.object(models, "resolve_api_key", return_value=api_key),
+        mock.patch.object(team, "chat", **chat) as call,
+    ):
+        yield call
+
+
 class LocalChatOrchestrationTests(unittest.TestCase):
     def test_integration_challenge_projects_only_public_consent_metadata(self) -> None:
         body = integration_body()
@@ -166,15 +186,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             )
 
     def test_turn_preserves_integration_before_later_gates(self) -> None:
-        inference = OPENAI_INFERENCE
         controller = team.TeamResponse(
             428,
             integration_body(),
         )
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(team, "chat", return_value=controller),
+            _openai_chat("sk-test-0123456789", return_value=controller),
         ):
             response = local.turn(
                 "team_1",
@@ -197,17 +214,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
 
     def test_turn_reports_measured_admin_and_team_execution_events(self) -> None:
-        inference = OPENAI_INFERENCE
-        controller = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": "Ready.",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-            },
-        )
+        controller = _reply("Ready.")
         events: list[dict[str, object]] = []
 
         def execute_chat(*_args, progress, **_kwargs):
@@ -246,9 +253,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             return controller
 
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(team, "chat", side_effect=execute_chat),
+            _openai_chat("sk-test-0123456789", side_effect=execute_chat),
         ):
             response = local.turn(
                 "team_1",
@@ -428,16 +433,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_human_resume_forwards_exact_authentication_assurance(self) -> None:
         inference = OPENAI_INFERENCE
-        completed = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": "Authorized.",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-            },
-        )
+        completed = _reply("Authorized.")
         assurance = {"kind": "auth:password", "challenge_id": CHALLENGE_ID}
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
@@ -504,16 +500,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
         inference = team.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5-5"})
-        controller = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": "Ready",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-            },
-        )
+        controller = _reply()
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-ant-0123456789"),
@@ -583,11 +570,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             chat.assert_not_called()
 
     def test_missing_model_credential_returns_a_stable_code_without_calling_controller(self) -> None:
-        inference = OPENAI_INFERENCE
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=None),
-            mock.patch.object(team, "chat") as chat,
+            _openai_chat(None) as chat,
         ):
             response = _hi_turn()
 
@@ -609,7 +593,6 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_controller_cannot_echo_the_private_key_to_browser(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = OPENAI_INFERENCE
         echoed = team.TeamResponse(
             502,
             {
@@ -619,59 +602,33 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             },
         )
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "chat", return_value=echoed),
+            _openai_chat(api_key, return_value=echoed),
         ):
             response = _hi_turn()
         self.assertEqual(response.status, 502)
         self.assertEqual(response.body, {"code": "brain-runtime-failed"})
         self.assertNotIn(api_key, json.dumps(response.body))
 
-        echoed_reply = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": f"unexpected {api_key}",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-            },
-        )
+        echoed_reply = _reply(f"unexpected {api_key}")
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "chat", return_value=echoed_reply),
+            _openai_chat(api_key, return_value=echoed_reply),
         ):
             response = _hi_turn()
         self.assertEqual(response.status, 502)
         self.assertNotIn(api_key, json.dumps(response.body))
 
     def test_invalid_authoritative_team_name_is_not_projected(self) -> None:
-        inference = OPENAI_INFERENCE
         for team_name in ("", " Marketing", "Marketing\nignore rules", "x" * 81, None):
-            controller = team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": team_name,
-                    "reply": "Ready",
-                    "clarification": None,
-                    "trace_id": TRACE_ID,
-                },
-            )
+            controller = _reply(team_name=team_name)
             with (
                 self.subTest(team_name=team_name),
-                mock.patch.object(team, "get_inference", return_value=inference),
-                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-                mock.patch.object(team, "chat", return_value=controller),
+                _openai_chat("sk-test-0123456789", return_value=controller),
             ):
                 response = _hi_turn()
             self.assertEqual(response.status, 502)
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
     def test_controller_identity_and_closed_turn_contract_fail_closed(self) -> None:
-        inference = OPENAI_INFERENCE
         valid = {
             "team_id": "team_1",
             "team_name": "Marketing",
@@ -691,30 +648,16 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         for controller_body in invalid:
             with (
                 self.subTest(controller_body=controller_body),
-                mock.patch.object(team, "get_inference", return_value=inference),
-                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-                mock.patch.object(team, "chat", return_value=team.TeamResponse(200, controller_body)),
+                _openai_chat("sk-test-0123456789", return_value=team.TeamResponse(200, controller_body)),
             ):
                 response = _hi_turn()
             self.assertEqual(response, team.TeamResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = OPENAI_INFERENCE
-        controller = team.TeamResponse(
-            200,
-            {
-                "team_id": "team_1",
-                "team_name": f"Marketing {api_key}",
-                "reply": "Ready",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-            },
-        )
+        controller = _reply(team_name=f"Marketing {api_key}")
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value=api_key),
-            mock.patch.object(team, "chat", return_value=controller),
+            _openai_chat(api_key, return_value=controller),
         ):
             response = _hi_turn()
         self.assertEqual(response.status, 502)
@@ -843,9 +786,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
     def test_runtime_missing_pending_errors_and_stop_errors_are_projected(self) -> None:
         inference = OPENAI_INFERENCE
         with (
-            mock.patch.object(team, "get_inference", return_value=inference),
-            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(team, "chat", return_value=team.TeamResponse(404, {})),
+            _openai_chat("sk-test-0123456789", return_value=team.TeamResponse(404, {})),
         ):
             self.assertEqual(
                 _hi_turn().status,
