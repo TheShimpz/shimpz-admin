@@ -13,7 +13,6 @@ from http import HTTPStatus
 from team import bridge as team
 from team import transport
 
-from chat import local as chat_local
 from protocol.http.v1 import routine as routine_contract
 from routine import team as routine_team
 
@@ -141,25 +140,43 @@ def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
 
 
 def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
-    """Answer one open recovery card once with Rodar or Recriar; Excluir is the Routine's confirmed deletion.
+    """Answer one open recovery card once with Rodar; Excluir is the Routine's confirmed deletion.
 
-    Recriar compiles the Routine again on the Team's model, so only it carries the Team's model credential, in the
-    private headers the Supervisor assertion binds; Rodar runs no model and carries none.
+    Rodar runs no model, so it carries no model credential.
     """
     canonical = team.canonical_team_id(team_id)
     incident = _id(incident_id, "Routine incident")
     answer = routine_contract.canonical_card_answer_request(body)
     if answer is None:
         raise team.TeamRequestError("Routine card answer is invalid")
-    credential = None
-    if answer["choice"] == "recreate":
-        credential = chat_local.model_credential(canonical)
-        if isinstance(credential, team.TeamResponse):
-            return credential
-    response = transport._call(
-        "POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer, model_credential=credential
-    )
+    response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
     return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
+
+
+def _proposal(team_id: object, proposal_id: object, method: str, statuses: frozenset[str]) -> team.TeamResponse:
+    canonical = team.canonical_team_id(team_id)
+    proposal = _id(proposal_id, "Routine proposal")
+    # Confirm sends an empty object; revoke, like a deletion, sends no body.
+    body = {} if method == "POST" else None
+    response = transport._call(method, f"/v1/teams/{canonical}/routines/proposals/{proposal}", body)
+
+    def admit(body: dict[str, object]) -> dict[str, object] | None:
+        admitted = routine_contract.canonical_proposal_answer(body)
+        if admitted is None or (admitted["team_id"], admitted["proposal_id"]) != (canonical, proposal):
+            return None
+        return admitted if admitted["status"] in statuses else None
+
+    return _projected(response, admit)
+
+
+def confirm_proposal(team_id: object, proposal_id: object) -> team.TeamResponse:
+    """Criar rotina: the person's one tap that creates or changes the Routine its card shows (ADR-0101 section 5.3)."""
+    return _proposal(team_id, proposal_id, "POST", frozenset({"created", "changed"}))
+
+
+def revoke_proposal(team_id: object, proposal_id: object) -> team.TeamResponse:
+    """Cancelar: revoke the card, so nothing it shows can ever be created; an absent card is already revoked."""
+    return _proposal(team_id, proposal_id, "DELETE", frozenset({"revoked"}))
 
 
 def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
@@ -209,7 +226,9 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
         not isinstance(snapshot, str) or routine_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
     ):
         raise team.TeamRequestError("Routine run snapshot is invalid")
-    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
+    # A run's page lists its replay steps, then its decision calls.
+    bound = routine_contract.MAX_ROUTINE_STEPS + routine_contract.MAX_DECISION_CALLS
+    start = _count(offset, "Routine step offset", 0, bound)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
 
     def admit(body: dict[str, object]) -> dict[str, object] | None:

@@ -38,6 +38,8 @@ def register(
     application.add_api_route(base + "/runs/{run_id}/challenge", routine_challenge, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/human", human_route(authenticate), methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/integrations", routine_integrations, methods=["POST"])
+    application.add_api_route(base + "/proposals/{proposal_id}", routine_proposal_confirm, methods=["POST"])
+    application.add_api_route(base + "/proposals/{proposal_id}", routine_proposal_revoke, methods=["DELETE"])
 
 
 def _no_store(response):
@@ -140,6 +142,20 @@ async def routine_card_answer(team_id: str, incident_id: str, request: Request):
     if response.status_code == 200 and scheduler is not None:
         scheduler.wake()
     return _no_store(response)
+
+
+async def routine_proposal_confirm(team_id: str, proposal_id: str, request: Request):
+    """Criar rotina: the session's one confirmation of a card; a created Routine is due soon, so the scheduler wakes."""
+    response = await run_in_threadpool(team_http.response, lambda: manage.confirm_proposal(team_id, proposal_id))
+    scheduler = getattr(request.app.state, "routine_scheduler", None)
+    if response.status_code == 200 and scheduler is not None:
+        scheduler.wake()
+    return _no_store(response)
+
+
+async def routine_proposal_revoke(team_id: str, proposal_id: str):
+    """Cancelar: revoke a card."""
+    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.revoke_proposal(team_id, proposal_id)))
 
 
 async def routine_challenge(team_id: str, run_id: str, request: Request):

@@ -29,11 +29,13 @@ RUN = VECTORS["run"]["valid"][1]
 INCIDENT = VECTORS["incident"]["valid"][0]
 CARD = {**VECTORS["card"]["valid"][0], "incident_id": "c" * 32}
 ANSWERED = {**VECTORS["card_answer"]["valid"][0], "incident_id": "c" * 32}
-PAGE = VECTORS["page"]["valid"][1]
-RUN_STEPS = VECTORS["run_steps"]["valid"][1]
+PAGE = VECTORS["page"]["valid"][3]
+RUN_STEPS = VECTORS["run_steps"]["valid"][3]
 DIAGNOSTICS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_diagnostics"]["valid"]
 TRACE = "a" * 32
 ID = "c" * 32
+PROPOSAL = {"team_id": "team_1", "proposal_id": ID, "routine_id": "d" * 32, "status": "created"}
+REVOKED = {"team_id": "team_1", "proposal_id": ID, "routine_id": None, "status": "revoked"}
 
 
 def answer(body: dict[str, object], status: int = 200) -> team.TeamResponse:
@@ -136,34 +138,35 @@ class RoutineManageTests(unittest.TestCase):
         chosen = {"nonce": CARD["nonce"], "choice": "run"}
         with self.call(answer(ANSWERED)) as call:
             self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
-        call.assert_called_once_with(
-            "POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen, model_credential=None
-        )
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
+        # Recriar is gone: a recreated answer is never admitted, and the choice is refused before Team.
         with self.call(answer({**ANSWERED, "status": "recreated"})):
             self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
-        # Recriar carries exactly the Team's model credential, which the Supervisor assertion then binds.
-        recreate = {"nonce": CARD["nonce"], "choice": "recreate"}
-        recreated = {**ANSWERED, "choice": "recreate", "status": "recreated"}
-        with (
-            mock.patch.object(manage.chat_local, "model_credential", return_value=("openai", "sk-test")) as key,
-            self.call(answer(recreated)) as call,
+
+    def test_a_card_proposal_is_confirmed_or_revoked_only_for_exactly_itself(self) -> None:
+        with self.call(answer(PROPOSAL)) as call:
+            self.assertEqual(manage.confirm_proposal("team_1", ID).body, PROPOSAL)
+        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/proposals/{ID}", {})
+        changed = {**PROPOSAL, "status": "changed"}
+        with self.call(answer(changed)):
+            self.assertEqual(manage.confirm_proposal("team_1", ID).body, changed)
+        # Revoking sends no body, as a deletion does.
+        with self.call(answer(REVOKED)) as call:
+            self.assertEqual(manage.revoke_proposal("team_1", ID).body, REVOKED)
+        call.assert_called_once_with("DELETE", f"/v1/teams/team_1/routines/proposals/{ID}", None)
+        for foreign, operation in (
+            (REVOKED, manage.confirm_proposal),
+            (PROPOSAL, manage.revoke_proposal),
+            ({**PROPOSAL, "proposal_id": "e" * 32}, manage.confirm_proposal),
+            ({**PROPOSAL, "team_id": "team_2"}, manage.confirm_proposal),
+            ({**PROPOSAL, "status": "pending"}, manage.confirm_proposal),
         ):
-            self.assertEqual(manage.answer_card("team_1", ID, recreate).body, recreated)
-        key.assert_called_once_with("team_1")
-        call.assert_called_once_with(
-            "POST",
-            f"/v1/teams/team_1/routines/incidents/{ID}/answer",
-            recreate,
-            model_credential=("openai", "sk-test"),
-        )
-        # Without a stored key, Team is never asked and the person is told why.
-        missing = team.TeamResponse(409, {"code": "model-credential-missing"})
-        with (
-            mock.patch.object(manage.chat_local, "model_credential", return_value=missing),
-            self.call(answer(recreated)) as call,
-        ):
-            self.assertIs(manage.answer_card("team_1", ID, recreate), missing)
-        call.assert_not_called()
+            with self.subTest(foreign=foreign), self.call(answer(foreign)):
+                self.assertEqual(operation("team_1", ID).status, 502)
+        expired = answer({"code": "routine-proposal-expired"}, 409)
+        with self.call(expired):
+            response = manage.confirm_proposal("team_1", ID)
+        self.assertEqual((response.status, response.body), (409, {"code": "routine-proposal-expired"}))
 
     def test_a_plan_page_is_admitted_only_for_exactly_the_routine_revision_and_offset_asked_for(self) -> None:
         routine = PAGE["routine_id"]
@@ -174,7 +177,7 @@ class RoutineManageTests(unittest.TestCase):
             (PAGE, (ID, "2", "1")),
             (PAGE, (routine, "3", "1")),
             (PAGE, (routine, "2", "0")),
-            ({**PAGE, "steps": [{**PAGE["steps"][0], "id": "zones"}, PAGE["steps"][1]]}, (routine, "2", "1")),
+            ({**PAGE, "steps": [{**PAGE["steps"][0], "id": "zones"}]}, (routine, "2", "1")),
         ):
             with self.subTest(asked=asked), self.call(answer(foreign)):
                 self.assertEqual(manage.plan_steps("team_1", *asked).status, 502)
@@ -189,20 +192,20 @@ class RoutineManageTests(unittest.TestCase):
         # latest names no snapshot yet, so it admits the one Team names; a later page asks for exactly that one.
         for asked in ("latest", snapshot):
             with self.subTest(snapshot=asked), self.call(answer(RUN_STEPS)) as call:
-                self.assertEqual(manage.run_steps("team_1", run, asked, "64").body, RUN_STEPS)
-            call.assert_called_once_with("GET", f"/v1/teams/team_1/routines/runs/{run}/steps/{asked}/64")
+                self.assertEqual(manage.run_steps("team_1", run, asked, "1").body, RUN_STEPS)
+            call.assert_called_once_with("GET", f"/v1/teams/team_1/routines/runs/{run}/steps/{asked}/1")
         for foreign, asked in (
-            (RUN_STEPS, (ID, "latest", "64")),
+            (RUN_STEPS, (ID, "latest", "1")),
             (RUN_STEPS, (run, "latest", "0")),
-            (RUN_STEPS, (run, "e" * 32, "64")),
-            ({**RUN_STEPS, "team_id": "team_2"}, (run, "latest", "64")),
-            ({**RUN_STEPS, "steps": [{**RUN_STEPS["steps"][0], "raw_input": "x"}]}, (run, "latest", "64")),
+            (RUN_STEPS, (run, "e" * 32, "1")),
+            ({**RUN_STEPS, "team_id": "team_2"}, (run, "latest", "1")),
+            ({**RUN_STEPS, "steps": [{**RUN_STEPS["steps"][0], "raw_input": "x"}]}, (run, "latest", "1")),
         ):
             with self.subTest(asked=asked), self.call(answer(foreign)):
                 self.assertEqual(manage.run_steps("team_1", *asked).status, 502)
         changed = answer({"code": "routine-run-changed", "trace_id": TRACE}, 409)
         with self.call(changed):
-            response = manage.run_steps("team_1", run, snapshot, "64")
+            response = manage.run_steps("team_1", run, snapshot, "1")
         self.assertEqual((response.status, response.body), (409, {"code": "routine-run-changed"}))
 
     def test_requests_are_refused_before_reaching_team(self) -> None:
@@ -234,6 +237,11 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.run_steps("team_1", ID, "LATEST", "0"),
                 lambda: manage.run_steps("team_1", ID, None, "0"),
                 lambda: manage.run_steps("team_1", ID, "latest", "1e3"),
+                # A run's page lists its replay steps, then at most 64 decision calls.
+                lambda: manage.run_steps("team_1", ID, "latest", str(routine_contract.MAX_ROUTINE_STEPS + 64)),
+                lambda: manage.confirm_proposal("team_1", "x"),
+                lambda: manage.revoke_proposal("Team 1", ID),
+                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "recreate"}),
             ):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
@@ -247,12 +255,11 @@ class RoutineRouteTests(unittest.TestCase):
         self.assertEqual([route.path for route in hosted.routes if "routines" in route.path], [])
         local = FastAPI()
         routine_http.register(local, "local", mock.AsyncMock(), local_auth.Context())
-        # A Routine is created from the chat (ADR-0092): there is no confirmation or preview route. Deleting one is
-        # the Supervisor's password route then the second-factor DELETE (ADR-0051).
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 14)
+        # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
+        # Supervisor's password route then the second-factor DELETE (ADR-0051).
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 16)
         # The retired release of an uncertain run stays absent.
         self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
-        self.assertFalse(any("proposals" in route.path for route in local.routes))
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,
@@ -266,6 +273,8 @@ class RoutineRouteTests(unittest.TestCase):
             pause=mock.Mock(return_value=ok),
             plan_steps=mock.Mock(return_value=ok),
             run_steps=mock.Mock(return_value=ok),
+            confirm_proposal=mock.Mock(return_value=ok),
+            revoke_proposal=mock.Mock(return_value=ok),
         ):
             chosen = {"nonce": "c" * 32, "choice": "run"}
             # A successful answer wakes the scheduler, so a Rodar run is claimed at once.
@@ -281,8 +290,13 @@ class RoutineRouteTests(unittest.TestCase):
                 asyncio.run(routine_http.routine_plan_steps("team_1", ID, "2", "0")),
                 asyncio.run(routine_http.routine_run_steps("team_1", ID, "latest", "0")),
                 asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen, scheduled))),
+                asyncio.run(routine_http.routine_proposal_confirm("team_1", ID, request({}, scheduled))),
+                asyncio.run(routine_http.routine_proposal_confirm("team_1", ID, request({}))),
+                asyncio.run(routine_http.routine_proposal_revoke("team_1", ID)),
             ]
-            scheduled.state.routine_scheduler.wake.assert_called_once_with()
+            # A Rodar answer and a confirmed card each wake the scheduler, so the new run is claimed at once.
+            self.assertEqual(scheduled.state.routine_scheduler.wake.call_count, 2)
+            manage.revoke_proposal.assert_called_once_with("team_1", ID)
             manage.answer_card.assert_called_once_with("team_1", ID, chosen)
             manage.open_card.assert_called_once_with("team_1", ID)
             manage.diagnostics.assert_called_once_with("team_1", ID)
