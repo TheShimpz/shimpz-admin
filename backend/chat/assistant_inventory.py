@@ -76,17 +76,6 @@ def installed(response: object) -> dict[str, InstalledAssistant]:
     return result
 
 
-def _text(value: object, maximum: int) -> str:
-    if (
-        not isinstance(value, str)
-        or not 1 <= len(value) <= maximum
-        or value.strip() != value
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
-    ):
-        raise ValueError("Assistant catalog text is invalid")
-    return value
-
-
 def registry(response: object) -> dict[str, assistant_proposal.Capability]:
     raw = _payload(response, "assistants")
     if not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
@@ -108,8 +97,8 @@ def registry(response: object) -> dict[str, assistant_proposal.Capability]:
             raise ValueError("Assistant catalog identity is invalid")
         capabilities[assistant_id] = assistant_proposal.Capability(
             assistant_id=assistant_id,
-            name=_text(item["title"], 80),
-            summary=_text(item["summary"], 160),
+            name=store_catalog.catalog_text(item["title"], 80),
+            summary=store_catalog.catalog_text(item["summary"], 160),
             actions=tuple(actions),
         )
     return capabilities

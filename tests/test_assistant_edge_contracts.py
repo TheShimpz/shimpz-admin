@@ -166,7 +166,7 @@ class AssistantInventoryEdges(unittest.TestCase):
             with self.subTest(response=response), self.assertRaises(ValueError):
                 assistant_inventory.registry(response)
         with self.assertRaises(ValueError):
-            assistant_inventory._text(" invalid ", 80)
+            store_catalog.catalog_text(" invalid ", 80)
 
 
 class AssistantPlanEdges(unittest.TestCase):

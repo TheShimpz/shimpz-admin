@@ -101,7 +101,8 @@ class CatalogAssistant:
     creators: tuple[str, ...] = ()
 
 
-def _text(value: object, maximum: int) -> str:
+def catalog_text(value: object, maximum: int) -> str:
+    """One bounded, trimmed, control-free line of Assistant display text from a catalog."""
     if (
         not isinstance(value, str)
         or not 1 <= len(value) <= maximum
@@ -115,7 +116,7 @@ def _text(value: object, maximum: int) -> str:
 def _strings(value: object, maximum: int, item_maximum: int) -> tuple[str, ...]:
     if not isinstance(value, list) or len(value) > maximum:
         raise ValueError("catalog string collection is invalid")
-    output = tuple(_text(item, item_maximum) for item in value)
+    output = tuple(catalog_text(item, item_maximum) for item in value)
     if len(set(output)) != len(output):
         raise ValueError("catalog string collection is invalid")
     return output
@@ -195,8 +196,8 @@ def _assistant(value: object) -> CatalogAssistant:
         raise ValueError("catalog allowed hosts are invalid")
     return CatalogAssistant(
         assistant_id=assistant_id,
-        name=_text(value["name"], 80),
-        summary=_text(value["summary"], 160),
+        name=catalog_text(value["name"], 80),
+        summary=catalog_text(value["summary"], 160),
         source_digest=value["source_digest"],
         icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),

@@ -46,17 +46,6 @@ class LocalAssistant:
     created_at: datetime
 
 
-def _text(value: object, maximum: int) -> str:
-    if (
-        not isinstance(value, str)
-        or not 1 <= len(value) <= maximum
-        or value.strip() != value
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
-    ):
-        raise ValueError("Local Assistant display text is invalid")
-    return value
-
-
 def _ids(value: object, *, maximum: int, required: bool) -> tuple[str, ...]:
     if not isinstance(value, list) or len(value) > maximum or (required and not value):
         raise ValueError("Local Assistant capability projection is invalid")
@@ -104,8 +93,8 @@ def _assistant(value: object) -> LocalAssistant:
     providers = _ids(value["integrations"], maximum=16, required=False)
     return LocalAssistant(
         assistant_id=assistant_id,
-        name=_text(value["name"], 80),
-        summary=_text(value["summary"], 160),
+        name=store_catalog.catalog_text(value["name"], 80),
+        summary=store_catalog.catalog_text(value["summary"], 160),
         image_id=image_id,
         integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in providers),
         actions=actions,
@@ -157,4 +146,4 @@ def localized_summary(assistant: LocalAssistant, locale: str) -> str:
     summary = team_contract.canonical_snapshot_summary(body)
     if summary is None or summary["locale"] != locale:
         raise ValueError("Local Assistant summary is invalid")
-    return _text(summary["summary"], 160)
+    return store_catalog.catalog_text(summary["summary"], 160)
