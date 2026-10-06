@@ -346,6 +346,11 @@ class LocalAuthEdgeTests(unittest.TestCase):
 
         token = "s" * 32
         challenge = passkeys.Challenge(b"c" * 32, ORIGIN, "localhost", 2, time.monotonic() + 30)
+
+        def register(context: local_auth.Context):
+            request = _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token})
+            return asyncio.run(local_auth.complete_passkey_registration(request, context))
+
         context = local_auth.Context()
         with (
             mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),
@@ -353,12 +358,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
             mock.patch.object(local_auth.state, "factor_generation", return_value=3),
             self.assertRaises(HTTPException) as conflict,
         ):
-            asyncio.run(
-                local_auth.complete_passkey_registration(
-                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
-                    context,
-                )
-            )
+            register(context)
         self.assertEqual(conflict.exception.status_code, 409)
 
         context = local_auth.Context()
@@ -373,12 +373,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
             ),
             self.assertRaises(HTTPException) as unavailable,
         ):
-            asyncio.run(
-                local_auth.complete_passkey_registration(
-                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
-                    context,
-                )
-            )
+            register(context)
         self.assertEqual(unavailable.exception.status_code, 400)
 
         record = {"credential_id": "credential"}
@@ -390,12 +385,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
             mock.patch.object(local_auth.passkeys, "verify_registration", return_value=record),
             mock.patch.object(local_auth.state, "add_passkey", return_value="a" * 64),
         ):
-            response = asyncio.run(
-                local_auth.complete_passkey_registration(
-                    _request({"credential": {}}, cookies={local_auth.SESSION_COOKIE: token}),
-                    context,
-                )
-            )
+            response = register(context)
         self.assertEqual(json.loads(response.body), {"registered": True})
 
 
