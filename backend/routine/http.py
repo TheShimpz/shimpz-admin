@@ -47,6 +47,19 @@ def _no_store(response):
     return response
 
 
+async def _relay(call):
+    """Team's answer to ``call``, made on a worker thread, never cached."""
+    return _no_store(await run_in_threadpool(team_http.response, call))
+
+
+def _wake_after(request: Request, response):
+    """A 200 answer made a Routine due now, so the scheduler claims at once instead of at its next interval."""
+    scheduler = getattr(request.app.state, "routine_scheduler", None)
+    if response.status_code == 200 and scheduler is not None:
+        scheduler.wake()
+    return _no_store(response)
+
+
 def routines_list(team_id: str):
     return _no_store(team_http.response(lambda: manage.list_routines(team_id)))
 
@@ -103,64 +116,56 @@ def delete_route(confirmations: local_auth.Context):
 
 
 async def routine_stop(team_id: str, run_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.stop(team_id, run_id)))
+    return await _relay(lambda: manage.stop(team_id, run_id))
 
 
 async def routine_diagnostics(team_id: str, run_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.diagnostics(team_id, run_id)))
+    return await _relay(lambda: manage.diagnostics(team_id, run_id))
 
 
 async def routine_run_steps(team_id: str, run_id: str, snapshot: str, offset: str):
-    return _no_store(
-        await run_in_threadpool(team_http.response, lambda: manage.run_steps(team_id, run_id, snapshot, offset))
-    )
+    return await _relay(lambda: manage.run_steps(team_id, run_id, snapshot, offset))
 
 
 async def routine_plan_steps(team_id: str, routine_id: str, revision: str, offset: str):
-    return _no_store(
-        await run_in_threadpool(team_http.response, lambda: manage.plan_steps(team_id, routine_id, revision, offset))
-    )
+    return await _relay(lambda: manage.plan_steps(team_id, routine_id, revision, offset))
 
 
 async def routine_resume(team_id: str, routine_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.resume(team_id, routine_id)))
+    return await _relay(lambda: manage.resume(team_id, routine_id))
 
 
 async def routine_pause(team_id: str, routine_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.pause(team_id, routine_id)))
+    return await _relay(lambda: manage.pause(team_id, routine_id))
 
 
 async def routine_card(team_id: str, incident_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.open_card(team_id, incident_id)))
+    return await _relay(lambda: manage.open_card(team_id, incident_id))
 
 
 async def routine_card_answer(team_id: str, incident_id: str, request: Request):
     body = await team_http.bounded_json_object(request)
-    response = await run_in_threadpool(team_http.response, lambda: manage.answer_card(team_id, incident_id, body))
-    # An answer made the Routine due again (Rodar now): the scheduler claims at once, not at its next interval.
-    scheduler = getattr(request.app.state, "routine_scheduler", None)
-    if response.status_code == 200 and scheduler is not None:
-        scheduler.wake()
-    return _no_store(response)
+    # An answer made the Routine due again (Rodar now).
+    return _wake_after(
+        request, await run_in_threadpool(team_http.response, lambda: manage.answer_card(team_id, incident_id, body))
+    )
 
 
 async def routine_proposal_confirm(team_id: str, proposal_id: str, request: Request):
     """Criar rotina: the session's one confirmation of a card; a created Routine is due soon, so the scheduler wakes."""
-    response = await run_in_threadpool(team_http.response, lambda: manage.confirm_proposal(team_id, proposal_id))
-    scheduler = getattr(request.app.state, "routine_scheduler", None)
-    if response.status_code == 200 and scheduler is not None:
-        scheduler.wake()
-    return _no_store(response)
+    return _wake_after(
+        request, await run_in_threadpool(team_http.response, lambda: manage.confirm_proposal(team_id, proposal_id))
+    )
 
 
 async def routine_proposal_revoke(team_id: str, proposal_id: str):
     """Cancelar: revoke a card."""
-    return _no_store(await run_in_threadpool(team_http.response, lambda: manage.revoke_proposal(team_id, proposal_id)))
+    return await _relay(lambda: manage.revoke_proposal(team_id, proposal_id))
 
 
 async def routine_challenge(team_id: str, run_id: str, request: Request):
     body = await team_http.bounded_json_object(request)
-    return _no_store(await run_in_threadpool(team_http.response, lambda: answer.open_challenge(team_id, run_id, body)))
+    return await _relay(lambda: answer.open_challenge(team_id, run_id, body))
 
 
 def human_route(authenticate: answer.Authenticate):
@@ -178,4 +183,4 @@ def human_route(authenticate: answer.Authenticate):
 
 
 async def routine_integrations(team_id: str, run_id: str):
-    return _no_store(await run_in_threadpool(team_http.response, lambda: answer.resume_integrations(team_id, run_id)))
+    return await _relay(lambda: answer.resume_integrations(team_id, run_id))
