@@ -23,10 +23,11 @@
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
+  import RoutineProposal from '$lib/RoutineProposal.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ChatDay from '$lib/ChatDay.svelte';
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
-  import { newerRoutineEntries } from '$lib/routine.js';
+  import { newerRoutineEntries, refusalWords } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
@@ -429,6 +430,8 @@
         ...(entry.clarification ? { clarification: entry.clarification } : {}),
         ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
         ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
+        ...(entry.routine_proposal ? { routineProposal: entry.routine_proposal } : {}),
+        ...(entry.routine_refusal ? { routineRefusal: entry.routine_refusal } : {}),
         // A reloaded message shows the files it carried as it did when sent, from their saved references.
         ...(entry.files
           ? {
@@ -1410,6 +1413,8 @@
           ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
           ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
           ...(incoming.restricted_actions ? { restricted: incoming.restricted_actions } : {}),
+          ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
+          ...(incoming.routine_refusal ? { routineRefusal: incoming.routine_refusal } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -2409,6 +2414,13 @@
                   {#if assistantTurn.restricted}
                     <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
                   {/if}
+                  <!-- A recording turn's Routine card, or why it made none; a reload shows the same card again. -->
+                  {#if assistantTurn.routineProposal}
+                    <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
+                      copy={$t('routine')} locale={$locale} />
+                  {:else if assistantTurn.routineRefusal}
+                    <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
+                  {/if}
                 </Message>
                 {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
                   <!-- An install that continues the requested task keeps showing that task's execution stages. -->
@@ -2799,6 +2811,11 @@
     font: 500 0.68rem/1.4 var(--shimpz-font-mono);
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
+  }
+  .routine-refusal {
+    margin: 0.6rem 0 0;
+    color: var(--shimpz-color-text-muted);
+    font-size: 0.85rem;
   }
   /* The time sits right after its author's name instead of across the message. */
   :global(.turns [data-slot="message-header"]) {
