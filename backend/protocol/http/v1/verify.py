@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 import payload
+import phrase
 import progress
 import supervisor
 import websocket
@@ -379,3 +380,16 @@ if set(choices) != set(routine.LOCALES) or any(
     for labels in choices.values()
 ):
     fail("the Routine output choices do not name each output once in every interface language")
+
+readings = vectors.get("routine_phrase", {})
+if not all(readings.get(name) for name in ("stated", "outputs", "zones", "team_asks")):
+    fail("routine phrase vectors are missing")
+if any(phrase.team_asks(case["text"]) is not case["asks"] for case in readings["team_asks"]):
+    fail("a routine phrase team_asks vector differs")
+for name, read, key in (
+    ("stated", phrase.stated, "schedules"),
+    ("outputs", phrase.outputs, "outputs"),
+    ("zones", phrase.zones, "zones"),
+):
+    if any(list(read(case["text"])) != case[key] for case in readings[name]):
+        fail(f"a routine phrase {name} vector differs")
