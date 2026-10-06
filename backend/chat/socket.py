@@ -80,14 +80,7 @@ _remember_challenge = connection.remember_challenge
 _forget_challenge = connection.forget_challenge
 _send_terminal_once = terminal_delivery.turn
 _send_sync_terminal_once = terminal_delivery.resumed
-
-
-async def _send_event(websocket: WebSocket, event: Mapping[str, object]) -> bool:
-    try:
-        await websocket.send_json(dict(event))
-    except WebSocketDisconnect, RuntimeError, OSError:
-        return False
-    return True
+_send_event = terminal_delivery.send
 
 
 async def _send_sync_event(

@@ -14,7 +14,8 @@ from history import store as history
 log = logging.getLogger("shimpz-admin")
 
 
-async def _send(websocket: WebSocket, event: Mapping[str, object]) -> bool:
+async def send(websocket: WebSocket, event: Mapping[str, object]) -> bool:
+    """Send one event, reporting a closed or failed socket as False."""
     try:
         await websocket.send_json(dict(event))
     except WebSocketDisconnect, RuntimeError, OSError:
@@ -47,7 +48,7 @@ async def turn(
         if (event.get("type") == "done" or finish_history) and active.history_id == connection.pending_history_id:
             connection.pending_history_id = None
     active.terminal_sent = True
-    if not await _send(websocket, projected):
+    if not await send(websocket, projected):
         connection.closed = True
         return False
     return True
@@ -72,7 +73,7 @@ async def resumed(
         else:
             connection.pending_history_id = None
     connection.sync_terminal_sent = True
-    if not await _send(websocket, projected):
+    if not await send(websocket, projected):
         connection.closed = True
         return False
     return True
