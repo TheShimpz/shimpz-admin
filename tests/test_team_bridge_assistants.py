@@ -842,6 +842,21 @@ def _run_asgi_probe(scenario: str) -> None:
     """Fresh-process route probe: real env, store, session, ASGI middleware and HTTP bridge."""
     admin_app, token = _probe_session()
 
+    def request(method: str, path: str, payload: bytes, **options: object) -> dict[str, object]:
+        status, body = asyncio.run(_asgi_request(admin_app, method, path, payload, token=token, **options))
+        return {"status": status, "body": body}
+
+    async def json_requests(method: str, path: str, cases: tuple[tuple[str, object], ...]) -> dict[str, object]:
+        results = {}
+        for key, payload in cases:
+            status, body = await _asgi_request(
+                admin_app, method, path, json.dumps(payload, separators=(",", ":")).encode(), token=token
+            )
+            results[key] = {"status": status, "body": body}
+        return results
+
+    boundary = "shimpz-admin-upload-boundary"
+    multipart = {"content-type": f"multipart/form-data; boundary={boundary}"}
     if scenario == "routes":
         output = _probe_routes(admin_app, token)
     elif scenario == "install-conflict":
@@ -849,100 +864,47 @@ def _run_asgi_probe(scenario: str) -> None:
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
             separators=(",", ":"),
         ).encode()
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "POST",
-                "/api/teams/team_1/assistants",
-                payload,
-                token=token,
-            )
-        )
-        output = {"status": status, "body": body}
+        output = request("POST", "/api/teams/team_1/assistants", payload)
     elif scenario == "team-create":
-
-        async def create_requests():
-            results = {}
-            for key, payload in (
-                ("unsupported_field", {"name": "Marketing"}),
-                ("non_string", {"team_name": 123}),
-                ("valid", {"team_name": "Marketing"}),
-            ):
-                status, body = await _asgi_request(
-                    admin_app,
-                    "POST",
-                    "/api/teams",
-                    json.dumps(payload, separators=(",", ":")).encode(),
-                    token=token,
-                )
-                results[key] = {"status": status, "body": body}
-            return results
-
-        output = asyncio.run(create_requests())
+        output = asyncio.run(
+            json_requests(
+                "POST",
+                "/api/teams",
+                (
+                    ("unsupported_field", {"name": "Marketing"}),
+                    ("non_string", {"team_name": 123}),
+                    ("valid", {"team_name": "Marketing"}),
+                ),
+            )
+        )
     elif scenario == "team-delete":
-
-        async def delete_requests():
-            results = {}
-            for key, payload in (
-                ("malformed", {"team_name": "Marketing", "password": "test-admin-password", "extra": True}),
-                ("wrong_password", {"team_name": "Marketing", "password": "wrong-admin-password"}),
-                ("wrong_name", {"team_name": "Not Marketing", "password": "test-admin-password"}),
-                ("valid", {"team_name": "Marketing", "password": "test-admin-password"}),
-            ):
-                status, body = await _asgi_request(
-                    admin_app,
-                    "DELETE",
-                    "/api/teams/team_1",
-                    json.dumps(payload, separators=(",", ":")).encode(),
-                    token=token,
-                )
-                results[key] = {"status": status, "body": body}
-            return results
-
-        output = asyncio.run(delete_requests())
+        output = asyncio.run(
+            json_requests(
+                "DELETE",
+                "/api/teams/team_1",
+                (
+                    ("malformed", {"team_name": "Marketing", "password": "test-admin-password", "extra": True}),
+                    ("wrong_password", {"team_name": "Marketing", "password": "wrong-admin-password"}),
+                    ("wrong_name", {"team_name": "Not Marketing", "password": "test-admin-password"}),
+                    ("valid", {"team_name": "Marketing", "password": "test-admin-password"}),
+                ),
+            )
+        )
     elif scenario == "file-upload":
-        boundary = "shimpz-admin-upload-boundary"
         payload = _multipart_file_body(boundary, b"Team private data")
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "POST",
-                "/api/teams/team_1/files",
-                payload,
-                token=token,
-                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
-            )
-        )
-        output = {"status": status, "body": body}
+        output = request("POST", "/api/teams/team_1/files", payload, headers=multipart)
     elif scenario == "malformed-file":
-        boundary = "shimpz-admin-upload-boundary"
         payload = f"--{boundary}\r\nNoColonHeader\r\n\r\nx\r\n--{boundary}--\r\n".encode()
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "POST",
-                "/api/teams/team_1/files",
-                payload,
-                token=token,
-                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
-            )
-        )
-        output = {"status": status, "body": body}
+        output = request("POST", "/api/teams/team_1/files", payload, headers=multipart)
     elif scenario == "oversized-file":
-        boundary = "shimpz-admin-upload-boundary"
         payload = _multipart_file_body(boundary, b"small")
-        status, body = asyncio.run(
-            _asgi_request(
-                admin_app,
-                "POST",
-                "/api/teams/team_1/files",
-                payload,
-                token=token,
-                headers={"content-type": f"multipart/form-data; boundary={boundary}"},
-                content_length=admin_app.team_files.MAX_MULTIPART_BODY_BYTES + 1,
-            )
+        output = request(
+            "POST",
+            "/api/teams/team_1/files",
+            payload,
+            headers=multipart,
+            content_length=admin_app.team_files.MAX_MULTIPART_BODY_BYTES + 1,
         )
-        output = {"status": status, "body": body}
     elif scenario == "concurrent-session":
 
         async def concurrent_requests():
