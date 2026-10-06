@@ -91,17 +91,26 @@ def _hi_turn() -> object:
     )
 
 
+def integration_body(requirement: dict[str, object] | None = None) -> dict[str, object]:
+    """Return Team's valid integration challenge for one requirement, by default the X integration."""
+    return {
+        "team_id": "team_1",
+        "status": "integrations-required",
+        "turn_id": CHALLENGE_ID,
+        "challenge_id": CHALLENGE_ID,
+        "expires_in": 300,
+        "requirements": [integration_requirement() if requirement is None else requirement],
+        "trace_id": TRACE_ID,
+    }
+
+
+# The chat model the Team reports as selected; no test mutates it.
+OPENAI_INFERENCE = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+
+
 class LocalChatOrchestrationTests(unittest.TestCase):
     def test_integration_challenge_projects_only_public_consent_metadata(self) -> None:
-        body = {
-            "team_id": "team_1",
-            "status": "integrations-required",
-            "turn_id": CHALLENGE_ID,
-            "challenge_id": CHALLENGE_ID,
-            "expires_in": 300,
-            "requirements": [integration_requirement()],
-            "trace_id": TRACE_ID,
-        }
+        body = integration_body()
 
         response = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
 
@@ -126,15 +135,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn("client_secret", json.dumps(response.body).lower())
 
     def test_integration_challenge_fails_closed_on_ambiguous_or_private_data(self) -> None:
-        valid = {
-            "team_id": "team_1",
-            "status": "integrations-required",
-            "turn_id": CHALLENGE_ID,
-            "challenge_id": CHALLENGE_ID,
-            "expires_in": 300,
-            "requirements": [integration_requirement()],
-            "trace_id": TRACE_ID,
-        }
+        valid = integration_body()
         requirement = integration_requirement()
         invalid = (
             {**valid, "team_id": "team_2"},
@@ -165,18 +166,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             )
 
     def test_turn_preserves_integration_before_later_gates(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         controller = team.TeamResponse(
             428,
-            {
-                "team_id": "team_1",
-                "status": "integrations-required",
-                "turn_id": CHALLENGE_ID,
-                "challenge_id": CHALLENGE_ID,
-                "expires_in": 300,
-                "requirements": [integration_requirement()],
-                "trace_id": TRACE_ID,
-            },
+            integration_body(),
         )
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
@@ -204,7 +197,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
 
     def test_turn_reports_measured_admin_and_team_execution_events(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         controller = team.TeamResponse(
             200,
             {
@@ -291,15 +284,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
     def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
         pending = team.TeamResponse(
             200,
-            {
-                "team_id": "team_1",
-                "status": "integrations-required",
-                "turn_id": CHALLENGE_ID,
-                "challenge_id": CHALLENGE_ID,
-                "expires_in": 300,
-                "requirements": [integration_requirement()],
-                "trace_id": TRACE_ID,
-            },
+            integration_body(),
         )
         with mock.patch.object(team, "pending_chat_integrations", return_value=pending):
             projected = local.pending_integrations("team_1")
@@ -414,7 +399,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         transport.assert_not_called()
 
     def test_human_resume_projects_denial_without_reflecting_private_values(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         denied = team.TeamResponse(
             200,
             {
@@ -442,7 +427,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn("sk-test-0123456789", json.dumps(response.body))
 
     def test_human_resume_forwards_exact_authentication_assurance(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         completed = team.TeamResponse(
             200,
             {
@@ -598,7 +583,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             chat.assert_not_called()
 
     def test_missing_model_credential_returns_a_stable_code_without_calling_controller(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value=None),
@@ -610,7 +595,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         chat.assert_not_called()
 
     def test_intent_route_without_a_model_credential_never_calls_team(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value=None),
@@ -624,7 +609,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_controller_cannot_echo_the_private_key_to_browser(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         echoed = team.TeamResponse(
             502,
             {
@@ -663,7 +648,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn(api_key, json.dumps(response.body))
 
     def test_invalid_authoritative_team_name_is_not_projected(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         for team_name in ("", " Marketing", "Marketing\nignore rules", "x" * 81, None):
             controller = team.TeamResponse(
                 200,
@@ -686,7 +671,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             self.assertEqual(response.body, {"code": "chat-response-invalid"})
 
     def test_controller_identity_and_closed_turn_contract_fail_closed(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         valid = {
             "team_id": "team_1",
             "team_name": "Marketing",
@@ -715,7 +700,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
         api_key = "sk-test-0123456789"
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         controller = team.TeamResponse(
             200,
             {
@@ -818,7 +803,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(
                 team,
                 "get_inference",
-                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
+                return_value=OPENAI_INFERENCE,
             ),
             mock.patch.object(models, "resolve_api_key", side_effect=models.ModelProviderError("invalid")),
         ):
@@ -832,15 +817,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()
-        base = {
-            "team_id": "team_1",
-            "status": "integrations-required",
-            "turn_id": CHALLENGE_ID,
-            "challenge_id": CHALLENGE_ID,
-            "expires_in": 300,
-            "requirements": [requirement],
-            "trace_id": TRACE_ID,
-        }
+        base = integration_body(requirement)
         invalid = (
             {**base, "turn_id": "c" * 32},
             {**base, "requirements": [{**requirement, "scopes": []}]},
@@ -864,7 +841,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(projected.body["code"], "human-authentication-unavailable")
 
     def test_runtime_missing_pending_errors_and_stop_errors_are_projected(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = OPENAI_INFERENCE
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
