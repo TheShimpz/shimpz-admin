@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import sys
 import tempfile
@@ -109,17 +110,19 @@ class PrivateChatTransportTests(unittest.TestCase):
     def test_key_uses_private_header_while_json_remains_team_contract(self) -> None:
         api_key = "sk-test-0123456789"
         progress: list[dict[str, object]] = []
+        payload = {
+            "message": "Hello",
+            "files": [],
+            "assistant_ids": ["shimpz-cloudflare"],
+            "locale": "en",
+            "timezone": None,
+            "conversation": [],
+            "request": REQUEST,
+        }
+        # A deep copy crosses, so the expected body below is never the object the bridge forwarded.
         team.chat(
             "team_1",
-            {
-                "message": "Hello",
-                "files": [],
-                "assistant_ids": ["shimpz-cloudflare"],
-                "locale": "en",
-                "timezone": None,
-                "conversation": [],
-                "request": REQUEST,
-            },
+            copy.deepcopy(payload),
             provider="openai",
             api_key=api_key,
             progress=progress.append,
@@ -127,18 +130,7 @@ class PrivateChatTransportTests(unittest.TestCase):
 
         request = _ControllerHandler.request
         self.assertEqual(request["path"], "/v1/teams/team_1/chat")
-        self.assertEqual(
-            json.loads(request["body"]),
-            {
-                "message": "Hello",
-                "files": [],
-                "assistant_ids": ["shimpz-cloudflare"],
-                "locale": "en",
-                "timezone": None,
-                "conversation": [],
-                "request": REQUEST,
-            },
-        )
+        self.assertEqual(json.loads(request["body"]), payload)
         self.assertEqual(request["headers"]["x-shimpz-model-provider"], "openai")
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], api_key)
         self.assertEqual(request["headers"]["accept"], "application/x-ndjson")
