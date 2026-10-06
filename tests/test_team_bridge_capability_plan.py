@@ -98,34 +98,19 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
         self.assertNotIn(API_KEY, repr(response))
 
     def test_intent_route_rejects_added_or_missing_payload_fields_before_team(self) -> None:
+        # The complete body lacks only its locale; each variant adds or omits fields explicitly.
+        without_locale = {
+            "objective": "hello",
+            "expected_intent": None,
+            "candidates": [],
+            "lifecycle_reference": None,
+            "conversation": [],
+        }
         invalid = (
             {"objective": "hello", "expected_intent": None},
-            {
-                "objective": "hello",
-                "expected_intent": None,
-                "candidates": [],
-                "lifecycle_reference": None,
-                "conversation": [],
-                "locale": "pt",
-                "extra": True,
-            },
-            {
-                "objective": "hello",
-                "expected_intent": None,
-                "candidates": [],
-                "lifecycle_reference": None,
-                "conversation": [],
-                "locale": "pt",
-                "pending_intent": "assistant-uninstall",
-            },
-            {
-                "objective": "hello",
-                "expected_intent": None,
-                "candidates": [],
-                "lifecycle_reference": None,
-                "conversation": [],
-                "language_exemplar": "hello",
-            },
+            {**without_locale, "locale": "pt", "extra": True},
+            {**without_locale, "locale": "pt", "pending_intent": "assistant-uninstall"},
+            {**without_locale, "language_exemplar": "hello"},
             [],
         )
         for payload in invalid:
