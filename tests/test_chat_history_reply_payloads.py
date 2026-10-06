@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import sqlite3
 import sys
@@ -168,6 +169,16 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
                 turn_id = self._admitted()
                 self.assertTrue(history.append_reply("marketing", turn_id, {"type": "done", **projected.body}))
                 self.assertEqual(history.page("marketing")["entries"][-1][name], value)
+
+    def test_a_copy_of_a_frozen_projection_is_plain_data(self) -> None:
+        projected = local.PublicResponse(200, {"items": [{"a": 1}], "name": "x"}).body
+        for copied in (copy.copy(projected), copy.deepcopy(projected)):
+            with self.subTest(copied=type(copied).__name__):
+                self.assertIs(type(copied), dict)
+                self.assertEqual(copied, {"items": [{"a": 1}], "name": "x"})
+        items = projected["items"]
+        self.assertIs(type(copy.copy(items)), list)
+        self.assertIs(type(copy.deepcopy(items)[0]), dict)
 
     def test_a_reply_keeps_its_routine_card_or_refusal_for_reload(self) -> None:
         vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
