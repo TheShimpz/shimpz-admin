@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from chat.connection import Connection, Turn, request_identity, valid_sent_request
@@ -18,15 +17,12 @@ from team import bridge as team
 
 from chat import assistant_proposal, lifecycle
 
-SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
-ErrorTerminal = Callable[[object, str], dict[str, object]]
-
 
 @dataclass(frozen=True, slots=True)
 class Operations:
-    send_event: SendEvent
+    send_event: plan_delivery.SendEvent
     plan: plan_delivery.Operations
-    error_terminal: ErrorTerminal
+    error_terminal: plan_delivery.ErrorTerminal
 
 
 def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:

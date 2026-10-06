@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from chat.connection import Connection, Turn
@@ -17,15 +16,12 @@ from team import bridge as team
 
 from chat import assistant_route
 
-FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
-ErrorTerminal = Callable[[object, str], dict[str, object]]
-
 
 @dataclass(frozen=True, slots=True)
 class Operations:
     plan: plan_delivery.Operations
-    finish_turn: FinishTurn
-    error_terminal: ErrorTerminal
+    finish_turn: plan_delivery.FinishTurn
+    error_terminal: plan_delivery.ErrorTerminal
 
 
 async def _deliver_guidance(
