@@ -176,6 +176,11 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             self._authorization_url().replace("https://shimpz.com/", "https://shimpz.com.evil.example/"),
             self._authorization_url() + "#access_token=must-not-cross",
             self._authorization_url(callback="loopback"),
+            # The URL splitter drops an embedded newline and keeps raw whitespace and an empty path parameter;
+            # the handoff refuses each raw value, so the projection must refuse it too.
+            self._authorization_url().replace("/start?", "/st\nart?"),
+            self._authorization_url().replace("+", " "),
+            self._authorization_url().replace("/start?", "/start;?"),
         ):
             _TeamHandler.response_body = json.dumps(
                 {"authorization_url": invalid_url, "trace_id": "f" * 32},

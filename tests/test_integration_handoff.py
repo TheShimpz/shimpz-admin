@@ -159,7 +159,15 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             admin_session=self.session,
             callback_mode="loopback",
         )
-        for invalid in ("http://shimpz.com/api/oauth/cloudflare/start", "https://evil.example/start", "", None):
+        for invalid in (
+            "http://shimpz.com/api/oauth/cloudflare/start",
+            "https://evil.example/start",
+            "",
+            None,
+            self.authorization_url.replace("/start?", "/st\nart?"),
+            self.authorization_url.replace("+", " "),
+            self.authorization_url.replace("/start?", "/start;?"),
+        ):
             with self.subTest(invalid=invalid), self.assertRaises(handoff_store.OAuthHandoffError):
                 self.store.authorize(second.token, invalid)
         self.store.authorize(second.token, self.authorization_url)
