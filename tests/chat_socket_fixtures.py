@@ -159,6 +159,11 @@ def completed_turn(reply: str) -> object:
     )
 
 
+def done_frame(reply: str) -> dict[str, object]:
+    """The fresh browser terminal frame for the Marketing Team's completed turn."""
+    return {"type": "done", "team_id": "team_1", "team_name": "Marketing", "reply": reply, "clarification": None}
+
+
 def integration_requirements() -> list[dict[str, object]]:
     return [
         {

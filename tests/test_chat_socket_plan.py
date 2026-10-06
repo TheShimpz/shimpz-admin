@@ -71,13 +71,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Resuma esta conversa"))
                 self.assertEqual(
                     await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Done.",
-                        "clarification": None,
-                    },
+                    chat_socket_fixtures.done_frame("Done."),
                 )
                 submit_plan.assert_not_called()
                 turn.assert_called_once()

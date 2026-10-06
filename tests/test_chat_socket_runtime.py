@@ -11,7 +11,7 @@ from unittest import mock
 import uvicorn
 import websockets
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import completed_turn
+from tests.chat_socket_fixtures import completed_turn, done_frame
 from websockets.exceptions import InvalidStatus
 
 
@@ -69,13 +69,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
                         self.assertEqual((sent["type"], len(sent["request"].split("."))), ("sent", 3))
                         self.assertEqual(
                             json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
-                            {
-                                "type": "done",
-                                "team_id": "team_1",
-                                "team_name": "Marketing",
-                                "reply": "hello from the Team",
-                                "clarification": None,
-                            },
+                            done_frame("hello from the Team"),
                         )
                         with self.assertRaises(TimeoutError):
                             await asyncio.wait_for(websocket.recv(), timeout=0.05)

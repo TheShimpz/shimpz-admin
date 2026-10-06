@@ -302,13 +302,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 )
                 self.assertEqual(
                     await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Natural terminal.",
-                        "clarification": None,
-                    },
+                    chat_socket_fixtures.done_frame("Natural terminal."),
                 )
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)
@@ -470,13 +464,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 )
                 self.assertEqual(
                     await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Done.",
-                        "clarification": None,
-                    },
+                    chat_socket_fixtures.done_frame("Done."),
                 )
                 await websocket.disconnect()
 

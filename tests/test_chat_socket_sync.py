@@ -118,13 +118,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Retry"))
                 self.assertEqual(
                     await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Fresh turn.",
-                        "clarification": None,
-                    },
+                    chat_socket_fixtures.done_frame("Fresh turn."),
                 )
                 turn.assert_called_once()
                 await websocket.disconnect()
@@ -163,13 +157,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 )
                 self.assertEqual(
                     await websocket.next_json(),
-                    {
-                        "type": "done",
-                        "team_id": "team_1",
-                        "team_name": "Marketing",
-                        "reply": "Published.",
-                        "clarification": None,
-                    },
+                    chat_socket_fixtures.done_frame("Published."),
                 )
                 resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
                 await websocket.disconnect()
