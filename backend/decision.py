@@ -29,17 +29,7 @@ class DecisionProviderUnavailableError(RuntimeError):
 
 
 def _verified_secret() -> str | None:
-    record = state.decision_credential()
-    if record is None:
-        return None
-    verified_at = record.get("verified_at")
-    secret = record.get("api_key")
-    if type(verified_at) is not int or verified_at <= 0 or not isinstance(secret, str):
-        return None
-    try:
-        return models.canonical_api_key(secret)
-    except models.ModelProviderError:
-        return None
+    return models.verified_secret(state.decision_credential())
 
 
 def status() -> dict[str, object]:

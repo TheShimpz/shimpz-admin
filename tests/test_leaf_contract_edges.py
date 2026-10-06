@@ -42,7 +42,7 @@ class ModelEdgeTests(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "unsupported model credentials"),
         ):
             models.status()
-        self.assertIsNone(models._verified_secret({"verified_at": 1, "api_key": "short"}))
+        self.assertIsNone(models.verified_secret({"verified_at": 1, "api_key": "short"}))
 
     def test_connection_construction_failure_is_unavailable(self) -> None:
         with (

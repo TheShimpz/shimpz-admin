@@ -104,7 +104,8 @@ def _masked(secret: str) -> str:
     return f"••••{secret[-4:]}"
 
 
-def _verified_secret(record: object) -> str | None:
+def verified_secret(record: object) -> str | None:
+    """Return a record's canonical key only once a provider has verified it."""
     if not isinstance(record, dict):
         return None
     verified_at = record.get("verified_at")
@@ -173,7 +174,7 @@ def status() -> dict[str, list[dict[str, object]]]:
     providers = []
     for provider, metadata in PROVIDERS.items():
         record = records.get(provider)
-        secret = _verified_secret(record)
+        secret = verified_secret(record)
         configured = secret is not None
         providers.append(
             {
@@ -214,4 +215,4 @@ def resolve_api_key(provider: object) -> str | None:
     """Resolve cleartext for a future backend-to-controller chat hand-off; never expose as HTTP."""
     selected = canonical_provider(provider)
     record = _records().get(selected)
-    return _verified_secret(record)
+    return verified_secret(record)
