@@ -129,7 +129,7 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
         self.assertEqual(turn(routine_question=question).websocket_event("team_1")["routine_question"], question)
         leaked = {**card, "name": "sk-test-0123456789abcdef"}
         for extra in (
-            {"routine_proposal": {**card, "rehearsal": not card["rehearsal"]}},
+            {"routine_proposal": {**card, "clamped": False}},
             {"routine_proposal": leaked},
             {"routine_refusal": {"code": "Bad Code"}},
             {"routine_proposal": card, "routine_refusal": {"code": "routine-recording-empty"}},

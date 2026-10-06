@@ -162,7 +162,10 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         self.assertEqual(history.page("marketing")["entries"][-1]["routine_refusal"], refusal)
         ambiguous = {
             "code": "routine-binding-ambiguous",
-            "options": [{"value": "a" * 32, "label": "shimpz.com"}, {"value": "b" * 32, "label": "shimpz.com"}],
+            "options": [
+                {"value": '"' + "a" * 32 + '"', "label": "shimpz.com"},
+                {"value": '"' + "b" * 32 + '"', "label": "shimpz.com"},
+            ],
             "value": None,
         }
         questioned = self._admitted()
