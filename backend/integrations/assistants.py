@@ -11,7 +11,6 @@ from team import transport
 
 from chat import payloads, store_catalog
 from integrations import cloudflare
-from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
@@ -25,13 +24,6 @@ MAX_INTEGRATION_SCOPES = 32
 _OAUTH_BINDING_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _OAUTH_CLAIM_RE = re.compile(r"^[0-9a-f]{64}$")
 _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
-
-
-def _canonical_team_id(value: object) -> str:
-    canonical = team_contract.canonical_team_id(value)
-    if canonical is None:
-        raise TeamRequestError("team id must be a canonical lowercase identifier")
-    return canonical
 
 
 def canonical_oauth_binding(value: object) -> str:
@@ -161,7 +153,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
 
 
 def list_assistant_integrations(team_id: object) -> TeamResponse:
-    canonical_id = _canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     return _project_integration_inventory(
         transport._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
         canonical_id,
@@ -233,7 +225,7 @@ def start_local_assistant_integration_authorization(
     session_binding: object,
     callback_mode: object,
 ) -> TeamResponse:
-    canonical_id = _canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_assistant_id(integration_id)
@@ -258,7 +250,7 @@ def cancel_local_assistant_integration_authorization(
     challenge_id: object,
     session_binding: object,
 ) -> TeamResponse:
-    canonical_id = _canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
     response = transport._call(
@@ -285,7 +277,7 @@ def disconnect_assistant_integration(
     assistant_id: object,
     integration_id: object,
 ) -> TeamResponse:
-    canonical_id = _canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_assistant_id(integration_id)
     response = transport._call(
@@ -328,7 +320,7 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
             raise ValueError("invalid OAuth callback response")
         body = {
             "connected": True,
-            "team_id": _canonical_team_id(response.body["team_id"]),
+            "team_id": payloads.canonical_team_id(response.body["team_id"]),
             "assistant_id": payloads.canonical_assistant_id(response.body["assistant_id"]),
             "integration_id": payloads.canonical_assistant_id(response.body["integration_id"]),
         }

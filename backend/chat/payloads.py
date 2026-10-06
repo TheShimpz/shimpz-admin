@@ -23,6 +23,13 @@ MAX_HUMAN_CHOICE_CHARS = 128
 CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale", "timezone"})
 
 
+def canonical_team_id(value: object) -> str:
+    canonical = team_contract.canonical_team_id(value)
+    if canonical is None:
+        raise TeamRequestError("team id must be a canonical lowercase identifier")
+    return canonical
+
+
 def canonical_assistant_id(value: object) -> str:
     canonical = team_contract.canonical_assistant_id(value)
     if canonical is None:

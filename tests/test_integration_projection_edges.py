@@ -89,7 +89,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
 
     def test_scalar_and_nested_canonicalizers_reject_invalid_values(self) -> None:
         operations = (
-            lambda: assistants._canonical_team_id("Bad"),
+            lambda: assistants.payloads.canonical_team_id("Bad"),
             lambda: assistants.canonical_oauth_binding("bad"),
             lambda: assistants.canonical_oauth_claim("bad"),
             lambda: assistants._integration_scopes([]),

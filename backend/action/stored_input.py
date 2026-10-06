@@ -7,7 +7,6 @@ import logging
 from team import transport
 
 from chat import payloads
-from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as team_http
 
 TeamResponse = transport.TeamResponse
@@ -16,13 +15,6 @@ MAX_STORED_INPUTS = 128
 STATUSES = frozenset({"missing", "stored"})
 
 log = logging.getLogger("shimpz-admin")
-
-
-def _team_id(value: object) -> str:
-    canonical = team_contract.canonical_team_id(value)
-    if canonical is None:
-        raise TeamRequestError("team id must be a canonical lowercase identifier")
-    return canonical
 
 
 def _trace(value: object) -> bool:
@@ -69,7 +61,7 @@ def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
 
 
 def list_assistant_stored_inputs(team_id: object) -> TeamResponse:
-    canonical = _team_id(team_id)
+    canonical = payloads.canonical_team_id(team_id)
     return _project_inventory(
         transport._call("GET", f"/v1/teams/{canonical}/assistant-stored-inputs"),
         canonical,
@@ -81,7 +73,7 @@ def clear_assistant_stored_input(
     assistant_id: object,
     stored_input_id: object,
 ) -> TeamResponse:
-    canonical = _team_id(team_id)
+    canonical = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     stored_input = payloads.canonical_assistant_id(stored_input_id)
     response = transport._call(

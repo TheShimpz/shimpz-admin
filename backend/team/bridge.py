@@ -55,11 +55,7 @@ def to_team_id(team_name: object) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", ascii_name).strip("_")[:40]
 
 
-def canonical_team_id(value: object) -> str:
-    canonical = team_contract.canonical_team_id(value)
-    if canonical is None:
-        raise TeamRequestError("team id must be a canonical lowercase identifier")
-    return canonical
+canonical_team_id = payloads.canonical_team_id
 
 
 def canonical_team_name(value: object) -> str:
