@@ -206,6 +206,23 @@ test("a recording turn's reply and its stored history carry at most one Routine 
   }
 });
 
+test("every interface language offers exactly the Team protocol's output choices, in its order", async () => {
+  const { readFileSync } = await import('node:fs');
+  // The protocol mirror is the authority (ADR-0101): Team reads the chosen label back to its choice.
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine.py', import.meta.url), 'utf8');
+  const kinds = [...source.match(/OUTPUT_KINDS = \(([^)]*)\)/u)[1].matchAll(/"([a-z]+)"/gu)].map(([, kind]) => kind);
+  const block = source.match(/OUTPUT_CHOICES = \{\n([\s\S]*?)\n\}/u)[1];
+  const protocol = {};
+  for (const [, locale, body] of block.matchAll(/"([a-z]{2})": \{([^}]*)\}/gu)) {
+    protocol[locale] = Object.fromEntries([...body.matchAll(/"([a-z]+)": "((?:[^"\\]|\\.)*)"/gu)].map(([, kind, label]) => [kind, label]));
+  }
+  assert.deepEqual(kinds, ['show', 'changes', 'none', 'chain']);
+  assert.deepEqual(Object.keys(protocol).sort(), Object.keys(routineMessages).sort());
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.deepEqual(catalog.proposal.questions.output.answers, kinds.map((kind) => protocol[locale][kind]), locale);
+  }
+});
+
 test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
   // Each option carries its target's exact JSON text: a string with its quotes, an integer with every digit.
   const target = (text, label = 'shimpz.com') => ({ value: text, label });
@@ -270,6 +287,11 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   assert.deepEqual(questionWords(valid[4], en).answers.map((answer) => answer.text), [quoted(huge), huge]);
   assert.equal(questionTarget(huge).shown, huge);
   assert.equal(questionTarget(quoted(huge)).kind, 'string');
+  // What each run does with its result is answered with exactly the Team protocol's four labels, in its order.
+  const output = questionWords({ code: 'routine-output-unstated', options: [], value: null }, en);
+  assert.deepEqual(output.answers.map((answer) => answer.text), [
+    'Show every run', 'Show only when it changes', "Don't show", 'Use it in other Actions',
+  ]);
   const budget = questionWords(valid[1], en);
   assert.match(budget.question, /\b9\b/u);
   assert.deepEqual(budget.answers, [{ label: 'Every 9 seconds', text: 'Every 9 seconds' }]);

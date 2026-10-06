@@ -1639,7 +1639,8 @@ export function parseRoutineRefusal(value) {
 }
 
 // What Team asks the person before a recording can become a card (ADR-0101): the span is kept, and the person's answer
-// is an ordinary send. Only an ambiguous binding offers targets; an interval over budget carries the shortest that fits.
+// is an ordinary send. Only an ambiguous binding offers targets; an interval over budget carries the shortest that fits;
+// what to do with each run's result is answered with the Team protocol's own four labels, which Team reads back.
 export const QUESTION_CODES = [
   'routine-schedule-unstated',
   'routine-interval-over-budget',
@@ -1647,6 +1648,7 @@ export const QUESTION_CODES = [
   'routine-binding-unsourced',
   'routine-work-split',
   'routine-work-rerun',
+  'routine-output-unstated',
 ];
 const MAX_QUESTION_OPTIONS = 8;
 const MAX_QUESTION_OPTION_CHARS = 120;
@@ -1704,6 +1706,7 @@ const QUESTION_KEYS = {
   'routine-binding-unsourced': 'unsourced',
   'routine-work-split': 'split',
   'routine-work-rerun': 'rerun',
+  'routine-output-unstated': 'output',
 };
 
 /**
