@@ -9,7 +9,6 @@ from chat.connection import Connection, Turn
 from chat.projection import error_terminal
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
-from history import store as history
 
 log = logging.getLogger("shimpz-admin")
 
@@ -41,7 +40,8 @@ async def turn(
             event,
             finish_history=finish_history,
         )
-    except history.HistoryUnavailableError, ValueError:
+    except Exception:
+        # Whatever stops the commit, the turn still ends with a terminal the browser sees, never a silence.
         log.exception("Admin chat reply history commit failed")
         projected = error_terminal(503, "Admin chat history is unavailable")
     else:
@@ -67,7 +67,7 @@ async def resumed(
     if finish_history:
         try:
             await history_delivery.resumed_terminal(connection.pending_history_id, event)
-        except history.HistoryUnavailableError, ValueError:
+        except Exception:
             log.exception("Admin resumed chat reply history commit failed")
             projected = error_terminal(503, "Admin chat history is unavailable")
         else:

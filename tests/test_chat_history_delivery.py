@@ -554,6 +554,34 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
+    def test_any_commit_failure_still_ends_the_turn_with_a_visible_terminal(self) -> None:
+        """A reply that history cannot commit, for whatever reason, is an error the browser sees, never a silence."""
+
+        async def scenario() -> None:
+            for failure in (TypeError("frozen"), RuntimeError("unexpected"), KeyError("missing")):
+                with self.subTest(failure=type(failure).__name__):
+                    websocket = mock.AsyncMock()
+                    connection = socket._Connection()
+                    turn = socket._Turn(None, "chat", history_id="a" * 32)
+                    with mock.patch.object(
+                        terminal_delivery.history_delivery, "terminal", new=mock.AsyncMock(side_effect=failure)
+                    ):
+                        self.assertTrue(await terminal_delivery.turn(websocket, connection, turn, {"type": "done"}))
+                    self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
+                    self.assertTrue(turn.terminal_sent)
+                    resumed = socket._Connection(pending_history_id="a" * 32)
+                    with mock.patch.object(
+                        terminal_delivery.history_delivery,
+                        "resumed_terminal",
+                        new=mock.AsyncMock(side_effect=failure),
+                    ):
+                        self.assertTrue(
+                            await terminal_delivery.resumed(websocket, resumed, {"type": "done"}, finish_history=True)
+                        )
+                    self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
+
+        asyncio.run(scenario())
+
 
 if __name__ == "__main__":
     unittest.main()
