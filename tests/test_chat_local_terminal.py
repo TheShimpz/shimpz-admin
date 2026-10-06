@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from functools import partial
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +26,36 @@ TRACE_ID = "a" * 32
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 
+def _turn(reply: str, message: str, locale: str = "en", **extra: object) -> object:
+    """Relay one Marketing reply, with these extra fields, that Team answered to Admin's local turn."""
+    controller = team.TeamResponse(
+        200,
+        {
+            "team_id": "team_1",
+            "team_name": "Marketing",
+            "reply": reply,
+            "clarification": None,
+            "trace_id": TRACE_ID,
+            **extra,
+        },
+    )
+    with (
+        mock.patch.object(
+            team,
+            "get_inference",
+            return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
+        ),
+        mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
+        mock.patch.object(team, "chat", return_value=controller),
+    ):
+        return local.turn(
+            "team_1",
+            {"message": message, "files": [], "assistant_ids": [], "locale": locale, "timezone": None},
+            (),
+            REQUEST,
+        )
+
+
 class LocalChatTerminalProjectionTests(unittest.TestCase):
     def test_relays_only_a_closed_turn_usage_free_of_forbidden_values(self) -> None:
         usage = {
@@ -32,33 +63,7 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
             "models": [{"provider": "openai", "model": "gpt-6.1-sol", "input_tokens": 12000, "output_tokens": 480}],
         }
 
-        def turn(**extra: object) -> object:
-            controller = team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": "Two zones are active.",
-                    "clarification": None,
-                    "trace_id": TRACE_ID,
-                    **extra,
-                },
-            )
-            with (
-                mock.patch.object(
-                    team,
-                    "get_inference",
-                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
-                ),
-                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
-                mock.patch.object(team, "chat", return_value=controller),
-            ):
-                return local.turn(
-                    "team_1",
-                    {"message": "List zones", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    (),
-                    REQUEST,
-                )
+        turn = partial(_turn, "Two zones are active.", "List zones")
 
         relayed = turn(usage=usage)
         self.assertEqual(relayed.body["usage"], usage)
@@ -95,30 +100,7 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
             "default_index": 0,
         }
 
-        def turn(**extra: object) -> object:
-            body = {
-                "team_id": "team_1",
-                "team_name": "Marketing",
-                "reply": "Listei os registros.",
-                "clarification": None,
-                "trace_id": TRACE_ID,
-                **extra,
-            }
-            with (
-                mock.patch.object(
-                    team,
-                    "get_inference",
-                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
-                ),
-                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
-                mock.patch.object(team, "chat", return_value=team.TeamResponse(200, body)),
-            ):
-                return local.turn(
-                    "team_1",
-                    {"message": "Cria uma rotina", "files": [], "assistant_ids": [], "locale": "pt", "timezone": None},
-                    (),
-                    REQUEST,
-                )
+        turn = partial(_turn, "Listei os registros.", "Cria uma rotina", "pt")
 
         relayed = turn(routine_proposal=card)
         self.assertEqual(relayed.websocket_event("team_1")["routine_proposal"], card)
@@ -153,32 +135,8 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
             reply: str = "Qual período?\n\n1. Hoje ✓\n2. Semana — Sete dias.",
             proposal: object = None,
         ) -> object:
-            controller = team.TeamResponse(
-                200,
-                {
-                    "team_id": "team_1",
-                    "team_name": "Marketing",
-                    "reply": reply,
-                    "clarification": clarification,
-                    **({} if proposal is None else {"routine_proposal": proposal}),
-                    "trace_id": TRACE_ID,
-                },
-            )
-            with (
-                mock.patch.object(
-                    team,
-                    "get_inference",
-                    return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
-                ),
-                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
-                mock.patch.object(team, "chat", return_value=controller),
-            ):
-                return local.turn(
-                    "team_1",
-                    {"message": "Quais modelos?", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    (),
-                    REQUEST,
-                )
+            routine = {} if proposal is None else {"routine_proposal": proposal}
+            return _turn(reply, "Quais modelos?", clarification=clarification, **routine)
 
         self.assertEqual(turn(asked).body["clarification"], asked)
         # A retired Routine proposal field is never relayed; a Routine is created from the message (ADR-0092).
