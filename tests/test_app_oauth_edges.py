@@ -33,6 +33,10 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
         cls.environment = app_import.environment(root)
         cls.admin_app = app_import.load_app(root)
 
+    def _body(self, **payload: object):
+        """Patch the bounded JSON body the route reads with exactly this object."""
+        return mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload))
+
     @staticmethod
     def preparation():
         return types.SimpleNamespace(token="f" * 64, session_binding="b" * 43)
@@ -42,11 +46,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
         unavailable = self.admin_app.team.TeamResponse(503, {"error": "offline"})
         preparation = self.preparation()
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_bounded_json_object",
-                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
-            ),
+            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "issue", return_value=preparation),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "discard") as discard,
@@ -61,11 +61,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
         discard.assert_called_once_with(preparation.token)
 
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_bounded_json_object",
-                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
-            ),
+            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
         ):
             self.assert_status(
@@ -74,11 +70,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
             )
 
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_bounded_json_object",
-                new=mock.AsyncMock(return_value={"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}),
-            ),
+            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
             mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
             mock.patch.object(
                 self.admin_app.OAUTH_HANDOFFS,
@@ -93,53 +85,37 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
 
     def test_completion_and_cancellation_validate_shape_identity_and_handoff_state(self) -> None:
         request = _request()
-        with mock.patch.object(
-            self.admin_app,
-            "_bounded_json_object",
-            new=mock.AsyncMock(return_value={}),
-        ):
+        with self._body():
             self.assert_status(
                 400,
                 self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, request),
             )
-        with mock.patch.object(
-            self.admin_app,
-            "_bounded_json_object",
-            new=mock.AsyncMock(return_value={"completion_code": "code"}),
-        ):
+        with self._body(completion_code="code"):
             self.assert_status(
                 400,
                 self.admin_app.team_assistant_integration_complete("Bad", "a" * 32, request),
             )
 
-        with mock.patch.object(
-            self.admin_app,
-            "_bounded_json_object",
-            new=mock.AsyncMock(return_value={"unexpected": True}),
-        ):
+        with self._body(unexpected=True):
             self.assert_status(
                 400,
                 self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request),
             )
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            self._body(),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel", return_value=None),
         ):
             response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request))
         self.assertEqual(response.status_code, 204)
 
-        with mock.patch.object(
-            self.admin_app,
-            "_bounded_json_object",
-            new=mock.AsyncMock(return_value={}),
-        ):
+        with self._body():
             self.assert_status(
                 400,
                 self.admin_app.team_assistant_integration_cancel("Bad", "a" * 32, request),
             )
 
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            self._body(),
             mock.patch.object(
                 self.admin_app.OAUTH_HANDOFFS,
                 "cancel",
@@ -153,7 +129,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
 
         rejected = self.admin_app.team.TeamResponse(409, {"error": "not pending"})
         with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={})),
+            self._body(),
             mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel", return_value="binding"),
             mock.patch.object(
                 self.admin_app.integrations,
