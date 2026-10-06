@@ -3,7 +3,6 @@
 
 export const routineResultMessages = {
   en: {
-    open: "Response",
     finished: "Finished",
     updated: "Last update",
     steps: "Steps",
@@ -27,7 +26,6 @@ export const routineResultMessages = {
     copyFailed: "Could not copy",
   },
   pt: {
-    open: "Resposta",
     finished: "Terminou",
     updated: "Última atualização",
     steps: "Etapas",
@@ -51,7 +49,6 @@ export const routineResultMessages = {
     copyFailed: "Não foi possível copiar",
   },
   es: {
-    open: "Respuesta",
     finished: "Terminó",
     updated: "Última actualización",
     steps: "Pasos",
@@ -75,7 +72,6 @@ export const routineResultMessages = {
     copyFailed: "No se pudo copiar",
   },
   zh: {
-    open: "响应",
     finished: "完成于",
     updated: "最近更新",
     steps: "步骤",
@@ -99,7 +95,6 @@ export const routineResultMessages = {
     copyFailed: "无法复制",
   },
   fr: {
-    open: "Réponse",
     finished: "Terminée",
     updated: "Dernière mise à jour",
     steps: "Étapes",
@@ -123,7 +118,6 @@ export const routineResultMessages = {
     copyFailed: "Copie impossible",
   },
   de: {
-    open: "Antwort",
     finished: "Beendet",
     updated: "Letzte Aktualisierung",
     steps: "Schritte",
@@ -147,7 +141,6 @@ export const routineResultMessages = {
     copyFailed: "Kopieren nicht möglich",
   },
   ja: {
-    open: "応答",
     finished: "終了",
     updated: "最終更新",
     steps: "ステップ",
@@ -171,7 +164,6 @@ export const routineResultMessages = {
     copyFailed: "コピーできませんでした",
   },
   ar: {
-    open: "الاستجابة",
     finished: "انتهى",
     updated: "آخر تحديث",
     steps: "الخطوات",

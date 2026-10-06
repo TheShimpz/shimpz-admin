@@ -874,11 +874,6 @@ export function fillParts(template, values) {
   });
 }
 
-/** The time of day a minute starts, for the viewer's locale and timezone. */
-export function minuteWords(value, locale) {
-  return new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(value));
-}
-
 /** The localized message for a Routine failure code. */
 export function routineErrorMessage(error, copy) {
   const code = error instanceof RoutineError ? error.code : '';
@@ -1020,6 +1015,8 @@ export function parseRoutineRunEntry(value) {
     createdAt: value.created_at,
     detail: structuredClone(value.detail),
     version: value.version,
+    // Team does not report a Routine run's usage yet; its timeline line shows one only once a notice carries it.
+    usage: null,
   };
 }
 
@@ -1071,71 +1068,18 @@ export function summaryChain(plan, assistantName, copy, locale) {
   return `${chain} › ${fill(plural(copy.rest, plan.more, locale), { count: new Intl.NumberFormat(locale).format(plan.more) })}`;
 }
 
-/** A sentence's first letter in upper case for a locale. */
-function capitalized(value, locale) {
-  return value.charAt(0).toLocaleUpperCase(locale) + value.slice(1);
-}
-
 /**
- * One Routine notice of a Team's transcript (ADR-0086) as an activity-timeline entry, in plain text only: its tone,
- * a short status phrase, the notice's time of day in the viewer's own clock, detail lines, and an error code shown
- * apart. `assistantName` names an Assistant id in words. A held or frozen step reads as "Step n of total", its position
- * in the plan the run carried out, and a failed run says the step it stopped at.
+ * One Routine notice of a Team's transcript (ADR-0086) as an activity-timeline entry, in plain text only: its tone, a
+ * short status phrase, and the notice's time of day in the viewer's own clock.
  */
-export function routineNotice(entry, { copy, locale, assistantName }) {
+export function routineNotice(entry, { copy, locale }) {
   const notice = copy.notice;
-  const detail = entry.detail;
-  const placed = (item) => fill(notice.stepOf, {
-    n: item.step, total: item.steps, step: stepChain([[item.assistant_id, item.action]], assistantName),
-  });
-  const chain = detail.plan ? [summaryChain(detail.plan, assistantName, notice, locale)]
-    : detail.actions?.length ? [stepChain(detail.actions, assistantName)] : [];
   const status = {
     'scope-changed': notice.status.scopeChanged,
     'user-skipped': notice.status.userSkipped,
-    frozen: detail.request_kind === 'human' ? notice.status.frozenHuman : notice.status.frozenIntegrations,
+    frozen: entry.detail.request_kind === 'human' ? notice.status.frozenHuman : notice.status.frozenIntegrations,
   }[entry.outcome] ?? notice.status[entry.outcome];
-  let lines = chain;
-  switch (entry.outcome) {
-    case 'created':
-    case 'changed': {
-      const schedule = scheduleWords(detail.schedule, copy.schedule, locale);
-      lines = [`${schedule} · ${detail.timezone}`, ...chain, dispositionWords(detail.output, copy.plan)];
-      break;
-    }
-    case 'done':
-    case 'recovered':
-      if (detail.output && detail.output.state !== 'shown') lines = [...chain, notice.output[detail.output.state]];
-      break;
-    case 'healthy':
-      lines = [fill(plural(notice.healthy, detail.runs, locale), { runs: detail.runs, minute: minuteWords(entry.createdAt, locale) })];
-      break;
-    case 'skipped':
-      lines = [fill(plural(notice.skipped, detail.missed, locale), { missed: detail.missed })];
-      break;
-    case 'held': lines = detail.assistant_id === null ? [] : [placed(detail)]; break;
-    case 'failed':
-      if (detail.step !== null) lines = [...chain, fill(notice.stoppedAt, { n: detail.step, total: detail.steps })];
-      break;
-    case 'paused': lines = [capitalized(copy.run.pauseReasons[detail.reason] ?? '', locale)]; break;
-    case 'user-skipped': lines = [notice.setAside[detail.choice]]; break;
-    case 'scope-changed':
-      lines = [fill(notice.scopeChanged, {
-        assistants: new Intl.ListFormat(locale, { type: 'conjunction' }).format(detail.assistants.map(assistantName)),
-      })];
-      break;
-    case 'frozen': lines = [placed(detail)]; break;
-    default: break;
-  }
-  return {
-    tone: NOTICE_TONES[entry.outcome],
-    status,
-    time: clockTime(Date.parse(entry.createdAt), locale),
-    lines,
-    code: entry.outcome === 'failed' ? detail.code : '',
-    // A shown result, rendered apart as plain text: Team's bounded, redacted projection, never Markdown or HTML.
-    output: detail.output?.state === 'shown' ? detail.output : null,
-  };
+  return { tone: NOTICE_TONES[entry.outcome], status, time: clockTime(Date.parse(entry.createdAt), locale) };
 }
 
 /** What a Routine does with each run's result, in words: the shown step is named by its place in the plan. */

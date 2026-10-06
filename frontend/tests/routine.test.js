@@ -13,7 +13,6 @@ import {
   deleteRoutine,
   fillRoutineCopy,
   instantWords,
-  minuteWords,
   isQuote,
   isSchedule,
   isTimezone,
@@ -348,7 +347,6 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
-  assert.match(minuteWords('2026-10-05T12:01:00Z', 'en'), /:01/);
   assert.equal(fillRoutineCopy('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
   assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
@@ -452,6 +450,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     createdAt: RUN_ENTRY.created_at,
     detail: RUN_ENTRY.detail,
     version: RUN_ENTRY.version,
+    usage: null,
   });
   const valid = [
     { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 120 } } },
@@ -535,69 +534,43 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
 });
 
 // A notice as the transcript's timeline shows it, in Portuguese.
-function noticeShown(entry, options) {
-  return routineNotice(parseRoutineRunEntry(entry), {
-    copy: routineMessages.pt, locale: 'pt', assistantName: () => 'Shimpz Cloudflare', ...options,
-  });
+function noticeShown(entry) {
+  return routineNotice(parseRoutineRunEntry(entry), { copy: routineMessages.pt, locale: 'pt' });
 }
 
-test('every Routine notice reads as a status phrase colored by meaning, its time, and one quiet detail line', () => {
-  const chain = 'Shimpz Cloudflare · List zones › List DNS records';
-  const zones = 'Shimpz Cloudflare · List zones';
+test('every Routine notice reads as one line: a status phrase colored by meaning and its time', () => {
   const cases = [
-    // A Routine that shows its result carries Team's projection apart from its words (ADR-0092, 2026-10-05).
-    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída', [zones], '', SHOWN_OUTPUT]],
-    [{ outcome: 'done', detail: { plan: SUMMARY, output: { ...UNSHOWN, state: 'unchanged' } } },
-      ['healthy', 'concluída', [zones, 'Nada mudou desde o último resultado mostrado.'], '']],
-    [{ outcome: 'recovered', detail: { plan: SUMMARY, output: UNSHOWN } },
-      ['healthy', 'concluída após recuperação', [zones, 'Não foi possível mostrar o resultado.'], '']],
-    [{ outcome: 'done', detail: { plan: TWO, output: null } }, ['healthy', 'concluída', [chain], '']],
-    // A repeated Action reads once with its count (ADR-0092 amendment, 2026-10-05, scale).
-    [{ outcome: 'recovered', detail: { plan: LONG, output: null } },
-      ['healthy', 'concluída após recuperação', ['Shimpz Cloudflare · List zones › List DNS records ×118 › Purge cache'], '']],
-    [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } },
-      ['healthy', 'em execução', [`9 execuções concluídas no minuto das ${minuteWords(RUN_ENTRY.created_at, 'pt')}`], '']],
-    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], step: null, steps: null } },
-      ['danger', 'falhou', [zones], 'assistant-rpc-failed']],
-    [{ outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [], step: null, steps: null } }, ['danger', 'falhou', [], 'assistant-rpc-failed']],
-    // A failed run says the step it stopped at.
+    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
+    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
+    [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } }, ['healthy', 'em execução']],
     [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], step: 37, steps: 120 } },
-      ['danger', 'falhou', [zones, 'Parou na etapa 37 de 120'], 'plan-input-type']],
-    [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada', [], '']],
-    // A held step is placed among the steps of the plan its run carried out.
-    [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro', ['Etapa 2 de 3: Shimpz Cloudflare · Replace DNS record'], '']],
-    [{ outcome: 'held', detail: UNPLACED }, ['danger', 'parou com erro', [], '']],
-    [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['waiting', 'pausada', ['O limite de recuperação acabou.'], '']],
-    [{ outcome: 'frozen', detail: { request_kind: 'human', ...STEP } },
-      ['waiting', 'aguardando aprovação', ['Etapa 2 de 3: Shimpz Cloudflare · Replace DNS record'], '']],
-    [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } },
-      ['waiting', 'aguardando conexão', ['Etapa 2 de 3: Shimpz Cloudflare · Replace DNS record'], '']],
-    [{ outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } },
-      ['waiting', 'pausada', ['Seus Assistants mudaram (Shimpz Cloudflare). Peça de novo no chat para atualizá-la.'], '']],
-    [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } },
-      ['neutral', 'interrompida', [zones], '']],
-    [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'recreate' } },
-      ['neutral', 'deixada de lado', ['A rotina foi recriada. O que essa execução pode ter alterado não foi conferido.'], '']],
-    [{ outcome: 'skipped', run_id: null, detail: { missed: 1 } }, ['neutral', 'execuções perdidas', ['1 execução agendada não aconteceu'], '']],
-    [{ outcome: 'skipped', run_id: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas', ['3 execuções agendadas não aconteceram'], '']],
+      ['danger', 'falhou']],
+    [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada']],
+    [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro']],
+    [{ outcome: 'held', detail: UNPLACED }, ['danger', 'parou com erro']],
+    [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['waiting', 'pausada']],
+    [{ outcome: 'frozen', detail: { request_kind: 'human', ...STEP } }, ['waiting', 'aguardando aprovação']],
+    [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } }, ['waiting', 'aguardando conexão']],
+    [{ outcome: 'scope-changed', run_id: null, detail: { assistants: ['shimpz-cloudflare'] } }, ['waiting', 'pausada']],
+    [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
+    [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'recreate' } }, ['neutral', 'deixada de lado']],
+    [{ outcome: 'skipped', run_id: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas']],
     [{ outcome: 'created', run_id: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 500 }, plan: TWO } },
-      ['neutral', 'criada', ['A cada 5 s após cada execução, até 500 por dia · America/Sao_Paulo', chain, 'Mostra o resultado da etapa 1 a cada execução'], '']],
-    [{ outcome: 'changed', run_id: null, detail: { ...DEFINED, output: { mode: 'none', step: null } } },
-      ['neutral', 'atualizada', ['Toda segunda-feira às 09:00 · America/Sao_Paulo', zones, 'Não mostra nada após uma execução'], '']],
+      ['neutral', 'criada']],
+    [{ outcome: 'changed', run_id: null, detail: { ...DEFINED, output: { mode: 'none', step: null } } }, ['neutral', 'atualizada']],
   ];
   const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
   // The notice keeps its seconds (created at 12:01:07 UTC).
   assert.match(time, /^\d{2}:01:07$/);
-  for (const [change, [tone, status, lines, code, output = null], options] of cases) {
-    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }, options), { tone, status, time, lines, code, output }, change.outcome);
+  for (const [change, [tone, status]] of cases) {
+    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status, time }, change.outcome);
   }
-  // Every outcome has its status and detail words in every Admin language.
+  // Every outcome has its status words in every Admin language.
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.equal(typeof catalog.notice.waiting, 'string', locale);
     for (const [change] of cases) {
-      const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), { copy: catalog, locale, assistantName: (id) => id });
-      assert.ok(shown.status, `${locale} ${change.outcome}`);
-      assert.ok(shown.lines.every((line) => line && !/\{\w+\}/u.test(line)), `${locale} ${change.outcome}`);
+      const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), { copy: catalog, locale });
+      assert.ok(shown.status && !/\{\w+\}/u.test(shown.status), `${locale} ${change.outcome}`);
     }
   }
 });
@@ -1073,7 +1046,6 @@ test('a recorded failure is explained by its likely cause and never guessed from
       assert.ok(['undefined', 'string'].includes(typeof catalog.card.causes[cause]), `${locale} ${cause}`);
     }
     assert.equal(typeof catalog.card.causes.unknown, 'string', locale);
-    for (const choice of ['run', 'recreate', 'delete']) assert.equal(typeof catalog.notice.setAside[choice], 'string', locale);
   }
 });
 
@@ -1334,7 +1306,7 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   assert.deepEqual(outputLabels(['a-b', 'a_b']), ['a-b', 'a_b']);
   assert.equal(omittedWords(routineMessages.en.notice.output, 1200, 'en'), '1,200 more');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    for (const key of ['label', 'unchanged', 'unavailable', 'empty', 'yes', 'no', 'redacted', 'truncated']) {
+    for (const key of ['empty', 'yes', 'no', 'redacted', 'truncated']) {
       assert.equal(typeof catalog.notice.output[key], 'string', `${locale} ${key}`);
     }
     for (const mode of ['show', 'changes', 'chain', 'none']) {

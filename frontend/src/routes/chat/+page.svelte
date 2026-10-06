@@ -2267,6 +2267,7 @@
                     <RoutineRunEntry
                       entry={assistantTurn.routineRun}
                       copy={$t('routine')}
+                      usageCopy={copy.usage}
                       teamId={selectedTeamId}
                       teamName={assistantTurn.author}
                       joinAbove={!opensDay && !userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}

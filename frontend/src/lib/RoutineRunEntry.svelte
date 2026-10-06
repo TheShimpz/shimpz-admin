@@ -2,24 +2,23 @@
   import { Button } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
-  import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import { locale } from '$lib/i18n.js';
   import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineRunView from '$lib/RoutineRunView.svelte';
   import { loadTeamRoutines, routineContext } from '$lib/routineContext.js';
-  import { humanizeId, routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
+  import { routineErrorMessage, routineNotice, routineStatus } from '$lib/routine.js';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
 
   // One Routine outcome in a Team's transcript (ADR-0086, ADR-0092), or a Routine created or changed from the user's
-  // own message, as one entry of an activity timeline: the notice's time on the timeline's rail, the Routine's name and a
-  // status phrase colored by meaning, then one quiet line of detail. Consecutive notices share one thin rail through
-  // their times (`joinAbove`, `joinBelow`).
-  // It never carries an Action's raw input or result: a Routine that shows its result carries Team's bounded, redacted
-  // projection of it (ADR-0092 amendment, 2026-10-05, output). Every run's entry offers one link that opens the run in
-  // full instead of filling the timeline: Response when it shows a result, otherwise Steps, its own step records. It is
-  // not part of the Brain's conversation. Every name and value is plain text. The entry decides nothing: while its run
-  // waits for the person, its other action opens that Routine's panel, which is the decision itself.
-  let { entry, copy, teamId, teamName, joinAbove = false, joinBelow = false } = $props();
+  // own message, as one line of an activity timeline: the notice's time on the timeline's rail, the Routine's name, a
+  // status phrase colored by meaning, and the run's usage when its notice carries one, read by the chat's own usage
+  // formatter. Consecutive notices share one thin rail through their times (`joinAbove`, `joinBelow`).
+  // A run's name opens the run in full instead of filling the timeline: the result it shows, when it shows one, and its
+  // own step records with each step's parameters. A notice without a run keeps its name as text. It never carries an
+  // Action's raw input or result, and it is not part of the Brain's conversation. Every name and value is plain text.
+  // The entry decides nothing: while its run waits for the person, its other action opens that Routine's panel, which
+  // is the decision itself.
+  let { entry, copy, usageCopy, teamId, teamName, joinAbove = false, joinBelow = false } = $props();
 
   let listed = $derived($routineContext.get(teamId));
   let routine = $derived(listed?.routines.find((item) => item.routine_id === entry.routineId && !item.deleting));
@@ -34,6 +33,7 @@
   });
 
   let notice = $state();
+  let opener = $state();
   let panel = $state(false);
   let viewing = $state(false);
   let opening = $state(false);
@@ -62,25 +62,19 @@
     (notice?.querySelector('.open') ?? notice)?.focus();
   }
 
-  // Closing the run view returns focus to the link that opened it.
+  // Closing the run view returns focus to the name that opened it.
   async function closeView() {
     viewing = false;
     await tick();
-    notice?.querySelector('.response')?.focus();
+    opener?.focus();
   }
 
-  // Assistants are named in words: the catalog's title, or the humanized id until it is read.
-  $effect(() => { void loadAssistantNames(fetch); });
   // The Routine's short name: as Team lists it now, as the notice defined it, or else its request.
   let routineName = $derived(
     listed?.routines.find((item) => item.routine_id === entry.routineId)?.name ?? entry.detail.name ?? entry.quote,
   );
-  let shown = $derived(routineNotice(entry, {
-    copy,
-    locale: $locale,
-    assistantName: (id) => $assistantNames[id] ?? humanizeId(id),
-  }));
-  let details = $derived(shown.lines.length || !shown.code ? shown.lines : ['']);
+  let shown = $derived(routineNotice(entry, { copy, locale: $locale }));
+  let usage = $derived(entry.usage ? taskUsageSummary(entry.usage) : null);
 </script>
 
 <div
@@ -90,20 +84,19 @@
   tabindex="-1"
   bind:this={notice}
 >
-  <p class="head"><span class="name">{routineName}</span> <span class="status">{shown.status}</span></p>
+  <p class="head">
+    {#if entry.runId}
+      <Button class="name" size="sm" variant="ghost" type="button" aria-haspopup="dialog" bind:element={opener}
+        onclick={() => (viewing = true)}>{routineName}</Button>
+    {:else}
+      <span class="name">{routineName}</span>
+    {/if}
+    <span class="status">{shown.status}</span>
+    {#if usage}
+      <span class="usage" title={formatTaskUsageDetail(usage, $locale, usageCopy)}>{formatTaskUsage(usage, $locale, usageCopy)}</span>
+    {/if}
+  </p>
   <time class="time" datetime={entry.createdAt}>{shown.time}</time>
-  {#each details as line, index (index)}
-    <p class="detail">
-      {line}{#if shown.code && index === details.length - 1}{line ? ' ' : ''}<code class="code">{shown.code}</code>{/if}
-    </p>
-  {/each}
-  <!-- Every run opens in full: its result when it shows one, and always its own step records. -->
-  {#if entry.runId}
-    <p class="links">
-      <Button class="response" size="sm" variant="ghost" type="button" aria-haspopup="dialog"
-        onclick={() => (viewing = true)}>{#snippet icon()}<RoutineIcon name={shown.output ? 'reply' : 'step'} />{/snippet}{shown.output ? copy.result.open : copy.result.steps}</Button>
-    </p>
-  {/if}
   <!-- The button stays while the panel is open, so closing it returns focus here. -->
   {#if waiting || panel}
     <p class="wait">
@@ -134,8 +127,8 @@
 
 <style>
   /*
-   * A timeline entry, never a card: the notice's time sits on a thin rail at the start, the Routine's name and status
-   * read as one phrase beside it, and quieter detail follows. The rail is two hairline segments that stop short of the
+   * A timeline entry, never a card: the notice's time sits on a thin rail at the start, and the Routine's name, status,
+   * and usage read as one line beside it. The rail is two hairline segments that stop short of the
    * time, so consecutive notices read as one thread; the segment above reaches back across the gap between transcript
    * exchanges.
    */
@@ -187,7 +180,7 @@
     inset-block: calc(var(--head-line) - var(--rail-clearance)) 0;
   }
 
-  /* The name and status wrap as one phrase. */
+  /* The name, status, and usage wrap as one phrase. */
   .routine-run .head {
     width: 100%;
     margin: 0;
@@ -200,34 +193,54 @@
 
   .name { font-weight: 600; }
 
+  /* A run's name opens it in full and reads as a link: the name's own words, no frame, underlined on hover. */
+  .head :global(.shimpz-button.name) {
+    --button-color: var(--shimpz-color-text);
+    --button-border: transparent;
+    --button-hover-color: var(--shimpz-color-cyan);
+    --button-hover-bg: transparent;
+    max-width: 100%;
+    min-height: 0;
+    padding: 0;
+    border-width: 0;
+    font: 600 0.95rem/var(--head-line) var(--shimpz-font-sans);
+    letter-spacing: 0;
+    text-align: start;
+    text-transform: none;
+    text-underline-offset: 0.2em;
+    vertical-align: baseline;
+    clip-path: none;
+  }
+
+  .head :global(.shimpz-button.name:hover) {
+    box-shadow: none;
+    text-decoration: underline;
+  }
+
+  .head :global(.shimpz-button.name:focus-visible) { outline-offset: 2px; }
+
   .status {
     color: var(--tone);
     font-size: 0.875rem;
     white-space: nowrap;
   }
 
-  .routine-run .detail,
+  .usage {
+    color: var(--shimpz-color-text-dim);
+    font: 500 0.68rem/1 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .usage::before { content: '· '; }
+
   .routine-run .wait,
   .routine-run .result {
     margin: 0;
     font-size: 0.85rem;
     line-height: 1.5;
     white-space: normal;
-  }
-
-  .routine-run .detail {
-    color: var(--shimpz-color-text-muted);
-    overflow-wrap: anywhere;
-  }
-
-  .code {
-    display: inline-block;
-    padding: 0 0.375rem;
-    color: var(--shimpz-color-text-muted);
-    font: 0.72rem/1.45 var(--shimpz-font-mono);
-    vertical-align: 0.05em;
-    border: 1px solid var(--shimpz-color-border);
-    border-radius: 3px;
   }
 
   .routine-run .wait {
@@ -241,8 +254,7 @@
   .waiting { color: var(--shimpz-color-yellow); }
 
   /* The one action reads as a link: cyan words and a chevron, no frame. */
-  .wait :global(.shimpz-button.open),
-  .links :global(.shimpz-button.response) {
+  .wait :global(.shimpz-button.open) {
     --button-color: var(--shimpz-color-cyan);
     --button-border: transparent;
     --button-hover-color: var(--shimpz-color-text);
@@ -256,17 +268,14 @@
     clip-path: none;
   }
 
-  .wait :global(.shimpz-button.open:focus-visible),
-  .links :global(.shimpz-button.response:focus-visible) { outline-offset: 2px; }
-  .routine-run .links { margin: 0.125rem 0 0; }
-  .links :global(.routine-icon) { width: 0.95rem; height: 0.95rem; }
-  :global([dir='rtl']) .links :global(.routine-icon--reply) { transform: scaleX(-1); }
+  .wait :global(.shimpz-button.open:focus-visible) { outline-offset: 2px; }
 
   :global([dir='rtl']) .chevron { display: inline-block; transform: scaleX(-1); }
 
   .routine-run .result { color: var(--shimpz-color-text-dim); }
 
   @media (max-width: 40rem) {
-    .routine-run .head { font-size: 0.9rem; }
+    .routine-run .head,
+    .head :global(.shimpz-button.name) { font-size: 0.9rem; }
   }
 </style>
