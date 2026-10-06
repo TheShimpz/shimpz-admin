@@ -40,6 +40,7 @@ FAMILIES = {
     "routine_decision_record": routine_contract.canonical_decision_record,
     "routine_proposal": routine_contract.canonical_proposal,
     "routine_refusal": routine_contract.canonical_refusal,
+    "routine_question": routine_contract.canonical_question,
     "routine_proposal_answer": routine_contract.canonical_proposal_answer,
     "routine_diagnostics": routine_contract.canonical_diagnostics,
 }
