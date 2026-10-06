@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from team import bridge as team
@@ -24,29 +25,24 @@ def install_publication(team_id: str, assistant: store_catalog.CatalogAssistant)
             "source_digest": assistant.source_digest,
         },
     )
-    if not team.is_team_response(response):
-        return InstallResult(502)
-    if not 200 <= response.status < 300:
-        return InstallResult(response.status)
-    try:
-        installed = _install_body(response, assistant.assistant_id)
-    except ValueError:
-        return InstallResult(502)
-    return InstallResult(response.status, installed)
+    return _result(response, lambda admitted: _install_body(admitted, assistant.assistant_id))
 
 
 def install_local_snapshot(team_id: str, assistant: local_catalog.LocalAssistant) -> InstallResult:
     """Submit one exact staged image to Team's fresh-only Local lifecycle."""
     response = team.install_fresh_local_assistant(team_id, {"image_id": assistant.image_id})
+    return _result(response, lambda admitted: _local_install_body(admitted, assistant))
+
+
+def _result(response: object, installed: Callable[[team.TeamResponse], bool]) -> InstallResult:
     if not team.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
         return InstallResult(response.status)
     try:
-        installed = _local_install_body(response, assistant)
+        return InstallResult(response.status, installed(response))
     except ValueError:
         return InstallResult(502)
-    return InstallResult(response.status, installed)
 
 
 def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
