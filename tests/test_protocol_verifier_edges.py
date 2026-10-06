@@ -52,6 +52,7 @@ def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = N
             "routine",
             "strict_json",
             "supervisor",
+            "turn",
             "websocket",
         )
         with (

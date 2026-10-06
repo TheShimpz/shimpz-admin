@@ -80,7 +80,8 @@ COPY backend/team/assets.py backend/team/bridge.py backend/team/files.py backend
     backend/team/order.py backend/team/snapshots.py backend/team/summary.py backend/team/transport.py ./team/
 COPY backend/protocol/http/v1/identifiers.py backend/protocol/http/v1/payload.py backend/protocol/http/v1/progress.py \
     backend/protocol/http/v1/purpose.py backend/protocol/http/v1/routine.py backend/protocol/http/v1/strict_json.py \
-    backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
+    backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/turn.py backend/protocol/http/v1/websocket.py \
+    ./protocol/http/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --from=ui /w/build /app/frontend/build
 
