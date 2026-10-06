@@ -1,7 +1,7 @@
 import { parseFileDisclosure, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
-import { browserTimezone, parseRoutineProposal, parseRoutineRefusal } from './routine.js';
+import { browserTimezone, parseRoutineProposal, parseRoutineQuestion, parseRoutineRefusal } from './routine.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
@@ -1202,11 +1202,15 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
   throw new LocalApiError('The local chat response is invalid.');
 }
 
-// A recording turn's reply carries the card of the Routine it recorded or why it made none (ADR-0101): at most one, and
-// never beside a question.
-const ROUTINE_REPLIES = { routine_proposal: parseRoutineProposal, routine_refusal: parseRoutineRefusal };
+// A recording turn's reply carries the card of the Routine it recorded, what Team asks the person first, or why it made
+// none (ADR-0101): at most one, and never beside a clarification.
+const ROUTINE_REPLIES = {
+  routine_proposal: parseRoutineProposal,
+  routine_refusal: parseRoutineRefusal,
+  routine_question: parseRoutineQuestion,
+};
 
-/** A reply's Routine card or refusal in its closed form, or nothing; any other shape throws. */
+/** A reply's Routine card, question, or refusal in its closed form, or nothing; any other shape throws. */
 export function parseRoutineReply(value, clarification) {
   const present = Object.keys(ROUTINE_REPLIES).filter((key) => Object.hasOwn(value, key));
   if (present.length === 0) return {};

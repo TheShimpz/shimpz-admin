@@ -35,6 +35,13 @@ import {
   parseRunView,
   parseRoutineProposal,
   parseRoutineRefusal,
+  parseRoutineQuestion,
+  questionWords,
+  QUESTION_CODES,
+  isZoned,
+  dailyCap,
+  continuousCap,
+  displayZone,
   refusalWords,
   proposalInputWords,
   confirmRoutineProposal,
@@ -81,8 +88,9 @@ test('mirrors the schedule and timezone grammar', () => {
     { kind: 'daily', time: '23:59' },
     { kind: 'weekly', weekday: 6, time: '00:00' },
     { kind: 'monthly', day: 28, time: '12:30' },
-    { kind: 'continuous', gap: 5, cap: 1 },
-    { kind: 'continuous', gap: 86400, cap: 1000 },
+    { kind: 'continuous', gap: 5, cap: 17280 },
+    { kind: 'continuous', gap: 30, cap: 2880 },
+    { kind: 'continuous', gap: 86400, cap: 1 },
   ]) {
     assert.equal(isSchedule(schedule), true, JSON.stringify(schedule));
   }
@@ -101,6 +109,8 @@ test('mirrors the schedule and timezone grammar', () => {
     { kind: 'continuous', gap: 86401, cap: 10 },
     { kind: 'continuous', gap: 5, cap: 0 },
     { kind: 'continuous', gap: 5, cap: 1001 },
+    { kind: 'continuous', gap: 30, cap: 1000 },
+    { kind: 'continuous', gap: 5, cap: 17281 },
     { kind: 'continuous', gap: 5.5, cap: 10 },
     { kind: 'continuous', gap: 5 },
   ]) {
@@ -118,11 +128,11 @@ const PROPOSAL = Object.freeze({
   expires_at: '2026-10-05T12:16:07Z',
   replaces: null,
   name: 'DNS de shimpz.com',
-  schedule: { kind: 'continuous', gap: 30, cap: 1000 },
+  schedule: { kind: 'continuous', gap: 30, cap: 2880 },
   timezone: 'America/Sao_Paulo',
+  timezone_source: 'browser',
   next_runs: ['2026-10-05T12:01:37Z', '2026-10-05T12:02:07Z', '2026-10-05T12:02:37Z'],
-  daily_cap: 1000,
-  clamped: false,
+  daily_cap: 2880,
   output: { mode: 'show', when: null },
   steps: [
     { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
@@ -183,6 +193,98 @@ test("a recording turn's reply and its stored history carry at most one Routine 
   assert.deepEqual((await listChatHistory(page([{ ...reply, routine_refusal: refusal }]), 'marketing')).entries[0].routine_refusal, refusal);
   await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: null }]), 'marketing'));
   await assert.rejects(listChatHistory(page([{ ...reply, routine_proposal: PROPOSAL, routine_refusal: refusal }]), 'marketing'));
+  // What Team asks before a card travels and reloads the same way, never beside a card, a refusal, or a clarification.
+  const asked = { code: 'routine-schedule-unstated', options: [], value: null };
+  assert.deepEqual(parseChatEvent({ ...done, routine_question: asked }, 'team_1', 'Marketing').routine_question, asked);
+  assert.deepEqual((await listChatHistory(page([{ ...reply, routine_question: asked }]), 'marketing')).entries[0].routine_question, asked);
+  for (const invalid of [
+    { ...done, routine_question: asked, routine_refusal: refusal },
+    { ...done, routine_question: asked, clarification: question },
+    { ...done, routine_question: { ...asked, value: 30 } },
+  ]) {
+    assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'));
+  }
+});
+
+test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
+  const target = (value, label = 'shimpz.com') => ({ value, label });
+  const valid = [
+    { code: 'routine-schedule-unstated', options: [], value: null },
+    { code: 'routine-interval-over-budget', options: [], value: 9 },
+    { code: 'routine-binding-ambiguous', options: [target('a'.repeat(32)), target('b'.repeat(32))], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(42, null)], value: null },
+    ...QUESTION_CODES.filter((code) => !['routine-interval-over-budget'].includes(code))
+      .map((code) => ({ code, options: [], value: null })),
+  ];
+  for (const value of valid) assert.deepEqual(parseRoutineQuestion(structuredClone(value)), value);
+  for (const invalid of [
+    null,
+    { code: 'routine-other', options: [], value: null },
+    { code: 'routine-schedule-unstated', options: [target('a')], value: null },
+    { code: 'routine-schedule-unstated', options: [], value: 9 },
+    { code: 'routine-interval-over-budget', options: [], value: 4 },
+    { code: 'routine-interval-over-budget', options: [], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('a'), target('a')], value: null },
+    { code: 'routine-binding-ambiguous', options: Array.from({ length: 9 }, (_, index) => target(`v${index}`)), value: null },
+    { code: 'routine-binding-ambiguous', options: [{ value: 'a' }], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(2 ** 60, null)], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('a\u0000b')], value: null },
+    { code: 'routine-binding-ambiguous', options: [target('a', '')], value: null },
+    { code: 'routine-binding-ambiguous', options: [target(1.5, null)], value: null },
+    { code: 'routine-schedule-unstated', options: [], value: null, extra: 1 },
+  ]) {
+    assert.throws(() => parseRoutineQuestion(invalid), RoutineError);
+  }
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    const copy = catalog.proposal;
+    for (const value of valid) {
+      const words = questionWords(value, copy);
+      assert.ok(words.question.length > 0 && !/\{/u.test(words.question), `${locale} ${value.code}`);
+      assert.ok(words.answers.every((answer) => answer.length > 0 && !/\{/u.test(answer)), `${locale} ${value.code}`);
+    }
+    assert.deepEqual(questionWords(valid[0], copy).answers, copy.questions.schedule.answers);
+    assert.equal(questionWords({ code: 'routine-no-room', options: [], value: null }, copy).answers.length, 0);
+  }
+  const en = routineMessages.en.proposal;
+  assert.deepEqual(questionWords(valid[2], en).answers, [`shimpz.com (${'a'.repeat(32)})`, `shimpz.com (${'b'.repeat(32)})`]);
+  assert.deepEqual(questionWords(valid[3], en).answers, ['42']);
+  const budget = questionWords(valid[1], en);
+  assert.match(budget.question, /\b9\b/u);
+  assert.deepEqual(budget.answers, ['Every 9 seconds']);
+});
+
+test("a Routine's cap is its gap's whole day and its timezone is shown only when it has one", () => {
+  assert.equal(continuousCap(5), 17280);
+  assert.equal(continuousCap(30), 2880);
+  assert.equal(continuousCap(86400), 1);
+  assert.equal(dailyCap({ kind: 'continuous', gap: 30, cap: 2880 }), 2880);
+  assert.equal(dailyCap({ kind: 'hourly', every: 5 }), 5);
+  assert.equal(dailyCap({ kind: 'weekly', weekday: 0, time: '09:00' }), 1);
+  const continuous = { kind: 'continuous', gap: 30, cap: 2880 };
+  const daily = { kind: 'daily', time: '09:00' };
+  assert.equal(isZoned(daily, 'America/Sao_Paulo', 'browser'), true);
+  assert.equal(isZoned(daily, 'Europe/Paris', 'person'), true);
+  assert.equal(isZoned(continuous, 'UTC', 'none'), true);
+  for (const [schedule, zone, source] of [
+    [daily, 'UTC', 'none'],
+    [continuous, 'America/Sao_Paulo', 'none'],
+    [continuous, 'UTC', 'guess'],
+    [continuous, '../etc', 'browser'],
+    [null, 'UTC', 'browser'],
+  ]) {
+    assert.equal(isZoned(schedule, zone, source), false);
+  }
+  assert.equal(displayZone({ timezone: 'UTC', timezone_source: 'none' }), undefined);
+  assert.equal(displayZone({ timezone: 'America/Sao_Paulo', timezone_source: 'browser' }), 'America/Sao_Paulo');
+  // A card whose cap is not its schedule's, or with no zone but a run date, is refused.
+  assert.throws(() => parseRoutineProposal({ ...PROPOSAL, daily_cap: 1000 }), RoutineError);
+  assert.throws(() => parseRoutineProposal({ ...PROPOSAL, clamped: false }), RoutineError);
+  const clocked = { ...PROPOSAL.steps[0], inputs: [{ member: 'day', origin: 'clock', value: null, step: null, pointer: null, where: null, item: null }] };
+  assert.throws(
+    () => parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none', steps: [clocked, PROPOSAL.steps[1]] }),
+    RoutineError,
+  );
+  assert.equal(parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none' }).timezone_source, 'none');
 });
 
 test('a Routine card is admitted only whole, and its inputs say where each value comes from', () => {
@@ -244,6 +346,10 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   assert.equal(refusalWords(parseRoutineRefusal({ code: 'routine-secret-literal' }), copy.proposal), copy.proposal.refusals.secret);
   assert.equal(refusalWords({ code: 'plan-input-type' }, copy.proposal), copy.proposal.refusals.plan);
   assert.equal(refusalWords({ code: 'routine-something-new' }, copy.proposal), copy.proposal.refusals.generic);
+  for (const code of ['routine-recording-cyclic', 'routine-recording-conflict', 'routine-recording-unverified']) {
+    assert.equal(refusalWords({ code }, copy.proposal), copy.proposal.refusals.unverified);
+  }
+  assert.equal(refusalWords({ code: 'routine-recording-ambiguous' }, copy.proposal), copy.proposal.refusals.ambiguous);
   assert.throws(() => parseRoutineRefusal({ code: 'x', extra: 1 }), RoutineError);
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const words of Object.values(catalog.proposal.refusals)) assert.ok(words.length > 0, locale);
@@ -304,6 +410,7 @@ const ROUTINE = {
   output: { mode: 'show', step: 1, when: null },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
+  timezone_source: 'browser',
   assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
@@ -506,8 +613,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   }
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
   // A continuous Routine's pause and cap are numbers in the viewer's locale.
-  const continuous = { kind: 'continuous', gap: 5, cap: 1000 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s after each run, up to 1,000 a day');
+  const continuous = { kind: 'continuous', gap: 5, cap: 17280 };
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s after each run, up to 17,280 a day');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
@@ -556,6 +663,7 @@ const DEFINED = {
   output: { mode: 'show', step: 1, when: null },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
+  timezone_source: 'browser',
   state: 'active',
   permitted: { total: 1, changes: 0 },
   model: null,
@@ -756,7 +864,7 @@ test('every Routine notice reads as one line: a status phrase colored by meaning
     [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
     [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'delete' } }, ['neutral', 'deixada de lado']],
     [{ outcome: 'skipped', run_id: null, usage: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas']],
-    [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 500 }, plan: TWO } },
+    [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 17280 }, plan: TWO } },
       ['neutral', 'criada']],
     [{ outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'none', step: null, when: null } } }, ['neutral', 'atualizada']],
   ];
@@ -1412,7 +1520,7 @@ test("a Routine's status is its most urgent one", () => {
   const run = (status) => ({ run_id: 'b'.repeat(32), routine_id: routine.routine_id, status });
   const incident = { incident_id: 'c'.repeat(32), routine_id: routine.routine_id };
   assert.equal(routineStatus(routine), 'healthy');
-  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5, cap: 10 } }), 'continuous');
+  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5, cap: 17280 } }), 'continuous');
   assert.equal(routineStatus(routine, [run('leased')]), 'running');
   assert.equal(routineStatus(routine, [run('frozen')]), 'waiting');
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [run('frozen')]), 'paused');

@@ -123,12 +123,16 @@ export function matchClarificationAnswers(exchanges, liveAnswers, labelSets) {
   const sent = new Map();
   const originals = exchanges.map(clarifiedRequest);
   const answer = (later, index) => {
-    const { question } = exchanges[index].assistant.clarification;
-    const value = clarificationAnswer(exchanges[later].user?.text, originals[index], question, labelSets);
-    if (value === null) return false;
-    given.set(index, value);
-    sent.set(later, { question, answer: value });
-    return true;
+    // A question Admin words itself, such as a Routine question, may have been sent in any interface language.
+    const { question, questions = [question] } = exchanges[index].assistant.clarification;
+    for (const asked of questions) {
+      const value = clarificationAnswer(exchanges[later].user?.text, originals[index], asked, labelSets);
+      if (value === null) continue;
+      given.set(index, value);
+      sent.set(later, { question, answer: value });
+      return true;
+    }
+    return false;
   };
   const exchangeOf = new Map(exchanges.map((exchange, index) => [exchange.assistant?.renderKey, index]));
   exchanges.forEach((exchange, later) => {

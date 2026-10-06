@@ -24,10 +24,11 @@
   import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposal from '$lib/RoutineProposal.svelte';
+  import RoutineQuestion from '$lib/RoutineQuestion.svelte';
   import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
   import ChatDay from '$lib/ChatDay.svelte';
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
-  import { newerRoutineEntries, refusalWords } from '$lib/routine.js';
+  import { newerRoutineEntries, questionWords, refusalWords } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
@@ -300,13 +301,24 @@
     }
   }
 
+  // A Routine question is answered as a clarification is, worded by Admin in the interface language: an answer sent in
+  // any language closes it, so its question is matched in each.
+  function asClarification(exchange) {
+    const asked = exchange.assistant?.routineQuestion;
+    if (!asked) return exchange;
+    const question = questionWords(asked, $t('routine').proposal).question;
+    const questions = Object.values(messages).map(({ routine }) => questionWords(asked, routine.proposal).question);
+    return { ...exchange, assistant: { ...exchange.assistant, clarification: { question, questions } } };
+  }
+  let answerable = $derived(exchanges.map(asClarification));
+
   // Each question is answered by at most one later message that is exactly its composed request; see the module.
-  let clarificationAnswers = $derived(matchClarificationAnswers(exchanges, liveAnswers, CLARIFY_LABELS));
+  let clarificationAnswers = $derived(matchClarificationAnswers(answerable, liveAnswers, CLARIFY_LABELS));
 
   // While the latest reply asks a question nobody answered, the composer waits for that answer; the card sends it.
   let questionOpen = $derived.by(() => {
-    const last = exchanges.length - 1;
-    return last >= 0 && clarifiedRequest(exchanges[last]) !== null && !clarificationAnswers.given.has(last);
+    const last = answerable.length - 1;
+    return last >= 0 && clarifiedRequest(answerable[last]) !== null && !clarificationAnswers.given.has(last);
   });
   // Files join only a message that can be written now, for the Team whose Brain is ready to receive it.
   let attachmentsUnavailable = $derived(
@@ -432,6 +444,7 @@
         ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
         ...(entry.routine_proposal ? { routineProposal: entry.routine_proposal } : {}),
         ...(entry.routine_refusal ? { routineRefusal: entry.routine_refusal } : {}),
+        ...(entry.routine_question ? { routineQuestion: entry.routine_question } : {}),
         // A reloaded message shows the files it carried as it did when sent, from their saved references.
         ...(entry.files
           ? {
@@ -1415,6 +1428,7 @@
           ...(incoming.restricted_actions ? { restricted: incoming.restricted_actions } : {}),
           ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
           ...(incoming.routine_refusal ? { routineRefusal: incoming.routine_refusal } : {}),
+          ...(incoming.routine_question ? { routineQuestion: incoming.routine_question } : {}),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
@@ -2414,8 +2428,18 @@
                   {#if assistantTurn.restricted}
                     <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
                   {/if}
-                  <!-- A recording turn's Routine card, or why it made none; a reload shows the same card again. -->
-                  {#if assistantTurn.routineProposal}
+                  <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
+                  {#if assistantTurn.routineQuestion && exchange.user}
+                    <RoutineQuestion
+                      question={assistantTurn.routineQuestion}
+                      original={exchange.user.text}
+                      copy={$t('routine').proposal}
+                      clarifyCopy={$t('clarify')}
+                      answered={clarificationAnswers.given.get(index) ?? null}
+                      disabled={sendUnavailable}
+                      onanswer={(answer) => answerClarification(exchange, answer)}
+                    />
+                  {:else if assistantTurn.routineProposal}
                     <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
                       copy={$t('routine')} locale={$locale} />
                   {:else if assistantTurn.routineRefusal}

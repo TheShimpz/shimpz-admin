@@ -236,3 +236,34 @@ test('history without question cards matches nothing', () => {
   assert.equal(sent.size, 0);
   assert.equal(matchClarificationAnswers([], new Map(), [LABELS]).given.size, 0);
 });
+
+test('a question asked in several languages is answered by a message composed with any of them', () => {
+  const routine = { question: 'Com que frequência?', questions: ['Com que frequência?', 'How often?'] };
+  const english = composeClarifiedRequest(ASK, 'How often?', 'Every hour', LABELS);
+  const history = [exchange(0, ASK, routine), exchange(1, english)];
+  const { given, sent } = matchClarificationAnswers(history, new Map(), [LABELS]);
+  assert.deepEqual([...given], [[0, 'Every hour']]);
+  assert.deepEqual([...sent], [[1, { question: 'Com que frequência?', answer: 'Every hour' }]]);
+  const unrelated = matchClarificationAnswers([exchange(0, ASK, routine), exchange(1, answerTo('Hoje'))], new Map(), [LABELS]);
+  assert.equal(unrelated.given.size, 0);
+});
+
+test("every interface language composes answers with exactly the Team protocol's labels", async () => {
+  const { readFileSync } = await import('node:fs');
+  const { messages } = await import('../src/lib/messages.js');
+  // The protocol mirror is the authority (ADR-0101): Team reads the person's own lines out of a composed answer.
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/payload.py', import.meta.url), 'utf8');
+  const block = source.match(/CLARIFICATION_LABELS = \{\n([\s\S]*?)\n\}/u)[1];
+  const protocol = Object.fromEntries(
+    [...block.matchAll(/"([a-z]{2})": \{"question": "([^"]+)", "answer": "([^"]+)"\}/gu)]
+      .map(([, locale, question, answer]) => [locale, { question, answer }]),
+  );
+  assert.deepEqual(Object.keys(protocol).sort(), Object.keys(messages).sort());
+  for (const [locale, catalog] of Object.entries(messages)) {
+    assert.deepEqual(
+      { question: catalog.clarify.questionLabel, answer: catalog.clarify.answerLabel },
+      protocol[locale],
+      locale,
+    );
+  }
+});

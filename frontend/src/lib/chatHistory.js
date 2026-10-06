@@ -95,8 +95,10 @@ function messageEntry(value, suffix, status) {
   const used = assistant && Object.hasOwn(value, 'usage');
   // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
   const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
-  // A recording turn's Routine card or refusal is kept with its reply, so a reload shows it again (ADR-0101).
-  const routineKeys = assistant ? ['routine_proposal', 'routine_refusal'].filter((key) => Object.hasOwn(value, key)) : [];
+  // A recording turn's Routine card, question, or refusal is kept with its reply, so a reload shows it again (ADR-0101).
+  const routineKeys = assistant
+    ? ['routine_proposal', 'routine_refusal', 'routine_question'].filter((key) => Object.hasOwn(value, key))
+    : [];
   // A user message keeps references to the files it carried, never their content.
   const attached = !assistant && Object.hasOwn(value, 'files');
   const expected = assistant
