@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.delivery import sync as sync_delivery
 from team import bridge as team
 from tests.chat_socket_case import ChatDeliveryCase, resume_operations
-from tests.chat_socket_fixtures import human_challenge
+from tests.chat_socket_fixtures import human_challenge, human_response
 
 from chat import connection as chat_connection
 from chat import human, local, socket, task_resume
@@ -527,12 +527,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
             request = {"kind": "auth:password"}
             payload, assurance, rejection, failure = await human.response_payload(
-                {
-                    "type": "human-response",
-                    "challenge_id": "a" * 32,
-                    "decision": "submit",
-                    "value": "password",
-                },
+                human_response("password", challenge_id="a" * 32),
                 request,
                 authenticate,
             )
@@ -743,12 +738,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 await socket._deliver_human_response(websocket, connection, "team_1", future, progress, None)
             self.assertEqual(connection.pending_challenge_type, "human")
 
-            frame = {
-                "type": "human-response",
-                "challenge_id": "b" * 32,
-                "decision": "submit",
-                "value": True,
-            }
+            frame = human_response(True)
             busy = socket._Connection(active=socket._Turn(None, "chat"))
             await socket._dispatch_human_response(websocket, busy, "team_1", frame, authenticate)
 
@@ -775,12 +765,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         async def scenario() -> None:
             auth_request = human_challenge("auth:password").websocket_event("team_1")["request"]
-            frame = {
-                "type": "human-response",
-                "challenge_id": "b" * 32,
-                "decision": "submit",
-                "value": "password",
-            }
+            frame = human_response("password")
             payload, assurance, rejection, failure = await human.response_payload(
                 dict(frame),
                 auth_request,

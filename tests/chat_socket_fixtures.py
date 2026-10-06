@@ -37,6 +37,11 @@ def chat_frame(
     }
 
 
+def human_response(value: object, *, challenge_id: str = CHALLENGE_ID) -> dict[str, object]:
+    """Return one submitted human-response frame, as the Admin client sends it."""
+    return {"type": "human-response", "challenge_id": challenge_id, "decision": "submit", "value": value}
+
+
 def ordinary_route(chat_socket) -> concurrent.futures.Future[object]:
     """Return the closed structured route used by tests that exercise later socket stages."""
     future: concurrent.futures.Future[object] = concurrent.futures.Future()

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import unittest
+from collections.abc import Iterator
 from functools import partial
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge
+from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge, human_response
 
 from tests import chat_socket_fixtures
 
@@ -28,6 +30,15 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
         )
         self.completed = chat_socket_fixtures.completed_turn("Completed.")
 
+    @contextlib.contextmanager
+    def _human_turn(self, kind: str) -> Iterator[mock.MagicMock]:
+        """Pause the Local turn on one human challenge and yield the resume mock that completes it."""
+        with (
+            mock.patch.object(self.chat_socket.local, "turn", return_value=human_challenge(kind)),
+            mock.patch.object(self.chat_socket.local, "resume_human", return_value=self.completed) as resume,
+        ):
+            yield resume
+
     async def _open_challenge(self, kind: str) -> chat_socket_fixtures.Socket:
         websocket = await self._open()
         await websocket.send_json(chat_socket_fixtures.chat_frame("Continue"))
@@ -38,27 +49,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_approval_resumes_the_exact_pending_challenge(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("approval"),
-                ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_human",
-                    return_value=self.completed,
-                ) as resume,
-            ):
+            with self._human_turn("approval") as resume:
                 websocket = await self._open_challenge("approval")
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": True,
-                    }
-                )
+                await websocket.send_json(human_response(True))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 self.assertEqual(
                     resume.call_args.args[:2],
@@ -74,27 +67,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_supervisor_password_becomes_only_signed_boolean_assurance(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("auth:password"),
-                ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_human",
-                    return_value=self.completed,
-                ) as resume,
-            ):
+            with self._human_turn("auth:password") as resume:
                 websocket = await self._open_challenge("auth:password")
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "violet otter lantern quartz 92",
-                    }
-                )
+                await websocket.send_json(human_response("violet otter lantern quartz 92"))
                 event = await websocket.next_json()
                 self.assertEqual(event["type"], "done")
                 self.assertEqual(
@@ -113,27 +88,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_failed_password_authentication_stays_pending_and_can_then_succeed(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("auth:password"),
-                ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_human",
-                    return_value=self.completed,
-                ) as resume,
-            ):
+            with self._human_turn("auth:password") as resume:
                 websocket = await self._open_challenge("auth:password")
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "incorrect password",
-                    }
-                )
+                await websocket.send_json(human_response("incorrect password"))
                 self.assertEqual(
                     await websocket.next_json(),
                     {
@@ -146,14 +103,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
                 )
                 resume.assert_not_called()
 
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "violet otter lantern quartz 92",
-                    }
-                )
+                await websocket.send_json(human_response("violet otter lantern quartz 92"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 self.assertEqual(resume.call_args.args[1]["value"], True)
                 self.assertNotIn("incorrect password", repr(resume.call_args))
@@ -163,64 +113,25 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_third_password_failure_locks_every_socket_until_one_minute(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("auth:password"),
-                ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_human",
-                    return_value=self.completed,
-                ) as resume,
-            ):
+            with self._human_turn("auth:password") as resume:
                 websocket = await self._open_challenge("auth:password")
                 for expected_remaining in (2, 1):
-                    await websocket.send_json(
-                        {
-                            "type": "human-response",
-                            "challenge_id": CHALLENGE_ID,
-                            "decision": "submit",
-                            "value": "incorrect password",
-                        }
-                    )
+                    await websocket.send_json(human_response("incorrect password"))
                     event = await websocket.next_json()
                     self.assertEqual(event["reason"], "authentication-denied")
                     self.assertEqual(event["attempts_remaining"], expected_remaining)
 
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "incorrect password",
-                    }
-                )
+                await websocket.send_json(human_response("incorrect password"))
                 locked = await websocket.next_json()
                 self.assertEqual((locked["reason"], locked["retry_after"]), ("authentication-locked", 60))
 
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "violet otter lantern quartz 92",
-                    }
-                )
+                await websocket.send_json(human_response("violet otter lantern quartz 92"))
                 still_locked = await websocket.next_json()
                 self.assertEqual((still_locked["reason"], still_locked["retry_after"]), ("authentication-locked", 60))
                 resume.assert_not_called()
 
                 self.auth_clock[0] += 60
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "violet otter lantern quartz 92",
-                    }
-                )
+                await websocket.send_json(human_response("violet otter lantern quartz 92"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 resume.assert_called_once()
                 await websocket.disconnect()
@@ -229,27 +140,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_assistant_password_input_is_not_treated_as_supervisor_authentication(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("input:password"),
-                ),
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "resume_human",
-                    return_value=self.completed,
-                ) as resume,
-            ):
+            with self._human_turn("input:password") as resume:
                 websocket = await self._open_challenge("input:password")
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "third-party-api-secret",
-                    }
-                )
+                await websocket.send_json(human_response("third-party-api-secret"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 self.assertEqual(resume.call_args.args[1]["value"], "third-party-api-secret")
                 self.assertIsNone(resume.call_args.kwargs["assurance"])
@@ -259,32 +152,11 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_invalid_or_cross_challenge_response_does_not_resume(self) -> None:
         async def scenario() -> None:
-            with (
-                mock.patch.object(
-                    self.chat_socket.local,
-                    "turn",
-                    return_value=human_challenge("approval"),
-                ),
-                mock.patch.object(self.chat_socket.local, "resume_human") as resume,
-            ):
+            with self._human_turn("approval") as resume:
                 websocket = await self._open_challenge("approval")
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": "c" * 32,
-                        "decision": "submit",
-                        "value": True,
-                    }
-                )
+                await websocket.send_json(human_response(True, challenge_id="c" * 32))
                 self.assertEqual((await websocket.next_json())["status"], 409)
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": "yes",
-                    }
-                )
+                await websocket.send_json(human_response("yes"))
                 self.assertEqual((await websocket.next_json())["status"], 400)
                 resume.assert_not_called()
                 await websocket.disconnect()
@@ -344,14 +216,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
                 self.assertEqual(challenge["type"], "human-required")
                 resume.assert_not_called()
 
-                await websocket.send_json(
-                    {
-                        "type": "human-response",
-                        "challenge_id": CHALLENGE_ID,
-                        "decision": "submit",
-                        "value": True,
-                    }
-                )
+                await websocket.send_json(human_response(True))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 resume.assert_called_once()
                 await websocket.disconnect()
