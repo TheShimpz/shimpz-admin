@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from urllib.parse import parse_qsl, urlparse
 
 from team import transport
 
@@ -159,46 +158,6 @@ def list_assistant_integrations(team_id: object) -> TeamResponse:
     )
 
 
-def _trusted_cloudflare_authorization_url(value: object, callback_mode: str) -> str:
-    if not isinstance(value, str) or not 1 <= len(value) <= 4096:
-        raise ValueError("invalid OAuth authorization URL")
-    try:
-        parsed = urlparse(value)
-        query = parse_qsl(
-            parsed.query,
-            keep_blank_values=True,
-            strict_parsing=True,
-            max_num_fields=4,
-        )
-        port = parsed.port
-    except ValueError as exc:
-        raise ValueError("invalid OAuth authorization URL") from exc
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != "shimpz.com"
-        or port is not None
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path != "/api/oauth/cloudflare/start"
-        or parsed.params
-        or parsed.fragment
-        or len(query) != 4
-        or len({key for key, _value in query}) != 4
-    ):
-        raise ValueError("invalid OAuth authorization URL")
-    fields = dict(query)
-    if set(fields) != {"scope", "state", "code_challenge", "callback"}:
-        raise ValueError("invalid OAuth authorization URL")
-    if (
-        _OAUTH_BINDING_RE.fullmatch(fields["state"]) is None
-        or _OAUTH_BINDING_RE.fullmatch(fields["code_challenge"]) is None
-        or fields["callback"] != callback_mode
-    ):
-        raise ValueError("invalid OAuth authorization URL")
-    cloudflare.canonical_authorization_scopes(fields["scope"])
-    return value
-
-
 def _project_authorization_response(response: TeamResponse, callback_mode: str) -> TeamResponse:
     if not 200 <= response.status < 300:
         return response
@@ -207,7 +166,8 @@ def _project_authorization_response(response: TeamResponse, callback_mode: str) 
             response.body["trace_id"]
         ):
             raise ValueError("invalid OAuth authorization response")
-        authorization_url = _trusted_cloudflare_authorization_url(response.body["authorization_url"], callback_mode)
+        authorization_url = response.body["authorization_url"]
+        cloudflare.authorization_state(authorization_url, callback_mode)
     except KeyError, TypeError, ValueError:
         log.warning("team returned an invalid OAuth authorization response")
         return TeamResponse(502, {"detail": "OAuth authorization response is invalid."})

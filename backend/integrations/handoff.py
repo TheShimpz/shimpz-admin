@@ -24,7 +24,6 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from urllib.parse import parse_qsl, urlsplit
 
 from integrations import cloudflare
 from protocol.http.v1 import payload as team_contract
@@ -36,7 +35,6 @@ CALLBACK_MODES = frozenset({"loopback", "hosted", "out-of-band"})
 AUTOMATIC_CALLBACK_MODES = frozenset({"loopback", "hosted"})
 
 _HANDOFF_RE = re.compile(r"^[0-9a-f]{64}$")
-_STATE_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _COMPLETION_RE = re.compile(r"^c1\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$")
 
 
@@ -118,49 +116,11 @@ def _token(value: object) -> str:
 
 
 def _authorization_url(value: object, callback_mode: str) -> tuple[str, str]:
-    if (
-        not isinstance(value, str)
-        or not 1 <= len(value) <= 4096
-        or not value.isascii()
-        or any(ord(character) < 0x21 or ord(character) > 0x7E for character in value)
-    ):
-        raise OAuthHandoffError("OAuth authorization URL is invalid")
     try:
-        parsed = urlsplit(value)
-        port = parsed.port
-        query = parse_qsl(
-            parsed.query,
-            keep_blank_values=True,
-            strict_parsing=True,
-            max_num_fields=4,
-        )
+        state = cloudflare.authorization_state(value, callback_mode)
     except ValueError as exc:
         raise OAuthHandoffError("OAuth authorization URL is invalid") from exc
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != "shimpz.com"
-        or port is not None
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path != "/api/oauth/cloudflare/start"
-        or parsed.fragment
-        or len(query) != 4
-        or len({key for key, _value in query}) != 4
-    ):
-        raise OAuthHandoffError("OAuth authorization URL is invalid")
-    fields = dict(query)
-    if (
-        set(fields) != {"state", "code_challenge", "scope", "callback"}
-        or _STATE_RE.fullmatch(fields["state"]) is None
-        or _STATE_RE.fullmatch(fields["code_challenge"]) is None
-        or fields["callback"] != callback_mode
-    ):
-        raise OAuthHandoffError("OAuth authorization URL is invalid")
-    try:
-        cloudflare.canonical_authorization_scopes(fields["scope"])
-    except ValueError as exc:
-        raise OAuthHandoffError("OAuth authorization URL is invalid") from exc
-    return value, fields["state"]
+    return value, state
 
 
 def _completion_code(value: object) -> tuple[str, str]:

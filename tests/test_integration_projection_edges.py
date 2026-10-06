@@ -170,13 +170,10 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValueError):
-                assistants._trusted_cloudflare_authorization_url(value, "hosted")
+                cloudflare.authorization_state(value, "hosted")
 
-        read_only = _authorization_url(scope="dns.read offline_access zone.read")
-        self.assertEqual(
-            assistants._trusted_cloudflare_authorization_url(read_only, "hosted"),
-            read_only,
-        )
+        read_only = _authorization_url(scope="dns.read offline_access zone.read", state="c" * 43)
+        self.assertEqual(cloudflare.authorization_state(read_only, "hosted"), "c" * 43)
 
         upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(assistants._project_authorization_response(upstream_error, "hosted"), upstream_error)
