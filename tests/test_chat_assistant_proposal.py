@@ -12,6 +12,11 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat import assistant_proposal, local, store_catalog
 
 DIGEST = "sha256:" + ("a" * 64)
+# Frozen, so every test may share it.
+CLOUDFLARE_UNINSTALL = assistant_proposal.UninstallCandidate(
+    assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "Manage DNS records.", ("list-zones",)),
+    "0.4.4",
+)
 
 
 def _candidate(
@@ -336,18 +341,9 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertEqual(assistant_proposal.uninstall_shortlist("...", (cloudflare, other)), ())
 
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
-        candidate = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability(
-                "shimpz-cloudflare",
-                "Shimpz Cloudflare",
-                "Manage DNS records.",
-                ("list-zones",),
-            ),
-            "0.4.4",
-        )
         proposal = assistant_proposal.create_uninstall_proposal(
             "team_1",
-            candidate,
+            CLOUDFLARE_UNINSTALL,
             locale="pt",
             now=10.0,
             proposal_id_factory=lambda: "c" * 32,
@@ -359,7 +355,7 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertEqual(proposal.locale, "pt")
         retired = assistant_proposal.create_uninstall_proposal(
             "team_1",
-            candidate,
+            CLOUDFLARE_UNINSTALL,
             locale="Desinstale o Assistant",
             now=10.0,
             proposal_id_factory=lambda: "c" * 32,
@@ -367,19 +363,10 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertIsNone(retired.locale)
 
     def test_uninstall_proposal_rejects_invalid_authority(self) -> None:
-        candidate = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability(
-                "shimpz-cloudflare",
-                "Shimpz Cloudflare",
-                "Manage DNS records.",
-                ("list-zones",),
-            ),
-            "0.4.4",
-        )
         with self.assertRaises(ValueError):
             assistant_proposal.create_uninstall_proposal(
                 "Bad",
-                candidate,
+                CLOUDFLARE_UNINSTALL,
                 locale="pt",
                 now=10.0,
                 proposal_id_factory=lambda: "b" * 32,
