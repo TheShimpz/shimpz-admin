@@ -27,6 +27,7 @@ import supervisor
 from history import store as history
 from team import bridge as team_bridge
 from team import transport
+from tests.chat_history_case import ChatHistoryCase
 
 from protocol.http.v1 import supervisor as contract
 from routine import delivery, scheduler, team
@@ -54,6 +55,14 @@ def _decode(encoded: str) -> bytes:
 
 def answer(body: dict[str, object], status: int = 200) -> team_bridge.TeamResponse:
     return team_bridge.TeamResponse(status, {**body, "trace_id": TRACE})
+
+
+def _acquire_within_five_seconds(case: unittest.TestCase, slot) -> None:
+    """Take ``slot`` once its holder frees it, failing ``case`` if that takes five seconds."""
+    deadline = time.monotonic() + 5
+    while not slot.acquire(blocking=False):
+        case.assertLess(time.monotonic(), deadline)
+        time.sleep(0.01)
 
 
 class RoutineIdentityTests(unittest.TestCase):
@@ -149,15 +158,7 @@ class RoutineIdentityTests(unittest.TestCase):
         self.assertEqual(claims["model"]["provider"], "openai")
 
 
-class RoutineHistoryTests(unittest.TestCase):
-    def setUp(self) -> None:
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.path = Path(temporary.name) / "chat-history.sqlite3"
-        patch = mock.patch.object(history, "STORE_PATH", self.path)
-        patch.start()
-        self.addCleanup(patch.stop)
-
+class RoutineHistoryTests(ChatHistoryCase):
     def test_one_row_per_run_that_a_newer_version_replaces_at_the_end(self) -> None:
         done, skipped, frozen = DONE, SKIPPED, FROZEN
         self.assertEqual((frozen["notice_id"], frozen["version"], done["version"]), (done["notice_id"], 1, 2))
@@ -390,14 +391,7 @@ class RoutineDeliveryTests(unittest.TestCase):
         acknowledge.assert_not_called()
 
 
-class RoutineLifecycleTests(unittest.TestCase):
-    def setUp(self) -> None:
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        patch = mock.patch.object(history, "STORE_PATH", Path(temporary.name) / "chat-history.sqlite3")
-        patch.start()
-        self.addCleanup(patch.stop)
-
+class RoutineLifecycleTests(ChatHistoryCase):
     def test_a_notice_read_before_a_team_is_deleted_never_outlives_its_history(self) -> None:
         from history import http as history_http
 
@@ -463,10 +457,7 @@ class RoutineSchedulerTests(unittest.TestCase):
             # The only slot is busy, so the second tick claims nothing.
             self.assertEqual(claim.call_count, 1)
             release.set()
-            deadline = time.monotonic() + 5
-            while not runner._slots.acquire(blocking=False):
-                self.assertLess(time.monotonic(), deadline)
-                time.sleep(0.01)
+            _acquire_within_five_seconds(self, runner._slots)
             runner._slots.release()
         self.assertEqual(ran, [CLAIM])
 
@@ -493,10 +484,7 @@ class RoutineSchedulerTests(unittest.TestCase):
         ):
             runner.tick()
             self.assertTrue(failed.wait(5))
-        deadline = time.monotonic() + 5
-        while not runner._slots.acquire(blocking=False):
-            self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.01)
+        _acquire_within_five_seconds(self, runner._slots)
 
     def test_a_hint_or_a_finished_run_wakes_the_next_tick_sooner_but_never_in_a_tight_loop(self) -> None:
         runner = scheduler.RoutineScheduler(interval=30, jitter=0)
@@ -591,10 +579,7 @@ class RoutineSchedulerTests(unittest.TestCase):
             self.assertEqual(offered, [True, False])
             self.assertFalse(runner._long.acquire(blocking=False))
             gate.set()
-            deadline = time.monotonic() + 5
-            while not runner._long.acquire(blocking=False):
-                self.assertLess(time.monotonic(), deadline)
-                time.sleep(0.01)
+            _acquire_within_five_seconds(self, runner._long)
             runner._long.release()
 
     def test_a_short_or_absent_run_frees_the_long_slot_at_once_and_a_failed_long_run_frees_it(self) -> None:
@@ -650,10 +635,7 @@ class RoutineSchedulerTests(unittest.TestCase):
             runner.tick()
             gate.set()
             self.assertTrue(failed.wait(5))
-            deadline = time.monotonic() + 5
-            while not runner._slots.acquire(blocking=False):
-                self.assertLess(time.monotonic(), deadline)
-                time.sleep(0.01)
+            _acquire_within_five_seconds(self, runner._slots)
             runner._slots.release()
         # A worker that ended first freed its slot, so the same tick claimed again and found nothing due.
         self.assertEqual(claim.call_count, 2 if order == "before" else 1)
