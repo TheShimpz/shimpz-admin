@@ -845,42 +845,10 @@ async def _close_connection(
                     asyncio.shield(stop_task),
                     timeout=STOP_RESULT_WAIT_SECONDS,
                 )
-        _keep_late_reply(websocket, connection, active, team_id)
         if active.delivery is not None:
             active.delivery.cancel()
             await asyncio.gather(active.delivery, return_exceptions=True)
     await lifecycle.close(connection)
-
-
-# Commits of replies Team completed after their socket closed; each holds itself here until it finishes.
-_LATE_REPLIES: set[asyncio.Task[None]] = set()
-
-
-def _keep_late_reply(websocket: WebSocket, connection: _Connection, active: _Turn, team_id: str) -> None:
-    """Commit a chat reply Team completes after its socket closed, so a reload shows it under its message.
-
-    A Stop that Team accepted ends the turn without a reply, and a turn whose terminal was already sent keeps it.
-    """
-    future = active.future
-    if future is None or active.operation != "chat" or active.history_id is None or active.terminal_sent:
-        return
-    loop = asyncio.get_running_loop()
-
-    async def commit(response: object) -> None:
-        event = turn_terminal(response, team_id)
-        if event.get("type") == "done":
-            await _send_terminal_once(websocket, connection, active, event)
-
-    def spawn(response: object) -> None:
-        task = loop.create_task(commit(response))
-        _LATE_REPLIES.add(task)
-        task.add_done_callback(_LATE_REPLIES.discard)
-
-    def completed(done: concurrent.futures.Future) -> None:
-        if not done.cancelled() and done.exception() is None:
-            loop.call_soon_threadsafe(spawn, done.result())
-
-    future.add_done_callback(completed)
 
 
 async def serve(
