@@ -71,6 +71,12 @@ def _rewrite_json(root: Path, filename: str, mutate) -> None:
     value = json.loads(path.read_bytes())
     mutate(value)
     path.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    _rehash(root, filename)
+
+
+def _rehash(root: Path, filename: str) -> None:
+    """Record a rewritten mirror file's digest in its manifest, as a drifted but self-consistent copy would."""
+    path = root / filename
     manifest = root / "contract-files.sha256"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     rows = manifest.read_text(encoding="ascii").splitlines()
@@ -279,6 +285,34 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     HTTP / "verify.py",
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
+
+    def test_rejects_missing_or_drifted_clarification_label_vectors(self) -> None:
+        def missing(root: Path) -> None:
+            _rewrite_json(root, "vectors.json", lambda value: value["clarification_labels"].update({"composed": []}))
+
+        def composed(root: Path) -> None:
+            _rewrite_json(
+                root,
+                "vectors.json",
+                lambda value: value["clarification_labels"]["composed"][0].update({"message": "drift"}),
+            )
+
+        def person_lines(root: Path) -> None:
+            _rewrite_json(
+                root,
+                "vectors.json",
+                lambda value: value["clarification_labels"]["person_lines"][0].update({"lines": []}),
+            )
+
+        def unlabelled_locale(root: Path) -> None:
+            module = root / "payload.py"
+            text = module.read_text(encoding="utf-8")
+            module.write_text(text.replace('    "zh": {"question": "问题", "answer": "回答"},\n', ""), encoding="utf-8")
+            _rehash(root, "payload.py")
+
+        for mutate in (missing, composed, person_lines, unlabelled_locale):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", mutate)
 
     def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
