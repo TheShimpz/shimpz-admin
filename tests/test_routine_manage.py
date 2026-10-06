@@ -20,6 +20,7 @@ from team import bridge as team
 from team import transport
 
 from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_notice as routine_notice_contract
 from routine import http as routine_http
 from routine import manage
 
@@ -67,7 +68,7 @@ class RoutineManageTests(unittest.TestCase):
             self.assertEqual(manage.list_routines("team_1").body, listed)
         # The whole list is read within its own protocol allowance, never another answer's cap.
         call.assert_called_once_with(
-            "GET", "/v1/teams/team_1/routines", max_response_bytes=routine_contract.MAX_ROUTINE_LIST_BYTES
+            "GET", "/v1/teams/team_1/routines", max_response_bytes=routine_notice_contract.MAX_ROUTINE_LIST_BYTES
         )
         for untraced in (team.TeamResponse(200, dict(listed)), team.TeamResponse(200, {**listed, "trace_id": "x"})):
             with self.subTest(untraced=untraced), self.call(untraced):

@@ -209,7 +209,7 @@ test("a recording turn's reply and its stored history carry at most one Routine 
 test("every interface language offers exactly the Team protocol's output choices, in its order", async () => {
   const { readFileSync } = await import('node:fs');
   // The protocol mirror is the authority (ADR-0101): Team reads the chosen label back to its choice.
-  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine.py', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
   const kinds = [...source.match(/OUTPUT_KINDS = \(([^)]*)\)/u)[1].matchAll(/"([a-z]+)"/gu)].map(([, kind]) => kind);
   const block = source.match(/OUTPUT_CHOICES = \{\n([\s\S]*?)\n\}/u)[1];
   const protocol = {};

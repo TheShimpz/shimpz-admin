@@ -20,7 +20,8 @@ from history import context as conversation_context
 
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
-from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_notice as routine_notice_contract
+from protocol.http.v1 import routine_proposal as routine_proposal_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
@@ -251,7 +252,7 @@ def append_routine_notice(notice: object) -> bool:
     outcome that arrives long after the run froze is where the Supervisor looks; an older or equal version is already
     delivered and changes nothing.
     """
-    admitted = routine_contract.canonical_notice(notice)
+    admitted = routine_notice_contract.canonical_notice(notice)
     if admitted is None:
         raise ValueError("Routine notice is invalid")
     team_id = _team_id(admitted["team_id"])
@@ -326,9 +327,9 @@ def append_user(team_id: object, turn_id: object, message: object, *, files: obj
 # A reply's Routine card for the person to confirm, what Team asks first, or why the recording made none: at most one,
 # never with a clarification, so a reload restores the same question or card for the same turn.
 _ROUTINE_REPLY_FIELDS = {
-    "routine_proposal": routine_contract.canonical_proposal,
-    "routine_refusal": routine_contract.canonical_refusal,
-    "routine_question": routine_contract.canonical_question,
+    "routine_proposal": routine_proposal_contract.canonical_proposal,
+    "routine_refusal": routine_proposal_contract.canonical_refusal,
+    "routine_question": routine_proposal_contract.canonical_question,
 }
 
 
@@ -690,7 +691,7 @@ def _validate_stored_routine(payload: dict[str, object]) -> None:
         raise ValueError("invalid stored Routine notice")
     fields = {name: payload[name] for name in _NOTICE_FIELDS}
     # The Team is the row's own; any valid id stands in for it while the notice's closed shape is checked.
-    if routine_contract.canonical_notice({**fields, "team_id": "stored"}) != {**fields, "team_id": "stored"}:
+    if routine_notice_contract.canonical_notice({**fields, "team_id": "stored"}) != {**fields, "team_id": "stored"}:
         raise ValueError("invalid stored Routine notice")
 
 

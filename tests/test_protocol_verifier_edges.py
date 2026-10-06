@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import importlib
 import io
 import json
 import pathlib
@@ -48,13 +49,20 @@ def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = N
             "identifiers",
             "payload",
             "progress",
+            "phrase",
             "purpose",
             "routine",
+            "routine_context",
+            "routine_notice",
+            "routine_proposal",
+            "routine_run",
             "strict_json",
             "supervisor",
             "turn",
             "websocket",
         )
+        # zoneinfo loads importlib.resources, which must not first import under the patched pathlib.Path.
+        importlib.import_module("importlib.resources")
         with (
             _fresh_modules(*module_names),
             mock.patch.object(sys, "path", [str(mirror), *sys.path]),
@@ -204,6 +212,24 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_missing_or_drifted_routine_phrase_vectors(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value["routine_phrase"]["team_asks"] = []
+
+        def drifted_question(value: dict[str, object]) -> None:
+            case = value["routine_phrase"]["team_asks"][0]
+            case["asks"] = not case["asks"]
+
+        def drifted_output(value: dict[str, object]) -> None:
+            value["routine_phrase"]["outputs"][0]["outputs"] = ["drift"]
+
+        for mutate in (missing, drifted_question, drifted_output):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_missing_or_drifted_skill_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value["skills"]["invalid"] = []
@@ -317,11 +343,11 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
     def test_rejects_answer_replies_that_miss_a_language_or_a_fallback(self) -> None:
         def edit(old: str, new: str):
             def mutate(root: Path) -> None:
-                module = root / "routine.py"
+                module = root / "routine_proposal.py"
                 text = module.read_text(encoding="utf-8")
                 self.assertIn(old, text)
                 module.write_text(text.replace(old, new, 1), encoding="utf-8")
-                _rehash(root, "routine.py")
+                _rehash(root, "routine_proposal.py")
 
             return mutate
 
@@ -335,11 +361,11 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
     def test_rejects_output_choices_that_miss_a_language_or_name_one_output_twice(self) -> None:
         def edit(old: str, new: str):
             def mutate(root: Path) -> None:
-                module = root / "routine.py"
+                module = root / "routine_proposal.py"
                 text = module.read_text(encoding="utf-8")
                 self.assertIn(old, text)
                 module.write_text(text.replace(old, new, 1), encoding="utf-8")
-                _rehash(root, "routine.py")
+                _rehash(root, "routine_proposal.py")
 
             return mutate
 

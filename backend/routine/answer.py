@@ -21,6 +21,7 @@ from team import transport
 from chat import human
 from chat import local as chat_local
 from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
 from routine import team as routine_team
@@ -130,7 +131,7 @@ def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamRe
     The browser names the Admin interface language, and Team renders the request copy in it (ADR-0091).
     """
     canonical, run = _run(team_id, run_id)
-    opening = routine_contract.canonical_challenge_open(body)
+    opening = routine_run_contract.canonical_challenge_open(body)
     if opening is None:
         raise team.TeamRequestError("Routine challenge opening is invalid")
     with _opening(canonical) as admitted:

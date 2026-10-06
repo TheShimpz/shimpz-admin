@@ -14,13 +14,14 @@ import supervisor
 from team import bridge as team
 from team import transport
 
-from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_notice as routine_notice_contract
+from protocol.http.v1 import routine_run as routine_run_contract
 
 # A segment's socket timeout: its run's claimed active time plus a fixed margin, never below fifteen minutes.
 MIN_RUN_TIMEOUT_SECONDS = 15 * 60
 RUN_TIMEOUT_MARGIN_SECONDS = 5 * 60
 # A person's answer resumes a run whose active time Admin was never told, so it waits as long as any run may spend.
-RESUME_TIMEOUT_SECONDS = routine_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
+RESUME_TIMEOUT_SECONDS = routine_run_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
 TRACE_ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 # "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
 RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
@@ -48,7 +49,7 @@ def claim(long: bool) -> dict[str, object]:
     ``long`` says whether Admin can take a long run now. A healthy compiled run needs no model key, so a claim is never
     gated on one (ADR-0092).
     """
-    body = routine_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {"long": long})))
+    body = routine_run_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {"long": long})))
     if body is None:
         raise RoutineTeamError("Routine claim is invalid")
     return body
@@ -56,7 +57,7 @@ def claim(long: bool) -> dict[str, object]:
 
 def is_long(claimed: dict[str, object]) -> bool:
     """Whether a claimed run may spend more active time than a short one (ADR-0092 amendment, 2026-10-05, scale)."""
-    return claimed["active_seconds"] > routine_contract.SHORT_ACTIVE_SECONDS
+    return claimed["active_seconds"] > routine_run_contract.SHORT_ACTIVE_SECONDS
 
 
 def run_timeout(claimed: dict[str, object]) -> int:
@@ -94,7 +95,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
 
 def notices() -> dict[str, object]:
     """One bounded batch of every Team's undelivered notices."""
-    batch = routine_contract.canonical_notice_batch(_answer(transport._call("GET", "/v1/routines/notices")))
+    batch = routine_notice_contract.canonical_notice_batch(_answer(transport._call("GET", "/v1/routines/notices")))
     if batch is None:
         raise RoutineTeamError("Routine notices are invalid")
     return batch

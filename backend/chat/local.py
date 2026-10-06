@@ -27,7 +27,7 @@ from team import bridge as team
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
-from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_proposal as routine_proposal_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
@@ -47,9 +47,9 @@ PROPOSAL_FIELD = "routine_proposal"
 REFUSAL_FIELD = "routine_refusal"
 QUESTION_FIELD = "routine_question"
 ROUTINE_FIELDS = {
-    PROPOSAL_FIELD: routine_contract.canonical_proposal,
-    REFUSAL_FIELD: routine_contract.canonical_refusal,
-    QUESTION_FIELD: routine_contract.canonical_question,
+    PROPOSAL_FIELD: routine_proposal_contract.canonical_proposal,
+    REFUSAL_FIELD: routine_proposal_contract.canonical_refusal,
+    QUESTION_FIELD: routine_proposal_contract.canonical_question,
 }
 _OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD, *ROUTINE_FIELDS})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})

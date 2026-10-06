@@ -13,36 +13,39 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_notice as routine_notice_contract
+from protocol.http.v1 import routine_proposal as routine_proposal_contract
+from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import supervisor
 
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
 CARD = VECTORS["routine_proposal"]["valid"][0]
 VIEWS = {
     "output": routine_contract.canonical_output,
-    "routine": routine_contract.canonical_routine_view,
-    "run": routine_contract.canonical_run_view,
-    "notice_batch": routine_contract.canonical_notice_batch,
-    "claim": routine_contract.canonical_claim,
-    "claim_request": routine_contract.canonical_claim_request,
-    "incident": routine_contract.canonical_incident_view,
-    "card": routine_contract.canonical_card,
-    "card_answer_request": routine_contract.canonical_card_answer_request,
-    "card_answer": routine_contract.canonical_card_answer,
-    "segment_request": routine_contract.canonical_segment_request,
+    "routine": routine_notice_contract.canonical_routine_view,
+    "run": routine_notice_contract.canonical_run_view,
+    "notice_batch": routine_notice_contract.canonical_notice_batch,
+    "claim": routine_run_contract.canonical_claim,
+    "claim_request": routine_run_contract.canonical_claim_request,
+    "incident": routine_notice_contract.canonical_incident_view,
+    "card": routine_run_contract.canonical_card,
+    "card_answer_request": routine_run_contract.canonical_card_answer_request,
+    "card_answer": routine_run_contract.canonical_card_answer,
+    "segment_request": routine_run_contract.canonical_segment_request,
     "page": routine_contract.canonical_page,
     "summary": routine_contract.canonical_summary,
-    "run_steps": routine_contract.canonical_run_steps,
+    "run_steps": routine_run_contract.canonical_run_steps,
 }
 FAMILIES = {
     "routine_schedule": routine_contract.canonical_schedule,
     "routine_timezone": routine_contract.canonical_timezone,
     "routine_run_usage": routine_contract.canonical_run_usage,
-    "routine_decision_record": routine_contract.canonical_decision_record,
-    "routine_proposal": routine_contract.canonical_proposal,
-    "routine_refusal": routine_contract.canonical_refusal,
-    "routine_question": routine_contract.canonical_question,
-    "routine_proposal_answer": routine_contract.canonical_proposal_answer,
-    "routine_diagnostics": routine_contract.canonical_diagnostics,
+    "routine_decision_record": routine_notice_contract.canonical_decision_record,
+    "routine_proposal": routine_proposal_contract.canonical_proposal,
+    "routine_refusal": routine_proposal_contract.canonical_refusal,
+    "routine_question": routine_proposal_contract.canonical_question,
+    "routine_proposal_answer": routine_proposal_contract.canonical_proposal_answer,
+    "routine_diagnostics": routine_run_contract.canonical_diagnostics,
 }
 
 
@@ -75,37 +78,37 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         self.assertEqual(routine_contract.daily_rate({"kind": "hourly", "every": 5}), Fraction(24, 5))
         self.assertEqual(routine_contract.daily_cap({"kind": "hourly", "every": 5}), 5)
         self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5, "cap": 300}), 300)
-        self.assertEqual(routine_contract.run_mode({"kind": "continuous", "gap": 5, "cap": 300}), "continuous")
-        self.assertEqual(routine_contract.run_mode({"kind": "daily", "time": "09:00"}), "scheduled")
-        self.assertEqual(routine_contract.active_seconds(8), routine_contract.SHORT_ACTIVE_SECONDS)
-        self.assertEqual(routine_contract.active_seconds(320), routine_contract.MAX_ACTIVE_SECONDS)
+        self.assertEqual(routine_run_contract.run_mode({"kind": "continuous", "gap": 5, "cap": 300}), "continuous")
+        self.assertEqual(routine_run_contract.run_mode({"kind": "daily", "time": "09:00"}), "scheduled")
+        self.assertEqual(routine_run_contract.active_seconds(8), routine_run_contract.SHORT_ACTIVE_SECONDS)
+        self.assertEqual(routine_run_contract.active_seconds(320), routine_run_contract.MAX_ACTIVE_SECONDS)
 
     def test_closed_forms_refuse_anything_but_their_own_shape(self) -> None:
         self.assertIsNone(routine_contract.canonical_output([]))
-        self.assertIsNone(routine_contract.canonical_notice_detail(None, {}))
-        self.assertIsNone(routine_contract.canonical_notice_detail("deleted", []))
-        self.assertIsNone(routine_contract.canonical_failure([]))
-        self.assertIsNone(routine_contract.canonical_diagnostic([]))
-        self.assertFalse(routine_contract._diagnostic_text("lone \ud800 surrogate"))
-        self.assertFalse(routine_contract._diagnostic_text(7))
+        self.assertIsNone(routine_notice_contract.canonical_notice_detail(None, {}))
+        self.assertIsNone(routine_notice_contract.canonical_notice_detail("deleted", []))
+        self.assertIsNone(routine_run_contract.canonical_failure([]))
+        self.assertIsNone(routine_run_contract.canonical_diagnostic([]))
+        self.assertFalse(routine_run_contract._diagnostic_text("lone \ud800 surrogate"))
+        self.assertFalse(routine_run_contract._diagnostic_text(7))
         self.assertEqual(routine_contract.escaped("a‮b"), "a\\u202eb")
         self.assertEqual(routine_contract.where_text("x‮y"), '"x\\u202ey"')
-        self.assertIsNone(routine_contract.canonical_notice_batch({"notices": ["x"], "more": False}))
+        self.assertIsNone(routine_notice_contract.canonical_notice_batch({"notices": ["x"], "more": False}))
 
     def test_previews_and_card_parts_refuse_anything_but_their_own_shape(self) -> None:
         self.assertEqual(routine_contract.literal_preview({"a": "x\u202e"}), '{"a":"x\\u202e"}')
         self.assertEqual(len(routine_contract.literal_preview("y" * 300)), routine_contract.MAX_PREVIEW_CHARS)
         self.assertFalse(routine_contract._input({"member": "", "source": "literal", "value": "1"}, 1))
-        self.assertFalse(routine_contract._decision([]))
+        self.assertFalse(routine_notice_contract._decision([]))
         literal = CARD["steps"][1]["inputs"][0]
-        self.assertFalse(routine_contract._card_input([], 1))
-        self.assertFalse(routine_contract._card_input({**literal, "origin": "guess"}, 2))
-        self.assertFalse(routine_contract._card_input({**literal, "member": "a\u2028b"}, 2))
-        self.assertFalse(routine_contract._card_permitted({}))
+        self.assertFalse(routine_proposal_contract._card_input([], 1))
+        self.assertFalse(routine_proposal_contract._card_input({**literal, "origin": "guess"}, 2))
+        self.assertFalse(routine_proposal_contract._card_input({**literal, "member": "a\u2028b"}, 2))
+        self.assertFalse(routine_proposal_contract._card_permitted({}))
         self.assertFalse(
-            routine_contract._card_permitted([CARD["permitted"][0]] * (routine_contract.MAX_PERMITTED + 1))
+            routine_proposal_contract._card_permitted([CARD["permitted"][0]] * (routine_contract.MAX_PERMITTED + 1))
         )
-        self.assertFalse(routine_contract._card_permitted([{**CARD["permitted"][0], "read_only": 1}]))
+        self.assertFalse(routine_proposal_contract._card_permitted([{**CARD["permitted"][0], "read_only": 1}]))
 
     def test_routine_assertions_bind_no_human_authority(self) -> None:
         valid = VECTORS["local_routine"]["valid"][0]
@@ -125,7 +128,7 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
     def test_the_card_shows_the_owner_s_selector_whole(self) -> None:
         selector = [item for step in CARD["steps"] for item in step["inputs"] if item["origin"] == "selector"]
         self.assertTrue(selector)
-        self.assertEqual(routine_contract.canonical_proposal(CARD), CARD)
+        self.assertEqual(routine_proposal_contract.canonical_proposal(CARD), CARD)
 
 
 if __name__ == "__main__":

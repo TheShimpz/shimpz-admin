@@ -14,6 +14,9 @@ from team import bridge as team
 from team import transport
 
 from protocol.http.v1 import routine as routine_contract
+from protocol.http.v1 import routine_notice as routine_notice_contract
+from protocol.http.v1 import routine_proposal as routine_proposal_contract
+from protocol.http.v1 import routine_run as routine_run_contract
 from routine import team as routine_team
 
 _INVALID = team.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
@@ -72,7 +75,7 @@ def list_routines(team_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     # The whole list is read within its own protocol bound, the one Team answer above the Local API's 128 KiB cap.
     response = transport._call(
-        "GET", f"/v1/teams/{canonical}/routines", max_response_bytes=routine_contract.MAX_ROUTINE_LIST_BYTES
+        "GET", f"/v1/teams/{canonical}/routines", max_response_bytes=routine_notice_contract.MAX_ROUTINE_LIST_BYTES
     )
 
     def items(admit: Callable[[object], object], bound: int) -> Callable[[object], bool]:
@@ -82,10 +85,12 @@ def list_routines(team_id: object) -> team.TeamResponse:
 
     fields = {
         "team_id": lambda value: value == canonical,
-        "routines": items(routine_contract.canonical_routine_view, routine_contract.MAX_ROUTINES),
-        "runs": items(routine_contract.canonical_run_view, routine_contract.MAX_ROUTINES),
+        "routines": items(routine_notice_contract.canonical_routine_view, routine_contract.MAX_ROUTINES),
+        "runs": items(routine_notice_contract.canonical_run_view, routine_contract.MAX_ROUTINES),
         # Held runs' incidents, which outlive a deleted Routine, each settled through its recovery card (ADR-0092).
-        "incidents": items(routine_contract.canonical_incident_view, routine_contract.MAX_UNRESOLVED_INCIDENTS),
+        "incidents": items(
+            routine_notice_contract.canonical_incident_view, routine_notice_contract.MAX_UNRESOLVED_INCIDENTS
+        ),
     }
     return _projected(response, _exact(fields))
 
@@ -136,7 +141,7 @@ def open_card(team_id: object, incident_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     incident = _id(incident_id, "Routine incident")
     response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/card", {})
-    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card))
+    return _projected(response, _bound(canonical, incident, routine_run_contract.canonical_card))
 
 
 def answer_card(team_id: object, incident_id: object, body: object) -> team.TeamResponse:
@@ -146,11 +151,11 @@ def answer_card(team_id: object, incident_id: object, body: object) -> team.Team
     """
     canonical = team.canonical_team_id(team_id)
     incident = _id(incident_id, "Routine incident")
-    answer = routine_contract.canonical_card_answer_request(body)
+    answer = routine_run_contract.canonical_card_answer_request(body)
     if answer is None:
         raise team.TeamRequestError("Routine card answer is invalid")
     response = transport._call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
-    return _projected(response, _bound(canonical, incident, routine_contract.canonical_card_answer))
+    return _projected(response, _bound(canonical, incident, routine_run_contract.canonical_card_answer))
 
 
 def _proposal(team_id: object, proposal_id: object, method: str, statuses: frozenset[str]) -> team.TeamResponse:
@@ -161,7 +166,7 @@ def _proposal(team_id: object, proposal_id: object, method: str, statuses: froze
     response = transport._call(method, f"/v1/teams/{canonical}/routines/proposals/{proposal}", body)
 
     def admit(body: dict[str, object]) -> dict[str, object] | None:
-        admitted = routine_contract.canonical_proposal_answer(body)
+        admitted = routine_proposal_contract.canonical_proposal_answer(body)
         if admitted is None or (admitted["team_id"], admitted["proposal_id"]) != (canonical, proposal):
             return None
         return admitted if admitted["status"] in statuses else None
@@ -186,7 +191,7 @@ def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/diagnostics")
 
     def admit(body: dict[str, object]) -> dict[str, object] | None:
-        admitted = routine_contract.canonical_diagnostics(body)
+        admitted = routine_run_contract.canonical_diagnostics(body)
         return (
             admitted if admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run) else None
         )
@@ -223,7 +228,7 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
     canonical = team.canonical_team_id(team_id)
     run = _id(run_id, "Routine run")
     if snapshot != "latest" and (
-        not isinstance(snapshot, str) or routine_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
+        not isinstance(snapshot, str) or routine_run_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
     ):
         raise team.TeamRequestError("Routine run snapshot is invalid")
     # A run's page lists its replay steps, then its decision calls.
@@ -232,7 +237,7 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
 
     def admit(body: dict[str, object]) -> dict[str, object] | None:
-        page = routine_contract.canonical_run_steps(body)
+        page = routine_run_contract.canonical_run_steps(body)
         if page is None or (page["team_id"], page["run_id"], page["offset"]) != (canonical, run, start):
             return None
         return page if snapshot in ("latest", page["snapshot"]) else None
