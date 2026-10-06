@@ -16,6 +16,7 @@ from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from team import bridge as team
+from tests.chat_socket_case import resolved_future
 
 from chat import assistant_plan, assistant_proposal, assistant_route
 
@@ -41,12 +42,6 @@ def _route_operations() -> route_delivery.Operations:
         finish_turn=mock.AsyncMock(),
         error_terminal=mock.Mock(return_value={"type": "error"}),
     )
-
-
-def _completed(value: object) -> concurrent.futures.Future[object]:
-    future: concurrent.futures.Future[object] = concurrent.futures.Future()
-    future.set_result(value)
-    return future
 
 
 class PlanDeliveryEdges(unittest.TestCase):
@@ -172,7 +167,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             with self.assertRaises(assistant_route.RouteError):
                 await route_delivery._result(Turn(None, "assistant-route"))
 
-            invalid = Turn(_completed(object()), "assistant-route")
+            invalid = Turn(resolved_future(object()), "assistant-route")
             with self.assertRaises(assistant_route.RouteError):
                 await route_delivery._result(invalid)
 
@@ -201,7 +196,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(closed=True),
-                Turn(_completed(result), "assistant-route"),
+                Turn(resolved_future(result), "assistant-route"),
                 "team_1",
                 {},
                 operations,
@@ -213,7 +208,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(),
-                Turn(_completed(result), "assistant-route", stop_requested=True),
+                Turn(resolved_future(result), "assistant-route", stop_requested=True),
                 "team_1",
                 {},
                 operations,
@@ -235,7 +230,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                     await route_delivery._deliver_result(
                         mock.sentinel.websocket,
                         Connection(),
-                        Turn(_completed(invalid), "assistant-route"),
+                        Turn(resolved_future(invalid), "assistant-route"),
                         "team_1",
                         {},
                         _route_operations(),
@@ -253,7 +248,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(),
-                Turn(_completed(result), "assistant-route"),
+                Turn(resolved_future(result), "assistant-route"),
                 "team_1",
                 {"message": "objective"},
                 operations,

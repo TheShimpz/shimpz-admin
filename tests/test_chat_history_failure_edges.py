@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 
-from tests.chat_socket_case import ChatDeliveryCase, resolved_future, resume_operations
+from tests.chat_socket_case import ChatDeliveryCase, resume_operations, uninstall_guidance_route
 
-from chat import assistant_route, local, socket, task_resume
+from chat import local, socket, task_resume
 from tests import chat_socket_fixtures
 
 
@@ -35,15 +35,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=resolved_future(
-                        assistant_route.Result(
-                            "assistant-uninstall",
-                            guidance=assistant_route.Guidance(
-                                "assistant-uninstall-target-required",
-                                "Qual Assistant instalado você quer desinstalar?",
-                            ),
-                        )
-                    ),
+                    return_value=uninstall_guidance_route(),
                 ),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):

@@ -125,6 +125,19 @@ def resolved_future(value: object) -> concurrent.futures.Future[object]:
     return future
 
 
+def uninstall_guidance_route(
+    reply: str = "Qual Assistant instalado você quer desinstalar?",
+) -> concurrent.futures.Future[object]:
+    """A resolved route that asks which installed Assistant to uninstall."""
+    assistant_route = importlib.import_module("chat.assistant_route")
+    return resolved_future(
+        assistant_route.Result(
+            "assistant-uninstall",
+            guidance=assistant_route.Guidance("assistant-uninstall-target-required", reply),
+        )
+    )
+
+
 def resume_operations():
     """The socket's own resume operations, as its task-resume delivery receives them."""
     socket = importlib.import_module("chat.socket")

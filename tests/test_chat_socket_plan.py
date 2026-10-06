@@ -8,7 +8,7 @@ import json
 import threading
 from unittest import mock
 
-from tests.chat_socket_case import ChatWebSocketCase
+from tests.chat_socket_case import ChatWebSocketCase, uninstall_guidance_route
 
 from tests import chat_socket_fixtures
 
@@ -93,15 +93,7 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                     self.chat_socket.lifecycle,
                     "submit_route",
                     side_effect=(
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                guidance=self.assistant_route.Guidance(
-                                    "assistant-uninstall-target-required",
-                                    "Qual Assistant instalado você quer desinstalar?",
-                                ),
-                            )
-                        ),
+                        uninstall_guidance_route(),
                         self._route_future(self.assistant_plan.Preparation()),
                     ),
                 ) as route,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import sys
 import unittest
 from pathlib import Path
@@ -18,12 +17,6 @@ from chat import assistant_proposal, local
 
 TRACE_ID = "a" * 32
 EN = local.IntentRouteContext(locale="en")
-
-
-def _future(value: object) -> concurrent.futures.Future[object]:
-    future: concurrent.futures.Future[object] = concurrent.futures.Future()
-    future.set_result(value)
-    return future
 
 
 class ChatLifecycleReferenceTests(unittest.TestCase):

@@ -9,7 +9,7 @@ import json
 import unittest
 from unittest import mock
 
-from tests.chat_socket_case import ChatWebSocketCase
+from tests.chat_socket_case import ChatWebSocketCase, uninstall_guidance_route
 
 from tests import chat_socket_fixtures
 
@@ -124,15 +124,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     self.chat_socket.lifecycle,
                     "submit_route",
                     side_effect=(
-                        self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                guidance=self.assistant_route.Guidance(
-                                    "assistant-uninstall-target-required",
-                                    reply,
-                                ),
-                            )
-                        ),
+                        uninstall_guidance_route(reply),
                         self._future(
                             self.assistant_route.Result(
                                 "ordinary-task",
@@ -304,17 +296,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     self.chat_socket.lifecycle,
                     "submit_route",
                     return_value=(
-                        self._future(error=result)
-                        if isinstance(result, Exception)
-                        else self._future(
-                            self.assistant_route.Result(
-                                "assistant-uninstall",
-                                guidance=self.assistant_route.Guidance(
-                                    "assistant-uninstall-target-required",
-                                    "Qual Assistant instalado você quer desinstalar?",
-                                ),
-                            )
-                        )
+                        self._future(error=result) if isinstance(result, Exception) else uninstall_guidance_route()
                     ),
                 ),
             ):

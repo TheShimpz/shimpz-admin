@@ -12,7 +12,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from tests.chat_socket_case import ChatDeliveryCase, resolved_future
+from tests.chat_socket_case import ChatDeliveryCase, resolved_future, uninstall_guidance_route
 
 from chat import assistant_proposal, assistant_route, socket
 from tests import chat_socket_fixtures
@@ -34,15 +34,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=resolved_future(
-                        assistant_route.Result(
-                            "assistant-uninstall",
-                            guidance=assistant_route.Guidance(
-                                "assistant-uninstall-target-required",
-                                "Which installed Assistant do you want to uninstall?",
-                            ),
-                        )
-                    ),
+                    return_value=uninstall_guidance_route("Which installed Assistant do you want to uninstall?"),
                 ) as route,
             ):
                 await socket._dispatch_chat(
@@ -108,15 +100,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                 mock.patch.object(
                     socket.lifecycle,
                     "submit_route",
-                    return_value=resolved_future(
-                        assistant_route.Result(
-                            "assistant-uninstall",
-                            guidance=assistant_route.Guidance(
-                                "assistant-uninstall-target-required",
-                                "Qual Assistant instalado você quer desinstalar?",
-                            ),
-                        )
-                    ),
+                    return_value=uninstall_guidance_route(),
                 ),
             ):
                 await socket._dispatch_chat(
