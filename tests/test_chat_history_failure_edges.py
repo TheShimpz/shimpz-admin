@@ -107,17 +107,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
 
     def test_task_resume_history_failure_stops_before_planning(self) -> None:
         async def scenario() -> None:
-            frame = {
-                "type": "resume-task",
-                "message": "Você mesmo consegue habilitar?",
-                "objective": "Lista minhas zonas DNS no Cloudflare",
-                "files": [],
-                "assistant_ids": [],
-                "objective_assistant_ids": [],
-                "locale": "en",
-                "timezone": None,
-                "request": None,
-            }
+            frame = chat_socket_fixtures.resume_frame()
             for error, status in (
                 (socket.history.HistoryUnavailableError("offline"), 503),
                 (task_resume.ExecutorSaturatedError("full"), 429),

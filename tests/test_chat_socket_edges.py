@@ -163,17 +163,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
         asyncio.run(scenario())
 
     def test_resume_task_admission_is_exact_and_authoritatively_revalidated(self) -> None:
-        valid = {
-            "type": "resume-task",
-            "message": "Você mesmo consegue habilitar?",
-            "objective": "Lista minhas zonas DNS no Cloudflare",
-            "files": [],
-            "assistant_ids": [],
-            "objective_assistant_ids": [],
-            "locale": "en",
-            "timezone": None,
-            "request": None,
-        }
+        valid = chat_socket_fixtures.resume_frame()
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -267,17 +257,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
         asyncio.run(scenario())
 
     def test_resume_task_plans_the_prior_objective_without_semantic_fallback(self) -> None:
-        frame = {
-            "type": "resume-task",
-            "message": "Você mesmo consegue habilitar?",
-            "objective": "Lista minhas zonas DNS no Cloudflare",
-            "files": [],
-            "assistant_ids": [],
-            "objective_assistant_ids": [],
-            "locale": "en",
-            "timezone": None,
-            "request": None,
-        }
+        frame = chat_socket_fixtures.resume_frame()
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()

@@ -6,7 +6,7 @@ import asyncio
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
-from tests.chat_socket_fixtures import chat_frame, completed_turn
+from tests.chat_socket_fixtures import chat_frame, completed_turn, resume_frame
 
 
 class ChatTaskResumeTests(ChatWebSocketCase):
@@ -33,19 +33,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 ) as route,
             ):
                 websocket = await self._open()
-                await websocket.send_json(
-                    {
-                        "type": "resume-task",
-                        "message": "Você mesmo consegue habilitar?",
-                        "objective": "Instale um Assistant",
-                        "files": [],
-                        "assistant_ids": [],
-                        "objective_assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(resume_frame("Instale um Assistant"))
 
                 self.assertEqual((await websocket.next_json())["reply"], guidance.reply)
                 await websocket.send_json(chat_frame("cloudflare"))
@@ -97,19 +85,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 mock.patch("history.delivery.conversation", new=mock.AsyncMock(return_value=window)) as projected,
             ):
                 websocket = await self._open()
-                await websocket.send_json(
-                    {
-                        "type": "resume-task",
-                        "message": "Você mesmo consegue habilitar?",
-                        "objective": "Lista minhas zonas DNS no Cloudflare",
-                        "files": [],
-                        "assistant_ids": ["already-enabled"],
-                        "objective_assistant_ids": ["already-enabled"],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(resume_frame(assistant_ids=["already-enabled"]))
 
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 self.assertEqual((await websocket.next_json())["state"], "installed")
@@ -171,19 +147,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn") as turn,
             ):
                 websocket = await self._open()
-                await websocket.send_json(
-                    {
-                        "type": "resume-task",
-                        "message": "Você mesmo consegue habilitar?",
-                        "objective": "Instale Cloudflare e WhatsApp",
-                        "files": [],
-                        "assistant_ids": [],
-                        "objective_assistant_ids": [],
-                        "locale": "en",
-                        "timezone": None,
-                        "request": None,
-                    }
-                )
+                await websocket.send_json(resume_frame("Instale Cloudflare e WhatsApp"))
 
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 completed = await websocket.next_json()

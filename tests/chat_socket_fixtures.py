@@ -37,6 +37,24 @@ def chat_frame(
     }
 
 
+def resume_frame(
+    objective: str = "Lista minhas zonas DNS no Cloudflare", assistant_ids: list[str] | None = None
+) -> dict[str, object]:
+    """Return one complete resume-task frame asking Admin to enable what the prior objective needs."""
+    ids = [] if assistant_ids is None else assistant_ids
+    return {
+        "type": "resume-task",
+        "message": "Você mesmo consegue habilitar?",
+        "objective": objective,
+        "files": [],
+        "assistant_ids": list(ids),
+        "objective_assistant_ids": list(ids),
+        "locale": "en",
+        "timezone": None,
+        "request": None,
+    }
+
+
 def human_response(value: object, *, challenge_id: str = CHALLENGE_ID) -> dict[str, object]:
     """Return one submitted human-response frame, as the Admin client sends it."""
     return {"type": "human-response", "challenge_id": challenge_id, "decision": "submit", "value": value}
