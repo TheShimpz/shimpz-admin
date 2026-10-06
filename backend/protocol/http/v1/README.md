@@ -95,10 +95,11 @@ delivers only bytes with that size and digest; any other challenge carries no `f
 A completed Team chat terminal body carries `clarification`, either `null` or one exact Brain
 multiple-choice question (ADR-0081): `question` (at most 240 characters), two to five `options` with a
 `label` (at most 80) and a `description` (at most 160, may be empty), and a `default_index` that points to the one
-recommended option. Every text is already NFC, trimmed, and free of control and line-separator characters, and
+recommended option, or is `null` when no option is recommended: a question about a Routine steers no choice, so the
+Brain sends it with `null` (ADR-0101). Every text is already NFC, trimmed, and free of control and line-separator characters, and
 labels are distinct ignoring case. `payload.canonical_clarification` validates it. The terminal `reply`
 must equal `payload.render_clarification`: the question, a blank line, then one numbered line per option,
-the recommended default marked with " ✓" and a non-empty description after " — ". The question is presentation only:
+the recommended default, when there is one, marked with " ✓" and a non-empty description after " — ". The question is presentation only:
 it requests and authorizes nothing, and the user answers with a new chat message.
 Admin composes that message from the original request, a blank line, then the question and the answer on their own
 lines, each after its interface-language label (`payload.CLARIFICATION_LABELS`, `payload.compose_clarified`); a request
@@ -130,6 +131,8 @@ same words alike (`phrase.py`, ADR-0101): `phrase.stated` reads the canonical sc
 `phrase.outputs` the output choices (`show`, `changes`, `none`, `chain`), and `phrase.zones` the exact IANA zones it
 names. `phrase.team_asks(text)` is true when one clarification question or option label asks or states a schedule,
 an interval, an output choice, or how many times a Routine may run, which Team asks itself and the Brain never does.
+`phrase.requests_routine(text)` is true when the text names a Routine affirmatively ("cria uma rotina", "create a
+routine"), so a chat that asks for one is about a Routine before any schedule is stated.
 The tables cover the eight interface languages. A sentence that asks states nothing; a negation in any
 language rejects every reading it reaches; "show the result" qualified by "only when it changes" in its own clause is
 that one choice, while alternatives offer both. Vectors pin a reading for each language and kind.
