@@ -161,6 +161,14 @@ const STARTS = {
     recording: 'card',
     question: ROUTINE_QUESTIONS.schedule,
   }),
+  'routine-output': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    recording: 'card',
+    question: ROUTINE_QUESTIONS.output,
+  }),
   'routine-ambiguous': () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],

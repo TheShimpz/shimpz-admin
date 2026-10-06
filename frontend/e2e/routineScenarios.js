@@ -1,3 +1,5 @@
+import { routineProposalMessages } from '../src/lib/routineProposalMessages.js';
+
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
 // titled by the name Team froze into it, a deleted Routine's last notice, runs' usage with and without a model, a held
 // run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
@@ -546,10 +548,12 @@ const CARD_STEPS = Object.freeze([
 const CARD_LIFETIME_MS = 15 * 60 * 1000;
 
 /** The confirmation card of the owner's recorded watch, as a recording turn's reply carries it. */
-// The questions Team may ask before a card (ADR-0101): the schedule nobody stated, two zones of one name to choose
-// between, and two targets of the same digits, one a string and one an integer. Each target is its exact JSON text.
+// The questions Team may ask before a card (ADR-0101): the schedule nobody stated, what each run does with its result,
+// two zones of one name to choose between, and two targets of the same digits, one a string and one an integer. Each
+// target is its exact JSON text.
 export const ROUTINE_QUESTIONS = Object.freeze({
   schedule: { code: 'routine-schedule-unstated', options: [], value: null },
+  output: { code: 'routine-output-unstated', options: [], value: null },
   ambiguous: {
     code: 'routine-binding-ambiguous',
     options: [
@@ -568,7 +572,7 @@ export const ROUTINE_QUESTIONS = Object.freeze({
   },
 });
 
-export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
+export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode = 'show') {
   return {
     proposal_id: proposalId,
     expires_at: instant(now + CARD_LIFETIME_MS),
@@ -579,7 +583,7 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
     timezone_source: 'browser',
     next_runs: [30, 60, 90].map((seconds) => instant(now + seconds * 1000)),
     daily_cap: 2880,
-    output: { mode: 'show', when: null },
+    output: { mode, when: null },
     steps: [
       { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
       {
@@ -623,8 +627,21 @@ function recordTurn(state, message, reply) {
   ];
 }
 
-// Whether a send answers the pending question: a target question needs one option's exact JSON text, which is kept.
+// Each Team protocol output label in every interface language, read back as Team reads it: using the result in other
+// Actions records those Actions as part of the work and shows the result.
+const OUTPUT_ORDER = ['show', 'changes', 'none', 'show'];
+const OUTPUT_MODES = Object.freeze(Object.fromEntries(Object.values(routineProposalMessages)
+  .filter((catalog) => catalog.questions)
+  .flatMap((catalog) => catalog.questions.output.answers.map((label, index) => [label, OUTPUT_ORDER[index]]))));
+
+// Whether a send answers the pending question: a target question needs one option's exact JSON text, which is kept;
+// an output question needs one of Team's output labels, whose choice the card then carries.
 function answers(state, message) {
+  if (state.question.code === 'routine-output-unstated') {
+    const label = message.split('\n').at(-1).replace(/^[^:]*: /u, '');
+    state.mode = OUTPUT_MODES[label];
+    return state.mode !== undefined;
+  }
   if (state.question.code !== 'routine-binding-ambiguous') return true;
   const last = message.split('\n').at(-1);
   const chosen = state.question.options.find((option) => last.endsWith(`: ${option.value}`));
@@ -652,7 +669,7 @@ export function recordingReply(state, message, teamName) {
     reply = { ...base, reply: text.questionReply, routine_question: structuredClone(state.question) };
   } else {
     const proposalId = `c${state.sequence.toString(16)}`.padStart(32, '0');
-    const proposal = cloudflareCard(proposalId, state.locale);
+    const proposal = cloudflareCard(proposalId, state.locale, Date.now(), state.mode ?? 'show');
     state.proposals = { ...state.proposals, [proposalId]: proposal };
     reply = { ...base, reply: text.cardReply, routine_proposal: proposal };
   }

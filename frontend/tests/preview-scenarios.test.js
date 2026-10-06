@@ -107,7 +107,7 @@ test("a refused recording says in the person's language that no Routine was crea
 });
 
 test("a question scenario asks Team's question in every language and answers the next send with the card", () => {
-  for (const name of ['routine-question', 'routine-ambiguous', 'routine-exact-target']) {
+  for (const name of ['routine-question', 'routine-output', 'routine-ambiguous', 'routine-exact-target']) {
     for (const locale of Object.keys(ROUTINE_TEXT)) {
       const scenario = createScenario(name, locale);
       const send = (message) => scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] })[0];

@@ -4673,6 +4673,19 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(1);
   });
 
+  test("what to do with each run's result is answered with one of Team's choices, which the card then carries", async ({ page }) => {
+    const scenario = await recordRoutine(page, 'routine-output');
+    const words = messages.en.routine.proposal.questions.output;
+    const question = page.getByRole('radiogroup', { name: words.question });
+    // Exactly Team's four choices are offered, and none is chosen for the person.
+    for (const label of words.answers) await expect(question.getByRole('radio', { name: label, exact: true })).not.toBeChecked();
+    await question.getByRole('radio', { name: 'Show only when it changes', exact: true }).check();
+    await page.getByRole('button', { name: 'Answer', exact: true }).click();
+    const card = page.getByRole('region', { name: 'Routine to create' });
+    await expect(card).toContainText('Shows the result of step 2 only when it changes');
+    expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: Show only when it changes');
+  });
+
   test('two zones of one name are told apart by choosing one, whose exact id the answer sends', async ({ page }) => {
     const scenario = await recordRoutine(page, 'routine-ambiguous');
     const words = messages.en.routine.proposal.questions.ambiguous;
