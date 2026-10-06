@@ -74,6 +74,8 @@ def canonical_local_team_name(value: object) -> str:
 
 
 canonical_assistant_id = payloads.canonical_assistant_id
+canonical_identifier = payloads.canonical_identifier
+canonical_action_id = payloads.canonical_action_id
 
 
 def canonical_source_digest(value: object) -> str:

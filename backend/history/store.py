@@ -361,7 +361,7 @@ def _install_assistant(value: object) -> dict[str, object]:
         or value["status"] not in {"pending", "installed", "failed"}
     ):
         raise ValueError("chat history Assistant install item is invalid")
-    canonical_providers = [team_contract.canonical_assistant_id(provider) for provider in providers]
+    canonical_providers = [team_contract.canonical_identifier(provider) for provider in providers]
     if any(provider is None for provider in canonical_providers) or canonical_providers != sorted(
         set(canonical_providers)
     ):

@@ -34,6 +34,21 @@ def canonical_assistant_id(value: object) -> str:
     return canonical
 
 
+def canonical_identifier(value: object) -> str:
+    """One Integration, provider, or Stored Input identifier, as the Developers protocol defines it."""
+    canonical = team_contract.canonical_identifier(value)
+    if canonical is None:
+        raise TeamRequestError("identifier must be a canonical lowercase identifier")
+    return canonical
+
+
+def canonical_action_id(value: object) -> str:
+    canonical = team_contract.canonical_action_id(value)
+    if canonical is None:
+        raise TeamRequestError("Action id must be a canonical Action identifier")
+    return canonical
+
+
 def canonical_challenge_id(value: object) -> str:
     if not isinstance(value, str) or chat_ws_common.CHALLENGE_ID_RE.fullmatch(value) is None:
         raise TeamRequestError("OAuth challenge is invalid")

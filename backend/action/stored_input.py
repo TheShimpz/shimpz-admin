@@ -40,7 +40,7 @@ def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
             if not isinstance(item, dict) or set(item) != {"assistant_id", "stored_input_id", "status"}:
                 raise ValueError("invalid Stored Input metadata")
             assistant_id = payloads.canonical_assistant_id(item["assistant_id"])
-            stored_input_id = payloads.canonical_assistant_id(item["stored_input_id"])
+            stored_input_id = payloads.canonical_identifier(item["stored_input_id"])
             identity = (assistant_id, stored_input_id)
             if identity in identities or item["status"] not in STATUSES:
                 raise ValueError("invalid Stored Input metadata")
@@ -75,7 +75,7 @@ def clear_assistant_stored_input(
 ) -> TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
-    stored_input = payloads.canonical_assistant_id(stored_input_id)
+    stored_input = payloads.canonical_identifier(stored_input_id)
     response = transport._call(
         "DELETE",
         f"/v1/teams/{canonical}/assistant-stored-inputs/{assistant}/{stored_input}",

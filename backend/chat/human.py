@@ -303,7 +303,7 @@ def _action(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or set(value) != {"id", "summary"}:
         raise HumanChallengeError("invalid human challenge Action")
     try:
-        action_id = team.canonical_assistant_id(value["id"])
+        action_id = team.canonical_action_id(value["id"])
         summary = chat_ws_common.public_text(value["summary"], 160)
     except (ValueError, team.TeamRequestError) as exc:
         raise HumanChallengeError("invalid human challenge Action") from exc
@@ -362,7 +362,7 @@ def _kind(request: dict[str, object], kind: str) -> bool:
 
 # Team names a persistent password Stored Input with its exact identifier grammar (ADR-0059).
 def _stored_input(value: object) -> bool:
-    return isinstance(value, str) and team_contract.ASSISTANT_ID_RE.fullmatch(value) is not None
+    return team_contract.canonical_identifier(value) is not None
 
 
 def _length(request: dict[str, object], limit: int) -> bool:

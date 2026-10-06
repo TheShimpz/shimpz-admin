@@ -117,7 +117,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
             }:
                 raise ValueError("invalid Team integration fields")
             assistant_id = payloads.canonical_assistant_id(item["assistant_id"])
-            integration_id = payloads.canonical_assistant_id(item["id"])
+            integration_id = payloads.canonical_identifier(item["id"])
             identity = (assistant_id, integration_id)
             if identity in identities:
                 raise ValueError("duplicate Team integration")
@@ -138,7 +138,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                     "assistant_name": chat_ws_common.public_text(item["assistant_name"], 80, field="Assistant name"),
                     "assistant_version": assistant_version,
                     "id": integration_id,
-                    "provider": payloads.canonical_assistant_id(item["provider"]),
+                    "provider": payloads.canonical_identifier(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),
                     "scopes": _integration_scopes(item["scopes"]),
                     "status": status,
@@ -228,7 +228,7 @@ def start_local_assistant_integration_authorization(
     canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
-    integration = payloads.canonical_assistant_id(integration_id)
+    integration = payloads.canonical_identifier(integration_id)
     binding = canonical_oauth_binding(session_binding)
     if callback_mode not in {"loopback", "hosted", "out-of-band"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
@@ -279,7 +279,7 @@ def disconnect_assistant_integration(
 ) -> TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
-    integration = payloads.canonical_assistant_id(integration_id)
+    integration = payloads.canonical_identifier(integration_id)
     response = transport._call(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-integrations/{assistant}/{integration}",
@@ -322,7 +322,7 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
             "connected": True,
             "team_id": payloads.canonical_team_id(response.body["team_id"]),
             "assistant_id": payloads.canonical_assistant_id(response.body["assistant_id"]),
-            "integration_id": payloads.canonical_assistant_id(response.body["integration_id"]),
+            "integration_id": payloads.canonical_identifier(response.body["integration_id"]),
         }
     except KeyError, TypeError, ValueError, TeamRequestError:
         log.warning("team returned an invalid OAuth callback response")

@@ -560,7 +560,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             }:
                 raise ValueError("invalid integration requirement")
             assistant_id = team.canonical_assistant_id(raw["assistant_id"])
-            integration_id = team.canonical_assistant_id(raw["integration_id"])
+            integration_id = team.canonical_identifier(raw["integration_id"])
             identity = (assistant_id, integration_id)
             if identity in seen_integrations:
                 raise ValueError("duplicate integration")
@@ -584,7 +584,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             for raw_action in raw_actions:
                 if not isinstance(raw_action, dict) or set(raw_action) != {"id", "name", "summary"}:
                     raise ValueError("invalid integration Action")
-                action_id = team.canonical_assistant_id(raw_action["id"])
+                action_id = team.canonical_action_id(raw_action["id"])
                 if action_id in seen_actions:
                     raise ValueError("duplicate integration Action")
                 seen_actions.add(action_id)
@@ -599,7 +599,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_INTEGRATION_LABEL_CHARS),
                     "integration_id": integration_id,
-                    "provider": team.canonical_assistant_id(raw["provider"]),
+                    "provider": team.canonical_identifier(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
                     "scopes": scopes,
                     "actions": actions,

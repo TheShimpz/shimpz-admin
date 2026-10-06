@@ -131,11 +131,7 @@ def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
             raise ValueError("catalog Integration is invalid")
         integration_id = item["id"]
         provider = item["provider"]
-        if (
-            not isinstance(integration_id, str)
-            or integration_id != provider
-            or team_contract.ASSISTANT_ID_RE.fullmatch(integration_id) is None
-        ):
+        if team_contract.canonical_identifier(integration_id) is None or integration_id != provider:
             raise ValueError("catalog Integration identity is invalid")
         output.append(CatalogIntegration(provider=provider, scopes=_strings(item["scopes"], 32, 128)))
     if len({item.provider for item in output}) != len(output):
@@ -154,9 +150,8 @@ def _actions(value: object) -> tuple[str, ...]:
         integrations = _strings(item["integrations"], 16, 64)
         requests = _strings(item["human_requests"], 11, 25)
         if (
-            not isinstance(action_id, str)
-            or team_contract.ASSISTANT_ID_RE.fullmatch(action_id) is None
-            or any(team_contract.ASSISTANT_ID_RE.fullmatch(integration) is None for integration in integrations)
+            team_contract.canonical_identifier(action_id) is None
+            or any(team_contract.canonical_identifier(integration) is None for integration in integrations)
             or any(request not in _HUMAN_REQUEST_KINDS for request in requests)
         ):
             raise ValueError("catalog Action is invalid")
@@ -170,7 +165,7 @@ def _assistant(value: object) -> CatalogAssistant:
     if not isinstance(value, dict) or set(value) != _ASSISTANT_FIELDS:
         raise ValueError("catalog Assistant fields are invalid")
     assistant_id = value["assistant_id"]
-    if not isinstance(assistant_id, str) or team_contract.ASSISTANT_ID_RE.fullmatch(assistant_id) is None:
+    if team_contract.canonical_assistant_id(assistant_id) is None:
         raise ValueError("catalog Assistant identifier is invalid")
     if not isinstance(value["assistant_version"], str) or VERSION_RE.fullmatch(value["assistant_version"]) is None:
         raise ValueError("catalog Assistant version is invalid")
@@ -372,7 +367,7 @@ def fetch_assistant_icon(
     connection_factory: Callable[..., http.client.HTTPSConnection] = http.client.HTTPSConnection,
 ) -> bytes:
     """Fetch one current public Assistant icon without accepting browser-supplied digests."""
-    if team_contract.ASSISTANT_ID_RE.fullmatch(assistant_id) is None:
+    if team_contract.canonical_assistant_id(assistant_id) is None:
         raise CatalogAssistantNotFoundError("Assistant is not in the public catalog")
     assistants = (CATALOG if catalog is None else catalog).get(PLANNING_LOCALE)
     assistant = next((item for item in assistants if item.assistant_id == assistant_id), None)
