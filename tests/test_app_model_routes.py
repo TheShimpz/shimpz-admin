@@ -23,11 +23,7 @@ class ModelProviderRouteTests(unittest.TestCase):
         cls.admin_app = app_import.load_app(root)
 
     def test_exposes_only_masked_credential_management_routes(self) -> None:
-        routes = {
-            (route.path, method)
-            for route in self.admin_app.app.routes
-            for method in (getattr(route, "methods", None) or set())
-        }
+        routes = app_import.route_methods(self.admin_app)
         self.assertTrue(
             {
                 ("/api/model-providers", "GET"),

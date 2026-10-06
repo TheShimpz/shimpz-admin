@@ -96,11 +96,7 @@ class DecisionProviderTests(unittest.TestCase):
             self.decision.resolve()
 
     def test_routes_are_local_session_gated_and_map_failures(self) -> None:
-        routes = {
-            (route.path, method)
-            for route in self.admin_app.app.routes
-            for method in (getattr(route, "methods", None) or set())
-        }
+        routes = app_import.route_methods(self.admin_app)
         for method in ("GET", "PUT", "DELETE"):
             self.assertIn(("/api/decision-provider", method), routes)
         self.assertNotIn("/api/decision-provider", self.admin_app.OPEN_API)

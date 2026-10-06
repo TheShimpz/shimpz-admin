@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import app_import
 from fastapi import HTTPException
 from http_request import Peer, asgi_exchange, http_request, json_headers
 from starlette.requests import Request
@@ -103,11 +104,7 @@ class HostedAuthRouteTests(unittest.TestCase):
         cls.admin_app = importlib.import_module("app")
 
     def test_profile_is_required_and_local_only_routes_are_absent(self) -> None:
-        routes = {
-            (route.path, method)
-            for route in self.admin_app.app.routes
-            for method in (getattr(route, "methods", None) or set())
-        }
+        routes = app_import.route_methods(self.admin_app)
 
         self.assertEqual(self.admin_app.ADMIN_PROFILE, "hosted")
         self.assertNotIn(("/api/admin/setup", "POST"), routes)

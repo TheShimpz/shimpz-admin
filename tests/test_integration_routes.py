@@ -41,11 +41,7 @@ def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", orig
 
 class OAuthRoutesTest(unittest.TestCase):
     def test_local_profile_registers_only_the_closed_oauth_route_methods(self) -> None:
-        routes = {
-            (route.path, method)
-            for route in self.admin_app.app.routes
-            for method in (getattr(route, "methods", None) or set())
-        }
+        routes = app_import.route_methods(self.admin_app)
         path = "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}"
 
         self.assertIn((path + "/authorize", "POST"), routes)

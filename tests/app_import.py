@@ -52,6 +52,13 @@ def replace_for_class(case: type[unittest.TestCase], owner: object, name: str, v
     case.addClassCleanup(setattr, owner, name, previous)
 
 
+def route_methods(admin_app: ModuleType) -> set[tuple[str, str]]:
+    """Every (path, HTTP method) pair the imported Admin application registers."""
+    return {
+        (route.path, method) for route in admin_app.app.routes for method in (getattr(route, "methods", None) or set())
+    }
+
+
 class RouteStatusAssertions(unittest.TestCase):
     """Route suites that assert the HTTP status a refused route coroutine raises."""
 
