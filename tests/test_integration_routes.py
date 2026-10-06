@@ -59,6 +59,19 @@ class OAuthRoutesTest(unittest.TestCase):
         )
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
 
+    def _authorize_request(self, origin: str) -> Request:
+        """The Supervisor's authenticated Cloudflare authorize POST for challenge a*32, sent from this origin."""
+        return _request(
+            "POST",
+            f"{origin}/api/teams/team_1/assistant-integrations/challenges/{'a' * 32}/authorize",
+            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
+            cookie=f"shimpz_admin={self.session}",
+            origin=origin,
+        )
+
+    def _origins(self, origin: str):
+        return mock.patch.object(self.admin_app, "_allowed_browser_origins", return_value=frozenset({origin}))
+
     def test_loopback_oauth_origin_is_fixed(self) -> None:
         self.assertEqual(self.admin_app.OAUTH_ORIGINS["loopback"], "http://127.0.0.1:7777")
 
@@ -74,23 +87,13 @@ class OAuthRoutesTest(unittest.TestCase):
         )
 
     def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
-        request = _request(
-            "POST",
-            "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin="http://127.0.0.1:7777",
-        )
+        request = self._authorize_request("http://127.0.0.1:7777")
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
         )
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_allowed_browser_origins",
-                return_value=frozenset({"http://127.0.0.1:7777"}),
-            ),
+            self._origins("http://127.0.0.1:7777"),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_local_assistant_integration_authorization",
@@ -118,19 +121,9 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(arguments[5], "loopback")
 
     def test_authorization_failure_always_releases_the_handoff_reservation(self) -> None:
-        request = _request(
-            "POST",
-            "http://127.0.0.1:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin="http://127.0.0.1:7777",
-        )
+        request = self._authorize_request("http://127.0.0.1:7777")
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_allowed_browser_origins",
-                return_value=frozenset({"http://127.0.0.1:7777"}),
-            ),
+            self._origins("http://127.0.0.1:7777"),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_local_assistant_integration_authorization",
@@ -184,23 +177,13 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
     def test_hosted_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
-        authorize_request = _request(
-            "POST",
-            "https://local.shimpz.com/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://local.shimpz.com",
-        )
+        authorize_request = self._authorize_request("https://local.shimpz.com")
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("hosted")},
         )
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_allowed_browser_origins",
-                return_value=frozenset({"https://local.shimpz.com"}),
-            ),
+            self._origins("https://local.shimpz.com"),
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_local_assistant_integration_authorization",
@@ -304,23 +287,11 @@ class OAuthRoutesTest(unittest.TestCase):
                 self.assertEqual(raised.exception.status_code, 409)
 
     def test_custom_https_address_completes_out_of_band_in_the_original_session(self) -> None:
-        authorize_request = _request(
-            "POST",
-            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
-            + "a" * 32
-            + "/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://developer.example.test",
-        )
+        authorize_request = self._authorize_request("https://developer.example.test")
         provider_url = self._cloudflare_authorization_url("out-of-band")
         provider = self.admin_app.team.TeamResponse(200, {"authorization_url": provider_url})
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_allowed_browser_origins",
-                return_value=frozenset({"https://developer.example.test"}),
-            ),
+            self._origins("https://developer.example.test"),
             mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://developer.example.test"),
             mock.patch.object(
                 self.admin_app.integrations,
@@ -380,25 +351,13 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.exception.status_code, 409)
 
     def test_custom_https_authorization_cancel_releases_the_exact_team_binding(self) -> None:
-        authorize_request = _request(
-            "POST",
-            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
-            + "a" * 32
-            + "/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://developer.example.test",
-        )
+        authorize_request = self._authorize_request("https://developer.example.test")
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("out-of-band")},
         )
         with (
-            mock.patch.object(
-                self.admin_app,
-                "_allowed_browser_origins",
-                return_value=frozenset({"https://developer.example.test"}),
-            ),
+            self._origins("https://developer.example.test"),
             mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://developer.example.test"),
             mock.patch.object(
                 self.admin_app.integrations,
