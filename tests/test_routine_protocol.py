@@ -91,6 +91,21 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         self.assertEqual(routine_contract.where_text("x‮y"), '"x\\u202ey"')
         self.assertIsNone(routine_contract.canonical_notice_batch({"notices": ["x"], "more": False}))
 
+    def test_previews_and_card_parts_refuse_anything_but_their_own_shape(self) -> None:
+        self.assertEqual(routine_contract.literal_preview({"a": "x\u202e"}), '{"a":"x\\u202e"}')
+        self.assertEqual(len(routine_contract.literal_preview("y" * 300)), routine_contract.MAX_PREVIEW_CHARS)
+        self.assertFalse(routine_contract._input({"member": "", "source": "literal", "value": "1"}, 1))
+        self.assertFalse(routine_contract._decision([]))
+        literal = CARD["steps"][1]["inputs"][0]
+        self.assertFalse(routine_contract._card_input([], 1))
+        self.assertFalse(routine_contract._card_input({**literal, "origin": "guess"}, 2))
+        self.assertFalse(routine_contract._card_input({**literal, "member": "a\u2028b"}, 2))
+        self.assertFalse(routine_contract._card_permitted({}))
+        self.assertFalse(
+            routine_contract._card_permitted([CARD["permitted"][0]] * (routine_contract.MAX_PERMITTED + 1))
+        )
+        self.assertFalse(routine_contract._card_permitted([{**CARD["permitted"][0], "read_only": 1}]))
+
     def test_routine_assertions_bind_no_human_authority(self) -> None:
         valid = VECTORS["local_routine"]["valid"][0]
         self.assertEqual(supervisor.canonical_claims(valid, audience=supervisor.ROUTINE_AUDIENCE), valid)
