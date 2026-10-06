@@ -12,6 +12,7 @@ buggy controller can never echo that key or internal execution details back to t
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import re
 import time
@@ -196,10 +197,24 @@ def _immutable(*_args, **_kwargs):
 class FrozenDict(dict):
     __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = _immutable
 
+    # A copy is the caller's own plain data: a validator that copies its admitted value (as the mirrored Team
+    # protocol does) must never have to rebuild a frozen projection item by item.
+    def __copy__(self) -> dict[object, object]:
+        return dict(self)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> dict[object, object]:
+        return {copy.deepcopy(key, memo): copy.deepcopy(item, memo) for key, item in self.items()}
+
 
 class FrozenList(list):
     __setitem__ = __delitem__ = __iadd__ = __imul__ = _immutable
     append = clear = extend = insert = pop = remove = reverse = sort = _immutable
+
+    def __copy__(self) -> list[object]:
+        return list(self)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> list[object]:
+        return [copy.deepcopy(item, memo) for item in self]
 
 
 def _freeze(value: object) -> object:

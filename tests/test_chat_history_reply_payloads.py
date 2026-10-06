@@ -14,6 +14,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 from history import store as history
 from tests.chat_history_case import ChatHistoryCase
 
+from chat import local
+
 
 class ChatHistoryReplyPayloadTests(ChatHistoryCase):
     def test_a_reply_keeps_its_closed_clarification_for_reload(self) -> None:
@@ -142,6 +144,30 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
             )
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
+
+    def test_a_projected_reply_commits_its_routine_card_refusal_or_question(self) -> None:
+        """The socket commits the frozen projection of Team's reply as it relays it, Routine outcomes included."""
+        vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+        outcomes = {
+            "routine_proposal": vectors["routine_proposal"]["valid"][0],
+            "routine_refusal": {"code": "routine-recording-empty"},
+            "routine_question": {"code": "routine-output-unstated", "options": [], "value": None},
+        }
+        for name, value in outcomes.items():
+            with self.subTest(outcome=name):
+                projected = local.PublicResponse(
+                    200,
+                    {
+                        "team_id": "marketing",
+                        "team_name": "Marketing",
+                        "reply": "Listei os registros.",
+                        "clarification": None,
+                        name: value,
+                    },
+                )
+                turn_id = self._admitted()
+                self.assertTrue(history.append_reply("marketing", turn_id, {"type": "done", **projected.body}))
+                self.assertEqual(history.page("marketing")["entries"][-1][name], value)
 
     def test_a_reply_keeps_its_routine_card_or_refusal_for_reload(self) -> None:
         vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
