@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import http.client
 import json
 import logging
 import os
 import re
 import stat
-import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError
 
 log = logging.getLogger("shimpz-admin")
 
@@ -33,34 +33,13 @@ _ACCOUNT_ID = re.compile(r"[0-9a-f]{32}\Z")
 _USERNAME = re.compile(r"[a-z0-9][a-z0-9-]{1,30}[a-z0-9]\Z")
 
 
-class ExecutorSaturatedError(RuntimeError):
-    """The finite Account-call worker and queue budget has no free slot."""
-
-
-class _BoundedExecutor(concurrent.futures.ThreadPoolExecutor):
-    def __init__(self) -> None:
-        self._permits = threading.BoundedSemaphore(8)
-        super().__init__(max_workers=4, thread_name_prefix="shimpz-account-session")
-
-    def submit(self, fn, /, *args, **kwargs):
-        if not self._permits.acquire(blocking=False):
-            raise ExecutorSaturatedError("Account session worker admission is full")
-        try:
-            future = super().submit(fn, *args, **kwargs)
-        except BaseException:
-            self._permits.release()
-            raise
-        future.add_done_callback(lambda _completed: self._permits.release())
-        return future
-
-
 @dataclass(frozen=True)
 class AccountResponse:
     status: int
     body: dict[str, object]
 
 
-EXECUTOR = _BoundedExecutor()
+EXECUTOR = BoundedThreadPoolExecutor(max_workers=4, max_outstanding=8, thread_name_prefix="shimpz-account-session")
 
 
 def _endpoint() -> tuple[str, int]:

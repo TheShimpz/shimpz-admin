@@ -1,4 +1,4 @@
-"""Bounded context-preserving worker admission for local chat responsibilities."""
+"""Bounded context-preserving worker admission for Admin responsibilities."""
 
 from __future__ import annotations
 

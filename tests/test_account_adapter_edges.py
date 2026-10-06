@@ -67,7 +67,11 @@ class AccountAdapterEdgeTests(unittest.TestCase):
         close.assert_called_once_with(7)
 
     def test_bounded_executor_releases_permits_on_success_failure_and_saturation(self) -> None:
-        executor = account._BoundedExecutor()
+        self.assertIsInstance(account.EXECUTOR, account.BoundedThreadPoolExecutor)
+        self.assertEqual(account.EXECUTOR._max_workers, 4)
+        executor = account.BoundedThreadPoolExecutor(
+            max_workers=4, max_outstanding=8, thread_name_prefix="shimpz-account-session"
+        )
         self.addCleanup(executor.shutdown, wait=True)
         self.assertEqual(executor.submit(lambda: "done").result(), "done")
 
