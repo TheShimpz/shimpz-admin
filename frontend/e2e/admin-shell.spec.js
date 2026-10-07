@@ -107,7 +107,8 @@ test('announces a rejected TOTP and returns focus to password entry', async ({ p
   await page.goto('/');
   await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  expect(ticketIssued).toBe(true);
+  // A click returns once it is dispatched; the sign-in request it causes reaches the route a moment later.
+  await expect.poll(() => ticketIssued).toBe(true);
   await page.getByLabel('Six-digit code').fill('123456');
   await page.getByRole('button', { name: 'Verify and continue' }).click();
 
@@ -661,10 +662,14 @@ test('shows the first Assistants view before a public icon finishes loading', as
 });
 
 test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
+  let iconRequested = false;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
-    if (path === '/api/assistants/hello-pulse/catalog-icon') return;
+    if (path === '/api/assistants/hello-pulse/catalog-icon') {
+      iconRequested = true;
+      return;
+    }
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
       '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
@@ -684,9 +689,21 @@ test('shows an over-budget public icon as unavailable instead of loading forever
     });
   });
 
+  // The page's clock moves only when the test moves it, so the 1.5 s budget is measured on that clock: the page is
+  // stepped one frame at a time until it requests the icon, which it does as the budget starts.
+  const start = new Date('2026-10-01T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 60_000));
   await page.goto('/assistants/');
   const iconBox = page.getByRole('article', { name: 'hello-pulse' }).locator('.shimpz-assistant-icon');
+  await expect.poll(async () => {
+    await page.clock.runFor(16);
+    await page.evaluate(() => 0);
+    return iconRequested;
+  }).toBe(true);
+  await page.clock.runFor(1_400);
   await expect(iconBox).toHaveAttribute('data-state', 'loading');
+  await page.clock.runFor(200);
   await expect(iconBox).toHaveAttribute('data-state', 'failed');
   await expect(iconBox.locator('img')).toHaveCount(0);
 });

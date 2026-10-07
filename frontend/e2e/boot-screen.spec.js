@@ -252,10 +252,19 @@ test('releases the Assistants route when initial catalog hydration does not sett
     trace_id: 'c'.repeat(32),
   }));
 
+  // The page's clock stands still until the test moves it, so the release deadline is measured on that clock, never by
+  // how fast this runner observes the page.
+  const start = new Date('2026-10-01T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 60_000));
   await page.goto('/assistants/');
   const boot = page.locator('[data-slot="boot-screen"]');
   await catalogRequested.promise;
-  // The catalog stays unanswered, so the boot screen leaving at all proves it does not wait for the catalog.
+  await expect(boot).toHaveCount(1);
+  // The catalog stays unanswered: the boot screen holds for the Local deadline of one second, then leaves without it.
+  await page.clock.runFor(990);
+  await expect(boot).toHaveCount(1);
+  await page.clock.runFor(20);
   await expect(boot).toHaveCount(0);
   expect(await page.evaluate(() => window.bootScreenShown)).toBe(true);
   await expect(page.locator('.assistant-catalog-loading')).toBeVisible();
