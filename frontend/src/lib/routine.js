@@ -1726,7 +1726,6 @@ const REFUSAL_KEYS = {
   'routine-recording-empty': 'empty',
   'routine-recording-invalid': 'invalid',
   'routine-secret-literal': 'secret',
-  'routine-mutation-unavailable': 'mutation',
   'routine-decide-action-invalid': 'decideAction',
   'routine-step-budget': 'stepBudget',
   'routine-proposal-too-large': 'tooLarge',
