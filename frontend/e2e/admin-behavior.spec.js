@@ -1155,6 +1155,8 @@ test('answering a question sends the request with the answer at once and the Tea
   ]);
   // The answered question offers no second answer, even in another language, and nothing was left to send again.
   await expect(card).toHaveCount(0);
+  // Once answered, the card is gone from the reply that asked it; only the person's message keeps the question.
+  await expect(page.getByRole('article', { name: 'Marketing' }).filter({ hasText: SCENARIO_CLARIFICATION.question })).toHaveCount(0);
   await expect(composer).toHaveValue('');
   await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
   await page.getByRole('button', { name: 'Language: English' }).click();
@@ -4640,8 +4642,9 @@ test.describe('Team Routines', () => {
     expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toEqual([]);
 
     await card.getByRole('button', { name: 'Create Routine', exact: true }).click();
-    await expect(card.getByRole('status')).toHaveText('Routine created.');
-    await expect(card.getByRole('button')).toHaveCount(0);
+    // Once created, the card is gone and nothing is left to answer.
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
     expect(calls).toEqual([['POST', '{}']]);
     const [routine] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
@@ -4664,8 +4667,9 @@ test.describe('Team Routines', () => {
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: 'Routine to create' });
     await card.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(card.getByRole('status')).toHaveText('Nothing was created.');
-    await expect(card.getByRole('button')).toHaveCount(0);
+    // Once canceled, the card is gone and nothing is left to answer.
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
     expect(calls).toEqual([['DELETE', null]]);
     expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
@@ -4699,6 +4703,8 @@ test.describe('Team Routines', () => {
     await answer.click();
     await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
     await expect(question).toHaveCount(0);
+    // Once answered, the question is gone from the reply that asked it; only the person's message keeps it.
+    await expect(page.getByRole('article', { name: 'Marketing' }).filter({ hasText: words.question })).toHaveCount(0);
     const sent = sentMessages(scenario);
     expect(sent.at(-1)).toBe(`${ROUTINE_TEXT.en.request}\n\nQuestion: ${words.question}\nAnswer: Every hour`);
     // A reload keeps the question answered and the card under its answer's reply.
@@ -4731,9 +4737,10 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
     // The person reads the label; Team receives the target's exact JSON text, the only answer it matches.
     expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: "9a7806061c88ada191ed06f989cc3dac"');
-    // After a reload the answered question still reads as the chosen target's label.
+    // After a reload the answered question stays gone and the card stays under its answer's reply.
     await page.reload();
-    await expect(page.getByText(second)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: words.question })).toHaveCount(0);
   });
 
   test('a string and an integer of the same digits stay two targets, and the chosen one reaches Team exactly', async ({ page }) => {

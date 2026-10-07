@@ -51,12 +51,7 @@
   }
 </script>
 
-{#if answered !== null}
-  <div class="clarification answered">
-    <p class="question">{clarification.question}</p>
-    <p class="choice"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">{copy.answered}: </span>{answered}</p>
-  </div>
-{:else}
+{#if answered === null}
   <form class="clarification" aria-labelledby={`${id}-question`} onsubmit={submit}>
     <p class="question" id={`${id}-question`}>{clarification.question}</p>
     <div class="options" role="radiogroup" aria-labelledby={`${id}-question`}>
@@ -112,18 +107,6 @@
 <style>
   .clarification { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-1); }
   .question { margin: 0; color: var(--shimpz-color-text); font-weight: 600; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .answered .question { color: var(--shimpz-color-text-muted); font-weight: 500; }
-  .choice {
-    display: flex;
-    align-items: baseline;
-    gap: var(--shimpz-space-2);
-    margin: 0;
-    color: var(--shimpz-color-text);
-    font-family: var(--shimpz-font-mono, ui-monospace, monospace);
-    font-size: 0.88rem;
-    overflow-wrap: anywhere;
-  }
-  .mark { color: var(--shimpz-color-accent); }
   .options { display: grid; gap: 2px; }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--shimpz-space-2); }
   /* "Other" is one card: its option, then its answer field aligned under the description. */
@@ -179,15 +162,4 @@
     stroke-width: 1.75;
   }
   .error { margin: 0; font-size: 0.78rem; line-height: 1.4; color: var(--shimpz-color-danger); }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
 </style>

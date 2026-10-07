@@ -27,7 +27,7 @@
 
   let card = $derived(copy.proposal);
   let working = $state(false);
-  // `created`, `changed`, or `revoked` once the person answered; the card then shows only what happened.
+  // `created`, `changed`, or `revoked` once the person answered; the card then gives way to one line saying so.
   let answer = $state('');
   let error = $state('');
   let now = $state(Date.now());
@@ -62,6 +62,9 @@
   const changeWords = (readOnly) => (readOnly ? card.reads : card.changes);
 </script>
 
+{#if answer}
+  <p class="routine-result" role="status">{card[answer]}</p>
+{:else if !expired}
 <section class="routine-proposal" aria-label={card.title}>
   <header>
     <p class="kicker">{card.title}</p>
@@ -148,12 +151,7 @@
     <li>{card.approvals}</li>
   </ul>
 
-  {#if answer}
-    <p class="result" role="status">{card[answer]}</p>
-  {:else if expired}
-    <p class="result">{copy.errors.proposalExpired}</p>
-  {:else}
-    <div class="actions">
+  <div class="actions">
       <Button size="sm" variant="secondary" type="button" disabled={working}
         onclick={() => settle(confirmRoutineProposal)}>{card.confirm}</Button>
       <Button size="sm" variant="secondary" type="button" disabled={working}
@@ -161,8 +159,8 @@
     </div>
     {#if working}<p class="dim" role="status">{card.working}</p>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {/if}
 </section>
+{/if}
 
 <style>
   /* One bordered sheet under the reply: mono labels, plain values, and two equal buttons at its foot. */
@@ -203,6 +201,6 @@
   .text { white-space: pre-wrap; }
   .statements { color: var(--shimpz-color-text-muted); }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); }
-  .result { color: var(--shimpz-color-text-muted); }
+  .routine-result { color: var(--shimpz-color-text-muted); }
   .error { color: var(--shimpz-color-danger); }
 </style>

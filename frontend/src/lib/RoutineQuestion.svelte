@@ -18,8 +18,6 @@
 
   let words = $derived(questionWords(question, copy));
   let answer = $derived(choice === OTHER ? custom : choice === '' ? '' : words.answers[Number(choice)]?.text ?? '');
-  // An answer sent as a target's exact JSON text reads as that target's label once answered, after a reload too.
-  let answeredLabel = $derived(words.answers.find((option) => option.text === answered)?.label ?? answered);
   let ready = $derived(answer.trim().length > 0);
 
   async function chooseOther() {
@@ -43,12 +41,7 @@
   }
 </script>
 
-{#if answered !== null}
-  <div class="routine-question answered">
-    <p class="question">{words.question}</p>
-    <p class="choice"><span class="mark" aria-hidden="true">✓</span><span class="sr-only">{clarifyCopy.answered}: </span>{answeredLabel}</p>
-  </div>
-{:else}
+{#if answered === null}
   <form class="routine-question" aria-labelledby={`${id}-question`} onsubmit={submit}>
     <p class="question" id={`${id}-question`}>{words.question}</p>
     <div class="options" role="radiogroup" aria-labelledby={`${id}-question`}>
@@ -96,9 +89,6 @@
 <style>
   .routine-question { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); }
   .question { margin: 0; color: var(--shimpz-color-text); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
-  .answered .question { color: var(--shimpz-color-text-muted); font-weight: 500; }
-  .choice { display: flex; align-items: baseline; gap: var(--shimpz-space-2); margin: 0; overflow-wrap: anywhere; }
-  .mark { color: var(--shimpz-color-accent); }
   .options { display: grid; gap: 2px; }
   .actions { display: flex; align-items: center; gap: var(--shimpz-space-2); }
   .error { margin: 0; color: var(--shimpz-color-danger); }
