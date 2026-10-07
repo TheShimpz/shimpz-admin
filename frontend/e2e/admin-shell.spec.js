@@ -662,14 +662,10 @@ test('shows the first Assistants view before a public icon finishes loading', as
 });
 
 test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
-  let iconRequested = false;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
-    if (path === '/api/assistants/hello-pulse/catalog-icon') {
-      iconRequested = true;
-      return;
-    }
+    if (path === '/api/assistants/hello-pulse/catalog-icon') return;
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
       '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
@@ -690,7 +686,15 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   });
 
   // The page's clock moves only when the test moves it, so the 1.5 s budget is measured on that clock: the page is
-  // stepped one frame at a time until it requests the icon, which it does as the budget starts.
+  // stepped one frame at a time until it requests the icon, which it does as the budget starts, and notes on its own
+  // clock when that was.
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    window.fetch = (resource, options) => {
+      if (String(resource?.url ?? resource).includes('/catalog-icon')) window.iconRequestedAt ??= performance.now();
+      return original(resource, options);
+    };
+  });
   const start = new Date('2026-10-01T12:00:00Z');
   await page.clock.install({ time: start });
   await page.clock.pauseAt(new Date(start.getTime() + 60_000));
@@ -698,10 +702,10 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   const iconBox = page.getByRole('article', { name: 'hello-pulse' }).locator('.shimpz-assistant-icon');
   await expect.poll(async () => {
     await page.clock.runFor(16);
-    await page.evaluate(() => 0);
-    return iconRequested;
+    return page.evaluate(() => window.iconRequestedAt !== undefined);
   }).toBe(true);
-  await page.clock.runFor(1_400);
+  const sinceRequest = await page.evaluate(() => performance.now() - window.iconRequestedAt);
+  await page.clock.runFor(1_400 - sinceRequest);
   await expect(iconBox).toHaveAttribute('data-state', 'loading');
   await page.clock.runFor(200);
   await expect(iconBox).toHaveAttribute('data-state', 'failed');
