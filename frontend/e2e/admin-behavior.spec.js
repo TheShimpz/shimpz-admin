@@ -6484,8 +6484,8 @@ test.describe('Team Routines', () => {
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
     await expect(panel.getByRole('status')).toHaveCount(0);
     await panel.getByRole('button', { name: 'Run', exact: true }).click();
-    // The answer carries the fresh card's nonce, never the expired one.
-    expect(answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
+    // The answer carries the fresh card's nonce, never the expired one; the click returns before it reaches the route.
+    await expect.poll(() => answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
   });
 
   test('a frozen run is approved in the panel its transcript card opens, with the chat approval dialog', async ({ page }) => {
