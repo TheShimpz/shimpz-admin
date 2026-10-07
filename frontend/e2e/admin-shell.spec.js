@@ -500,6 +500,11 @@ test('never renders a matching publication while Local snapshots are settling', 
   const publicInventory = page.waitForResponse((response) => (
     new URL(response.url()).pathname === '/api/assistant-catalog'
   ));
+  // The page's clock stands still while Local snapshots settle, so the boot screen's own one-second deadline cannot
+  // end the settling view before this test has looked at it.
+  const start = new Date('2026-10-01T12:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(new Date(start.getTime() + 60_000));
   await page.goto('/assistants/');
   await publicInventory;
 
@@ -513,7 +518,11 @@ test('never renders a matching publication while Local snapshots are settling', 
   releaseLocalInventory();
 
   const localCard = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
-  await expect(boot).toHaveCount(0);
+  // The catalog presents once a frame is painted: the page is stepped one frame at a time until the boot screen leaves.
+  await expect.poll(async () => {
+    await page.clock.runFor(16);
+    return boot.count();
+  }).toBe(0);
   await expect(localCard).toBeVisible();
   await expect(catalog.getByText('Published Cloudflare', { exact: true })).toHaveCount(0);
   await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();

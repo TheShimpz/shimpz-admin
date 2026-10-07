@@ -95,8 +95,8 @@ test('shows published and staged summaries in the interface language and reloads
   await expect(staged).toContainText(STAGED.pt);
   await expect(published).not.toContainText(PUBLISHED.en);
   await expect(staged).not.toContainText(STAGED.en);
-  expect(requests.catalog).toEqual(['en', 'pt']);
-  expect(requests.summaries).toEqual(['pt']);
+  await expect.poll(() => requests.catalog).toEqual(['en', 'pt']);
+  await expect.poll(() => requests.summaries).toEqual(['pt']);
 });
 
 test('a staged summary opens directly in the stored interface language', async ({ page }) => {
@@ -105,8 +105,8 @@ test('a staged summary opens directly in the stored interface language', async (
   await page.goto('/assistants/');
   await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.pt);
   await expect(page.getByRole('article', { name: 'dns-publisher' })).toContainText(PUBLISHED.pt);
-  expect(requests.catalog).toEqual(['pt']);
-  expect(requests.summaries).toEqual(['pt']);
+  await expect.poll(() => requests.catalog).toEqual(['pt']);
+  await expect.poll(() => requests.summaries).toEqual(['pt']);
 });
 
 test('a public catalog answered in another language is refused instead of shown', async ({ page }) => {

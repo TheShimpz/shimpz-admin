@@ -969,8 +969,8 @@ test('a first Team without any provider key asks for one in the focused composer
   await apiKey.fill('sk-browser-contract-1234567890');
   await page.getByRole('button', { name: 'Save key' }).click();
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
-  expect(chat.credentialBodies()).toEqual([{ id: 'openai', api_key: 'sk-browser-contract-1234567890' }]);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-luna', effort: 'low' }]);
+  await expect.poll(() => chat.credentialBodies()).toEqual([{ id: 'openai', api_key: 'sk-browser-contract-1234567890' }]);
+  await expect.poll(() => chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6-luna', effort: 'low' }]);
 });
 
 test('asks for a missing provider key in the composer without leaving the conversation', async ({ page }) => {
@@ -998,8 +998,8 @@ test('asks for a missing provider key in the composer without leaving the conver
   await expect(composer).toBeFocused();
   await expect(page.getByLabel('API key')).toHaveCount(0);
   await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
-  expect(chat.credentialBodies()).toEqual([{ id: 'anthropic', api_key: secret }]);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' }]);
+  await expect.poll(() => chat.credentialBodies()).toEqual([{ id: 'anthropic', api_key: secret }]);
+  await expect.poll(() => chat.inferenceBodies()).toEqual([{ provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' }]);
   expect(chat.chatConnections()).toBe(connections);
 
   await page.getByRole('button', { name: 'Send' }).click();
@@ -1557,7 +1557,7 @@ test('discards an unsent provider key and never sends on the unsaved model', asy
   await expect(page.getByLabel('API key')).toBeFocused();
   await expect(page.getByLabel('API key')).toHaveValue('');
   expect(chat.credentialBodies()).toEqual([]);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }]);
+  await expect.poll(() => chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }]);
   expect(chat.chatFrames()).toHaveLength(0);
 });
 
@@ -1600,7 +1600,7 @@ test('keeps a saved key when the model selection fails and retries only the sele
 
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
-  expect(chat.credentialBodies()).toHaveLength(1);
+  await expect.poll(() => chat.credentialBodies()).toHaveLength(1);
   expect(chat.inferenceBodies()).toEqual([
     { provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' },
     { provider: 'anthropic', model: 'claude-opus-5-5', effort: 'low' },
@@ -1721,7 +1721,7 @@ test('shows a pending chat state before any server progress frame', async ({ pag
   chat.releaseReply();
   await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await expect(composer).toBeEnabled();
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
 
 test('the composer sends 16,000 emoji and shows a reply longer than 60,000 UTF-16 units', async ({ page }) => {
@@ -1751,7 +1751,7 @@ test('rejects an out-of-order first chat progress frame', async ({ page }) => {
   await expect(page.getByText('The secure chat response was invalid.', { exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
 
 test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {
@@ -1901,7 +1901,7 @@ test('loads earlier history only when the transcript is scrolled to its top', as
   await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
   await expect(page.getByText('Recent question 1', { exact: true })).not.toBeInViewport();
   await page.waitForTimeout(300);
-  expect(chat.historyRequests()).toEqual([null]);
+  await expect.poll(() => chat.historyRequests()).toEqual([null]);
   await expect(page.getByRole('button', { name: 'Load older messages' })).toHaveCount(0);
   await expect(turns).toHaveAccessibleDescription('Scroll up to load earlier messages.');
 
@@ -1979,7 +1979,7 @@ test('keeps the reader in place when they scroll while earlier history is loadin
   releaseOlder();
   await expect(page.getByText('Earlier question 12', { exact: true })).toBeAttached();
   await expect(reading).toBeInViewport();
-  expect(chat.historyRequests()).toEqual([null, cursor]);
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 });
 
 test('fills a short transcript through consecutive earlier pages', async ({ page }) => {
@@ -2008,7 +2008,7 @@ test('fills a short transcript through consecutive earlier pages', async ({ page
   await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
   await expect.poll(() => requested).toEqual([null, first, second]);
   await expect(page.locator('.turns')).not.toHaveAttribute('aria-describedby');
-  expect(chat.historyRequests()).toEqual([null]);
+  await expect.poll(() => chat.historyRequests()).toEqual([null]);
 });
 
 test('offers a retry only after automatic earlier history fails', async ({ page }) => {
@@ -2038,7 +2038,7 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
   await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
   await expect(retry).toHaveCount(0);
   expect(olderAttempts).toBe(2);
-  expect(chat.historyRequests()).toEqual([null, cursor]);
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 });
 
 test('stops automatic earlier history when a page does not advance its cursor', async ({ page }) => {
@@ -2053,7 +2053,7 @@ test('stops automatic earlier history when a page does not advance its cursor', 
   await page.goto('/chat/');
   await expect(page.getByRole('button', { name: 'Load older messages' })).toBeVisible();
   await page.waitForTimeout(500);
-  expect(chat.historyRequests()).toEqual([null, cursor]);
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
   await expect(page.getByText('Earlier question 1', { exact: true })).toHaveCount(0);
 });
 
@@ -2349,7 +2349,7 @@ test('installs a composed Assistant plan automatically and continues the origina
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
   expect(chat.chatFrames()[0].message).toBe(
     'Configure my Cloudflare domain and send the result on WhatsApp',
   );
@@ -2378,7 +2378,7 @@ test('ends an explicit Assistant installation at the installed plan', async ({ p
   await composer.fill('Please install it');
   await composer.press('Enter');
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
-  expect(chat.chatFrames()).toHaveLength(2);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(2);
   expect(chat.chatFrames()[1].type).toBe('chat');
 });
 
@@ -2397,7 +2397,7 @@ test('reports a repeated exact Assistant install from authoritative current stat
   await expect(task).toContainText('Already installed');
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
   await expect(composer).toBeEnabled();
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
 
 test('continues the requested task after confirming an explicitly named Assistant is running', async ({ page }) => {
@@ -2417,7 +2417,7 @@ test('continues the requested task after confirming an explicitly named Assistan
   await expect(task).toContainText('Already installed');
   await expect(page.getByText('Here are today\'s zones.', { exact: true })).toBeVisible();
   await expect(composer).toBeEnabled();
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
 
 test('installs a named Assistant, asks for its saved key just in time, and completes the task', async ({ page }) => {
@@ -2442,8 +2442,8 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
   await expect(composer).toBeEnabled();
-  expect(chat.chatFrames()).toHaveLength(1);
-  expect(chat.humanResponses()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.humanResponses()).toHaveLength(1);
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain('saved-third-party-secret');
 });
@@ -2494,7 +2494,7 @@ test('admits a just-in-time request from an Assistant the refreshed Team invento
   await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
-  expect(chat.humanResponses()).toHaveLength(1);
+  await expect.poll(() => chat.humanResponses()).toHaveLength(1);
 });
 
 test('discards an inventory-pending just-in-time request after the turn stops', async ({ page }) => {
@@ -2665,7 +2665,7 @@ test('resumes one prior capability objective after reconnect and installs its As
   await expect(resumed).toContainText('Resuming this task');
   await expect(resumed).toContainText('Lista minhas zonas DNS no Cloudflare');
 
-  expect(chat.chatFrames()).toHaveLength(2);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(2);
   expect(chat.chatFrames()[1]).toEqual({
     type: 'resume-task',
     message: 'Você mesmo consegue habilitar?',
@@ -2803,7 +2803,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
     { exact: true },
   )).toHaveCount(0);
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
@@ -2823,7 +2823,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await page.clock.runFor(2100);
   await uninstall.click();
   await expect(task).toHaveAttribute('data-state', 'pending');
-  expect(chat.chatFrames()).toHaveLength(1);
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
   chat.releaseAssistantIcon();
   await expect(page.getByText('yes', { exact: true })).toHaveCount(0);
   await expect(task).toHaveAttribute('data-state', 'working');
@@ -3381,7 +3381,7 @@ for (const [kind, title] of humanPresentations) {
           : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send',
     }).click();
     await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
-    expect(contract.humanResponses()).toHaveLength(1);
+    await expect.poll(() => contract.humanResponses()).toHaveLength(1);
     expect(contract.humanResponses()[0]).toMatchObject({
       type: 'human-response',
       challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
@@ -3412,7 +3412,7 @@ test('bounds a human text response in Unicode code points like the Admin backend
   await expect(field).toHaveValue(atLimit);
   await send.click();
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
-  expect(contract.humanResponses()).toHaveLength(1);
+  await expect.poll(() => contract.humanResponses()).toHaveLength(1);
   expect(contract.humanResponses()[0]).toMatchObject({ decision: 'submit', value: atLimit });
 });
 
@@ -3568,7 +3568,7 @@ test('restores Supervisor password authorization as a focused validation modal',
   await expect(validation.getByRole('button', { name: 'Tentar novamente' })).toBeEnabled();
   await expect.poll(() => validation.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await expect(page.getByText(/Detalhe técnico/)).toHaveCount(0);
-  expect(contract.humanResponses()).toHaveLength(1);
+  await expect.poll(() => contract.humanResponses()).toHaveLength(1);
 
   await validation.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
@@ -3615,7 +3615,7 @@ test('keeps authorization modal until Team progress proves password continuation
   contract.releaseHumanResponse();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'I’m processing…' })).toBeVisible();
-  expect(contract.humanResponses()).toHaveLength(1);
+  await expect.poll(() => contract.humanResponses()).toHaveLength(1);
 });
 
 test('reopens the Team-owned human request when reconnect sync proves it is still pending', async ({ page }) => {
@@ -3635,7 +3635,7 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
   await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   contract.disconnectHumanSocket();
   await expect(page.getByRole('dialog', { name: 'Confirm with your Supervisor password' })).toBeVisible();
-  expect(contract.humanResponses()).toHaveLength(1);
+  await expect.poll(() => contract.humanResponses()).toHaveLength(1);
 });
 
 test('keeps an intentional Stop silent after the turn ends', async ({ page }) => {
@@ -3866,7 +3866,7 @@ test('a Team name of 80 emoji can be typed to rename and to confirm its deletion
   await navigation.getByRole('textbox', { name: 'Name for Support' }).fill(longest);
   await page.keyboard.press('Enter');
   await expect(navigation.getByRole('link', { name: longest, exact: true })).toBeFocused();
-  expect(renames).toEqual([{ team_name: longest }]);
+  await expect.poll(() => renames).toEqual([{ team_name: longest }]);
 
   await navigation.getByRole('button', { name: `Actions for ${longest}` }).click();
   await page.getByRole('menuitem', { name: 'Delete Team' }).click();
@@ -4237,7 +4237,7 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
   await expect(composer).toBeFocused();
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
-  expect(chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'high' }]);
+  await expect.poll(() => chat.inferenceBodies()).toEqual([{ provider: 'openai', model: 'gpt-6.1-sol', effort: 'high' }]);
 });
 
 
@@ -4429,7 +4429,7 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await page.keyboard.press('Enter');
   const renamed = navigation.getByRole('link', { name: 'Growth Marketing', exact: true });
   await expect(renamed).toBeFocused();
-  expect(renames).toEqual([{ team_name: 'Growth Marketing' }]);
+  await expect.poll(() => renames).toEqual([{ team_name: 'Growth Marketing' }]);
 
   refuse = true;
   let releaseRefusal;
@@ -4564,7 +4564,7 @@ test.describe('Team order', () => {
     await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
     await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
     await page.keyboard.press('Escape');
-    expect(orders).toHaveLength(2);
+    await expect.poll(() => orders).toHaveLength(2);
   });
 
   test('a refused save restores only the order and keeps the selected Team', async ({ page }) => {
@@ -4575,7 +4575,7 @@ test.describe('Team order', () => {
 
     await expect(page.getByText('The Team order could not be saved. The previous order is back.')).toBeVisible();
     await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
-    expect(orders).toEqual([{ team_ids: ['marketing', 'trinity', 'cypher', 'morpheus', 'smith', 'neo'] }]);
+    await expect.poll(() => orders).toEqual([{ team_ids: ['marketing', 'trinity', 'cypher', 'morpheus', 'smith', 'neo'] }]);
     await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
 
     // The next save goes through.
@@ -4590,7 +4590,7 @@ test.describe('Team order', () => {
     await mouseDrag(page, navigation, 'Smith', 'Trinity');
     await expect(page.getByText('The Teams changed while you were reordering. The list was reloaded; try again.')).toBeVisible();
     await expect.poll(() => teamNames(navigation)).toEqual(['Oracle', ...READY_ORDER]);
-    expect(orders).toHaveLength(1);
+    await expect.poll(() => orders).toHaveLength(1);
     await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -4676,7 +4676,7 @@ test.describe('Team Routines', () => {
     // Once created, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
-    expect(calls).toEqual([['POST', '{}']]);
+    await expect.poll(() => calls).toEqual([['POST', '{}']]);
     const [routine] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
 
@@ -4701,7 +4701,7 @@ test.describe('Team Routines', () => {
     // Once canceled, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
-    expect(calls).toEqual([['DELETE', null]]);
+    await expect.poll(() => calls).toEqual([['DELETE', null]]);
     expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
   });
@@ -4916,17 +4916,17 @@ test.describe('Team Routines', () => {
     // Resume turns dispatch back on, and Pause turns it off again.
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
-    expect(calls.resumes).toEqual([{}]);
+    await expect.poll(() => calls.resumes).toEqual([{}]);
     await panel.getByRole('button', { name: 'Pause' }).click();
     await expect(panel.getByRole('button', { name: 'Resume' })).toBeVisible();
-    expect(calls.pauses).toEqual([{}]);
+    await expect.poll(() => calls.pauses).toEqual([{}]);
 
     // A recent run, on the Runs page, opens its execution details.
     await panel.getByRole('tab', { name: 'Runs' }).click();
     await panel.getByRole('button', { name: 'Execution details' }).click();
     const details = page.getByRole('dialog', { name: 'Execution details' });
     await expect(details).toContainText('No failed attempts were recorded for this run.');
-    expect(diagnostics).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    await expect.poll(() => diagnostics).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
     await details.getByRole('button', { name: 'Close' }).click();
     await expect(details).toHaveCount(0);
 
@@ -4973,8 +4973,8 @@ test.describe('Team Routines', () => {
     await confirm.getByRole('button', { name: 'Delete' }).click();
     await expect(panel).toHaveCount(0);
     await expect(list).toHaveCount(0);
-    expect(calls.begins).toEqual(['POST', 'POST', 'POST']);
-    expect(calls.deletes).toEqual([{ code: '000000' }, { code: '123456' }]);
+    await expect.poll(() => calls.begins).toEqual(['POST', 'POST', 'POST']);
+    await expect.poll(() => calls.deletes).toEqual([{ code: '000000' }, { code: '123456' }]);
     // With no Routines left, focus returns to the Team's actions, whose menu no longer offers Routines.
     await expect(navigation.getByRole('button', { name: 'Actions for Marketing' })).toBeFocused();
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
@@ -4998,7 +4998,7 @@ test.describe('Team Routines', () => {
     await expect(panel).toContainText('Being deleted');
     await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
     await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
   });
 
   test('a Routine deletion shows the shared sign-in lockout and deletes nothing', async ({ page }) => {
@@ -5053,7 +5053,7 @@ test.describe('Team Routines', () => {
     await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(panel.getByRole('alert')).toHaveText('The passkey request was canceled or timed out.');
-    expect(calls.begins).toEqual(['POST']);
+    await expect.poll(() => calls.begins).toEqual(['POST']);
     expect(calls.deletes).toEqual([]);
 
     // With the code, the deletion is sent; while it is in flight neither Escape nor Cancel leaves the confirmation.
@@ -5066,7 +5066,7 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('button', { name: 'Deleting…' })).toBeVisible();
     release();
     await expect(panel).toHaveCount(0);
-    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
   });
 
   async function openHeldPanel(page, options = {}) {
@@ -5101,7 +5101,7 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Run' }).click();
     await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
     await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
-    expect(calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'run' }]);
+    await expect.poll(() => calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'run' }]);
   });
 
   test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }) => {
@@ -5128,7 +5128,7 @@ test.describe('Team Routines', () => {
     await expect(confirm).toHaveCount(0);
     await expect(panel).toHaveCount(0);
     // Excluir is the confirmed deletion itself, never a card answer.
-    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
     expect(calls.answers).toEqual([]);
   });
 
@@ -5488,7 +5488,8 @@ test.describe('Team Routines', () => {
     await link.click();
     const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await expect(view).toBeVisible();
-    expect(diagnostics).toEqual([run]);
+    // The view opens as its diagnostics request leaves; the request reaches the route a moment later.
+    await expect.poll(() => diagnostics).toEqual([run]);
 
     // Its steps as the run recorded them: the Action, the inputs its attempt was given with a hidden one never shown,
     // and the failed attempt Team recorded.
@@ -5604,7 +5605,7 @@ test.describe('Team Routines', () => {
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     // Only the first page is read; ten steps are shown.
     await expect(steps).toHaveCount(10);
-    expect(read).toEqual(['1/0']);
+    await expect.poll(() => read).toEqual(['1/0']);
     expect(await accessibilityViolations(page)).toEqual([]);
     const more = panel.getByRole('button', { name: /^Show \d+ more steps?$/u });
     for (let shown = 20; shown <= 60; shown += 10) {
@@ -5612,10 +5613,10 @@ test.describe('Team Routines', () => {
       await expect(steps).toHaveCount(shown);
     }
     // The first page holds 64 steps, so revealing past it reads the next page, and focus moves to the first new step.
-    expect(read).toEqual(['1/0']);
+    await expect.poll(() => read).toEqual(['1/0']);
     await more.click();
     await expect(steps).toHaveCount(70);
-    expect(read).toEqual(['1/0', '1/64']);
+    await expect.poll(() => read).toEqual(['1/0', '1/64']);
     await expect(steps.nth(60)).toBeFocused();
     // Reading the Routine list again in the background, as Admin does while the page is visible, keeps what was read
     // and revealed for the same revision.
@@ -5623,14 +5624,14 @@ test.describe('Team Routines', () => {
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await reread;
     await expect(steps).toHaveCount(70);
-    expect(read).toEqual(['1/0', '1/64']);
+    await expect.poll(() => read).toEqual(['1/0', '1/64']);
     for (let shown = 80; shown <= 120; shown += 10) {
       await more.click();
       await expect(steps).toHaveCount(Math.min(shown, 120));
     }
     await expect(more).toHaveCount(0);
     await expect(steps.nth(119)).toContainText('120');
-    expect(read).toEqual(['1/0', '1/64']);
+    await expect.poll(() => read).toEqual(['1/0', '1/64']);
   });
 
   test('a Routine whose revision changed while its steps were read shows only the new revision', async ({ page }) => {
@@ -5672,7 +5673,7 @@ test.describe('Team Routines', () => {
     const panel = page.getByRole('dialog', { name: watch.name });
     await panel.getByRole('tab', { name: 'Steps' }).click();
     await expect(panel.getByRole('list', { name: 'Steps' }).locator(':scope > li')).toHaveCount(3);
-    expect(read).toEqual(['1/0', '2/0']);
+    await expect.poll(() => read).toEqual(['1/0', '2/0']);
     // The escape stays visible text: decoding the preview never puts the raw override into the page.
     await expect(panel.getByRole('list', { name: 'Steps' }).locator('dd').first()).toHaveText('a\\u202eb');
     expect(await page.evaluate(() => document.body.textContent.includes('\u202e'))).toBe(false);
@@ -5748,7 +5749,7 @@ test.describe('Team Routines', () => {
     const steps = view.getByRole('region', { name: 'Steps' });
     const items = steps.locator('ol > li');
     await expect(items).toHaveCount(10);
-    expect(read).toEqual(['latest/0']);
+    await expect.poll(() => read).toEqual(['latest/0']);
     const more = steps.getByRole('button', { name: /^Show \d+ more steps?$/u });
     for (let shown = 20; shown <= 60; shown += 10) {
       await more.click();
@@ -5757,7 +5758,7 @@ test.describe('Team Routines', () => {
     // Past the first page the changed snapshot is refused, so the records are read again from the newest.
     await more.click();
     await expect(items).toHaveCount(70);
-    expect(read).toEqual(['latest/0', 'c/64', 'latest/0', 'e/64']);
+    await expect.poll(() => read).toEqual(['latest/0', 'c/64', 'latest/0', 'e/64']);
     await expect(more).toHaveCount(0);
     // The stopped and failed steps name their Action, and every step without a record says why, with no Action or input.
     await expect(items.nth(59)).toContainText(status.stopped);
@@ -5798,7 +5799,7 @@ test.describe('Team Routines', () => {
     await expect(steps.nth(0)).toContainText(status.failed);
     await expect(steps.nth(1)).toContainText(status.not_run);
     await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
-    expect(read).toEqual(['7:latest/0']);
+    await expect.poll(() => read).toEqual(['7:latest/0']);
     expect(await accessibilityViolations(page)).toEqual([]);
     await page.keyboard.press('Escape');
     await expect(view).toHaveCount(0);
@@ -5817,7 +5818,7 @@ test.describe('Team Routines', () => {
       await more.click();
       await expect(records).toHaveCount(shown);
     }
-    expect(read).toEqual(['7:latest/0', 'c:latest/0', 'c:snapshot/64']);
+    await expect.poll(() => read).toEqual(['7:latest/0', 'c:latest/0', 'c:snapshot/64']);
     await expect(records.nth(69)).toContainText(status.done);
   });
 
@@ -6093,7 +6094,7 @@ test.describe('Team Routines', () => {
     await confirm.getByLabel('Six-digit code').fill('123456');
     await confirm.getByRole('button', { name: 'Delete' }).click();
     await expect(confirm).toHaveCount(0);
-    expect(calls.deletes).toEqual([{ code: '123456' }]);
+    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
     expect(calls.answers).toEqual([]);
     // The deleted Routine is no longer listed, so its card offers nothing.
     await expectRowActions(row);
@@ -6155,7 +6156,7 @@ test.describe('Team Routines', () => {
     await expect(dialog).toContainText('The Action exited with status 1.');
     await expect(dialog.locator('img, strong')).toHaveCount(0);
     expect(await page.evaluate(() => window.leaked)).toBeUndefined();
-    expect(requested).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    await expect.poll(() => requested).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
     expect(await accessibilityViolations(page)).toEqual([]);
     await dialog.getByRole('button', { name: 'Close' }).click();
     await expect(dialog).toHaveCount(0);
@@ -6251,7 +6252,7 @@ test.describe('Team Routines', () => {
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
     await expect(runs).not.toContainText('No runs yet.');
     await expect(runs.getByRole('button', { name: 'Look for older runs' })).toHaveCount(0);
-    expect(chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
+    await expect.poll(() => chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
   });
 
   test("a Routine's runs beyond one search's page bound are reached by continuing it, and a run that ends joins them", async ({ page }) => {
@@ -6595,7 +6596,7 @@ test.describe('Team Routines', () => {
     await dialog.getByRole('button', { name: 'Approve action' }).click();
     await expect(panel.getByRole('status')).toContainText('The run continued: Done');
     await expect(panel.getByRole('button', { name: 'Review' })).toHaveCount(0);
-    expect(answers).toEqual([approval, approval]);
+    await expect.poll(() => answers).toEqual([approval, approval]);
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
     await expectRowActions(rows.nth(1));
@@ -6673,7 +6674,7 @@ test.describe('Team Routines', () => {
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await dialog.getByRole('button', { name: 'Approve action' }).click();
     await expect(panel.getByRole('status')).toContainText('The run continued: Done');
-    expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+    await expect.poll(() => answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
 
@@ -6728,7 +6729,7 @@ test.describe('Team Routines', () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(1)).toContainText(messages.en.routine.notice.status.failed);
     await expect(rows.nth(2)).toContainText(messages.en.routine.notice.status.done);
-    expect(requested).toEqual([null, 'AAAAAAAAAMg']);
+    await expect.poll(() => requested).toEqual([null, 'AAAAAAAAAMg']);
     // The next refresh finds nothing new on the newest page and reads no further.
     requested.length = 0;
     await page.clock.fastForward(15_000);
@@ -6748,7 +6749,7 @@ test.describe('Team Routines', () => {
     await page.clock.fastForward(15_000);
     await expect(page.getByText(`Unrelated message ${1000 + 8 * 64 + 64}`, { exact: true })).toBeVisible();
     await expect(rows).toHaveCount(0);
-    expect(requested).toEqual([null, ...Array.from({ length: 7 }, (_, index) => cursor(index + 1))]);
+    await expect.poll(() => requested).toEqual([null, ...Array.from({ length: 7 }, (_, index) => cursor(index + 1))]);
     await page.locator('.turns').evaluate((element) => { element.scrollTop = 0; });
     await expect(rows).toHaveCount(2);
     expect(requested.at(-1)).toBe(cursor(8));
@@ -6882,7 +6883,7 @@ test('a Stored Input request links its reviewed key page and sends the pasted ke
   await dialog.getByRole('button', { name: 'Send' }).click();
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
-  expect(contract.humanResponses()).toEqual([expect.objectContaining({
+  await expect.poll(() => contract.humanResponses()).toEqual([expect.objectContaining({
     type: 'human-response',
     challenge_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     decision: 'submit',
@@ -6900,7 +6901,7 @@ test('a Stored Input request without a key page or purpose names its Assistant a
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
-  expect(contract.humanResponses()).toEqual([expect.objectContaining({ decision: 'deny' })]);
+  await expect.poll(() => contract.humanResponses()).toEqual([expect.objectContaining({ decision: 'deny' })]);
   expect(contract.humanResponses()[0]).not.toHaveProperty('value');
 });
 
@@ -7069,5 +7070,5 @@ test('a frozen Routine run opens in the interface language and answers with the 
   expect(openings).toEqual([{ locale: 'pt' }]);
   await dialog.getByRole('button', { name: 'Aprovar ação' }).click();
   await expect(dialog).toBeHidden();
-  expect(answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
+  await expect.poll(() => answers).toEqual([{ type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true }]);
 });

@@ -232,7 +232,7 @@ test('cancelling stops the uploads in flight and sending waits for none of them'
   await send.click();
   await expect(page.getByText('Preview reply to: Hello')).toBeVisible();
   expect(chatMessages(scenario)[0].files).toEqual([]);
-  expect(held).toHaveLength(1);
+  await expect.poll(() => held).toHaveLength(1);
 });
 
 // Holds every file read the page starts once `holdAttachmentReads` is set, until `releaseAttachmentReads` runs; the
