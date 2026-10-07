@@ -1793,6 +1793,9 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
 });
 
 test('restores durable Team history, terminal Assistant cards and older prompts after reload', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const firstTurn = 'a'.repeat(32);
   const secondTurn = 'b'.repeat(32);
   const cursor = 'AAAAAAAAAAI';
@@ -1885,6 +1888,9 @@ function longHistory(prefix, count, before, { detail = true } = {}) {
 }
 
 test('loads earlier history only when the transcript is scrolled to its top', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 12, cursor),
@@ -1945,6 +1951,9 @@ test('keeps the message at the top of the transcript where it was once earlier h
 });
 
 test('keeps the reader in place when they scroll while earlier history is loading', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 12, cursor),
@@ -1974,6 +1983,9 @@ test('keeps the reader in place when they scroll while earlier history is loadin
 });
 
 test('fills a short transcript through consecutive earlier pages', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const first = 'AAAAAAAAAAI';
   const second = 'AAAAAAAAABA';
   const chat = await routeReadyChat(page, { history: longHistory('f', 1, first, { detail: false }) });
@@ -2000,6 +2012,9 @@ test('fills a short transcript through consecutive earlier pages', async ({ page
 });
 
 test('offers a retry only after automatic earlier history fails', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 1, cursor),
@@ -2027,6 +2042,9 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
 });
 
 test('stops automatic earlier history when a page does not advance its cursor', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 1, cursor),
@@ -2040,6 +2058,9 @@ test('stops automatic earlier history when a page does not advance its cursor', 
 });
 
 test('keeps focus on a message link when older history arrives @browser-sensitive', async ({ page }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const recent = 'c'.repeat(32);
   const earlier = 'd'.repeat(32);
@@ -2082,6 +2103,9 @@ test('keeps focus on a message link when older history arrives @browser-sensitiv
 });
 
 test('restores the installed Assistant card after a successful OAuth return @browser-sensitive', async ({ page, baseURL }) => {
+  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+  // this test counts, however long a loaded host makes it run.
+  await freezeClock(page);
   const turnId = 'c'.repeat(32);
   const callbackPath = `/api/oauth/cloudflare/callback?state=${'s'.repeat(43)}&claim=${'c'.repeat(64)}`;
   let callbackObserved = false;
@@ -6189,6 +6213,9 @@ test.describe('Team Routines', () => {
   });
 
   test("a Routine's recent runs are found past a full page of newer unrelated chat", async ({ page }) => {
+    // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
+    // this test counts, however long a loaded host makes it run.
+    await freezeClock(page);
     const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({
       id: `${index.toString(16).padStart(32, '0')}:user`,
