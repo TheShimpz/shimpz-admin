@@ -28,6 +28,9 @@
   import { jsonObject } from '$lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
+  // How long an icon request may stay open after its presentation budget: a slow host still delivers it, a request that
+  // never answers does not hold its connection forever.
+  const ICON_REQUEST_LIMIT_MS = 30_000;
 
   let dialogError = $state('');
   let busy = $state(false);
@@ -519,10 +522,16 @@
         request,
         controller.signal,
       );
-      const iconTimeout = globalThis.setTimeout(
-        () => iconController.abort(),
-        ICON_PRESENTATION_BUDGET_MS,
-      );
+      // Past the presentation budget an icon still on its way is shown as unavailable, never as a substitute mark, and
+      // never as loading forever. Its request still completes: a refusal of the staged image it answers for applies
+      // whenever it arrives, and an icon that arrives late replaces the unavailable mark.
+      const iconBudget = globalThis.setTimeout(() => {
+        if (request !== catalogPresentationRequest) return;
+        for (const entry of entries) {
+          if (!catalogIconUrls[entry.key]) catalogIconFailures[entry.key] = true;
+        }
+      }, ICON_PRESENTATION_BUDGET_MS);
+      const iconLimit = globalThis.setTimeout(() => iconController.abort(), ICON_REQUEST_LIMIT_MS);
       await Promise.allSettled(entries.map(async (entry) => {
         if (catalogIconUrls[entry.key]) return;
         try {
@@ -532,15 +541,16 @@
             return;
           }
           catalogIconUrls[entry.key] = url;
+          delete catalogIconFailures[entry.key];
         } catch (error) {
-          // A failed or over-budget icon is shown as unavailable, never as a substitute mark.
           if (request === catalogPresentationRequest) {
             catalogIconFailures[entry.key] = true;
             refuseInadmissibleSnapshot(entry.imageId, error);
           }
         }
       }));
-      globalThis.clearTimeout(iconTimeout);
+      globalThis.clearTimeout(iconBudget);
+      globalThis.clearTimeout(iconLimit);
       controller.signal.removeEventListener('abort', abortIcons);
       await summaries;
     } finally {
