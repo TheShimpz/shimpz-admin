@@ -2622,12 +2622,16 @@ test('resumes one prior capability objective after reconnect and installs its As
     disconnectFirstChat: true,
     reply: 'Task complete.',
   });
+  // The reconnect waits on the page's clock, held still until the test moves it, so the interruption stays shown
+  // however slowly this runner looks for it.
+  await freezeClock(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('Lista minhas zonas DNS no Cloudflare');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('The secure chat connection was interrupted. Reconnecting…')).toBeVisible();
+  await page.clock.runFor(1_000);
   await expect(composer).toBeEnabled();
 
   await composer.fill('Você mesmo consegue habilitar?');
