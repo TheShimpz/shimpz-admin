@@ -10,10 +10,9 @@
 
 ## Delivery and engineering
 
-- Deliver the smallest useful microtask, validate it, commit it with a clear English conventional message, and
-  push it immediately.
-- When working through the umbrella checkout, commit and push this repository before committing its umbrella
-  gitlink.
+- Deliver the smallest useful microtask, validate it, and commit it with a clear English conventional message.
+- Commits reach `main` only through the umbrella's `.scripts/local-release/deploy` (ADR-0102), which pushes this
+  repository's commits before the umbrella commit that records their gitlink. Never push around it.
 - Shimpz is pre-production. Change the current contract directly; do not add aliases, dual schemas, fallback
   parsers, or migrations for retired repository state.
 - Preserve attributable Supervisor authority, Team isolation, least privilege, fail-closed validation, and secret
