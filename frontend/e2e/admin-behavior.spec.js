@@ -2535,7 +2535,7 @@ test('does not trust an install-only plan for a later request from an Assistant 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', async ({ page }) => {
+test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', { tag: '@slow' }, async ({ page }) => {
   // The browser spaces out repeated failed upgrades in real time, beyond the virtual clock.
   test.slow();
   await page.clock.install();
@@ -4809,7 +4809,7 @@ test.describe('Team Routines', () => {
     await expect(navigation.getByRole('button', { name: /^Routines for (?!Marketing)/ })).toHaveCount(0);
   });
 
-  test('a Routine opens in a panel from the keyboard: it resumes, pauses, shows its runs, and is deleted after a confirmation', async ({ page }) => {
+  test('a Routine opens in a panel from the keyboard: it resumes, pauses, shows its runs, and is deleted after a confirmation', { tag: '@slow' }, async ({ page }) => {
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
       history: {
@@ -5517,7 +5517,7 @@ test.describe('Team Routines', () => {
     expect(dialogs).toEqual([]);
   });
 
-  test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", async ({ page }) => {
+  test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: '@slow' }, async ({ page }) => {
     // ADR-0092 amendment, 2026-10-05 (scale): the continuous watch repeats one Action for each of its zones.
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
@@ -5859,7 +5859,7 @@ test.describe('Team Routines', () => {
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   }
 
-  test('a held run is settled in the panel its transcript card opens, through the card Team opened, with exact fresh nonces', async ({ page }) => {
+  test('a held run is settled in the panel its transcript card opens, through the card Team opened, with exact fresh nonces', { tag: '@slow' }, async ({ page }) => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit' };

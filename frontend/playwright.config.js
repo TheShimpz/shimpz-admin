@@ -16,8 +16,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'off',
   },
-  // Workers take tests project by project, so the engine-sensitive projects, whose tests run longest, start first and
-  // never trail the run.
+  // Workers take tests project by project, so the projects whose tests run longest start first and never trail the run.
   projects: [
     {
       name: 'firefox-browser-sensitive',
@@ -29,8 +28,11 @@ export default defineConfig({
       grep: /@browser-sensitive/,
       use: { browserName: 'webkit', viewport: { width: 1440, height: 1000 } },
     },
-    { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
+    // Tests tagged @slow run several seconds each; their own projects come first, so none of them trails the run.
+    { name: 'desktop-slow', grep: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'mobile-slow', grep: /@slow/, use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
+    { name: 'desktop', grepInvert: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'mobile', grepInvert: /@slow/, use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
   ],
   webServer: {
     // Serves build/ like Admin's backend; CI copies the shipping UI out of the Admin image into build/.

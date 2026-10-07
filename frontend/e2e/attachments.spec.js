@@ -176,7 +176,7 @@ test('removing a file never deletes it, and attaching the same file again reuses
   expect(deletions).toEqual([]);
 });
 
-test('upload refusals are explained in plain words and leave nothing in the message', async ({ page }) => {
+test('upload refusals are explained in plain words and leave nothing in the message', { tag: '@slow' }, async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
   const alert = page.getByRole('alert');
 
