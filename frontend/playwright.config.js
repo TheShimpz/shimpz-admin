@@ -16,9 +16,9 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'off',
   },
+  // Workers take tests project by project, so the engine-sensitive projects, whose tests run longest, start first and
+  // never trail the run.
   projects: [
-    { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
     {
       name: 'firefox-browser-sensitive',
       grep: /@browser-sensitive/,
@@ -29,6 +29,8 @@ export default defineConfig({
       grep: /@browser-sensitive/,
       use: { browserName: 'webkit', viewport: { width: 1440, height: 1000 } },
     },
+    { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
+    { name: 'mobile', use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
   ],
   webServer: {
     // Serves build/ like Admin's backend; CI copies the shipping UI out of the Admin image into build/.
