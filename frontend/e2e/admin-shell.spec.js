@@ -628,16 +628,28 @@ test('shows the first Assistants view before a public icon finishes loading', as
     });
   });
 
+  // The page itself notes the icon's state at the moment the boot screen leaves, so the proof does not depend on how
+  // quickly this runner observes the page.
+  await page.addInitScript(() => {
+    let booting = false;
+    new MutationObserver(() => {
+      const boot = document.querySelector('[data-slot="boot-screen"]');
+      if (boot) booting = true;
+      else if (booting && !('iconStateAtBootExit' in window)) {
+        window.iconStateAtBootExit = document.querySelector('.shimpz-assistant-icon')?.dataset.state ?? 'absent';
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
   await page.goto('/assistants/');
   await iconRequested;
   const card = page.getByRole('article', { name: 'hello-pulse' });
   const iconBox = card.locator('.shimpz-assistant-icon');
   try {
-    // Stay below ICON_PRESENTATION_BUDGET_MS (1500 ms); otherwise the old boot gate could disappear too.
-    await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0, { timeout: 1000 });
+    await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
+    // The first view never waited for the icon: it was still loading when the boot screen left.
+    expect(await page.evaluate(() => window.iconStateAtBootExit)).toBe('loading');
     await expect(card).toBeVisible();
     await expect(iconBox.locator('img')).toHaveCount(0);
-    await expect(iconBox).toHaveAttribute('data-state', 'loading');
     releaseIcon();
     await expect(iconBox.locator('img')).toHaveAttribute('src', /^blob:/);
     await expect(iconBox).toHaveAttribute('data-state', 'loaded');

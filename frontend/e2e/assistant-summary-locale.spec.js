@@ -144,6 +144,9 @@ test("rapid language switches present only the selected language's published sum
   await expect(published).toContainText(PUBLISHED.en);
 
   await switchLanguage(page, 'en', 'pt');
+  // The Portuguese request reaches the server before the next switch supersedes it; a switch made sooner can cancel it
+  // in the page before it is ever sent, and then there is no superseded reply to prove.
+  await expect.poll(() => requests.catalog).toEqual(['en', 'pt']);
   await switchLanguage(page, 'pt', 'es');
   await expect.poll(() => requests.catalog).toEqual(['en', 'pt', 'es']);
   await expect(published).toBeVisible();
