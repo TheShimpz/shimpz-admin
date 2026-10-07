@@ -6,6 +6,11 @@ const processors = os.availableParallelism();
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // Every expectation waits for its condition, so these bounds only decide how long a condition that never holds takes
+  // to fail. They are sized for a loaded host (the deploy builds images beside the gate), where a browser can go seconds
+  // without rendering a frame; a passing test never waits for them.
+  timeout: 90_000,
+  expect: { timeout: 20_000 },
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: process.env.GITHUB_ACTIONS ? processors : Math.max(1, Math.floor(processors / 2)),

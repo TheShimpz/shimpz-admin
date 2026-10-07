@@ -1917,13 +1917,15 @@ test('keeps the message at the top of the transcript where it was once earlier h
   const turns = page.locator('.turns');
   await expect(page.getByText('Recent answer 32', { exact: false })).toBeInViewport();
   // The reader scrolls the transcript to its top with the wheel, as they reach earlier history; an engine may move
-  // less than one gesture asks, so the reader keeps scrolling until the earlier page is requested.
+  // less than one gesture asks, so the reader keeps scrolling until the transcript is at its top, where the earlier
+  // page is requested.
   const loading = page.getByRole('status').filter({ hasText: 'Loading earlier messages…' });
   await turns.hover();
   await expect(async () => {
     await page.mouse.wheel(0, -((await turns.evaluate((element) => element.scrollTop)) + 1000));
-    await expect(loading).toBeAttached({ timeout: 500 });
+    expect(await turns.evaluate((element) => element.scrollTop)).toBe(0);
   }).toPass();
+  await expect(loading).toBeAttached();
   const reading = page.getByText('Recent question 1', { exact: true });
   const shownAt = async () => (await reading.boundingBox()).y;
   const before = await shownAt();
