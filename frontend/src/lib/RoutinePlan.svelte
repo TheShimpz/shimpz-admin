@@ -62,10 +62,14 @@
     }
   }
 
-  // A new Routine or revision starts again from its first page.
+  // A new Routine or revision starts again from its first page. The Routine is read again in the background, which
+  // hands in an equal object; the steps already read and revealed stay as they are for the same revision.
+  let readFor = '';
   $effect(() => {
-    void `${routine.routine_id}:${plan.revision}:${plan.plan_digest}`;
+    const revision = `${routine.routine_id}:${plan.revision}:${plan.plan_digest}`;
     untrack(() => {
+      if (revision === readFor) return;
+      readFor = revision;
       reading += 1;
       steps = [];
       next = 0;

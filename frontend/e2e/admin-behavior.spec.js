@@ -5552,6 +5552,13 @@ test.describe('Team Routines', () => {
     await expect(steps).toHaveCount(70);
     expect(read).toEqual(['1/0', '1/64']);
     await expect(steps.nth(60)).toBeFocused();
+    // Reading the Routine list again in the background, as Admin does while the page is visible, keeps what was read
+    // and revealed for the same revision.
+    const reread = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/teams/marketing/routines');
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await reread;
+    await expect(steps).toHaveCount(70);
+    expect(read).toEqual(['1/0', '1/64']);
     for (let shown = 80; shown <= 120; shown += 10) {
       await more.click();
       await expect(steps).toHaveCount(Math.min(shown, 120));
