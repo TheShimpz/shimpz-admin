@@ -744,21 +744,6 @@ export async function deleteRoutine(fetcher, teamId, routineId, proof) {
   );
 }
 
-async function decideRun(fetcher, teamId, runId, action, payload, result) {
-  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/${action}`), {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  if (!exact(body, ['team_id', 'run_id', result]) || body.team_id !== teamId || body.run_id !== runId || typeof body[result] !== 'boolean') {
-    throw new RoutineError('routine-response-invalid');
-  }
-  return body[result];
-}
-
-export function stopRoutineRun(fetcher, teamId, runId) {
-  return decideRun(fetcher, teamId, runId, 'stop', {}, 'stopped');
-}
-
 async function setPaused(fetcher, teamId, routineId, paused) {
   const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/${paused ? 'pause' : 'resume'}`), {
     method: 'POST',

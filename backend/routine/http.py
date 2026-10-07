@@ -25,7 +25,6 @@ def register(
     application.add_api_route(base, routines_list, methods=["GET"])
     application.add_api_route(base + "/{routine_id}/deletion", deletion_route(confirmations), methods=["POST"])
     application.add_api_route(base + "/{routine_id}", delete_route(confirmations), methods=["DELETE"])
-    application.add_api_route(base + "/runs/{run_id}/stop", routine_stop, methods=["POST"])
     application.add_api_route(base + "/runs/{run_id}/diagnostics", routine_diagnostics, methods=["GET"])
     application.add_api_route(base + "/runs/{run_id}/steps/{snapshot}/{offset}", routine_run_steps, methods=["GET"])
     application.add_api_route(
@@ -113,10 +112,6 @@ def delete_route(confirmations: local_auth.Context):
         return await team_http.no_store(delete)
 
     return routine_delete
-
-
-async def routine_stop(team_id: str, run_id: str):
-    return await _relay(lambda: manage.stop(team_id, run_id))
 
 
 async def routine_diagnostics(team_id: str, run_id: str):

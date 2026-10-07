@@ -106,23 +106,6 @@ def delete(team_id: object, routine_id: object) -> team.TeamResponse:
     return _projected(response, _deleted(canonical, routine))
 
 
-def _run_decision(team_id: object, run_id: object, action: str, body: dict[str, object], result: str):
-    canonical = team.canonical_team_id(team_id)
-    run = _id(run_id, "Routine run")
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/{action}", body)
-    fields = {
-        "team_id": lambda value: value == canonical,
-        "run_id": lambda value: value == run,
-        result: lambda value: type(value) is bool,
-    }
-    return _projected(response, _exact(fields))
-
-
-def stop(team_id: object, run_id: object) -> team.TeamResponse:
-    """Stop exactly one run."""
-    return _run_decision(team_id, run_id, "stop", {}, "stopped")
-
-
 def _bound(admit: Callable[[object], dict[str, object] | None], **expected: object):
     """A view admitted only when it names exactly the identities it was asked for."""
 

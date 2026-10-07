@@ -4273,7 +4273,7 @@ async function routeRoutines(
     passkey = false,
   } = {},
 ) {
-  const calls = { begins: [], deletes: [], stops: [], resumes: [], pauses: [], answers: [] };
+  const calls = { begins: [], deletes: [], resumes: [], pauses: [], answers: [] };
   let rejected = 0;
   // The Routine is paused, and unless told otherwise an earlier run of it is held for recovery (ADR-0092).
   let routines = [{ ...ROUTINE_VIEW, state: 'paused' }, ...others];
@@ -4345,12 +4345,6 @@ async function routeRoutines(
     // Deleting a Routine sets its held runs aside (ADR-0092).
     incidents = incidents.filter((item) => item.routine_id !== routineId);
     await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, deleted: !runEnding } });
-  });
-  await page.route('**/api/teams/marketing/routines/runs/*/stop', async (route) => {
-    const [, runId] = new URL(route.request().url()).pathname.match(/runs\/([0-9a-f]{32})\/stop$/);
-    calls.stops.push(route.request().postDataJSON());
-    runs = runs.filter((item) => item.run_id !== runId);
-    await route.fulfill({ json: { team_id: 'marketing', run_id: runId, stopped: true } });
   });
   // The held run's card. Rodar sets the run aside and lifts the pause.
   await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
@@ -6241,6 +6235,8 @@ test.describe('Team Routines', () => {
     await expect(older).toBeVisible();
     await expect(runs).not.toContainText('No runs yet.');
     await expect(runs).toContainText('Running now');
+    // A run already going cannot be stopped: Pause holds only the next run.
+    await expect(runs.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
     // The running run ends while the panel stays open: the next refresh lists it at the top, reading only the newest
     // page, and the search for older runs keeps its place.
     const before = searched.length;

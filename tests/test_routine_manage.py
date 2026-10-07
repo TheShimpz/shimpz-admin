@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import local_auth
-from http_request import LOOPBACK, http_request, json_headers
+from http_request import LOOPBACK, asgi_exchange, http_request, json_headers
 from team import bridge as team
 from team import transport
 
@@ -80,9 +80,6 @@ class RoutineManageTests(unittest.TestCase):
         call.assert_called_once_with("DELETE", f"/v1/teams/team_1/routines/{ID}")
         with self.call(answer({"team_id": "team_1", "routine_id": "d" * 32, "deleted": True})):
             self.assertEqual(manage.delete("team_1", ID).status, 502)
-        with self.call(answer({"team_id": "team_1", "run_id": ID, "stopped": True})) as call:
-            self.assertTrue(manage.stop("team_1", ID).body["stopped"])
-        call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{ID}/stop", {})
         # A run's execution details are admitted only in their sanitized view, for exactly the run asked for.
         details = {**DIAGNOSTICS[1], "run_id": ID}
         with self.call(answer(details)) as call:
@@ -105,8 +102,6 @@ class RoutineManageTests(unittest.TestCase):
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/{ID}/pause", {})
         with self.call(answer({"team_id": "team_1", "routine_id": ID, "paused": False})):
             self.assertEqual(manage.pause("team_1", ID).status, 502)
-        with self.call(answer({"team_id": "team_1", "run_id": "d" * 32, "stopped": True})):
-            self.assertEqual(manage.stop("team_1", ID).status, 502)
         for error, expected in (
             (
                 answer({"code": "routine-card-stale", "error": "x", "trace_id": TRACE}, 409),
@@ -207,7 +202,6 @@ class RoutineManageTests(unittest.TestCase):
             for refused in (
                 lambda: manage.list_routines("Team 1"),
                 lambda: manage.delete("team_1", "../x"),
-                lambda: manage.stop("team_1", "x"),
                 lambda: manage.open_card("team_1", "x"),
                 lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "run"}),
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
@@ -251,15 +245,20 @@ class RoutineRouteTests(unittest.TestCase):
         routine_http.register(local, "local", mock.AsyncMock(), local_auth.Context())
         # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
         # Supervisor's password route then the second-factor DELETE (ADR-0051).
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 16)
-        # The retired release of an uncertain run stays absent.
-        self.assertFalse(any(route.path.endswith("/resolve") for route in local.routes))
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 15)
+        # The retired release of an uncertain run stays absent, as does a person's Stop of a run already going.
+        self.assertFalse(any(route.path.endswith(("/resolve", "/stop")) for route in local.routes))
+        for method in ("POST", "GET", "DELETE"):
+            with self.subTest(method=method):
+                stop = asyncio.run(
+                    asgi_exchange(local, f"/api/teams/team_1/routines/runs/{ID}/stop", LOOPBACK, method=method)
+                )
+                self.assertIn(stop.status, (404, 405))
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,
             list_routines=mock.Mock(return_value=ok),
             delete=mock.Mock(return_value=ok),
-            stop=mock.Mock(return_value=ok),
             resume=mock.Mock(return_value=ok),
             open_card=mock.Mock(return_value=ok),
             answer_card=mock.Mock(return_value=ok),
@@ -276,7 +275,6 @@ class RoutineRouteTests(unittest.TestCase):
             scheduled.state.routine_scheduler = mock.Mock()
             responses = [
                 routine_http.routines_list("team_1"),
-                asyncio.run(routine_http.routine_stop("team_1", ID)),
                 asyncio.run(routine_http.routine_resume("team_1", ID)),
                 asyncio.run(routine_http.routine_card("team_1", ID)),
                 asyncio.run(routine_http.routine_diagnostics("team_1", ID)),

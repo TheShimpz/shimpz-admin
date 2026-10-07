@@ -76,7 +76,6 @@ import {
   readRunSteps,
   pageBinding,
   runBinding,
-  stopRoutineRun,
 } from '../src/lib/routine.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
 
@@ -582,13 +581,9 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
   assert.equal(api.calls[0].init.method, 'DELETE');
   assert.equal(api.calls[0].init.body, JSON.stringify(CODE));
 
-  api = fetcher([
-    [200, { team_id: 'team_1', run_id: LEASED.run_id, stopped: true }],
-    [200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: false }],
-  ]);
-  assert.equal(await stopRoutineRun(api.fetch, 'team_1', LEASED.run_id), true);
+  api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: false }]]);
   assert.equal(await resumeRoutine(api.fetch, 'team_1', ROUTINE.routine_id), false);
-  assert.equal(api.calls[1].path, `/api/teams/team_1/routines/${ROUTINE.routine_id}/resume`);
+  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/${ROUTINE.routine_id}/resume`);
 
   const empty = { team_id: 'team_1', routines: [], runs: [], incidents: [] };
   for (const [call, responses] of [
@@ -597,7 +592,6 @@ test('Routine requests go to exact Admin routes and admit only exact answers', a
     [(f) => listRoutines(f, 'team_1'), [[200, { ...empty, incidents: Array(33).fill(INCIDENT) }]]],
     [(f) => listRoutines(f, 'team_1'), [[200, { team_id: 'team_1', routines: [], runs: [] }]]],
     [(f) => resumeRoutine(f, 'team_1', ROUTINE.routine_id), [[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: true }]]],
-    [(f) => stopRoutineRun(f, 'team_1', LEASED.run_id), [[200, { team_id: 'team_1', run_id: 'd'.repeat(32), stopped: true }]]],
   ]) {
     await assert.rejects(call(fetcher(responses).fetch), (error) => error.code === 'routine-response-invalid');
   }

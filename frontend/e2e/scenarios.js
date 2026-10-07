@@ -295,11 +295,6 @@ function routineRoutes(state, method, path, body) {
     state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
   }
-  const run = path.match(/^\/api\/teams\/marketing\/routines\/runs\/([0-9a-f]{32})\/stop$/);
-  if (run && method === 'POST') {
-    state.runs = state.runs.filter((item) => item.run_id !== run[1]);
-    return ok({ team_id: 'marketing', run_id: run[1], stopped: true });
-  }
   return null;
 }
 

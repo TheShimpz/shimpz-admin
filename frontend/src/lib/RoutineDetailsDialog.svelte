@@ -26,7 +26,6 @@
     scheduleWords,
     STATUS_TAGS,
     STATUS_WORDS,
-    stopRoutineRun,
     untilWords,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
@@ -365,12 +364,6 @@
             <li>
               <RoutineIcon name={run.status === 'held' ? 'warning' : run.status === 'frozen' ? 'approval' : 'spinner'} />
               <span class="run-what">{run.status === 'frozen' ? copy.panel.waitingApproval : run.status === 'held' ? copy.status.failed : copy.panel.runningNow}</span>
-              {#if run.status !== 'held'}
-                <Button variant="ghost" size="sm" type="button" disabled={busy}
-                  onclick={() => act(() => stopRoutineRun(fetch, teamId, run.run_id))}>
-                  {#snippet icon()}<RoutineIcon name="stop" />{/snippet}{copy.list.stop}
-                </Button>
-              {/if}
             </li>
           {/each}
           {#if recentFailed}
